@@ -13,7 +13,11 @@
       "Bash(npx *)",
       "Bash(curl -s -i http://localhost:3001/api/auth/get-session)",
       "Bash(curl -s -i -X POST http://localhost:3001/api/auth/sign-up/email -H \"Content-Type: application/json\" -d '{\"email\":\"a@b.c\",\"password\":\"password123\",\"name\":\"Test\"}')",
-      "Bash(curl -sf http://localhost:3001/api/health)"
+      "Bash(curl -sf http://localhost:3001/api/health)",
+      "Bash(curl -s -i -X POST http://localhost:3001/api/auth/sign-up/email -H 'Content-Type: application/json' -d '{\"email\":\"new@example.com\",\"password\":\"password123\",\"name\":\"New User\"}')",
+      "Bash(curl -s -i -X POST http://localhost:3001/api/auth/sign-in/email -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\",\"password\":\"password123\"}')",
+      "Bash(curl -s -i -c /tmp/cookies.txt -X POST http://localhost:3001/api/auth/sign-in/email -H 'Content-Type: application/json' -d '{\"email\":\"admin@example.com\",\"password\":\"password123\"}')",
+      "Bash(curl -s -b /tmp/cookies.txt http://localhost:3001/api/auth/get-session)"
     ]
   }
 }
