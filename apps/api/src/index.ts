@@ -1,9 +1,13 @@
 import express from "express";
 import type { Request, Response } from "express";
 import type { HealthResponse } from "@ticket/shared";
+import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
+import { auth } from "./auth";
 
 const app = express();
+
+app.all("/api/auth/{*any}", toNodeHandler(auth));
 
 app.use(express.json());
 

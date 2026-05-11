@@ -9,7 +9,7 @@
 | UI | Tailwind + shadcn/ui | Fast to build dashboard / list / detail views |
 | Database | Postgres (Neon or Supabase) | Standard relational; Neon branching is useful for schema work |
 | ORM | Prisma or Drizzle | Drizzle for SQL-first/lighter; Prisma for richer ecosystem |
-| Auth | `express-session` + `connect-pg-simple` + `bcrypt` | Postgres-backed **database session** store; opaque cookie resolved per request |
+| Auth | [Better Auth](https://better-auth.com) | Postgres-backed **database session** store; opaque cookie resolved per request. Replaces hand-rolled `express-session` + `connect-pg-simple` + `bcrypt`. |
 | AI | Anthropic SDK (Claude) | Classification, summaries, draft replies. Use prompt caching for the knowledge base |
 | Inbound email | Postmark Inbound | Webhook delivers parsed JSON with `MessageID` / `In-Reply-To` for threading |
 | Outbound email | Postmark (or Resend) | Prefer one vendor for inbound + outbound |
@@ -31,13 +31,13 @@ A monorepo with two apps keeps types shared:
 
 ## Authentication detail
 
-- Strategy: **database sessions** (not JWT).
-- Middleware: `express-session` with `connect-pg-simple` as the store, writing to a `session` table in Postgres.
-- Passwords: `bcrypt` (cost factor 12).
-- Cookie: `HttpOnly`, `Secure`, `SameSite=Lax`, signed with a server secret. Holds only an opaque session ID.
-- Every authenticated request → one DB read to resolve the session and load the user + role.
-- Logout / revocation: delete the session row. Effect is immediate across all devices.
-- Role changes (admin promoting/demoting an agent) take effect on the next request — no token to wait out.
+- Strategy: **database sessions** (not JWT). Implemented with [Better Auth](https://better-auth.com) using its Prisma adapter against our Postgres.
+- Better Auth owns the `User`, `Session`, `Account`, and `Verification` tables. Routes are mounted at `/api/auth/*` via `toNodeHandler(auth)` (Express 5 named-wildcard `/api/auth/*splat`).
+- Passwords: hashed by Better Auth (scrypt) — stored in the `Account` table, not on `User`.
+- Cookie: `HttpOnly`, `SameSite=Lax`, signed with `BETTER_AUTH_SECRET`. `Secure` flag set automatically in production. Holds only an opaque session token.
+- Every authenticated request → one DB read to resolve the session and load the user.
+- Logout / revocation: delete the `Session` row (or call `auth.api.signOut` / `revokeSession`). Effect is immediate across all devices.
+- Email/password is the only enabled provider for now. Role-based access (`role`, `active`) and email verification land later as additional fields / plugin config — see `implementation-plan.md` Phase 1.
 
 ## CORS / cookies
 
