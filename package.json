@@ -1,0 +1,17 @@
+{
+  "name": "claude-code-course-project",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun --filter '*' dev",
+    "dev:api": "bun --filter '@ticket/api' dev",
+    "dev:web": "bun --filter '@ticket/web' dev",
+    "build": "bun --filter '*' build",
+    "typecheck": "bun --filter '*' typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
