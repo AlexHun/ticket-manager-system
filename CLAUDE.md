@@ -24,7 +24,7 @@ TS config: `tsconfig.base.json` (strict, ES2022, ESM, `verbatimModuleSyntax`). E
 
 - Backend: Node + Express + TS
 - Frontend: React + Vite + TS + Tailwind + shadcn/ui
-- DB: Postgres (Neon/Supabase); ORM Prisma or Drizzle (undecided)
+- DB: Postgres (Neon/Supabase) via **Prisma 7** with the `@prisma/adapter-pg` driver adapter. Schema at `apps/api/prisma/schema.prisma`; CLI config at `apps/api/prisma.config.ts` (this is where `DATABASE_URL` is wired in — Prisma 7 no longer accepts `url` inside `datasource`). Generated client lives at `apps/api/src/generated/prisma` (gitignored, recreate with `bun run db:generate`). Import the singleton from `./db`, not the generated path directly.
 - Auth: `express-session` + `connect-pg-simple` + `bcrypt` — **database sessions, not JWT**. Opaque cookie, one DB read per request.
 - AI: Anthropic SDK (Claude). Use **prompt caching** for the KB block.
 - Email: Postmark inbound + outbound. Thread via `Message-ID` / `In-Reply-To` / `References`.
@@ -38,6 +38,13 @@ Run from repo root:
 - `bun run dev:api` / `bun run dev:web` — single app
 - `bun run build` — all workspaces
 - `bun run typecheck` — all workspaces
+
+DB (run inside `apps/api`):
+
+- `bun run db:generate` — regenerate Prisma client
+- `bun run db:migrate` — create/apply migrations in dev (`prisma migrate dev`)
+- `bun run db:deploy` — apply migrations in prod (`prisma migrate deploy`)
+- `bun run db:studio` — open Prisma Studio
 
 ## Fetching documentation
 

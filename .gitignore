@@ -9,3 +9,6 @@ dist
 .idea
 .vscode/*
 !.vscode/extensions.json
+
+# Prisma generated client
+apps/api/src/generated/
