@@ -1,22 +1,16 @@
-import { useEffect, useState } from "react";
-import type { HealthResponse } from "@ticket/shared";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { LoginPage } from "@/pages/LoginPage";
+import { HomePage } from "@/pages/HomePage";
 
 export function App() {
-  const [status, setStatus] = useState<string>("checking…");
-
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json() as Promise<HealthResponse>)
-      .then((d) => setStatus(d.status))
-      .catch(() => setStatus("error"));
-  }, []);
-
   return (
-    <main style={{ fontFamily: "system-ui", padding: 24 }}>
-      <h1>Ticket Manager</h1>
-      <p>
-        API status: <strong>{status}</strong>
-      </p>
-    </main>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="/" element={<HomePage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
