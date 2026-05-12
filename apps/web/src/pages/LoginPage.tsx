@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Loader2 } from "lucide-react";
 import { signIn, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,10 +34,16 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "admin@example.com", password: "password123" },
   });
 
-  if (sessionPending) return null;
+  if (sessionPending) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </main>
+    );
+  }
   if (session) return <Navigate to="/" replace />;
 
   const onSubmit = async (values: LoginValues) => {
@@ -104,6 +111,7 @@ export function LoginPage() {
               </p>
             )}
             <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="size-4 animate-spin" />}
               {isSubmitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
