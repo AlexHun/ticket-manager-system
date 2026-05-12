@@ -25,7 +25,7 @@ TS config: `tsconfig.base.json` (strict, ES2022, ESM, `verbatimModuleSyntax`). E
 - Backend: Node + Express + TS
 - Frontend: React + Vite + TS + Tailwind + shadcn/ui
 - DB: Postgres (Neon/Supabase) via **Prisma 7** with the `@prisma/adapter-pg` driver adapter. Schema at `apps/api/prisma/schema.prisma`; CLI config at `apps/api/prisma.config.ts` (this is where `DATABASE_URL` is wired in — Prisma 7 no longer accepts `url` inside `datasource`). Generated client lives at `apps/api/src/generated/prisma` (gitignored, recreate with `bun run db:generate`). Import the singleton from `./db`, not the generated path directly.
-- Auth: `express-session` + `connect-pg-simple` + `bcrypt` — **database sessions, not JWT**. Opaque cookie, one DB read per request.
+- Auth: **Better Auth** (`better-auth`) with the Prisma adapter. Server config at `apps/api/src/auth.ts` (email/password enabled, `disableSignUp: true`, `role` additional field `admin|agent`, `TRUSTED_ORIGINS` required). Client at `apps/web/src/lib/auth-client.ts` exports `signIn` / `signOut` / `useSession`. Cookie-based sessions — **not JWT**.
 - AI: Anthropic SDK (Claude). Use **prompt caching** for the KB block.
 - Email: Postmark inbound + outbound. Thread via `Message-ID` / `In-Reply-To` / `References`.
 - CORS: cross-origin in dev → API must set `Access-Control-Allow-Credentials: true`; frontend must `credentials: "include"`.
@@ -59,3 +59,9 @@ Prefer context7 over web search for library docs. Skip it for refactoring, busin
 - Strict TS; no unused locals/params; `verbatimModuleSyntax` (use `import type` for type-only imports).
 - Shared cross-app types live in `packages/shared` — don't duplicate `Ticket` / `User` / API contracts in the apps.
 - Don't introduce JWT, Redis, a queue, or vector DB without a concrete need — `tech-stack.md` explicitly defers them.
+
+## Frontend
+
+- Forms: **react-hook-form** + **zod** via `@hookform/resolvers/zod`. Define the schema, infer the values type with `z.infer`, disable inputs on `isSubmitting`, surface server errors in local state.
+- Icons: **lucide-react**. Use `Loader2` with `animate-spin` for pending/loading states.
+- Tailwind v4 (CSS-first, no `tailwind.config`). Theme tokens are CSS variables in `apps/web/src/index.css` under `:root` / `.dark`; reference them as `var(--background)` etc. shadcn/ui components live in `apps/web/src/components/ui/`.
