@@ -34,7 +34,9 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "admin@example.com", password: "password123" },
+    defaultValues: import.meta.env.DEV
+      ? { email: "admin@example.com", password: "password123" }
+      : { email: "", password: "" },
   });
 
   if (sessionPending) {

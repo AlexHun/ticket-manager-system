@@ -12,3 +12,8 @@ dist
 
 # Prisma generated client
 apps/api/src/generated/
+
+# Claude Code agent state
+.claude/agents/*
+!.claude/agents/security-vulnerability-auditor.md
+.claude/agent-memory/

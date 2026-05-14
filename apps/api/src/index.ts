@@ -1,11 +1,20 @@
 import express from "express";
 import type { Request, Response } from "express";
+import cors from "cors";
 import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
-import { auth } from "./auth";
+import { auth, trustedOrigins } from "./auth";
 
 const app = express();
+
+app.use(
+  cors({
+    origin: trustedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  }),
+);
 
 app.all("/api/auth/{*any}", toNodeHandler(auth));
 
