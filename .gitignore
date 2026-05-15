@@ -21,6 +21,4 @@ apps/api/src/generated/
 /playwright/.cache/
 
 # Claude Code agent state
-.claude/agents/*
-!.claude/agents/security-vulnerability-auditor.md
 .claude/agent-memory/

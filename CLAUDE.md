@@ -29,7 +29,7 @@ TS config: `tsconfig.base.json` (strict, ES2022, ESM, `verbatimModuleSyntax`). E
 - AI: Anthropic SDK (Claude). Use **prompt caching** for the KB block.
 - Email: Postmark inbound + outbound. Thread via `Message-ID` / `In-Reply-To` / `References`.
 - CORS: cross-origin in dev → API uses `cors` middleware in `apps/api/src/index.ts` with `origin: trustedOrigins` (exported from `auth.ts`) and `credentials: true`. Mounted before the Better Auth handler. Frontend uses `credentials: "include"`.
-- Testing: **Playwright** E2E at repo root (`playwright.config.ts`, tests in `tests/e2e/`). Separate `ticket_manager_test` DB, alt ports (API 3002, web 4001), test env at `apps/api/.env.test` (gitignored, template at `.env.test.example`). `webServer` spawns both apps. Rate limiting is off in test (`NODE_ENV !== production`).
+- Testing: see the `playwright-e2e-author` agent for the E2E setup (Playwright config, test DB, alt ports, env file, run/seed scripts).
 
 ## Commands
 
@@ -47,12 +47,9 @@ DB (run inside `apps/api`):
 - `bun run db:deploy` — apply migrations in prod (`prisma migrate deploy`)
 - `bun run db:studio` — open Prisma Studio
 
-Test DB + E2E (run from repo root):
+For E2E test commands (`test:e2e`, `db:test:*`), see the `playwright-e2e-author` agent.
 
-- `bun run test:e2e` / `bun run test:e2e:ui` — Playwright; auto-starts test API + web
-- `bun run db:test:migrate` / `db:test:seed` / `db:test:reset` — operate on `ticket_manager_test` via `dotenv-cli` (`.env.test`)
-
-Bun env gotchas: `bun --env-file=X x ...` and `bun --env-file=X run <script that calls bun>` do **not** propagate the env to the child — the inner `bun` re-loads default `.env`. For Prisma CLI use `dotenv-cli`; to start the API with test env, invoke the entrypoint directly: `bun --env-file=.env.test src/index.ts`. Workspace filter syntax is `bun run --filter <pkg> <script>`, not `bun --filter <pkg> run <script>`.
+Bun env gotchas: `bun --env-file=X x ...` and `bun --env-file=X run <script that calls bun>` do **not** propagate the env to the child — the inner `bun` re-loads default `.env`. For Prisma CLI use `dotenv-cli`. Workspace filter syntax is `bun run --filter <pkg> <script>`, not `bun --filter <pkg> run <script>`.
 
 ## Fetching documentation
 
