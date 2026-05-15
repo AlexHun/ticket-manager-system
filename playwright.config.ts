@@ -11,6 +11,7 @@ const WEB_URL = `http://localhost:${WEB_PORT}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
@@ -28,7 +29,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "bun --env-file=.env.test src/index.ts",
+      // Use dotenv-cli so NODE_ENV from .env.test actually reaches the process
+      // (Bun's --env-file silently ignores NODE_ENV).
+      command: "bunx dotenv -e .env.test -- bun src/index.ts",
       cwd: path.join(__dirname, "apps/api"),
       url: `${API_URL}/api/health`,
       reuseExistingServer: !process.env.CI,
