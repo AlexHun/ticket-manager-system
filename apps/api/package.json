@@ -11,7 +11,10 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:seed": "bun prisma/seed.ts"
+    "db:seed": "bun prisma/seed.ts",
+    "db:test:migrate": "dotenv -e .env.test -- prisma migrate deploy",
+    "db:test:seed": "dotenv -e .env.test -- bun prisma/seed.ts",
+    "db:test:reset": "dotenv -e .env.test -- prisma migrate reset --force --skip-seed && bun run db:test:seed"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -28,6 +31,7 @@
     "@types/express": "^5.0.0",
     "@types/pg": "^8.20.0",
     "dotenv": "^17.4.2",
+    "dotenv-cli": "^11.0.0",
     "prisma": "^7.8.0",
     "typescript": "^5.7.2"
   }

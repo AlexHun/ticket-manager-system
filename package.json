@@ -9,9 +9,16 @@
     "dev:api": "bun --filter '@ticket/api' dev",
     "dev:web": "bun --filter '@ticket/web' dev",
     "build": "bun --filter '*' build",
-    "typecheck": "bun --filter '*' typecheck"
+    "typecheck": "bun --filter '*' typecheck",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "db:test:migrate": "bun run --filter '@ticket/api' db:test:migrate",
+    "db:test:seed": "bun run --filter '@ticket/api' db:test:seed",
+    "db:test:reset": "bun run --filter '@ticket/api' db:test:reset"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^22.10.0",
     "typescript": "^5.7.2"
   }
 }

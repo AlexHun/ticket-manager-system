@@ -25,10 +25,11 @@ TS config: `tsconfig.base.json` (strict, ES2022, ESM, `verbatimModuleSyntax`). E
 - Backend: Node + Express + TS
 - Frontend: React + Vite + TS + Tailwind + shadcn/ui
 - DB: Postgres (Neon/Supabase) via **Prisma 7** with the `@prisma/adapter-pg` driver adapter. Schema at `apps/api/prisma/schema.prisma`; CLI config at `apps/api/prisma.config.ts` (this is where `DATABASE_URL` is wired in — Prisma 7 no longer accepts `url` inside `datasource`). Generated client lives at `apps/api/src/generated/prisma` (gitignored, recreate with `bun run db:generate`). Import the singleton from `./db`, not the generated path directly.
-- Auth: **Better Auth** (`better-auth`) with the Prisma adapter. Server config at `apps/api/src/auth.ts` (email/password enabled, `disableSignUp: true`, `role` additional field `admin|agent`, `TRUSTED_ORIGINS` required). Client at `apps/web/src/lib/auth-client.ts` exports `signIn` / `signOut` / `useSession`. Cookie-based sessions — **not JWT**.
+- Auth: **Better Auth** (`better-auth`) with the Prisma adapter. Server config at `apps/api/src/auth.ts` (email/password enabled, `disableSignUp: true`, `role` additional field `admin|agent`, `TRUSTED_ORIGINS` required, `BETTER_AUTH_SECRET` validated ≥32 chars, `rateLimit` enabled only in production). Server-side RBAC middleware at `apps/api/src/middleware/auth.ts` exports `requireAuth` and `requireAdmin` — apply to every protected route (frontend `AdminRoute` is UX, not security). Client at `apps/web/src/lib/auth-client.ts` exports `signIn` / `signOut` / `useSession` and reads `VITE_API_URL` for cross-origin baseURL. Cookie-based sessions — **not JWT**.
 - AI: Anthropic SDK (Claude). Use **prompt caching** for the KB block.
 - Email: Postmark inbound + outbound. Thread via `Message-ID` / `In-Reply-To` / `References`.
-- CORS: cross-origin in dev → API must set `Access-Control-Allow-Credentials: true`; frontend must `credentials: "include"`.
+- CORS: cross-origin in dev → API uses `cors` middleware in `apps/api/src/index.ts` with `origin: trustedOrigins` (exported from `auth.ts`) and `credentials: true`. Mounted before the Better Auth handler. Frontend uses `credentials: "include"`.
+- Testing: **Playwright** E2E at repo root (`playwright.config.ts`, tests in `tests/e2e/`). Separate `ticket_manager_test` DB, alt ports (API 3002, web 4001), test env at `apps/api/.env.test` (gitignored, template at `.env.test.example`). `webServer` spawns both apps. Rate limiting is off in test (`NODE_ENV !== production`).
 
 ## Commands
 
@@ -45,6 +46,13 @@ DB (run inside `apps/api`):
 - `bun run db:migrate` — create/apply migrations in dev (`prisma migrate dev`)
 - `bun run db:deploy` — apply migrations in prod (`prisma migrate deploy`)
 - `bun run db:studio` — open Prisma Studio
+
+Test DB + E2E (run from repo root):
+
+- `bun run test:e2e` / `bun run test:e2e:ui` — Playwright; auto-starts test API + web
+- `bun run db:test:migrate` / `db:test:seed` / `db:test:reset` — operate on `ticket_manager_test` via `dotenv-cli` (`.env.test`)
+
+Bun env gotchas: `bun --env-file=X x ...` and `bun --env-file=X run <script that calls bun>` do **not** propagate the env to the child — the inner `bun` re-loads default `.env`. For Prisma CLI use `dotenv-cli`; to start the API with test env, invoke the entrypoint directly: `bun --env-file=.env.test src/index.ts`. Workspace filter syntax is `bun run --filter <pkg> <script>`, not `bun --filter <pkg> run <script>`.
 
 ## Fetching documentation
 

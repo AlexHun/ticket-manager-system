@@ -3,6 +3,7 @@ dist
 .vite
 .env
 .env.local
+.env.test
 .env.*.local
 *.log
 .DS_Store
@@ -12,6 +13,12 @@ dist
 
 # Prisma generated client
 apps/api/src/generated/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
 # Claude Code agent state
 .claude/agents/*

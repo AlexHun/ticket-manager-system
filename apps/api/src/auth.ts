@@ -23,6 +23,7 @@ export const auth = betterAuth({
   trustedOrigins,
   emailAndPassword: { enabled: true, disableSignUp: true },
   rateLimit: {
+    enabled: process.env.NODE_ENV === "production",
     window: 60,
     max: 100,
     customRules: {
