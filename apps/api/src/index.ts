@@ -5,6 +5,7 @@ import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
 import { auth, trustedOrigins } from "./auth";
+import { usersRouter } from "./routes/users";
 
 const app = express();
 
@@ -23,6 +24,8 @@ app.use(express.json());
 app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
   res.json({ status: "ok" });
 });
+
+app.use("/api/users", usersRouter);
 
 const port = Number(process.env.PORT ?? 3001);
 

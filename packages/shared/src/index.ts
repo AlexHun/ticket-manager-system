@@ -21,9 +21,15 @@ export interface Ticket {
 
 export interface User {
   id: string;
+  name: string;
   email: string;
   role: UserRole;
-  active: boolean;
+  emailVerified: boolean;
+  createdAt: string;
+}
+
+export interface UsersListResponse {
+  users: User[];
 }
 
 export interface HealthResponse {
