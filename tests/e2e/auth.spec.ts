@@ -1,5 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import { signIn } from "./helpers/auth";
+import { CREDENTIALS, signIn } from "./helpers/auth";
+
+const ADMIN = CREDENTIALS.admin;
+const AGENT = CREDENTIALS.agent;
+const WRONG_PASSWORD = "wrongpassword";
+const UNKNOWN_EMAIL = "nobody@example.com";
+const NEW_USER_EMAIL = "newuser@example.com";
+const NEW_USER_NAME = "New User";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -35,7 +42,7 @@ test.describe("Login flow", () => {
   test("admin login succeeds — redirects to / and shows Users link", async ({
     page,
   }) => {
-    await fillLoginForm(page, "admin@example.com", "password123");
+    await fillLoginForm(page, ADMIN.email, ADMIN.password);
 
     await expect(page).toHaveURL("/");
     // Admin sees the Users nav link
@@ -47,7 +54,7 @@ test.describe("Login flow", () => {
   test("agent login succeeds — redirects to / and does NOT show Users link", async ({
     page,
   }) => {
-    await fillLoginForm(page, "agent@example.com", "password123");
+    await fillLoginForm(page, AGENT.email, AGENT.password);
 
     await expect(page).toHaveURL("/");
     // Agent must NOT see the Users nav link
@@ -59,7 +66,7 @@ test.describe("Login flow", () => {
   test("wrong password — server error shown, stays on /login", async ({
     page,
   }) => {
-    await fillLoginForm(page, "admin@example.com", "wrongpassword");
+    await fillLoginForm(page, ADMIN.email, WRONG_PASSWORD);
 
     await expect(page).toHaveURL("/login");
     // A server-error paragraph with role=alert must appear
@@ -71,7 +78,7 @@ test.describe("Login flow", () => {
   test("unknown email — server error shown, stays on /login", async ({
     page,
   }) => {
-    await fillLoginForm(page, "nobody@example.com", "password123");
+    await fillLoginForm(page, UNKNOWN_EMAIL, ADMIN.password);
 
     await expect(page).toHaveURL("/login");
     await expect(page.getByRole("alert")).toBeVisible();
@@ -129,9 +136,9 @@ test.describe("Login flow", () => {
     });
 
     await page.getByLabel("Email").clear();
-    await page.getByLabel("Email").fill("admin@example.com");
+    await page.getByLabel("Email").fill(ADMIN.email);
     await page.getByLabel("Password").clear();
-    await page.getByLabel("Password").fill("password123");
+    await page.getByLabel("Password").fill(ADMIN.password);
 
     const submitButton = page.getByRole("button", { name: /Sign in/i });
     void submitButton.click();
@@ -232,9 +239,9 @@ test.describe("Sign-up disabled", () => {
       "http://localhost:3002/api/auth/sign-up/email",
       {
         data: {
-          email: "newuser@example.com",
-          password: "password123",
-          name: "New User",
+          email: NEW_USER_EMAIL,
+          password: ADMIN.password,
+          name: NEW_USER_NAME,
         },
       },
     );

@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 export type UserRole = "admin" | "agent";
 
-const CREDENTIALS: Record<UserRole, { email: string; password: string }> = {
+export const CREDENTIALS: Record<UserRole, { email: string; password: string }> = {
   admin: { email: "admin@example.com", password: "password123" },
   agent: { email: "agent@example.com", password: "password123" },
 };
