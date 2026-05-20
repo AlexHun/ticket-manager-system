@@ -1,51 +1,23 @@
-import { useEffect, useState } from "react";
+import axios from "axios";
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import type { User, UserRole, UsersListResponse } from "@ticket/shared";
 import { NavBar } from "@/components/NavBar";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "";
-
-type LoadState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; users: User[] };
+function useUsersQuery() {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<UsersListResponse>("/api/users", { signal });
+      return data.users;
+    },
+  });
+}
 
 export function UsersPage() {
-  const [state, setState] = useState<LoadState>({ status: "loading" });
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function load() {
-      try {
-        const res = await fetch(`${API_URL}/api/users`, {
-          credentials: "include",
-          signal: controller.signal,
-        });
-
-        if (!res.ok) {
-          setState({
-            status: "error",
-            message: `Failed to load users (${res.status})`,
-          });
-          return;
-        }
-
-        const data = (await res.json()) as UsersListResponse;
-        setState({ status: "ready", users: data.users });
-      } catch (err) {
-        if (controller.signal.aborted) return;
-        setState({
-          status: "error",
-          message: err instanceof Error ? err.message : "Failed to load users",
-        });
-      }
-    }
-
-    void load();
-    return () => controller.abort();
-  }, []);
+  const { data: users, isPending, error } = useUsersQuery();
 
   return (
     <div className="min-h-screen bg-background">
@@ -53,23 +25,31 @@ export function UsersPage() {
       <main className="p-6">
         <h1 className="mb-4 text-2xl font-semibold">Users</h1>
 
-        {state.status === "loading" && (
+        {isPending && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             Loading users…
           </div>
         )}
 
-        {state.status === "error" && (
+        {error && (
           <p className="text-sm text-destructive" role="alert">
-            {state.message}
+            {formatError(error)}
           </p>
         )}
 
-        {state.status === "ready" && <UsersTable users={state.users} />}
+        {users && <UsersTable users={users} />}
       </main>
     </div>
   );
+}
+
+function formatError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    return `Failed to load users (${err.response?.status ?? err.message})`;
+  }
+  if (err instanceof Error) return err.message;
+  return "Failed to load users";
 }
 
 function UsersTable({ users }: { users: User[] }) {
