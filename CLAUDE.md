@@ -39,6 +39,7 @@ Run from repo root:
 - `bun run dev:api` / `bun run dev:web` — single app
 - `bun run build` — all workspaces
 - `bun run typecheck` — all workspaces
+- `bun run --filter @ticket/web test` — run web component tests once (CI). Also `test:watch` (headless TUI) and `test:ui` (Vitest UI dashboard, best for authoring).
 
 DB (run inside `apps/api`):
 
@@ -71,3 +72,4 @@ Prefer context7 over web search for library docs. Skip it for refactoring, busin
 - Icons: **lucide-react**. Use `Loader2` with `animate-spin` for pending/loading states.
 - Tailwind v4 (CSS-first, no `tailwind.config`). Theme tokens are CSS variables in `apps/web/src/index.css` under `:root` / `.dark`; reference them as `var(--background)` etc. shadcn/ui components live in `apps/web/src/components/ui/`.
 - Data fetching: **axios** + **@tanstack/react-query**. Don't use `fetch` directly. Use the shared axios instance from `@/lib/api` (preconfigured with `baseURL: VITE_API_URL` and `withCredentials: true` for cookie-based sessions). Wrap every server call in `useQuery` / `useMutation` — pass the `signal` from the query function into axios for automatic cancellation. The `QueryClientProvider` is wired in `apps/web/src/main.tsx`.
+- Component tests: **Vitest** + **React Testing Library** + **jsdom**. Test files live next to the component as `*.test.tsx` (e.g. `apps/web/src/pages/UsersPage.test.tsx`). Vitest config is inlined in `apps/web/vite.config.ts` (`globals: true`, `environment: "jsdom"`); jest-dom matchers and RTL `cleanup` are wired in `apps/web/src/test/setup.ts`. Always render with `renderWithQuery(ui, { initialEntries? })` from `@/test/render` — it provides a fresh `QueryClient` (`retry: false`, `gcTime: 0`) and a `MemoryRouter`. Mock module boundaries with `vi.mock`: stub `@/lib/api` (axios), `@/lib/auth-client` (`useSession`), and `@/lib/theme` so tests don't touch the network, session, or `localStorage`. Prefer accessible queries (`getByRole`, `getByLabelText`) over class/text selectors. Don't try to E2E-style log in here — that lives in Playwright (see the `playwright-e2e-author` agent).

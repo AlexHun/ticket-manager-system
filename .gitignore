@@ -24,3 +24,4 @@ apps/api/src/generated/
 .claude/agent-memory/
 .claude/settings.local.json
 apps/web/tsconfig.app.tsbuildinfo
+apps/web/tsconfig.app.tsbuildinfo
