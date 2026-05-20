@@ -1,10 +1,13 @@
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
 import type { User, UserRole, UsersListResponse } from "@ticket/shared";
 import { NavBar } from "@/components/NavBar";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+
+const SKELETON_ROW_COUNT = 5;
 
 function useUsersQuery() {
   return useQuery({
@@ -25,12 +28,7 @@ export function UsersPage() {
       <main className="p-6">
         <h1 className="mb-4 text-2xl font-semibold">Users</h1>
 
-        {isPending && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Loading users…
-          </div>
-        )}
+        {isPending && <UsersTableSkeleton />}
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
@@ -98,6 +96,49 @@ function RoleBadge({ role }: { role: UserRole }) {
     <Badge variant={role === "admin" ? "default" : "secondary"} className="capitalize">
       {role}
     </Badge>
+  );
+}
+
+function UsersTableSkeleton() {
+  return (
+    <div
+      className="overflow-hidden rounded-lg ring-1 ring-foreground/10"
+      aria-busy="true"
+      aria-label="Loading users"
+    >
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-left text-muted-foreground">
+          <tr>
+            <th className="px-4 py-2 font-medium">Name</th>
+            <th className="px-4 py-2 font-medium">Email</th>
+            <th className="px-4 py-2 font-medium">Role</th>
+            <th className="px-4 py-2 font-medium">Verified</th>
+            <th className="px-4 py-2 font-medium">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
+            <tr key={i} className="border-t border-foreground/10">
+              <td className="px-4 py-2">
+                <Skeleton className="h-4 w-32" />
+              </td>
+              <td className="px-4 py-2">
+                <Skeleton className="h-4 w-48" />
+              </td>
+              <td className="px-4 py-2">
+                <Skeleton className="h-5 w-16 rounded-md" />
+              </td>
+              <td className="px-4 py-2">
+                <Skeleton className="h-5 w-24 rounded-md" />
+              </td>
+              <td className="px-4 py-2">
+                <Skeleton className="h-4 w-20" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

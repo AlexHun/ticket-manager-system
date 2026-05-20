@@ -27,7 +27,8 @@
       "Bash(curl -s \"http://localhost:4000/src/App.tsx\")",
       "Bash(bunx --bun shadcn@latest add form -y)",
       "Bash(netstat -ano)",
-      "Bash(findstr :3001)"
+      "Bash(findstr :3001)",
+      "Bash(curl *)"
     ]
   }
 }
