@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Loader2 } from "lucide-react";
+import { loginSchema, type LoginValues } from "@ticket/core";
 import { signIn, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,13 +15,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
-const loginSchema = z.object({
-  email: z.email("Enter a valid email"),
-  password: z.string().min(1, "Password is required"),
-});
-
-type LoginValues = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
   const navigate = useNavigate();

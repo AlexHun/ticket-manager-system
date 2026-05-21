@@ -32,6 +32,10 @@ export interface UsersListResponse {
   users: User[];
 }
 
+export interface CreateUserResponse {
+  user: User;
+}
+
 export interface HealthResponse {
   status: "ok";
 }

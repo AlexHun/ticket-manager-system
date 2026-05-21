@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { admin } from "better-auth/plugins";
 import { prisma } from "./db";
 
 const parsedOrigins = process.env.TRUSTED_ORIGINS?.split(",")
@@ -40,14 +41,10 @@ export const auth = betterAuth({
     disableOriginCheck: isTest,
     disableCSRFCheck: isTest,
   },
-  user: {
-    additionalFields: {
-      role: {
-        type: ["admin", "agent"],
-        required: false,
-        defaultValue: "agent",
-        input: false,
-      },
-    },
-  },
+  plugins: [
+    admin({
+      defaultRole: "agent",
+      adminRoles: ["admin"],
+    }),
+  ],
 });

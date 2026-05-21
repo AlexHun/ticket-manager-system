@@ -64,6 +64,9 @@ Prefer context7 over web search for library docs. Skip it for refactoring, busin
 
 - Strict TS; no unused locals/params; `verbatimModuleSyntax` (use `import type` for type-only imports).
 - Shared cross-app types live in `packages/shared` — don't duplicate `Ticket` / `User` / API contracts in the apps.
+- Role values must reference the `UserRole` type from `@ticket/shared` (`"admin" | "agent"`). Don't inline the union (`as "admin" | "agent"`) or scatter magic role strings — import `UserRole` and cast/compare against it so the source of truth stays in one place.
+- Express 5 auto-forwards rejected promises from `async` route handlers to the error pipeline — don't wrap `await` calls in `try/catch` just to translate the error into a response. Let it throw. Only catch when you actually need to branch on the error (e.g. map a specific error type to a custom response, or recover and continue) — never to re-throw or to manually call `next(err)`.
+- **zod schemas** live in `packages/core` (`@ticket/core`), organized by domain under `src/schemas/` (e.g. `schemas/users.ts`, `schemas/auth.ts`) and re-exported from `src/index.ts`. Define each schema once there, infer its TS type with `z.infer<typeof ...>`, and import from both client (`react-hook-form` + `zodResolver`) and server (`schema.safeParse(req.body)`). Don't redefine the same shape per-app or hand-roll equivalent `typeof`/regex checks on either side.
 - Don't introduce JWT, Redis, a queue, or vector DB without a concrete need — `tech-stack.md` explicitly defers them.
 
 ## Frontend

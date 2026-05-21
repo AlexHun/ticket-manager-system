@@ -19,11 +19,13 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@ticket/core": "workspace:*",
     "@ticket/shared": "workspace:*",
     "better-auth": "^1.6.10",
     "cors": "^2.8.6",
     "express": "^5.1.0",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bun": "latest",

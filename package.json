@@ -12,9 +12,9 @@
     "typecheck": "bun --filter '*' typecheck",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "db:test:migrate": "bun run --filter '@ticket/api' db:test:migrate",
-    "db:test:seed": "bun run --filter '@ticket/api' db:test:seed",
-    "db:test:reset": "bun run --filter '@ticket/api' db:test:reset"
+    "db:test:migrate": "cd apps/api && bun run db:test:migrate",
+    "db:test:seed": "cd apps/api && bun run db:test:seed",
+    "db:test:reset": "cd apps/api && bun run db:test:reset"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

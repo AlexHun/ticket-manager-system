@@ -28,7 +28,8 @@
       "Bash(bunx --bun shadcn@latest add form -y)",
       "Bash(netstat -ano)",
       "Bash(findstr :3001)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(bunx *)"
     ]
   }
 }
