@@ -1,11 +1,17 @@
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Pencil, XCircle } from "lucide-react";
 import type { User, UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const SKELETON_ROW_COUNT = 5;
 
-export function UsersTable({ users }: { users: User[] }) {
+interface UsersTableProps {
+  users: User[];
+  onEdit: (user: User) => void;
+}
+
+export function UsersTable({ users, onEdit }: UsersTableProps) {
   if (users.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">No users found.</p>
@@ -22,6 +28,7 @@ export function UsersTable({ users }: { users: User[] }) {
             <th className="px-4 py-2 font-medium">Role</th>
             <th className="px-4 py-2 font-medium">Verified</th>
             <th className="px-4 py-2 font-medium">Created</th>
+            <th className="px-4 py-2 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -37,6 +44,16 @@ export function UsersTable({ users }: { users: User[] }) {
               </td>
               <td className="px-4 py-2 text-muted-foreground">
                 {new Date(u.createdAt).toLocaleDateString()}
+              </td>
+              <td className="px-4 py-2 text-right">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onEdit(u)}
+                  aria-label={`Edit ${u.name}`}
+                >
+                  <Pencil />
+                </Button>
               </td>
             </tr>
           ))}
@@ -61,6 +78,7 @@ export function UsersTableSkeleton() {
             <th className="px-4 py-2 font-medium">Role</th>
             <th className="px-4 py-2 font-medium">Verified</th>
             <th className="px-4 py-2 font-medium">Created</th>
+            <th className="px-4 py-2 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -80,6 +98,9 @@ export function UsersTableSkeleton() {
               </td>
               <td className="px-4 py-2">
                 <Skeleton className="h-4 w-20" />
+              </td>
+              <td className="px-4 py-2 text-right">
+                <Skeleton className="ml-auto h-7 w-7 rounded-md" />
               </td>
             </tr>
           ))}

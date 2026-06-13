@@ -1,11 +1,18 @@
-import { useState } from "react";
-import axios from "axios";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import { createUserSchema, type CreateUserValues } from "@ticket/core";
-import type { CreateUserResponse } from "@ticket/shared";
+import {
+  createUserSchema,
+  updateUserSchema,
+  type CreateUserValues,
+} from "@ticket/core";
+import type {
+  CreateUserResponse,
+  UpdateUserResponse,
+  User,
+} from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,14 +20,23 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
+import { extractErrorMessage } from "@/lib/errors";
 
-export function NewUserDialog() {
-  const [open, setOpen] = useState(false);
+interface UserDialogProps {
+  user: User | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+const EMPTY_VALUES: CreateUserValues = { name: "", email: "", password: "" };
+
+export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
+  const isEdit = user !== null;
   const [serverError, setServerError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
@@ -30,28 +46,58 @@ export function NewUserDialog() {
     reset,
     formState: { errors, isSubmitting },
   } = useForm<CreateUserValues>({
-    resolver: zodResolver(createUserSchema),
-    defaultValues: { name: "", email: "", password: "" },
+    resolver: zodResolver(
+      isEdit ? updateUserSchema : createUserSchema,
+    ) as Resolver<CreateUserValues>,
+    defaultValues: EMPTY_VALUES,
   });
+
+  useEffect(() => {
+    if (!open) return;
+    reset(
+      user
+        ? { name: user.name, email: user.email, password: "" }
+        : EMPTY_VALUES,
+    );
+    setServerError(null);
+  }, [open, user, reset]);
 
   const mutation = useMutation({
     mutationFn: async (values: CreateUserValues) => {
+      if (user) {
+        const payload: { name: string; email: string; password?: string } = {
+          name: values.name,
+          email: values.email,
+        };
+        if (values.password.length > 0) {
+          payload.password = values.password;
+        }
+        const { data } = await api.patch<UpdateUserResponse>(
+          `/api/users/${user.id}`,
+          payload,
+        );
+        return data;
+      }
       const { data } = await api.post<CreateUserResponse>("/api/users", values);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
-      reset();
       setServerError(null);
-      setOpen(false);
+      onOpenChange(false);
+      toast.success(
+        isEdit
+          ? `User "${data.user.name}" updated`
+          : `User "${data.user.name}" created`,
+      );
     },
     onError: (err) => {
-      if (axios.isAxiosError(err)) {
-        const responseError = (err.response?.data as { error?: string } | undefined)?.error;
-        setServerError(responseError ?? err.message);
-        return;
-      }
-      setServerError(err instanceof Error ? err.message : "Failed to create user");
+      const message = extractErrorMessage(
+        err,
+        isEdit ? "Failed to update user" : "Failed to create user",
+      );
+      setServerError(message);
+      toast.error(message);
     },
   });
 
@@ -61,22 +107,30 @@ export function NewUserDialog() {
   };
 
   const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) {
-      reset();
-      setServerError(null);
-    }
+    if (!next) setServerError(null);
+    onOpenChange(next);
   };
+
+  const idPrefix = isEdit ? "edit-user" : "new-user";
+  const title = isEdit ? "Edit user" : "Create user";
+  const description = isEdit
+    ? "Update this user's details. Leave the password blank to keep it unchanged."
+    : "Add a new agent to the system.";
+  const submitLabel = isEdit
+    ? isSubmitting
+      ? "Saving…"
+      : "Save changes"
+    : isSubmitting
+      ? "Creating…"
+      : "Create user";
+  const passwordLabel = isEdit ? "New password" : "Password";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button>New user</Button>
-      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create user</DialogTitle>
-          <DialogDescription>Add a new agent to the system.</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={handleSubmit(onSubmit)}
@@ -84,9 +138,9 @@ export function NewUserDialog() {
           className="flex flex-col gap-4"
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="new-user-name">Name</Label>
+            <Label htmlFor={`${idPrefix}-name`}>Name</Label>
             <Input
-              id="new-user-name"
+              id={`${idPrefix}-name`}
               type="text"
               autoComplete="name"
               aria-invalid={Boolean(errors.name)}
@@ -100,9 +154,9 @@ export function NewUserDialog() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="new-user-email">Email</Label>
+            <Label htmlFor={`${idPrefix}-email`}>Email</Label>
             <Input
-              id="new-user-email"
+              id={`${idPrefix}-email`}
               type="email"
               autoComplete="email"
               aria-invalid={Boolean(errors.email)}
@@ -116,13 +170,16 @@ export function NewUserDialog() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="new-user-password">Password</Label>
+            <Label htmlFor={`${idPrefix}-password`}>{passwordLabel}</Label>
             <Input
-              id="new-user-password"
+              id={`${idPrefix}-password`}
               type="password"
               autoComplete="new-password"
               aria-invalid={Boolean(errors.password)}
               disabled={isSubmitting}
+              placeholder={
+                isEdit ? "Leave blank to keep current password" : undefined
+              }
               {...register("password")}
             />
             {errors.password && (
@@ -138,7 +195,7 @@ export function NewUserDialog() {
           )}
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-            {isSubmitting ? "Creating…" : "Create user"}
+            {submitLabel}
           </Button>
         </form>
       </DialogContent>

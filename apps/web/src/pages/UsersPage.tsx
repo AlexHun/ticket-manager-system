@@ -1,9 +1,11 @@
+import { useState } from "react";
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
-import type { UsersListResponse } from "@ticket/shared";
+import type { User, UsersListResponse } from "@ticket/shared";
 import { NavBar } from "@/components/NavBar";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { NewUserDialog } from "./NewUserDialog";
+import { UserDialog } from "./UserDialog";
 import { UsersTable, UsersTableSkeleton } from "./UsersTable";
 
 function useUsersQuery() {
@@ -18,6 +20,18 @@ function useUsersQuery() {
 
 export function UsersPage() {
   const { data: users, isPending, error } = useUsersQuery();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  const openCreate = () => {
+    setEditingUser(null);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (user: User) => {
+    setEditingUser(user);
+    setDialogOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -25,7 +39,7 @@ export function UsersPage() {
       <main className="p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Users</h1>
-          <NewUserDialog />
+          <Button onClick={openCreate}>New user</Button>
         </div>
 
         {isPending && <UsersTableSkeleton />}
@@ -36,7 +50,13 @@ export function UsersPage() {
           </p>
         )}
 
-        {users && <UsersTable users={users} />}
+        {users && <UsersTable users={users} onEdit={openEdit} />}
+
+        <UserDialog
+          user={editingUser}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
       </main>
     </div>
   );

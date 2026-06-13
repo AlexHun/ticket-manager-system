@@ -36,6 +36,10 @@ export interface CreateUserResponse {
   user: User;
 }
 
+export interface UpdateUserResponse {
+  user: User;
+}
+
 export interface HealthResponse {
   status: "ok";
 }
