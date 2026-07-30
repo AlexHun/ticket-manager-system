@@ -6,47 +6,16 @@ Project memory for the AI-Powered Ticket Management System. See `project-scope.m
 
 Support ticket system that ingests email, classifies tickets with Claude, and drafts/sends replies grounded in a knowledge base. Two roles: **admin** (manages agents) and **agent** (works tickets).
 
-## Repo layout
-
-Bun workspaces monorepo (`package.json` declares `apps/*`, `packages/*`):
-
-```
-apps/
-  api/      Express + TypeScript backend (REST, Postmark webhook, AI)
-  web/      React + Vite + TypeScript frontend
-packages/
-  shared/   Shared types (Ticket, User, API contracts)
-```
-
-TS config: `tsconfig.base.json` (strict, ES2022, ESM, `verbatimModuleSyntax`). Each workspace extends it.
-
 ## Stack (authoritative: `tech-stack.md`)
 
-- Backend: Node + Express + TS
-- Frontend: React + Vite + TS + Tailwind + shadcn/ui
-- DB: Postgres (Neon/Supabase) via **Prisma 7** with the `@prisma/adapter-pg` driver adapter. Schema at `apps/api/prisma/schema.prisma`; CLI config at `apps/api/prisma.config.ts` (this is where `DATABASE_URL` is wired in — Prisma 7 no longer accepts `url` inside `datasource`). Generated client lives at `apps/api/src/generated/prisma` (gitignored, recreate with `bun run db:generate`). Import the singleton from `./db`, not the generated path directly.
 - Auth: **Better Auth** (`better-auth`) with the Prisma adapter. Server config at `apps/api/src/auth.ts` (email/password enabled, `disableSignUp: true`, `role` additional field `admin|agent`, `TRUSTED_ORIGINS` required, `BETTER_AUTH_SECRET` validated ≥32 chars, `rateLimit` enabled only in production). Server-side RBAC middleware at `apps/api/src/middleware/auth.ts` exports `requireAuth` and `requireAdmin` — apply to every protected route (frontend `AdminRoute` is UX, not security). Client at `apps/web/src/lib/auth-client.ts` exports `signIn` / `signOut` / `useSession` and reads `VITE_API_URL` for cross-origin baseURL. Cookie-based sessions — **not JWT**.
 - AI: Anthropic SDK (Claude). Use **prompt caching** for the KB block.
 - Email: Postmark inbound + outbound. Thread via `Message-ID` / `In-Reply-To` / `References`.
-- CORS: cross-origin in dev → API uses `cors` middleware in `apps/api/src/index.ts` with `origin: trustedOrigins` (exported from `auth.ts`) and `credentials: true`. Mounted before the Better Auth handler. Frontend uses `credentials: "include"`.
 - Testing: see the `playwright-e2e-author` agent for the E2E setup (Playwright config, test DB, alt ports, env file, run/seed scripts).
 
 ## Commands
 
-Run from repo root:
-
-- `bun run dev` — all workspaces in parallel
-- `bun run dev:api` / `bun run dev:web` — single app
-- `bun run build` — all workspaces
-- `bun run typecheck` — all workspaces
 - `bun run --filter @ticket/web test` — run web component tests once (CI). Also `test:watch` (headless TUI) and `test:ui` (Vitest UI dashboard, best for authoring).
-
-DB (run inside `apps/api`):
-
-- `bun run db:generate` — regenerate Prisma client
-- `bun run db:migrate` — create/apply migrations in dev (`prisma migrate dev`)
-- `bun run db:deploy` — apply migrations in prod (`prisma migrate deploy`)
-- `bun run db:studio` — open Prisma Studio
 
 For E2E test commands (`test:e2e`, `db:test:*`), see the `playwright-e2e-author` agent.
 
@@ -64,16 +33,8 @@ Prefer context7 over web search for library docs. Skip it for refactoring, busin
 
 - Strict TS; no unused locals/params; `verbatimModuleSyntax` (use `import type` for type-only imports).
 - Shared cross-app types live in `packages/shared` — don't duplicate `Ticket` / `User` / API contracts in the apps.
-- Role values must reference the `UserRole` type from `@ticket/shared` (`"admin" | "agent"`). Don't inline the union (`as "admin" | "agent"`) or scatter magic role strings — import `UserRole` and cast/compare against it so the source of truth stays in one place.
-- Express 5 auto-forwards rejected promises from `async` route handlers to the error pipeline — don't wrap `await` calls in `try/catch` just to translate the error into a response. Let it throw. Only catch when you actually need to branch on the error (e.g. map a specific error type to a custom response, or recover and continue) — never to re-throw or to manually call `next(err)`.
+- Role values must reference the single source of truth in `@ticket/shared`: import the `USER_ROLE` runtime constant and the `UserRole` type. Compare and assign with `USER_ROLE.admin` / `USER_ROLE.agent` — never the bare `"admin"` / `"agent"` string literals, never inline `as "admin" | "agent"` casts, and never redefine the union in-app. This applies to app code, tests, fixtures, and third-party configs that take role literals (e.g. Better Auth `inferAdditionalFields`, use `[USER_ROLE.admin, USER_ROLE.agent]`).
 - **zod schemas** live in `packages/core` (`@ticket/core`), organized by domain under `src/schemas/` (e.g. `schemas/users.ts`, `schemas/auth.ts`) and re-exported from `src/index.ts`. Define each schema once there, infer its TS type with `z.infer<typeof ...>`, and import from both client (`react-hook-form` + `zodResolver`) and server (`schema.safeParse(req.body)`). Don't redefine the same shape per-app or hand-roll equivalent `typeof`/regex checks on either side.
 - Don't introduce JWT, Redis, a queue, or vector DB without a concrete need — `tech-stack.md` explicitly defers them.
 
-## Frontend
-
-- Forms: **react-hook-form** + **zod** via `@hookform/resolvers/zod`. Define the schema, infer the values type with `z.infer`, disable inputs on `isSubmitting`, surface server errors in local state.
-- Icons: **lucide-react**. Use `Loader2` with `animate-spin` for pending/loading states.
-- Tailwind v4 (CSS-first, no `tailwind.config`). Theme tokens are CSS variables in `apps/web/src/index.css` under `:root` / `.dark`; reference them as `var(--background)` etc. shadcn/ui components live in `apps/web/src/components/ui/`.
-- Data fetching: **axios** + **@tanstack/react-query**. Don't use `fetch` directly. Use the shared axios instance from `@/lib/api` (preconfigured with `baseURL: VITE_API_URL` and `withCredentials: true` for cookie-based sessions). Wrap every server call in `useQuery` / `useMutation` — pass the `signal` from the query function into axios for automatic cancellation. The `QueryClientProvider` is wired in `apps/web/src/main.tsx`.
-- Notifications: **sonner** via the wrapper at `apps/web/src/components/ui/sonner.tsx` (re-exports `toast`, themes the `<Toaster />` from `useTheme`). The `<Toaster />` is mounted once in `apps/web/src/main.tsx`. Fire `toast.success(...)` on successful mutations and `toast.error(...)` on failure (in addition to surfacing the error inline in the form). Use `extractErrorMessage(err, fallback)` from `@/lib/errors` to pull the API error message out of axios errors consistently. In component tests, `sonner` is globally mocked in `apps/web/src/test/setup.ts` — `toast.*` are `vi.fn()` no-ops and `<Toaster />` renders `null`, so don't assert on toast DOM output.
-- Component tests: **Vitest** + **React Testing Library** + **jsdom**. Test files live next to the component as `*.test.tsx` (e.g. `apps/web/src/pages/UsersPage.test.tsx`). Vitest config is inlined in `apps/web/vite.config.ts` (`globals: true`, `environment: "jsdom"`); jest-dom matchers and RTL `cleanup` are wired in `apps/web/src/test/setup.ts`. Always render with `renderWithQuery(ui, { initialEntries? })` from `@/test/render` — it provides a fresh `QueryClient` (`retry: false`, `gcTime: 0`) and a `MemoryRouter`. Mock module boundaries with `vi.mock`: stub `@/lib/api` (axios), `@/lib/auth-client` (`useSession`), and `@/lib/theme` so tests don't touch the network, session, or `localStorage`. Prefer accessible queries (`getByRole`, `getByLabelText`) over class/text selectors. Don't try to E2E-style log in here — that lives in Playwright (see the `playwright-e2e-author` agent).
+Workspace-specific conventions live in `apps/api/CLAUDE.md` and `apps/web/CLAUDE.md`.

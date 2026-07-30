@@ -2,7 +2,7 @@ import { useState } from "react";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { User } from "@ticket/shared";
+import { USER_ROLE, type User } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
 import { UserDialog } from "./UserDialog";
 
@@ -20,7 +20,7 @@ const baseUser: User = {
   id: "u_42",
   name: "Aaron Agent",
   email: "agent@example.com",
-  role: "agent",
+  role: USER_ROLE.agent,
   emailVerified: false,
   createdAt: "2026-04-01T12:00:00.000Z",
 };
@@ -29,7 +29,7 @@ const otherUser: User = {
   id: "u_43",
   name: "Beth Beta",
   email: "beth@example.com",
-  role: "admin",
+  role: USER_ROLE.admin,
   emailVerified: true,
   createdAt: "2026-04-02T12:00:00.000Z",
 };
@@ -38,7 +38,7 @@ const newAgent: User = {
   id: "u_new",
   name: "Nora New",
   email: "nora@example.com",
-  role: "agent",
+  role: USER_ROLE.agent,
   emailVerified: false,
   createdAt: "2026-04-03T12:00:00.000Z",
 };

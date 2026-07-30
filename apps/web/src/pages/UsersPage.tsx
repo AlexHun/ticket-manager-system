@@ -5,6 +5,7 @@ import type { User, UsersListResponse } from "@ticket/shared";
 import { NavBar } from "@/components/NavBar";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { DeleteUserDialog } from "./DeleteUserDialog";
 import { UserDialog } from "./UserDialog";
 import { UsersTable, UsersTableSkeleton } from "./UsersTable";
 
@@ -22,6 +23,8 @@ export function UsersPage() {
   const { data: users, isPending, error } = useUsersQuery();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
 
   const openCreate = () => {
     setEditingUser(null);
@@ -31,6 +34,11 @@ export function UsersPage() {
   const openEdit = (user: User) => {
     setEditingUser(user);
     setDialogOpen(true);
+  };
+
+  const openDelete = (user: User) => {
+    setDeletingUser(user);
+    setDeleteDialogOpen(true);
   };
 
   return (
@@ -50,12 +58,19 @@ export function UsersPage() {
           </p>
         )}
 
-        {users && <UsersTable users={users} onEdit={openEdit} />}
+        {users && (
+          <UsersTable users={users} onEdit={openEdit} onDelete={openDelete} />
+        )}
 
         <UserDialog
           user={editingUser}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
+        />
+        <DeleteUserDialog
+          user={deletingUser}
+          open={deleteDialogOpen}
+          onOpenChange={setDeleteDialogOpen}
         />
       </main>
     </div>

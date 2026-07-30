@@ -1,5 +1,6 @@
 import { Moon, Sun } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { USER_ROLE } from "@ticket/shared";
 import { authClient, useSession } from "@/lib/auth-client";
 import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ export function NavBar() {
         <Link to="/" className="font-semibold hover:text-foreground">
           Ticket Manager
         </Link>
-        {session?.user.role === "admin" && (
+        {session?.user.role === USER_ROLE.admin && (
           <Link
             to="/users"
             className="text-sm text-muted-foreground hover:text-foreground"

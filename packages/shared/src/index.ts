@@ -6,7 +6,12 @@ export type TicketCategory =
   | "Refund"
   | "Other";
 
-export type UserRole = "admin" | "agent";
+export const USER_ROLE = {
+  admin: "admin",
+  agent: "agent",
+} as const;
+
+export type UserRole = (typeof USER_ROLE)[keyof typeof USER_ROLE];
 
 export interface Ticket {
   id: string;

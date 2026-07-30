@@ -1,5 +1,5 @@
-import { CheckCircle2, Pencil, XCircle } from "lucide-react";
-import type { User, UserRole } from "@ticket/shared";
+import { CheckCircle2, Pencil, Trash2, XCircle } from "lucide-react";
+import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,9 +9,10 @@ const SKELETON_ROW_COUNT = 5;
 interface UsersTableProps {
   users: User[];
   onEdit: (user: User) => void;
+  onDelete: (user: User) => void;
 }
 
-export function UsersTable({ users, onEdit }: UsersTableProps) {
+export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   if (users.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">No users found.</p>
@@ -45,15 +46,30 @@ export function UsersTable({ users, onEdit }: UsersTableProps) {
               <td className="px-4 py-2 text-muted-foreground">
                 {new Date(u.createdAt).toLocaleDateString()}
               </td>
-              <td className="px-4 py-2 text-right">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => onEdit(u)}
-                  aria-label={`Edit ${u.name}`}
-                >
-                  <Pencil />
-                </Button>
+              <td className="px-4 py-2">
+                <div className="flex items-center justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => onEdit(u)}
+                    aria-label={`Edit ${u.name}`}
+                  >
+                    <Pencil />
+                  </Button>
+                  {u.role !== USER_ROLE.admin ? (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onDelete(u)}
+                      aria-label={`Delete ${u.name}`}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 />
+                    </Button>
+                  ) : (
+                    <span aria-hidden className="size-7" />
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -99,8 +115,11 @@ export function UsersTableSkeleton() {
               <td className="px-4 py-2">
                 <Skeleton className="h-4 w-20" />
               </td>
-              <td className="px-4 py-2 text-right">
-                <Skeleton className="ml-auto h-7 w-7 rounded-md" />
+              <td className="px-4 py-2">
+                <div className="flex items-center justify-end gap-1">
+                  <Skeleton className="size-7 rounded-md" />
+                  <Skeleton className="size-7 rounded-md" />
+                </div>
               </td>
             </tr>
           ))}
@@ -112,7 +131,7 @@ export function UsersTableSkeleton() {
 
 function RoleBadge({ role }: { role: UserRole }) {
   return (
-    <Badge variant={role === "admin" ? "default" : "secondary"} className="capitalize">
+    <Badge variant={role === USER_ROLE.admin ? "default" : "secondary"} className="capitalize">
       {role}
     </Badge>
   );

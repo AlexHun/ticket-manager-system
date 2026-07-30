@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type { User } from "@ticket/shared";
+import { USER_ROLE, type User } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
 import { UsersPage } from "./UsersPage";
 
@@ -9,17 +9,19 @@ import { UsersPage } from "./UsersPage";
 
 const mockGet = vi.fn();
 const mockPost = vi.fn();
+const mockDelete = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
     post: (...args: unknown[]) => mockPost(...args),
+    delete: (...args: unknown[]) => mockDelete(...args),
   },
 }));
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
-    data: { user: { name: "Admin User", role: "admin" } },
+    data: { user: { name: "Admin User", role: USER_ROLE.admin } },
     isPending: false,
   }),
   authClient: { signOut: vi.fn() },
@@ -35,7 +37,7 @@ const adminUser: User = {
   id: "u_1",
   name: "Ada Admin",
   email: "admin@example.com",
-  role: "admin",
+  role: USER_ROLE.admin,
   emailVerified: true,
   createdAt: "2025-01-15T12:00:00.000Z",
 };
@@ -44,7 +46,7 @@ const agentUser: User = {
   id: "u_2",
   name: "Aaron Agent",
   email: "agent@example.com",
-  role: "agent",
+  role: USER_ROLE.agent,
   emailVerified: false,
   createdAt: "2025-02-20T12:00:00.000Z",
 };
@@ -53,7 +55,7 @@ const newAgentUser: User = {
   id: "u_3",
   name: "Nora New",
   email: "nora@example.com",
-  role: "agent",
+  role: USER_ROLE.agent,
   emailVerified: false,
   createdAt: "2025-03-10T12:00:00.000Z",
 };
@@ -73,6 +75,7 @@ async function openNewUserDialog() {
 beforeEach(() => {
   mockGet.mockReset();
   mockPost.mockReset();
+  mockDelete.mockReset();
 });
 
 afterEach(() => {
@@ -130,8 +133,8 @@ describe("UsersPage", () => {
     mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
 
-    const adminBadge = await screen.findByText("admin");
-    const agentBadge = screen.getByText("agent");
+    const adminBadge = await screen.findByText(USER_ROLE.admin);
+    const agentBadge = screen.getByText(USER_ROLE.agent);
 
     expect(adminBadge).toHaveAttribute("data-slot", "badge");
     expect(adminBadge).toHaveAttribute("data-variant", "default");
@@ -350,6 +353,121 @@ describe("UsersPage — create user", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     // Only the initial users fetch
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("UsersPage — delete user", () => {
+  test("renders a Delete button for each agent row and hides it for admins", async () => {
+    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    renderUsersPage();
+    await screen.findByText("Ada Admin");
+
+    expect(
+      screen.getByRole("button", { name: "Delete Aaron Agent" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Delete Ada Admin/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("opens a confirmation dialog with the user's name and email", async () => {
+    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Delete Aaron Agent" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", { name: "Delete user" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Aaron Agent/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/agent@example\.com/),
+    ).toBeInTheDocument();
+  });
+
+  test("Cancel closes the dialog without calling DELETE", async () => {
+    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Delete Aaron Agent" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  test("confirming calls DELETE /api/users/:id, closes the dialog, and refetches", async () => {
+    mockGet
+      .mockResolvedValueOnce({ data: { users: [adminUser, agentUser] } })
+      .mockResolvedValueOnce({ data: { users: [adminUser] } });
+    mockDelete.mockResolvedValue({ data: {} });
+
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Delete Aaron Agent" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Delete user" }),
+    );
+
+    await waitFor(() => {
+      expect(mockDelete).toHaveBeenCalledTimes(1);
+    });
+    expect(mockDelete.mock.calls[0]?.[0]).toBe("/api/users/u_2");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Aaron Agent")).not.toBeInTheDocument();
+    });
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
+
+  test("keeps the dialog open and shows the server error when DELETE fails", async () => {
+    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    const axiosError = Object.assign(new Error("Request failed"), {
+      isAxiosError: true,
+      response: { status: 403, data: { error: "Admin users cannot be deleted" } },
+    });
+    mockDelete.mockRejectedValue(axiosError);
+
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Delete Aaron Agent" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Delete user" }),
+    );
+
+    expect(
+      await within(dialog).findByText("Admin users cannot be deleted"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    // No refetch on failure
     expect(mockGet).toHaveBeenCalledTimes(1);
   });
 });

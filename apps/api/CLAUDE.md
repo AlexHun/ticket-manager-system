@@ -1,0 +1,5 @@
+# Backend (`apps/api`)
+
+- DB: Postgres (Neon/Supabase) via **Prisma 7** with the `@prisma/adapter-pg` driver adapter. Schema at `apps/api/prisma/schema.prisma`; CLI config at `apps/api/prisma.config.ts` (this is where `DATABASE_URL` is wired in — Prisma 7 no longer accepts `url` inside `datasource`). Generated client lives at `apps/api/src/generated/prisma` (gitignored, recreate with `bun run db:generate`). Import the singleton from `./db`, not the generated path directly.
+- CORS: cross-origin in dev → API uses `cors` middleware in `apps/api/src/index.ts` with `origin: trustedOrigins` (exported from `auth.ts`) and `credentials: true`. Mounted before the Better Auth handler. Frontend uses `credentials: "include"`.
+- Express 5 auto-forwards rejected promises from `async` route handlers to the error pipeline — don't wrap `await` calls in `try/catch` just to translate the error into a response. Let it throw. Only catch when you actually need to branch on the error (e.g. map a specific error type to a custom response, or recover and continue) — never to re-throw or to manually call `next(err)`.
