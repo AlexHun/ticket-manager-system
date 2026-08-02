@@ -14,14 +14,31 @@ export const USER_ROLE = {
 export type UserRole = (typeof USER_ROLE)[keyof typeof USER_ROLE];
 
 export interface Ticket {
-  id: string;
+  id: number;
   subject: string;
   status: TicketStatus;
-  category: TicketCategory;
+  category: TicketCategory | null;
   customerEmail: string;
-  customerName: string | null;
+  customerName: string;
+  assignedToId: string | null;
+  lastMessageAt: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type MessageDirection = "inbound" | "outbound";
+
+export interface Message {
+  id: number;
+  ticketId: number;
+  messageId: string;
+  inReplyTo: string | null;
+  senderEmail: string;
+  senderName: string;
+  textBody: string | null;
+  htmlBody: string | null;
+  direction: MessageDirection;
+  createdAt: string;
 }
 
 export interface User {

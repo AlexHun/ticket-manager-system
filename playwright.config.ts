@@ -16,7 +16,13 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  // `list` (or `github` on CI) keeps live console output; `html` writes the
+  // browsable report to playwright-report/. open: "never" stops Playwright from
+  // auto-spawning a browser on failure, which breaks non-interactive runs.
+  reporter: [
+    process.env.CI ? ["github"] : ["list"],
+    ["html", { open: "never" }],
+  ],
   use: {
     baseURL: WEB_URL,
     trace: "on-first-retry",

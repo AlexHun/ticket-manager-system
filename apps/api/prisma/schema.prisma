@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -9,20 +8,21 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String
-  emailVerified Boolean   @default(false)
-  image         String?
-  role          Role      @default(agent)
-  banned        Boolean?  @default(false)
-  banReason     String?
-  banExpires    DateTime?
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
+  id              String    @id
+  name            String
+  email           String
+  emailVerified   Boolean   @default(false)
+  image           String?
+  role            Role      @default(agent)
+  banned          Boolean?  @default(false)
+  banReason       String?
+  banExpires      DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  sessions        Session[]
+  accounts        Account[]
+  assignedTickets Ticket[]  @relation("TicketAssignee")
 
   @@unique([email])
   @@map("user")
@@ -80,4 +80,60 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+model Ticket {
+  id            Int             @id @default(autoincrement())
+  subject       String
+  status        TicketStatus    @default(Open)
+  category      TicketCategory?
+  customerEmail String
+  customerName  String
+  lastMessageAt DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  assignedToId  String?
+  assignedTo    User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages      Message[]
+
+  @@index([customerEmail])
+  @@index([lastMessageAt])
+  @@index([assignedToId])
+  @@map("ticket")
+}
+
+model Message {
+  id          Int              @id @default(autoincrement())
+  ticketId    Int
+  ticket      Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId   String           @unique
+  inReplyTo   String?
+  senderEmail String
+  senderName  String
+  textBody    String?
+  htmlBody    String?
+  direction   MessageDirection @default(inbound)
+  createdAt   DateTime         @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([inReplyTo])
+  @@map("message")
+}
+
+enum TicketStatus {
+  Open
+  Resolved
+  Closed
+}
+
+enum TicketCategory {
+  General
+  Technical
+  Refund
+  Other
+}
+
+enum MessageDirection {
+  inbound
+  outbound
 }

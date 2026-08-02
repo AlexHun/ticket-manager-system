@@ -12,6 +12,7 @@
     "typecheck": "bun --filter '*' typecheck",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
     "db:test:migrate": "cd apps/api && bun run db:test:migrate",
     "db:test:seed": "cd apps/api && bun run db:test:seed",
     "db:test:reset": "cd apps/api && bun run db:test:reset"
