@@ -1,12 +1,12 @@
 import { test, expect, type Browser } from "@playwright/test";
 import { CREDENTIALS, signIn } from "./helpers/auth";
+import { API_URL } from "./helpers/env";
 
 // Direct API-level RBAC tests — no browser UI flow. These prove the server
 // enforces requireAdmin on every /api/users route (defense in depth beyond
 // the frontend hiding admin-only UI), independent of anything auth.spec.ts
 // or user-management.spec.ts already covers via the UI.
 
-const API_URL = "http://localhost:3002";
 const ADMIN = CREDENTIALS.admin;
 const AGENT = CREDENTIALS.agent;
 

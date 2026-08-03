@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { CREDENTIALS, signIn } from "./helpers/auth";
+import { API_URL } from "./helpers/env";
 
 const ADMIN = CREDENTIALS.admin;
 const AGENT = CREDENTIALS.agent;
@@ -236,7 +237,7 @@ test.describe("Session persistence", () => {
 test.describe("Sign-up disabled", () => {
   test("POST /api/auth/sign-up/email is rejected", async ({ request }) => {
     const response = await request.post(
-      "http://localhost:3002/api/auth/sign-up/email",
+      `${API_URL}/api/auth/sign-up/email`,
       {
         data: {
           email: NEW_USER_EMAIL,
