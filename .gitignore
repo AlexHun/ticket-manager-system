@@ -1,29 +1,68 @@
+# --- Secrets & local config -------------------------------------------------
+# Deny-all on env files so a new variant (.env.production, .env.staging, ...)
+# is ignored by default; only the placeholder templates are tracked.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Keys, certificates, credential stores
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+
+# Registry / HTTP auth tokens. Force-add with `git add -f` if you ever need a
+# token-free registry config in the repo.
+.npmrc
+.netrc
+
+# Database dumps and local database files
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Dependencies & build output --------------------------------------------
 node_modules
 dist
 .vite
-.env
-.env.local
-.env.test
-.env.*.local
-*.log
-.DS_Store
-.idea
-.vscode/*
-!.vscode/extensions.json
+.turbo
+.cache
+coverage
+*.tsbuildinfo
 
 # Prisma generated client
 apps/api/src/generated/
 
-# Playwright
+# --- Test output ------------------------------------------------------------
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+# Playwright storageState — contains live session cookies
+/playwright/.auth/
 
-# Claude Code agent state
+# --- Logs -------------------------------------------------------------------
+*.log
+logs/
+
+# --- Editors & OS -------------------------------------------------------------
+.idea
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Claude Code local state ------------------------------------------------
+# .claude/agents/ and .claude/skills/ are intentionally tracked (shared config).
 .claude/agent-memory/
 .claude/settings.local.json
-apps/web/tsconfig.app.tsbuildinfo
-apps/web/tsconfig.app.tsbuildinfo
-.claude/settings.local.json
-apps/web/tsconfig.app.tsbuildinfo
+.claude/scheduled_tasks.lock

@@ -1,10 +1,20 @@
-export type TicketStatus = "Open" | "Resolved" | "Closed";
+export const TICKET_STATUS = {
+  Open: "Open",
+  Resolved: "Resolved",
+  Closed: "Closed",
+} as const;
+
+export type TicketStatus = (typeof TICKET_STATUS)[keyof typeof TICKET_STATUS];
+
+export const TICKET_CATEGORY = {
+  General: "General",
+  Technical: "Technical",
+  Refund: "Refund",
+  Other: "Other",
+} as const;
 
 export type TicketCategory =
-  | "General"
-  | "Technical"
-  | "Refund"
-  | "Other";
+  (typeof TICKET_CATEGORY)[keyof typeof TICKET_CATEGORY];
 
 export const USER_ROLE = {
   admin: "admin",
@@ -26,7 +36,13 @@ export interface Ticket {
   updatedAt: string;
 }
 
-export type MessageDirection = "inbound" | "outbound";
+export const MESSAGE_DIRECTION = {
+  inbound: "inbound",
+  outbound: "outbound",
+} as const;
+
+export type MessageDirection =
+  (typeof MESSAGE_DIRECTION)[keyof typeof MESSAGE_DIRECTION];
 
 export interface Message {
   id: number;
@@ -48,6 +64,10 @@ export interface User {
   role: UserRole;
   emailVerified: boolean;
   createdAt: string;
+}
+
+export interface TicketsListResponse {
+  tickets: Ticket[];
 }
 
 export interface UsersListResponse {

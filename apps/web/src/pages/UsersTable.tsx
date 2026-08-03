@@ -20,9 +20,9 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
+    <div className="overflow-hidden rounded-lg ring-1 ring-border">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left text-muted-foreground">
+        <thead className="bg-muted text-left text-muted-foreground">
           <tr>
             <th className="px-4 py-2 font-medium">Name</th>
             <th className="px-4 py-2 font-medium">Email</th>
@@ -34,7 +34,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr key={u.id} className="border-t border-foreground/10">
+            <tr key={u.id} className="border-t border-border">
               <td className="px-4 py-2">{u.name}</td>
               <td className="px-4 py-2 text-muted-foreground">{u.email}</td>
               <td className="px-4 py-2">
@@ -82,12 +82,12 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
 export function UsersTableSkeleton() {
   return (
     <div
-      className="overflow-hidden rounded-lg ring-1 ring-foreground/10"
+      className="overflow-hidden rounded-lg ring-1 ring-border"
       aria-busy="true"
       aria-label="Loading users"
     >
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left text-muted-foreground">
+        <thead className="bg-muted text-left text-muted-foreground">
           <tr>
             <th className="px-4 py-2 font-medium">Name</th>
             <th className="px-4 py-2 font-medium">Email</th>
@@ -99,7 +99,7 @@ export function UsersTableSkeleton() {
         </thead>
         <tbody>
           {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
-            <tr key={i} className="border-t border-foreground/10">
+            <tr key={i} className="border-t border-border">
               <td className="px-4 py-2">
                 <Skeleton className="h-4 w-32" />
               </td>

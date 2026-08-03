@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type APIResponse } from "@playwright/test";
+import { MESSAGE_DIRECTION, TICKET_STATUS } from "@ticket/shared";
 import { resetTickets, testDb } from "./helpers/db";
 import {
   WEBHOOK_PASSWORD as PASS,
@@ -178,7 +179,7 @@ test.describe("Inbound-email webhook — ticket creation", () => {
     expect(ticket.subject).toBe("Cannot log in");
     expect(ticket.customerEmail).toBe("alice@example.com");
     expect(ticket.customerName).toBe("Alice");
-    expect(ticket.status).toBe("Open");
+    expect(ticket.status).toBe(TICKET_STATUS.Open);
     // A freshly ingested ticket is uncategorized and unassigned — classification
     // and assignment are separate concerns.
     expect(ticket.category).toBeNull();
@@ -192,7 +193,7 @@ test.describe("Inbound-email webhook — ticket creation", () => {
     expect(message.senderName).toBe("Alice");
     expect(message.textBody).toBe("Login is broken.");
     expect(message.htmlBody).toBe("<p>Login is broken.</p>");
-    expect(message.direction).toBe("inbound");
+    expect(message.direction).toBe(MESSAGE_DIRECTION.inbound);
   });
 
   test("stores messageId with angle brackets stripped", async ({ request }) => {

@@ -1,8 +1,16 @@
 import { test, expect } from "@playwright/test";
 import { CREDENTIALS, signIn } from "./helpers/auth";
+import { resetE2eUsers } from "./helpers/db";
 
 const ADMIN = CREDENTIALS.admin;
 const AGENT = CREDENTIALS.agent;
+
+// Every test below creates users through the UI, and the API's delete is a
+// soft delete — so without this the rows survive the run and pile up in the
+// test DB. global-setup sweeps too, covering runs that die before this hook.
+test.afterAll(async () => {
+  await resetE2eUsers();
+});
 
 // Unique per test run so parallel/repeated runs never collide on email.
 const NEW_USER_EMAIL = `e2e-user-${Date.now()}@example.com`;

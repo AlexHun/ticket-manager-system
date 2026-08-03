@@ -21,6 +21,12 @@ export function NavBar() {
         <Link to="/" className="font-semibold hover:text-foreground">
           Ticket Manager
         </Link>
+        <Link
+          to="/tickets"
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          Tickets
+        </Link>
         {session?.user.role === USER_ROLE.admin && (
           <Link
             to="/users"

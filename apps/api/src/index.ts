@@ -5,6 +5,7 @@ import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
 import { auth, trustedOrigins } from "./auth";
+import { ticketsRouter } from "./routes/tickets";
 import { usersRouter } from "./routes/users";
 import { inboundEmailRouter } from "./routes/webhooks/inbound-email";
 
@@ -26,6 +27,7 @@ app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
   res.json({ status: "ok" });
 });
 
+app.use("/api/tickets", ticketsRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/webhooks/inbound-email", inboundEmailRouter);
 
