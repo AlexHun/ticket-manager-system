@@ -1,7 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
+  CATEGORY_NONE,
   SORT_ORDER,
   TICKET_CATEGORY,
+  TICKET_SEARCH_MAX_LENGTH,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
   type SortOrder,
@@ -98,11 +100,28 @@ async function seedForCategorySort(): Promise<void> {
   });
 }
 
+interface TicketsQueryParams {
+  sort?: TicketSortField;
+  order?: SortOrder;
+  status?: string;
+  category?: string;
+  q?: string;
+}
+
+/** Playwright's `params` takes a plain string record — drop unset keys. */
+function toSearchParams(params: TicketsQueryParams): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined),
+  ) as Record<string, string>;
+}
+
 async function fetchTickets(
   page: Page,
-  sort?: { sort: TicketSortField; order: SortOrder },
+  params?: TicketsQueryParams,
 ): Promise<Ticket[]> {
-  const res = await page.request.get(TICKETS_ENDPOINT, { params: sort });
+  const res = await page.request.get(TICKETS_ENDPOINT, {
+    params: params && toSearchParams(params),
+  });
   expect(res.status()).toBe(200);
   const body = (await res.json()) as { tickets: Ticket[] };
   return body.tickets;
@@ -114,6 +133,27 @@ async function fetchSubjects(
   order: SortOrder,
 ): Promise<string[]> {
   const tickets = await fetchTickets(page, { sort, order });
+  return tickets.map((t) => t.subject);
+}
+
+/**
+ * The filters use the shadcn (Radix) Select: a combobox trigger plus a
+ * portalled listbox, so there is no native <select> to `selectOption`.
+ */
+async function chooseFilter(
+  page: Page,
+  label: string,
+  optionName: string,
+): Promise<void> {
+  await page.getByLabel(label).click();
+  await page.getByRole("option", { name: optionName }).click();
+}
+
+async function filterSubjects(
+  page: Page,
+  params: TicketsQueryParams,
+): Promise<string[]> {
+  const tickets = await fetchTickets(page, params);
   return tickets.map((t) => t.subject);
 }
 
@@ -348,6 +388,176 @@ test.describe("Tickets API — sorting", () => {
 });
 
 // ---------------------------------------------------------------------------
+// API — filtering
+// ---------------------------------------------------------------------------
+
+test.describe("Tickets API — filtering", () => {
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test("filters by status", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect(await filterSubjects(page, { status: TICKET_STATUS.Open })).toEqual([
+      "Newest ticket",
+    ]);
+    expect(
+      await filterSubjects(page, { status: TICKET_STATUS.Resolved }),
+    ).toEqual(["Middle ticket"]);
+    expect(await filterSubjects(page, { status: TICKET_STATUS.Closed })).toEqual(
+      ["Oldest ticket"],
+    );
+  });
+
+  test("filters by category", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect(
+      await filterSubjects(page, { category: TICKET_CATEGORY.Technical }),
+    ).toEqual(["Middle ticket"]);
+    expect(
+      await filterSubjects(page, { category: TICKET_CATEGORY.Refund }),
+    ).toEqual([]);
+  });
+
+  test("filters to uncategorised tickets with category=none", async ({
+    page,
+  }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    // Only "Middle ticket" has a category, so the other two come back.
+    expect(await filterSubjects(page, { category: CATEGORY_NONE })).toEqual([
+      "Newest ticket",
+      "Oldest ticket",
+    ]);
+  });
+
+  test("searches subject, customer name and customer email", async ({
+    page,
+  }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect(await filterSubjects(page, { q: "Oldest ticket" })).toEqual([
+      "Oldest ticket",
+    ]);
+    expect(await filterSubjects(page, { q: "Middle Customer" })).toEqual([
+      "Middle ticket",
+    ]);
+    expect(await filterSubjects(page, { q: "newest@example.com" })).toEqual([
+      "Newest ticket",
+    ]);
+    // Substring shared by all three customer names
+    expect((await filterSubjects(page, { q: "Customer" })).sort()).toEqual([
+      "Middle ticket",
+      "Newest ticket",
+      "Oldest ticket",
+    ]);
+  });
+
+  test("search is case-insensitive", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect(await filterSubjects(page, { q: "OLDEST TICKET" })).toEqual([
+      "Oldest ticket",
+    ]);
+    expect(await filterSubjects(page, { q: "oldest ticket" })).toEqual([
+      "Oldest ticket",
+    ]);
+  });
+
+  test("returns an empty list when nothing matches", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect(await filterSubjects(page, { q: "no-such-ticket-anywhere" })).toEqual(
+      [],
+    );
+  });
+
+  test("combines filters as AND", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect(
+      await filterSubjects(page, {
+        status: TICKET_STATUS.Open,
+        category: CATEGORY_NONE,
+      }),
+    ).toEqual(["Newest ticket"]);
+    // Open tickets that are also Technical: none, since Middle is Resolved.
+    expect(
+      await filterSubjects(page, {
+        status: TICKET_STATUS.Open,
+        category: TICKET_CATEGORY.Technical,
+      }),
+    ).toEqual([]);
+  });
+
+  test("applies filters and sorting together", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect(
+      await filterSubjects(page, {
+        category: CATEGORY_NONE,
+        sort: TICKET_SORT_FIELD.subject,
+        order: SORT_ORDER.asc,
+      }),
+    ).toEqual(["Newest ticket", "Oldest ticket"]);
+    expect(
+      await filterSubjects(page, {
+        category: CATEGORY_NONE,
+        sort: TICKET_SORT_FIELD.subject,
+        order: SORT_ORDER.desc,
+      }),
+    ).toEqual(["Oldest ticket", "Newest ticket"]);
+  });
+
+  test("treats a blank search as no filter", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    expect((await filterSubjects(page, { q: "   " })).length).toBe(3);
+  });
+
+  test("rejects an unknown status filter", async ({ page }) => {
+    await signIn(page, "agent");
+    const res = await page.request.get(TICKETS_ENDPOINT, {
+      params: { status: "Escalated" },
+    });
+
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toBe("Invalid status filter");
+  });
+
+  test("rejects an unknown category filter", async ({ page }) => {
+    await signIn(page, "agent");
+    const res = await page.request.get(TICKETS_ENDPOINT, {
+      params: { category: "Billing" },
+    });
+
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toBe("Invalid category filter");
+  });
+
+  test("rejects an over-long search", async ({ page }) => {
+    await signIn(page, "agent");
+    const res = await page.request.get(TICKETS_ENDPOINT, {
+      params: { q: "x".repeat(TICKET_SEARCH_MAX_LENGTH + 1) },
+    });
+
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toContain("100 characters");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
 
@@ -442,6 +652,138 @@ test.describe("Tickets page", () => {
     await expect(rows.nth(1)).toContainText("Middle Customer");
     await expect(rows.nth(2)).toContainText("Newest Customer");
     await expect(rows.nth(3)).toContainText("Oldest Customer");
+  });
+
+  test("renders filter dropdowns as themed in-page popovers", async ({
+    page,
+  }) => {
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    await page.getByLabel("Status").waitFor();
+
+    // Still asserted because scrollbars and the search field's native clear
+    // button are drawn by the browser even though the dropdown no longer is.
+    const scheme = await page.evaluate(
+      () => getComputedStyle(document.documentElement).colorScheme,
+    );
+    expect(scheme).toBe("dark");
+
+    await page.getByLabel("Status").click();
+    const listbox = page.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+
+    // An OS-drawn menu would have no computed style to read. This one is our
+    // DOM, painted from --popover, so it cannot land white-on-white.
+    const background = await listbox.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    expect(background).not.toBe("rgba(0, 0, 0, 0)");
+    await expect(
+      page.getByRole("option", { name: TICKET_STATUS.Open }),
+    ).toBeVisible();
+  });
+
+  test("opens dropdowns at least as wide as the control", async ({ page }) => {
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    for (const label of ["Status", "Category"]) {
+      const trigger = page.getByLabel(label);
+      // Measure while closed: once open, "Any status" / "Any category" also
+      // match getByLabel, and the control's resting width is what we care about.
+      const triggerBox = await trigger.boundingBox();
+      await trigger.click();
+
+      const listbox = page.getByRole("listbox");
+      await expect(listbox).toBeVisible();
+
+      if (!triggerBox) throw new Error(`no box for ${label}`);
+
+      // A narrower menu than its own control reads as a rendering bug. Polled
+      // rather than measured once: the open animation zooms from 95%, so a
+      // single read can catch it mid-flight and under-report the width.
+      await expect
+        .poll(async () => (await listbox.boundingBox())?.width ?? 0)
+        .toBeGreaterThanOrEqual(triggerBox.width);
+
+      await page.keyboard.press("Escape");
+      await expect(listbox).toBeHidden();
+    }
+  });
+
+  test("narrows the list with the status filter", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    await expect(page.getByRole("row")).toHaveCount(4); // header + 3
+
+    await chooseFilter(page, "Status", TICKET_STATUS.Resolved);
+
+    await expect(page.getByRole("row")).toHaveCount(2); // header + 1
+    await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
+  });
+
+  test("narrows the list with the category filter, including uncategorised", async ({
+    page,
+  }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await chooseFilter(page, "Category", TICKET_CATEGORY.Technical);
+    await expect(page.getByRole("row")).toHaveCount(2);
+    await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
+
+    await chooseFilter(page, "Category", "Uncategorised");
+    await expect(page.getByRole("row")).toHaveCount(3);
+    await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
+  });
+
+  test("searches across subject and customer", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await page.getByLabel("Search").fill("oldest@example.com");
+
+    await expect(page.getByRole("row")).toHaveCount(2);
+    await expect(page.getByRole("row").nth(1)).toContainText("Oldest ticket");
+  });
+
+  test("explains an empty result and lets the filter be cleared", async ({
+    page,
+  }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await page.getByLabel("Search").fill("no-such-ticket-anywhere");
+
+    await expect(
+      page.getByText("No tickets match these filters."),
+    ).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Clear filters" }).click();
+
+    await expect(page.getByRole("row")).toHaveCount(4);
+    await expect(page.getByLabel("Search")).toHaveValue("");
+  });
+
+  test("keeps the filter applied while re-sorting", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await chooseFilter(page, "Category", "Uncategorised");
+    await expect(page.getByRole("row")).toHaveCount(3);
+
+    await page.getByRole("button", { name: "Subject" }).click();
+
+    // Still only the two uncategorised tickets, now subject-ascending.
+    await expect(page.getByRole("row")).toHaveCount(3);
+    await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
+    await expect(page.getByRole("row").nth(2)).toContainText("Oldest ticket");
   });
 
   test("moves the aria-sort marker to the clicked column", async ({ page }) => {

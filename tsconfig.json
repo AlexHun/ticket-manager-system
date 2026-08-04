@@ -2,6 +2,9 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
+    // page.evaluate() callbacks are serialised and run in the browser, so specs
+    // legitimately reference DOM globals. Scoped to the E2E project only.
+    "lib": ["ES2022", "DOM"],
     "noEmit": true
   },
   "include": ["playwright.config.ts", "tests/**/*.ts"]

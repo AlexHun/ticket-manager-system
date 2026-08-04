@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  CATEGORY_NONE,
   SORT_ORDER,
   TICKET_CATEGORY,
   TICKET_SORT_FIELD,
@@ -84,7 +85,13 @@ function rowSubjects(): string[] {
 }
 
 type TicketsRequestOptions = {
-  params: { sort: string; order: string };
+  params: {
+    sort: string;
+    order: string;
+    status?: string;
+    category?: string;
+    q?: string;
+  };
   signal: AbortSignal;
 };
 
@@ -101,6 +108,25 @@ function sortIndicator(columnName: string): string | null {
   return screen
     .getByRole("columnheader", { name: columnName })
     .getAttribute("aria-sort");
+}
+
+type User = ReturnType<typeof userEvent.setup>;
+
+/**
+ * The filters use the shadcn (Radix) Select, which is a combobox trigger plus a
+ * portalled listbox — not a native <select>, so `selectOptions` doesn't apply.
+ */
+async function chooseOption(
+  user: User,
+  filterLabel: string,
+  optionName: string,
+): Promise<void> {
+  await user.click(screen.getByLabelText(filterLabel));
+  await user.click(await screen.findByRole("option", { name: optionName }));
+}
+
+function filterValue(filterLabel: string): string {
+  return screen.getByLabelText(filterLabel).textContent ?? "";
 }
 
 // --- Tests ----------------------------------------------------------------
@@ -205,9 +231,12 @@ describe("TicketsPage", () => {
     });
     renderTicketsPage();
 
-    const open = await screen.findByText(TICKET_STATUS.Open);
-    const resolved = screen.getByText(TICKET_STATUS.Resolved);
-    const closed = screen.getByText(TICKET_STATUS.Closed);
+    // Scoped to the table so the status filter can never shadow these.
+    await screen.findByText("Newest ticket");
+    const table = within(screen.getByRole("table"));
+    const open = table.getByText(TICKET_STATUS.Open);
+    const resolved = table.getByText(TICKET_STATUS.Resolved);
+    const closed = table.getByText(TICKET_STATUS.Closed);
 
     expect(open).toHaveAttribute("data-variant", "default");
     expect(resolved).toHaveAttribute("data-variant", "secondary");
@@ -392,6 +421,22 @@ describe("TicketsPage sorting", () => {
     ]);
   });
 
+  test("keeps sort and filters together in one request", async () => {
+    const user = await renderLoaded();
+
+    await chooseOption(user, "Status", TICKET_STATUS.Open);
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getByRole("button", { name: "Subject" }));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+
+    expect(sortParamsOfCall(2)).toEqual({
+      sort: TICKET_SORT_FIELD.subject,
+      order: SORT_ORDER.asc,
+      status: TICKET_STATUS.Open,
+    });
+  });
+
   test("keeps the current rows on screen while the re-sorted set loads", async () => {
     mockGet.mockResolvedValueOnce({ data: { tickets: allTickets } });
     const user = userEvent.setup();
@@ -405,5 +450,129 @@ describe("TicketsPage sorting", () => {
     await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
     expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
     expect(screen.getByText("Newest ticket")).toBeInTheDocument();
+  });
+});
+
+describe("TicketsPage filtering", () => {
+  const allTickets = [newestTicket, middleTicket, oldestTicket];
+
+  async function renderLoaded() {
+    mockGet.mockResolvedValue({ data: { tickets: allTickets } });
+    const user = userEvent.setup();
+    renderTicketsPage();
+    await screen.findByText("Newest ticket");
+    return user;
+  }
+
+  test("sends no filter params until a filter is set", async () => {
+    await renderLoaded();
+
+    expect(sortParamsOfCall(0)).not.toHaveProperty("status");
+    expect(sortParamsOfCall(0)).not.toHaveProperty("category");
+    expect(sortParamsOfCall(0)).not.toHaveProperty("q");
+  });
+
+  test("filters by status", async () => {
+    const user = await renderLoaded();
+
+    await chooseOption(user, "Status", TICKET_STATUS.Resolved);
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1).status).toBe(TICKET_STATUS.Resolved);
+  });
+
+  test("filters by category", async () => {
+    const user = await renderLoaded();
+
+    await chooseOption(user, "Category", TICKET_CATEGORY.Refund);
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1).category).toBe(TICKET_CATEGORY.Refund);
+  });
+
+  test("filters to uncategorised tickets via the sentinel", async () => {
+    const user = await renderLoaded();
+
+    await chooseOption(user, "Category", "Uncategorised");
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1).category).toBe(CATEGORY_NONE);
+  });
+
+  test("debounces the search into a single request", async () => {
+    const user = await renderLoaded();
+
+    await user.type(screen.getByLabelText("Search"), "refund");
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1).q).toBe("refund");
+    // Six keystrokes, one request — the input is not firing per character.
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
+
+  test("ignores a whitespace-only search", async () => {
+    const user = await renderLoaded();
+
+    await user.type(screen.getByLabelText("Search"), "   ");
+
+    await waitFor(() => expect(sortParamsOfCall(0)).not.toHaveProperty("q"));
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  test("clears every filter at once", async () => {
+    const user = await renderLoaded();
+
+    await chooseOption(user, "Status", TICKET_STATUS.Open);
+    await chooseOption(user, "Category", TICKET_CATEGORY.Technical);
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+
+    await user.click(screen.getByRole("button", { name: /clear filters/i }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(4));
+    const params = sortParamsOfCall(3);
+    expect(params).not.toHaveProperty("status");
+    expect(params).not.toHaveProperty("category");
+    expect(filterValue("Status")).toBe("Any status");
+    expect(filterValue("Category")).toBe("Any category");
+  });
+
+  test("shows the clear button only while a filter is active", async () => {
+    const user = await renderLoaded();
+
+    expect(
+      screen.queryByRole("button", { name: /clear filters/i }),
+    ).not.toBeInTheDocument();
+
+    await chooseOption(user, "Status", TICKET_STATUS.Open);
+
+    expect(
+      screen.getByRole("button", { name: /clear filters/i }),
+    ).toBeInTheDocument();
+  });
+
+  test("explains an empty result differently when filters are active", async () => {
+    const user = await renderLoaded();
+
+    mockGet.mockResolvedValue({ data: { tickets: [] } });
+    await chooseOption(user, "Status", TICKET_STATUS.Closed);
+
+    expect(
+      await screen.findByText("No tickets match these filters."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No tickets found.")).not.toBeInTheDocument();
+  });
+
+  test("keeps the filter controls usable when nothing matches", async () => {
+    const user = await renderLoaded();
+
+    mockGet.mockResolvedValue({ data: { tickets: [] } });
+    await chooseOption(user, "Status", TICKET_STATUS.Closed);
+    await screen.findByText("No tickets match these filters.");
+
+    // The bar must survive an empty result, or the filter can't be undone.
+    expect(screen.getByLabelText("Status")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /clear filters/i }),
+    ).toBeInTheDocument();
   });
 });
