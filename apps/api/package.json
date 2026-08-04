@@ -12,6 +12,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "bun prisma/seed.ts",
+    "db:seed:tickets": "bun prisma/seed-tickets.ts",
     "db:test:migrate": "dotenv -e .env.test -- prisma migrate deploy",
     "db:test:seed": "bun --env-file=.env.test prisma/seed.ts",
     "db:test:reset": "dotenv -e .env.test -- prisma migrate reset --force && bun run db:test:seed"

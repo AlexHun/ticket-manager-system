@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  SORT_ORDER,
   TICKET_CATEGORY,
+  TICKET_SORT_FIELD,
   TICKET_STATUS,
   USER_ROLE,
   type Ticket,
@@ -80,6 +83,26 @@ function rowSubjects(): string[] {
   return bodyRows.map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
 }
 
+type TicketsRequestOptions = {
+  params: { sort: string; order: string };
+  signal: AbortSignal;
+};
+
+/** Query params sent on the nth (0-indexed) GET /api/tickets call. */
+function sortParamsOfCall(index: number) {
+  const [, options] = mockGet.mock.calls[index] as [
+    string,
+    TicketsRequestOptions,
+  ];
+  return options.params;
+}
+
+function sortIndicator(columnName: string): string | null {
+  return screen
+    .getByRole("columnheader", { name: columnName })
+    .getAttribute("aria-sort");
+}
+
 // --- Tests ----------------------------------------------------------------
 
 beforeEach(() => {
@@ -119,10 +142,22 @@ describe("TicketsPage", () => {
     expect(mockGet).toHaveBeenCalledTimes(1);
     const [url, options] = mockGet.mock.calls[0] as [
       string,
-      { signal: AbortSignal },
+      TicketsRequestOptions,
     ];
     expect(url).toBe("/api/tickets");
     expect(options.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("requests the default newest-first sort on mount", async () => {
+    mockGet.mockResolvedValue({ data: { tickets: [newestTicket] } });
+    renderTicketsPage();
+
+    await screen.findByText("Newest ticket");
+
+    expect(sortParamsOfCall(0)).toEqual({
+      sort: TICKET_SORT_FIELD.createdAt,
+      order: SORT_ORDER.desc,
+    });
   });
 
   test("renders a row per ticket once the query resolves", async () => {
@@ -268,6 +303,107 @@ describe("TicketsPage", () => {
     await waitFor(() => {
       expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
     });
+    expect(screen.getByText("Newest ticket")).toBeInTheDocument();
+  });
+});
+
+describe("TicketsPage sorting", () => {
+  const allTickets = [newestTicket, middleTicket, oldestTicket];
+
+  async function renderLoaded() {
+    mockGet.mockResolvedValue({ data: { tickets: allTickets } });
+    const user = userEvent.setup();
+    renderTicketsPage();
+    await screen.findByText("Newest ticket");
+    return user;
+  }
+
+  test("clicking a new column requests it ascending", async () => {
+    const user = await renderLoaded();
+
+    await user.click(screen.getByRole("button", { name: "Status" }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1)).toEqual({
+      sort: TICKET_SORT_FIELD.status,
+      order: SORT_ORDER.asc,
+    });
+  });
+
+  test("clicking the active column flips its direction", async () => {
+    const user = await renderLoaded();
+
+    // Created starts descending, so the first click flips it to ascending.
+    await user.click(screen.getByRole("button", { name: "Created" }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1)).toEqual({
+      sort: TICKET_SORT_FIELD.createdAt,
+      order: SORT_ORDER.asc,
+    });
+  });
+
+  test("a third click keeps a sort rather than clearing it", async () => {
+    const user = await renderLoaded();
+    const subject = screen.getByRole("button", { name: "Subject" });
+
+    await user.click(subject);
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await user.click(subject);
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    await user.click(subject);
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(4));
+
+    // asc -> desc -> back to asc, never an unsorted request
+    expect(sortParamsOfCall(1).order).toBe(SORT_ORDER.asc);
+    expect(sortParamsOfCall(2).order).toBe(SORT_ORDER.desc);
+    expect(sortParamsOfCall(3)).toEqual({
+      sort: TICKET_SORT_FIELD.subject,
+      order: SORT_ORDER.asc,
+    });
+  });
+
+  test("marks the sorted column with aria-sort and leaves the rest neutral", async () => {
+    const user = await renderLoaded();
+
+    expect(sortIndicator("Created")).toBe("descending");
+    expect(sortIndicator("Subject")).toBe("none");
+    expect(sortIndicator("Status")).toBe("none");
+
+    await user.click(screen.getByRole("button", { name: "Subject" }));
+
+    await waitFor(() => expect(sortIndicator("Subject")).toBe("ascending"));
+    expect(sortIndicator("Created")).toBe("none");
+  });
+
+  test("renders the server's order without re-sorting it client-side", async () => {
+    const user = await renderLoaded();
+
+    // The mock ignores the params and always answers in this order, which is
+    // NOT alphabetical by subject (that would be Middle, Newest, Oldest).
+    await user.click(screen.getByRole("button", { name: "Subject" }));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+
+    expect(sortParamsOfCall(1).sort).toBe(TICKET_SORT_FIELD.subject);
+    expect(rowSubjects()).toEqual([
+      "Newest ticket",
+      "Middle ticket",
+      "Oldest ticket",
+    ]);
+  });
+
+  test("keeps the current rows on screen while the re-sorted set loads", async () => {
+    mockGet.mockResolvedValueOnce({ data: { tickets: allTickets } });
+    const user = userEvent.setup();
+    renderTicketsPage();
+    await screen.findByText("Newest ticket");
+
+    // Second request never settles — the table must not fall back to a skeleton.
+    mockGet.mockReturnValueOnce(new Promise(() => {}));
+    await user.click(screen.getByRole("button", { name: "Subject" }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
     expect(screen.getByText("Newest ticket")).toBeInTheDocument();
   });
 });

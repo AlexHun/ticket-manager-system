@@ -36,6 +36,35 @@ export interface Ticket {
   updatedAt: string;
 }
 
+/**
+ * Columns the tickets list can be sorted by. Doubles as the table's column ids
+ * on the client and as the key into the API's orderBy map, so the two stay
+ * in step by construction.
+ */
+export const TICKET_SORT_FIELD = {
+  subject: "subject",
+  customerName: "customerName",
+  status: "status",
+  category: "category",
+  createdAt: "createdAt",
+} as const;
+
+export type TicketSortField =
+  (typeof TICKET_SORT_FIELD)[keyof typeof TICKET_SORT_FIELD];
+
+export const SORT_ORDER = {
+  asc: "asc",
+  desc: "desc",
+} as const;
+
+export type SortOrder = (typeof SORT_ORDER)[keyof typeof SORT_ORDER];
+
+/** What the API sorts by when the request carries no sort params. */
+export const DEFAULT_TICKET_SORT = {
+  field: TICKET_SORT_FIELD.createdAt,
+  order: SORT_ORDER.desc,
+} as const;
+
 export const MESSAGE_DIRECTION = {
   inbound: "inbound",
   outbound: "outbound",

@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ticket/shared": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {
