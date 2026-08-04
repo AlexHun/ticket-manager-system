@@ -1,7 +1,8 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { ticketsQuerySchema } from "@ticket/core";
+import { ticketsQuerySchema, type TicketsQuery } from "@ticket/core";
 import {
+  CATEGORY_NONE,
   TICKET_SORT_FIELD,
   type SortOrder,
   type TicketSortField,
@@ -31,6 +32,36 @@ const ORDER_BY: Record<
   [TICKET_SORT_FIELD.createdAt]: (order) => ({ createdAt: order }),
 };
 
+/**
+ * Absent filters mean "don't narrow on this field", so each one is only added
+ * when present. `category=none` is the one value that can't be passed straight
+ * through — it maps to SQL NULL rather than to a category.
+ */
+function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
+  const where: Prisma.TicketWhereInput = {};
+
+  if (query.status) {
+    where.status = query.status;
+  }
+
+  if (query.category) {
+    where.category =
+      query.category === CATEGORY_NONE ? null : query.category;
+  }
+
+  // Free-text search spans the columns an agent would recognise a ticket by.
+  // Trimmed by the schema, so an all-whitespace search is already "".
+  if (query.q) {
+    where.OR = [
+      { subject: { contains: query.q, mode: "insensitive" } },
+      { customerName: { contains: query.q, mode: "insensitive" } },
+      { customerEmail: { contains: query.q, mode: "insensitive" } },
+    ];
+  }
+
+  return where;
+}
+
 export const ticketsRouter = Router();
 
 // Both roles work tickets, so this is requireAuth (not requireAdmin).
@@ -49,6 +80,7 @@ ticketsRouter.get(
     const { sort, order } = parsed.data;
 
     const tickets = await prisma.ticket.findMany({
+      where: buildWhere(parsed.data),
       // `id` breaks ties so the order stays stable across requests. It matters
       // most for status/category, where whole groups of rows share a value.
       orderBy: [ORDER_BY[sort](order), { id: "desc" }],

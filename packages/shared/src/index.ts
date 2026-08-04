@@ -65,6 +65,17 @@ export const DEFAULT_TICKET_SORT = {
   order: SORT_ORDER.desc,
 } as const;
 
+/**
+ * Query-param sentinel for "this ticket has no category". A null can't travel
+ * in a query string, and an absent `category` already means "any category".
+ */
+export const CATEGORY_NONE = "none";
+
+export type TicketCategoryFilter = TicketCategory | typeof CATEGORY_NONE;
+
+/** Longest accepted free-text search, mirrored by the zod schema. */
+export const TICKET_SEARCH_MAX_LENGTH = 100;
+
 export const MESSAGE_DIRECTION = {
   inbound: "inbound",
   outbound: "outbound",
