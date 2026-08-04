@@ -91,12 +91,15 @@ interface TicketsTableProps {
   tickets: Ticket[];
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
+  /** Shown instead of the table when there is nothing to render. */
+  emptyMessage?: string;
 }
 
 export function TicketsTable({
   tickets,
   sorting,
   onSortingChange,
+  emptyMessage = "No tickets found.",
 }: TicketsTableProps) {
   const table = useReactTable({
     data: tickets,
@@ -117,7 +120,7 @@ export function TicketsTable({
   });
 
   if (tickets.length === 0) {
-    return <p className="text-sm text-muted-foreground">No tickets found.</p>;
+    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   return (

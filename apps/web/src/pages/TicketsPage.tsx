@@ -12,7 +12,17 @@ import {
 import { NavBar } from "@/components/NavBar";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import {
+  EMPTY_FILTERS,
+  hasActiveFilters,
+  TicketsFilters,
+  type TicketFilterState,
+} from "./TicketsFilters";
 import { TicketsTable, TicketsTableSkeleton } from "./TicketsTable";
+
+/** Keystrokes settle for this long before the search hits the API. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 const DEFAULT_SORTING: SortingState = [
   {
@@ -44,31 +54,59 @@ function toSortParams(sorting: SortingState): {
   };
 }
 
-function useTicketsQuery(sort: TicketSortField, order: SortOrder) {
+interface TicketsQueryParams {
+  sort: TicketSortField;
+  order: SortOrder;
+  status?: string;
+  category?: string;
+  q?: string;
+}
+
+/** Empty filters are dropped rather than sent as blanks the API must ignore. */
+function toQueryParams(
+  sorting: SortingState,
+  filters: TicketFilterState,
+): TicketsQueryParams {
+  const params: TicketsQueryParams = toSortParams(sorting);
+  if (filters.status) params.status = filters.status;
+  if (filters.category) params.category = filters.category;
+  const search = filters.search.trim();
+  if (search) params.q = search;
+  return params;
+}
+
+function useTicketsQuery(params: TicketsQueryParams) {
   return useQuery({
-    queryKey: ["tickets", sort, order],
+    queryKey: ["tickets", params],
     queryFn: async ({ signal }) => {
       const { data } = await api.get<TicketsListResponse>("/api/tickets", {
-        params: { sort, order },
+        params,
         signal,
       });
       return data.tickets;
     },
-    // Sorting swaps the whole result set. Hold the current rows on screen
-    // while the re-sorted ones load instead of dropping back to the skeleton.
+    // Sorting and filtering swap the whole result set. Hold the current rows
+    // on screen while the new ones load instead of dropping to the skeleton.
     placeholderData: keepPreviousData,
   });
 }
 
 export function TicketsPage() {
   const [sorting, setSorting] = useState<SortingState>(DEFAULT_SORTING);
-  const { sort, order } = toSortParams(sorting);
+  const [filters, setFilters] = useState<TicketFilterState>(EMPTY_FILTERS);
+
+  // Only the text input is debounced — the selects should react immediately.
+  const debouncedSearch = useDebouncedValue(filters.search, SEARCH_DEBOUNCE_MS);
+  const params = toQueryParams(sorting, { ...filters, search: debouncedSearch });
+
   const {
     data: tickets,
     isPending,
     isFetching,
     error,
-  } = useTicketsQuery(sort, order);
+  } = useTicketsQuery(params);
+
+  const filtered = hasActiveFilters(filters);
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,6 +114,10 @@ export function TicketsPage() {
       <main className="p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Tickets</h1>
+        </div>
+
+        <div className="mb-4">
+          <TicketsFilters filters={filters} onChange={setFilters} />
         </div>
 
         {isPending && <TicketsTableSkeleton />}
@@ -97,6 +139,11 @@ export function TicketsPage() {
               tickets={tickets}
               sorting={sorting}
               onSortingChange={setSorting}
+              emptyMessage={
+                filtered
+                  ? "No tickets match these filters."
+                  : "No tickets found."
+              }
             />
           </div>
         )}
