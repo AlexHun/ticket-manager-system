@@ -49,6 +49,10 @@
 }
 
 :root {
+    /* Tells the browser which palette to render native UI with — <select>
+       popups, scrollbars, focus rings. Without it these default to light,
+       so in dark mode the near-white option text lands on a white popup. */
+    color-scheme: light;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -92,6 +96,7 @@
 }
 
 .dark {
+    color-scheme: dark;
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
