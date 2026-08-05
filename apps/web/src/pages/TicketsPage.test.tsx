@@ -3,12 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CATEGORY_NONE,
+  DEFAULT_PAGE_SIZE,
+  FIRST_PAGE,
   SORT_ORDER,
   TICKET_CATEGORY,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
   USER_ROLE,
   type Ticket,
+  type TicketsListResponse,
 } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
 import { TicketsPage } from "./TicketsPage";
@@ -52,6 +55,22 @@ function makeTicket(overrides: Partial<Ticket> & Pick<Ticket, "id">): Ticket {
   };
 }
 
+/** Mirrors the paginated API envelope so tests exercise the real shape. */
+function ticketsResponse(
+  tickets: Ticket[],
+  overrides: Partial<TicketsListResponse> = {},
+): { data: TicketsListResponse } {
+  return {
+    data: {
+      tickets,
+      total: tickets.length,
+      page: FIRST_PAGE,
+      pageSize: DEFAULT_PAGE_SIZE,
+      ...overrides,
+    },
+  };
+}
+
 /** Deliberately out of order — the page must render whatever order the API sends. */
 const newestTicket = makeTicket({
   id: 3,
@@ -88,6 +107,8 @@ type TicketsRequestOptions = {
   params: {
     sort: string;
     order: string;
+    page: number;
+    pageSize: number;
     status?: string;
     category?: string;
     q?: string;
@@ -160,7 +181,7 @@ describe("TicketsPage", () => {
   });
 
   test("calls GET /api/tickets with a cancellation signal", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [newestTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -175,7 +196,7 @@ describe("TicketsPage", () => {
   });
 
   test("requests the default newest-first sort on mount", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [newestTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -183,13 +204,13 @@ describe("TicketsPage", () => {
     expect(sortParamsOfCall(0)).toEqual({
       sort: TICKET_SORT_FIELD.createdAt,
       order: SORT_ORDER.desc,
+      page: FIRST_PAGE,
+      pageSize: DEFAULT_PAGE_SIZE,
     });
   });
 
   test("renders a row per ticket once the query resolves", async () => {
-    mockGet.mockResolvedValue({
-      data: { tickets: [newestTicket, middleTicket, oldestTicket] },
-    });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
     renderTicketsPage();
 
     expect(await screen.findByText("Newest ticket")).toBeInTheDocument();
@@ -200,9 +221,7 @@ describe("TicketsPage", () => {
   });
 
   test("preserves the server's newest-first order", async () => {
-    mockGet.mockResolvedValue({
-      data: { tickets: [newestTicket, middleTicket, oldestTicket] },
-    });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -215,7 +234,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the customer name and email in the same row", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [oldestTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([oldestTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Oldest ticket")).closest("tr");
@@ -226,9 +245,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders a distinct badge variant per status", async () => {
-    mockGet.mockResolvedValue({
-      data: { tickets: [newestTicket, middleTicket, oldestTicket] },
-    });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
     renderTicketsPage();
 
     // Scoped to the table so the status filter can never shadow these.
@@ -244,7 +261,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders a dash when the ticket has no category", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [newestTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Newest ticket")).closest("tr");
@@ -254,7 +271,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the category when the ticket has one", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [middleTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([middleTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Middle ticket")).closest("tr");
@@ -266,7 +283,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the createdAt as a localised date", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [newestTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Newest ticket")).closest("tr");
@@ -277,7 +294,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the column headers", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [newestTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -296,7 +313,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders an empty-state message when no tickets are returned", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [] } });
+    mockGet.mockResolvedValue(ticketsResponse([]));
     renderTicketsPage();
 
     expect(await screen.findByText("No tickets found.")).toBeInTheDocument();
@@ -326,7 +343,7 @@ describe("TicketsPage", () => {
   });
 
   test("does not flash the skeleton after data arrives", async () => {
-    mockGet.mockResolvedValue({ data: { tickets: [newestTicket] } });
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await waitFor(() => {
@@ -340,7 +357,7 @@ describe("TicketsPage sorting", () => {
   const allTickets = [newestTicket, middleTicket, oldestTicket];
 
   async function renderLoaded() {
-    mockGet.mockResolvedValue({ data: { tickets: allTickets } });
+    mockGet.mockResolvedValue(ticketsResponse(allTickets));
     const user = userEvent.setup();
     renderTicketsPage();
     await screen.findByText("Newest ticket");
@@ -356,6 +373,8 @@ describe("TicketsPage sorting", () => {
     expect(sortParamsOfCall(1)).toEqual({
       sort: TICKET_SORT_FIELD.status,
       order: SORT_ORDER.asc,
+      page: FIRST_PAGE,
+      pageSize: DEFAULT_PAGE_SIZE,
     });
   });
 
@@ -369,6 +388,8 @@ describe("TicketsPage sorting", () => {
     expect(sortParamsOfCall(1)).toEqual({
       sort: TICKET_SORT_FIELD.createdAt,
       order: SORT_ORDER.asc,
+      page: FIRST_PAGE,
+      pageSize: DEFAULT_PAGE_SIZE,
     });
   });
 
@@ -389,6 +410,8 @@ describe("TicketsPage sorting", () => {
     expect(sortParamsOfCall(3)).toEqual({
       sort: TICKET_SORT_FIELD.subject,
       order: SORT_ORDER.asc,
+      page: FIRST_PAGE,
+      pageSize: DEFAULT_PAGE_SIZE,
     });
   });
 
@@ -434,11 +457,13 @@ describe("TicketsPage sorting", () => {
       sort: TICKET_SORT_FIELD.subject,
       order: SORT_ORDER.asc,
       status: TICKET_STATUS.Open,
+      page: FIRST_PAGE,
+      pageSize: DEFAULT_PAGE_SIZE,
     });
   });
 
   test("keeps the current rows on screen while the re-sorted set loads", async () => {
-    mockGet.mockResolvedValueOnce({ data: { tickets: allTickets } });
+    mockGet.mockResolvedValueOnce(ticketsResponse(allTickets));
     const user = userEvent.setup();
     renderTicketsPage();
     await screen.findByText("Newest ticket");
@@ -457,7 +482,7 @@ describe("TicketsPage filtering", () => {
   const allTickets = [newestTicket, middleTicket, oldestTicket];
 
   async function renderLoaded() {
-    mockGet.mockResolvedValue({ data: { tickets: allTickets } });
+    mockGet.mockResolvedValue(ticketsResponse(allTickets));
     const user = userEvent.setup();
     renderTicketsPage();
     await screen.findByText("Newest ticket");
@@ -553,7 +578,7 @@ describe("TicketsPage filtering", () => {
   test("explains an empty result differently when filters are active", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue({ data: { tickets: [] } });
+    mockGet.mockResolvedValue(ticketsResponse([]));
     await chooseOption(user, "Status", TICKET_STATUS.Closed);
 
     expect(
@@ -565,7 +590,7 @@ describe("TicketsPage filtering", () => {
   test("keeps the filter controls usable when nothing matches", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue({ data: { tickets: [] } });
+    mockGet.mockResolvedValue(ticketsResponse([]));
     await chooseOption(user, "Status", TICKET_STATUS.Closed);
     await screen.findByText("No tickets match these filters.");
 
@@ -574,5 +599,138 @@ describe("TicketsPage filtering", () => {
     expect(
       screen.getByRole("button", { name: /clear filters/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("TicketsPage pagination", () => {
+  const allTickets = [newestTicket, middleTicket, oldestTicket];
+
+  /** 3 rows on screen, but 231 matching overall — i.e. many pages. */
+  function manyPages(overrides: Partial<TicketsListResponse> = {}) {
+    return ticketsResponse(allTickets, { total: 231, ...overrides });
+  }
+
+  async function renderLoaded() {
+    mockGet.mockResolvedValue(manyPages());
+    const user = userEvent.setup();
+    renderTicketsPage();
+    await screen.findByText("Newest ticket");
+    return user;
+  }
+
+  test("requests the first page at the default size on mount", async () => {
+    await renderLoaded();
+
+    expect(sortParamsOfCall(0).page).toBe(FIRST_PAGE);
+    expect(sortParamsOfCall(0).pageSize).toBe(DEFAULT_PAGE_SIZE);
+  });
+
+  test("reports the visible range and page count", async () => {
+    await renderLoaded();
+
+    expect(screen.getByText("1–25 of 231")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 10")).toBeInTheDocument();
+  });
+
+  test("advances to the next page", async () => {
+    const user = await renderLoaded();
+
+    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1).page).toBe(2);
+    expect(await screen.findByText("26–50 of 231")).toBeInTheDocument();
+  });
+
+  test("disables Previous on the first page and Next on the last", async () => {
+    const user = await renderLoaded();
+
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+
+    mockGet.mockResolvedValue(manyPages({ page: 10 }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled(),
+    );
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeEnabled();
+  });
+
+  test("clamps the range label on a partial last page", async () => {
+    mockGet.mockResolvedValue(ticketsResponse(allTickets, { total: 53, page: 3 }));
+    renderTicketsPage();
+
+    // 53 items, 25 per page: the third page holds only 3.
+    expect(await screen.findByText("51–53 of 53")).toBeInTheDocument();
+    expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
+  });
+
+  test("changing the page size returns to the first page", async () => {
+    const user = await renderLoaded();
+
+    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
+
+    mockGet.mockResolvedValue(manyPages({ pageSize: 50 }));
+    await chooseOption(user, "Per page", "50");
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    expect(sortParamsOfCall(2).pageSize).toBe(50);
+    expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
+  });
+
+  test("re-sorting returns to the first page", async () => {
+    const user = await renderLoaded();
+
+    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
+
+    mockGet.mockResolvedValue(manyPages());
+    await user.click(screen.getByRole("button", { name: "Subject" }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    // Page 2 of the old ordering is meaningless in the new one.
+    expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
+    expect(sortParamsOfCall(2).sort).toBe(TICKET_SORT_FIELD.subject);
+  });
+
+  test("filtering returns to the first page", async () => {
+    const user = await renderLoaded();
+
+    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
+
+    mockGet.mockResolvedValue(manyPages({ total: 12 }));
+    await chooseOption(user, "Status", TICKET_STATUS.Open);
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
+    expect(sortParamsOfCall(2).status).toBe(TICKET_STATUS.Open);
+  });
+
+  test("hides the pagination bar when nothing matches", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([], { total: 0 }));
+    renderTicketsPage();
+
+    await screen.findByText("No tickets found.");
+    expect(
+      screen.queryByRole("navigation", { name: "Pagination" }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("keeps the current page on screen while the next one loads", async () => {
+    const user = await renderLoaded();
+
+    mockGet.mockReturnValueOnce(new Promise(() => {}));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
+    expect(screen.getByText("Newest ticket")).toBeInTheDocument();
   });
 });

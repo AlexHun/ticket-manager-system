@@ -77,16 +77,29 @@ ticketsRouter.get(
       res.status(400).json({ error: parsed.error.issues[0].message });
       return;
     }
-    const { sort, order } = parsed.data;
+    const { sort, order, page, pageSize } = parsed.data;
+    const where = buildWhere(parsed.data);
 
-    const tickets = await prisma.ticket.findMany({
-      where: buildWhere(parsed.data),
-      // `id` breaks ties so the order stays stable across requests. It matters
-      // most for status/category, where whole groups of rows share a value.
-      orderBy: [ORDER_BY[sort](order), { id: "desc" }],
-    });
+    // One transaction so the count can't drift from the page beside it — a
+    // ticket arriving between two separate queries would show a total that
+    // disagrees with the rows.
+    const [tickets, total] = await prisma.$transaction([
+      prisma.ticket.findMany({
+        where,
+        // `id` breaks ties so the order stays stable across requests. It matters
+        // most for status/category, where whole groups of rows share a value,
+        // and paging an unstable order would repeat or skip rows.
+        orderBy: [ORDER_BY[sort](order), { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.ticket.count({ where }),
+    ]);
 
     res.json({
+      total,
+      page,
+      pageSize,
       tickets: tickets.map((t) => ({
         id: t.id,
         subject: t.subject,

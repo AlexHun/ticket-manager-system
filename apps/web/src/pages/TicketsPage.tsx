@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { SortingState } from "@tanstack/react-table";
+import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import {
+  DEFAULT_PAGE_SIZE,
   DEFAULT_TICKET_SORT,
+  FIRST_PAGE,
   SORT_ORDER,
   TICKET_SORT_FIELD,
   type SortOrder,
@@ -19,6 +21,7 @@ import {
   TicketsFilters,
   type TicketFilterState,
 } from "./TicketsFilters";
+import { TicketsPagination } from "./TicketsPagination";
 import { TicketsTable, TicketsTableSkeleton } from "./TicketsTable";
 
 /** Keystrokes settle for this long before the search hits the API. */
@@ -57,6 +60,8 @@ function toSortParams(sorting: SortingState): {
 interface TicketsQueryParams {
   sort: TicketSortField;
   order: SortOrder;
+  page: number;
+  pageSize: number;
   status?: string;
   category?: string;
   q?: string;
@@ -66,8 +71,10 @@ interface TicketsQueryParams {
 function toQueryParams(
   sorting: SortingState,
   filters: TicketFilterState,
+  page: number,
+  pageSize: number,
 ): TicketsQueryParams {
-  const params: TicketsQueryParams = toSortParams(sorting);
+  const params: TicketsQueryParams = { ...toSortParams(sorting), page, pageSize };
   if (filters.status) params.status = filters.status;
   if (filters.category) params.category = filters.category;
   const search = filters.search.trim();
@@ -83,10 +90,11 @@ function useTicketsQuery(params: TicketsQueryParams) {
         params,
         signal,
       });
-      return data.tickets;
+      return data;
     },
-    // Sorting and filtering swap the whole result set. Hold the current rows
-    // on screen while the new ones load instead of dropping to the skeleton.
+    // Sorting, filtering and paging each swap the whole result set. Hold the
+    // current rows on screen while the new ones load instead of flashing the
+    // skeleton on every interaction.
     placeholderData: keepPreviousData,
   });
 }
@@ -94,17 +102,41 @@ function useTicketsQuery(params: TicketsQueryParams) {
 export function TicketsPage() {
   const [sorting, setSorting] = useState<SortingState>(DEFAULT_SORTING);
   const [filters, setFilters] = useState<TicketFilterState>(EMPTY_FILTERS);
+  const [page, setPage] = useState(FIRST_PAGE);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
 
   // Only the text input is debounced — the selects should react immediately.
   const debouncedSearch = useDebouncedValue(filters.search, SEARCH_DEBOUNCE_MS);
-  const params = toQueryParams(sorting, { ...filters, search: debouncedSearch });
+  const params = toQueryParams(
+    sorting,
+    { ...filters, search: debouncedSearch },
+    page,
+    pageSize,
+  );
 
-  const {
-    data: tickets,
-    isPending,
-    isFetching,
-    error,
-  } = useTicketsQuery(params);
+  const { data, isPending, isFetching, error } = useTicketsQuery(params);
+
+  /**
+   * Re-sorting or re-filtering rebuilds the result set, so page 3 of the old
+   * set means nothing in the new one — and would often be past the end.
+   * Both reset to the first page.
+   */
+  const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
+    setSorting((prev) =>
+      typeof updater === "function" ? updater(prev) : updater,
+    );
+    setPage(FIRST_PAGE);
+  };
+
+  const handleFiltersChange = (next: TicketFilterState) => {
+    setFilters(next);
+    setPage(FIRST_PAGE);
+  };
+
+  const handlePageSizeChange = (next: number) => {
+    setPageSize(next);
+    setPage(FIRST_PAGE);
+  };
 
   const filtered = hasActiveFilters(filters);
 
@@ -117,7 +149,7 @@ export function TicketsPage() {
         </div>
 
         <div className="mb-4">
-          <TicketsFilters filters={filters} onChange={setFilters} />
+          <TicketsFilters filters={filters} onChange={handleFiltersChange} />
         </div>
 
         {isPending && <TicketsTableSkeleton />}
@@ -128,7 +160,7 @@ export function TicketsPage() {
           </p>
         )}
 
-        {tickets && (
+        {data && (
           <div
             aria-busy={isFetching}
             className={
@@ -136,15 +168,24 @@ export function TicketsPage() {
             }
           >
             <TicketsTable
-              tickets={tickets}
+              tickets={data.tickets}
               sorting={sorting}
-              onSortingChange={setSorting}
+              onSortingChange={handleSortingChange}
               emptyMessage={
                 filtered
                   ? "No tickets match these filters."
                   : "No tickets found."
               }
             />
+            {data.total > 0 && (
+              <TicketsPagination
+                page={data.page}
+                pageSize={data.pageSize}
+                total={data.total}
+                onPageChange={setPage}
+                onPageSizeChange={handlePageSizeChange}
+              />
+            )}
           </div>
         )}
       </main>

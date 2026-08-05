@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   CATEGORY_NONE,
+  DEFAULT_PAGE_SIZE,
+  FIRST_PAGE,
+  MAX_PAGE_SIZE,
   SORT_ORDER,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
@@ -8,6 +11,7 @@ import {
   TICKET_STATUS,
   type SortOrder,
   type Ticket,
+  type TicketsListResponse,
   type TicketSortField,
 } from "@ticket/shared";
 import { signIn } from "./helpers/auth";
@@ -106,25 +110,56 @@ interface TicketsQueryParams {
   status?: string;
   category?: string;
   q?: string;
+  page?: number | string;
+  pageSize?: number | string;
 }
 
-/** Playwright's `params` takes a plain string record — drop unset keys. */
-function toSearchParams(params: TicketsQueryParams): Record<string, string> {
+/** Playwright's `params` takes a flat record — drop unset keys. */
+function toSearchParams(
+  params: TicketsQueryParams,
+): Record<string, string | number> {
   return Object.fromEntries(
     Object.entries(params).filter(([, value]) => value !== undefined),
-  ) as Record<string, string>;
+  ) as Record<string, string | number>;
+}
+
+/**
+ * Seeds `count` tickets named "Ticket 01"… with ascending createdAt, so the
+ * default newest-first order is the exact reverse of the subject order — a
+ * page that ignored either would be obvious.
+ */
+async function seedNumberedTickets(count: number): Promise<void> {
+  await testDb.ticket.createMany({
+    data: Array.from({ length: count }, (_, i) => {
+      const n = String(i + 1).padStart(2, "0");
+      const at = new Date(Date.UTC(2025, 0, i + 1, 12));
+      return {
+        subject: `Ticket ${n}`,
+        customerEmail: `ticket${n}@example.com`,
+        customerName: `Customer ${n}`,
+        createdAt: at,
+        lastMessageAt: at,
+      };
+    }),
+  });
+}
+
+async function fetchPage(
+  page: Page,
+  params?: TicketsQueryParams,
+): Promise<TicketsListResponse> {
+  const res = await page.request.get(TICKETS_ENDPOINT, {
+    params: params && toSearchParams(params),
+  });
+  expect(res.status()).toBe(200);
+  return (await res.json()) as TicketsListResponse;
 }
 
 async function fetchTickets(
   page: Page,
   params?: TicketsQueryParams,
 ): Promise<Ticket[]> {
-  const res = await page.request.get(TICKETS_ENDPOINT, {
-    params: params && toSearchParams(params),
-  });
-  expect(res.status()).toBe(200);
-  const body = (await res.json()) as { tickets: Ticket[] };
-  return body.tickets;
+  return (await fetchPage(page, params)).tickets;
 }
 
 async function fetchSubjects(
@@ -146,7 +181,9 @@ async function chooseFilter(
   optionName: string,
 ): Promise<void> {
   await page.getByLabel(label).click();
-  await page.getByRole("option", { name: optionName }).click();
+  // Exact: option names are matched as substrings by default, so "10" would
+  // also hit the "100" page-size row.
+  await page.getByRole("option", { name: optionName, exact: true }).click();
 }
 
 async function filterSubjects(
@@ -558,6 +595,124 @@ test.describe("Tickets API — filtering", () => {
 });
 
 // ---------------------------------------------------------------------------
+// API — pagination
+// ---------------------------------------------------------------------------
+
+test.describe("Tickets API — pagination", () => {
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test("defaults to the first page and echoes the paging back", async ({
+    page,
+  }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+
+    const body = await fetchPage(page);
+    expect(body.page).toBe(FIRST_PAGE);
+    expect(body.pageSize).toBe(DEFAULT_PAGE_SIZE);
+    expect(body.total).toBe(30);
+    expect(body.tickets).toHaveLength(DEFAULT_PAGE_SIZE);
+  });
+
+  test("total counts every match, not just the page", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+
+    const body = await fetchPage(page, { pageSize: 10 });
+    expect(body.tickets).toHaveLength(10);
+    expect(body.total).toBe(30);
+  });
+
+  test("walks pages without repeating or skipping a ticket", async ({
+    page,
+  }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+
+    const seen: string[] = [];
+    for (const n of [1, 2, 3]) {
+      const body = await fetchPage(page, { page: n, pageSize: 10 });
+      expect(body.page).toBe(n);
+      seen.push(...body.tickets.map((t) => t.subject));
+    }
+
+    expect(seen).toHaveLength(30);
+    expect(new Set(seen).size).toBe(30);
+  });
+
+  test("returns the last partial page", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+
+    // 30 tickets at 25 per page: page 2 is the last and holds the remaining 5.
+    const body = await fetchPage(page, { page: 2, pageSize: 25 });
+    expect(body.tickets).toHaveLength(5);
+    expect(body.total).toBe(30);
+  });
+
+  test("returns an empty page past the end", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+
+    const body = await fetchPage(page, { page: 99, pageSize: 10 });
+    expect(body.tickets).toEqual([]);
+    // The total still describes the result set, so the UI can recover.
+    expect(body.total).toBe(30);
+  });
+
+  test("pages within the requested sort", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+
+    const body = await fetchPage(page, {
+      sort: TICKET_SORT_FIELD.subject,
+      order: SORT_ORDER.asc,
+      page: 2,
+      pageSize: 10,
+    });
+    expect(body.tickets.map((t) => t.subject)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `Ticket ${11 + i}`),
+    );
+  });
+
+  test("counts only filtered tickets", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await seedTickets();
+    await signIn(page, "agent");
+
+    const body = await fetchPage(page, { q: "Ticket 1", pageSize: 5 });
+    // Subjects are zero-padded, so "Ticket 1" matches "Ticket 10".."Ticket 19"
+    // only — 10 of the 33 seeded rows, returned 5 at a time.
+    expect(body.total).toBe(10);
+    expect(body.tickets).toHaveLength(5);
+  });
+
+  test("rejects a non-numeric or out-of-range page", async ({ page }) => {
+    await signIn(page, "agent");
+
+    for (const value of ["abc", "0", "-1", "1.5"]) {
+      const res = await page.request.get(TICKETS_ENDPOINT, {
+        params: { page: value },
+      });
+      expect(res.status(), `page=${value}`).toBe(400);
+      expect((await res.json()).error).toBe("Invalid page");
+    }
+  });
+
+  test("rejects a page size above the cap", async ({ page }) => {
+    await signIn(page, "agent");
+
+    const res = await page.request.get(TICKETS_ENDPOINT, {
+      params: { pageSize: MAX_PAGE_SIZE + 1 },
+    });
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toContain(String(MAX_PAGE_SIZE));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
 
@@ -784,6 +939,78 @@ test.describe("Tickets page", () => {
     await expect(page.getByRole("row")).toHaveCount(3);
     await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
     await expect(page.getByRole("row").nth(2)).toContainText("Oldest ticket");
+  });
+
+  test("pages through the list and back", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    // Default order is newest-first, so page 1 starts at Ticket 30.
+    await expect(page.getByRole("row")).toHaveCount(DEFAULT_PAGE_SIZE + 1);
+    await expect(page.getByText("1–25 of 30")).toBeVisible();
+    await expect(page.getByText("Page 1 of 2")).toBeVisible();
+    await expect(page.getByRole("row").nth(1)).toContainText("Ticket 30");
+
+    const previous = page.getByRole("button", { name: "Previous page" });
+    const next = page.getByRole("button", { name: "Next page" });
+    await expect(previous).toBeDisabled();
+
+    await next.click();
+
+    await expect(page.getByText("26–30 of 30")).toBeVisible();
+    await expect(page.getByRole("row")).toHaveCount(6);
+    await expect(page.getByRole("row").nth(1)).toContainText("Ticket 05");
+    await expect(next).toBeDisabled();
+    await expect(previous).toBeEnabled();
+
+    await previous.click();
+    await expect(page.getByText("1–25 of 30")).toBeVisible();
+  });
+
+  test("changing the page size returns to the first page", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+
+    await chooseFilter(page, "Per page", "10");
+
+    await expect(page.getByText("1–10 of 30")).toBeVisible();
+    await expect(page.getByText("Page 1 of 3")).toBeVisible();
+    await expect(page.getByRole("row")).toHaveCount(11);
+  });
+
+  test("filtering resets paging and recounts", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+
+    await page.getByLabel("Search").fill("Ticket 2");
+
+    // Zero-padded subjects: "Ticket 20".."Ticket 29", 10 matches, back on page 1.
+    await expect(page.getByText("1–10 of 10")).toBeVisible();
+    await expect(page.getByText("Page 1 of 1")).toBeVisible();
+  });
+
+  test("hides pagination when nothing matches", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await page.getByLabel("Search").fill("no-such-ticket-anywhere");
+
+    await expect(
+      page.getByText("No tickets match these filters."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "Pagination" }),
+    ).toHaveCount(0);
   });
 
   test("moves the aria-sort marker to the clicked column", async ({ page }) => {

@@ -1,7 +1,10 @@
 import { z } from "zod";
 import {
   CATEGORY_NONE,
+  DEFAULT_PAGE_SIZE,
   DEFAULT_TICKET_SORT,
+  FIRST_PAGE,
+  MAX_PAGE_SIZE,
   SORT_ORDER,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
@@ -40,6 +43,19 @@ export const ticketsQuerySchema = z.object({
       `Search is limited to ${TICKET_SEARCH_MAX_LENGTH} characters`,
     )
     .optional(),
+  // Query params arrive as strings, hence coerce. A non-numeric value becomes
+  // NaN and fails `int()`, so it is rejected rather than silently defaulted.
+  page: z.coerce
+    .number({ error: "Invalid page" })
+    .int("Invalid page")
+    .min(FIRST_PAGE, "Invalid page")
+    .default(FIRST_PAGE),
+  pageSize: z.coerce
+    .number({ error: "Invalid page size" })
+    .int("Invalid page size")
+    .min(1, "Invalid page size")
+    .max(MAX_PAGE_SIZE, `Page size cannot exceed ${MAX_PAGE_SIZE}`)
+    .default(DEFAULT_PAGE_SIZE),
 });
 
 export type TicketsQuery = z.infer<typeof ticketsQuerySchema>;
