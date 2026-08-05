@@ -142,12 +142,20 @@ async function chooseOption(
   filterLabel: string,
   optionName: string,
 ): Promise<void> {
-  await user.click(screen.getByLabelText(filterLabel));
+  await user.click(filterControl(filterLabel));
   await user.click(await screen.findByRole("option", { name: optionName }));
 }
 
+/**
+ * By role, not by label: the column headers carry the same names as the
+ * filters ("Status", "Category"), so getByLabelText matches both.
+ */
+function filterControl(filterLabel: string): HTMLElement {
+  return screen.getByRole("combobox", { name: filterLabel });
+}
+
 function filterValue(filterLabel: string): string {
-  return screen.getByLabelText(filterLabel).textContent ?? "";
+  return filterControl(filterLabel).textContent ?? "";
 }
 
 // --- Tests ----------------------------------------------------------------
@@ -255,9 +263,14 @@ describe("TicketsPage", () => {
     const resolved = table.getByText(TICKET_STATUS.Resolved);
     const closed = table.getByText(TICKET_STATUS.Closed);
 
+    // Open is the solid accent; Resolved a soft tint; Closed neutral.
     expect(open).toHaveAttribute("data-variant", "default");
-    expect(resolved).toHaveAttribute("data-variant", "secondary");
-    expect(closed).toHaveAttribute("data-variant", "outline");
+    expect(resolved.className).toContain("bg-emerald-500/12");
+    expect(closed.className).toContain("bg-muted");
+
+    // Whatever the styling, the three must not collapse into one look.
+    const looks = [open, resolved, closed].map((el) => el.className);
+    expect(new Set(looks).size).toBe(3);
   });
 
   test("renders a dash when the ticket has no category", async () => {
@@ -595,7 +608,7 @@ describe("TicketsPage filtering", () => {
     await screen.findByText("No tickets match these filters.");
 
     // The bar must survive an empty result, or the filter can't be undone.
-    expect(screen.getByLabelText("Status")).toBeInTheDocument();
+    expect(filterControl("Status")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /clear filters/i }),
     ).toBeInTheDocument();
@@ -732,5 +745,41 @@ describe("TicketsPage pagination", () => {
     await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
     expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
     expect(screen.getByText("Newest ticket")).toBeInTheDocument();
+  });
+});
+
+describe("TicketsTable column widths", () => {
+  const COLUMN_COUNT = 5;
+
+  function colCount(): number {
+    return document.querySelectorAll("colgroup col").length;
+  }
+
+  test("declares a width for every column", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage();
+
+    await screen.findByText("Newest ticket");
+    expect(colCount()).toBe(COLUMN_COUNT);
+  });
+
+  test("the skeleton declares the same columns as the table", () => {
+    mockGet.mockReturnValue(new Promise(() => {}));
+    renderTicketsPage();
+
+    // Both read one shared map, so a new column can't reach only one of them.
+    expect(screen.getByLabelText("Loading tickets")).toBeInTheDocument();
+    expect(colCount()).toBe(COLUMN_COUNT);
+  });
+
+  test("gives every column a resize handle", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage();
+
+    await screen.findByText("Newest ticket");
+    expect(screen.getAllByRole("separator")).toHaveLength(COLUMN_COUNT);
+    expect(
+      screen.getByRole("separator", { name: "Resize Subject column" }),
+    ).toBeInTheDocument();
   });
 });

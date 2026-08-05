@@ -172,6 +172,14 @@ async function fetchSubjects(
 }
 
 /**
+ * By role, not by label: the column headers carry the same names as the
+ * filters ("Status", "Category"), so getByLabel would match both.
+ */
+function filterControl(page: Page, label: string) {
+  return page.getByRole("combobox", { name: label, exact: true });
+}
+
+/**
  * The filters use the shadcn (Radix) Select: a combobox trigger plus a
  * portalled listbox, so there is no native <select> to `selectOption`.
  */
@@ -180,7 +188,7 @@ async function chooseFilter(
   label: string,
   optionName: string,
 ): Promise<void> {
-  await page.getByLabel(label).click();
+  await filterControl(page, label).click();
   // Exact: option names are matched as substrings by default, so "10" would
   // also hit the "100" page-size row.
   await page.getByRole("option", { name: optionName, exact: true }).click();
@@ -192,6 +200,43 @@ async function filterSubjects(
 ): Promise<string[]> {
   const tickets = await fetchTickets(page, params);
   return tickets.map((t) => t.subject);
+}
+
+/** Rendered width of every column header, keyed by label. */
+async function columnWidths(page: Page): Promise<Record<string, number>> {
+  // Wait for the real table: evaluateAll over zero elements silently yields {}.
+  await page.getByRole("columnheader", { name: "Subject" }).waitFor();
+  return page.getByRole("columnheader").evaluateAll((els) =>
+    Object.fromEntries(
+      els.map((el) => [
+        el.getAttribute("aria-label") ?? "",
+        el.getBoundingClientRect().width,
+      ]),
+    ),
+  );
+}
+
+function resizeHandleFor(page: Page, column: string) {
+  return page.getByRole("separator", { name: `Resize ${column} column` });
+}
+
+/** Drag a column edge by `dx` pixels. */
+async function dragHandle(
+  page: Page,
+  column: string,
+  dx: number,
+): Promise<void> {
+  const handle = resizeHandleFor(page, column);
+  const box = await handle.boundingBox();
+  if (!box) throw new Error(`no resize handle for ${column}`);
+
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  // Two moves: the first starts the drag, the second is the actual travel.
+  await page.mouse.move(box.x + box.width / 2 + dx / 2, y);
+  await page.mouse.move(box.x + box.width / 2 + dx, y);
+  await page.mouse.up();
 }
 
 // ---------------------------------------------------------------------------
@@ -814,7 +859,7 @@ test.describe("Tickets page", () => {
   }) => {
     await signIn(page, "agent");
     await page.goto("/tickets");
-    await page.getByLabel("Status").waitFor();
+    await filterControl(page, "Status").waitFor();
 
     // Still asserted because scrollbars and the search field's native clear
     // button are drawn by the browser even though the dropdown no longer is.
@@ -823,7 +868,7 @@ test.describe("Tickets page", () => {
     );
     expect(scheme).toBe("dark");
 
-    await page.getByLabel("Status").click();
+    await filterControl(page, "Status").click();
     const listbox = page.getByRole("listbox");
     await expect(listbox).toBeVisible();
 
@@ -843,7 +888,7 @@ test.describe("Tickets page", () => {
     await page.goto("/tickets");
 
     for (const label of ["Status", "Category"]) {
-      const trigger = page.getByLabel(label);
+      const trigger = filterControl(page, label);
       // Measure while closed: once open, "Any status" / "Any category" also
       // match getByLabel, and the control's resting width is what we care about.
       const triggerBox = await trigger.boundingBox();
@@ -1011,6 +1056,288 @@ test.describe("Tickets page", () => {
     await expect(
       page.getByRole("navigation", { name: "Pagination" }),
     ).toHaveCount(0);
+  });
+
+  test("keeps column widths identical across pages", async ({ page }) => {
+    // Page 1 holds "Ticket 30".."Ticket 06", page 2 the rest. Auto table layout
+    // would size Subject to whatever text is on screen; fixed widths must not.
+    await seedNumberedTickets(30);
+    await testDb.ticket.create({
+      data: {
+        subject: "A dramatically longer subject line that would stretch a column",
+        customerEmail: "long@example.com",
+        customerName: "A Very Long Customer Name Indeed",
+        createdAt: new Date(Date.UTC(2024, 0, 1, 12)),
+        lastMessageAt: new Date(Date.UTC(2024, 0, 1, 12)),
+      },
+    });
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    const widths = () =>
+      page
+        .getByRole("columnheader")
+        .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+
+    await expect(page.getByRole("row").nth(1)).toContainText("Ticket 30");
+    const first = await widths();
+
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByRole("row").nth(1)).toContainText("Ticket 05");
+
+    expect(await widths()).toEqual(first);
+  });
+
+  test("stretches the columns to fill the frame", async ({ page }) => {
+    await seedNumberedTickets(5);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    await page.getByRole("columnheader", { name: "Subject" }).waitFor();
+
+    const { table, frame } = await page.evaluate(() => {
+      const t = document.querySelector("table") as HTMLTableElement;
+      return {
+        table: t.getBoundingClientRect().width,
+        frame: (t.parentElement as HTMLElement).clientWidth,
+      };
+    });
+
+    // No dead strip on the right: the columns own the whole frame.
+    expect(table).toBeCloseTo(frame, 0);
+  });
+
+  test("badges are distinct and legible in both themes", async ({ page }) => {
+    await testDb.ticket.createMany({
+      data: [
+        { subject: "S-Open", status: TICKET_STATUS.Open, category: TICKET_CATEGORY.General },
+        { subject: "S-Resolved", status: TICKET_STATUS.Resolved, category: TICKET_CATEGORY.Technical },
+        { subject: "S-Closed", status: TICKET_STATUS.Closed, category: TICKET_CATEGORY.Refund },
+        { subject: "S-Other", status: TICKET_STATUS.Open, category: TICKET_CATEGORY.Other },
+      ].map((t, i) => ({
+        ...t,
+        customerEmail: `badge${i}@example.com`,
+        customerName: `Badge Customer ${i}`,
+        createdAt: new Date(Date.UTC(2025, 5, i + 1, 12)),
+        lastMessageAt: new Date(Date.UTC(2025, 5, i + 1, 12)),
+      })),
+    });
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    await expect(page.getByRole("table")).toBeVisible();
+
+    for (const theme of ["dark", "light"] as const) {
+      if (theme === "light") {
+        await page.getByRole("button", { name: "Switch to light theme" }).click();
+        await expect(
+          page.getByRole("button", { name: "Switch to dark theme" }),
+        ).toBeVisible();
+      }
+
+      const readings = await page.evaluate(() => {
+        // The theme is authored in oklch and Chrome reports computed colours
+        // in oklch too, so a naive rgb() parse reads chroma/hue as channels.
+        // Canvas fillStyle normalises any CSS colour to sRGB hex/rgba.
+        // Reading `fillStyle` back is not enough — Chrome echoes oklch()
+        // unchanged. Actually painting the colour forces it through the
+        // canvas's sRGB pipeline, and getImageData returns real bytes.
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext("2d", {
+          willReadFrequently: true,
+        }) as CanvasRenderingContext2D;
+        const parse = (color: string): number[] => {
+          ctx.clearRect(0, 0, 1, 1);
+          ctx.fillStyle = color;
+          ctx.fillRect(0, 0, 1, 1);
+          const d = ctx.getImageData(0, 0, 1, 1).data;
+          return [d[0], d[1], d[2], d[3] / 255];
+        };
+        const over = (fg: number[], bg: number[]) => {
+          const a = fg[3] ?? 1;
+          return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a));
+        };
+        const lum = (c: number[]) =>
+          0.2126 * chan(c[0]) + 0.7152 * chan(c[1]) + 0.0722 * chan(c[2]);
+        function chan(v: number) {
+          const s = v / 255;
+          return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        }
+        const page$ = parse(getComputedStyle(document.body).backgroundColor);
+
+        const badges = Array.from(
+          document.querySelectorAll('[data-slot="badge"]'),
+        );
+        return badges.map((el) => {
+          const cs = getComputedStyle(el);
+          // Tints are translucent, so composite them over the page colour
+          // before judging whether the label on top is readable.
+          const bg = over(parse(cs.backgroundColor), page$);
+          const fg = over(parse(cs.color), bg);
+          const [hi, lo] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+          return {
+            label: el.textContent ?? "",
+            look: cs.color + "|" + cs.backgroundColor,
+            contrast: (hi + 0.05) / (lo + 0.05),
+          };
+        });
+      });
+
+      expect(readings.length).toBeGreaterThanOrEqual(8);
+      for (const r of readings) {
+        // WCAG AA for small text — these badges are text-xs.
+        expect(r.contrast, `${theme} ${r.label} (${r.contrast.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
+      }
+
+      const categories = readings.filter((r) =>
+        ["General", "Technical", "Refund", "Other"].includes(r.label.trim()),
+      );
+      const distinct = new Set(categories.map((r) => r.look));
+      expect(distinct.size, `${theme}: category hues`).toBe(categories.length);
+    }
+  });
+
+  test("shows a resize divider at rest and the right cursors", async ({
+    page,
+  }) => {
+    await seedNumberedTickets(5);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    const cursorOf = (locator: ReturnType<typeof page.locator>) =>
+      locator.evaluate((el) => getComputedStyle(el).cursor);
+
+    // Clickable things say so.
+    expect(await cursorOf(page.getByRole("button", { name: "Subject" }))).toBe(
+      "pointer",
+    );
+    expect(await cursorOf(filterControl(page, "Status"))).toBe("pointer");
+
+    const handle = resizeHandleFor(page, "Subject");
+    expect(await cursorOf(handle)).toBe("col-resize");
+
+    // The divider is painted before you hover it, not only on hover.
+    const divider = handle.locator("span");
+    const background = await divider.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    expect(background).not.toBe("rgba(0, 0, 0, 0)");
+    await expect(divider).toBeVisible();
+  });
+
+  test("drags a column wider, taking the space from the others", async ({
+    page,
+  }) => {
+    await seedNumberedTickets(5);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    const before = await columnWidths(page);
+    await dragHandle(page, "Subject", 120);
+    const after = await columnWidths(page);
+
+    expect(after.Subject).toBeGreaterThan(before.Subject);
+    // The table stays full width, so widening one column narrows the rest
+    // rather than adding to the total.
+    const sum = (w: Record<string, number>) =>
+      Object.values(w).reduce((a, b) => a + b, 0);
+    expect(sum(after)).toBeCloseTo(sum(before), 0);
+  });
+
+  test("honours the minimum width when dragged far left", async ({ page }) => {
+    await seedNumberedTickets(5);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await dragHandle(page, "Subject", -600);
+
+    // minSize is 160; without it the column would collapse to nothing.
+    expect((await columnWidths(page)).Subject).toBeGreaterThanOrEqual(150);
+  });
+
+  test("double-clicking a handle restores the default width", async ({
+    page,
+  }) => {
+    await seedNumberedTickets(5);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    const before = await columnWidths(page);
+    await dragHandle(page, "Subject", 120);
+    expect((await columnWidths(page)).Subject).toBeGreaterThan(before.Subject);
+
+    await resizeHandleFor(page, "Subject").dblclick();
+    await expect
+      .poll(async () => (await columnWidths(page)).Subject)
+      .toBeCloseTo(before.Subject, 0);
+  });
+
+  test("resizes from the keyboard", async ({ page }) => {
+    await seedNumberedTickets(5);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    const before = await columnWidths(page);
+    await resizeHandleFor(page, "Subject").focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+
+    await expect
+      .poll(async () => (await columnWidths(page)).Subject)
+      .toBeGreaterThan(before.Subject);
+  });
+
+  test("keeps a resized width when the page changes", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await dragHandle(page, "Subject", 90);
+    const resized = (await columnWidths(page)).Subject;
+
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByRole("row").nth(1)).toContainText("Ticket 05");
+
+    expect((await columnWidths(page)).Subject).toBeCloseTo(resized, 0);
+  });
+
+  test("fits the viewport: the window never scrolls", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    await expect(page.getByText("1–25 of 30")).toBeVisible();
+
+    const overflow = await page.evaluate(() => {
+      const el = document.documentElement;
+      return el.scrollHeight - el.clientHeight;
+    });
+    expect(overflow).toBeLessThanOrEqual(1);
+
+    // The pagination controls must be reachable without scrolling the page.
+    await expect(page.getByRole("button", { name: "Next page" })).toBeInViewport();
+  });
+
+  test("keeps the header visible while the rows scroll", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    const header = page.getByRole("columnheader", { name: "Subject" });
+    await expect(header).toBeVisible();
+    const before = await header.boundingBox();
+    if (!before) throw new Error("no header box");
+
+    const scrolled = await page.evaluate(() => {
+      const frame = document.querySelector("table")?.parentElement;
+      if (!frame) return 0;
+      frame.scrollTop = 400;
+      return frame.scrollTop;
+    });
+    expect(scrolled).toBeGreaterThan(0);
+
+    // The frame scrolled, not the window, and the sticky header held its place.
+    await expect(header).toBeInViewport();
+    const after = await header.boundingBox();
+    expect(after?.y).toBeCloseTo(before.y, 0);
   });
 
   test("moves the aria-sort marker to the clicked column", async ({ page }) => {

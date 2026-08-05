@@ -15,6 +15,7 @@ import { NavBar } from "@/components/NavBar";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { cn } from "@/lib/utils";
 import {
   EMPTY_FILTERS,
   hasActiveFilters,
@@ -141,9 +142,11 @@ export function TicketsPage() {
   const filtered = hasActiveFilters(filters);
 
   return (
-    <div className="min-h-screen bg-background">
+    // Owns the viewport: only the table body scrolls, so the filters stay put
+    // and the pagination bar is always reachable without scrolling the window.
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
       <NavBar />
-      <main className="p-6">
+      <main className="flex min-h-0 flex-1 flex-col p-6">
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Tickets</h1>
         </div>
@@ -152,7 +155,7 @@ export function TicketsPage() {
           <TicketsFilters filters={filters} onChange={handleFiltersChange} />
         </div>
 
-        {isPending && <TicketsTableSkeleton />}
+        {isPending && <TicketsTableSkeleton className="min-h-0 flex-1" />}
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
@@ -161,13 +164,17 @@ export function TicketsPage() {
         )}
 
         {data && (
+          // min-h-0 is load-bearing: a flex item won't shrink below its content
+          // without it, and the frame would overflow instead of scrolling.
           <div
             aria-busy={isFetching}
-            className={
-              isFetching ? "opacity-60 transition-opacity" : "transition-opacity"
-            }
+            className={cn(
+              "flex min-h-0 flex-1 flex-col transition-opacity",
+              isFetching && "opacity-60",
+            )}
           >
             <TicketsTable
+              className="min-h-0 flex-1"
               tickets={data.tickets}
               sorting={sorting}
               onSortingChange={handleSortingChange}
