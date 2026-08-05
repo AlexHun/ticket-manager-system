@@ -1,10 +1,15 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { ticketsQuerySchema, type TicketsQuery } from "@ticket/core";
+import {
+  ticketIdParamSchema,
+  ticketsQuerySchema,
+  type TicketsQuery,
+} from "@ticket/core";
 import {
   CATEGORY_NONE,
   TICKET_SORT_FIELD,
   type SortOrder,
+  type TicketDetailResponse,
   type TicketSortField,
   type TicketsListResponse,
 } from "@ticket/shared";
@@ -112,6 +117,81 @@ ticketsRouter.get(
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
       })),
+    });
+  },
+);
+
+// Route order: any future literal child route (`/stats`, `/export`) has to be
+// registered ABOVE this one, or `:id` will swallow it.
+ticketsRouter.get(
+  "/:id",
+  requireAuth,
+  async (
+    req: Request,
+    res: Response<TicketDetailResponse | { error: string }>,
+  ) => {
+    // requireAuth already ran, so a signed-out request gets 401 whether or not
+    // the ticket exists — the endpoint is not an oracle for which ids are real.
+    const parsed = ticketIdParamSchema.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0].message });
+      return;
+    }
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: parsed.data.id },
+      include: {
+        // Only what the detail view shows. A ticket is not a window onto the
+        // user table, so role and the rest stay behind.
+        assignedTo: { select: { id: true, name: true, email: true } },
+        messages: {
+          // htmlBody is deliberately absent: it is attacker-supplied inbound
+          // email, and anything that reaches the client is one innerHTML away
+          // from running as the signed-in agent. The plain-text part is what
+          // the UI renders.
+          select: {
+            id: true,
+            ticketId: true,
+            messageId: true,
+            inReplyTo: true,
+            senderEmail: true,
+            senderName: true,
+            textBody: true,
+            direction: true,
+            createdAt: true,
+          },
+          // Oldest first — a thread reads top-down. `id` breaks ties because
+          // createdAt defaults to now(), and a batch insert shares an instant.
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        },
+      },
+    });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    res.json({
+      ticket: {
+        id: ticket.id,
+        subject: ticket.subject,
+        status: ticket.status,
+        category: ticket.category,
+        customerEmail: ticket.customerEmail,
+        customerName: ticket.customerName,
+        assignedToId: ticket.assignedToId,
+        assignedTo: ticket.assignedTo,
+        lastMessageAt: ticket.lastMessageAt.toISOString(),
+        createdAt: ticket.createdAt.toISOString(),
+        updatedAt: ticket.updatedAt.toISOString(),
+        // The select above already narrowed these to the wire shape; only the
+        // date still needs converting.
+        messages: ticket.messages.map((m) => ({
+          ...m,
+          createdAt: m.createdAt.toISOString(),
+        })),
+      },
     });
   },
 );

@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import {
-  DEFAULT_PAGE_SIZE,
   DEFAULT_TICKET_SORT,
-  FIRST_PAGE,
   SORT_ORDER,
   TICKET_SORT_FIELD,
   type SortOrder,
@@ -14,10 +13,15 @@ import {
 import { NavBar } from "@/components/NavBar";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
+import {
+  LIST_PARAM,
+  parseTicketListParams,
+  writeTicketListParams,
+  type TicketListPatch,
+} from "@/lib/ticket-list-params";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
 import {
-  EMPTY_FILTERS,
   hasActiveFilters,
   TicketsFilters,
   type TicketFilterState,
@@ -27,13 +31,6 @@ import { TicketsTable, TicketsTableSkeleton } from "./TicketsTable";
 
 /** Keystrokes settle for this long before the search hits the API. */
 const SEARCH_DEBOUNCE_MS = 300;
-
-const DEFAULT_SORTING: SortingState = [
-  {
-    id: DEFAULT_TICKET_SORT.field,
-    desc: DEFAULT_TICKET_SORT.order === SORT_ORDER.desc,
-  },
-];
 
 function isTicketSortField(value: string): value is TicketSortField {
   return value in TICKET_SORT_FIELD;
@@ -101,42 +98,87 @@ function useTicketsQuery(params: TicketsQueryParams) {
 }
 
 export function TicketsPage() {
-  const [sorting, setSorting] = useState<SortingState>(DEFAULT_SORTING);
-  const [filters, setFilters] = useState<TicketFilterState>(EMPTY_FILTERS);
-  const [page, setPage] = useState(FIRST_PAGE);
-  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  // The URL is the state: it makes a filtered view shareable, and it is what
+  // browser Back restores when returning from a ticket.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const listState = useMemo(
+    () => parseTicketListParams(searchParams),
+    [searchParams],
+  );
+
+  // The raw param, not the parsed one: the schema trims `q`, and an input whose
+  // value came back trimmed would eat spaces as they were typed.
+  const urlSearch = searchParams.get(LIST_PARAM.q) ?? "";
+  const [searchInput, setSearchInput] = useState(urlSearch);
 
   // Only the text input is debounced — the selects should react immediately.
-  const debouncedSearch = useDebouncedValue(filters.search, SEARCH_DEBOUNCE_MS);
+  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
+
+  const update = (patch: TicketListPatch, replace = false) => {
+    setSearchParams((prev) => writeTicketListParams(prev, patch), { replace });
+  };
+
+  // The settled search lands in the URL. `replace`, because every pause in
+  // typing would otherwise leave a history entry to click back through.
+  useEffect(() => {
+    if (debouncedSearch !== searchInput) return; // still settling
+    if (debouncedSearch === urlSearch) return; // URL already agrees
+    update({ q: debouncedSearch || undefined }, true);
+  }, [debouncedSearch, searchInput, urlSearch]);
+
+  // Adopt a search that changed from outside the input — Back/Forward, or a
+  // shared link. The guard above is what stops the two from ping-ponging.
+  useEffect(() => {
+    setSearchInput(urlSearch);
+  }, [urlSearch]);
+
+  const sorting = useMemo<SortingState>(
+    () => [
+      {
+        id: listState.sort,
+        desc: listState.order === SORT_ORDER.desc,
+      },
+    ],
+    [listState.sort, listState.order],
+  );
+
+  const filters: TicketFilterState = {
+    status: listState.status ?? "",
+    category: listState.category ?? "",
+    search: searchInput,
+  };
+
   const params = toQueryParams(
     sorting,
     { ...filters, search: debouncedSearch },
-    page,
-    pageSize,
+    listState.page,
+    listState.pageSize,
   );
 
   const { data, isPending, isFetching, error } = useTicketsQuery(params);
 
-  /**
-   * Re-sorting or re-filtering rebuilds the result set, so page 3 of the old
-   * set means nothing in the new one — and would often be past the end.
-   * Both reset to the first page.
-   */
+  // Every patch below drops `page` unless it names one — see
+  // writeTicketListParams for why re-sorting and re-filtering go back to page 1.
   const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
-    setSorting((prev) =>
-      typeof updater === "function" ? updater(prev) : updater,
-    );
-    setPage(FIRST_PAGE);
+    const next = typeof updater === "function" ? updater(sorting) : updater;
+    update(toSortParams(next));
   };
 
   const handleFiltersChange = (next: TicketFilterState) => {
-    setFilters(next);
-    setPage(FIRST_PAGE);
-  };
+    setSearchInput(next.search);
 
-  const handlePageSizeChange = (next: number) => {
-    setPageSize(next);
-    setPage(FIRST_PAGE);
+    // Selects react immediately, and the pending search text rides along in the
+    // same write — so the URL never disagrees with the controls, and one
+    // interaction stays one request.
+    const selectsChanged =
+      next.status !== filters.status || next.category !== filters.category;
+    if (selectsChanged) {
+      update({
+        status: next.status || undefined,
+        category: next.category || undefined,
+        q: next.search.trim() || undefined,
+      });
+    }
   };
 
   const filtered = hasActiveFilters(filters);
@@ -189,8 +231,8 @@ export function TicketsPage() {
                 page={data.page}
                 pageSize={data.pageSize}
                 total={data.total}
-                onPageChange={setPage}
-                onPageSizeChange={handlePageSizeChange}
+                onPageChange={(page) => update({ page })}
+                onPageSizeChange={(pageSize) => update({ pageSize })}
               />
             )}
           </div>

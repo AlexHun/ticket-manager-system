@@ -5,6 +5,7 @@ import {
   DEFAULT_TICKET_SORT,
   FIRST_PAGE,
   MAX_PAGE_SIZE,
+  MAX_TICKET_ID,
   SORT_ORDER,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
@@ -59,3 +60,25 @@ export const ticketsQuerySchema = z.object({
 });
 
 export type TicketsQuery = z.infer<typeof ticketsQuerySchema>;
+
+/**
+ * Path params for GET /api/tickets/:id.
+ *
+ * Express hands `:id` over as a string, hence coerce — a non-numeric value
+ * becomes NaN and fails `int()`. Every failure mode carries the same message
+ * on purpose: a malformed id is a bad *request*, and there is nothing the
+ * client could do differently for "abc" versus "-1".
+ *
+ * The upper bound is load-bearing rather than decoration. Without it an id past
+ * int4 reaches Prisma, which throws on the conversion, and Express turns that
+ * into a 500 for what is plainly a bad URL.
+ */
+export const ticketIdParamSchema = z.object({
+  id: z.coerce
+    .number({ error: "Invalid ticket id" })
+    .int("Invalid ticket id")
+    .min(1, "Invalid ticket id")
+    .max(MAX_TICKET_ID, "Invalid ticket id"),
+});
+
+export type TicketIdParam = z.infer<typeof ticketIdParamSchema>;

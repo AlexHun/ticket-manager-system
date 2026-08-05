@@ -1,11 +1,15 @@
 import type { ReactElement } from "react";
 import { render, type RenderOptions, type RenderResult } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, type InitialEntry } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 type RenderWithQueryOptions = Omit<RenderOptions, "wrapper"> & {
-  /** Routes the MemoryRouter starts on. Defaults to ["/"]. */
-  initialEntries?: string[];
+  /**
+   * Routes the MemoryRouter starts on. Defaults to ["/"]. Entries may be
+   * objects rather than plain paths, which is how a test supplies router
+   * `state` (e.g. the list query string a detail page reads for its back link).
+   */
+  initialEntries?: InitialEntry[];
   /** Provide your own QueryClient (e.g. to assert cache state). */
   queryClient?: QueryClient;
 };

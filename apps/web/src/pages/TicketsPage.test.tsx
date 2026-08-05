@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CATEGORY_NONE,
@@ -94,8 +95,33 @@ const oldestTicket = makeTicket({
   createdAt: "2025-05-01T12:00:00.000Z",
 });
 
-function renderTicketsPage() {
-  return renderWithQuery(<TicketsPage />, { initialEntries: ["/tickets"] });
+function renderTicketsPage(entry = "/tickets") {
+  return renderWithQuery(<TicketsPage />, { initialEntries: [entry] });
+}
+
+/** Exposes the router's current query string so a test can assert on it. */
+function LocationProbe() {
+  const { search } = useLocation();
+  return <output data-testid="location-search">{search}</output>;
+}
+
+function renderTicketsPageWithLocation(entry = "/tickets") {
+  return renderWithQuery(
+    <>
+      <TicketsPage />
+      <LocationProbe />
+    </>,
+    { initialEntries: [entry] },
+  );
+}
+
+function locationSearch(): string {
+  return screen.getByTestId("location-search").textContent ?? "";
+}
+
+/** The current URL's params, order-insensitively. */
+function urlParams(): Record<string, string> {
+  return Object.fromEntries(new URLSearchParams(locationSearch()));
 }
 
 function rowSubjects(): string[] {
@@ -166,6 +192,43 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("TicketsPage subject link", () => {
+  test("links each subject to that ticket's detail page", async () => {
+    mockGet.mockResolvedValue(
+      ticketsResponse([newestTicket, middleTicket, oldestTicket]),
+    );
+    renderTicketsPage();
+
+    expect(
+      await screen.findByRole("link", { name: "Newest ticket" }),
+    ).toHaveAttribute("href", "/tickets/3");
+    expect(screen.getByRole("link", { name: "Oldest ticket" })).toHaveAttribute(
+      "href",
+      "/tickets/1",
+    );
+  });
+
+  test("keeps the subject truncating inside the fixed-width cell", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage();
+
+    const link = await screen.findByRole("link", { name: "Newest ticket" });
+    // `block` is load-bearing — an inline <a> would never show the ellipsis.
+    expect(link).toHaveClass("block", "truncate");
+    expect(link).toHaveAttribute("title", "Newest ticket");
+  });
+
+  test("does not turn the other cells into links", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([oldestTicket]));
+    renderTicketsPage();
+
+    await screen.findByRole("link", { name: "Oldest ticket" });
+    expect(
+      screen.queryByRole("link", { name: "Robin Refund" }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("TicketsPage", () => {
@@ -781,5 +844,145 @@ describe("TicketsTable column widths", () => {
     expect(
       screen.getByRole("separator", { name: "Resize Subject column" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("TicketsPage URL state", () => {
+  test("reads sort, filters and pagination from the URL on mount", async () => {
+    mockGet.mockResolvedValue(
+      ticketsResponse([middleTicket], { page: 2, pageSize: 10, total: 30 }),
+    );
+    renderTicketsPage(
+      "/tickets?status=Open&category=Technical&q=login&sort=subject&order=asc&page=2&pageSize=10",
+    );
+
+    await screen.findByText("Middle ticket");
+
+    expect(sortParamsOfCall(0)).toEqual({
+      sort: TICKET_SORT_FIELD.subject,
+      order: SORT_ORDER.asc,
+      status: TICKET_STATUS.Open,
+      category: TICKET_CATEGORY.Technical,
+      q: "login",
+      page: 2,
+      pageSize: 10,
+    });
+    // One request, not a default-params round trip followed by a corrected one.
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  test("shows the URL's filters in the controls", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([middleTicket]));
+    renderTicketsPage("/tickets?status=Resolved&category=Technical&q=login");
+
+    await screen.findByText("Middle ticket");
+
+    expect(filterValue("Status")).toBe(TICKET_STATUS.Resolved);
+    expect(filterValue("Category")).toBe(TICKET_CATEGORY.Technical);
+    expect(screen.getByLabelText("Search")).toHaveValue("login");
+    expect(sortIndicator("Subject")).toBe("none");
+  });
+
+  test("reflects a URL sort in the column header", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage("/tickets?sort=subject&order=asc");
+
+    await screen.findByText("Newest ticket");
+    expect(sortIndicator("Subject")).toBe("ascending");
+  });
+
+  test("falls back per-field on garbage params, keeping the valid ones", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage("/tickets?sort=bogus&page=abc&status=Nope&pageSize=10");
+
+    await screen.findByText("Newest ticket");
+
+    // A stale or hand-edited link must not throw away the params beside the
+    // bad ones — pageSize survives while the three invalid values default.
+    expect(sortParamsOfCall(0)).toEqual({
+      sort: TICKET_SORT_FIELD.createdAt,
+      order: SORT_ORDER.desc,
+      page: FIRST_PAGE,
+      pageSize: 10,
+    });
+  });
+
+  test("leaves the URL untouched on mount when nothing was chosen", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPageWithLocation();
+
+    await screen.findByText("Newest ticket");
+    // Defaults are never written, so the resting URL stays shareable-clean.
+    expect(locationSearch()).toBe("");
+  });
+
+  test("writes a sort change to the URL", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPageWithLocation();
+    const user = userEvent.setup();
+
+    await screen.findByText("Newest ticket");
+    await user.click(screen.getByRole("button", { name: "Subject" }));
+
+    await waitFor(() =>
+      expect(urlParams()).toMatchObject({
+        sort: TICKET_SORT_FIELD.subject,
+        order: SORT_ORDER.asc,
+      }),
+    );
+  });
+
+  test("writes a filter change to the URL", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPageWithLocation();
+    const user = userEvent.setup();
+
+    await screen.findByText("Newest ticket");
+    await chooseOption(user, "Status", TICKET_STATUS.Resolved);
+
+    await waitFor(() =>
+      expect(urlParams().status).toBe(TICKET_STATUS.Resolved),
+    );
+  });
+
+  test("writes the settled search to the URL", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPageWithLocation();
+    const user = userEvent.setup();
+
+    await screen.findByText("Newest ticket");
+    await user.type(screen.getByLabelText("Search"), "refund");
+
+    await waitFor(() => expect(urlParams().q).toBe("refund"));
+  });
+
+  test("drops the page when a filter changes", async () => {
+    mockGet.mockResolvedValue(
+      ticketsResponse([newestTicket], { page: 2, total: 60 }),
+    );
+    renderTicketsPageWithLocation("/tickets?page=2");
+    const user = userEvent.setup();
+
+    await screen.findByText("Newest ticket");
+    expect(urlParams().page).toBe("2");
+
+    await chooseOption(user, "Status", TICKET_STATUS.Open);
+
+    // Page 2 of the old result set means nothing in the new one.
+    await waitFor(() => expect(urlParams()).not.toHaveProperty("page"));
+    expect(urlParams().status).toBe(TICKET_STATUS.Open);
+  });
+
+  test("keeps the page when only the page changes", async () => {
+    mockGet.mockResolvedValue(
+      ticketsResponse([newestTicket], { page: 1, total: 60 }),
+    );
+    renderTicketsPageWithLocation();
+    const user = userEvent.setup();
+
+    await screen.findByText("Newest ticket");
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    await waitFor(() => expect(urlParams().page).toBe("2"));
   });
 });

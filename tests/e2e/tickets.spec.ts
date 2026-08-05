@@ -4,6 +4,8 @@ import {
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
   MAX_PAGE_SIZE,
+  MAX_TICKET_ID,
+  MESSAGE_DIRECTION,
   SORT_ORDER,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
@@ -11,10 +13,12 @@ import {
   TICKET_STATUS,
   type SortOrder,
   type Ticket,
+  type TicketDetail,
+  type TicketDetailResponse,
   type TicketsListResponse,
   type TicketSortField,
 } from "@ticket/shared";
-import { signIn } from "./helpers/auth";
+import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetTickets, testDb } from "./helpers/db";
 import { API_URL } from "./helpers/env";
 
@@ -142,6 +146,90 @@ async function seedNumberedTickets(count: number): Promise<void> {
       };
     }),
   });
+}
+
+interface ThreadSeedOptions {
+  subject?: string;
+  /** Assigned to nobody unless a user id is passed. */
+  assignedToId?: string;
+  /** Raw inbound HTML, to prove it never reaches the client. */
+  htmlBody?: string;
+}
+
+/**
+ * A ticket with a three-message thread, created out of chronological order so
+ * that a route which returned insertion order would fail the ascending
+ * assertions. Message.createdAt has a default, so the explicit values are what
+ * make the ordering meaningful at all.
+ */
+async function seedTicketWithThread(
+  options: ThreadSeedOptions = {},
+): Promise<number> {
+  const { subject = "Threaded ticket", assignedToId, htmlBody } = options;
+  const at = (day: string) => new Date(`2025-09-${day}T12:00:00.000Z`);
+
+  const ticket = await testDb.ticket.create({
+    data: {
+      subject,
+      customerEmail: "threaded@example.com",
+      customerName: "Threaded Customer",
+      category: TICKET_CATEGORY.Technical,
+      assignedToId,
+      createdAt: at("01"),
+      lastMessageAt: at("03"),
+      messages: {
+        create: [
+          {
+            messageId: `<middle-${Date.now()}@example.com>`,
+            senderEmail: "support@example.com",
+            senderName: "Support Team",
+            textBody: "Second message, from support.",
+            htmlBody,
+            direction: MESSAGE_DIRECTION.outbound,
+            createdAt: at("02"),
+          },
+          {
+            messageId: `<first-${Date.now()}@example.com>`,
+            senderEmail: "threaded@example.com",
+            senderName: "Threaded Customer",
+            textBody: "First message, from the customer.",
+            direction: MESSAGE_DIRECTION.inbound,
+            createdAt: at("01"),
+          },
+          {
+            messageId: `<last-${Date.now()}@example.com>`,
+            senderEmail: "threaded@example.com",
+            senderName: "Threaded Customer",
+            textBody: "Third message, from the customer.",
+            direction: MESSAGE_DIRECTION.inbound,
+            createdAt: at("03"),
+          },
+        ],
+      },
+    },
+    select: { id: true },
+  });
+
+  return ticket.id;
+}
+
+/** The signed-in agent's row, for assignment assertions. */
+async function agentUserId(): Promise<string> {
+  const user = await testDb.user.findUniqueOrThrow({
+    where: { email: CREDENTIALS.agent.email },
+    select: { id: true },
+  });
+  return user.id;
+}
+
+function detailEndpoint(id: number | string): string {
+  return `${TICKETS_ENDPOINT}/${id}`;
+}
+
+async function fetchDetail(page: Page, id: number): Promise<TicketDetail> {
+  const res = await page.request.get(detailEndpoint(id));
+  expect(res.status()).toBe(200);
+  return ((await res.json()) as TicketDetailResponse).ticket;
 }
 
 async function fetchPage(
@@ -758,6 +846,170 @@ test.describe("Tickets API — pagination", () => {
 });
 
 // ---------------------------------------------------------------------------
+// API — single ticket
+// ---------------------------------------------------------------------------
+
+test.describe("Ticket detail API", () => {
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test("-> 401 when unauthenticated, even for an id that doesn't exist", async ({
+    request,
+  }) => {
+    const id = await seedTicketWithThread();
+
+    // Both must 401 identically: a 404 for the missing id would tell a signed-out
+    // caller which ticket ids are real.
+    for (const target of [id, MAX_TICKET_ID]) {
+      const res = await request.get(detailEndpoint(target));
+      expect(res.status(), `id=${target}`).toBe(401);
+    }
+  });
+
+  // One test per role rather than a loop: signing in twice in the same context
+  // never reaches the login form the second time, because /login redirects an
+  // already-authenticated visitor away.
+  test("-> 200 for an agent (not admin-only)", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await page.request.get(detailEndpoint(id));
+    expect(res.status()).toBe(200);
+  });
+
+  test("-> 200 for an admin", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "admin");
+
+    const res = await page.request.get(detailEndpoint(id));
+    expect(res.status()).toBe(200);
+  });
+
+  test("returns the ticket fields with dates as ISO strings", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread({ subject: "Serialised ticket" });
+    await signIn(page, "agent");
+
+    expect(await fetchDetail(page, id)).toMatchObject({
+      id,
+      subject: "Serialised ticket",
+      status: TICKET_STATUS.Open,
+      category: TICKET_CATEGORY.Technical,
+      customerEmail: "threaded@example.com",
+      customerName: "Threaded Customer",
+      assignedToId: null,
+      assignedTo: null,
+      createdAt: "2025-09-01T12:00:00.000Z",
+      lastMessageAt: "2025-09-03T12:00:00.000Z",
+    });
+  });
+
+  test("returns the thread oldest first", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const { messages } = await fetchDetail(page, id);
+    // Seeded middle-first, so insertion order would put "Second" at the top.
+    expect(messages.map((m) => m.textBody)).toEqual([
+      "First message, from the customer.",
+      "Second message, from support.",
+      "Third message, from the customer.",
+    ]);
+    expect(messages.map((m) => m.direction)).toEqual([
+      MESSAGE_DIRECTION.inbound,
+      MESSAGE_DIRECTION.outbound,
+      MESSAGE_DIRECTION.inbound,
+    ]);
+    expect(messages[0].createdAt).toBe("2025-09-01T12:00:00.000Z");
+  });
+
+  test("breaks message ties by ascending id", async ({ page }) => {
+    const sameInstant = new Date("2025-09-05T09:00:00.000Z");
+    const ticket = await testDb.ticket.create({
+      data: {
+        subject: "Tied thread",
+        customerEmail: "tied@example.com",
+        customerName: "Tied Customer",
+        messages: {
+          create: ["First insert", "Second insert", "Third insert"].map(
+            (textBody, i) => ({
+              messageId: `<tie-${i}-${Date.now()}@example.com>`,
+              senderEmail: "tied@example.com",
+              senderName: "Tied Customer",
+              textBody,
+              createdAt: sameInstant,
+            }),
+          ),
+        },
+      },
+      select: { id: true },
+    });
+    await signIn(page, "agent");
+
+    const { messages } = await fetchDetail(page, ticket.id);
+    expect(messages.map((m) => m.textBody)).toEqual([
+      "First insert",
+      "Second insert",
+      "Third insert",
+    ]);
+    expect(messages.map((m) => m.id)).toEqual(
+      [...messages.map((m) => m.id)].sort((a, b) => a - b),
+    );
+  });
+
+  test("never sends htmlBody, even when the row has one", async ({ page }) => {
+    const id = await seedTicketWithThread({
+      htmlBody: '<img src="x" onerror="alert(1)">',
+    });
+    await signIn(page, "agent");
+
+    const { messages } = await fetchDetail(page, id);
+    for (const message of messages) {
+      expect(message).not.toHaveProperty("htmlBody");
+    }
+  });
+
+  test("embeds the assignee without leaking the rest of the user row", async ({
+    page,
+  }) => {
+    const assignedToId = await agentUserId();
+    const id = await seedTicketWithThread({ assignedToId });
+    await signIn(page, "agent");
+
+    const { assignedTo } = await fetchDetail(page, id);
+    expect(assignedTo).toMatchObject({
+      id: assignedToId,
+      email: CREDENTIALS.agent.email,
+    });
+    expect(assignedTo?.name).toBeTruthy();
+    expect(assignedTo).not.toHaveProperty("role");
+    expect(assignedTo).not.toHaveProperty("emailVerified");
+  });
+
+  test("-> 404 for a well-formed id with no row", async ({ page }) => {
+    await signIn(page, "agent");
+
+    const res = await page.request.get(detailEndpoint(MAX_TICKET_ID));
+    expect(res.status()).toBe(404);
+    expect((await res.json()).error).toBe("Ticket not found");
+  });
+
+  test("-> 400 for a malformed id", async ({ page }) => {
+    await signIn(page, "agent");
+
+    // The last one is the regression guard: an id past int4 used to reach
+    // Prisma and come back as a 500.
+    for (const value of ["abc", "0", "-1", "1.5", String(MAX_TICKET_ID + 1)]) {
+      const res = await page.request.get(detailEndpoint(value));
+      expect(res.status(), `id=${value}`).toBe(400);
+      expect((await res.json()).error, `id=${value}`).toBe("Invalid ticket id");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
 
@@ -1355,5 +1607,203 @@ test.describe("Tickets page", () => {
     await expect(subject).toHaveAttribute("aria-sort", "ascending");
     await expect(created).toHaveAttribute("aria-sort", "none");
     await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UI — ticket detail
+// ---------------------------------------------------------------------------
+
+test.describe("Ticket detail page", () => {
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test("redirects to /login when unauthenticated", async ({ page }) => {
+    const id = await seedTicketWithThread();
+
+    await page.goto(`/tickets/${id}`);
+    await expect(page).toHaveURL("/login");
+  });
+
+  test("opens from the ticket list by clicking the subject", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread({ subject: "Clickable subject" });
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await page.getByRole("link", { name: "Clickable subject" }).click();
+
+    await expect(page).toHaveURL(`/tickets/${id}`);
+    await expect(
+      page.getByRole("heading", { name: "Clickable subject", level: 1 }),
+    ).toBeVisible();
+    await expect(page.getByText("Threaded Customer").first()).toBeVisible();
+    await expect(page.getByText("Unassigned")).toBeVisible();
+  });
+
+  test("renders the whole thread oldest first", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+
+    await expect(page.getByText("Messages (3)")).toBeVisible();
+    const messages = page.locator("ol > li");
+    await expect(messages).toHaveCount(3);
+    await expect(messages.nth(0)).toContainText(
+      "First message, from the customer.",
+    );
+    await expect(messages.nth(1)).toContainText("Second message, from support.");
+    await expect(messages.nth(1)).toContainText("From support");
+    await expect(messages.nth(2)).toContainText(
+      "Third message, from the customer.",
+    );
+  });
+
+  test("works as a deep link, without the list state", async ({ page }) => {
+    const id = await seedTicketWithThread({ subject: "Deep linked" });
+    await signIn(page, "agent");
+
+    await page.goto(`/tickets/${id}`);
+
+    await expect(
+      page.getByRole("heading", { name: "Deep linked", level: 1 }),
+    ).toBeVisible();
+    // No list state to return to, so the back link falls back to a bare list.
+    await expect(page.getByRole("link", { name: "Back to tickets" })).toHaveAttribute(
+      "href",
+      "/tickets",
+    );
+  });
+
+  test("explains an unknown ticket instead of rendering a blank page", async ({
+    page,
+  }) => {
+    await signIn(page, "agent");
+
+    await page.goto(`/tickets/${MAX_TICKET_ID}`);
+
+    await expect(
+      page.getByRole("heading", { name: "Ticket not found", level: 1 }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Back to tickets" })).toBeVisible();
+  });
+
+  test("never renders a message's inbound HTML", async ({ page }) => {
+    const id = await seedTicketWithThread({
+      htmlBody: '<img src="x" onerror="window.__xss = true">',
+    });
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+
+    await expect(page.getByText("Second message, from support.")).toBeVisible();
+    // The plain-text part renders; the attacker-supplied markup does not exist
+    // in the document at all, because the API never sent it.
+    await expect(page.locator('img[src="x"]')).toHaveCount(0);
+    expect(await page.evaluate(() => "__xss" in window)).toBe(false);
+  });
+
+  test("back returns to the same filtered, sorted, paged list", async ({
+    page,
+  }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    // Build a view that is not the default in three ways at once.
+    await chooseFilter(page, "Status", TICKET_STATUS.Open);
+    await page.getByRole("button", { name: "Subject" }).click();
+    await expect(page.getByRole("row").nth(1)).toContainText("Ticket 01");
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+
+    const listUrl = page.url();
+    const firstRowSubject = await page.getByRole("row").nth(1).textContent();
+
+    await page.getByRole("row").nth(1).getByRole("link").click();
+    await expect(
+      page.getByRole("heading", { level: 1 }).first(),
+    ).toBeVisible();
+
+    await page.goBack();
+
+    await expect(page).toHaveURL(listUrl);
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+    await expect(page.getByRole("row").nth(1)).toHaveText(
+      firstRowSubject ?? "",
+    );
+  });
+
+  test("the back link returns to the same list view", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await chooseFilter(page, "Status", TICKET_STATUS.Open);
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+    const listUrl = page.url();
+
+    await page.getByRole("row").nth(1).getByRole("link").click();
+    await page.getByRole("link", { name: "Back to tickets" }).click();
+
+    await expect(page).toHaveURL(listUrl);
+    await expect(page.getByText("Page 2 of 2")).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UI — shareable list URLs
+// ---------------------------------------------------------------------------
+
+test.describe("Tickets list URL state", () => {
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test("restores filters and sort from a shared link", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    await page.goto(
+      `/tickets?status=${TICKET_STATUS.Resolved}&sort=${TICKET_SORT_FIELD.subject}&order=${SORT_ORDER.asc}`,
+    );
+
+    await expect(page.getByRole("row")).toHaveCount(2); // header + 1
+    await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
+    await expect(filterControl(page, "Status")).toContainText(
+      TICKET_STATUS.Resolved,
+    );
+    await expect(
+      page.getByRole("columnheader", { name: "Subject" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  test("writes filters to the URL and drops the page when they change", async ({
+    page,
+  }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await page.getByRole("button", { name: "Next page" }).click();
+    await expect(page).toHaveURL(/page=2/);
+
+    await chooseFilter(page, "Status", TICKET_STATUS.Open);
+
+    await expect(page).toHaveURL(new RegExp(`status=${TICKET_STATUS.Open}`));
+    // Page 2 of the old result set means nothing in the new one.
+    await expect(page).not.toHaveURL(/page=/);
+  });
+
+  test("leaves the URL clean when nothing has been chosen", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
+    // Defaults are never written back, so the resting URL stays bare.
+    await expect(page).toHaveURL("/tickets");
   });
 });

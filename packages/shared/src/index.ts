@@ -127,6 +127,39 @@ export interface TicketsListResponse {
   pageSize: number;
 }
 
+/**
+ * Ceiling on a ticket id. Postgres `Int` is int4, so an id above this can't
+ * exist — rejecting it up front keeps a hand-typed URL from reaching Prisma,
+ * which would throw on the conversion and turn a bad request into a 500.
+ */
+export const MAX_TICKET_ID = 2_147_483_647;
+
+/**
+ * The assignee fields the detail view renders. Picked from `User` rather than
+ * re-declared, and deliberately without role/emailVerified — a ticket view is
+ * not a window onto the user table.
+ */
+export type TicketAssignee = Pick<User, "id" | "name" | "email">;
+
+/**
+ * A thread message as the API serves it. `htmlBody` is absent by design: it is
+ * whatever a stranger emailed support, so it never leaves the database. Keeping
+ * it out of the type means a route that tried to send it wouldn't compile.
+ */
+export type ThreadMessage = Omit<Message, "htmlBody">;
+
+/** A ticket plus the two things only the detail view needs. */
+export interface TicketDetail extends Ticket {
+  /** Resolved server-side: `assignedToId` alone can't be looked up by an agent. */
+  assignedTo: TicketAssignee | null;
+  /** The whole thread, oldest first. */
+  messages: ThreadMessage[];
+}
+
+export interface TicketDetailResponse {
+  ticket: TicketDetail;
+}
+
 export interface UsersListResponse {
   users: User[];
 }
