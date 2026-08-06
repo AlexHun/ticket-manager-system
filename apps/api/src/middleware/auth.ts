@@ -4,6 +4,18 @@ import { auth } from "../auth";
 
 export type Session = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
 
+/**
+ * The session `requireAuth` parked on `res.locals`.
+ *
+ * `res.locals` is typed as `any`, so reading it needs a cast. Doing that here
+ * once means a route that wants the caller's identity gets it typed, and the
+ * assertion — which is only sound because `requireAuth` ran first — lives next
+ * to the middleware that makes it true rather than being repeated per route.
+ */
+export function sessionOf(res: Response): Session {
+  return res.locals.session as Session;
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),

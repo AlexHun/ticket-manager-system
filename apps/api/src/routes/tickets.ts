@@ -21,6 +21,7 @@ import {
 } from "@ticket/shared";
 import { prisma, type Prisma } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { ticketStatsHandler } from "./ticket-stats";
 
 /**
  * Every sortable column maps to a hand-written Prisma orderBy, so the client's
@@ -233,9 +234,21 @@ ticketsRouter.get(
   },
 );
 
-// Route order: any future literal child route (`/stats`, `/export`) has to be
-// registered ABOVE this one, or `:id` will swallow it — which is why
-// `/assignees` sits above.
+/**
+ * Everything the dashboard draws, for one slice. Implementation lives in
+ * `./ticket-stats` — it is ~300 lines of aggregation with nothing in common
+ * with the CRUD above.
+ *
+ * `requireAuth`, not `requireAdmin`: both roles work tickets, and an agent can
+ * already read every ticket through `GET /api/tickets`, so `scope=all` discloses
+ * nothing new.
+ */
+ticketsRouter.get("/stats", requireAuth, ticketStatsHandler);
+
+// Route order: any future literal child route (`/export`) has to be registered
+// ABOVE this one, or `:id` will swallow it — which is why `/assignees` and
+// `/stats` sit above. Registered below, `/stats` reaches `ticketIdParamSchema`,
+// which answers `400 Invalid ticket id` and sends you looking in the wrong place.
 ticketsRouter.get(
   "/:id",
   requireAuth,

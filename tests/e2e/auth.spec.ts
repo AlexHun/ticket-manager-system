@@ -48,8 +48,11 @@ test.describe("Login flow", () => {
     await expect(page).toHaveURL("/");
     // Admin sees the Users nav link
     await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
-    // Admin name is displayed in the navbar
-    await expect(page.getByText("Admin")).toBeVisible();
+    // Admin name is displayed in the navbar. Scoped to the nav because `/` is
+    // now the dashboard: agent names also appear there as workload rows and
+    // needs-attention assignees, and an unscoped getByText matches substrings,
+    // so it would resolve to several elements and fail strict mode.
+    await expect(page.getByRole("navigation").getByText("Admin")).toBeVisible();
   });
 
   test("agent login succeeds — redirects to / and does NOT show Users link", async ({
@@ -60,8 +63,8 @@ test.describe("Login flow", () => {
     await expect(page).toHaveURL("/");
     // Agent must NOT see the Users nav link
     await expect(page.getByRole("link", { name: "Users" })).not.toBeVisible();
-    // Agent name is displayed in the navbar
-    await expect(page.getByText("Agent")).toBeVisible();
+    // Agent name is displayed in the navbar — scoped for the same reason as above.
+    await expect(page.getByRole("navigation").getByText("Agent")).toBeVisible();
   });
 
   test("wrong password — server error shown, stays on /login", async ({

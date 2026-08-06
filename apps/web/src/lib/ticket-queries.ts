@@ -26,6 +26,18 @@ export const ticketKeys = {
 
   /** The params object is part of the key: each filter/sort/page is its own entry. */
   list: (params: object) => ["tickets", params] as const,
+
+  /**
+   * One dashboard slice, keyed by range + scope.
+   *
+   * Under the `all` prefix on purpose: `useTicketField`'s
+   * `invalidateQueries({ queryKey: ticketKeys.all, refetchType: "none" })` then
+   * reaches the dashboard too, so resolving a ticket on the detail page marks
+   * the stats stale without fetching them, and they reload on the way home.
+   *
+   * `isDetailKey` stays correct alongside this — it tests `key[1] === "detail"`.
+   */
+  stats: (params: object) => ["tickets", "stats", params] as const,
 };
 
 /**

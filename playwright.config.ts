@@ -26,6 +26,12 @@ export default defineConfig({
   use: {
     baseURL: WEB_URL,
     trace: "on-first-retry",
+    // The dashboard animates: Recharts grows its bars in and the KPI tiles
+    // count up, so for ~600ms the DOM holds numbers and geometry that were
+    // never true. Emulating the reduced-motion preference turns both off at
+    // the source — Recharts' `isAnimationActive: "auto"` and `useReducedMotion`
+    // both honour it — so an assertion can't catch a half-drawn frame.
+    reducedMotion: "reduce",
   },
   projects: [
     {

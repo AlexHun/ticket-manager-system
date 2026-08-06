@@ -1,6 +1,9 @@
 import { z } from "zod";
 import {
   CATEGORY_NONE,
+  DASHBOARD_RANGE,
+  DASHBOARD_SCOPE,
+  DEFAULT_DASHBOARD_RANGE,
   DEFAULT_PAGE_SIZE,
   DEFAULT_TICKET_SORT,
   FIRST_PAGE,
@@ -142,3 +145,24 @@ export const updateTicketCategorySchema = z.object({
 export type UpdateTicketCategoryValues = z.infer<
   typeof updateTicketCategorySchema
 >;
+
+/**
+ * Query params for GET /api/tickets/stats.
+ *
+ * Both default, so a bare `/api/tickets/stats` is the dashboard's resting state
+ * and the URL only ever carries what was actually chosen.
+ *
+ * There is deliberately no `userId`: `scope=mine` means the session's own id,
+ * resolved server-side, so the endpoint can't be pointed at a colleague by
+ * editing the query string.
+ */
+export const ticketStatsQuerySchema = z.object({
+  range: z
+    .enum(DASHBOARD_RANGE, { error: "Invalid range" })
+    .default(DEFAULT_DASHBOARD_RANGE),
+  scope: z
+    .enum(DASHBOARD_SCOPE, { error: "Invalid scope" })
+    .default(DASHBOARD_SCOPE.all),
+});
+
+export type TicketStatsQuery = z.infer<typeof ticketStatsQuerySchema>;

@@ -22,6 +22,12 @@ export function NavBar() {
           Ticket Manager
         </Link>
         <Link
+          to="/"
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          Dashboard
+        </Link>
+        <Link
           to="/tickets"
           className="text-sm text-muted-foreground hover:text-foreground"
         >

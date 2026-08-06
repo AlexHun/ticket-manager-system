@@ -21,6 +21,17 @@
     --color-chart-3: var(--chart-3);
     --color-chart-2: var(--chart-2);
     --color-chart-1: var(--chart-1);
+    /* `inline` is what makes these work per-mode: the declared value is itself a
+       var(), so `bg-viz-open` emits `background-color: var(--viz-open)` and
+       resolves against whichever of :root / .dark is in force at use time. */
+    --color-viz-ord-1: var(--viz-ord-1);
+    --color-viz-ord-2: var(--viz-ord-2);
+    --color-viz-ord-3: var(--viz-ord-3);
+    --color-viz-ord-4: var(--viz-ord-4);
+    --color-viz-open: var(--viz-open);
+    --color-viz-resolved: var(--viz-resolved);
+    --color-viz-closed: var(--viz-closed);
+    --color-viz-accent: var(--viz-accent);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -84,6 +95,37 @@
     --chart-3: oklch(0.596 0.145 163.225);
     --chart-4: oklch(0.508 0.118 165.612);
     --chart-5: oklch(0.432 0.095 166.913);
+
+    /*
+     * Chart tokens. Charts name these, never --chart-N directly, because the
+     * usable window onto the emerald ramp is different per mode and CSS is the
+     * only place that can shift it — `useTheme` is a local hook, not a context,
+     * so a JS-side palette would have to be re-derived in every component.
+     *
+     * The ramp is ordinal (one hue, monotone lightness), which is what status
+     * and the time/age bins are: progressions, not peers. Nothing here is a
+     * categorical palette — telling four *peer* labels apart is the badges' job
+     * (see TicketBadges.tsx), and those hues are unsafe as chart fills anyway.
+     *
+     * Light mode starts one step in: --chart-1 measures 1.52:1 on the white
+     * card, under the 2:1 floor an ordinal ramp's light end has to clear.
+     * Light window contrasts: 2.47 / 3.65 / 5.36 / 7.61.
+     */
+    --viz-ord-1: var(--chart-2);
+    --viz-ord-2: var(--chart-3);
+    --viz-ord-3: var(--chart-4);
+    --viz-ord-4: var(--chart-5);
+
+    /* Status reads as emphasis, the same way the badges do — Open loud, Closed
+       receding — so it takes the ramp's dark end, darkest = Open. */
+    --viz-open: var(--chart-5);
+    --viz-resolved: var(--chart-4);
+    --viz-closed: var(--chart-3);
+
+    /* Nominal bars (category, customers) are ONE series, so one hue: the single
+       step clearing 3:1 on both surfaces (3.65 light / 4.76 dark). */
+    --viz-accent: var(--chart-3);
+
     --radius: 0.45rem;
     --sidebar: oklch(0.987 0.002 197.1);
     --sidebar-foreground: oklch(0.148 0.004 228.8);
@@ -120,6 +162,29 @@
     --chart-3: oklch(0.596 0.145 163.225);
     --chart-4: oklch(0.508 0.118 165.612);
     --chart-5: oklch(0.432 0.095 166.913);
+
+    /* The mirror image of the light window: --chart-5 measures only 2.28:1 on
+       the dark card, so the window slides one step lighter instead. Dark window
+       contrasts: 11.42 / 7.02 / 4.76 / 3.24.
+       Every token is restated rather than aliased to --viz-ord-N. The alias
+       would resolve correctly today (both blocks match the same <html>), but it
+       breaks silently the day .dark moves to <body>. */
+    --viz-ord-1: var(--chart-1);
+    --viz-ord-2: var(--chart-2);
+    --viz-ord-3: var(--chart-3);
+    --viz-ord-4: var(--chart-4);
+
+    /* Note the order flips with the surface. "Open is loud, Closed recedes"
+       is a statement about contrast, not about darkness: on the white card the
+       loudest step is the darkest, on this one it is the lightest. Assigning
+       the same hex to Open in both modes would make it the *quietest* status
+       here. Contrasts: Open 7.02, Resolved 4.76, Closed 3.24. */
+    --viz-open: var(--chart-2);
+    --viz-resolved: var(--chart-3);
+    --viz-closed: var(--chart-4);
+
+    --viz-accent: var(--chart-3);
+
     --sidebar: oklch(0.218 0.008 223.9);
     --sidebar-foreground: oklch(0.987 0.002 197.1);
     --sidebar-primary: oklch(0.696 0.17 162.48);

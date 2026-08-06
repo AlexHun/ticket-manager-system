@@ -2,7 +2,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 
 export { Role } from "./generated/prisma/client";
-export type { Prisma } from "./generated/prisma/client";
+// A value export, not `export type`: `Prisma` is a namespace, so this one line
+// carries both the types (`Prisma.TicketWhereInput`) and the runtime helpers
+// (`Prisma.sql`, `Prisma.empty`, `Prisma.join`) the raw stats queries compose
+// with. Exported as a type only, `Prisma.sql` is `undefined` at import time.
+export { Prisma } from "./generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
