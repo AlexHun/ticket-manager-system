@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -6,8 +7,9 @@ import {
   TICKET_CATEGORY,
   TICKET_STATUS,
   USER_ROLE,
+  type TicketAssignee,
   type TicketDetail,
-  type TicketDetailResponse,
+  type TicketWithAssignee,
   type ThreadMessage,
 } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
@@ -16,10 +18,12 @@ import { TicketDetailPage } from "./TicketDetailPage";
 // --- Mocks ----------------------------------------------------------------
 
 const mockGet = vi.fn();
+const mockPatch = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
+    patch: (...args: unknown[]) => mockPatch(...args),
   },
 }));
 
@@ -71,10 +75,43 @@ function makeTicketDetail(overrides: Partial<TicketDetail> = {}): TicketDetail {
   };
 }
 
-function detailResponse(
-  ticket: TicketDetail,
-): { data: TicketDetailResponse } {
-  return { data: { ticket } };
+const ASSIGNEES_URL = "/api/tickets/assignees";
+
+const AGENTS: TicketAssignee[] = [
+  { id: "agent-1", name: "Dana Delegate", email: "dana@example.com" },
+  { id: "agent-2", name: "Sam Support", email: "sam@example.com" },
+];
+
+interface ApiFixture {
+  ticket?: TicketDetail;
+  detailError?: unknown;
+  assignees?: TicketAssignee[];
+  assigneesError?: unknown;
+}
+
+/**
+ * Route the two GETs the page makes.
+ *
+ * They resolve independently, so a test can fail the roster without failing the
+ * ticket — and a single blanket `mockResolvedValue` would answer the roster
+ * request with a ticket, which is a state the real API can't produce.
+ */
+function mockApi({
+  ticket,
+  detailError,
+  assignees = [],
+  assigneesError,
+}: ApiFixture = {}) {
+  mockGet.mockImplementation((url: string) => {
+    if (url === ASSIGNEES_URL) {
+      return assigneesError
+        ? Promise.reject(assigneesError)
+        : Promise.resolve({ data: { assignees } });
+    }
+    return detailError
+      ? Promise.reject(detailError)
+      : Promise.resolve({ data: { ticket: ticket ?? makeTicketDetail() } });
+  });
 }
 
 /** Axios shape, so `isNotFoundError` and `extractErrorMessage` see a real one. */
@@ -83,6 +120,36 @@ function makeAxiosError(status: number, message?: string) {
     isAxiosError: true,
     response: { status, data: message ? { error: message } : {} },
   });
+}
+
+/**
+ * What the assignment endpoint replies with: the ticket, minus the thread it
+ * doesn't touch.
+ */
+function assignResponse(assignedTo: TicketAssignee | null) {
+  const { messages, ...ticket } = makeTicketDetail();
+  return {
+    data: {
+      ticket: {
+        ...ticket,
+        assignedToId: assignedTo?.id ?? null,
+        assignedTo,
+      } satisfies TicketWithAssignee,
+    },
+  };
+}
+
+/** The picker is a Radix combobox, not a native select — click, then pick. */
+async function chooseAssignee(
+  user: ReturnType<typeof userEvent.setup>,
+  optionName: string,
+): Promise<void> {
+  await user.click(assigneeControl());
+  await user.click(await screen.findByRole("option", { name: optionName }));
+}
+
+function assigneeControl(): HTMLElement {
+  return screen.getByRole("combobox", { name: "Assigned to" });
 }
 
 /**
@@ -104,6 +171,7 @@ function renderDetail(
 
 beforeEach(() => {
   mockGet.mockReset();
+  mockPatch.mockReset();
 });
 
 afterEach(() => {
@@ -114,7 +182,7 @@ afterEach(() => {
 
 describe("TicketDetailPage", () => {
   test("requests the ticket by the id in the URL, with an abort signal", async () => {
-    mockGet.mockResolvedValue(detailResponse(makeTicketDetail()));
+    mockApi();
     renderDetail("/tickets/12");
 
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
@@ -124,7 +192,7 @@ describe("TicketDetailPage", () => {
   });
 
   test("shows a skeleton while loading, then the ticket", async () => {
-    mockGet.mockResolvedValue(detailResponse(makeTicketDetail()));
+    mockApi();
     renderDetail();
 
     expect(screen.getByLabelText("Loading ticket")).toHaveAttribute(
@@ -139,11 +207,9 @@ describe("TicketDetailPage", () => {
   });
 
   test("renders the ticket fields, id and badges", async () => {
-    mockGet.mockResolvedValue(
-      detailResponse(
-        makeTicketDetail({ status: TICKET_STATUS.Resolved, id: 42 }),
-      ),
-    );
+    mockApi({
+      ticket: makeTicketDetail({ status: TICKET_STATUS.Resolved, id: 42 }),
+    });
     renderDetail("/tickets/42");
 
     expect(
@@ -157,9 +223,7 @@ describe("TicketDetailPage", () => {
   });
 
   test("omits the category badge when the ticket has none", async () => {
-    mockGet.mockResolvedValue(
-      detailResponse(makeTicketDetail({ category: null })),
-    );
+    mockApi({ ticket: makeTicketDetail({ category: null }) });
     renderDetail();
 
     await screen.findByRole("heading", { name: "Cannot log in", level: 1 });
@@ -169,20 +233,18 @@ describe("TicketDetailPage", () => {
   });
 
   test("shows the assignee when there is one", async () => {
-    mockGet.mockResolvedValue(
-      detailResponse(
-        makeTicketDetail({
-          assignedToId: "user-1",
-          // Deliberately not the signed-in user's name: the NavBar renders that,
-          // so a match would prove nothing about the assignee field.
-          assignedTo: {
-            id: "user-1",
-            name: "Dana Delegate",
-            email: "dana@example.com",
-          },
-        }),
-      ),
-    );
+    mockApi({
+      ticket: makeTicketDetail({
+        assignedToId: "user-1",
+        // Deliberately not the signed-in user's name: the NavBar renders that,
+        // so a match would prove nothing about the assignee field.
+        assignedTo: {
+          id: "user-1",
+          name: "Dana Delegate",
+          email: "dana@example.com",
+        },
+      }),
+    });
     renderDetail();
 
     await screen.findByRole("heading", { name: "Cannot log in", level: 1 });
@@ -192,31 +254,164 @@ describe("TicketDetailPage", () => {
   });
 
   test("shows Unassigned when the ticket has no assignee", async () => {
-    mockGet.mockResolvedValue(detailResponse(makeTicketDetail()));
+    mockApi();
     renderDetail();
 
     expect(await screen.findByText("Unassigned")).toBeInTheDocument();
   });
 });
 
-describe("TicketDetailPage thread", () => {
-  test("renders messages in the order the API sent them", async () => {
-    mockGet.mockResolvedValue(
-      detailResponse(
-        makeTicketDetail({
-          messages: [
-            makeMessage({ id: 9, textBody: "First message" }),
-            makeMessage({
-              id: 2,
-              textBody: "Second message",
-              senderName: "Support Team",
-              direction: MESSAGE_DIRECTION.outbound,
-            }),
-            makeMessage({ id: 5, textBody: "Third message" }),
-          ],
-        }),
+describe("TicketDetailPage assignment", () => {
+  /** The picker is disabled until the roster lands — wait, then interact. */
+  async function readyToAssign() {
+    await screen.findByRole("heading", { name: "Cannot log in", level: 1 });
+    await waitFor(() => expect(assigneeControl()).toBeEnabled());
+    return userEvent.setup();
+  }
+
+  test("asks the API who the ticket can be assigned to", async () => {
+    mockApi({ assignees: AGENTS });
+    renderDetail();
+
+    await waitFor(() =>
+      expect(mockGet).toHaveBeenCalledWith(
+        ASSIGNEES_URL,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
+  });
+
+  test("offers Unassigned and every agent", async () => {
+    mockApi({ assignees: AGENTS });
+    renderDetail();
+    const user = await readyToAssign();
+
+    await user.click(assigneeControl());
+
+    expect(
+      await screen.findByRole("option", { name: "Unassigned" }),
+    ).toBeInTheDocument();
+    for (const agent of AGENTS) {
+      expect(
+        screen.getByRole("option", { name: agent.name }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  test("assigns the ticket to the chosen agent", async () => {
+    mockApi({ assignees: AGENTS });
+    mockPatch.mockResolvedValue(assignResponse(AGENTS[1]));
+    renderDetail();
+    const user = await readyToAssign();
+    const detailFetches = () =>
+      mockGet.mock.calls.filter(([url]) => url === "/api/tickets/12").length;
+    const before = detailFetches();
+
+    await chooseAssignee(user, "Sam Support");
+
+    expect(mockPatch).toHaveBeenCalledWith("/api/tickets/12/assignee", {
+      assignedToId: "agent-2",
+    });
+    expect(await screen.findByText("sam@example.com")).toBeInTheDocument();
+    expect(assigneeControl()).toHaveTextContent("Sam Support");
+    // The response updated the cached ticket directly: refetching would pull
+    // the whole thread back down to learn one field.
+    expect(detailFetches()).toBe(before);
+  });
+
+  test("unassigns the ticket by sending null", async () => {
+    mockApi({
+      ticket: makeTicketDetail({
+        assignedToId: AGENTS[0].id,
+        assignedTo: AGENTS[0],
+      }),
+      assignees: AGENTS,
+    });
+    mockPatch.mockResolvedValue(assignResponse(null));
+    renderDetail();
+    const user = await readyToAssign();
+
+    await chooseAssignee(user, "Unassigned");
+
+    expect(mockPatch).toHaveBeenCalledWith("/api/tickets/12/assignee", {
+      assignedToId: null,
+    });
+    await waitFor(() =>
+      expect(assigneeControl()).toHaveTextContent("Unassigned"),
+    );
+    expect(screen.queryByText("dana@example.com")).not.toBeInTheDocument();
+  });
+
+  test("keeps the current assignee and explains a rejected change", async () => {
+    mockApi({
+      ticket: makeTicketDetail({
+        assignedToId: AGENTS[0].id,
+        assignedTo: AGENTS[0],
+      }),
+      assignees: AGENTS,
+    });
+    mockPatch.mockRejectedValue(makeAxiosError(400, "Assignee not found"));
+    renderDetail();
+    const user = await readyToAssign();
+
+    await chooseAssignee(user, "Sam Support");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Assignee not found",
+    );
+    // The field still says who the ticket is actually assigned to — showing the
+    // rejected choice would claim a change the server refused.
+    expect(assigneeControl()).toHaveTextContent("Dana Delegate");
+  });
+
+  test("still names an assignee who has left the roster", async () => {
+    const gone: TicketAssignee = {
+      id: "gone-1",
+      name: "Gone Agent",
+      email: "gone@example.com",
+    };
+    mockApi({
+      ticket: makeTicketDetail({ assignedToId: gone.id, assignedTo: gone }),
+      assignees: AGENTS,
+    });
+    renderDetail();
+    const user = await readyToAssign();
+
+    expect(assigneeControl()).toHaveTextContent("Gone Agent");
+
+    await user.click(assigneeControl());
+    expect(
+      await screen.findByRole("option", { name: "Gone Agent" }),
+    ).toBeInTheDocument();
+  });
+
+  test("explains a roster that will not load, and locks the control", async () => {
+    mockApi({ assigneesError: makeAxiosError(500) });
+    renderDetail();
+
+    expect(
+      await screen.findByText("Couldn't load the list of users."),
+    ).toBeInTheDocument();
+    expect(assigneeControl()).toBeDisabled();
+  });
+});
+
+describe("TicketDetailPage thread", () => {
+  test("renders messages in the order the API sent them", async () => {
+    mockApi({
+      ticket: makeTicketDetail({
+        messages: [
+          makeMessage({ id: 9, textBody: "First message" }),
+          makeMessage({
+            id: 2,
+            textBody: "Second message",
+            senderName: "Support Team",
+            direction: MESSAGE_DIRECTION.outbound,
+          }),
+          makeMessage({ id: 5, textBody: "Third message" }),
+        ],
+      }),
+    });
     const { container } = renderDetail();
 
     await screen.findByText("First message");
@@ -234,16 +429,14 @@ describe("TicketDetailPage thread", () => {
   });
 
   test("labels each message by direction", async () => {
-    mockGet.mockResolvedValue(
-      detailResponse(
-        makeTicketDetail({
-          messages: [
-            makeMessage({ id: 1 }),
-            makeMessage({ id: 2, direction: MESSAGE_DIRECTION.outbound }),
-          ],
-        }),
-      ),
-    );
+    mockApi({
+      ticket: makeTicketDetail({
+        messages: [
+          makeMessage({ id: 1 }),
+          makeMessage({ id: 2, direction: MESSAGE_DIRECTION.outbound }),
+        ],
+      }),
+    });
     renderDetail();
 
     expect(await screen.findByText("From customer")).toBeInTheDocument();
@@ -251,13 +444,11 @@ describe("TicketDetailPage thread", () => {
   });
 
   test("preserves line breaks in the message body", async () => {
-    mockGet.mockResolvedValue(
-      detailResponse(
-        makeTicketDetail({
-          messages: [makeMessage({ id: 1, textBody: "Line one\nLine two" })],
-        }),
-      ),
-    );
+    mockApi({
+      ticket: makeTicketDetail({
+        messages: [makeMessage({ id: 1, textBody: "Line one\nLine two" })],
+      }),
+    });
     renderDetail();
 
     const body = await screen.findByText(/Line one/);
@@ -267,13 +458,11 @@ describe("TicketDetailPage thread", () => {
 
   test("renders an HTML-looking body as literal text, never as markup", async () => {
     const hostile = '<img src="x" onerror="alert(1)">Hi there';
-    mockGet.mockResolvedValue(
-      detailResponse(
-        makeTicketDetail({
-          messages: [makeMessage({ id: 1, textBody: hostile })],
-        }),
-      ),
-    );
+    mockApi({
+      ticket: makeTicketDetail({
+        messages: [makeMessage({ id: 1, textBody: hostile })],
+      }),
+    });
     const { container } = renderDetail();
 
     expect(await screen.findByText(hostile)).toBeInTheDocument();
@@ -281,13 +470,11 @@ describe("TicketDetailPage thread", () => {
   });
 
   test("explains a message with no plain-text part", async () => {
-    mockGet.mockResolvedValue(
-      detailResponse(
-        makeTicketDetail({
-          messages: [makeMessage({ id: 1, textBody: null })],
-        }),
-      ),
-    );
+    mockApi({
+      ticket: makeTicketDetail({
+        messages: [makeMessage({ id: 1, textBody: null })],
+      }),
+    });
     renderDetail();
 
     expect(
@@ -296,7 +483,7 @@ describe("TicketDetailPage thread", () => {
   });
 
   test("shows the empty state when the ticket has no messages", async () => {
-    mockGet.mockResolvedValue(detailResponse(makeTicketDetail()));
+    mockApi();
     renderDetail();
 
     expect(
@@ -308,7 +495,7 @@ describe("TicketDetailPage thread", () => {
 
 describe("TicketDetailPage errors", () => {
   test("shows a not-found destination, not an alert, on 404", async () => {
-    mockGet.mockRejectedValue(makeAxiosError(404, "Ticket not found"));
+    mockApi({ detailError: makeAxiosError(404, "Ticket not found") });
     renderDetail("/tickets/999");
 
     expect(
@@ -322,7 +509,7 @@ describe("TicketDetailPage errors", () => {
   });
 
   test("surfaces the API message in an alert for other failures", async () => {
-    mockGet.mockRejectedValue(makeAxiosError(400, "Invalid ticket id"));
+    mockApi({ detailError: makeAxiosError(400, "Invalid ticket id") });
     renderDetail("/tickets/abc");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -336,7 +523,7 @@ describe("TicketDetailPage errors", () => {
 
 describe("TicketDetailPage back link", () => {
   test("returns to the list view it was opened from", async () => {
-    mockGet.mockResolvedValue(detailResponse(makeTicketDetail()));
+    mockApi();
     renderDetail({
       pathname: "/tickets/12",
       state: { listSearch: "?status=Open&page=2" },
@@ -350,7 +537,7 @@ describe("TicketDetailPage back link", () => {
   });
 
   test("falls back to a bare /tickets when opened by a direct link", async () => {
-    mockGet.mockResolvedValue(detailResponse(makeTicketDetail()));
+    mockApi();
     renderDetail("/tickets/12");
 
     await screen.findByRole("heading", { name: "Cannot log in", level: 1 });

@@ -82,3 +82,31 @@ export const ticketIdParamSchema = z.object({
 });
 
 export type TicketIdParam = z.infer<typeof ticketIdParamSchema>;
+
+/**
+ * Sanity ceiling on an assignee id. Better Auth generates 32-character ids, so
+ * anything near this is already nonsense — the cap just keeps a request from
+ * turning an arbitrarily long string into a database lookup.
+ */
+const ASSIGNEE_ID_MAX_LENGTH = 128;
+
+/**
+ * Body for PATCH /api/tickets/:id/assignee.
+ *
+ * `null` is the way to unassign, so the field is nullable but *required*: an
+ * empty body is a mistake, and answering it with 200 and no change would hide
+ * the mistake. Every failure mode shares one message — the client picks from a
+ * list the server sent it, so a bad value here is a bug, not something a user
+ * can correct by rewording. Whether the id belongs to a real, assignable user
+ * is a database question, answered by the route.
+ */
+export const assignTicketSchema = z.object({
+  assignedToId: z
+    .string({ error: "Invalid assignee" })
+    .trim()
+    .min(1, "Invalid assignee")
+    .max(ASSIGNEE_ID_MAX_LENGTH, "Invalid assignee")
+    .nullable(),
+});
+
+export type AssignTicketValues = z.infer<typeof assignTicketSchema>;

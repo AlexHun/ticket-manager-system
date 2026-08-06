@@ -148,16 +148,39 @@ export type TicketAssignee = Pick<User, "id" | "name" | "email">;
  */
 export type ThreadMessage = Omit<Message, "htmlBody">;
 
-/** A ticket plus the two things only the detail view needs. */
-export interface TicketDetail extends Ticket {
+/** A ticket whose assignee has been looked up for us. */
+export interface TicketWithAssignee extends Ticket {
   /** Resolved server-side: `assignedToId` alone can't be looked up by an agent. */
   assignedTo: TicketAssignee | null;
+}
+
+/** A ticket plus the two things only the detail view needs. */
+export interface TicketDetail extends TicketWithAssignee {
   /** The whole thread, oldest first. */
   messages: ThreadMessage[];
 }
 
 export interface TicketDetailResponse {
   ticket: TicketDetail;
+}
+
+/**
+ * Everyone a ticket can be handed to.
+ *
+ * Served by the tickets API rather than `/api/users`, which is admin-only:
+ * agents assign tickets too, and this is the one slice of the user table they
+ * need to do it.
+ */
+export interface TicketAssigneesResponse {
+  assignees: TicketAssignee[];
+}
+
+/**
+ * The reply to an assignment change. No `messages` — reassigning doesn't touch
+ * the thread, and re-sending it would grow with every reply on the ticket.
+ */
+export interface UpdateTicketResponse {
+  ticket: TicketWithAssignee;
 }
 
 export interface UsersListResponse {

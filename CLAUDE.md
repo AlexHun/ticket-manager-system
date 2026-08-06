@@ -31,6 +31,7 @@ Prefer context7 over web search for library docs. Skip it for refactoring, busin
 
 ## Conventions
 
+- **Never write new tests unless explicitly asked.** No new spec files, no new `it`/`test` cases, no new E2E specs — not "for coverage", not as a bonus after a feature, not proactively after a bug fix. Do not launch the `playwright-e2e-author` agent on your own initiative. When a change breaks an *existing* test, fix that test (or the code) as part of the change — that is maintenance, not new tests. If you think something needs coverage, say so in one line and move on; wait for the user to ask.
 - Strict TS; no unused locals/params; `verbatimModuleSyntax` (use `import type` for type-only imports).
 - Shared cross-app types live in `packages/shared` — don't duplicate `Ticket` / `User` / API contracts in the apps.
 - Role values must reference the single source of truth in `@ticket/shared`: import the `USER_ROLE` runtime constant and the `UserRole` type. Compare and assign with `USER_ROLE.admin` / `USER_ROLE.agent` — never the bare `"admin"` / `"agent"` string literals, never inline `as "admin" | "agent"` casts, and never redefine the union in-app. This applies to app code, tests, fixtures, and third-party configs that take role literals (e.g. Better Auth `inferAdditionalFields`, use `[USER_ROLE.admin, USER_ROLE.agent]`).

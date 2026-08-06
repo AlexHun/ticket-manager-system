@@ -1,27 +1,36 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Mail } from "lucide-react";
 import type { TicketDetail, TicketDetailResponse } from "@ticket/shared";
 import { NavBar } from "@/components/NavBar";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { initialsOf } from "@/lib/initials";
 import {
   extractErrorMessage,
   isClientError,
   isNotFoundError,
 } from "@/lib/errors";
 import { listPathFrom } from "@/lib/ticket-list-params";
+import { ticketKeys } from "@/lib/ticket-queries";
+import { cn } from "@/lib/utils";
+import {
+  ASSIGNEE_SELECT_ID,
+  TicketAssigneeSelect,
+} from "./TicketAssigneeSelect";
 import { TicketMessageThread } from "./TicketMessageThread";
 
 function useTicketQuery(id: string | undefined) {
   return useQuery({
-    // Shares the "tickets" prefix with the list key so a future update can
-    // invalidate both at once; "detail" keeps it from ever colliding with the
-    // list's params object.
-    queryKey: ["tickets", "detail", id],
+    // Shares the "tickets" prefix with the list key so one invalidate can reach
+    // both; "detail" keeps it from ever colliding with the list's params object.
+    queryKey: ticketKeys.detail(id ?? ""),
     queryFn: async ({ signal }) => {
       const { data } = await api.get<TicketDetailResponse>(
         `/api/tickets/${id}`,
@@ -94,25 +103,36 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
       </div>
 
       <Card>
-        <CardContent>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <Field label="Customer">
-              <span className="block">{ticket.customerName}</span>
-              <span className="block text-xs text-muted-foreground">
+        <CardContent className="flex flex-col gap-5">
+          {/* The customer is lifted out of the field grid entirely. As one more
+              `<dt>/<dd>` pair the address was a line of small grey text among
+              four of them — the hardest thing on the card to find, and the one
+              an agent came for. Here it is the card's heading, and a mailto
+              link besides, so it reads as something to act on. */}
+          <div className="flex items-center gap-3">
+            <Avatar size="lg">
+              <AvatarFallback>{initialsOf(ticket.customerName)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="font-medium">{ticket.customerName}</p>
+              <a
+                href={`mailto:${ticket.customerEmail}`}
+                className="inline-flex items-center gap-1.5 text-sm break-all text-primary underline-offset-4 hover:underline"
+              >
+                <Mail aria-hidden="true" className="size-3.5 shrink-0" />
                 {ticket.customerEmail}
-              </span>
-            </Field>
-            <Field label="Assigned to">
-              {ticket.assignedTo ? (
-                <>
-                  <span className="block">{ticket.assignedTo.name}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {ticket.assignedTo.email}
-                  </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground">Unassigned</span>
-              )}
+              </a>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Wrapping rather than a fixed grid: three items of very different
+              widths (a 224px picker and two dates) leave a column layout mostly
+              empty, and these sit on one line at this width. */}
+          <dl className="flex flex-wrap gap-x-10 gap-y-4">
+            <Field label="Assigned to" htmlFor={ASSIGNEE_SELECT_ID}>
+              <TicketAssigneeSelect ticket={ticket} />
             </Field>
             <Field label="Created">
               <DateValue value={ticket.createdAt} />
@@ -134,17 +154,32 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
   );
 }
 
+const FIELD_LABEL_CLASS = "text-xs font-medium text-muted-foreground";
+
+/**
+ * `htmlFor` turns the term into a real `<label>` for the control in the
+ * definition beside it — clicking "Assigned to" then opens the picker, and
+ * assistive tech reads the two as one field rather than as loose text.
+ */
 function Field({
   label,
+  htmlFor,
   children,
 }: {
   label: string;
+  htmlFor?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <dt className="mb-1 text-xs font-medium text-muted-foreground">
-        {label}
+      <dt className="mb-1">
+        {htmlFor ? (
+          <Label htmlFor={htmlFor} className={FIELD_LABEL_CLASS}>
+            {label}
+          </Label>
+        ) : (
+          <span className={FIELD_LABEL_CLASS}>{label}</span>
+        )}
       </dt>
       <dd>{children}</dd>
     </div>
@@ -169,9 +204,17 @@ function TicketDetailSkeleton() {
         <Skeleton className="h-8 w-3/4" />
       </div>
       <Card>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, i) => (
+        <CardContent className="flex flex-col gap-5">
+          <div className="flex items-center gap-3">
+            <Skeleton className="size-10 rounded-full" />
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+          </div>
+          <Separator />
+          <div className="flex flex-wrap gap-x-10 gap-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
               <div key={i}>
                 <Skeleton className="mb-2 h-3 w-20" />
                 <Skeleton className="h-4 w-40" />
@@ -180,12 +223,24 @@ function TicketDetailSkeleton() {
           </div>
         </CardContent>
       </Card>
-      <div className="flex flex-col gap-4">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className="rounded-xl px-4 py-3 ring-1 ring-border">
-            <Skeleton className="mb-3 h-4 w-48" />
-            <Skeleton className="mb-2 h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
+      {/* Placeholders alternate sides, so the thread doesn't jump across the
+          column the moment it loads. */}
+      <div className="flex flex-col gap-5">
+        {[false, true].map((outbound, i) => (
+          <div
+            key={i}
+            className={cn("flex gap-2", outbound && "flex-row-reverse")}
+          >
+            <Skeleton className="size-8 shrink-0 rounded-full" />
+            <div
+              className={cn(
+                "flex w-2/3 flex-col gap-1.5",
+                outbound && "items-end",
+              )}
+            >
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-16 w-full rounded-2xl" />
+            </div>
           </div>
         ))}
       </div>

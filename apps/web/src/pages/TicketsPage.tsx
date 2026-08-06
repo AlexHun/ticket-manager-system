@@ -19,6 +19,7 @@ import {
   writeTicketListParams,
   type TicketListPatch,
 } from "@/lib/ticket-list-params";
+import { ticketKeys } from "@/lib/ticket-queries";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
 import {
@@ -82,7 +83,7 @@ function toQueryParams(
 
 function useTicketsQuery(params: TicketsQueryParams) {
   return useQuery({
-    queryKey: ["tickets", params],
+    queryKey: ticketKeys.list(params),
     queryFn: async ({ signal }) => {
       const { data } = await api.get<TicketsListResponse>("/api/tickets", {
         params,

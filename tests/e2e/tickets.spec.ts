@@ -11,18 +11,23 @@ import {
   TICKET_SEARCH_MAX_LENGTH,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
+  USER_ROLE,
   type SortOrder,
   type Ticket,
+  type TicketAssignee,
+  type TicketAssigneesResponse,
   type TicketDetail,
   type TicketDetailResponse,
   type TicketsListResponse,
   type TicketSortField,
+  type UpdateTicketResponse,
 } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
-import { resetTickets, testDb } from "./helpers/db";
+import { resetE2eUsers, resetTickets, testDb } from "./helpers/db";
 import { API_URL } from "./helpers/env";
 
 const TICKETS_ENDPOINT = `${API_URL}/api/tickets`;
+const ASSIGNEES_ENDPOINT = `${TICKETS_ENDPOINT}/assignees`;
 
 /**
  * Seed three tickets whose createdAt values are deliberately inserted
@@ -224,6 +229,77 @@ async function agentUserId(): Promise<string> {
 
 function detailEndpoint(id: number | string): string {
   return `${TICKETS_ENDPOINT}/${id}`;
+}
+
+function assigneeEndpoint(id: number | string): string {
+  return `${TICKETS_ENDPOINT}/${id}/assignee`;
+}
+
+/**
+ * Extra people for the assignment tests: two agents to hand a ticket between,
+ * an admin who is offered alongside them, and a user deleted after the fact.
+ *
+ * Ids are written out because `User.id` has no database default — Better Auth
+ * mints one per real sign-up, and these rows only ever exist to be pointed at.
+ * The `e2e-` prefix is what lets `resetE2eUsers` sweep them again.
+ */
+const SEEDED_USERS = [
+  {
+    id: "e2e-assignee-zoe",
+    name: "Zoe Assignee",
+    email: "e2e-assignee-zoe@example.com",
+    role: USER_ROLE.agent,
+    deletedAt: null,
+  },
+  {
+    id: "e2e-assignee-yuri",
+    name: "Yuri Assignee",
+    email: "e2e-assignee-yuri@example.com",
+    role: USER_ROLE.agent,
+    deletedAt: null,
+  },
+  {
+    id: "e2e-assignee-admin",
+    name: "Extra Admin",
+    email: "e2e-assignee-admin@example.com",
+    role: USER_ROLE.admin,
+    deletedAt: null,
+  },
+  {
+    id: "e2e-assignee-deleted",
+    name: "Deleted Assignee",
+    email: "e2e-assignee-deleted@example.com",
+    role: USER_ROLE.agent,
+    deletedAt: new Date("2025-01-01T00:00:00.000Z"),
+  },
+] as const;
+
+const ZOE = SEEDED_USERS[0];
+const YURI = SEEDED_USERS[1];
+const EXTRA_ADMIN = SEEDED_USERS[2];
+const DELETED_USER = SEEDED_USERS[3];
+
+/** Recreated rather than upserted, so a half-finished earlier run can't skew it. */
+async function seedAssignableUsers(): Promise<void> {
+  const ids = SEEDED_USERS.map((u) => u.id);
+  await testDb.user.deleteMany({ where: { id: { in: ids } } });
+  await testDb.user.createMany({ data: [...SEEDED_USERS] });
+}
+
+async function fetchAssignees(page: Page): Promise<TicketAssignee[]> {
+  const res = await page.request.get(ASSIGNEES_ENDPOINT);
+  expect(res.status()).toBe(200);
+  return ((await res.json()) as TicketAssigneesResponse).assignees;
+}
+
+async function assign(
+  page: Page,
+  ticketId: number | string,
+  assignedToId: unknown,
+) {
+  return page.request.patch(assigneeEndpoint(ticketId), {
+    data: { assignedToId },
+  });
 }
 
 async function fetchDetail(page: Page, id: number): Promise<TicketDetail> {
@@ -1010,6 +1086,212 @@ test.describe("Ticket detail API", () => {
 });
 
 // ---------------------------------------------------------------------------
+// API — assignment
+// ---------------------------------------------------------------------------
+
+test.describe("Ticket assignees API", () => {
+  test.beforeAll(async () => {
+    await seedAssignableUsers();
+  });
+
+  test.afterAll(async () => {
+    await resetE2eUsers();
+  });
+
+  test("-> 401 when unauthenticated", async ({ request }) => {
+    const res = await request.get(ASSIGNEES_ENDPOINT);
+    expect(res.status()).toBe(401);
+  });
+
+  test("lists the users, in name order", async ({ page }) => {
+    await signIn(page, "agent");
+
+    const assignees = await fetchAssignees(page);
+    const names = assignees.map((a) => a.name);
+
+    expect(names).toContain(ZOE.name);
+    expect(names).toContain(YURI.name);
+    expect([...names].sort((a, b) => a.localeCompare(b))).toEqual(names);
+  });
+
+  test("offers admins too — every role works tickets", async ({ page }) => {
+    await signIn(page, "agent");
+
+    const emails = (await fetchAssignees(page)).map((a) => a.email);
+    expect(emails).toContain(EXTRA_ADMIN.email);
+    expect(emails).toContain(CREDENTIALS.admin.email);
+  });
+
+  test("drops a user who has been deleted", async ({ page }) => {
+    await signIn(page, "agent");
+
+    const emails = (await fetchAssignees(page)).map((a) => a.email);
+    expect(emails).toContain(ZOE.email);
+    expect(emails).not.toContain(DELETED_USER.email);
+  });
+
+  test("sends only the three columns a picker shows", async ({ page }) => {
+    await signIn(page, "agent");
+
+    for (const assignee of await fetchAssignees(page)) {
+      expect(Object.keys(assignee).sort()).toEqual(["email", "id", "name"]);
+    }
+  });
+});
+
+test.describe("Ticket assignment API", () => {
+  test.beforeAll(async () => {
+    await seedAssignableUsers();
+  });
+
+  test.afterAll(async () => {
+    await resetE2eUsers();
+  });
+
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test("-> 401 when unauthenticated", async ({ request }) => {
+    const id = await seedTicketWithThread();
+
+    const res = await request.patch(assigneeEndpoint(id), {
+      data: { assignedToId: ZOE.id },
+    });
+    expect(res.status()).toBe(401);
+  });
+
+  test("assigns a ticket and answers with the resolved assignee", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await assign(page, id, ZOE.id);
+
+    expect(res.status()).toBe(200);
+    const { ticket } = (await res.json()) as UpdateTicketResponse;
+    expect(ticket).toMatchObject({
+      id,
+      assignedToId: ZOE.id,
+      assignedTo: { id: ZOE.id, name: ZOE.name, email: ZOE.email },
+    });
+    // The id alone would leave the client unable to name who it picked: agents
+    // can't read /api/users.
+    expect(ticket.assignedTo).not.toHaveProperty("role");
+    expect(ticket).not.toHaveProperty("messages");
+  });
+
+  test("the change is what the detail endpoint reports afterwards", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    await assign(page, id, YURI.id);
+
+    const detail = await fetchDetail(page, id);
+    expect(detail.assignedToId).toBe(YURI.id);
+    expect(detail.assignedTo?.email).toBe(YURI.email);
+    // Assignment is not an edit of the conversation.
+    expect(detail.messages).toHaveLength(3);
+  });
+
+  test("hands a ticket from one agent to another", async ({ page }) => {
+    const id = await seedTicketWithThread({ assignedToId: ZOE.id });
+    await signIn(page, "agent");
+
+    const res = await assign(page, id, YURI.id);
+
+    expect(res.status()).toBe(200);
+    expect(((await res.json()) as UpdateTicketResponse).ticket.assignedToId).toBe(
+      YURI.id,
+    );
+  });
+
+  test("unassigns on null", async ({ page }) => {
+    const id = await seedTicketWithThread({ assignedToId: ZOE.id });
+    await signIn(page, "agent");
+
+    const res = await assign(page, id, null);
+
+    expect(res.status()).toBe(200);
+    const { ticket } = (await res.json()) as UpdateTicketResponse;
+    expect(ticket.assignedToId).toBeNull();
+    expect(ticket.assignedTo).toBeNull();
+  });
+
+  test("an admin can assign too", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "admin");
+
+    const res = await assign(page, id, ZOE.id);
+    expect(res.status()).toBe(200);
+  });
+
+  test("hands a ticket to an admin", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    // The other side of the test above: there the admin was the caller, here
+    // they are the target. It gets its own test because the write path checks
+    // the id a second time — were that predicate to narrow back to agents, the
+    // picker would go on offering a name the API refuses.
+    const res = await assign(page, id, EXTRA_ADMIN.id);
+
+    expect(res.status()).toBe(200);
+    const { ticket } = (await res.json()) as UpdateTicketResponse;
+    expect(ticket.assignedToId).toBe(EXTRA_ADMIN.id);
+    expect(ticket.assignedTo?.email).toBe(EXTRA_ADMIN.email);
+  });
+
+  test("-> 400 for someone who cannot be assigned", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    // The FK would happily accept the deleted row — being in the user table is
+    // not the same as being assignable.
+    for (const candidate of ["no-such-user", DELETED_USER.id]) {
+      const res = await assign(page, id, candidate);
+      expect(res.status(), candidate).toBe(400);
+      expect((await res.json()).error, candidate).toBe("Assignee not found");
+    }
+
+    // …and the ticket is untouched by any of them.
+    expect((await fetchDetail(page, id)).assignedToId).toBeNull();
+  });
+
+  test("-> 400 for a malformed body", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    for (const value of ["", "   ", 42, ["x"], undefined]) {
+      const res = await assign(page, id, value);
+      expect(res.status(), JSON.stringify(value ?? null)).toBe(400);
+      expect((await res.json()).error).toBe("Invalid assignee");
+    }
+  });
+
+  test("-> 404 for a ticket that doesn't exist", async ({ page }) => {
+    await signIn(page, "agent");
+
+    const res = await assign(page, MAX_TICKET_ID, ZOE.id);
+    expect(res.status()).toBe(404);
+    expect((await res.json()).error).toBe("Ticket not found");
+  });
+
+  test("-> 400 for a malformed ticket id", async ({ page }) => {
+    await signIn(page, "agent");
+
+    for (const value of ["abc", "0", "-1", String(MAX_TICKET_ID + 1)]) {
+      const res = await assign(page, value, ZOE.id);
+      expect(res.status(), `id=${value}`).toBe(400);
+      expect((await res.json()).error, `id=${value}`).toBe("Invalid ticket id");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
 
@@ -1750,6 +2032,95 @@ test.describe("Ticket detail page", () => {
 
     await expect(page).toHaveURL(listUrl);
     await expect(page.getByText("Page 2 of 2")).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UI — assignment
+// ---------------------------------------------------------------------------
+
+test.describe("Ticket assignment (detail page)", () => {
+  test.beforeAll(async () => {
+    await seedAssignableUsers();
+  });
+
+  test.afterAll(async () => {
+    await resetE2eUsers();
+  });
+
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  const picker = (page: Page) =>
+    page.getByRole("combobox", { name: "Assigned to" });
+
+  test("assigns a ticket, and it stays assigned", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+
+    await expect(picker(page)).toContainText("Unassigned");
+    await expect(picker(page)).toBeEnabled();
+
+    await picker(page).click();
+    await page.getByRole("option", { name: ZOE.name, exact: true }).click();
+
+    await expect(picker(page)).toContainText(ZOE.name);
+    await expect(page.getByText(ZOE.email)).toBeVisible();
+
+    // Not just on screen: reloading asks the API again.
+    await page.reload();
+    await expect(picker(page)).toContainText(ZOE.name);
+  });
+
+  test("hands the ticket back to nobody", async ({ page }) => {
+    const id = await seedTicketWithThread({ assignedToId: ZOE.id });
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+
+    await expect(picker(page)).toContainText(ZOE.name);
+
+    await picker(page).click();
+    await page.getByRole("option", { name: "Unassigned", exact: true }).click();
+
+    await expect(picker(page)).toContainText("Unassigned");
+    await page.reload();
+    await expect(picker(page)).toContainText("Unassigned");
+  });
+
+  test("offers every active user, whatever their role", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+
+    await expect(picker(page)).toBeEnabled();
+    await picker(page).click();
+
+    const options = page.getByRole("option");
+    await expect(options.filter({ hasText: ZOE.name })).toHaveCount(1);
+    await expect(options.filter({ hasText: YURI.name })).toHaveCount(1);
+    await expect(options.filter({ hasText: EXTRA_ADMIN.name })).toHaveCount(1);
+    await expect(options.filter({ hasText: DELETED_USER.name })).toHaveCount(0);
+  });
+
+  test("is reachable by keyboard, with the field's own label", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+    await expect(picker(page)).toBeEnabled();
+
+    // Clicking the term in the definition list opens the control beside it,
+    // which is only true if the <dt> is a real label for it.
+    await page.getByText("Assigned to", { exact: true }).click();
+    await expect(
+      page.getByRole("option", { name: ZOE.name, exact: true }),
+    ).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(picker(page)).toBeFocused();
   });
 });
 
