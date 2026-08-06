@@ -24,6 +24,12 @@ import {
   ASSIGNEE_SELECT_ID,
   TicketAssigneeSelect,
 } from "./TicketAssigneeSelect";
+import {
+  CATEGORY_SELECT_ID,
+  STATUS_SELECT_ID,
+  TicketCategorySelect,
+  TicketStatusSelect,
+} from "./TicketFieldSelects";
 import { TicketMessageThread } from "./TicketMessageThread";
 
 function useTicketQuery(id: string | undefined) {
@@ -53,12 +59,17 @@ export function TicketDetailPage() {
   const { data: ticket, isPending, error } = useTicketQuery(id);
 
   return (
-    // Not viewport-owning, unlike the list: a long thread should scroll the
-    // window, and max-w keeps the message text at a readable measure.
-    <div className="min-h-screen bg-background">
+    // Viewport-owning from `lg` up, like the list page: the details and the
+    // thread each scroll on their own, so the fields an agent is changing stay
+    // put while they read. Below that the two panes stack and the window
+    // scrolls as before — splitting a short viewport in two would leave a
+    // message pane too small to read in.
+    <div className="flex min-h-dvh flex-col bg-background lg:h-dvh lg:overflow-hidden">
       <NavBar />
-      <main className="mx-auto w-full max-w-3xl p-6">
-        <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4">
+      <main className="flex flex-1 flex-col p-6 lg:min-h-0">
+        {/* Outside the loaded branch: the not-found screen is a dead end
+            without it. */}
+        <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4 self-start">
           <Link to={backTo}>
             <ArrowLeft aria-hidden="true" />
             Back to tickets
@@ -92,8 +103,16 @@ export function TicketDetailPage() {
 
 function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
   return (
-    <div className="flex flex-col gap-6">
-      <div>
+    <div className="flex flex-1 flex-col gap-6 lg:min-h-0">
+      {/* A band across both panes rather than a column heading: a long subject
+          gets the whole width here instead of wrapping four times in a 22rem
+          sidebar.
+
+          Badges here, pickers in the card: the two say the same thing on
+          purpose. Colour is what makes the state readable at a glance, and a
+          select trigger can't carry it without looking unlike every other
+          control on the page — so the badge shows, and the picker changes. */}
+      <div className="shrink-0">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <StatusBadge status={ticket.status} />
           {ticket.category && <CategoryBadge category={ticket.category} />}
@@ -102,54 +121,76 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
         <h1 className="text-2xl font-semibold break-words">{ticket.subject}</h1>
       </div>
 
-      <Card>
-        <CardContent className="flex flex-col gap-5">
-          {/* The customer is lifted out of the field grid entirely. As one more
-              `<dt>/<dd>` pair the address was a line of small grey text among
-              four of them — the hardest thing on the card to find, and the one
-              an agent came for. Here it is the card's heading, and a mailto
-              link besides, so it reads as something to act on. */}
-          <div className="flex items-center gap-3">
-            <Avatar size="lg">
-              <AvatarFallback>{initialsOf(ticket.customerName)}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="font-medium">{ticket.customerName}</p>
-              <a
-                href={`mailto:${ticket.customerEmail}`}
-                className="inline-flex items-center gap-1.5 text-sm break-all text-primary underline-offset-4 hover:underline"
-              >
-                <Mail aria-hidden="true" className="size-3.5 shrink-0" />
-                {ticket.customerEmail}
-              </a>
-            </div>
-          </div>
+      <div className="flex flex-1 flex-col gap-6 lg:min-h-0 lg:flex-row lg:gap-8">
+        {/* Scrolls on its own so a short viewport can't clip the fields off
+            the bottom of the card. */}
+        <aside className="lg:w-[22rem] lg:min-h-0 lg:shrink-0 lg:overflow-y-auto xl:w-[26rem]">
+          <Card>
+            <CardContent className="flex flex-col gap-5">
+              {/* The customer is lifted out of the field grid entirely. As one
+                  more `<dt>/<dd>` pair the address was a line of small grey
+                  text among four of them — the hardest thing on the card to
+                  find, and the one an agent came for. Here it is the card's
+                  heading, and a mailto link besides, so it reads as something
+                  to act on. */}
+              <div className="flex items-center gap-3">
+                <Avatar size="lg">
+                  <AvatarFallback>
+                    {initialsOf(ticket.customerName)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="font-medium">{ticket.customerName}</p>
+                  <a
+                    href={`mailto:${ticket.customerEmail}`}
+                    className="inline-flex items-center gap-1.5 text-sm break-all text-primary underline-offset-4 hover:underline"
+                  >
+                    <Mail aria-hidden="true" className="size-3.5 shrink-0" />
+                    {ticket.customerEmail}
+                  </a>
+                </div>
+              </div>
 
-          <Separator />
+              <Separator />
 
-          {/* Wrapping rather than a fixed grid: three items of very different
-              widths (a 224px picker and two dates) leave a column layout mostly
-              empty, and these sit on one line at this width. */}
-          <dl className="flex flex-wrap gap-x-10 gap-y-4">
-            <Field label="Assigned to" htmlFor={ASSIGNEE_SELECT_ID}>
-              <TicketAssigneeSelect ticket={ticket} />
-            </Field>
-            <Field label="Created">
-              <DateValue value={ticket.createdAt} />
-            </Field>
-            <Field label="Last message">
-              <DateValue value={ticket.lastMessageAt} />
-            </Field>
-          </dl>
-        </CardContent>
-      </Card>
+              {/* Wraps as a row while the card is full-width, and stacks once
+                  it is a sidebar — five items of very different widths would
+                  otherwise break into ragged rows in a 22rem column. */}
+              <dl className="flex flex-wrap gap-x-10 gap-y-4 lg:flex-col lg:flex-nowrap lg:gap-y-5">
+                <Field label="Status" htmlFor={STATUS_SELECT_ID}>
+                  <TicketStatusSelect ticket={ticket} />
+                </Field>
+                <Field label="Category" htmlFor={CATEGORY_SELECT_ID}>
+                  <TicketCategorySelect ticket={ticket} />
+                </Field>
+                <Field label="Assigned to" htmlFor={ASSIGNEE_SELECT_ID}>
+                  <TicketAssigneeSelect ticket={ticket} />
+                </Field>
+                <Field label="Created">
+                  <DateValue value={ticket.createdAt} />
+                </Field>
+                <Field label="Last message">
+                  <DateValue value={ticket.lastMessageAt} />
+                </Field>
+              </dl>
+            </CardContent>
+          </Card>
+        </aside>
 
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">
-          Messages ({ticket.messages.length})
-        </h2>
-        <TicketMessageThread messages={ticket.messages} />
-      </section>
+        <section className="flex flex-col lg:min-h-0 lg:flex-1">
+          <h2 className="mb-3 shrink-0 text-lg font-semibold">
+            Messages ({ticket.messages.length})
+          </h2>
+          {/* The thread does its own scrolling; this only gives it the height
+              left over. min-h-0 is load-bearing — without it a flex item won't
+              shrink below its content, and the pane would push the page taller
+              instead of scrolling inside. */}
+          <TicketMessageThread
+            className="lg:min-h-0 lg:flex-1"
+            messages={ticket.messages}
+          />
+        </section>
+      </div>
     </div>
   );
 }
@@ -194,55 +235,66 @@ function DateValue({ value }: { value: string }) {
 
 function TicketDetailSkeleton() {
   return (
+    // Mirrors the loaded layout — band, then the two panes — so nothing jumps
+    // sideways the moment the ticket arrives.
     <div
-      className="flex flex-col gap-6"
+      className="flex flex-1 flex-col gap-6 lg:min-h-0"
       aria-busy="true"
       aria-label="Loading ticket"
     >
-      <div>
+      <div className="shrink-0">
         <Skeleton className="mb-2 h-5 w-40 rounded-md" />
-        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-8 w-3/4 max-w-xl" />
       </div>
-      <Card>
-        <CardContent className="flex flex-col gap-5">
-          <div className="flex items-center gap-3">
-            <Skeleton className="size-10 rounded-full" />
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-3 w-48" />
-            </div>
-          </div>
-          <Separator />
-          <div className="flex flex-wrap gap-x-10 gap-y-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i}>
-                <Skeleton className="mb-2 h-3 w-20" />
-                <Skeleton className="h-4 w-40" />
+
+      <div className="flex flex-1 flex-col gap-6 lg:min-h-0 lg:flex-row lg:gap-8">
+        <aside className="lg:w-[22rem] lg:shrink-0 xl:w-[26rem]">
+          <Card>
+            <CardContent className="flex flex-col gap-5">
+              <div className="flex items-center gap-3">
+                <Skeleton className="size-10 rounded-full" />
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+              </div>
+              <Separator />
+              <div className="flex flex-wrap gap-x-10 gap-y-4 lg:flex-col lg:flex-nowrap lg:gap-y-5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="lg:w-full">
+                    <Skeleton className="mb-2 h-3 w-20" />
+                    <Skeleton className="h-4 w-40 lg:w-full" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </aside>
+
+        <div className="flex flex-col lg:min-h-0 lg:flex-1">
+          <Skeleton className="mb-3 h-6 w-36 shrink-0" />
+          {/* Placeholders alternate sides, so the thread doesn't jump across
+              the column the moment it loads. */}
+          <div className="flex flex-col gap-5 lg:min-h-0 lg:flex-1">
+            {[false, true, false].map((outbound, i) => (
+              <div
+                key={i}
+                className={cn("flex gap-2", outbound && "flex-row-reverse")}
+              >
+                <Skeleton className="size-8 shrink-0 rounded-full" />
+                <div
+                  className={cn(
+                    "flex w-2/3 max-w-[42rem] flex-col gap-1.5",
+                    outbound && "items-end",
+                  )}
+                >
+                  <Skeleton className="h-3 w-32" />
+                  <Skeleton className="h-16 w-full rounded-2xl" />
+                </div>
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-      {/* Placeholders alternate sides, so the thread doesn't jump across the
-          column the moment it loads. */}
-      <div className="flex flex-col gap-5">
-        {[false, true].map((outbound, i) => (
-          <div
-            key={i}
-            className={cn("flex gap-2", outbound && "flex-row-reverse")}
-          >
-            <Skeleton className="size-8 shrink-0 rounded-full" />
-            <div
-              className={cn(
-                "flex w-2/3 flex-col gap-1.5",
-                outbound && "items-end",
-              )}
-            >
-              <Skeleton className="h-3 w-32" />
-              <Skeleton className="h-16 w-full rounded-2xl" />
-            </div>
-          </div>
-        ))}
+        </div>
       </div>
     </div>
   );

@@ -110,3 +110,35 @@ export const assignTicketSchema = z.object({
 });
 
 export type AssignTicketValues = z.infer<typeof assignTicketSchema>;
+
+/**
+ * Body for PATCH /api/tickets/:id/status.
+ *
+ * Not nullable, unlike the two fields beside it: the column is non-null with a
+ * default, so every ticket is in one of these states and there is nothing to
+ * clear it to.
+ */
+export const updateTicketStatusSchema = z.object({
+  status: z.enum(TICKET_STATUS, { error: "Invalid status" }),
+});
+
+export type UpdateTicketStatusValues = z.infer<typeof updateTicketStatusSchema>;
+
+/**
+ * Body for PATCH /api/tickets/:id/category.
+ *
+ * Nullable because a ticket genuinely can have no category — that is the state
+ * every ticket arrives in, before anyone (or the classifier) has filed it, so
+ * `null` has to be reachable again rather than being a one-way door.
+ *
+ * Note this takes a real `null`, not the `none` sentinel the list filter uses:
+ * that one exists because a query string can't carry a null, and a JSON body
+ * can.
+ */
+export const updateTicketCategorySchema = z.object({
+  category: z.enum(TICKET_CATEGORY, { error: "Invalid category" }).nullable(),
+});
+
+export type UpdateTicketCategoryValues = z.infer<
+  typeof updateTicketCategorySchema
+>;

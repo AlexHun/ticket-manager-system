@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import {
   MESSAGE_DIRECTION,
   type MessageDirection,
@@ -60,12 +61,34 @@ function dayLabel(date: Date): string {
 
 export function TicketMessageThread({
   messages,
+  className,
 }: {
   messages: ThreadMessage[];
+  /** Sizing from the pane that holds it — the scrolling itself lives here. */
+  className?: string;
 }) {
+  const scrollRef = useRef<HTMLOListElement>(null);
+
+  // A thread opens on its newest message, the way a chat does: the last reply
+  // is what an agent came for, and the history is a scroll up.
+  //
+  // Keyed on the count and the ticket rather than on `messages` itself — a
+  // background refetch rebuilds that array with identical contents, and
+  // depending on its identity would yank a reader back down mid-thread. The
+  // count catches a new reply; the ticket id catches moving between two
+  // tickets that happen to have the same number of messages.
+  //
+  // Layout effect, so it lands before paint rather than as a visible jump.
+  const count = messages.length;
+  const ticketId = messages[0]?.ticketId;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [count, ticketId]);
+
   // Reachable: the inbound webhook always writes a message with its ticket, but
   // a row created any other way — by hand, or by a fixture — starts with none.
-  if (messages.length === 0) {
+  if (count === 0) {
     return (
       <p className="text-sm text-muted-foreground">
         No messages on this ticket yet.
@@ -74,9 +97,14 @@ export function TicketMessageThread({
   }
 
   return (
-    // gap-1 is the *within*-run spacing; a message that opens a run adds its own
-    // margin, so the eye groups a sender's messages before it separates them.
-    <ol className="flex flex-col gap-1">
+    // The list is the scroll container itself — a wrapper around it would add a
+    // node for nothing. gap-1 is the *within*-run spacing; a message that opens
+    // a run adds its own margin, so the eye groups a sender's messages before
+    // it separates them. pe-2 keeps the bubbles off the scrollbar.
+    <ol
+      ref={scrollRef}
+      className={cn("flex flex-col gap-1 overflow-y-auto pe-2", className)}
+    >
       {messages.map((message, index) => {
         const previous = index > 0 ? messages[index - 1] : null;
         const outbound = message.direction === MESSAGE_DIRECTION.outbound;
@@ -120,7 +148,10 @@ export function TicketMessageThread({
 
               <div
                 className={cn(
-                  "flex min-w-0 max-w-[85%] flex-col gap-1",
+                  // Two ceilings: 85% keeps a bubble from spanning a narrow
+                  // pane edge to edge, and 42rem holds the line length
+                  // readable once the pane is given a wide monitor to fill.
+                  "flex min-w-0 max-w-[min(85%,42rem)] flex-col gap-1",
                   outbound ? "items-end" : "items-start",
                 )}
               >
@@ -142,7 +173,14 @@ export function TicketMessageThread({
 
                 <div
                   className={cn(
-                    "rounded-2xl px-3.5 py-2.5 text-sm",
+                    // `relative` is load-bearing, not decoration: the sr-only
+                    // label below is absolutely positioned, and without a
+                    // positioned ancestor its containing block is the page
+                    // itself. It then escapes this pane's clipping and stretches
+                    // the document past the viewport — a full-height layout
+                    // scrolls the window by a few hundred px for a span nobody
+                    // can see.
+                    "relative rounded-2xl px-3.5 py-2.5 text-sm",
                     outbound
                       ? "rounded-tr-sm bg-primary text-primary-foreground"
                       : "rounded-tl-sm bg-muted text-foreground ring-1 ring-border",

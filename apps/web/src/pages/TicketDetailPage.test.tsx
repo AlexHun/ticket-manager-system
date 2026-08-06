@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -153,6 +153,19 @@ function assigneeControl(): HTMLElement {
 }
 
 /**
+ * The title block above the card: badges, id and subject.
+ *
+ * Worth scoping to, because status and category each appear twice on the page
+ * by design — a coloured badge here, and the picker in the card that changes
+ * it — so an unscoped `getByText` matches both and throws.
+ */
+function titleBlock(): HTMLElement {
+  const block = screen.getByRole("heading", { level: 1 }).parentElement;
+  if (!block) throw new Error("the heading has no wrapper to scope to");
+  return block;
+}
+
+/**
  * The page reads `:id` from the route, so it has to be mounted under a matching
  * path rather than rendered bare. The sibling /tickets route gives the back
  * link somewhere real to point at.
@@ -216,8 +229,9 @@ describe("TicketDetailPage", () => {
       await screen.findByRole("heading", { name: "Cannot log in", level: 1 }),
     ).toBeInTheDocument();
     expect(screen.getByText("#42")).toBeInTheDocument();
-    expect(screen.getByText(TICKET_STATUS.Resolved)).toBeInTheDocument();
-    expect(screen.getByText(TICKET_CATEGORY.Technical)).toBeInTheDocument();
+    const header = within(titleBlock());
+    expect(header.getByText(TICKET_STATUS.Resolved)).toBeInTheDocument();
+    expect(header.getByText(TICKET_CATEGORY.Technical)).toBeInTheDocument();
     expect(screen.getByText("Casey Customer")).toBeInTheDocument();
     expect(screen.getByText("customer@example.com")).toBeInTheDocument();
   });

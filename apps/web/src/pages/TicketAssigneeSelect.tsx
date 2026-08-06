@@ -1,12 +1,10 @@
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import type {
   TicketAssignee,
   TicketAssigneesResponse,
-  TicketDetail,
   TicketWithAssignee,
-  UpdateTicketResponse,
 } from "@ticket/shared";
 import {
   Select,
@@ -15,10 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
-import { ticketAssigneesKey, ticketKeys } from "@/lib/ticket-queries";
+import { ticketAssigneesKey } from "@/lib/ticket-queries";
+import { useTicketField } from "@/lib/use-ticket-field";
 
 /** The trigger's id, so the detail page's `<dt>` can label it. */
 export const ASSIGNEE_SELECT_ID = "ticket-assignee";
@@ -57,39 +55,16 @@ export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee })
     error: rosterError,
   } = useAssigneesQuery();
 
-  const mutation = useMutation({
-    mutationFn: async (assignedToId: string | null) => {
-      const { data } = await api.patch<UpdateTicketResponse>(
-        `/api/tickets/${ticket.id}/assignee`,
-        { assignedToId },
-      );
-      return data.ticket;
-    },
-    onSuccess: (updated) => {
-      // The response is the new truth for this ticket, so write it straight
-      // into the cache — refetching would re-download the whole thread to learn
-      // one field. The messages already on screen are carried across, and the
-      // entry is found by the ticket's id rather than by the key the page
-      // happened to build from the URL.
-      queryClient.setQueriesData<TicketDetail>(
-        { predicate: (query) => ticketKeys.isDetailKey(query.queryKey) },
-        (prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev),
-      );
-      // Cached list pages are now out of date. `refetchType: "none"` marks them
-      // without fetching a list nobody is looking at; it reloads when the user
-      // goes back to it.
-      void queryClient.invalidateQueries({
-        queryKey: ticketKeys.all,
-        refetchType: "none",
-      });
-      toast.success(
-        updated.assignedTo
-          ? `Assigned to ${updated.assignedTo.name}`
-          : "Ticket unassigned",
-      );
-    },
-    onError: (err) => {
-      toast.error(extractErrorMessage(err, "Failed to update the assignee"));
+  const mutation = useTicketField<string | null>({
+    ticketId: ticket.id,
+    field: "assignee",
+    toBody: (assignedToId) => ({ assignedToId }),
+    describe: (updated) =>
+      updated.assignedTo
+        ? `Assigned to ${updated.assignedTo.name}`
+        : "Ticket unassigned",
+    errorMessage: "Failed to update the assignee",
+    onError: () => {
       // The likeliest cause is a roster that has moved on — a user removed
       // since this page was drawn. Refetch it so the choice that just failed
       // stops being offered.
@@ -134,7 +109,8 @@ export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee })
           onValueChange={handleChange}
           disabled={mutation.isPending || rosterLoading || Boolean(rosterError)}
         >
-          <SelectTrigger id={ASSIGNEE_SELECT_ID} className="w-56">
+          {/* flex-1 rather than w-full: the saving spinner shares this row. */}
+          <SelectTrigger id={ASSIGNEE_SELECT_ID} className="w-56 lg:flex-1">
             {/* Children rather than the default: the selected name has to render
                 before the roster arrives, and the ticket already carries it. */}
             <SelectValue>{selected?.name ?? UNASSIGNED_LABEL}</SelectValue>
@@ -151,7 +127,7 @@ export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee })
         {/* The control greys out while saving, which says nothing on its own to
             a screen reader — the live region is what announces the wait. */}
         {mutation.isPending && (
-          <span role="status" className="text-muted-foreground">
+          <span role="status" className="relative text-muted-foreground">
             <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" />
             <span className="sr-only">Saving assignee</span>
           </span>

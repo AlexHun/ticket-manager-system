@@ -4,6 +4,8 @@ import {
   assignTicketSchema,
   ticketIdParamSchema,
   ticketsQuerySchema,
+  updateTicketCategorySchema,
+  updateTicketStatusSchema,
   type TicketsQuery,
 } from "@ticket/core";
 import {
@@ -14,6 +16,7 @@ import {
   type TicketDetailResponse,
   type TicketSortField,
   type TicketsListResponse,
+  type TicketWithAssignee,
   type UpdateTicketResponse,
 } from "@ticket/shared";
 import { prisma, type Prisma } from "../db";
@@ -88,6 +91,70 @@ const ASSIGNABLE_USER = {
 
 /** The columns an assignee is described by — never role, ban state or the rest. */
 const ASSIGNEE_SELECT = { id: true, name: true, email: true } as const;
+
+/**
+ * The row behind a `TicketWithAssignee`: the same fields, still carrying `Date`
+ * where the wire wants a string. Derived from the response type rather than
+ * spelled out, so a field added to one is a compile error in the other.
+ */
+type TicketRow = Omit<
+  TicketWithAssignee,
+  "lastMessageAt" | "createdAt" | "updatedAt"
+> & {
+  lastMessageAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** One place the ticket's wire shape is written down, for every route that replies with one. */
+function toTicketWithAssignee(ticket: TicketRow): TicketWithAssignee {
+  return {
+    id: ticket.id,
+    subject: ticket.subject,
+    status: ticket.status,
+    category: ticket.category,
+    customerEmail: ticket.customerEmail,
+    customerName: ticket.customerName,
+    assignedToId: ticket.assignedToId,
+    assignedTo: ticket.assignedTo,
+    lastMessageAt: ticket.lastMessageAt.toISOString(),
+    createdAt: ticket.createdAt.toISOString(),
+    updatedAt: ticket.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Write one field and reply with the whole ticket — the tail every PATCH below
+ * shares. They differ only in what they validate and what they write; the reply
+ * is the same either way, and carries no `messages`, because none of them touch
+ * the thread and the client already has it.
+ *
+ * The existence check is a separate query rather than a catch around Prisma's
+ * "record not found": a missing ticket is a 404, and letting the update throw
+ * to say so would route a plainly bad id through the error pipeline as a 500.
+ */
+async function updateTicket(
+  id: number,
+  data: Prisma.TicketUncheckedUpdateInput,
+  res: Response<UpdateTicketResponse | { error: string }>,
+): Promise<void> {
+  const existing = await prisma.ticket.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!existing) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const ticket = await prisma.ticket.update({
+    where: { id },
+    data,
+    include: { assignedTo: { select: ASSIGNEE_SELECT } },
+  });
+
+  res.json({ ticket: toTicketWithAssignee(ticket) });
+}
 
 export const ticketsRouter = Router();
 
@@ -220,17 +287,7 @@ ticketsRouter.get(
 
     res.json({
       ticket: {
-        id: ticket.id,
-        subject: ticket.subject,
-        status: ticket.status,
-        category: ticket.category,
-        customerEmail: ticket.customerEmail,
-        customerName: ticket.customerName,
-        assignedToId: ticket.assignedToId,
-        assignedTo: ticket.assignedTo,
-        lastMessageAt: ticket.lastMessageAt.toISOString(),
-        createdAt: ticket.createdAt.toISOString(),
-        updatedAt: ticket.updatedAt.toISOString(),
+        ...toTicketWithAssignee(ticket),
         // The select above already narrowed these to the wire shape; only the
         // date still needs converting.
         messages: ticket.messages.map((m) => ({
@@ -245,10 +302,11 @@ ticketsRouter.get(
 /**
  * Assign a ticket, or unassign it with `assignedToId: null`.
  *
- * A sub-resource rather than a general `PATCH /:id`, because assignment is the
- * only field this endpoint may change: status and category are a separate piece
- * of work, and a route that took "whatever fields you send" would quietly grow
- * into one that can change anything.
+ * One of three sub-resources rather than a general `PATCH /:id`: each route
+ * writes exactly the field it is named after, so what a request may change is
+ * decided by the URL and not by whichever keys a body happened to carry. A
+ * route that took "whatever fields you send" would quietly grow into one that
+ * can change anything.
  *
  * `requireAuth`, matching the rest of the tickets API — agents work tickets, so
  * they hand them to each other. Nothing here reads the caller's identity, so
@@ -277,18 +335,14 @@ ticketsRouter.patch(
     }
     const { assignedToId } = body.data;
 
-    const existing = await prisma.ticket.findUnique({
-      where: { id: params.data.id },
-      select: { id: true },
-    });
-    if (!existing) {
-      res.status(404).json({ error: "Ticket not found" });
-      return;
-    }
-
     // The FK alone would accept any row in the user table — including someone
-    // deleted since the picker was drawn. 400 rather than 404: the ticket in
-    // the path is real, it's the id in the body that isn't usable.
+    // deleted since the picker was drawn. 400 rather than 404: the id in the
+    // body is the part that isn't usable.
+    //
+    // Runs before the existence check inside `updateTicket`, so a request that
+    // is wrong in both ways at once is answered "Assignee not found" rather
+    // than "Ticket not found". Either is true; this one names the part the
+    // client chose, and the ordering only shows up in that one case.
     if (assignedToId !== null) {
       const assignee = await prisma.user.findFirst({
         where: { ...ASSIGNABLE_USER, id: assignedToId },
@@ -300,28 +354,66 @@ ticketsRouter.patch(
       }
     }
 
-    const ticket = await prisma.ticket.update({
-      where: { id: params.data.id },
-      data: { assignedToId },
-      include: { assignedTo: { select: ASSIGNEE_SELECT } },
-    });
+    await updateTicket(params.data.id, { assignedToId }, res);
+  },
+);
 
-    // No `messages`: reassigning doesn't touch the thread, and the client
-    // already has it.
-    res.json({
-      ticket: {
-        id: ticket.id,
-        subject: ticket.subject,
-        status: ticket.status,
-        category: ticket.category,
-        customerEmail: ticket.customerEmail,
-        customerName: ticket.customerName,
-        assignedToId: ticket.assignedToId,
-        assignedTo: ticket.assignedTo,
-        lastMessageAt: ticket.lastMessageAt.toISOString(),
-        createdAt: ticket.createdAt.toISOString(),
-        updatedAt: ticket.updatedAt.toISOString(),
-      },
-    });
+/**
+ * Move a ticket through its lifecycle: Open → Resolved → Closed, or back.
+ *
+ * No transition rules: the statuses are a label an agent applies, not a state
+ * machine, and reopening something closed by mistake is a thing that has to
+ * work. The enum in the schema is the only constraint.
+ */
+ticketsRouter.patch(
+  "/:id/status",
+  requireAuth,
+  async (
+    req: Request,
+    res: Response<UpdateTicketResponse | { error: string }>,
+  ) => {
+    const params = ticketIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.issues[0].message });
+      return;
+    }
+
+    const body = updateTicketStatusSchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json({ error: body.error.issues[0].message });
+      return;
+    }
+
+    await updateTicket(params.data.id, { status: body.data.status }, res);
+  },
+);
+
+/**
+ * File a ticket under a category, or clear it with `category: null`.
+ *
+ * Clearing is deliberately allowed: every ticket starts uncategorised, so a
+ * wrong guess — an agent's or, later, the classifier's — has to be undoable to
+ * the state it came from rather than only swappable for another wrong one.
+ */
+ticketsRouter.patch(
+  "/:id/category",
+  requireAuth,
+  async (
+    req: Request,
+    res: Response<UpdateTicketResponse | { error: string }>,
+  ) => {
+    const params = ticketIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.issues[0].message });
+      return;
+    }
+
+    const body = updateTicketCategorySchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json({ error: body.error.issues[0].message });
+      return;
+    }
+
+    await updateTicket(params.data.id, { category: body.data.category }, res);
   },
 );
