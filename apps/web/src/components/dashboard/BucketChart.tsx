@@ -7,12 +7,7 @@ import {
 } from "@/components/ui/chart";
 import { ChartCard, DataTable } from "./ChartCard";
 import { StackSegmentV } from "./chart-marks";
-import {
-  CHART_ANIMATION_MS,
-  CHART_BOX,
-  countChartConfig,
-  ORDINAL_FILL,
-} from "./chart-tokens";
+import { CHART_BOX, countChartConfig, ORDINAL_FILL } from "./chart-tokens";
 
 export interface Bin {
   label: string;
@@ -98,7 +93,6 @@ export function BucketChart({
               dataKey="count"
               maxBarSize={44}
               shape={<StackSegmentV radius={4} />}
-              animationDuration={CHART_ANIMATION_MS}
             >
               {bins.map((bin, i) => (
                 <Cell

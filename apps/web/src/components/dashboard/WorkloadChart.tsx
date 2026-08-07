@@ -16,7 +16,6 @@ import {
 import { ChartCard, DataTable } from "./ChartCard";
 import { StackSegmentH } from "./chart-marks";
 import {
-  CHART_ANIMATION_MS,
   STATUS_STACK,
   statusChartConfig,
 } from "./chart-tokens";
@@ -133,7 +132,6 @@ export function WorkloadChart({
                   radius={i === STATUS_STACK.length - 1 ? 4 : 0}
                 />
               }
-              animationDuration={CHART_ANIMATION_MS}
             />
           ))}
         </BarChart>

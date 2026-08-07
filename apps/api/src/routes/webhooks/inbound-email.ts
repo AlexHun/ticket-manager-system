@@ -70,25 +70,48 @@ inboundEmailRouter.post("/", async (req: Request, res: Response) => {
     .map(stripAngles)
     .filter((s) => s.length > 0);
 
-  const existing = await prisma.message.findUnique({ where: { messageId } });
+  // Only the ticket id is read below. Without the select this loads `textBody`
+  // and `htmlBody` — two full email bodies, the largest columns in the schema —
+  // to answer a yes/no question.
+  const existing = await prisma.message.findUnique({
+    where: { messageId },
+    select: { ticketId: true },
+  });
   if (existing) {
     res.status(200).json({ deduped: true, ticketId: existing.ticketId });
     return;
   }
 
+  // Best parent first: the direct reply, then references newest-first.
   const parentCandidates = [inReplyTo, ...[...refs].reverse()].filter(
     (v): v is string => Boolean(v),
   );
 
+  // One query for every candidate rather than one per candidate. A long thread
+  // carries a dozen or more ids in `References`, and asked one at a time that
+  // is a dozen sequential round trips on a webhook the provider is timing.
+  //
+  // The order above is the whole point of this block, and the database does not
+  // preserve it — so the rows go into a map and the winner is chosen by walking
+  // `parentCandidates`, never by taking the first row returned.
+  // A first email carries neither header, and that is the common case — so it
+  // skips the lookup entirely rather than asking the database to match nothing.
   let ticketId: number | null = null;
-  for (const candidate of parentCandidates) {
-    const parent = await prisma.message.findUnique({
-      where: { messageId: candidate },
-      select: { ticketId: true },
+  if (parentCandidates.length > 0) {
+    const parents = await prisma.message.findMany({
+      where: { messageId: { in: parentCandidates } },
+      select: { messageId: true, ticketId: true },
     });
-    if (parent) {
-      ticketId = parent.ticketId;
-      break;
+    const ticketByMessageId = new Map(
+      parents.map((p) => [p.messageId, p.ticketId]),
+    );
+
+    for (const candidate of parentCandidates) {
+      const found = ticketByMessageId.get(candidate);
+      if (found !== undefined) {
+        ticketId = found;
+        break;
+      }
     }
   }
 

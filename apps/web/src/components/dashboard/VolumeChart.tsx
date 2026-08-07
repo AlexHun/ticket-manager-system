@@ -13,12 +13,7 @@ import {
 import { formatBucketFull, formatBucketLabel } from "@/lib/format";
 import { ChartCard, DataTable } from "./ChartCard";
 import { StackSegmentV } from "./chart-marks";
-import {
-  CHART_ANIMATION_MS,
-  CHART_BOX,
-  STATUS_STACK,
-  statusChartConfig,
-} from "./chart-tokens";
+import { CHART_BOX, STATUS_STACK, statusChartConfig } from "./chart-tokens";
 
 const BUCKET_NOUN: Record<DashboardBucket, string> = {
   [DASHBOARD_BUCKET.day]: "day",
@@ -113,7 +108,6 @@ export function VolumeChart({
                   radius={i === STATUS_STACK.length - 1 ? 4 : 0}
                 />
               }
-              animationDuration={CHART_ANIMATION_MS}
             />
           ))}
         </BarChart>

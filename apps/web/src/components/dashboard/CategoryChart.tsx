@@ -9,7 +9,6 @@ import {
 import { ChartCard, DataTable } from "./ChartCard";
 import { StackSegmentH } from "./chart-marks";
 import {
-  CHART_ANIMATION_MS,
   CHART_BOX,
   countChartConfig,
   UNCATEGORISED_LABEL,
@@ -88,7 +87,6 @@ export function CategoryChart({
             fill="var(--color-count)"
             maxBarSize={20}
             shape={<StackSegmentH radius={4} />}
-            animationDuration={CHART_ANIMATION_MS}
           >
             {/* Direct labels rather than an x-axis: with one series the value
                 beside each bar is quicker to read than a scale to measure

@@ -23,6 +23,7 @@
     "@ticket/core": "workspace:*",
     "@ticket/shared": "workspace:*",
     "better-auth": "^1.6.10",
+    "compression": "^1.8.1",
     "cors": "^2.8.6",
     "express": "^5.1.0",
     "pg": "^8.20.0",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
     "@types/pg": "^8.20.0",

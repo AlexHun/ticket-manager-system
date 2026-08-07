@@ -122,10 +122,16 @@ interface CustomerRow {
  * absent rather than approximated by something that would read as a measurement
  * and isn't one.
  *
- * Note the aggregates all range-scan `ticket.createdAt`, which is unindexed
- * (the table has `customerEmail`, `lastMessageAt`, `assignedToId`). That is a
- * decision, not an oversight: at this table size it is noise, and adding the
- * index is a migration.
+ * The aggregates below all range-scan `ticket.createdAt`, and the first-response
+ * query wants the earliest outbound message per ticket. Both are indexed for —
+ * `ticket(createdAt)`, `ticket(status, createdAt)` and
+ * `message(ticketId, direction, createdAt)`, added in
+ * `add_ticket_stats_indexes`. A new panel that scopes on a different column
+ * needs the same treatment; see the comments in `schema.prisma` for which query
+ * each index is shaped around.
+ *
+ * The eight queries run sequentially inside one transaction, so this endpoint's
+ * latency is their sum. That is the price of the consistency described above.
  */
 export async function ticketStatsHandler(
   req: Request,

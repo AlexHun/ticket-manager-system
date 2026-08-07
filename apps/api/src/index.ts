@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response } from "express";
+import compression from "compression";
 import cors from "cors";
 import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
@@ -20,6 +21,13 @@ app.use(
 );
 
 app.all("/api/auth/{*any}", toNodeHandler(auth));
+
+// Below the auth handler, which writes its own responses, and above everything
+// that answers with JSON. The dashboard payload is the reason: it is one
+// response carrying volume buckets, workload rows, top customers and the
+// attention list, all of it repetitive keys and short strings, which is the
+// shape gzip does best on.
+app.use(compression());
 
 app.use(express.json({ limit: "10mb" }));
 

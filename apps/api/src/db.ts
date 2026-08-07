@@ -19,12 +19,22 @@ function createPrismaClient() {
   }
 
   const adapter = new PrismaPg({ connectionString });
+
+  // `query` is opt-in rather than the dev default. Logging every statement is
+  // genuinely useful when tracing an N+1 or checking a plan — and useless the
+  // rest of the time, when the dashboard's eight aggregates bury whatever you
+  // were actually reading. Turn it on for a session with
+  // `PRISMA_LOG_QUERIES=1 bun run dev`.
+  const isProduction = process.env.NODE_ENV === "production";
+  const logQueries = !isProduction && process.env.PRISMA_LOG_QUERIES === "1";
+
   return new PrismaClient({
     adapter,
-    log:
-      process.env.NODE_ENV === "production"
-        ? ["error"]
-        : ["query", "error", "warn"],
+    log: isProduction
+      ? ["error"]
+      : logQueries
+        ? ["query", "error", "warn"]
+        : ["error", "warn"],
   });
 }
 

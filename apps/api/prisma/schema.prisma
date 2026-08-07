@@ -99,6 +99,14 @@ model Ticket {
   @@index([customerEmail])
   @@index([lastMessageAt])
   @@index([assignedToId])
+  // Every dashboard aggregate scopes on `createdAt >= from AND < to`, and the
+  // ticket list's default sort is the same column.
+  @@index([createdAt])
+  // The backlog-age panel filters `status = Open` before that range scan, and
+  // the list filters status and sorts within it. Status first: it is the
+  // equality, and a range in the leading column would stop the second term
+  // being usable.
+  @@index([status, createdAt])
   @@map("ticket")
 }
 
@@ -116,6 +124,13 @@ model Message {
   createdAt   DateTime         @default(now())
 
   @@index([ticketId, createdAt])
+  // For the first-response LATERAL in `ticket-stats.ts`, which wants the
+  // earliest *outbound* message per ticket. `(ticketId, createdAt)` above gets
+  // it to the right ticket but not past the inbound messages, so it walks the
+  // thread until an outbound one turns up — on a long thread answered late,
+  // that is most of it. With `direction` in the middle the LIMIT 1 lands on the
+  // first row read.
+  @@index([ticketId, direction, createdAt])
   @@index([inReplyTo])
   @@map("message")
 }

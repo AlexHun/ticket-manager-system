@@ -20,14 +20,27 @@ export const CHART_BOX = "aspect-auto h-[240px] w-full";
 export const CHART_HEIGHT_CLASS = "h-[240px]";
 
 /**
- * Recharts' 1500ms default reads as sluggish on a dashboard where eight things
- * animate at once.
+ * There is deliberately no `animationDuration` constant here, and no chart
+ * passes the prop. Recharts' own default is what runs.
  *
- * Note what is *not* set anywhere: `isAnimationActive`. It defaults to `'auto'`,
- * which already disables animation under `prefers-reduced-motion` and in SSR —
- * passing `true` would override that and defeat the accessibility path.
+ * This used to be `600`, justified by a comment about "Recharts' 1500ms
+ * default" — which was true of v1/v2 and stopped being true in v3. The default
+ * is now `400` (`defaultBarProps` in `recharts/cartesian/Bar.js`), so the
+ * override meant to make the dashboard feel quicker was making every chart half
+ * again slower than doing nothing. Check that default before reintroducing one.
+ *
+ * Duration is worth being careful with because the animation is not CSS: each
+ * frame is a React re-render (`recharts/animation/JavascriptAnimate.js` drives
+ * it from `useState`), and each frame rebuilds every rect and re-runs the
+ * custom `shape` in `chart-marks.tsx`. A longer duration is not just a longer
+ * wait — it is proportionally more main-thread work, across five charts that
+ * all mount at once.
+ *
+ * Note what is *not* set anywhere either: `isAnimationActive`. It defaults to
+ * `'auto'`, which `JavascriptAnimate` resolves to
+ * `!Global.isSsr && !prefersReducedMotion` — passing `true` would override that
+ * and defeat the accessibility path.
  */
-export const CHART_ANIMATION_MS = 600;
 
 /**
  * Status as a chart series.

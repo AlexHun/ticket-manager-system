@@ -160,6 +160,14 @@ usersRouter.delete(
       return;
     }
 
+    // Deleting the sessions is what signs the user out — the soft delete alone
+    // only stops future sign-ins.
+    //
+    // This is no longer instant: `auth.ts` enables Better Auth's session cookie
+    // cache, so a request carrying an unexpired cookie is served without the
+    // sessions table being read at all. The user keeps access until that cookie
+    // ages out (currently 60s). If revocation ever has to be immediate, that
+    // cache is the thing to turn off — not something to fix here.
     await prisma.$transaction([
       prisma.user.update({
         where: { id: userId },

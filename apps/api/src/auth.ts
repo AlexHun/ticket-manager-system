@@ -26,6 +26,26 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   trustedOrigins,
   emailAndPassword: { enabled: true, disableSignUp: true },
+  /**
+   * Session data is carried in a short-lived signed cookie, so the common case
+   * costs no database work at all.
+   *
+   * Without this, `requireAuth`/`requireAdmin` call `getSession` on *every*
+   * request, and each call reads the session row and then the user row — two
+   * round trips in front of every endpoint, including ones whose own query is
+   * a single indexed lookup.
+   *
+   * The cost: this cache is what `DELETE /api/users/:id` has to outlive.
+   * That route deletes the user's sessions specifically to force an immediate
+   * sign-out (see `routes/users.ts`), and a request served from the cookie
+   * never looks at the sessions table — so a just-deleted user keeps working
+   * until their cookie expires. `maxAge` is the length of that window; 60s is
+   * chosen to keep it short enough to be an inconvenience rather than a hole.
+   * Raising it lengthens the window — don't, without revisiting that route.
+   */
+  session: {
+    cookieCache: { enabled: true, maxAge: 60 },
+  },
   rateLimit: {
     enabled: isProduction,
     window: 60,
