@@ -2,7 +2,6 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { TicketStatsQuery } from "@ticket/core";
 import type { TicketStatsResponse } from "@ticket/shared";
-import { NavBar } from "@/components/NavBar";
 import { BacklogAgeChart } from "@/components/dashboard/BacklogAgeChart";
 import { CategoryChart } from "@/components/dashboard/CategoryChart";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
@@ -65,88 +64,96 @@ export function DashboardPage() {
   const { data, isPending, isFetching, error } = useTicketStatsQuery(params);
 
   return (
-    <div className="min-h-dvh bg-background">
-      <NavBar />
-      <main className="p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          {/* One filter row, above everything it scopes — so every panel is
-              always describing the same slice. */}
-          <DashboardFilters
-            range={params.range}
-            scope={params.scope}
-            onRangeChange={(range) => update({ range })}
-            onScopeChange={(scope) => update({ scope })}
+    <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+        {/* One filter row, above everything it scopes — so every panel is
+            always describing the same slice. */}
+        <DashboardFilters
+          range={params.range}
+          scope={params.scope}
+          onRangeChange={(range) => update({ range })}
+          onScopeChange={(scope) => update({ scope })}
+        />
+      </div>
+
+      {isPending && <DashboardSkeleton />}
+
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {extractErrorMessage(error, "Failed to load dashboard")}
+        </p>
+      )}
+
+      {data && (
+        <div
+          aria-busy={isFetching}
+          className={cn(
+            "flex flex-col gap-3 transition-opacity motion-reduce:transition-none",
+            // Only the plots dim, not the whole dashboard.
+            //
+            // `opacity` composites toward the surface underneath, so the same
+            // 0.6 does very different things per mode: on the white card it
+            // drags muted label text from 4.65:1 down to 1.89:1, while on the
+            // dark card it composites toward black and lands back at 4.65:1 —
+            // which is why this only ever looked wrong in light mode. No
+            // opacity both signals "stale" and keeps light text at 4.5:1 (the
+            // break-even is about 0.99), so the dim comes off the words
+            // entirely. The cue still lands where staleness is actually
+            // legible — the bars mid-remorph — and `aria-busy` above carries
+            // it for anyone not looking at the colour.
+            isFetching && "[&_[data-slot=chart]]:opacity-60",
+          )}
+        >
+          <KpiRow
+            summary={data.summary}
+            firstResponse={data.firstResponse}
+            categories={data.categories}
           />
-        </div>
 
-        {isPending && <DashboardSkeleton />}
-
-        {error && (
-          <p className="text-sm text-destructive" role="alert">
-            {extractErrorMessage(error, "Failed to load dashboard")}
-          </p>
-        )}
-
-        {data && (
-          <div
-            aria-busy={isFetching}
-            className={cn(
-              "flex flex-col gap-3 transition-opacity motion-reduce:transition-none",
-              isFetching && "opacity-60",
-            )}
-          >
-            <KpiRow
-              summary={data.summary}
-              firstResponse={data.firstResponse}
-              categories={data.categories}
+          <div className={DASHBOARD_GRID}>
+            <VolumeChart
+              className={PANEL_SPAN.wide}
+              volume={data.volume}
+              bucket={data.bucket}
             />
-
-            <div className={DASHBOARD_GRID}>
-              <VolumeChart
-                className={PANEL_SPAN.wide}
-                volume={data.volume}
-                bucket={data.bucket}
+            {/* Two short panels stacked beside one tall one, rather than
+                three cells in a row — the status meter is a few lines high and
+                the attention list is not, so side by side they would leave a
+                column of dead space. */}
+            <div className={cn(PANEL_SPAN.narrow, "flex flex-col gap-3")}>
+              {/* The status key sits directly under the chart it explains, so
+                  the volume chart needs no legend box of its own. */}
+              <StatusMixCard
+                byStatus={data.summary.byStatus}
+                total={data.summary.total}
               />
-              {/* Two short panels stacked beside one tall one, rather than
-                  three cells in a row — the status meter is a few lines high and
-                  the attention list is not, so side by side they would leave a
-                  column of dead space. */}
-              <div className={cn(PANEL_SPAN.narrow, "flex flex-col gap-3")}>
-                {/* The status key sits directly under the chart it explains, so
-                    the volume chart needs no legend box of its own. */}
-                <StatusMixCard
-                  byStatus={data.summary.byStatus}
-                  total={data.summary.total}
-                />
-                <CategoryChart categories={data.categories} />
-              </div>
-              <NeedsAttentionCard
-                className={PANEL_SPAN.twoThirds}
-                tickets={data.needsAttention}
-              />
-              <FirstResponseChart
-                className={PANEL_SPAN.half}
-                stats={data.firstResponse}
-              />
-              <BacklogAgeChart
-                className={PANEL_SPAN.half}
-                stats={data.backlogAge}
-              />
-              <WorkloadChart
-                className={PANEL_SPAN.half}
-                workload={data.workload}
-                unassigned={data.unassigned}
-                scope={data.scope}
-              />
-              <TopCustomersCard
-                className={PANEL_SPAN.half}
-                customers={data.topCustomers}
-              />
+              <CategoryChart categories={data.categories} />
             </div>
+            <NeedsAttentionCard
+              className={PANEL_SPAN.twoThirds}
+              tickets={data.needsAttention}
+            />
+            <FirstResponseChart
+              className={PANEL_SPAN.half}
+              stats={data.firstResponse}
+            />
+            <BacklogAgeChart
+              className={PANEL_SPAN.half}
+              stats={data.backlogAge}
+            />
+            <WorkloadChart
+              className={PANEL_SPAN.half}
+              workload={data.workload}
+              unassigned={data.unassigned}
+              scope={data.scope}
+            />
+            <TopCustomersCard
+              className={PANEL_SPAN.half}
+              customers={data.topCustomers}
+            />
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }

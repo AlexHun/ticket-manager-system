@@ -32,6 +32,9 @@
     --color-viz-resolved: var(--viz-resolved);
     --color-viz-closed: var(--viz-closed);
     --color-viz-accent: var(--viz-accent);
+    --color-viz-grid: var(--viz-grid);
+    --color-viz-cursor: var(--viz-cursor);
+    --color-viz-tooltip-edge: var(--viz-tooltip-edge);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -87,8 +90,23 @@
     --accent: oklch(0.963 0.002 197.1);
     --accent-foreground: oklch(0.218 0.008 223.9);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.925 0.005 214.3);
-    --input: oklch(0.925 0.005 214.3);
+    /*
+     * Edges, one step darker again than the surface note above allows for.
+     *
+     * The asymmetry is the bug: the dark theme's --border sits at 2.64:1
+     * against its card, the light theme's at 1.25:1 against white. Same token,
+     * same intent, and only one of them was actually drawing a line — which is
+     * why the light dashboard read as floating text rather than panels. 1.45:1
+     * is about where GitHub-light puts a panel edge.
+     *
+     * This is one token doing a lot of work: Card's `ring-1 ring-border`, the
+     * ticket and user table frames, dialogs, separators, the shell's top-bar
+     * rule and every input outline. Changing it here rather than per-component
+     * is the point — dashboard cards with heavier edges than the login card
+     * beside them would be a worse result than soft edges everywhere.
+     */
+    --border: oklch(0.876 0.005 214.3);
+    --input: oklch(0.876 0.005 214.3);
     --ring: oklch(0.723 0.014 214.4);
     --chart-1: oklch(0.845 0.143 164.978);
     --chart-2: oklch(0.696 0.17 162.48);
@@ -126,14 +144,44 @@
        step clearing 3:1 on both surfaces (3.65 light / 4.76 dark). */
     --viz-accent: var(--chart-3);
 
+    /*
+     * The chart's non-data furniture: gridlines, the hover cursor block, the
+     * tooltip's edge. Per-mode for the same reason the ramp is — the one
+     * expression these replace (`--border` at 50% alpha) measured 1.82:1 on the
+     * dark card but 1.11:1 on the white one, so the light theme was drawing its
+     * gridlines in a colour it could not show.
+     *
+     * Values are picked for perceptual parity, not ratio parity: the +0.05
+     * flare term in the WCAG formula flatters the dark end, so literally
+     * matching 1.82:1 on white would draw a wireframe over the data. These are
+     * furniture and must stay quieter than every bar on top of them.
+     */
+    --viz-grid: oklch(0.890 0.005 214.3);         /* 1.39:1 on the card */
+    --viz-cursor: oklch(0.920 0.004 214.3);       /* 1.27:1 — a wash behind the bars */
+    --viz-tooltip-edge: oklch(0.820 0.008 214.3); /* 1.75:1 — the only thing separating
+                                                     a white tooltip from a white card */
+
     --radius: 0.45rem;
-    --sidebar: oklch(0.987 0.002 197.1);
+
+    /*
+     * Sidebar surfaces, retuned for the same reason as the muted/accent block
+     * above: stock put --sidebar at 0.987, which is 1.04:1 against a white page
+     * — the sidebar simply did not read as a surface. These give it the same
+     * 1.09:1 separation the dark theme already had, with the accent (the
+     * hover/active fill) and the border stepping down from there so each stays
+     * visible on top of the one before it.
+     *
+     * --sidebar-primary is untouched: 3.36:1 on the retuned surface is what
+     * licenses it for the logo plate and the active nav icon, both of which are
+     * non-text graphics needing 3:1.
+     */
+    --sidebar: oklch(0.971 0.002 197.1);
     --sidebar-foreground: oklch(0.148 0.004 228.8);
     --sidebar-primary: oklch(0.596 0.145 163.225);
     --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
-    --sidebar-accent: oklch(0.963 0.002 197.1);
+    --sidebar-accent: oklch(0.929 0.005 197.1);
     --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
-    --sidebar-border: oklch(0.925 0.005 214.3);
+    --sidebar-border: oklch(0.878 0.005 214.3);
     --sidebar-ring: oklch(0.723 0.014 214.4);
 }
 
@@ -184,6 +232,14 @@
     --viz-closed: var(--chart-4);
 
     --viz-accent: var(--chart-3);
+
+    /* Restated, not aliased to the :root values — same argument as --viz-ord-N
+       above. Each of these reproduces what the dark theme already rendered:
+       dark was never the broken half, so the point of naming them here is that
+       fixing light mode cannot quietly change this one. */
+    --viz-grid: oklch(1 0 0 / 5%);         /* 1.82:1 — what border/50 resolved to */
+    --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
+    --viz-tooltip-edge: oklch(1 0 0 / 5%);  /* = border/50, unchanged */
 
     --sidebar: oklch(0.218 0.008 223.9);
     --sidebar-foreground: oklch(0.987 0.002 197.1);

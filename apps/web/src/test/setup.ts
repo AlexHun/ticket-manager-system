@@ -24,6 +24,32 @@ if (!globalThis.ResizeObserver) {
   };
 }
 
+/**
+ * jsdom has no `matchMedia` either. shadcn's `useIsMobile` — which the sidebar
+ * depends on — calls it unguarded, so anything rendering the app shell throws
+ * without this.
+ *
+ * `matches` is deliberately not a blanket `false`. `use-reduced-motion.ts`
+ * guards its own call and defaults to *reduced* precisely because this shim was
+ * absent; answering `false` to everything would quietly switch animation on
+ * across the suite and make any test touching a StatTile depend on animation
+ * frames. So reduced-motion stays on, and every other query — including the
+ * sidebar's `(max-width: 767px)` — answers no, i.e. desktop.
+ */
+if (!window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      media: query,
+      matches: query.includes("prefers-reduced-motion"),
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(() => false),
+    }) as MediaQueryList;
+}
+
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),

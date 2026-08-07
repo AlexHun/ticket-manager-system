@@ -1,15 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <!--
-    Ticket glyph from the lucide set, matching the icons used in the app.
-    Inverts with the browser/OS theme so the mark stays legible on both a
-    light and a dark tab strip.
+    Ticket glyph from the lucide set, matching the icons used in the app. Same
+    drawing as <LogoMark /> in src/components/layout/Logo.tsx, so the tab and
+    the sidebar read as one identity.
+
+    The colours are duplicated here as literals rather than shared with the app:
+    a favicon is fetched as a standalone document and cannot see the page's CSS
+    variables, so --sidebar-primary is unavailable. These are the same two
+    emerald steps those tokens resolve to (light 0.596L = emerald-600, dark
+    0.696L = emerald-500) — change them together or the tab drifts from the app.
+
+    Inverts with the browser/OS theme, not the app's own toggle: nothing can
+    reach across into a tab strip.
   -->
   <style>
-    .plate { fill: #0a0a0a; }
-    .mark { stroke: #ffffff; }
+    .plate { fill: #059669; }
+    .mark { stroke: #ecfdf5; }
     @media (prefers-color-scheme: dark) {
-      .plate { fill: #fafafa; }
-      .mark { stroke: #0a0a0a; }
+      .plate { fill: #10b981; }
+      .mark { stroke: #022c22; }
     }
   </style>
   <rect class="plate" width="24" height="24" rx="5" />

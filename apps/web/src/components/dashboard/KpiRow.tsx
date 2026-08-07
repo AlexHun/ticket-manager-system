@@ -37,9 +37,14 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
           summary.openUnassigned > 0 ? (
             // Links to the list already filtered the same way, so the count is a
             // starting point rather than a thing to go and reproduce by hand.
+            //
+            // Overrides the tile's muted colour and underlines unconditionally:
+            // inheriting text-muted-foreground put an interactive control at
+            // 4.65:1 in light mode and, worse, left "this is a link" carried by
+            // nothing but a hover state that a touch device never shows.
             <Link
               to={`/tickets?status=${TICKET_STATUS.Open}`}
-              className="underline-offset-2 hover:underline"
+              className="text-foreground underline underline-offset-2"
             >
               {summary.openUnassigned} unassigned
             </Link>
@@ -68,7 +73,7 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
               ? (
                   <Link
                     to={`/tickets?category=${CATEGORY_NONE}`}
-                    className="underline-offset-2 hover:underline"
+                    className="text-foreground underline underline-offset-2"
                   >
                     {untriaged} untriaged
                   </Link>

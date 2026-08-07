@@ -83,13 +83,8 @@ afterEach(() => {
 });
 
 describe("UsersPage", () => {
-  test("shows the page heading", () => {
-    mockGet.mockReturnValue(new Promise(() => {}));
-    renderUsersPage();
-    expect(
-      screen.getByRole("heading", { name: "Users", level: 1 }),
-    ).toBeInTheDocument();
-  });
+  // No heading test here any more: the <h1> moved to the shell's top bar, which
+  // this page no longer renders. user-management.spec.ts covers it end to end.
 
   test("renders the skeleton table while the request is pending", () => {
     mockGet.mockReturnValue(new Promise(() => {}));

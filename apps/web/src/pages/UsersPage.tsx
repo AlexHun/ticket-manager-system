@@ -2,7 +2,6 @@ import { useState } from "react";
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
 import type { User, UsersListResponse } from "@ticket/shared";
-import { NavBar } from "@/components/NavBar";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { DeleteUserDialog } from "./DeleteUserDialog";
@@ -42,37 +41,33 @@ export function UsersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <NavBar />
-      <main className="p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Users</h1>
-          <Button onClick={openCreate}>New user</Button>
-        </div>
+    <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <div className="mb-4 flex items-center justify-end">
+        <Button onClick={openCreate}>New user</Button>
+      </div>
 
-        {isPending && <UsersTableSkeleton />}
+      {isPending && <UsersTableSkeleton />}
 
-        {error && (
-          <p className="text-sm text-destructive" role="alert">
-            {formatError(error)}
-          </p>
-        )}
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {formatError(error)}
+        </p>
+      )}
 
-        {users && (
-          <UsersTable users={users} onEdit={openEdit} onDelete={openDelete} />
-        )}
+      {users && (
+        <UsersTable users={users} onEdit={openEdit} onDelete={openDelete} />
+      )}
 
-        <UserDialog
-          user={editingUser}
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-        />
-        <DeleteUserDialog
-          user={deletingUser}
-          open={deleteDialogOpen}
-          onOpenChange={setDeleteDialogOpen}
-        />
-      </main>
+      <UserDialog
+        user={editingUser}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
+      <DeleteUserDialog
+        user={deletingUser}
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+      />
     </div>
   );
 }

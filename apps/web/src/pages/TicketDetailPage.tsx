@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
 import type { TicketDetail, TicketDetailResponse } from "@ticket/shared";
-import { NavBar } from "@/components/NavBar";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -59,44 +58,41 @@ export function TicketDetailPage() {
   const { data: ticket, isPending, error } = useTicketQuery(id);
 
   return (
-    // Viewport-owning from `lg` up, like the list page: the details and the
+    // Splits the frame from `lg` up, like the list page: the details and the
     // thread each scroll on their own, so the fields an agent is changing stay
-    // put while they read. Below that the two panes stack and the window
-    // scrolls as before — splitting a short viewport in two would leave a
+    // put while they read. Below that the two panes stack and this whole
+    // element scrolls instead — splitting a short viewport in two would leave a
     // message pane too small to read in.
-    <div className="flex min-h-dvh flex-col bg-background lg:h-dvh lg:overflow-hidden">
-      <NavBar />
-      <main className="flex flex-1 flex-col p-6 lg:min-h-0">
-        {/* Outside the loaded branch: the not-found screen is a dead end
-            without it. */}
-        <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4 self-start">
-          <Link to={backTo}>
-            <ArrowLeft aria-hidden="true" />
-            Back to tickets
-          </Link>
-        </Button>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6 lg:overflow-hidden">
+      {/* Outside the loaded branch: the not-found screen is a dead end
+          without it. */}
+      <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4 self-start">
+        <Link to={backTo}>
+          <ArrowLeft aria-hidden="true" />
+          Back to tickets
+        </Link>
+      </Button>
 
-        {isPending && <TicketDetailSkeleton />}
+      {isPending && <TicketDetailSkeleton />}
 
-        {/* A ticket that isn't there is a destination, not a failure — no
-            role="alert", because nothing went wrong for AT to interrupt over. */}
-        {isNotFoundError(error) && (
-          <div>
-            <h1 className="mb-2 text-2xl font-semibold">Ticket not found</h1>
-            <p className="text-sm text-muted-foreground">
-              This ticket may have been deleted, or the link may be wrong.
-            </p>
-          </div>
-        )}
-
-        {error && !isNotFoundError(error) && (
-          <p className="text-sm text-destructive" role="alert">
-            {extractErrorMessage(error, "Failed to load ticket")}
+      {/* A ticket that isn't there is a destination, not a failure — no
+          role="alert", because nothing went wrong for AT to interrupt over. */}
+      {isNotFoundError(error) && (
+        <div>
+          <h1 className="mb-2 text-2xl font-semibold">Ticket not found</h1>
+          <p className="text-sm text-muted-foreground">
+            This ticket may have been deleted, or the link may be wrong.
           </p>
-        )}
+        </div>
+      )}
 
-        {ticket && <TicketDetailView ticket={ticket} />}
-      </main>
+      {error && !isNotFoundError(error) && (
+        <p className="text-sm text-destructive" role="alert">
+          {extractErrorMessage(error, "Failed to load ticket")}
+        </p>
+      )}
+
+      {ticket && <TicketDetailView ticket={ticket} />}
     </div>
   );
 }

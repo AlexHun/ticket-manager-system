@@ -232,14 +232,8 @@ describe("TicketsPage subject link", () => {
 });
 
 describe("TicketsPage", () => {
-  test("shows the page heading", () => {
-    mockGet.mockReturnValue(new Promise(() => {}));
-    renderTicketsPage();
-
-    expect(
-      screen.getByRole("heading", { name: "Tickets", level: 1 }),
-    ).toBeInTheDocument();
-  });
+  // No heading test here any more: the <h1> moved to the shell's top bar, which
+  // this page no longer renders. tickets.spec.ts covers it end to end.
 
   test("renders the skeleton table while the request is pending", () => {
     mockGet.mockReturnValue(new Promise(() => {}));

@@ -38,20 +38,33 @@ type TicketColumn = ColumnDef<Ticket> & { id: TicketSortField };
  * One source for a column's label and its width bounds. Widths are explicit so
  * they come from state rather than from cell contents — that is what stops them
  * shifting when the page changes, and what makes them draggable.
+ *
+ * The defaults must sum to comfortably less than the content frame at the
+ * narrowest desktop width, or the table stops stretching to fill it and starts
+ * scrolling sideways instead: `minWidth: table.getTotalSize()` wins over
+ * `w-full` once the total exceeds the frame, and dragging a column then grows
+ * the table rather than taking the space from its neighbours.
+ *
+ * At 1280px with the sidebar expanded the frame is 976px (1280 − 256 sidebar
+ * − 48 padding), so these total 880. The ~96px of headroom is deliberate and
+ * not just slack for a scrollbar: it is how far a column can be widened before
+ * the redistributing behaviour gives way to horizontal scrolling. The sidebar
+ * is why these are narrower than they used to be — check the sum, and that
+ * headroom, before growing a column.
  */
 const COLUMN_META: Record<
   TicketSortField,
   { label: string; size: number; minSize: number }
 > = {
-  [TICKET_SORT_FIELD.subject]: { label: "Subject", size: 380, minSize: 160 },
+  [TICKET_SORT_FIELD.subject]: { label: "Subject", size: 300, minSize: 160 },
   [TICKET_SORT_FIELD.customerName]: {
     label: "Customer",
-    size: 280,
+    size: 200,
     minSize: 160,
   },
-  [TICKET_SORT_FIELD.status]: { label: "Status", size: 130, minSize: 100 },
-  [TICKET_SORT_FIELD.category]: { label: "Category", size: 150, minSize: 100 },
-  [TICKET_SORT_FIELD.createdAt]: { label: "Created", size: 140, minSize: 110 },
+  [TICKET_SORT_FIELD.status]: { label: "Status", size: 120, minSize: 100 },
+  [TICKET_SORT_FIELD.category]: { label: "Category", size: 130, minSize: 100 },
+  [TICKET_SORT_FIELD.createdAt]: { label: "Created", size: 130, minSize: 110 },
 };
 
 function metaOf(id: TicketSortField) {

@@ -1305,7 +1305,7 @@ test.describe("Tickets page", () => {
     await expect(page).toHaveURL("/login");
   });
 
-  test("agent can reach /tickets from the navbar link", async ({ page }) => {
+  test("agent can reach /tickets from the sidebar link", async ({ page }) => {
     await signIn(page, "agent");
     await page.getByRole("link", { name: "Tickets" }).click();
 
@@ -1766,7 +1766,11 @@ test.describe("Tickets page", () => {
     await page.goto("/tickets");
 
     const before = await columnWidths(page);
-    await dragHandle(page, "Subject", 120);
+    // Within the headroom COLUMN_META leaves between the default total and the
+    // frame (~96px at this viewport). Drag further than that and the table
+    // legitimately stops redistributing and starts scrolling sideways instead,
+    // which is a different behaviour with its own test below.
+    await dragHandle(page, "Subject", 60);
     const after = await columnWidths(page);
 
     expect(after.Subject).toBeGreaterThan(before.Subject);

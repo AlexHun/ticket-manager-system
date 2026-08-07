@@ -250,8 +250,9 @@ describe("TicketDetailPage", () => {
     mockApi({
       ticket: makeTicketDetail({
         assignedToId: "user-1",
-        // Deliberately not the signed-in user's name: the NavBar renders that,
-        // so a match would prove nothing about the assignee field.
+        // Deliberately not the signed-in user's name: the shell's top bar
+        // renders that, so a match would prove nothing about the assignee
+        // field.
         assignedTo: {
           id: "user-1",
           name: "Dana Delegate",

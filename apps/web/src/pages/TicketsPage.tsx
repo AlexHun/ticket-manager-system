@@ -10,7 +10,6 @@ import {
   type TicketSortField,
   type TicketsListResponse,
 } from "@ticket/shared";
-import { NavBar } from "@/components/NavBar";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import {
@@ -185,60 +184,53 @@ export function TicketsPage() {
   const filtered = hasActiveFilters(filters);
 
   return (
-    // Owns the viewport: only the table body scrolls, so the filters stay put
-    // and the pagination bar is always reachable without scrolling the window.
-    <div className="flex h-dvh flex-col overflow-hidden bg-background">
-      <NavBar />
-      <main className="flex min-h-0 flex-1 flex-col p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Tickets</h1>
-        </div>
+    // Opts out of scrolling as a page: only the table body moves, so the
+    // filters stay put and the pagination bar is always reachable. `min-h-0` is
+    // what lets this be shorter than its content — see the height chain in
+    // AppShell, which this is the bottom of.
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+      <div className="mb-4">
+        <TicketsFilters filters={filters} onChange={handleFiltersChange} />
+      </div>
 
-        <div className="mb-4">
-          <TicketsFilters filters={filters} onChange={handleFiltersChange} />
-        </div>
+      {isPending && <TicketsTableSkeleton className="min-h-0 flex-1" />}
 
-        {isPending && <TicketsTableSkeleton className="min-h-0 flex-1" />}
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {extractErrorMessage(error, "Failed to load tickets")}
+        </p>
+      )}
 
-        {error && (
-          <p className="text-sm text-destructive" role="alert">
-            {extractErrorMessage(error, "Failed to load tickets")}
-          </p>
-        )}
-
-        {data && (
-          // min-h-0 is load-bearing: a flex item won't shrink below its content
-          // without it, and the frame would overflow instead of scrolling.
-          <div
-            aria-busy={isFetching}
-            className={cn(
-              "flex min-h-0 flex-1 flex-col transition-opacity",
-              isFetching && "opacity-60",
-            )}
-          >
-            <TicketsTable
-              className="min-h-0 flex-1"
-              tickets={data.tickets}
-              sorting={sorting}
-              onSortingChange={handleSortingChange}
-              emptyMessage={
-                filtered
-                  ? "No tickets match these filters."
-                  : "No tickets found."
-              }
+      {data && (
+        // min-h-0 is load-bearing: a flex item won't shrink below its content
+        // without it, and the frame would overflow instead of scrolling.
+        <div
+          aria-busy={isFetching}
+          className={cn(
+            "flex min-h-0 flex-1 flex-col transition-opacity",
+            isFetching && "opacity-60",
+          )}
+        >
+          <TicketsTable
+            className="min-h-0 flex-1"
+            tickets={data.tickets}
+            sorting={sorting}
+            onSortingChange={handleSortingChange}
+            emptyMessage={
+              filtered ? "No tickets match these filters." : "No tickets found."
+            }
+          />
+          {data.total > 0 && (
+            <TicketsPagination
+              page={data.page}
+              pageSize={data.pageSize}
+              total={data.total}
+              onPageChange={(page) => update({ page })}
+              onPageSizeChange={(pageSize) => update({ pageSize })}
             />
-            {data.total > 0 && (
-              <TicketsPagination
-                page={data.page}
-                pageSize={data.pageSize}
-                total={data.total}
-                onPageChange={(page) => update({ page })}
-                onPageSizeChange={(pageSize) => update({ pageSize })}
-              />
-            )}
-          </div>
-        )}
-      </main>
+          )}
+        </div>
+      )}
     </div>
   );
 }

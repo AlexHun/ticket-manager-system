@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminRoute } from "@/components/AdminRoute";
+import { AppShell } from "@/components/layout/AppShell";
 import { RouteFallback } from "@/components/RouteFallback";
 import { LoginPage } from "@/pages/LoginPage";
 
@@ -39,12 +40,20 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/tickets" element={<TicketsPage />} />
-          <Route path="/tickets/:id" element={<TicketDetailPage />} />
-        </Route>
-        <Route element={<AdminRoute />}>
-          <Route path="/users" element={<UsersPage />} />
+          {/* The shell renders the sidebar, the top bar and the app's one
+              <main>; the pages inside render only their own content. */}
+          <Route element={<AppShell />}>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/tickets" element={<TicketsPage />} />
+            <Route path="/tickets/:id" element={<TicketDetailPage />} />
+            {/* Nested now, where it used to sit beside ProtectedRoute and
+                repeat the session check: inside the shell the admin gate is
+                just the role check it always was, and /users stops tearing
+                down and rebuilding the sidebar on every visit. */}
+            <Route element={<AdminRoute />}>
+              <Route path="/users" element={<UsersPage />} />
+            </Route>
+          </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

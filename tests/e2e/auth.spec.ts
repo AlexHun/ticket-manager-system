@@ -48,11 +48,13 @@ test.describe("Login flow", () => {
     await expect(page).toHaveURL("/");
     // Admin sees the Users nav link
     await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
-    // Admin name is displayed in the navbar. Scoped to the nav because `/` is
-    // now the dashboard: agent names also appear there as workload rows and
+    // Admin name is displayed in the top bar. Scoped to it because `/` is now
+    // the dashboard: agent names also appear there as workload rows and
     // needs-attention assignees, and an unscoped getByText matches substrings,
-    // so it would resolve to several elements and fail strict mode.
-    await expect(page.getByRole("navigation").getByText("Admin")).toBeVisible();
+    // so it would resolve to several elements and fail strict mode. Located by
+    // tag rather than role — the bar sits inside the shell's <main>, so it is
+    // deliberately not a banner landmark.
+    await expect(page.locator("header").getByText("Admin")).toBeVisible();
   });
 
   test("agent login succeeds — redirects to / and does NOT show Users link", async ({
@@ -63,8 +65,8 @@ test.describe("Login flow", () => {
     await expect(page).toHaveURL("/");
     // Agent must NOT see the Users nav link
     await expect(page.getByRole("link", { name: "Users" })).not.toBeVisible();
-    // Agent name is displayed in the navbar — scoped for the same reason as above.
-    await expect(page.getByRole("navigation").getByText("Agent")).toBeVisible();
+    // Agent name is displayed in the top bar — scoped for the same reason as above.
+    await expect(page.locator("header").getByText("Agent")).toBeVisible();
   });
 
   test("wrong password — server error shown, stays on /login", async ({
@@ -228,7 +230,7 @@ test.describe("Session persistence", () => {
     await page.reload();
 
     await expect(page).toHaveURL("/");
-    // The navbar is rendered (not the login form) confirming the session is live
+    // The app shell is rendered (not the login form) confirming the session is live
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   });
 });
