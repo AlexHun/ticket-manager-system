@@ -1,7 +1,5 @@
-import { Moon, Sun } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { authClient, useSession } from "@/lib/auth-client";
-import { useTheme } from "@/lib/theme";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -19,7 +17,6 @@ export function AppTopBar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { data: session } = useSession();
-  const { theme, toggleTheme } = useTheme();
 
   const title = topBarTitle(pathname);
 
@@ -51,16 +48,6 @@ export function AppTopBar() {
             {session.user.name}
           </span>
         )}
-        <Button
-          variant="outline"
-          size="icon-sm"
-          onClick={toggleTheme}
-          aria-label={
-            theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
-          }
-        >
-          {theme === "dark" ? <Sun /> : <Moon />}
-        </Button>
         <Button variant="outline" size="sm" onClick={handleSignOut}>
           Sign out
         </Button>

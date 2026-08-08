@@ -4,12 +4,9 @@ import { cn } from "@/lib/utils";
  * The project mark: the lucide `ticket` glyph on a rounded plate, the same
  * drawing as `public/favicon.svg` so the tab and the app read as one identity.
  *
- * Colour comes from `--sidebar-primary` / `--sidebar-primary-foreground`, which
- * `index.css` already defines per mode. That is deliberate over branching in
- * JS: `useTheme` is a local hook rather than a context (see the `--viz-*` note
- * in `index.css`), so a JS-side palette would have to be re-derived by every
- * component that draws the mark. CSS resolves it once, in whichever mode is in
- * force.
+ * Colour comes from `--sidebar-primary` / `--sidebar-primary-foreground` rather
+ * than being hard-coded here, so the mark tracks the palette in `index.css`
+ * instead of drifting from it.
  *
  * `aria-hidden` because every place this renders pairs it with the wordmark —
  * the link takes its accessible name from that text, not from here.

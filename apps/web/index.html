@@ -1,5 +1,9 @@
 <!doctype html>
-<html lang="en">
+<!-- `class="dark"` is permanent and load-bearing, not a default. The app has one
+     theme; the class is what keeps `@custom-variant dark (&:is(.dark *))`
+     matching, and roughly 28 shadcn components carry `dark:` utilities that
+     silently stop applying without it. See the palette block in index.css. -->
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,16 +11,6 @@
          which nothing serves -> 404 in the console on every page load. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Ticket Manager</title>
-    <script>
-      (function () {
-        try {
-          var t = localStorage.getItem("theme");
-          if (t !== "light") document.documentElement.classList.add("dark");
-        } catch (_) {
-          document.documentElement.classList.add("dark");
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

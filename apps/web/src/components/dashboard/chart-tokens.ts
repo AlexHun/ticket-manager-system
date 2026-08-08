@@ -22,33 +22,34 @@ export const CHART_HEIGHT_CLASS = "h-[240px]";
 /**
  * Bar animation settings, spread onto every `<Bar>` on the dashboard.
  *
- * Animation is off. The reason is that the tween is not CSS: each frame is a
- * React re-render (`recharts/animation/JavascriptAnimate.js` drives it from
- * `useState`), and each frame rebuilds every rect and re-runs the custom
- * `shape` in `chart-marks.tsx`. That loop is the dashboard's single largest
- * source of main-thread work, and it runs far more often than "on mount":
- * Recharts tweens from the previous geometry on *any* dimension change, so
- * every resize restarts it on all five charts at once. Collapsing the sidebar
- * animates `SidebarInset`'s width for 200ms (`transition-[width] duration-200`
- * in `ui/sidebar.tsx`), which is exactly such a change.
+ * The tween is not CSS: each frame is a React re-render
+ * (`recharts/animation/JavascriptAnimate.js` drives it from `useState`) that
+ * rebuilds every rect and re-runs the custom `shape` in `chart-marks.tsx`. So
+ * the cost of animation is set by how *often* it restarts, not just how long it
+ * runs — Recharts re-tweens on any dimension change, not only on mount.
  *
- * What this costs: a range change now snaps instead of morphing the columns.
- * That morph was deliberate, so if it is wanted back, prefer swapping the flag
- * for a short duration over restoring the default —
+ * It was off for a while, and what made it affordable again was fixing the thing
+ * that kept restarting it. The sidebar used to animate the width of the element
+ * that reflows content, firing ~12 resizes per toggle and relaunching the tween
+ * on every chart each time. That element now snaps once, after the slide (see
+ * `sidebar-gap` in `ui/sidebar.tsx`), so a toggle costs one tween rather than
+ * twelve. Dropping from five charts to two did the rest.
  *
- *     export const CHART_ANIMATION = { animationDuration: 200 } as const
+ * `animationDuration: 200` rather than the default: the default is `400`
+ * (`defaultBarProps` in `recharts/cartesian/Bar.js`, and note it is *not* the
+ * `1500` of v1/v2 — check before assuming an override is an improvement). Half
+ * the default is enough to read the columns morph on a range change while
+ * halving the number of frames that morph costs.
  *
- * — and re-measure. Note the default is `400`, not the `1500` of v1/v2
- * (`defaultBarProps` in `recharts/cartesian/Bar.js`); check it before assuming
- * any override is an improvement.
- *
- * `isAnimationActive` is a tri-state, not a boolean. Left unset it is `'auto'`,
- * which `JavascriptAnimate` resolves to `!Global.isSsr && !prefersReducedMotion`
- * — so `false` here is strictly a superset of the reduced-motion path and takes
- * nothing away from it. Never pass `true`: that would override the check and
- * force animation on for people who asked for none.
+ * `isAnimationActive` is deliberately absent. It is a tri-state, not a boolean:
+ * unset it is `'auto'`, which `JavascriptAnimate` resolves to
+ * `!Global.isSsr && !prefersReducedMotion`. Passing `true` would override that
+ * and force animation on for people who asked for none — so leaving it off the
+ * object is what keeps the reduced-motion path working. It is also why the test
+ * suite sees no animation: `src/test/setup.ts` answers `matches: true` to
+ * `prefers-reduced-motion`.
  */
-export const CHART_ANIMATION = { isAnimationActive: false } as const;
+export const CHART_ANIMATION = { animationDuration: 200 } as const;
 
 /**
  * Status as a chart series.

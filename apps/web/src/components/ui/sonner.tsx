@@ -1,11 +1,12 @@
 import { Toaster as SonnerToaster, type ToasterProps } from "sonner";
-import { useTheme } from "@/lib/theme";
 
 export function Toaster(props: ToasterProps) {
-  const { theme } = useTheme();
   return (
+    // `theme` is pinned rather than read from a hook: the app has one theme.
+    // Sonner's own default is "system", which would follow the OS and put light
+    // toasts on this dark shell for anyone whose machine is set to light.
     <SonnerToaster
-      theme={theme}
+      theme="dark"
       position="bottom-right"
       richColors
       closeButton

@@ -55,7 +55,10 @@ export function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-sm">
+      {/* The login card is the app's first frame, so it gets the panel entrance
+          rather than the flatter page one — there is no previous screen for it
+          to feel continuous with. */}
+      <Card className="w-full max-w-sm animate-panel-in">
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
           <CardDescription>

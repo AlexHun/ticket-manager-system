@@ -27,10 +27,6 @@ vi.mock("@/lib/auth-client", () => ({
   authClient: { signOut: vi.fn() },
 }));
 
-vi.mock("@/lib/theme", () => ({
-  useTheme: () => ({ theme: "dark", toggleTheme: vi.fn() }),
-}));
-
 // --- Helpers --------------------------------------------------------------
 
 const adminUser: User = {

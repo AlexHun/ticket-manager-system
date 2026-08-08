@@ -70,157 +70,28 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-    /* Tells the browser which palette to render native UI with — <select>
-       popups, scrollbars, focus rings. Without it these default to light,
-       so in dark mode the near-white option text lands on a white popup. */
-    color-scheme: light;
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.148 0.004 228.8);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.148 0.004 228.8);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.148 0.004 228.8);
-    --primary: oklch(0.508 0.118 165.612);
-    --primary-foreground: oklch(0.979 0.021 166.113);
-    /*
-     * Light-theme surfaces are deliberately several steps darker than stock
-     * shadcn (which puts muted/secondary/accent all at 0.97, ~1.04:1 against a
-     * white page — visually identical). These values give the muted surface the
-     * same 1.31:1 separation from the page that the dark theme already had.
-     * accent sits below muted so hover states stay visible on top of a muted
-     * surface; border sits below both so edges read against either.
-     */
-    --secondary: oklch(0.967 0.001 286.375);
-    --secondary-foreground: oklch(0.21 0.006 285.885);
-    --muted: oklch(0.963 0.002 197.1);
-    --muted-foreground: oklch(0.56 0.021 213.5);
-    --accent: oklch(0.963 0.002 197.1);
-    --accent-foreground: oklch(0.218 0.008 223.9);
-    --destructive: oklch(0.577 0.245 27.325);
-    /*
-     * Edges, one step darker again than the surface note above allows for.
-     *
-     * The asymmetry is the bug: the dark theme's --border sits at 2.64:1
-     * against its card, the light theme's at 1.25:1 against white. Same token,
-     * same intent, and only one of them was actually drawing a line — which is
-     * why the light dashboard read as floating text rather than panels. 1.45:1
-     * is about where GitHub-light puts a panel edge.
-     *
-     * This is one token doing a lot of work: Card's `ring-1 ring-border`, the
-     * ticket and user table frames, dialogs, separators, the shell's top-bar
-     * rule and every input outline. Changing it here rather than per-component
-     * is the point — dashboard cards with heavier edges than the login card
-     * beside them would be a worse result than soft edges everywhere.
-     */
-    --border: oklch(0.876 0.005 214.3);
-    --input: oklch(0.876 0.005 214.3);
-    --ring: oklch(0.723 0.014 214.4);
-    --chart-1: oklch(0.845 0.143 164.978);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.596 0.145 163.225);
-    --chart-4: oklch(0.508 0.118 165.612);
-    --chart-5: oklch(0.432 0.095 166.913);
-
-    /*
-     * Chart tokens. Charts name these, never --chart-N directly, because the
-     * usable window onto the emerald ramp is different per mode and CSS is the
-     * only place that can shift it — `useTheme` is a local hook, not a context,
-     * so a JS-side palette would have to be re-derived in every component.
-     *
-     * The ramp is ordinal (one hue, monotone lightness), which is what status
-     * and the time/age bins are: progressions, not peers. Nothing here is a
-     * categorical palette — telling four *peer* labels apart is the badges' job
-     * (see TicketBadges.tsx), and those hues are unsafe as chart fills anyway.
-     *
-     * Light mode starts one step in: --chart-1 measures 1.52:1 on the white
-     * card, under the 2:1 floor an ordinal ramp's light end has to clear.
-     * Light window contrasts: 2.47 / 3.65 / 5.36 / 7.61.
-     */
-    --viz-ord-1: var(--chart-2);
-    --viz-ord-2: var(--chart-3);
-    --viz-ord-3: var(--chart-4);
-    --viz-ord-4: var(--chart-5);
-
-    /* Status reads as emphasis, the same way the badges do — Open loud, Closed
-       receding — so it takes the ramp's dark end, darkest = Open. */
-    --viz-open: var(--chart-5);
-    --viz-resolved: var(--chart-4);
-    --viz-closed: var(--chart-3);
-
-    /* Nominal bars (category, customers) are ONE series, so one hue: the single
-       step clearing 3:1 on both surfaces (3.65 light / 4.76 dark). */
-    --viz-accent: var(--chart-3);
-
-    /*
-     * The chart's non-data furniture: gridlines, the hover cursor block, the
-     * tooltip's edge. Per-mode for the same reason the ramp is — the one
-     * expression these replace (`--border` at 50% alpha) measured 1.82:1 on the
-     * dark card but 1.11:1 on the white one, so the light theme was drawing its
-     * gridlines in a colour it could not show.
-     *
-     * Values are picked for perceptual parity, not ratio parity: the +0.05
-     * flare term in the WCAG formula flatters the dark end, so literally
-     * matching 1.82:1 on white would draw a wireframe over the data. These are
-     * furniture and must stay quieter than every bar on top of them.
-     */
-    --viz-grid: oklch(0.890 0.005 214.3);         /* 1.39:1 on the card */
-    --viz-cursor: oklch(0.920 0.004 214.3);       /* 1.27:1 — a wash behind the bars */
-    --viz-tooltip-edge: oklch(0.820 0.008 214.3); /* 1.75:1 — the only thing separating
-                                                     a white tooltip from a white card */
-
-    /*
-     * Status. A small reserved scale for state — never a series colour, and
-     * never used to mean "the fourth thing on the chart".
-     *
-     * These are *text* steps, so they are held to 4.5:1 on the card rather than
-     * the 3:1 a filled mark would need, and they are mode-specific because a
-     * step that clears 4.5:1 on white is unreadable on the dark card. The
-     * canonical status hexes do not survive that bar here and are deliberately
-     * not used: #fab219 measures 1.83:1 on this white card and #ec835a 2.64:1.
-     * Measured with the data-viz validator against --card in each mode; if these
-     * change, re-measure rather than eyeballing.
-     *
-     * --status-good is green, and so is every series colour in this theme, so it
-     * cannot carry "good" by hue alone — nothing here may. Every use ships an
-     * icon and a word (see StatusPill), which is the rule for status colour
-     * generally and doubly so in a monochrome-green palette.
-     *
-     * The -soft steps are chip fills, not text: low-alpha washes of the same
-     * hue that stay under the label sitting on them.
-     */
-    --status-good: #006300;                 /* 7.54:1 on white */
-    --status-warning: #a16207;              /* 4.92:1 */
-    --status-critical: #b91c1c;             /* 6.47:1 */
-    --status-good-soft: oklch(0.55 0.14 155 / 12%);
-    --status-warning-soft: oklch(0.65 0.15 75 / 14%);
-    --status-critical-soft: oklch(0.58 0.20 25 / 12%);
-
-    --radius: 0.45rem;
-
-    /*
-     * Sidebar surfaces, retuned for the same reason as the muted/accent block
-     * above: stock put --sidebar at 0.987, which is 1.04:1 against a white page
-     * — the sidebar simply did not read as a surface. These give it the same
-     * 1.09:1 separation the dark theme already had, with the accent (the
-     * hover/active fill) and the border stepping down from there so each stays
-     * visible on top of the one before it.
-     *
-     * --sidebar-primary is untouched: 3.36:1 on the retuned surface is what
-     * licenses it for the logo plate and the active nav icon, both of which are
-     * non-text graphics needing 3:1.
-     */
-    --sidebar: oklch(0.971 0.002 197.1);
-    --sidebar-foreground: oklch(0.148 0.004 228.8);
-    --sidebar-primary: oklch(0.596 0.145 163.225);
-    --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
-    --sidebar-accent: oklch(0.929 0.005 197.1);
-    --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
-    --sidebar-border: oklch(0.878 0.005 214.3);
-    --sidebar-ring: oklch(0.723 0.014 214.4);
-}
-
-.dark {
+/*
+ * There is one theme, and it is dark.
+ *
+ * The light palette that used to live here in a `:root` block is gone rather
+ * than merely unreachable — a second set of 48 tokens that nothing renders is
+ * a trap, because it goes stale silently and the next person to add a token
+ * has to guess whether both halves need it.
+ *
+ * The selector below is `:root, .dark` and needs both arms:
+ *   :root  — so the tokens land on the root element unconditionally, and the
+ *            app is never one missing class away from having no palette.
+ *   .dark  — so `@custom-variant dark (&:is(.dark *))` at the top of this file
+ *            keeps matching. Around 28 shadcn components carry `dark:`
+ *            utilities that were written to layer on top of these values;
+ *            drop the class and those silently stop applying.
+ * `index.html` therefore hard-codes `class="dark"` on <html>, with no script
+ * and nothing to read from localStorage.
+ */
+:root, .dark {
+    /* Native UI — <select> popups, scrollbars, focus rings — is drawn by the
+       browser, not by these tokens. Without this it renders light and the
+       near-white option text lands on a white popup. */
     color-scheme: dark;
     --background: oklch(0.148 0.004 228.8);
     --foreground: oklch(0.987 0.002 197.1);
@@ -246,42 +117,46 @@
     --chart-4: oklch(0.508 0.118 165.612);
     --chart-5: oklch(0.432 0.095 166.913);
 
-    /* The mirror image of the light window: --chart-5 measures only 2.28:1 on
-       the dark card, so the window slides one step lighter instead. Dark window
-       contrasts: 11.42 / 7.02 / 4.76 / 3.24.
-       Every token is restated rather than aliased to --viz-ord-N. The alias
-       would resolve correctly today (both blocks match the same <html>), but it
-       breaks silently the day .dark moves to <body>. */
+    /* The ordinal window starts at --chart-1 and runs down, because --chart-5
+       measures only 2.28:1 on this card and would vanish into it. Contrasts:
+       11.42 / 7.02 / 4.76 / 3.24. */
     --viz-ord-1: var(--chart-1);
     --viz-ord-2: var(--chart-2);
     --viz-ord-3: var(--chart-3);
     --viz-ord-4: var(--chart-4);
 
-    /* Note the order flips with the surface. "Open is loud, Closed recedes"
-       is a statement about contrast, not about darkness: on the white card the
-       loudest step is the darkest, on this one it is the lightest. Assigning
-       the same hex to Open in both modes would make it the *quietest* status
-       here. Contrasts: Open 7.02, Resolved 4.76, Closed 3.24. */
+    /* "Open is loud, Closed recedes" is a statement about contrast, not about
+       darkness — on this surface the loudest step is the lightest one, which is
+       why Open takes the low chart index rather than the high one. Contrasts:
+       Open 7.02, Resolved 4.76, Closed 3.24. */
     --viz-open: var(--chart-2);
     --viz-resolved: var(--chart-3);
     --viz-closed: var(--chart-4);
 
     --viz-accent: var(--chart-3);
 
-    /* Restated, not aliased to the :root values — same argument as --viz-ord-N
-       above. Each of these reproduces what the dark theme already rendered:
-       dark was never the broken half, so the point of naming them here is that
-       fixing light mode cannot quietly change this one. */
+    /* Chart furniture — quieter than every mark drawn on top of it. */
     --viz-grid: oklch(1 0 0 / 5%);         /* 1.82:1 — what border/50 resolved to */
     --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
     --viz-tooltip-edge: oklch(1 0 0 / 5%);  /* = border/50, unchanged */
 
-    /* Status, re-stepped for the dark card (#161b1d) — not the light values with
-       a filter over them. The light steps would land at roughly 1.5:1 here, so
-       each one moves up its ramp instead. Contrasts measured on --card:
-       good 9.04, warning 10.41, critical 6.02. The -soft chip fills carry more
-       alpha than their light twins because a wash disappears faster against a
-       dark surface than a white one. */
+    /*
+     * Status. A small reserved scale for state — never a series colour, and
+     * never "the fourth thing on the chart".
+     *
+     * These are *text* steps, held to 4.5:1 on the card (#161b1d) rather than
+     * the 3:1 a filled mark would need, and measured with the data-viz
+     * validator: good 9.04, warning 10.41, critical 6.02. Re-measure rather
+     * than eyeball if they change. The canonical status hexes are deliberately
+     * not used — #fab219 and #ec835a were picked against a light surface.
+     *
+     * --status-good is green, and so is every series colour in this theme, so
+     * it cannot carry "good" by hue alone — nothing here may. Every use ships
+     * an icon and a word (see StatusPill).
+     *
+     * The -soft steps are chip fills, not text: low-alpha washes of the same
+     * hue that sit under the label on top of them.
+     */
     --status-good: #34d399;
     --status-warning: #fbbf24;
     --status-critical: #ff6467;
@@ -297,6 +172,8 @@
     --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.56 0.021 213.5);
+
+    --radius: 0.45rem;
 }
 
 /*
@@ -328,6 +205,18 @@
 
 @utility animate-panel-in {
   animation: panel-in 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* The route transition. Shorter and shallower than `panel-in` on purpose: it
+   moves the entire page, and the same 6px that reads as a lift on one card
+   reads as a lurch on a full screen of content. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@utility animate-page-in {
+  animation: page-in 180ms ease-out both;
 }
 
 @layer base {
