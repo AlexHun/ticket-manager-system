@@ -4,11 +4,16 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { visualizer } from "rollup-plugin-visualizer";
 import path from "node:path";
+import { devToolsPlugin } from "./dev/plugin";
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    // Backs the two pages under /__dev: the project map and the test runner.
+    // `apply: "serve"` inside, so this contributes nothing to a build — see the
+    // note at the top of dev/plugin.ts.
+    devToolsPlugin(),
     // Writes a treemap of the production bundle on every build — the only way
     // to tell whether a dependency actually ships or merely looks like it does.
     // Recharts reaches the bundle through a namespace import in shadcn's chart

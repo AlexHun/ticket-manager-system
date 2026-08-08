@@ -34,6 +34,23 @@ const UsersPage = lazy(() =>
   import("@/pages/UsersPage").then((m) => ({ default: m.UsersPage })),
 );
 
+/**
+ * The dev tools, at `/__dev` — the project map and the test runner.
+ *
+ * The `import.meta.env.DEV` guard is what keeps them out of production, and it
+ * works because Vite substitutes the literal `false` there: the ternary folds,
+ * the `import()` becomes unreachable, and Rollup emits no chunk for `@/dev` at
+ * all. A runtime check inside the component would not do this — the code would
+ * still ship. Verify with the bundle treemap in `.vite/stats.html`, which is
+ * where a leak would show up.
+ *
+ * One lazy route rather than two: everything under `/__dev` lives in that module,
+ * including its own shell and nav, so `App.tsx` only has to know the prefix.
+ */
+const DevRoutes = import.meta.env.DEV
+  ? lazy(() => import("@/dev/DevRoutes").then((m) => ({ default: m.DevRoutes })))
+  : null;
+
 export function App() {
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -55,6 +72,11 @@ export function App() {
             </Route>
           </Route>
         </Route>
+        {/* Outside ProtectedRoute deliberately: the project map reads the source
+            tree through the Vite dev server, so it must stay reachable when the
+            API or the database is down — see the note in dev/DevRoutes.tsx.
+            `null` in production, and Routes ignores a non-element child. */}
+        {DevRoutes && <Route path="/__dev/*" element={<DevRoutes />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

@@ -7,5 +7,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts"]
+  // `dev` is the node half of the dev-tools plugin. It shares its wire types
+  // with the browser half in `src/dev/protocol.ts`, which is reached by relative
+  // path from here rather than through the `@/` alias — this project has no
+  // `paths` mapping, and the file is pulled in transitively anyway.
+  "include": ["vite.config.ts", "dev"]
 }

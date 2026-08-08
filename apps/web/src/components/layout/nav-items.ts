@@ -1,5 +1,7 @@
 import {
+  FlaskConicalIcon,
   LayoutDashboardIcon,
+  NetworkIcon,
   TicketIcon,
   UsersIcon,
   type LucideIcon,
@@ -27,6 +29,27 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/tickets", label: "Tickets", icon: TicketIcon },
   { to: "/users", label: "Users", icon: UsersIcon, role: USER_ROLE.admin },
 ] as const;
+
+/**
+ * The dev tools, which exist only while `vite dev` is running.
+ *
+ * Empty in a production build, and empty by construction rather than by a check
+ * at render time: Vite replaces `import.meta.env.DEV` with the literal `false`,
+ * so Rollup drops the array *and* the two icon imports it is the only user of.
+ * Everything that consumes this — the sidebar group, the dev shell's own nav —
+ * therefore renders nothing without needing to know why.
+ *
+ * These sit apart from `NAV_ITEMS` on purpose: they are not part of the app's
+ * navigation model. They have no role gate (in dev, everyone sees them), and
+ * following one leaves `AppShell` entirely, which `topBarTitle` below would
+ * otherwise be asked to name.
+ */
+export const DEV_NAV_ITEMS: readonly NavItem[] = import.meta.env.DEV
+  ? ([
+      { to: "/__dev/map", label: "Project map", icon: NetworkIcon, end: true },
+      { to: "/__dev/tests", label: "Tests", icon: FlaskConicalIcon, end: true },
+    ] as const)
+  : [];
 
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
   return matchPath({ path: item.to, end: item.end ?? false }, pathname) !== null;

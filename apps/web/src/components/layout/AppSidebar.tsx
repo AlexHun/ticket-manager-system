@@ -5,6 +5,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -12,7 +13,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { LogoMark } from "./Logo";
-import { isNavItemActive, navItemsFor } from "./nav-items";
+import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
 
 export function AppSidebar() {
   const { data: session } = useSession();
@@ -84,6 +85,35 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {/* Empty in a production build — `DEV_NAV_ITEMS` is `[]` there, and the
+              group renders nothing rather than being conditional on a flag. A
+              separate group because these leave the shell: following one lands on
+              the dev tools' own layout, which is the point. */}
+          {DEV_NAV_ITEMS.length > 0 && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Dev</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-1">
+                  {DEV_NAV_ITEMS.map((item) => (
+                    <SidebarMenuItem key={item.to}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isNavItemActive(item, pathname)}
+                        tooltip={item.label}
+                        className="data-[active=true]:[&>svg]:text-sidebar-primary"
+                      >
+                        <NavLink to={item.to} end={item.end}>
+                          <item.icon aria-hidden="true" />
+                          <span>{item.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
         </nav>
       </SidebarContent>
 

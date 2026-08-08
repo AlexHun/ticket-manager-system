@@ -105,8 +105,14 @@ export function TicketMessageThread({
     // node for nothing. gap-1 is the *within*-run spacing; a message that opens
     // a run adds its own margin, so the eye groups a sender's messages before
     // it separates them. pe-2 keeps the bubbles off the scrollbar.
+    // Named for the same reason the sidebar's <nav> is: it is not the only list
+    // on the page. Sonner renders its toasts as an <ol> of <li>, so an unscoped
+    // `ol > li` counts a visible toast as a message — which is exactly how the
+    // reply E2E test came to expect four messages and find five. The name also
+    // gives assistive tech something better than "list".
     <ol
       ref={scrollRef}
+      aria-label="Message thread"
       className={cn("flex flex-col gap-1 overflow-y-auto pe-2", className)}
     >
       {messages.map((message, index) => {

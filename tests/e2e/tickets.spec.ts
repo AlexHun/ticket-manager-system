@@ -381,6 +381,19 @@ function filterControl(page: Page, label: string) {
 }
 
 /**
+ * The messages in the thread, and nothing else.
+ *
+ * Scoped to the named list rather than `page.locator("ol > li")`, which is not
+ * specific enough: sonner renders its toasts as an `<ol>` of `<li>`, so the
+ * "Reply added to the thread" toast counted as a fourth message and the reply
+ * test failed with "Expected: 4, Received: 5" whenever the assertion ran before
+ * the toast timed out. A race, so it passed often enough to look fine.
+ */
+function threadMessages(page: Page) {
+  return page.getByRole("list", { name: "Message thread" }).locator("> li");
+}
+
+/**
  * The filters use the shadcn (Radix) Select: a combobox trigger plus a
  * portalled listbox, so there is no native <select> to `selectOption`.
  */
@@ -1910,7 +1923,7 @@ test.describe("Tickets page", () => {
     expect(table).toBeCloseTo(frame, 0);
   });
 
-  test("badges are distinct and legible in both themes", async ({ page }) => {
+  test("badges are distinct and legible", async ({ page }) => {
     await testDb.ticket.createMany({
       data: [
         { subject: "S-Open", status: TICKET_STATUS.Open, category: TICKET_CATEGORY.General },
@@ -1929,75 +1942,70 @@ test.describe("Tickets page", () => {
     await page.goto("/tickets");
     await expect(page.getByRole("table")).toBeVisible();
 
-    for (const theme of ["dark", "light"] as const) {
-      if (theme === "light") {
-        await page.getByRole("button", { name: "Switch to light theme" }).click();
-        await expect(
-          page.getByRole("button", { name: "Switch to dark theme" }),
-        ).toBeVisible();
+    // One theme, and it is dark — see the note at the top of index.css. This
+    // used to loop over dark and light and click a theme toggle; both the
+    // toggle and the light palette are gone, so the loop was removed rather
+    // than left failing. The contrast and hue checks below are unchanged.
+    const readings = await page.evaluate(() => {
+      // The theme is authored in oklch and Chrome reports computed colours
+      // in oklch too, so a naive rgb() parse reads chroma/hue as channels.
+      // Canvas fillStyle normalises any CSS colour to sRGB hex/rgba.
+      // Reading `fillStyle` back is not enough — Chrome echoes oklch()
+      // unchanged. Actually painting the colour forces it through the
+      // canvas's sRGB pipeline, and getImageData returns real bytes.
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const ctx = canvas.getContext("2d", {
+        willReadFrequently: true,
+      }) as CanvasRenderingContext2D;
+      const parse = (color: string): number[] => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+        const d = ctx.getImageData(0, 0, 1, 1).data;
+        return [d[0], d[1], d[2], d[3] / 255];
+      };
+      const over = (fg: number[], bg: number[]) => {
+        const a = fg[3] ?? 1;
+        return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a));
+      };
+      const lum = (c: number[]) =>
+        0.2126 * chan(c[0]) + 0.7152 * chan(c[1]) + 0.0722 * chan(c[2]);
+      function chan(v: number) {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
       }
+      const page$ = parse(getComputedStyle(document.body).backgroundColor);
 
-      const readings = await page.evaluate(() => {
-        // The theme is authored in oklch and Chrome reports computed colours
-        // in oklch too, so a naive rgb() parse reads chroma/hue as channels.
-        // Canvas fillStyle normalises any CSS colour to sRGB hex/rgba.
-        // Reading `fillStyle` back is not enough — Chrome echoes oklch()
-        // unchanged. Actually painting the colour forces it through the
-        // canvas's sRGB pipeline, and getImageData returns real bytes.
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = 1;
-        const ctx = canvas.getContext("2d", {
-          willReadFrequently: true,
-        }) as CanvasRenderingContext2D;
-        const parse = (color: string): number[] => {
-          ctx.clearRect(0, 0, 1, 1);
-          ctx.fillStyle = color;
-          ctx.fillRect(0, 0, 1, 1);
-          const d = ctx.getImageData(0, 0, 1, 1).data;
-          return [d[0], d[1], d[2], d[3] / 255];
-        };
-        const over = (fg: number[], bg: number[]) => {
-          const a = fg[3] ?? 1;
-          return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a));
-        };
-        const lum = (c: number[]) =>
-          0.2126 * chan(c[0]) + 0.7152 * chan(c[1]) + 0.0722 * chan(c[2]);
-        function chan(v: number) {
-          const s = v / 255;
-          return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-        }
-        const page$ = parse(getComputedStyle(document.body).backgroundColor);
-
-        const badges = Array.from(
-          document.querySelectorAll('[data-slot="badge"]'),
-        );
-        return badges.map((el) => {
-          const cs = getComputedStyle(el);
-          // Tints are translucent, so composite them over the page colour
-          // before judging whether the label on top is readable.
-          const bg = over(parse(cs.backgroundColor), page$);
-          const fg = over(parse(cs.color), bg);
-          const [hi, lo] = [lum(fg), lum(bg)].sort((a, b) => b - a);
-          return {
-            label: el.textContent ?? "",
-            look: cs.color + "|" + cs.backgroundColor,
-            contrast: (hi + 0.05) / (lo + 0.05),
-          };
-        });
-      });
-
-      expect(readings.length).toBeGreaterThanOrEqual(8);
-      for (const r of readings) {
-        // WCAG AA for small text — these badges are text-xs.
-        expect(r.contrast, `${theme} ${r.label} (${r.contrast.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
-      }
-
-      const categories = readings.filter((r) =>
-        ["General", "Technical", "Refund", "Other"].includes(r.label.trim()),
+      const badges = Array.from(
+        document.querySelectorAll('[data-slot="badge"]'),
       );
-      const distinct = new Set(categories.map((r) => r.look));
-      expect(distinct.size, `${theme}: category hues`).toBe(categories.length);
+      return badges.map((el) => {
+        const cs = getComputedStyle(el);
+        // Tints are translucent, so composite them over the page colour
+        // before judging whether the label on top is readable.
+        const bg = over(parse(cs.backgroundColor), page$);
+        const fg = over(parse(cs.color), bg);
+        const [hi, lo] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+        return {
+          label: el.textContent ?? "",
+          look: cs.color + "|" + cs.backgroundColor,
+          contrast: (hi + 0.05) / (lo + 0.05),
+        };
+      });
+    });
+
+    expect(readings.length).toBeGreaterThanOrEqual(8);
+    for (const r of readings) {
+      // WCAG AA for small text — these badges are text-xs.
+      expect(r.contrast, `${r.label} (${r.contrast.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
     }
+
+    const categories = readings.filter((r) =>
+      ["General", "Technical", "Refund", "Other"].includes(r.label.trim()),
+    );
+    const distinct = new Set(categories.map((r) => r.look));
+    expect(distinct.size, "category hues").toBe(categories.length);
   });
 
   test("shows a resize divider at rest and the right cursors", async ({
@@ -2205,7 +2213,7 @@ test.describe("Ticket detail page", () => {
     await page.goto(`/tickets/${id}`);
 
     await expect(page.getByText("Messages (3)")).toBeVisible();
-    const messages = page.locator("ol > li");
+    const messages = threadMessages(page);
     await expect(messages).toHaveCount(3);
     await expect(messages.nth(0)).toContainText(
       "First message, from the customer.",
@@ -2227,7 +2235,7 @@ test.describe("Ticket detail page", () => {
     await page.getByRole("button", { name: "Send reply" }).click();
 
     await expect(page.getByText("Messages (4)")).toBeVisible();
-    const messages = page.locator("ol > li");
+    const messages = threadMessages(page);
     await expect(messages).toHaveCount(4);
     await expect(messages.nth(3)).toContainText(
       "Thanks for the details — that is fixed now.",
