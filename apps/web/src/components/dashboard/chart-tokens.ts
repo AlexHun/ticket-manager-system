@@ -20,27 +20,35 @@ export const CHART_BOX = "aspect-auto h-[240px] w-full";
 export const CHART_HEIGHT_CLASS = "h-[240px]";
 
 /**
- * There is deliberately no `animationDuration` constant here, and no chart
- * passes the prop. Recharts' own default is what runs.
+ * Bar animation settings, spread onto every `<Bar>` on the dashboard.
  *
- * This used to be `600`, justified by a comment about "Recharts' 1500ms
- * default" — which was true of v1/v2 and stopped being true in v3. The default
- * is now `400` (`defaultBarProps` in `recharts/cartesian/Bar.js`), so the
- * override meant to make the dashboard feel quicker was making every chart half
- * again slower than doing nothing. Check that default before reintroducing one.
+ * Animation is off. The reason is that the tween is not CSS: each frame is a
+ * React re-render (`recharts/animation/JavascriptAnimate.js` drives it from
+ * `useState`), and each frame rebuilds every rect and re-runs the custom
+ * `shape` in `chart-marks.tsx`. That loop is the dashboard's single largest
+ * source of main-thread work, and it runs far more often than "on mount":
+ * Recharts tweens from the previous geometry on *any* dimension change, so
+ * every resize restarts it on all five charts at once. Collapsing the sidebar
+ * animates `SidebarInset`'s width for 200ms (`transition-[width] duration-200`
+ * in `ui/sidebar.tsx`), which is exactly such a change.
  *
- * Duration is worth being careful with because the animation is not CSS: each
- * frame is a React re-render (`recharts/animation/JavascriptAnimate.js` drives
- * it from `useState`), and each frame rebuilds every rect and re-runs the
- * custom `shape` in `chart-marks.tsx`. A longer duration is not just a longer
- * wait — it is proportionally more main-thread work, across five charts that
- * all mount at once.
+ * What this costs: a range change now snaps instead of morphing the columns.
+ * That morph was deliberate, so if it is wanted back, prefer swapping the flag
+ * for a short duration over restoring the default —
  *
- * Note what is *not* set anywhere either: `isAnimationActive`. It defaults to
- * `'auto'`, which `JavascriptAnimate` resolves to
- * `!Global.isSsr && !prefersReducedMotion` — passing `true` would override that
- * and defeat the accessibility path.
+ *     export const CHART_ANIMATION = { animationDuration: 200 } as const
+ *
+ * — and re-measure. Note the default is `400`, not the `1500` of v1/v2
+ * (`defaultBarProps` in `recharts/cartesian/Bar.js`); check it before assuming
+ * any override is an improvement.
+ *
+ * `isAnimationActive` is a tri-state, not a boolean. Left unset it is `'auto'`,
+ * which `JavascriptAnimate` resolves to `!Global.isSsr && !prefersReducedMotion`
+ * — so `false` here is strictly a superset of the reduced-motion path and takes
+ * nothing away from it. Never pass `true`: that would override the check and
+ * force animation on for people who asked for none.
  */
+export const CHART_ANIMATION = { isAnimationActive: false } as const;
 
 /**
  * Status as a chart series.

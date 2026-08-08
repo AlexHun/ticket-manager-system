@@ -43,26 +43,6 @@ function topRoundedPath(
   ].join(" ");
 }
 
-/** A rect rounded on its right two corners only. */
-function rightRoundedPath(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): string {
-  const rad = Math.max(0, Math.min(r, w, h / 2));
-  return [
-    `M ${x},${y}`,
-    `L ${x + w - rad},${y}`,
-    `Q ${x + w},${y} ${x + w},${y + rad}`,
-    `L ${x + w},${y + h - rad}`,
-    `Q ${x + w},${y + h} ${x + w - rad},${y + h}`,
-    `L ${x},${y + h}`,
-    "Z",
-  ].join(" ");
-}
-
 /**
  * A segment of a vertical (column) stack.
  *
@@ -89,21 +69,11 @@ export function StackSegmentV(props: SegmentProps) {
   );
 }
 
-/**
- * A segment of a horizontal (row) stack. Mirrored: the gap comes off the right,
- * so the first segment stays anchored to the axis.
+/*
+ * There was a `StackSegmentH` here, the mirrored version for horizontal bars.
+ * It went when the panels that used it — By category and Workload — stopped
+ * being Recharts charts and became `MiniBarList` rows. If a horizontal *chart*
+ * ever comes back, the shape is `StackSegmentV` with the axes swapped: take the
+ * gap off the right so the first segment stays anchored, and round the right
+ * pair of corners rather than the top pair.
  */
-export function StackSegmentH(props: SegmentProps) {
-  const { x = 0, y = 0, width = 0, height = 0, fill, radius = 0 } = props;
-  const w = width - GAP;
-  if (w <= 0) {
-    return width > 0 ? (
-      <rect x={x} y={y} width={1} height={height} fill={fill} />
-    ) : null;
-  }
-  return radius > 0 ? (
-    <path d={rightRoundedPath(x, y, w, height, radius)} fill={fill} />
-  ) : (
-    <rect x={x} y={y} width={w} height={height} fill={fill} />
-  );
-}

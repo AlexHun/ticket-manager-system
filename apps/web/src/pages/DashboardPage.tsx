@@ -1,18 +1,21 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { TicketStatsQuery } from "@ticket/core";
-import type { TicketStatsResponse } from "@ticket/shared";
-import { BacklogAgeChart } from "@/components/dashboard/BacklogAgeChart";
-import { CategoryChart } from "@/components/dashboard/CategoryChart";
+import { DASHBOARD_SCOPE, type TicketStatsResponse } from "@ticket/shared";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { FirstResponseChart } from "@/components/dashboard/FirstResponseChart";
 import { KpiRow } from "@/components/dashboard/KpiRow";
+import { MiniBarList } from "@/components/dashboard/MiniBarList";
 import { NeedsAttentionCard } from "@/components/dashboard/NeedsAttentionCard";
 import { StatusMixCard } from "@/components/dashboard/StatusMixCard";
 import { TopCustomersCard } from "@/components/dashboard/TopCustomersCard";
 import { VolumeChart } from "@/components/dashboard/VolumeChart";
-import { WorkloadChart } from "@/components/dashboard/WorkloadChart";
+import {
+  backlogAgeRows,
+  categoryRows,
+  workloadRows,
+} from "@/components/dashboard/mini-rows";
 import { DASHBOARD_GRID, PANEL_SPAN } from "@/components/dashboard/grid";
 import { api } from "@/lib/api";
 import {
@@ -35,7 +38,7 @@ function useTicketStatsQuery(params: TicketStatsQuery) {
       return data;
     },
     // Changing the range holds the rendered dashboard rather than replacing it
-    // with a skeleton: the panels dim and the charts morph, so nothing jumps.
+    // with a skeleton, so the layout never collapses and rebuilds under you.
     placeholderData: keepPreviousData,
   });
 }
@@ -98,9 +101,9 @@ export function DashboardPage() {
             // which is why this only ever looked wrong in light mode. No
             // opacity both signals "stale" and keeps light text at 4.5:1 (the
             // break-even is about 0.99), so the dim comes off the words
-            // entirely. The cue still lands where staleness is actually
-            // legible — the bars mid-remorph — and `aria-busy` above carries
-            // it for anyone not looking at the colour.
+            // entirely. The cue still lands on the plots themselves, and
+            // `aria-busy` above carries it for anyone not looking at the
+            // colour.
             isFetching && "[&_[data-slot=chart]]:opacity-60",
           )}
         >
@@ -110,45 +113,67 @@ export function DashboardPage() {
             categories={data.categories}
           />
 
-          <div className={DASHBOARD_GRID}>
+          {/* Two Recharts panels on the page, not five.
+
+              The three that went are the ones whose whole job was "five labelled
+              bars", which a proportional <div> does for a fraction of the cost —
+              see MiniBarList. What stayed is what actually needs a plot: a time
+              series with a real x-axis, and one latency distribution. Nothing was
+              dropped, only re-rendered. */}
+          {/* The panels fade up once, on mount. `both` fill means each element
+              animates a single time when it first appears — a range change
+              re-renders these panels but does not remount them, so switching
+              7d/30d/90d does not replay it. */}
+          <div className={cn(DASHBOARD_GRID, "[&>*]:animate-panel-in")}>
             <VolumeChart
-              className={PANEL_SPAN.wide}
+              className={PANEL_SPAN.twoThirds}
               volume={data.volume}
               bucket={data.bucket}
             />
-            {/* Two short panels stacked beside one tall one, rather than
-                three cells in a row — the status meter is a few lines high and
-                the attention list is not, so side by side they would leave a
-                column of dead space. */}
-            <div className={cn(PANEL_SPAN.narrow, "flex flex-col gap-3")}>
-              {/* The status key sits directly under the chart it explains, so
-                  the volume chart needs no legend box of its own. */}
-              <StatusMixCard
-                byStatus={data.summary.byStatus}
-                total={data.summary.total}
-              />
-              <CategoryChart categories={data.categories} />
-            </div>
+            {/* The status key sits beside the chart it explains, so the volume
+                chart still needs no legend box of its own. */}
+            <StatusMixCard
+              className={PANEL_SPAN.narrow}
+              byStatus={data.summary.byStatus}
+              total={data.summary.total}
+            />
+
             <NeedsAttentionCard
               className={PANEL_SPAN.twoThirds}
               tickets={data.needsAttention}
             />
             <FirstResponseChart
-              className={PANEL_SPAN.half}
+              className={PANEL_SPAN.narrow}
               stats={data.firstResponse}
             />
-            <BacklogAgeChart
-              className={PANEL_SPAN.half}
-              stats={data.backlogAge}
+
+            <MiniBarList
+              className={PANEL_SPAN.narrow}
+              title="By category"
+              subtitle="Including tickets nobody has filed yet"
+              rows={categoryRows(data.categories)}
             />
-            <WorkloadChart
-              className={PANEL_SPAN.half}
-              workload={data.workload}
-              unassigned={data.unassigned}
-              scope={data.scope}
+            <MiniBarList
+              className={PANEL_SPAN.narrow}
+              title={
+                data.scope === DASHBOARD_SCOPE.mine
+                  ? "Your workload"
+                  : "Workload"
+              }
+              subtitle="By who the ticket is assigned to"
+              rows={workloadRows(data.workload, data.unassigned)}
+              emptyMessage="Nothing assigned in this range."
             />
+            <MiniBarList
+              className={PANEL_SPAN.narrow}
+              title="Open backlog age"
+              subtitle="How long still-open tickets have waited"
+              rows={backlogAgeRows(data.backlogAge)}
+              emptyMessage="Nothing open in this range."
+            />
+
             <TopCustomersCard
-              className={PANEL_SPAN.half}
+              className={PANEL_SPAN.wide}
               customers={data.topCustomers}
             />
           </div>

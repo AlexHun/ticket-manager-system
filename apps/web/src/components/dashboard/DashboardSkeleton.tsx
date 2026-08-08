@@ -31,18 +31,21 @@ export function DashboardSkeleton() {
       </div>
 
       {/* Mirrors DashboardPage's grid panel-for-panel, so the swap to the real
-          content moves nothing. */}
+          content moves nothing. The three `short` panels are the MiniBarLists,
+          which are rows of text rather than a plot and so stand a fraction of a
+          chart's height. */}
       <div className={DASHBOARD_GRID}>
-        <PanelSkeleton className={PANEL_SPAN.wide} />
-        <div className={`${PANEL_SPAN.narrow} flex flex-col gap-3`}>
-          <PanelSkeleton short />
-          <PanelSkeleton />
-        </div>
         <PanelSkeleton className={PANEL_SPAN.twoThirds} />
-        <PanelSkeleton className={PANEL_SPAN.half} />
-        <PanelSkeleton className={PANEL_SPAN.half} />
-        <PanelSkeleton className={PANEL_SPAN.half} />
-        <PanelSkeleton className={PANEL_SPAN.half} />
+        <PanelSkeleton className={PANEL_SPAN.narrow} short />
+
+        <PanelSkeleton className={PANEL_SPAN.twoThirds} />
+        <PanelSkeleton className={PANEL_SPAN.narrow} />
+
+        <PanelSkeleton className={PANEL_SPAN.narrow} short />
+        <PanelSkeleton className={PANEL_SPAN.narrow} short />
+        <PanelSkeleton className={PANEL_SPAN.narrow} short />
+
+        <PanelSkeleton className={PANEL_SPAN.wide} short />
       </div>
     </div>
   );

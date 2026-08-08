@@ -8,6 +8,11 @@ import {
 } from "@ticket/shared";
 import { formatHours, formatPercent } from "@/lib/format";
 import { StatTile } from "./StatTile";
+import {
+  firstReplyVerdict,
+  openVerdict,
+  settledVerdict,
+} from "./kpi-status";
 
 interface KpiRowProps {
   summary: TicketStatsSummary;
@@ -28,11 +33,20 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
   const untriaged =
     categories.find((c) => c.category === null)?.count ?? 0;
 
+  // Thresholds live in `kpi-status.ts`, not here — this component's job is to
+  // lay four tiles out, and burying the definition of "bad" in JSX is how it
+  // stops getting re-tuned.
+  const openState = openVerdict(summary);
+  const settledState = settledVerdict(summary);
+  const replyState = firstReplyVerdict(firstResponse);
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 [&>*]:animate-panel-in">
       <StatTile
         label="Open"
         value={open}
+        status={openState?.status}
+        statusLabel={openState?.label}
         sub={
           summary.openUnassigned > 0 ? (
             // Links to the list already filtered the same way, so the count is a
@@ -61,11 +75,15 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
       <StatTile
         label="Settled"
         display={formatPercent(summary.settledShare)}
+        status={settledState?.status}
+        statusLabel={settledState?.label}
         sub={`${summary.byStatus[TICKET_STATUS.Resolved] + summary.byStatus[TICKET_STATUS.Closed]} of ${summary.total} resolved or closed`}
       />
       <StatTile
         label="Median first reply"
         display={formatHours(firstResponse.medianHours)}
+        status={replyState?.status}
+        statusLabel={replyState?.label}
         sub={
           firstResponse.awaiting > 0
             ? `${firstResponse.awaiting} still awaiting a first reply`

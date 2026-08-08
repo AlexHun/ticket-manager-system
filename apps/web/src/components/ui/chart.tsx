@@ -8,6 +8,50 @@ import { cn } from "@/lib/utils"
 const THEMES = { light: "", dark: ".dark" } as const
 
 const INITIAL_DIMENSION = { width: 320, height: 200 } as const
+
+/**
+ * Throttle for `ResponsiveContainer`'s ResizeObserver, in ms.
+ *
+ * Recharts does not throttle by default — `ResponsiveContainer` wraps its
+ * callback only under `if (debounce > 0)`, so with the prop absent every single
+ * observer callback re-renders the whole chart tree. That is fine for a window
+ * drag and bad here: `SidebarInset` is the dashboard's container, and collapsing
+ * the sidebar animates its width for 200ms (`transition-[width] duration-200`
+ * in `ui/sidebar.tsx`). So one collapse feeds ~12 resize frames to each of the
+ * six charts on the page, and every one of those frames rebuilds each chart's
+ * rects and re-runs the custom `shape` from `chart-marks.tsx` per bar segment —
+ * up to 270 of them on the volume chart alone at a 90-day range.
+ *
+ * Zero — i.e. Recharts' own unthrottled behaviour — is deliberate, and it is
+ * the third value tried here. The two rejected ones are worth recording,
+ * because both look correct on paper:
+ *
+ *   100ms — the 200ms sidebar transition spans two throttle windows, so the
+ *           charts re-lay-out three times on the way across. Visible stepping,
+ *           with the axis ticks jumping at each step.
+ *   250ms — one redraw, but the throttle counts from the *last* resize event,
+ *           so the mismatch lasts the transition plus the window. Measured: the
+ *           card finished at 322ms and the chart did not catch up until ~600ms,
+ *           leaving 208px of dead space and then snapping across in one frame.
+ *           Strictly worse — a big late jump instead of small early steps.
+ *
+ * Any nonzero value has that shape: because Recharts writes an explicit pixel
+ * width onto `.recharts-wrapper`, every frame the redraw is deferred is a frame
+ * the chart is the wrong size for its card. The throttle cannot remove that
+ * cost, only decide whether to pay it in small pieces or one large one.
+ *
+ * What made per-frame redraws affordable is `CHART_ANIMATION` in
+ * `dashboard/chart-tokens.ts` disabling the tween. The tween was the actual
+ * expense — a rAF-driven React re-render loop that restarted on every dimension
+ * change — and with it gone a resize frame is just layout plus reconciliation.
+ * So the charts now track the sidebar continuously, the way a chart tracks a
+ * window drag, and there is no mismatch window to see.
+ *
+ * If jank comes back here, re-check that the animation is still off before
+ * reaching for this number again.
+ */
+const RESIZE_DEBOUNCE_MS = 0
+
 type TooltipNameType = number | string
 
 export type ChartConfig = Record<
@@ -71,6 +115,7 @@ function ChartContainer({
         <ChartStyle id={chartId} config={config} />
         <RechartsPrimitive.ResponsiveContainer
           initialDimension={initialDimension}
+          debounce={RESIZE_DEBOUNCE_MS}
         >
           {children}
         </RechartsPrimitive.ResponsiveContainer>

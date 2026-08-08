@@ -55,7 +55,13 @@ export function NeedsAttentionCard({
             </thead>
             <tbody>
               {tickets.map((ticket) => (
-                <tr key={ticket.id} className="border-b last:border-0">
+                // The whole row responds, not just the link inside it — the row
+                // is the target the eye picks, and a wash under it says "this
+                // one" more clearly than an underline on four words.
+                <tr
+                  key={ticket.id}
+                  className="border-b transition-colors last:border-0 hover:bg-muted/50"
+                >
                   <td className="py-2 pr-3">
                     <Link
                       to={`/tickets/${ticket.id}`}

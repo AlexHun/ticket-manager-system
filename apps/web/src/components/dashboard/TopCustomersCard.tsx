@@ -53,7 +53,10 @@ export function TopCustomersCard({
             </thead>
             <tbody>
               {customers.map((customer) => (
-                <tr key={customer.email} className="border-b last:border-0">
+                <tr
+                  key={customer.email}
+                  className="border-b transition-colors last:border-0 hover:bg-muted/50"
+                >
                   <td className="py-2 pr-3">
                     <div className="font-medium">{customer.name}</div>
                     <div className="text-xs text-muted-foreground">

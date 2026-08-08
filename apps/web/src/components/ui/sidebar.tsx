@@ -213,11 +213,36 @@ function Sidebar({
       data-side={side}
       data-slot="sidebar"
     >
-      {/* This is what handles the sidebar gap on desktop */}
+      {/* The sidebar gap: `duration-0 delay-200` is the load-bearing part, and
+       * it is not a typo for `duration-200`.
+       *
+       * This element is the only one of the two in normal flow, so its width is
+       * what resizes `SidebarInset` and everything in it. The container below is
+       * `position: fixed`, so its own 200ms slide costs nothing — it never
+       * reflows content.
+       *
+       * Animating this width instead spreads one layout change over ~12 frames,
+       * and every frame resizes every chart on the dashboard; Recharts rebuilds
+       * scales, ticks and the whole React tree per resize. One redraw of five
+       * charts measured ~100ms in a production build (~280ms in dev), so an
+       * animated gap costs well over a second of blocked main thread per toggle.
+       * Throttling the charts cannot rescue it either: Recharts writes an
+       * explicit pixel width onto `.recharts-wrapper`, so every deferred frame
+       * is a frame the plot is the wrong size for its card — the choice is only
+       * between visible stepping and a late ~200px snap. Both were measured and
+       * rejected; see RESIZE_DEBOUNCE_MS in `ui/chart.tsx`.
+       *
+       * A zero duration with a 200ms delay gets both halves: the width jumps in
+       * a single layout (one chart redraw, no stepping) but not until the slide
+       * above has finished, so the content settles into place instead of moving
+       * out from under a sidebar that is still travelling. Snapping it with no
+       * delay was tried and reads as two separate steps — content jumps to full
+       * width while the sidebar is still drawn over it.
+       */}
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-0 delay-200 ease-linear motion-reduce:transition-none motion-reduce:delay-0",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -229,7 +254,7 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear motion-reduce:transition-none data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"

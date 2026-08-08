@@ -13,7 +13,12 @@ import {
 import { formatBucketFull, formatBucketLabel } from "@/lib/format";
 import { ChartCard, DataTable } from "./ChartCard";
 import { StackSegmentV } from "./chart-marks";
-import { CHART_BOX, STATUS_STACK, statusChartConfig } from "./chart-tokens";
+import {
+  CHART_ANIMATION,
+  CHART_BOX,
+  STATUS_STACK,
+  statusChartConfig,
+} from "./chart-tokens";
 
 const BUCKET_NOUN: Record<DashboardBucket, string> = {
   [DASHBOARD_BUCKET.day]: "day",
@@ -42,9 +47,10 @@ export function VolumeChart({
   bucket: DashboardBucket;
   className?: string;
 }) {
-  // Memoised, and nothing here is keyed on the query params: Recharts v3 tweens
-  // from the previous rects, so a range change morphs the columns. Remounting
-  // would replay the grow-in and turn the held frame into a flash.
+  // Memoised, and nothing here is keyed on the query params. The keying matters
+  // even with the tween off (see CHART_ANIMATION): remounting on every range
+  // change would throw away the whole chart's DOM and rebuild it, which is the
+  // expensive path this dashboard is trying to stay off.
   const data = useMemo(() => volume, [volume]);
   const isEmpty = useMemo(
     () => volume.every((v) => STATUS_STACK.every((s) => v[s] === 0)),
@@ -97,6 +103,7 @@ export function VolumeChart({
           {STATUS_STACK.map((status, i) => (
             <Bar
               key={status}
+              {...CHART_ANIMATION}
               dataKey={status}
               stackId="status"
               fill={`var(--color-${status})`}

@@ -35,6 +35,14 @@
     --color-viz-grid: var(--viz-grid);
     --color-viz-cursor: var(--viz-cursor);
     --color-viz-tooltip-edge: var(--viz-tooltip-edge);
+    /* Status. Reserved for good/warning/critical state and never for a series —
+       see the note beside the values in :root. */
+    --color-status-good: var(--status-good);
+    --color-status-warning: var(--status-warning);
+    --color-status-critical: var(--status-critical);
+    --color-status-good-soft: var(--status-good-soft);
+    --color-status-warning-soft: var(--status-warning-soft);
+    --color-status-critical-soft: var(--status-critical-soft);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -161,6 +169,33 @@
     --viz-tooltip-edge: oklch(0.820 0.008 214.3); /* 1.75:1 — the only thing separating
                                                      a white tooltip from a white card */
 
+    /*
+     * Status. A small reserved scale for state — never a series colour, and
+     * never used to mean "the fourth thing on the chart".
+     *
+     * These are *text* steps, so they are held to 4.5:1 on the card rather than
+     * the 3:1 a filled mark would need, and they are mode-specific because a
+     * step that clears 4.5:1 on white is unreadable on the dark card. The
+     * canonical status hexes do not survive that bar here and are deliberately
+     * not used: #fab219 measures 1.83:1 on this white card and #ec835a 2.64:1.
+     * Measured with the data-viz validator against --card in each mode; if these
+     * change, re-measure rather than eyeballing.
+     *
+     * --status-good is green, and so is every series colour in this theme, so it
+     * cannot carry "good" by hue alone — nothing here may. Every use ships an
+     * icon and a word (see StatusPill), which is the rule for status colour
+     * generally and doubly so in a monochrome-green palette.
+     *
+     * The -soft steps are chip fills, not text: low-alpha washes of the same
+     * hue that stay under the label sitting on them.
+     */
+    --status-good: #006300;                 /* 7.54:1 on white */
+    --status-warning: #a16207;              /* 4.92:1 */
+    --status-critical: #b91c1c;             /* 6.47:1 */
+    --status-good-soft: oklch(0.55 0.14 155 / 12%);
+    --status-warning-soft: oklch(0.65 0.15 75 / 14%);
+    --status-critical-soft: oklch(0.58 0.20 25 / 12%);
+
     --radius: 0.45rem;
 
     /*
@@ -241,6 +276,19 @@
     --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
     --viz-tooltip-edge: oklch(1 0 0 / 5%);  /* = border/50, unchanged */
 
+    /* Status, re-stepped for the dark card (#161b1d) — not the light values with
+       a filter over them. The light steps would land at roughly 1.5:1 here, so
+       each one moves up its ramp instead. Contrasts measured on --card:
+       good 9.04, warning 10.41, critical 6.02. The -soft chip fills carry more
+       alpha than their light twins because a wash disappears faster against a
+       dark surface than a white one. */
+    --status-good: #34d399;
+    --status-warning: #fbbf24;
+    --status-critical: #ff6467;
+    --status-good-soft: oklch(0.75 0.15 165 / 18%);
+    --status-warning-soft: oklch(0.83 0.16 85 / 18%);
+    --status-critical-soft: oklch(0.70 0.19 22 / 20%);
+
     --sidebar: oklch(0.218 0.008 223.9);
     --sidebar-foreground: oklch(0.987 0.002 197.1);
     --sidebar-primary: oklch(0.696 0.17 162.48);
@@ -251,7 +299,51 @@
     --sidebar-ring: oklch(0.56 0.021 213.5);
 }
 
+/*
+ * Feedback animations.
+ *
+ * Every one of these moves only `opacity` and `transform` — the two properties a
+ * browser can animate on the compositor without touching layout. That constraint
+ * is not stylistic: this app's dashboard is expensive to lay out, and an
+ * animation that triggers reflow costs orders of magnitude more than one that
+ * does not. Anything that would animate width, height, or top/left belongs in a
+ * transition on a single element, not here.
+ *
+ * All of them are switched off wholesale by the reduced-motion block below, so
+ * no individual component has to remember to.
+ */
+@keyframes status-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@utility animate-status-in {
+  animation: status-in 220ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@utility animate-panel-in {
+  animation: panel-in 260ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
 @layer base {
+  /* One switch for the whole app. A user who has asked for less motion should
+     not depend on each component having remembered a `motion-reduce:` variant. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
   * {
     @apply border-border outline-ring/50;
     }

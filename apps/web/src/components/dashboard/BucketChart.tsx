@@ -7,7 +7,12 @@ import {
 } from "@/components/ui/chart";
 import { ChartCard, DataTable } from "./ChartCard";
 import { StackSegmentV } from "./chart-marks";
-import { CHART_BOX, countChartConfig, ORDINAL_FILL } from "./chart-tokens";
+import {
+  CHART_ANIMATION,
+  CHART_BOX,
+  countChartConfig,
+  ORDINAL_FILL,
+} from "./chart-tokens";
 
 export interface Bin {
   label: string;
@@ -90,6 +95,7 @@ export function BucketChart({
               content={<ChartTooltipContent hideLabel />}
             />
             <Bar
+              {...CHART_ANIMATION}
               dataKey="count"
               maxBarSize={44}
               shape={<StackSegmentV radius={4} />}
