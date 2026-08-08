@@ -19,11 +19,13 @@ import { TicketDetailPage } from "./TicketDetailPage";
 
 const mockGet = vi.fn();
 const mockPatch = vi.fn();
+const mockPost = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
     patch: (...args: unknown[]) => mockPatch(...args),
+    post: (...args: unknown[]) => mockPost(...args),
   },
 }));
 
@@ -149,6 +151,50 @@ function assigneeControl(): HTMLElement {
 }
 
 /**
+ * What the reply endpoint answers with: the one message it just wrote, and
+ * never the ticket — the client already has that.
+ */
+function replyResponse(overrides: Partial<ThreadMessage> = {}) {
+  return {
+    data: {
+      message: makeMessage({
+        id: 99,
+        // Bare, the way the server mints and stores it.
+        messageId: "12.11111111-2222-3333-4444-555555555555@tickets.example.com",
+        senderEmail: "aaron@example.com",
+        senderName: "Aaron Agent",
+        textBody: "Try the reset link again.",
+        direction: MESSAGE_DIRECTION.outbound,
+        createdAt: "2025-05-04T09:30:00.000Z",
+        ...overrides,
+      }),
+    },
+  };
+}
+
+/** The label is sr-only, so the box is reachable only by its accessible name. */
+function replyBox(): HTMLTextAreaElement {
+  return screen.getByRole("textbox", { name: "Reply" });
+}
+
+function sendButton(): HTMLElement {
+  return screen.getByRole("button", { name: /Send reply|Sending/ });
+}
+
+/**
+ * The machine value of the sidebar's "Last message", not its rendered text:
+ * `toLocaleString` output depends on the runner's locale and timezone, and the
+ * `datetime` attribute is the same string the API sent either way.
+ */
+function lastMessageAt(): string | null | undefined {
+  return screen
+    .getByText("Last message")
+    .closest("div")
+    ?.querySelector("time")
+    ?.getAttribute("datetime");
+}
+
+/**
  * The title block above the card: badges, id and subject.
  *
  * Worth scoping to, because status and category each appear twice on the page
@@ -181,6 +227,7 @@ function renderDetail(
 beforeEach(() => {
   mockGet.mockReset();
   mockPatch.mockReset();
+  mockPost.mockReset();
 });
 
 afterEach(() => {
@@ -501,6 +548,219 @@ describe("TicketDetailPage thread", () => {
       await screen.findByText("No messages on this ticket yet."),
     ).toBeInTheDocument();
     expect(screen.getByText("Messages (0)")).toBeInTheDocument();
+  });
+});
+
+describe("TicketDetailPage reply composer", () => {
+  /** Nothing to type into until the ticket has landed. */
+  async function readyToReply() {
+    await screen.findByRole("heading", { name: "Cannot log in", level: 1 });
+    return userEvent.setup();
+  }
+
+  test("posts the typed reply to the ticket's own messages endpoint", async () => {
+    mockApi();
+    mockPost.mockResolvedValue(replyResponse());
+    renderDetail();
+    const user = await readyToReply();
+
+    await user.type(replyBox(), "Try the reset link again.");
+    await user.click(sendButton());
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith("/api/tickets/12/messages", {
+        textBody: "Try the reset link again.",
+      }),
+    );
+  });
+
+  test("adds the reply to the thread without refetching the ticket", async () => {
+    mockApi({
+      ticket: makeTicketDetail({
+        messages: [makeMessage({ id: 1, textBody: "First message" })],
+      }),
+    });
+    mockPost.mockResolvedValue(replyResponse());
+    renderDetail();
+    const user = await readyToReply();
+    const detailFetches = () =>
+      mockGet.mock.calls.filter(([url]) => url === "/api/tickets/12").length;
+    const before = detailFetches();
+
+    await user.type(replyBox(), "Try the reset link again.");
+    await user.click(sendButton());
+
+    expect(
+      await screen.findByText("Try the reset link again."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Messages (2)")).toBeInTheDocument();
+    // The response carries the message, so the cache is written directly —
+    // refetching would pull the whole thread back down to learn one entry.
+    expect(detailFetches()).toBe(before);
+  });
+
+  test("renders the reply as coming from support, not the customer", async () => {
+    mockApi({
+      ticket: makeTicketDetail({
+        messages: [makeMessage({ id: 1, textBody: "First message" })],
+      }),
+    });
+    mockPost.mockResolvedValue(replyResponse());
+    renderDetail();
+    const user = await readyToReply();
+
+    await user.type(replyBox(), "Try the reset link again.");
+    await user.click(sendButton());
+
+    await screen.findByText("Try the reset link again.");
+    const messages = screen.getAllByRole("listitem");
+    expect(messages).toHaveLength(2);
+    // Side and colour say this to a sighted reader; the sr-only label is what
+    // says it to everyone else.
+    expect(within(messages[1]).getByText("From support")).toBeInTheDocument();
+    expect(within(messages[1]).getByText("Aaron Agent")).toBeInTheDocument();
+  });
+
+  test("moves Last message to the reply's own timestamp", async () => {
+    mockApi();
+    mockPost.mockResolvedValue(replyResponse());
+    renderDetail();
+    const user = await readyToReply();
+    expect(lastMessageAt()).toBe("2025-05-03T12:00:00.000Z");
+
+    await user.type(replyBox(), "Try the reset link again.");
+    await user.click(sendButton());
+
+    // The server moved the column inside the same transaction, off the same
+    // instant, so the reply's createdAt *is* the ticket's new lastMessageAt.
+    await waitFor(() =>
+      expect(lastMessageAt()).toBe("2025-05-04T09:30:00.000Z"),
+    );
+  });
+
+  test("clears the box once the reply is away", async () => {
+    mockApi();
+    mockPost.mockResolvedValue(replyResponse());
+    renderDetail();
+    const user = await readyToReply();
+
+    await user.type(replyBox(), "Try the reset link again.");
+    await user.click(sendButton());
+
+    await waitFor(() => expect(replyBox()).toHaveValue(""));
+  });
+
+  test("keeps the draft and explains a rejected reply", async () => {
+    mockApi();
+    mockPost.mockRejectedValue(
+      makeAxiosError(400, "A reply is limited to 10000 characters"),
+    );
+    renderDetail();
+    const user = await readyToReply();
+
+    await user.type(replyBox(), "Draft worth keeping.");
+    await user.click(sendButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "A reply is limited to 10000 characters",
+    );
+    // The draft is the only copy of what was typed — clearing it on failure
+    // would throw the reply away to report that it wasn't sent.
+    expect(replyBox()).toHaveValue("Draft worth keeping.");
+  });
+
+  test("refuses an empty reply without calling the API", async () => {
+    mockApi();
+    renderDetail();
+    const user = await readyToReply();
+
+    await user.click(sendButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Write a reply before sending",
+    );
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("refuses a whitespace-only reply", async () => {
+    mockApi();
+    renderDetail();
+    const user = await readyToReply();
+
+    // Trimmed before it is measured, so this is empty rather than three
+    // characters long.
+    await user.type(replyBox(), "   ");
+    await user.click(sendButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Write a reply before sending",
+    );
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("sends on Ctrl+Enter, and takes a plain Enter as a newline", async () => {
+    mockApi();
+    mockPost.mockResolvedValue(replyResponse());
+    renderDetail();
+    const user = await readyToReply();
+
+    await user.click(replyBox());
+    await user.keyboard("First line{Enter}second line");
+
+    // An email reply has paragraphs; Enter is not a send.
+    expect(mockPost).not.toHaveBeenCalled();
+    expect(replyBox()).toHaveValue("First line\nsecond line");
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith("/api/tickets/12/messages", {
+        textBody: "First line\nsecond line",
+      }),
+    );
+  });
+
+  test("locks the box and the button while the reply is in flight", async () => {
+    mockApi();
+    let settle!: (value: unknown) => void;
+    mockPost.mockReturnValue(
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+    );
+    renderDetail();
+    const user = await readyToReply();
+
+    await user.type(replyBox(), "Try the reset link again.");
+    await user.click(sendButton());
+
+    // Read off the mutation, not the form: react-hook-form calls `mutate` and
+    // returns, so its own isSubmitting is false again before the request lands.
+    await waitFor(() => expect(sendButton()).toBeDisabled());
+    expect(replyBox()).toBeDisabled();
+
+    settle(replyResponse());
+
+    await waitFor(() => expect(sendButton()).toBeEnabled());
+  });
+
+  test("offers the composer on a ticket with no messages yet", async () => {
+    mockApi();
+    mockPost.mockResolvedValue(replyResponse());
+    renderDetail();
+    const user = await readyToReply();
+
+    expect(
+      screen.getByText("No messages on this ticket yet."),
+    ).toBeInTheDocument();
+
+    await user.type(replyBox(), "Try the reset link again.");
+    await user.click(sendButton());
+
+    expect(
+      await screen.findByText("Try the reset link again."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Messages (1)")).toBeInTheDocument();
   });
 });
 

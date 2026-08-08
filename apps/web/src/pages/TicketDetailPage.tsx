@@ -30,6 +30,7 @@ import {
   TicketStatusSelect,
 } from "./TicketFieldSelects";
 import { TicketMessageThread } from "./TicketMessageThread";
+import { TicketReplyComposer } from "./TicketReplyComposer";
 
 function useTicketQuery(id: string | undefined) {
   return useQuery({
@@ -185,6 +186,10 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
             className="lg:min-h-0 lg:flex-1"
             messages={ticket.messages}
           />
+          {/* A sibling of the thread, never a child: the thread's `<ol>` *is*
+              the scroll container, so a composer inside it would scroll away
+              with the history. Out here it is the column's fixed footer. */}
+          <TicketReplyComposer ticketId={ticket.id} />
         </section>
       </div>
     </div>
@@ -290,6 +295,9 @@ function TicketDetailSkeleton() {
               </div>
             ))}
           </div>
+          {/* The composer's footprint, so the column doesn't shuffle upward the
+              moment the ticket lands. */}
+          <Skeleton className="mt-4 h-28 w-full shrink-0 rounded-lg" />
         </div>
       </div>
     </div>

@@ -95,6 +95,16 @@ export const MESSAGE_DIRECTION = {
 export type MessageDirection =
   (typeof MESSAGE_DIRECTION)[keyof typeof MESSAGE_DIRECTION];
 
+/**
+ * Longest reply an agent can send, mirrored by the zod schema in `@ticket/core`.
+ *
+ * A sanity bound on one request rather than a style rule: a real answer with a
+ * quoted history under it fits comfortably, and a megabyte pasted into the box
+ * does not. Lives here so the composer and the server agree on the number
+ * without either one restating it.
+ */
+export const MAX_MESSAGE_BODY_LENGTH = 10_000;
+
 export interface Message {
   id: number;
   ticketId: number;
@@ -105,6 +115,12 @@ export interface Message {
   textBody: string | null;
   htmlBody: string | null;
   direction: MessageDirection;
+  /**
+   * The agent who wrote it, for an outbound reply. Null on everything inbound —
+   * a customer has no row in the user table — and null again once that agent is
+   * deleted, so this is a credit line and never an ownership claim.
+   */
+  authorId: string | null;
   createdAt: string;
 }
 
@@ -142,11 +158,16 @@ export const MAX_TICKET_ID = 2_147_483_647;
 export type TicketAssignee = Pick<User, "id" | "name" | "email">;
 
 /**
- * A thread message as the API serves it. `htmlBody` is absent by design: it is
- * whatever a stranger emailed support, so it never leaves the database. Keeping
- * it out of the type means a route that tried to send it wouldn't compile.
+ * A thread message as the API serves it.
+ *
+ * `htmlBody` is absent by design: it is whatever a stranger emailed support, so
+ * it never leaves the database. `authorId` is absent for a duller reason —
+ * nothing in the thread renders it. `senderName` and `senderEmail` are written
+ * from the session at reply time and are what the bubble shows, so the id would
+ * be an internal handle travelling for nobody. Keeping both out of the type
+ * means a route that tried to send them wouldn't compile.
  */
-export type ThreadMessage = Omit<Message, "htmlBody">;
+export type ThreadMessage = Omit<Message, "htmlBody" | "authorId">;
 
 /** A ticket whose assignee has been looked up for us. */
 export interface TicketWithAssignee extends Ticket {
@@ -181,6 +202,20 @@ export interface TicketAssigneesResponse {
  */
 export interface UpdateTicketResponse {
   ticket: TicketWithAssignee;
+}
+
+/**
+ * The reply to a posted message. Just the message — the client is already
+ * holding the thread and only needs the one entry to add to the end of it, and
+ * re-sending the whole thing would grow with every reply on the ticket. Same
+ * reasoning as `UpdateTicketResponse` carrying no `messages`.
+ *
+ * The ticket's `lastMessageAt` moved too, and is deliberately not echoed: it is
+ * exactly this message's `createdAt`, because the route writes both from a
+ * single instant inside one transaction.
+ */
+export interface CreateTicketMessageResponse {
+  message: ThreadMessage;
 }
 
 export interface UsersListResponse {

@@ -90,7 +90,11 @@ export function TicketMessageThread({
   // a row created any other way — by hand, or by a fixture — starts with none.
   if (count === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      // Takes the pane's sizing like the list below does, so the empty state
+      // fills the column rather than collapsing to one line. Without it the
+      // composer pinned underneath rides up under this sentence instead of
+      // sitting at the bottom of the pane.
+      <p className={cn("text-sm text-muted-foreground", className)}>
         No messages on this ticket yet.
       </p>
     );

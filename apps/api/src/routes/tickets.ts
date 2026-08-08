@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import {
   assignTicketSchema,
+  createTicketMessageSchema,
   ticketIdParamSchema,
   ticketsQuerySchema,
   updateTicketCategorySchema,
@@ -10,7 +11,9 @@ import {
 } from "@ticket/core";
 import {
   CATEGORY_NONE,
+  MESSAGE_DIRECTION,
   TICKET_SORT_FIELD,
+  type CreateTicketMessageResponse,
   type SortOrder,
   type TicketAssigneesResponse,
   type TicketDetailResponse,
@@ -20,7 +23,8 @@ import {
   type UpdateTicketResponse,
 } from "@ticket/shared";
 import { prisma, type Prisma } from "../db";
-import { requireAuth } from "../middleware/auth";
+import { newOutboundMessageId } from "../message-id";
+import { requireAuth, sessionOf } from "../middleware/auth";
 import { ticketStatsHandler } from "./ticket-stats";
 
 /**
@@ -92,6 +96,31 @@ const ASSIGNABLE_USER = {
 
 /** The columns an assignee is described by — never role, ban state or the rest. */
 const ASSIGNEE_SELECT = { id: true, name: true, email: true } as const;
+
+/**
+ * The columns a `ThreadMessage` is made of.
+ *
+ * htmlBody is deliberately absent: it is attacker-supplied inbound email, and
+ * anything that reaches the client is one innerHTML away from running as the
+ * signed-in agent. The plain-text part is what the UI renders. authorId is
+ * absent too — nothing in the thread shows it, and `senderName`/`senderEmail`
+ * already say who wrote a reply.
+ *
+ * Shared by the thread on `GET /:id` and the single message `POST /:id/messages`
+ * answers with, so the two can't come to disagree about the shape of the same
+ * thing.
+ */
+const MESSAGE_SELECT = {
+  id: true,
+  ticketId: true,
+  messageId: true,
+  inReplyTo: true,
+  senderEmail: true,
+  senderName: true,
+  textBody: true,
+  direction: true,
+  createdAt: true,
+} as const;
 
 /**
  * The row behind a `TicketWithAssignee`: the same fields, still carrying `Date`
@@ -271,21 +300,7 @@ ticketsRouter.get(
         // user table, so role and the rest stay behind.
         assignedTo: { select: ASSIGNEE_SELECT },
         messages: {
-          // htmlBody is deliberately absent: it is attacker-supplied inbound
-          // email, and anything that reaches the client is one innerHTML away
-          // from running as the signed-in agent. The plain-text part is what
-          // the UI renders.
-          select: {
-            id: true,
-            ticketId: true,
-            messageId: true,
-            inReplyTo: true,
-            senderEmail: true,
-            senderName: true,
-            textBody: true,
-            direction: true,
-            createdAt: true,
-          },
+          select: MESSAGE_SELECT,
           // Oldest first — a thread reads top-down. `id` breaks ties because
           // createdAt defaults to now(), and a batch insert shares an instant.
           orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -308,6 +323,115 @@ ticketsRouter.get(
           createdAt: m.createdAt.toISOString(),
         })),
       },
+    });
+  },
+);
+
+/**
+ * Append an agent's reply to a ticket's thread.
+ *
+ * Persistence only. The row is written the way an outbound email *would* be
+ * recorded — a minted Message-ID, `In-Reply-To` pointing at whatever the thread
+ * currently ends with — but nothing is handed to a mail provider. When a
+ * transport does land it reads the row it finds here instead of needing the
+ * headers reconstructed, which is the whole reason to get them right now.
+ *
+ * No status side-effect. Replying appends a message and moves `lastMessageAt`;
+ * whether the ticket is resolved stays a judgement an agent makes with the
+ * status picker. Inferring it from "someone answered" would close tickets that
+ * were only being asked a follow-up question.
+ *
+ * A param route, so the ordering note above `GET /:id` doesn't apply to it —
+ * that one is about *literal* children being swallowed by `:id`.
+ *
+ * `requireAuth` like everything else here, and the session is load-bearing for
+ * once: the sender's name, address and id all come from it, never from the body.
+ */
+ticketsRouter.post(
+  "/:id/messages",
+  requireAuth,
+  async (
+    req: Request,
+    res: Response<CreateTicketMessageResponse | { error: string }>,
+  ) => {
+    const params = ticketIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: params.error.issues[0].message });
+      return;
+    }
+
+    // `?? {}` so a bodyless request fails on the missing field and gets the same
+    // "Write a reply before sending" as an empty one.
+    const body = createTicketMessageSchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json({ error: body.error.issues[0].message });
+      return;
+    }
+
+    // The existence check and the parent lookup are one query. The check is a
+    // query rather than a catch around a foreign-key violation for the same
+    // reason `updateTicket` does it that way: a missing ticket is a 404, and
+    // letting the insert throw would route it through the error pipeline as a
+    // 500.
+    //
+    // `take: 1` on the reverse of the thread's own ordering *is* its last
+    // message — the same tie-break, so the parent is the one the agent can see
+    // at the bottom of the pane. A ticket with no messages yet threads nothing
+    // and gets a null, which is what a first email looks like anyway.
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: params.data.id },
+      select: {
+        id: true,
+        messages: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { messageId: true },
+        },
+      },
+    });
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const { user } = sessionOf(res);
+
+    // One instant for both writes rather than two `now()` defaults a moment
+    // apart. The client moves the ticket's "Last message" to the createdAt of
+    // the message it gets back, and that is only true if the two columns were
+    // written from the same value.
+    const sentAt = new Date();
+
+    const [message] = await prisma.$transaction([
+      prisma.message.create({
+        data: {
+          ticketId: ticket.id,
+          messageId: newOutboundMessageId(ticket.id),
+          inReplyTo: ticket.messages[0]?.messageId ?? null,
+          // From the session, never the body: the sender is whoever is signed
+          // in. Denormalised beside `authorId` on purpose — deleting the agent
+          // nulls the FK, and the thread still has to say who wrote this.
+          senderEmail: user.email,
+          senderName: user.name,
+          textBody: body.data.textBody,
+          // The column defaults to `inbound`, so this is not optional.
+          direction: MESSAGE_DIRECTION.outbound,
+          authorId: user.id,
+          createdAt: sentAt,
+        },
+        select: MESSAGE_SELECT,
+      }),
+      prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { lastMessageAt: sentAt },
+        // Nothing reads the ticket back; without this Prisma returns every
+        // column of a row the response doesn't carry.
+        select: { id: true },
+      }),
+    ]);
+
+    res.status(201).json({
+      message: { ...message, createdAt: message.createdAt.toISOString() },
     });
   },
 );

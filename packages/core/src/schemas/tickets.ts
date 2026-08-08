@@ -7,6 +7,7 @@ import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_TICKET_SORT,
   FIRST_PAGE,
+  MAX_MESSAGE_BODY_LENGTH,
   MAX_PAGE_SIZE,
   MAX_TICKET_ID,
   SORT_ORDER,
@@ -144,6 +145,32 @@ export const updateTicketCategorySchema = z.object({
 
 export type UpdateTicketCategoryValues = z.infer<
   typeof updateTicketCategorySchema
+>;
+
+/**
+ * Body for POST /api/tickets/:id/messages.
+ *
+ * Trimmed before it is measured, so a reply of five spaces is empty rather than
+ * five characters long — and the trimmed value is what the route writes, so the
+ * thread never carries leading blank lines nobody typed.
+ *
+ * Both failure modes are worded for a person, unlike `assignTicketSchema`'s one
+ * opaque message: this field is free text an agent typed, so a rejection is
+ * something they can act on rather than a client bug.
+ */
+export const createTicketMessageSchema = z.object({
+  textBody: z
+    .string({ error: "Write a reply before sending" })
+    .trim()
+    .min(1, "Write a reply before sending")
+    .max(
+      MAX_MESSAGE_BODY_LENGTH,
+      `A reply is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
+    ),
+});
+
+export type CreateTicketMessageValues = z.infer<
+  typeof createTicketMessageSchema
 >;
 
 /**

@@ -23,6 +23,7 @@ model User {
   sessions        Session[]
   accounts        Account[]
   assignedTickets Ticket[]  @relation("TicketAssignee")
+  authoredMessages Message[]
 
   @@unique([email])
   @@map("user")
@@ -121,6 +122,14 @@ model Message {
   textBody    String?
   htmlBody    String?
   direction   MessageDirection @default(inbound)
+  // The agent who wrote an outbound reply. Null on everything inbound — a
+  // customer has no row in the user table — and null again once that agent is
+  // deleted, which is why SetNull and not Cascade: removing a colleague must
+  // not take their replies out of a customer's thread. `senderName` and
+  // `senderEmail` are written alongside it and are what the thread renders, so
+  // a reply stays attributed after the FK has been cleared.
+  authorId    String?
+  author      User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
   createdAt   DateTime         @default(now())
 
   @@index([ticketId, createdAt])
@@ -132,6 +141,11 @@ model Message {
   // first row read.
   @@index([ticketId, direction, createdAt])
   @@index([inReplyTo])
+  // Postgres does not index a foreign key for you. Without this, clearing an
+  // author on a user delete seq-scans `message`, and so would any later "what
+  // has this agent answered" query. `ticket.assignedToId` is indexed for the
+  // identical reason.
+  @@index([authorId])
   @@map("message")
 }
 

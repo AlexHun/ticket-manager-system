@@ -3,6 +3,7 @@ import {
   CATEGORY_NONE,
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
+  MAX_MESSAGE_BODY_LENGTH,
   MAX_PAGE_SIZE,
   MAX_TICKET_ID,
   MESSAGE_DIRECTION,
@@ -12,6 +13,7 @@ import {
   TICKET_SORT_FIELD,
   TICKET_STATUS,
   USER_ROLE,
+  type CreateTicketMessageResponse,
   type SortOrder,
   type Ticket,
   type TicketAssignee,
@@ -24,7 +26,12 @@ import {
 } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetE2eUsers, resetTickets, testDb } from "./helpers/db";
-import { API_URL } from "./helpers/env";
+import {
+  API_URL,
+  WEBHOOK_PASSWORD,
+  WEBHOOK_URL,
+  WEBHOOK_USERNAME,
+} from "./helpers/env";
 
 const TICKETS_ENDPOINT = `${API_URL}/api/tickets`;
 const ASSIGNEES_ENDPOINT = `${TICKETS_ENDPOINT}/assignees`;
@@ -233,6 +240,36 @@ function detailEndpoint(id: number | string): string {
 
 function assigneeEndpoint(id: number | string): string {
   return `${TICKETS_ENDPOINT}/${id}/assignee`;
+}
+
+function messagesEndpoint(id: number | string): string {
+  return `${TICKETS_ENDPOINT}/${id}/messages`;
+}
+
+/**
+ * `textBody` is deliberately `unknown`: the rejection tests point it at values
+ * the client could never produce, which is the whole reason the server
+ * validates rather than trusting the composer.
+ */
+async function reply(
+  page: Page,
+  ticketId: number | string,
+  textBody: unknown,
+) {
+  return page.request.post(messagesEndpoint(ticketId), { data: { textBody } });
+}
+
+/** A ticket with nothing on it — the state a first reply threads nothing onto. */
+async function seedEmptyTicket(): Promise<number> {
+  const ticket = await testDb.ticket.create({
+    data: {
+      subject: "Nothing said yet",
+      customerEmail: "quiet@example.com",
+      customerName: "Quiet Customer",
+    },
+    select: { id: true },
+  });
+  return ticket.id;
 }
 
 /**
@@ -1291,6 +1328,239 @@ test.describe("Ticket assignment API", () => {
   });
 });
 
+test.describe("Ticket reply API", () => {
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test("-> 401 when unauthenticated", async ({ request }) => {
+    const id = await seedTicketWithThread();
+
+    const res = await request.post(messagesEndpoint(id), {
+      data: { textBody: "Let me in." },
+    });
+
+    expect(res.status()).toBe(401);
+    expect(await testDb.message.count({ where: { ticketId: id } })).toBe(3);
+  });
+
+  test("appends an outbound message and answers with it", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await reply(page, id, "Have you tried the reset link?");
+
+    expect(res.status()).toBe(201);
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+    expect(message).toMatchObject({
+      ticketId: id,
+      textBody: "Have you tried the reset link?",
+      direction: MESSAGE_DIRECTION.outbound,
+      // From the session, never the body — the sender is whoever is signed in.
+      senderEmail: CREDENTIALS.agent.email,
+    });
+  });
+
+  test("threads the reply onto whatever the thread currently ends with", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    const before = await fetchDetail(page, id);
+    const last = before.messages[before.messages.length - 1];
+
+    const res = await reply(page, id, "Answering your last note.");
+
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+    // The parent is the message an agent can see at the bottom of the pane, not
+    // whichever row the database happened to return first.
+    expect(message.inReplyTo).toBe(last.messageId);
+  });
+
+  test("a first reply on an empty thread has no parent", async ({ page }) => {
+    const id = await seedEmptyTicket();
+    await signIn(page, "agent");
+
+    const res = await reply(page, id, "Reaching out first.");
+
+    expect(res.status()).toBe(201);
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+    expect(message.inReplyTo).toBeNull();
+  });
+
+  test("credits the signed-in user as author as well as sender", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    await reply(page, id, "Signed by whoever is logged in.");
+
+    const row = await testDb.message.findFirstOrThrow({
+      where: { ticketId: id, textBody: "Signed by whoever is logged in." },
+    });
+    // Both, on purpose: the FK is nulled when that agent is deleted, and the
+    // thread still has to say who wrote this.
+    expect(row.authorId).toBe(await agentUserId());
+    expect(row.senderEmail).toBe(CREDENTIALS.agent.email);
+  });
+
+  test("never sends htmlBody or authorId to the client", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await reply(page, id, "Nothing internal in this reply.");
+
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+    expect(message).not.toHaveProperty("htmlBody");
+    // A ticket is not a window onto the user table, and nothing in the thread
+    // renders an author id.
+    expect(message).not.toHaveProperty("authorId");
+  });
+
+  test("the reply is what the detail endpoint reports afterwards", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await reply(page, id, "Last word.");
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+
+    const detail = await fetchDetail(page, id);
+    expect(detail.messages).toHaveLength(4);
+    expect(detail.messages[3]).toMatchObject({
+      id: message.id,
+      textBody: "Last word.",
+      direction: MESSAGE_DIRECTION.outbound,
+    });
+    // Written from one instant inside one transaction, which is what lets the
+    // client move "Last message" to the reply it just got back.
+    expect(detail.lastMessageAt).toBe(message.createdAt);
+  });
+
+  test("leaves the ticket's status alone", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    await reply(page, id, "Answered, but not necessarily resolved.");
+
+    // Replying is not a lifecycle decision: an agent asking a follow-up
+    // question has not resolved anything.
+    expect((await fetchDetail(page, id)).status).toBe(TICKET_STATUS.Open);
+  });
+
+  test("an admin can reply too", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "admin");
+
+    const res = await reply(page, id, "Admins work tickets as well.");
+
+    expect(res.status()).toBe(201);
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+    expect(message.senderEmail).toBe(CREDENTIALS.admin.email);
+  });
+
+  test("mints a Message-ID a customer's answer threads back onto", async ({
+    page,
+    request,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await reply(page, id, "Here is a fresh link.");
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+
+    // Stored bare. The webhook strips the brackets a real mail client sends
+    // before it looks the parent up, so an id kept *with* them would never
+    // match and the customer's answer would open a second ticket instead.
+    expect(message.messageId).not.toMatch(/[<>]/);
+
+    const answer = await request.post(WEBHOOK_URL, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(
+          `${WEBHOOK_USERNAME}:${WEBHOOK_PASSWORD}`,
+        ).toString("base64")}`,
+      },
+      data: {
+        messageId: `e2e-roundtrip-${Date.now()}@mail.example.com`,
+        subject: "Re: Threaded ticket",
+        senderEmail: "threaded@example.com",
+        senderName: "Threaded Customer",
+        textBody: "That worked, thank you.",
+        // Brackets on, the way In-Reply-To actually arrives.
+        inReplyTo: `<${message.messageId}>`,
+      },
+    });
+
+    expect(answer.status()).toBe(201);
+    expect(await answer.json()).toMatchObject({ ticketId: id, threaded: true });
+  });
+
+  test("-> 400 for an empty, blank or non-string reply", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    for (const value of ["", "   ", "\n\t ", 42, ["x"], null, undefined]) {
+      const res = await reply(page, id, value);
+      expect(res.status(), JSON.stringify(value ?? null)).toBe(400);
+      expect((await res.json()).error, JSON.stringify(value ?? null)).toBe(
+        "Write a reply before sending",
+      );
+    }
+
+    // …and none of them wrote a row.
+    expect(await testDb.message.count({ where: { ticketId: id } })).toBe(3);
+  });
+
+  test("-> 400 for a reply past the length cap", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await reply(page, id, "x".repeat(MAX_MESSAGE_BODY_LENGTH + 1));
+
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toBe(
+      `A reply is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
+    );
+    // The cap is on the trimmed value, so one right at it still goes through.
+    expect(
+      (await reply(page, id, "x".repeat(MAX_MESSAGE_BODY_LENGTH))).status(),
+    ).toBe(201);
+  });
+
+  test("stores the trimmed reply, not the whitespace around it", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+
+    const res = await reply(page, id, "  Padded on both sides.\n\n");
+
+    const { message } = (await res.json()) as CreateTicketMessageResponse;
+    expect(message.textBody).toBe("Padded on both sides.");
+  });
+
+  test("-> 404 for a ticket that doesn't exist", async ({ page }) => {
+    await signIn(page, "agent");
+
+    const res = await reply(page, MAX_TICKET_ID, "Into the void.");
+
+    expect(res.status()).toBe(404);
+    expect((await res.json()).error).toBe("Ticket not found");
+  });
+
+  test("-> 400 for a malformed ticket id", async ({ page }) => {
+    await signIn(page, "agent");
+
+    for (const value of ["abc", "0", "-1", String(MAX_TICKET_ID + 1)]) {
+      const res = await reply(page, value, "Bad address.");
+      expect(res.status(), `id=${value}`).toBe(400);
+      expect((await res.json()).error, `id=${value}`).toBe("Invalid ticket id");
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
@@ -1945,6 +2215,55 @@ test.describe("Ticket detail page", () => {
     await expect(messages.nth(2)).toContainText(
       "Third message, from the customer.",
     );
+  });
+
+  test("an agent replies and the message joins the thread", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+
+    const box = page.getByRole("textbox", { name: "Reply" });
+    await box.fill("Thanks for the details — that is fixed now.");
+    await page.getByRole("button", { name: "Send reply" }).click();
+
+    await expect(page.getByText("Messages (4)")).toBeVisible();
+    const messages = page.locator("ol > li");
+    await expect(messages).toHaveCount(4);
+    await expect(messages.nth(3)).toContainText(
+      "Thanks for the details — that is fixed now.",
+    );
+    await expect(messages.nth(3)).toContainText("From support");
+    // Cleared on success, so the next reply starts from a blank box.
+    await expect(box).toHaveValue("");
+  });
+
+  test("a rejected reply keeps the draft in the box", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+    // The thread is on screen; the ticket is gone by the time Send is pressed.
+    await expect(page.getByText("Messages (3)")).toBeVisible();
+    await testDb.ticket.delete({ where: { id } });
+
+    const box = page.getByRole("textbox", { name: "Reply" });
+    await box.fill("Worth not losing.");
+    await page.getByRole("button", { name: "Send reply" }).click();
+
+    await expect(page.getByRole("alert")).toContainText("Ticket not found");
+    await expect(box).toHaveValue("Worth not losing.");
+  });
+
+  test("refuses to send an empty reply", async ({ page }) => {
+    const id = await seedTicketWithThread();
+    await signIn(page, "agent");
+    await page.goto(`/tickets/${id}`);
+
+    await page.getByRole("button", { name: "Send reply" }).click();
+
+    await expect(page.getByRole("alert")).toContainText(
+      "Write a reply before sending",
+    );
+    await expect(page.getByText("Messages (3)")).toBeVisible();
   });
 
   test("works as a deep link, without the list state", async ({ page }) => {
