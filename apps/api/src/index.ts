@@ -2,6 +2,7 @@ import express from "express";
 import type { Request, Response } from "express";
 import compression from "compression";
 import cors from "cors";
+import helmet from "helmet";
 import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
@@ -17,6 +18,44 @@ app.use(
     origin: trustedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  }),
+);
+
+/**
+ * Security headers on everything this process answers with — above the Better
+ * Auth handler, which writes its own responses and would otherwise escape them.
+ *
+ * The CSP here is the strictest one there is because this server only ever
+ * returns JSON: nothing it sends should be permitted to run a script, pull in a
+ * frame or load an image. It is *not* the policy that protects the app's UI —
+ * that one ships with the page and is built in `apps/web/vite.config.ts`. This
+ * one covers the case where a browser is talked into treating an API response
+ * as a document anyway (a response opened directly in a tab, a stray content
+ * type, an error page rendered by something upstream); with `default-src
+ * 'none'` there is nothing for injected markup to execute.
+ */
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+      },
+    },
+    // Helmet defaults this to SAMEORIGIN, which contradicts the
+    // `frame-ancestors 'none'` above. Modern browsers read the CSP and ignore
+    // this header, so the disagreement only surfaces on a browser old enough to
+    // support neither — the one case where the weaker rule would win.
+    xFrameOptions: { action: "deny" },
+    // CORS decides who may read these responses, and the allowed origins are
+    // already pinned in `trustedOrigins`. Helmet's `same-origin` default is a
+    // rule about a different threat (a cross-origin page loading this as a
+    // subresource) and states the wrong thing about a server whose whole job is
+    // to be called from another origin.
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
 

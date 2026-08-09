@@ -13,6 +13,12 @@ Support ticket system that ingests email, classifies tickets with Claude, and dr
 - Email: Postmark inbound + outbound. Thread via `Message-ID` / `In-Reply-To` / `References`.
 - Testing: see the `playwright-e2e-author` agent for the E2E setup (Playwright config, test DB, alt ports, env file, run/seed scripts).
 
+## Security
+
+- **Never render email HTML.** Inbound `htmlBody` is stored but never served: it is left out of `MESSAGE_SELECT` (`apps/api/src/routes/tickets.ts`) and out of the `ThreadMessage` wire type in `@ticket/shared` (`Omit<Message, "htmlBody" | "authorId">`), so a route that tried to send it wouldn't compile. The UI renders `textBody` as a React text node; HTML-only senders get a placeholder. Don't reach for `dangerouslySetInnerHTML`, and don't hand-roll a tag-stripper to fake a plain-text part — that is exactly how the hole reopens. Sanitizing (DOMPurify + sandboxed iframe) only comes up if rendering customer HTML becomes a real requirement.
+- **Security headers ship from two places.** API: `helmet` in `apps/api/src/index.ts`, mounted above the Better Auth handler so auth responses are covered too, with `default-src 'none'` — the process only ever answers with JSON. Web: the policy is built by `cspDirectives` in `apps/web/vite.config.ts` and injected as a build-time `<meta>` tag, because `vite build` emits a static `dist/` and no host is fixed; `vite preview` serves the same policy as a real header and is the reference for whatever ends up hosting the build. **Production hosting must set that header** — `frame-ancestors` cannot travel in a meta tag.
+- The web CSP holds `script-src 'self'` with no nonce/hash machinery, which is only true while the built `index.html` carries no inline script — check `dist/index.html` before relying on it. `style-src` needs `'unsafe-inline'` (shadcn's chart `<style>` element, plus Radix/Recharts/sonner style attributes); that is the accepted weak directive, and inline *scripts* stay blocked. `connect-src` is derived from `VITE_API_URL` at build time, so a new API origin means a rebuild, not just a redeploy.
+
 ## Commands
 
 - `bun run --filter @ticket/web test` — run web component tests once (CI). Also `test:watch` (headless TUI) and `test:ui` (Vitest UI dashboard, best for authoring).
