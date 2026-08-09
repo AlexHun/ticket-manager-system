@@ -28,10 +28,20 @@ export default defineConfig({
     trace: "on-first-retry",
     // The dashboard animates: Recharts grows its bars in and the KPI tiles
     // count up, so for ~600ms the DOM holds numbers and geometry that were
-    // never true. Emulating the reduced-motion preference turns both off at
-    // the source — Recharts' `isAnimationActive: "auto"` and `useReducedMotion`
-    // both honour it — so an assertion can't catch a half-drawn frame.
-    reducedMotion: "reduce",
+    // never true. Every route change also runs `animate-page-in`. Emulating the
+    // reduced-motion preference turns all of it off at the source — Recharts'
+    // `isAnimationActive: "auto"` and `useReducedMotion` both honour it — so an
+    // assertion can't catch a half-drawn frame.
+    //
+    // It has to go under `contextOptions`, and that is not a style choice.
+    // `reducedMotion` is not a top-level `use` option in Playwright 1.60, so
+    // setting it there is accepted by `defineConfig` and then dropped: the trace
+    // of a run recorded `"reducedMotion":"undefined"`, meaning every test so far
+    // ran with animations *on*, against the intent of the comment above. Only
+    // the tsc error on the root tsconfig ever pointed at it, and no workspace
+    // typecheck script covers this file. Verify after changing: the context
+    // options in a `--trace=on` run should read `"reducedMotion":"reduce"`.
+    contextOptions: { reducedMotion: "reduce" },
   },
   projects: [
     {

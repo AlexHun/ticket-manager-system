@@ -172,12 +172,30 @@ export function TicketsPage() {
     // interaction stays one request.
     const selectsChanged =
       next.status !== filters.status || next.category !== filters.category;
-    if (selectsChanged) {
-      update({
-        status: next.status || undefined,
-        category: next.category || undefined,
-        q: next.search.trim() || undefined,
-      });
+
+    // Emptying the search writes at once too, for the same reason: there is
+    // nothing to settle. Debouncing a clear only bought a 300ms window in which
+    // the input said "" and the URL still said `q=…`, and anything that re-derived
+    // the input from the URL inside that window put the old text back — leaving
+    // the list filtered by a term no longer on screen and the "Clear filters"
+    // button apparently doing nothing. That is what the E2E test
+    // "explains an empty result and lets the filter be cleared" caught
+    // intermittently, and it made a clear feel laggy for everyone else.
+    //
+    // `replace` when only the search cleared, matching the debounced path: a
+    // clear should not leave a history entry to click back through. A select
+    // change still pushes, as it always did.
+    const searchCleared = next.search === "" && filters.search !== "";
+
+    if (selectsChanged || searchCleared) {
+      update(
+        {
+          status: next.status || undefined,
+          category: next.category || undefined,
+          q: next.search.trim() || undefined,
+        },
+        !selectsChanged,
+      );
     }
   };
 

@@ -445,11 +445,25 @@ async function dragHandle(
   if (!box) throw new Error(`no resize handle for ${column}`);
 
   const y = box.y + box.height / 2;
-  await page.mouse.move(box.x + box.width / 2, y);
+  const x = box.x + box.width / 2;
+  await page.mouse.move(x, y);
   await page.mouse.down();
-  // Two moves: the first starts the drag, the second is the actual travel.
-  await page.mouse.move(box.x + box.width / 2 + dx / 2, y);
-  await page.mouse.move(box.x + box.width / 2 + dx, y);
+
+  // Wait for the component to say the drag started, rather than assuming it.
+  //
+  // TanStack registers its document-level mousemove listener inside the React
+  // `onMouseDown` handler, so any move dispatched before that render commits
+  // lands nowhere and the drag silently does nothing at all — the column comes
+  // back the exact same width, which is how this failed intermittently under
+  // load ("Expected: > 332.71875, Received: 332.71875"). `ResizeHandle` sets
+  // `data-resizing` for precisely this state, so it is a real signal and not a
+  // sleep.
+  await expect(handle).toHaveAttribute("data-resizing", "true");
+
+  // Two moves minimum, and stepped: one jump can be coalesced, and the
+  // intermediate events are what a drag actually looks like.
+  await page.mouse.move(x + dx / 2, y, { steps: 5 });
+  await page.mouse.move(x + dx, y, { steps: 5 });
   await page.mouse.up();
 }
 
