@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Ban,
   CheckCircle2,
   ChevronRight,
   CircleDashed,
   Database,
+  ListChecks,
   Loader2,
   Play,
   Terminal,
@@ -19,12 +20,11 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { extractErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useSuites } from "./dev-api";
-import { CASE_STATUS, type CaseResult, type SuiteDescriptor } from "./protocol";
+import { CASE_STATUS, SUITE_KIND, type SuiteDescriptor } from "./protocol";
 import {
   RUN_STATUS,
   runOf,
@@ -43,6 +43,13 @@ import {
  * passed. Per-file rows say *what* ran. And the reporter's own output, streamed
  * line by line, is the only one of the three that is evidence rather than a
  * summary — if the parsed counts and the log ever disagree, believe the log.
+ *
+ * Only the first of the three is always on screen. Each suite's body folds away,
+ * so the page is three header lines at rest; what stays in the header is every
+ * signal that moves while a run is going — status, elapsed, files done, failures
+ * so far, lines received. Unfolded, the other two answers sit side by side
+ * rather than stacked, because reading a failing row used to mean scrolling past
+ * the log that explains it.
  */
 
 function formatDuration(ms: number | null): string {
@@ -267,89 +274,116 @@ function SuiteCard({
   const queuePosition = runner.queued.indexOf(suite.id);
   const isRunning = runner.activeId === suite.id;
   const status = isRunning ? RUN_STATUS.running : run.status;
+  const hasResults = isRunning || run.lines.length > 0 || run.cases.length > 0;
+
+  // Folded by default. Each body is a spec list and a log — most of a screen
+  // apiece, and three of them buried the run buttons below the fold. The header
+  // keeps every signal that moves, so a folded card still reports its run.
+  const [open, setOpen] = useState(false);
+
+  // Unfold when this suite *starts*, or a run kicked off from a folded card
+  // would stream into something nobody can see. Only the transition opens it, so
+  // folding a card mid-run sticks.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (isRunning && !wasRunning.current) setOpen(true);
+    wasRunning.current = isRunning;
+  }, [isRunning]);
 
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-2">
-            {suite.label}
+    /* The Collapsible wraps the Card rather than being it (`asChild`): Radix
+     * stamps `data-slot="collapsible"` on whatever it renders, and on the Card
+     * that would overwrite the `data-slot="card"` its own child selectors read. */
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <CollapsibleTrigger asChild>
+              {/* Only the name is the trigger. Making the whole row one would put
+                  Run and Clear inside a button, which is invalid and unclickable. */}
+              <Button variant="ghost" size="sm" className="-ml-1.5 text-sm font-medium">
+                <ChevronRight
+                  aria-hidden="true"
+                  className={cn("transition-transform", open && "rotate-90")}
+                />
+                {suite.label}
+              </Button>
+            </CollapsibleTrigger>
             <StatusBadge status={status} />
             {queuePosition >= 0 && !isRunning && (
               <Badge variant="secondary" className="font-normal">
                 queued
               </Badge>
             )}
-          </span>
-          <span className="flex items-center gap-2">
-            {run.lines.length > 0 && !isRunning && (
-              <Button variant="ghost" size="sm" onClick={() => runner.clear(suite.id)}>
-                Clear
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => runner.run(suite.id)}
-              disabled={isRunning || queuePosition >= 0}
-            >
-              {isRunning ? (
-                <Loader2 aria-hidden="true" className="animate-spin" />
-              ) : (
-                <Play aria-hidden="true" />
+
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-1.5">
+              <RunStats run={run} live={isRunning} />
+              <div className="flex items-center gap-2">
+                {run.lines.length > 0 && !isRunning && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => runner.clear(suite.id)}
+                  >
+                    Clear
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => runner.run(suite.id)}
+                  disabled={isRunning || queuePosition >= 0}
+                >
+                  {isRunning ? (
+                    <Loader2 aria-hidden="true" className="animate-spin" />
+                  ) : (
+                    <Play aria-hidden="true" />
+                  )}
+                  Run
+                </Button>
+              </div>
+            </div>
+          </CardTitle>
+        </CardHeader>
+
+        <CollapsibleContent>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">{suite.description}</p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                {suite.command}
+              </code>
+              {suite.heavy && (
+                <span className="flex items-center gap-1 text-xs text-status-warning">
+                  <Database aria-hidden="true" className="size-3.5" />
+                  needs Postgres — run{" "}
+                  <code className="font-mono">bun run db:test:reset</code> once first
+                </span>
               )}
-              Run
-            </Button>
-          </span>
-        </CardTitle>
-      </CardHeader>
+            </div>
 
-      <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">{suite.description}</p>
+            {run.error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {run.error}
+              </p>
+            )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-            {suite.command}
-          </code>
-          {suite.heavy && (
-            <span className="flex items-center gap-1 text-xs text-status-warning">
-              <Database aria-hidden="true" className="size-3.5" />
-              needs Postgres — run{" "}
-              <code className="font-mono">bun run db:test:reset</code> once first
-            </span>
-          )}
-        </div>
-
-        {run.error && (
-          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {run.error}
-          </p>
-        )}
-
-        <Counts run={run} />
-
-        {run.cases.length > 0 && <CaseList cases={run.cases} />}
-
-        {/* Vitest off a TTY prints totals and nothing per file, so a green run
-            legitimately has no rows. Said out loud, because an empty list under a
-            "Passed" badge otherwise looks like something failed to load. */}
-        {run.cases.length === 0 && run.summary?.tests && (
-          <p className="text-xs text-muted-foreground">
-            This reporter prints totals rather than a line per file when it is not
-            writing to a terminal. The full output is below.
-          </p>
-        )}
-
-        {(run.lines.length > 0 || isRunning) && (
-          <LogView
-            lines={run.lines}
-            dropped={run.dropped}
-            live={isRunning}
-            startedAt={run.startedAt}
-          />
-        )}
-      </CardContent>
-    </Card>
+            {hasResults && (
+              /* Two columns from `lg` up, one below it. The list says what ran and
+               * the log says why — read together, not one after the other, which
+               * is what the stacked layout forced: a failing row and the output
+               * explaining it were a screen apart. `items-start` so the short
+               * panel keeps its own height instead of stretching to the tall one. */
+              <div className="grid items-start gap-3 lg:grid-cols-2">
+                <CaseList run={run} suite={suite} />
+                <LogView lines={run.lines} dropped={run.dropped} live={isRunning} />
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 
@@ -368,36 +402,66 @@ function StatusBadge({ status }: { status: RunStatus }) {
 }
 
 /**
- * The parsed numbers.
+ * How the run is going, on the card's own header line.
  *
- * Everything here is nullable and rendered only when present, because three
- * reporters count three different things: Vitest reports files and tests, tsc
- * reports diagnostics, Playwright reports tests alone. A dash would imply zero.
+ * It lives in the header because that is the part that survives folding: with
+ * the body away, this is the only thing on screen that moves. While a suite runs
+ * it reports what has actually arrived — elapsed, files finished, failures so
+ * far, lines received — none of which wait on the reporter's summary, which for
+ * the E2E suite is minutes away.
+ *
+ * Once the run ends it switches to the parsed numbers. Everything there is
+ * nullable and rendered only when present, because three reporters count three
+ * different things: Vitest reports files and tests, tsc reports diagnostics,
+ * Playwright reports tests alone. A dash would imply zero.
  */
-function Counts({ run }: { run: SuiteRun }) {
-  const chips: { label: string; value: string; tone?: string }[] = [];
+function RunStats({ run, live }: { run: SuiteRun; live: boolean }) {
+  const chips: { label: string; value: ReactNode; tone?: string }[] = [];
   const { summary } = run;
 
+  if (live) {
+    chips.push({ label: "elapsed", value: <Elapsed since={run.startedAt} /> });
+    if (run.cases.length > 0) {
+      chips.push({ label: "done", value: run.cases.length });
+      const failedSoFar = run.cases.filter(
+        (result) => result.status === CASE_STATUS.failed,
+      ).length;
+      if (failedSoFar > 0) {
+        chips.push({
+          label: "failed",
+          value: failedSoFar,
+          tone: "text-status-critical",
+        });
+      }
+    }
+    // The last resort: a typecheck and a silent Vitest emit no cases at all, and
+    // a line count that keeps climbing is then the only proof of life there is.
+    chips.push({ label: "lines", value: run.lines.length });
+  }
+
   if (summary?.files) {
-    chips.push({ label: "files", value: `${summary.files.passed}/${summary.files.total}` });
+    chips.push({
+      label: "files",
+      value: `${summary.files.passed}/${summary.files.total}`,
+    });
   }
   if (summary?.tests) {
-    chips.push({ label: "tests passed", value: String(summary.tests.passed) });
+    chips.push({ label: "tests passed", value: summary.tests.passed });
     if (summary.tests.failed > 0) {
       chips.push({
         label: "failed",
-        value: String(summary.tests.failed),
+        value: summary.tests.failed,
         tone: "text-status-critical",
       });
     }
     if (summary.tests.skipped > 0) {
-      chips.push({ label: "skipped", value: String(summary.tests.skipped) });
+      chips.push({ label: "skipped", value: summary.tests.skipped });
     }
   }
   if (summary?.errors !== null && summary?.errors !== undefined) {
     chips.push({
       label: summary.errors === 1 ? "type error" : "type errors",
-      value: String(summary.errors),
+      value: summary.errors,
       tone: summary.errors > 0 ? "text-status-critical" : "text-status-good",
     });
   }
@@ -405,16 +469,16 @@ function Counts({ run }: { run: SuiteRun }) {
     chips.push({ label: "took", value: formatDuration(run.durationMs) });
   }
   if (run.exitCode !== null && run.exitCode !== 0) {
-    chips.push({ label: "exit code", value: String(run.exitCode) });
+    chips.push({ label: "exit code", value: run.exitCode });
   }
 
   if (chips.length === 0) return null;
 
   return (
-    <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+    <dl className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs font-normal">
       {chips.map((chip) => (
-        <div key={chip.label} className="flex items-baseline gap-1.5">
-          <dt className="text-xs text-muted-foreground">{chip.label}</dt>
+        <div key={chip.label} className="flex items-baseline gap-1">
+          <dt className="text-muted-foreground">{chip.label}</dt>
           <dd className={cn("font-medium tabular-nums", chip.tone)}>{chip.value}</dd>
         </div>
       ))}
@@ -422,48 +486,119 @@ function Counts({ run }: { run: SuiteRun }) {
   );
 }
 
-function CaseList({ cases }: { cases: CaseResult[] }) {
-  const failures = cases.filter((c) => c.status === CASE_STATUS.failed);
+/**
+ * One column of the split body.
+ *
+ * Shared rather than written twice, so the two columns agree on header height,
+ * ring and scroll cap and read as a pair. The body scrolls inside the panel:
+ * that cap is what keeps a 187-spec list from pushing the card below it off the
+ * page, and it is why the two can sit side by side at all.
+ */
+function Panel({
+  icon: Icon,
+  title,
+  meta,
+  children,
+}: {
+  icon: typeof Terminal;
+  title: string;
+  meta?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex min-w-0 flex-col rounded-md ring-1 ring-border">
+      <h3 className="flex items-center gap-2 border-b border-border px-2.5 py-1.5 text-xs font-medium">
+        <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        {title}
+        <span className="ml-auto flex items-center gap-2 font-normal text-muted-foreground tabular-nums">
+          {meta}
+        </span>
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function CaseList({ run, suite }: { run: SuiteRun; suite: SuiteDescriptor }) {
+  const failures = run.cases.filter((result) => result.status === CASE_STATUS.failed);
   // Failures first: on a red run they are the only rows anyone reads, and a long
   // list of passes above them is in the way.
-  const ordered = [...failures, ...cases.filter((c) => c.status !== CASE_STATUS.failed)];
+  const ordered = [
+    ...failures,
+    ...run.cases.filter((result) => result.status !== CASE_STATUS.failed),
+  ];
 
   return (
-    /* Capped and scrollable, because this list has no natural bound: the E2E
-     * suite reports 187 specs and would otherwise push the log — and every card
-     * below it — off the page. Failures are sorted to the top, so the rows worth
-     * reading are the ones visible without scrolling. */
-    <ul className="flex max-h-72 flex-col overflow-y-auto rounded-md ring-1 ring-border">
-      {ordered.map((result, index) => (
-        <li
-          key={`${result.name}|${index}`}
-          /* `relative` is load-bearing, not decoration. The status word below is
-           * `sr-only`, which Tailwind implements as `position: absolute` — and an
-           * absolutely-positioned box with no positioned ancestor is laid out
-           * against the *document*, escaping this list's clipping entirely. With
-           * 187 specs that put the last label 5962px down the page and gave the
-           * document its own scrollbar alongside the one this list already has.
-           * Making each row a containing block keeps the label where its row is. */
-          className="relative flex items-center gap-2 border-b border-border/50 px-2.5 py-1 text-xs last:border-0"
-        >
-          {result.status === CASE_STATUS.passed ? (
-            <CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0 text-status-good" />
-          ) : result.status === CASE_STATUS.failed ? (
-            <XCircle aria-hidden="true" className="size-3.5 shrink-0 text-status-critical" />
-          ) : (
-            <CircleDashed aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
-          <span className="sr-only">{result.status}: </span>
-          <span className="truncate font-mono" title={result.name}>
-            {result.name}
-          </span>
-          <span className="ml-auto flex shrink-0 items-center gap-3 text-muted-foreground tabular-nums">
-            {result.tests !== null && <span>{result.tests} tests</span>}
-            {result.durationMs !== null && <span>{formatDuration(result.durationMs)}</span>}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <Panel
+      icon={ListChecks}
+      title={suite.kind === SUITE_KIND.e2e ? "Specs" : "Test files"}
+      meta={
+        run.cases.length > 0 && (
+          <>
+            {failures.length > 0 && (
+              <span className="text-status-critical">{failures.length} failed</span>
+            )}
+            <span>{run.cases.length}</span>
+          </>
+        )
+      }
+    >
+      {ordered.length === 0 ? (
+        /* Vitest off a TTY prints totals and nothing per file, so a green run
+           legitimately has no rows. Said out loud, because an empty list beside a
+           "Passed" badge otherwise looks like something failed to load. */
+        <p className="px-2.5 py-2 text-xs text-muted-foreground">
+          {suite.kind === SUITE_KIND.types
+            ? "A typecheck reports diagnostics, not files — the count is in the header and anything it found is in the output."
+            : run.summary?.tests
+              ? "This reporter prints totals rather than a line per file when it is not writing to a terminal. The counts are in the header, the run itself is in the output."
+              : "Nothing reported yet."}
+        </p>
+      ) : (
+        <ul className="flex max-h-80 flex-col overflow-y-auto">
+          {ordered.map((result, index) => (
+            <li
+              key={`${result.name}|${index}`}
+              /* `relative` is load-bearing, not decoration. The status word below is
+               * `sr-only`, which Tailwind implements as `position: absolute` — and an
+               * absolutely-positioned box with no positioned ancestor is laid out
+               * against the *document*, escaping this list's clipping entirely. With
+               * 187 specs that put the last label 5962px down the page and gave the
+               * document its own scrollbar alongside the one this list already has.
+               * Making each row a containing block keeps the label where its row is. */
+              className="relative flex items-center gap-2 border-b border-border/50 px-2.5 py-1 text-xs last:border-0"
+            >
+              {result.status === CASE_STATUS.passed ? (
+                <CheckCircle2
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-status-good"
+                />
+              ) : result.status === CASE_STATUS.failed ? (
+                <XCircle
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-status-critical"
+                />
+              ) : (
+                <CircleDashed
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                />
+              )}
+              <span className="sr-only">{result.status}: </span>
+              <span className="truncate font-mono" title={result.name}>
+                {result.name}
+              </span>
+              <span className="ml-auto flex shrink-0 items-center gap-3 text-muted-foreground tabular-nums">
+                {result.tests !== null && <span>{result.tests} tests</span>}
+                {result.durationMs !== null && (
+                  <span>{formatDuration(result.durationMs)}</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }
 
@@ -486,13 +621,9 @@ function Elapsed({ since }: { since: number | null }) {
     return () => clearInterval(timer);
   }, []);
 
-  if (since === null) return <span className="text-xs text-muted-foreground">streaming…</span>;
+  if (since === null) return <>…</>;
 
-  return (
-    <span className="text-xs text-muted-foreground tabular-nums">
-      streaming… {formatDuration(Math.max(0, now - since))}
-    </span>
-  );
+  return <>{formatDuration(Math.max(0, now - since))}</>;
 }
 
 /**
@@ -502,19 +633,21 @@ function Elapsed({ since }: { since: number | null }) {
  * there — scroll up to read a failure and it stops fighting you. `role="log"`
  * with `aria-live="off"` on purpose: the region is labelled for navigation, and
  * announcing it would read hundreds of lines aloud.
+ *
+ * Folding the card takes this subtree out of the DOM entirely — Radix's
+ * collapsible renders `isOpen && children`, not a hidden box — so the cap of
+ * 3000 line elements costs nothing while folded, and unfolding remounts, which
+ * runs the effect below and lands you back at the newest line.
  */
 function LogView({
   lines,
   dropped,
   live,
-  startedAt,
 }: {
   lines: LogLine[];
   dropped: number;
   live: boolean;
-  startedAt: number | null;
 }) {
-  const [open, setOpen] = useState(true);
   const viewRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
 
@@ -522,69 +655,61 @@ function LogView({
     const element = viewRef.current;
     if (!element || !stickRef.current) return;
     element.scrollTop = element.scrollHeight;
-  }, [lines, open]);
+  }, [lines]);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="flex items-center gap-2">
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm">
-            <ChevronRight
-              aria-hidden="true"
-              className={cn("transition-transform", open && "rotate-90")}
-            />
-            <Terminal aria-hidden="true" />
-            Output
-            <span className="text-muted-foreground tabular-nums">
-              {lines.length}
-              {dropped > 0 && ` (+${dropped} dropped)`}
-            </span>
-          </Button>
-        </CollapsibleTrigger>
-        {live && <Elapsed since={startedAt} />}
+    <Panel
+      icon={Terminal}
+      title="Output"
+      meta={
+        <>
+          {live && <span>streaming…</span>}
+          <span>
+            {lines.length}
+            {dropped > 0 && ` (+${dropped} dropped)`}
+          </span>
+        </>
+      }
+    >
+      <div
+        ref={viewRef}
+        role="log"
+        aria-live="off"
+        aria-label="Test output"
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          stickRef.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+        }}
+        className="max-h-80 overflow-auto p-2.5"
+      >
+        {dropped > 0 && (
+          <p className="pb-1 text-xs text-muted-foreground">
+            …{dropped} earlier lines dropped to keep this page responsive.
+          </p>
+        )}
+        <ol className="flex flex-col font-mono text-xs leading-relaxed">
+          {lines.map((line) => (
+            <li
+              key={line.id}
+              className={cn(
+                "border-l-2 pl-2 break-words whitespace-pre-wrap text-foreground/85",
+                // stderr is marked, not reddened. It is not an error channel —
+                // `bun run` echoes the command it is about to run there — and
+                // painting that line destructive-red said something false about
+                // every successful run.
+                line.stream === "err"
+                  ? "border-muted-foreground/50"
+                  : "border-transparent",
+              )}
+            >
+              {/* A blank line still needs a box, or the log collapses the
+                  spacing the reporter deliberately printed. */}
+              {line.text || " "}
+            </li>
+          ))}
+        </ol>
       </div>
-      <CollapsibleContent>
-        <div
-          ref={viewRef}
-          role="log"
-          aria-live="off"
-          aria-label="Test output"
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            stickRef.current =
-              element.scrollHeight - element.scrollTop - element.clientHeight < 24;
-          }}
-          className="mt-1 max-h-80 overflow-auto rounded-md bg-background p-2.5 ring-1 ring-border"
-        >
-          {dropped > 0 && (
-            <p className="pb-1 text-xs text-muted-foreground">
-              …{dropped} earlier lines dropped to keep this page responsive.
-            </p>
-          )}
-          <ol className="flex flex-col font-mono text-xs leading-relaxed">
-            {lines.map((line) => (
-              <li
-                key={line.id}
-                className={cn(
-                  "border-l-2 pl-2 break-words whitespace-pre-wrap text-foreground/85",
-                  // stderr is marked, not reddened. It is not an error channel —
-                  // `bun run` echoes the command it is about to run there — and
-                  // painting that line destructive-red said something false about
-                  // every successful run.
-                  line.stream === "err"
-                    ? "border-muted-foreground/50"
-                    : "border-transparent",
-                )}
-              >
-                {/* A blank line still needs a box, or the log collapses the
-                    spacing the reporter deliberately printed. */}
-                {line.text || " "}
-              </li>
-            ))}
-          </ol>
-        </div>
-      </CollapsibleContent>
-      <Separator className="mt-3" />
-    </Collapsible>
+    </Panel>
   );
 }
