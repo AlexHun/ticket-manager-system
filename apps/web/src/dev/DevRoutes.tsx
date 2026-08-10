@@ -31,8 +31,10 @@ export function DevRoutes() {
   return (
     // The map's legend and the graph's column headings use shadcn Tooltips, and
     // Radix throws without a provider above them. AppShell has one; this tree is
-    // not inside it.
-    <TooltipProvider delayDuration={0}>
+    // not inside it — and it mirrors that provider's delay settings (see
+    // `AppShell` for why `skipDelayDuration` is 0) so dev tools feel like the
+    // app.
+    <TooltipProvider delayDuration={2000} skipDelayDuration={0}>
       <div className="flex h-dvh flex-col overflow-hidden">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
           <Link to="/__dev/map" className="flex items-center gap-2">

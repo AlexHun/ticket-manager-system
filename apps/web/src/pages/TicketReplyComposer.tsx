@@ -10,6 +10,7 @@ import { Loader2, Send, Sparkles, Undo2 } from "lucide-react";
 import {
   createTicketMessageSchema,
   type CreateTicketMessageValues,
+  type PolishReplyValues,
 } from "@ticket/core";
 import {
   MAX_MESSAGE_BODY_LENGTH,
@@ -74,8 +75,10 @@ function appendMessage(queryClient: QueryClient, created: ThreadMessage): void {
  * Nothing is emailed yet: the endpoint writes an outbound message carrying the
  * headers a real send would, and a transport drops in behind it later.
  *
- * Takes only the ticket's id — the cache update finds its entry by the id on
- * the message that comes back, so the ticket object itself is never needed.
+ * Takes only the ticket's id, and still only that now Polish is context-aware:
+ * the cache update finds its entry by the id on the message that comes back,
+ * and the polish endpoint looks the thread up server-side. The ticket object
+ * itself is never needed here.
  */
 export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
   const queryClient = useQueryClient();
@@ -116,9 +119,15 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
   // in its success path without a forward reference.
   const polish = useMutation({
     mutationFn: async (value: string) => {
+      // Typed as the schema's own inferred shape, so a field the server starts
+      // requiring fails to compile here rather than at runtime. The ticket id
+      // is all the context that travels: the server reads the customer's
+      // message out of the thread itself, which is why the composer does not
+      // have to hold one.
+      const payload: PolishReplyValues = { draft: value, ticketId };
       const { data } = await api.post<PolishReplyResponse>(
         "/api/ai/polish-reply",
-        { draft: value },
+        payload,
       );
       return data.polished;
     },
@@ -221,7 +230,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
       ? `A draft is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`
       : trimmedDraft.length === 0
         ? "Write a draft first"
-        : "Rewrite this draft for clarity and tone. You can undo it.";
+        : "Rewrite this draft as a reply to the customer's message. You can undo it.";
 
   return (
     // shrink-0 so the composer keeps its height and the thread above it gives up

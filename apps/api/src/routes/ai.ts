@@ -1,13 +1,14 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { polishReplySchema } from "@ticket/core";
-import type { PolishReplyResponse } from "@ticket/shared";
+import { MESSAGE_DIRECTION, type PolishReplyResponse } from "@ticket/shared";
 import {
   POLISH_FAILURE,
   isPolishConfigured,
   polishDraft,
   type PolishFailure,
 } from "../ai/polish";
+import { prisma } from "../db";
 import { requireAuth, sessionOf } from "../middleware/auth";
 
 export const aiRouter = Router();
@@ -119,20 +120,31 @@ const FAILURE_RESPONSE: Record<
     status: 502,
     error: "Polishing came back empty — try again, or send your draft as it is.",
   },
+  // Says what happened without teaching anyone how it happened. "The rewrite
+  // offered a refund your draft didn't" would tell an agent something useful and
+  // would also tell whoever planted it that the payload was seen and named.
+  [POLISH_FAILURE.invented]: {
+    status: 502,
+    error:
+      "Polishing added a commitment your draft didn't make, so it was discarded. Try again, or send your draft as it is.",
+  },
 };
 
 /**
- * Rewrite an agent's draft reply.
+ * Rewrite an agent's draft reply, in the context of the ticket it answers.
  *
- * `requireAuth` like the ticket routes: both roles work tickets. Nothing is read
- * or written — the request carries the only input and the response carries the
- * only output — so there is no resource to authorise beyond being signed in.
+ * `requireAuth` like the ticket routes, and that is the whole authorisation
+ * story even now that this reads a ticket: an agent can already fetch any ticket
+ * and its entire thread through `GET /api/tickets/:id`, so a subject line and
+ * one inbound message discloses nothing a signed-in caller could not read
+ * directly. Nothing is written.
  *
- * Not mounted under `/api/tickets/:id` even though that is where it is used
- * from. The prompt is the draft and nothing else: no subject, no thread, no
- * customer text. A ticket id in the URL would have to be either validated and
- * then ignored, or looked up purely so the path wasn't a lie. `/api/ai` says the
- * true thing about what this touches.
+ * Still `/api/ai` rather than `/api/tickets/:id/polish-reply`, though the second
+ * reading is now defensible — the ticket is a genuine input rather than a lie
+ * the path would tell. It stays here because the resource being acted on is the
+ * draft in the composer, which is not a ticket sub-resource: it has no id, it is
+ * never persisted, and the answer never touches the thread. The ticket is
+ * context for the rewrite, not the thing being rewritten.
  */
 aiRouter.post(
   "/polish-reply",
@@ -159,12 +171,48 @@ aiRouter.post(
       return;
     }
 
-    // After validation, before the model. The budget exists to cap spend and a
-    // malformed body costs nothing to refuse, so only a request that would
-    // actually reach the provider consumes a slot. It is never refunded on
-    // failure either: a provider that is down, retried ten times a minute, is
-    // precisely what this guard is here to stop.
     const { user } = sessionOf(res);
+
+    // What the rewrite is answering, read here rather than accepted from the
+    // body: the customer's words go into a prompt, so the one copy that reaches
+    // the model is the one in our own thread. A caller who could send that text
+    // could hand the model any "customer message" they liked.
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: body.data.ticketId },
+      select: {
+        subject: true,
+        customerName: true,
+        messages: {
+          // The customer's latest, which is what a reply is a reply to. Only
+          // inbound: the agent's own previous messages are already reflected in
+          // the draft, and feeding them back invites the model to re-answer
+          // them.
+          where: { direction: MESSAGE_DIRECTION.inbound },
+          // Newest first, `id` breaking the tie exactly as the thread query
+          // does — createdAt defaults to now() and a batch insert shares an
+          // instant.
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          // `textBody` alone. `htmlBody` is stored and never leaves this
+          // process — see the "never render email HTML" rule — and a prompt is
+          // not the exception that starts: it would put markup in front of the
+          // model and tags into the agent's draft box.
+          select: { textBody: true },
+        },
+      },
+    });
+
+    if (!ticket) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    // After validation and the lookup, before the model. The budget exists to
+    // cap spend, and neither a malformed body nor a missing ticket costs
+    // anything to refuse, so only a request that would actually reach the
+    // provider consumes a slot. It is never refunded on failure either: a
+    // provider that is down, retried ten times a minute, is precisely what this
+    // guard is here to stop.
     const admission = admit(user.id);
     if (!admission.allowed) {
       res.setHeader("Retry-After", String(admission.retryAfterSeconds));
@@ -181,7 +229,19 @@ aiRouter.post(
       if (!res.writableEnded) abort.abort();
     });
 
-    const result = await polishDraft(body.data.draft, abort.signal);
+    const result = await polishDraft(
+      body.data.draft,
+      {
+        subject: ticket.subject,
+        customerName: ticket.customerName,
+        // Null when the thread has no inbound message at all, and null again
+        // when the newest one is HTML-only — `textBody` is nullable, and an
+        // empty string is the same absence as far as the prompt is concerned.
+        customerMessage: ticket.messages[0]?.textBody?.trim() || null,
+        agentName: user.name,
+      },
+      abort.signal,
+    );
     if (!result.ok) {
       const { status, error } = FAILURE_RESPONSE[result.reason];
       if (result.reason === POLISH_FAILURE.busy) {

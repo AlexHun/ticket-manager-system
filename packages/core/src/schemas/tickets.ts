@@ -198,6 +198,13 @@ export type CreateTicketMessageValues = z.infer<
  * fraction of a cent and buy a state where a reply can be sent but not polished
  * — a button refusing work the button beside it accepts, for a reason no agent
  * can see.
+ *
+ * `ticketId` is how the rewrite knows what it is answering. It is the id and
+ * *not* the customer's message itself: the server reads that text out of the
+ * thread it already owns, so a client cannot decide what the model is told the
+ * customer said. Required rather than optional — the composer always knows the
+ * ticket it is sitting in, and an optional field would let a caller quietly fall
+ * back to the context-free rewrite this schema used to describe.
  */
 export const polishReplySchema = z.object({
   draft: z
@@ -208,6 +215,10 @@ export const polishReplySchema = z.object({
       MAX_MESSAGE_BODY_LENGTH,
       `A draft is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
     ),
+  // Reused from the path-param schema rather than restated, so the two cannot
+  // drift on what counts as a ticket id — including the int4 ceiling that keeps
+  // an oversized number from reaching Prisma and becoming a 500.
+  ticketId: ticketIdParamSchema.shape.id,
 });
 
 export type PolishReplyValues = z.infer<typeof polishReplySchema>;

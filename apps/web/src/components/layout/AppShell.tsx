@@ -34,7 +34,20 @@ export function AppShell() {
     // Not optional: the collapsed rail labels its items with shadcn Tooltips,
     // and Radix throws without a provider above them. SidebarProvider is not
     // one.
-    <TooltipProvider delayDuration={0}>
+    //
+    // 2s is a deliberate hover delay: tooltips here are a reveal for truncated
+    // text, not a primary label, so they should only appear when a pointer has
+    // clearly settled.
+    //
+    // `skipDelayDuration={0}` is what makes that hold for *every* tooltip
+    // rather than only the first. Radix keeps one shared "a tooltip was just
+    // open" flag per provider and, for `skipDelayDuration` ms after one closes,
+    // opens the next trigger with no delay whatsoever. At the 300ms default,
+    // dragging the pointer down a list of rows puts each row inside the
+    // previous row's window, so they fire one after another — the delay applies
+    // once and never again. Zero means each trigger waits out the full 2s on
+    // its own.
+    <TooltipProvider delayDuration={2000} skipDelayDuration={0}>
       <SidebarProvider
         defaultOpen={readSidebarDefaultOpen()}
         className="h-dvh overflow-hidden"
