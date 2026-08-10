@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
+import { ticketAssigneesKey, ticketKeys } from "@/lib/ticket-queries";
 
 interface UserDialogProps {
   user: User | null;
@@ -83,6 +84,17 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
     },
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
+      // Every active user is assignable, so creating one changes the picker's
+      // roster and renaming one changes how they read in it. The roster lives
+      // outside the `tickets` prefix and has its own key — without this, a
+      // tickets page already mounted in this session keeps its cached list and
+      // the new user is missing until a reload.
+      void queryClient.invalidateQueries({ queryKey: ticketAssigneesKey });
+      // A rename also changes the assignee shown on tickets this user already
+      // holds. A brand new user holds none, so there is nothing to refetch.
+      if (isEdit) {
+        void queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      }
       setServerError(null);
       onOpenChange(false);
       toast.success(

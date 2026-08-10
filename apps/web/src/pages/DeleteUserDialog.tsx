@@ -15,6 +15,7 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
+import { ticketAssigneesKey, ticketKeys } from "@/lib/ticket-queries";
 
 interface DeleteUserDialogProps {
   user: User | null;
@@ -40,6 +41,14 @@ export function DeleteUserDialog({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
+      // The roster is its own cache entry, outside the `tickets` prefix, so
+      // neither invalidate reaches the other — a page that already rendered the
+      // picker would keep offering this user until it remounted.
+      void queryClient.invalidateQueries({ queryKey: ticketAssigneesKey });
+      // The delete also unassigned every ticket this user held (see the DELETE
+      // route in `apps/api/src/routes/users.ts`), so any cached list, detail or
+      // dashboard entry is now naming an assignee the server has cleared.
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.all });
       setServerError(null);
       onOpenChange(false);
       if (user) toast.success(`User "${user.name}" deleted`);

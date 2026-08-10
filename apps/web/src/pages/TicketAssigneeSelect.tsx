@@ -30,7 +30,16 @@ const UNASSIGNED = "unassigned";
 
 const UNASSIGNED_LABEL = "Unassigned";
 
-/** How long the roster is trusted without a refetch. Users are created rarely. */
+/**
+ * How long the roster is trusted without a refetch. Users are created rarely,
+ * and this list is the same for every ticket.
+ *
+ * Long enough that nothing reloads it on its own within a session, so the
+ * mutations that *do* change it have to say so: `UserDialog` and
+ * `DeleteUserDialog` invalidate `ticketAssigneesKey` on success. Without that
+ * an admin creates a user, walks to a ticket, and the picker is still showing
+ * the roster from five minutes ago.
+ */
 const ROSTER_STALE_MS = 5 * 60_000;
 
 function useAssigneesQuery() {

@@ -178,6 +178,17 @@ usersRouter.delete(
         },
       }),
       prisma.session.deleteMany({ where: { userId } }),
+      // `Ticket.assignedTo` carries `onDelete: SetNull`, but this is a soft
+      // delete — the row stays, so the FK action never fires and every ticket
+      // keeps pointing at someone who is no longer on the roster. That is a
+      // dead end for the ticket: `/assignees` filters on `deletedAt: null`, so
+      // the picker cannot offer them and the assignment guard at
+      // `routes/tickets.ts` refuses to re-select them. Clearing it here is what
+      // puts those tickets back in front of somebody.
+      prisma.ticket.updateMany({
+        where: { assignedToId: userId },
+        data: { assignedToId: null },
+      }),
     ]);
 
     res.status(204).end();
