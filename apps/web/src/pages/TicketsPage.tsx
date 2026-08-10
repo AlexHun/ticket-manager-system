@@ -62,6 +62,7 @@ interface TicketsQueryParams {
   pageSize: number;
   status?: string;
   category?: string;
+  assignedTo?: string;
   q?: string;
 }
 
@@ -75,6 +76,7 @@ function toQueryParams(
   const params: TicketsQueryParams = { ...toSortParams(sorting), page, pageSize };
   if (filters.status) params.status = filters.status;
   if (filters.category) params.category = filters.category;
+  if (filters.assignedTo) params.assignedTo = filters.assignedTo;
   const search = filters.search.trim();
   if (search) params.q = search;
   return params;
@@ -145,6 +147,7 @@ export function TicketsPage() {
   const filters: TicketFilterState = {
     status: listState.status ?? "",
     category: listState.category ?? "",
+    assignedTo: listState.assignedTo ?? "",
     search: searchInput,
   };
 
@@ -171,7 +174,9 @@ export function TicketsPage() {
     // same write — so the URL never disagrees with the controls, and one
     // interaction stays one request.
     const selectsChanged =
-      next.status !== filters.status || next.category !== filters.category;
+      next.status !== filters.status ||
+      next.category !== filters.category ||
+      next.assignedTo !== filters.assignedTo;
 
     // Emptying the search writes at once too, for the same reason: there is
     // nothing to settle. Debouncing a clear only bought a 300ms window in which
@@ -192,6 +197,7 @@ export function TicketsPage() {
         {
           status: next.status || undefined,
           category: next.category || undefined,
+          assignedTo: next.assignedTo || undefined,
           q: next.search.trim() || undefined,
         },
         !selectsChanged,

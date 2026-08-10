@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Search, X } from "lucide-react";
 import {
+  ASSIGNEE_NONE,
   CATEGORY_NONE,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
@@ -13,10 +15,13 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAssigneesQuery } from "@/lib/use-assignees";
 
 /** `""` is the "no filter" choice in our own state. */
 const ANY = "";
@@ -31,12 +36,15 @@ const ANY_VALUE = "any";
 export interface TicketFilterState {
   status: TicketStatus | typeof ANY;
   category: TicketCategoryFilter | typeof ANY;
+  /** A user id, `ASSIGNEE_NONE` for unassigned, or `ANY`. */
+  assignedTo: string;
   search: string;
 }
 
 export const EMPTY_FILTERS: TicketFilterState = {
   status: ANY,
   category: ANY,
+  assignedTo: ANY,
   search: "",
 };
 
@@ -44,6 +52,7 @@ export function hasActiveFilters(filters: TicketFilterState): boolean {
   return (
     filters.status !== ANY ||
     filters.category !== ANY ||
+    filters.assignedTo !== ANY ||
     filters.search.trim() !== ""
   );
 }
@@ -111,6 +120,11 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
         }
       />
 
+      <AssigneeFilter
+        value={filters.assignedTo}
+        onChange={(assignedTo) => onChange({ ...filters, assignedTo })}
+      />
+
       {active && (
         <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)}>
           <X />
@@ -121,6 +135,65 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
   );
 }
 
+const ANY_ASSIGNEE_LABEL = "Any assignee";
+const UNASSIGNED_LABEL = "Unassigned";
+
+/**
+ * Narrow the list to one person's tickets, or to the ones nobody owns.
+ *
+ * Its own component because it is the only filter whose options come from the
+ * server. The other two are enums the client already has, and answer instantly.
+ */
+function AssigneeFilter({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  // The roster is only needed to draw this dropdown, and most visits to the
+  // tickets list never open it — so it isn't fetched with the page. Opening it
+  // once latches this on for the rest of the mount; a link that arrived already
+  // filtered skips the wait, because the trigger has an id to turn into a name.
+  const [opened, setOpened] = useState(false);
+  const { data: assignees, isLoading } = useAssigneesQuery({
+    enabled: opened || value !== ANY,
+  });
+
+  const options = [
+    { value: ASSIGNEE_NONE, label: UNASSIGNED_LABEL },
+    ...(assignees ?? []).map((assignee) => ({
+      value: assignee.id,
+      label: assignee.name,
+    })),
+  ];
+
+  return (
+    <FilterSelect
+      id="ticket-assignee-filter"
+      label="Assigned to"
+      value={value}
+      anyLabel={ANY_ASSIGNEE_LABEL}
+      options={options}
+      onChange={onChange}
+      onOpenChange={(open) => open && setOpened(true)}
+      // Radix draws an empty trigger for a value it has no item for, which is
+      // every first paint of a filtered link and any id the roster has stopped
+      // carrying — someone deleted since the link was shared. Name it either way
+      // rather than showing a blank control that reads as "no filter".
+      valueLabel={
+        value === ANY
+          ? ANY_ASSIGNEE_LABEL
+          : (options.find((option) => option.value === value)?.label ??
+            (isLoading ? "Loading…" : "Unknown user"))
+      }
+      // A hint rather than a disabled item: a `SelectItem` is selectable, and
+      // "Loading…" is not something anyone should be able to filter by.
+      hint={isLoading ? "Loading users…" : undefined}
+    />
+  );
+}
+
 interface FilterSelectProps {
   id: string;
   label: string;
@@ -128,6 +201,14 @@ interface FilterSelectProps {
   anyLabel: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
+  /**
+   * Trigger text, when the caller can't rely on `value` matching an option —
+   * see `AssigneeFilter`. Omitted, the selected item's own label is shown.
+   */
+  valueLabel?: string;
+  /** Non-selectable line under the options. */
+  hint?: string;
+  onOpenChange?: (open: boolean) => void;
 }
 
 function FilterSelect({
@@ -137,6 +218,9 @@ function FilterSelect({
   anyLabel,
   options,
   onChange,
+  valueLabel,
+  hint,
+  onOpenChange,
 }: FilterSelectProps) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -144,9 +228,12 @@ function FilterSelect({
       <Select
         value={value === ANY ? ANY_VALUE : value}
         onValueChange={(next) => onChange(next === ANY_VALUE ? ANY : next)}
+        onOpenChange={onOpenChange}
       >
         <SelectTrigger id={id} className="w-44">
-          <SelectValue />
+          {/* `undefined` children leave Radix's default in place, which is the
+              selected item's text — what every filter but the assignee wants. */}
+          <SelectValue>{valueLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ANY_VALUE}>{anyLabel}</SelectItem>
@@ -155,6 +242,14 @@ function FilterSelect({
               {option.label}
             </SelectItem>
           ))}
+          {/* SelectGroup is not decoration: SelectLabel reads its id from the
+              group's context and throws without one, which takes the page down
+              with it — there is no error boundary above this. */}
+          {hint && (
+            <SelectGroup>
+              <SelectLabel>{hint}</SelectLabel>
+            </SelectGroup>
+          )}
         </SelectContent>
       </Select>
     </div>

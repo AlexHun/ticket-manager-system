@@ -10,6 +10,7 @@ import {
   type TicketsQuery,
 } from "@ticket/core";
 import {
+  ASSIGNEE_NONE,
   CATEGORY_NONE,
   MESSAGE_DIRECTION,
   TICKET_SORT_FIELD,
@@ -62,8 +63,9 @@ const ORDER_BY: Record<
 
 /**
  * Absent filters mean "don't narrow on this field", so each one is only added
- * when present. `category=none` is the one value that can't be passed straight
- * through — it maps to SQL NULL rather than to a category.
+ * when present. `category=none` and `assignedTo=none` are the two values that
+ * can't be passed straight through — each maps to SQL NULL rather than to a
+ * category or a user.
  */
 function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
   const where: Prisma.TicketWhereInput = {};
@@ -75,6 +77,19 @@ function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
   if (query.category) {
     where.category =
       query.category === CATEGORY_NONE ? null : query.category;
+  }
+
+  // Matched on the id, not through the relation: `assignedToId` is on the
+  // ticket row, so "nobody" is a plain IS NULL and an owner is an equality on a
+  // column that is already indexed by the foreign key.
+  //
+  // The id is not checked against the user table first. An unknown one narrows
+  // to nothing, which is what a filter naming a deleted colleague should show —
+  // and it keeps this off the path of a request that would otherwise probe which
+  // ids exist by the difference between "no tickets" and "no such user".
+  if (query.assignedTo) {
+    where.assignedToId =
+      query.assignedTo === ASSIGNEE_NONE ? null : query.assignedTo;
   }
 
   // Free-text search spans the columns an agent would recognise a ticket by.

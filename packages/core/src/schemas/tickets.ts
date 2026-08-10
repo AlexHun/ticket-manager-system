@@ -18,12 +18,20 @@ import {
 } from "@ticket/shared";
 
 /**
+ * Sanity ceiling on an assignee id, shared by the list filter and the assign
+ * body. Better Auth generates 32-character ids, so anything near this is already
+ * nonsense — the cap just keeps a request from turning an arbitrarily long
+ * string into a database lookup.
+ */
+const ASSIGNEE_ID_MAX_LENGTH = 128;
+
+/**
  * Query params for GET /api/tickets.
  *
  * Sort params default, so omitting them yields the newest-first order the list
  * page asks for on first load. Filter params are optional and absent means
- * "don't narrow on this field" — `category=none` is the sentinel for tickets
- * that have no category at all.
+ * "don't narrow on this field" — `category=none` and `assignedTo=none` are the
+ * sentinels for tickets that have no category and no owner at all.
  */
 export const ticketsQuerySchema = z.object({
   sort: z
@@ -39,6 +47,18 @@ export const ticketsQuerySchema = z.object({
     .enum([...Object.values(TICKET_CATEGORY), CATEGORY_NONE], {
       error: "Invalid category filter",
     })
+    .optional(),
+  // A user id, or `none` for tickets nobody owns. Unlike the two filters above
+  // this can't be an enum — the values are rows in the user table — so only the
+  // shape is checked here and an id matching nobody is a valid filter that
+  // returns nothing. That is the honest answer for a shared link naming someone
+  // who has since been deleted, and it leaks nothing: the same empty page comes
+  // back for an id that never existed.
+  assignedTo: z
+    .string({ error: "Invalid assignee filter" })
+    .trim()
+    .min(1, "Invalid assignee filter")
+    .max(ASSIGNEE_ID_MAX_LENGTH, "Invalid assignee filter")
     .optional(),
   q: z
     .string()
@@ -86,13 +106,6 @@ export const ticketIdParamSchema = z.object({
 });
 
 export type TicketIdParam = z.infer<typeof ticketIdParamSchema>;
-
-/**
- * Sanity ceiling on an assignee id. Better Auth generates 32-character ids, so
- * anything near this is already nonsense — the cap just keeps a request from
- * turning an arbitrarily long string into a database lookup.
- */
-const ASSIGNEE_ID_MAX_LENGTH = 128;
 
 /**
  * Body for PATCH /api/tickets/:id/assignee.

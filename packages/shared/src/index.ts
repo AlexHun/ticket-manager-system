@@ -75,6 +75,17 @@ export const CATEGORY_NONE = "none";
 
 export type TicketCategoryFilter = TicketCategory | typeof CATEGORY_NONE;
 
+/**
+ * Query-param sentinel for "nobody is assigned to this ticket" — the same
+ * problem CATEGORY_NONE solves, for the assignee filter: a null can't travel in
+ * a query string, and an absent `assignedTo` already means "any assignee".
+ *
+ * Its own constant rather than a shared one, because the two filters are free to
+ * diverge; the values only happen to match today. It can't be mistaken for a
+ * real assignee either — ids are Better Auth cuids, 32 characters long.
+ */
+export const ASSIGNEE_NONE = "none";
+
 /** Longest accepted free-text search, mirrored by the zod schema. */
 export const TICKET_SEARCH_MAX_LENGTH = 100;
 
