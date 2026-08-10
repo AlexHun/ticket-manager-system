@@ -237,6 +237,20 @@ export interface CreateTicketMessageResponse {
   message: ThreadMessage;
 }
 
+/**
+ * The reply to POST /api/ai/polish-reply.
+ *
+ * Plain text, never markup. The composer puts it straight into a textarea and
+ * the thread renders `textBody` as a React text node, so anything HTML-shaped
+ * would be shown literally at best — see the "never render email HTML" rule.
+ *
+ * Nothing is persisted by that endpoint, which is why there is no message here
+ * and no id: the rewrite exists only in the agent's draft box until they send it.
+ */
+export interface PolishReplyResponse {
+  polished: string;
+}
+
 export interface UsersListResponse {
   users: User[];
 }

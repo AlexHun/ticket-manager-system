@@ -18,10 +18,12 @@
     "db:test:reset": "dotenv -e .env.test -- prisma migrate reset --force && bun run db:test:seed"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.36",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@ticket/core": "workspace:*",
     "@ticket/shared": "workspace:*",
+    "ai": "^7.0.58",
     "better-auth": "^1.6.10",
     "compression": "^1.8.1",
     "cors": "^2.8.6",

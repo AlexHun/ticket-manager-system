@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   useMutation,
   useQueryClient,
@@ -5,16 +6,19 @@ import {
 } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, Sparkles, Undo2 } from "lucide-react";
 import {
   createTicketMessageSchema,
   type CreateTicketMessageValues,
 } from "@ticket/core";
-import type {
-  CreateTicketMessageResponse,
-  ThreadMessage,
-  TicketDetail,
+import {
+  MAX_MESSAGE_BODY_LENGTH,
+  type CreateTicketMessageResponse,
+  type PolishReplyResponse,
+  type ThreadMessage,
+  type TicketDetail,
 } from "@ticket/shared";
+import { Hint } from "@/components/Hint";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
@@ -29,6 +33,8 @@ const REPLY_FIELD_ID = "ticket-reply";
 const EMPTY_REPLY: CreateTicketMessageValues = { textBody: "" };
 
 const SEND_FAILED = "Failed to send the reply";
+
+const POLISH_FAILED = "Failed to polish the draft";
 
 /**
  * Put a new message into every cached copy of its ticket.
@@ -77,10 +83,62 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     register,
     handleSubmit,
     reset,
+    getValues,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<CreateTicketMessageValues>({
     resolver: zodResolver(createTicketMessageSchema),
     defaultValues: EMPTY_REPLY,
+  });
+
+  /**
+   * The draft as it stood before the last polish, or null when there is nothing
+   * to go back to.
+   *
+   * Local state rather than a form field: it is not part of the reply, it never
+   * travels to the server, and it has to survive the `setValue` that overwrote
+   * the box — which is exactly what a second field would not do.
+   */
+  const [prePolish, setPrePolish] = useState<string | null>(null);
+
+  // The textarea is uncontrolled, so nothing re-renders as it is typed into —
+  // and Polish has to know whether there is anything to polish. `watch` buys
+  // that for a re-render per keystroke, which on a form of one textarea and
+  // three buttons is cheaper than the alternatives: mirroring the value into
+  // state, or an always-enabled button that answers a click with a 400.
+  const draft = watch("textBody") ?? "";
+  const trimmedDraft = draft.trim();
+  const draftTooLong = trimmedDraft.length > MAX_MESSAGE_BODY_LENGTH;
+  const canPolish = trimmedDraft.length > 0 && !draftTooLong;
+
+  // Declared above the send mutation only so that one can call `polish.reset()`
+  // in its success path without a forward reference.
+  const polish = useMutation({
+    mutationFn: async (value: string) => {
+      const { data } = await api.post<PolishReplyResponse>(
+        "/api/ai/polish-reply",
+        { draft: value },
+      );
+      return data.polished;
+    },
+    // `sent` is react-query's record of what this call was given, which is
+    // exactly what Undo has to restore — so there is nothing to stash before the
+    // request and no way to stash the wrong thing.
+    onSuccess: (polished, sent) => {
+      setPrePolish(sent);
+      // Writes through to the registered <textarea>; an uncontrolled box shows
+      // nothing new otherwise. `shouldValidate` clears a stale "Write a reply
+      // before sending" left behind by an earlier empty submit.
+      setValue("textBody", polished, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      toast.success("Draft polished");
+    },
+    onError: (err) => {
+      toast.error(extractErrorMessage(err, POLISH_FAILED));
+    },
   });
 
   const mutation = useMutation({
@@ -104,6 +162,10 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
       // Cleared only on success: a rejected reply keeps what was typed, because
       // the draft is the only copy of it.
       reset(EMPTY_REPLY);
+      // The draft Undo would restore has just been sent. Offering to put it back
+      // into a box that was cleared on purpose is a trap.
+      setPrePolish(null);
+      polish.reset();
       toast.success("Reply added to the thread");
     },
     onError: (err) => {
@@ -111,9 +173,55 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     },
   });
 
+  const runPolish = () => {
+    if (!canPolish || polish.isPending || mutation.isPending) return;
+    // The alert below shows one message and it should describe the action just
+    // taken, so a stale send failure steps aside for this one's outcome.
+    mutation.reset();
+    polish.mutate(getValues("textBody").trim());
+  };
+
+  const undoPolish = () => {
+    if (prePolish === null) return;
+    setValue("textBody", prePolish, { shouldDirty: true, shouldValidate: true });
+    setPrePolish(null);
+    polish.reset();
+  };
+
   const submit = handleSubmit((values) => {
+    polish.reset();
     mutation.mutate(values);
   });
+
+  const busy = mutation.isPending || polish.isPending;
+
+  /**
+   * One alert, one message, newest cause first.
+   *
+   * Not three nodes: RTL and Playwright both resolve `role="alert"` as a single
+   * element, so a second one on screen at once is a strict-mode failure in the
+   * specs that assert on a rejected reply. Read straight off the mutations
+   * rather than mirrored into state — react-query clears an error the moment the
+   * next attempt starts, which is exactly when a stale one should leave the
+   * screen. The `reset()` calls above are what keep this precedence honest:
+   * whichever action ran last is the one whose error can still be showing.
+   */
+  const alertMessage =
+    errors.textBody?.message ??
+    (mutation.error
+      ? extractErrorMessage(mutation.error, SEND_FAILED)
+      : undefined) ??
+    (polish.error
+      ? extractErrorMessage(polish.error, POLISH_FAILED)
+      : undefined);
+
+  const polishHint = polish.isPending
+    ? "Rewriting your draft…"
+    : draftTooLong
+      ? `A draft is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`
+      : trimmedDraft.length === 0
+        ? "Write a draft first"
+        : "Rewrite this draft for clarity and tone. You can undo it.";
 
   return (
     // shrink-0 so the composer keeps its height and the thread above it gives up
@@ -135,7 +243,9 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
         rows={3}
         placeholder="Write a reply…"
         aria-invalid={Boolean(errors.textBody)}
-        disabled={mutation.isPending}
+        // Locked during a polish too: the box is about to be overwritten, and
+        // keystrokes typed into it in the meantime would be thrown away.
+        disabled={busy}
         // Enter inserts a newline: this is an email reply, not a chat line, and
         // paragraphs are the normal case. ⌘/Ctrl+Enter sends, which is the
         // gesture every mail client has trained people on.
@@ -154,18 +264,9 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
         {...register("textBody")}
       />
 
-      {errors.textBody && (
+      {alertMessage && (
         <p className="text-sm text-destructive" role="alert">
-          {errors.textBody.message}
-        </p>
-      )}
-
-      {/* Read off the mutation rather than mirrored into state: react-query
-          clears it the moment the next attempt starts, which is exactly when a
-          stale "couldn't send" should stop being on screen. */}
-      {mutation.error && (
-        <p className="text-sm text-destructive" role="alert">
-          {extractErrorMessage(mutation.error, SEND_FAILED)}
+          {alertMessage}
         </p>
       )}
 
@@ -173,14 +274,61 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
         <span className="text-xs text-muted-foreground">
           ⌘/Ctrl + Enter to send
         </span>
-        <Button type="submit" size="sm" disabled={mutation.isPending}>
-          {mutation.isPending ? (
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-          ) : (
-            <Send aria-hidden="true" className="size-4" />
+
+        {/* The controls travel together on the right; the row above keeps the
+            hint pinned left. Undo only exists after a polish, so this is two
+            buttons wide at rest. */}
+        <div className="flex items-center gap-2">
+          {prePolish !== null && (
+            <Hint content="Put back the draft you had before polishing">
+              {/* type="button" — the default inside a <form> is submit, which
+                  here would send the reply. Same for Polish below. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={undoPolish}
+                disabled={busy}
+              >
+                <Undo2 aria-hidden="true" className="size-4" />
+                Undo polish
+              </Button>
+            </Hint>
           )}
-          {mutation.isPending ? "Sending…" : "Send reply"}
-        </Button>
+
+          {/* The span is not decoration. `buttonVariants` sets
+              `disabled:pointer-events-none`, so a disabled Button never fires
+              the hover a Radix TooltipTrigger listens for — and "why is Polish
+              greyed out?" is the one question this hint exists to answer.
+              Wrapping it gives the trigger an element that stays interactive. */}
+          <Hint content={polishHint}>
+            <span className="inline-flex">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={runPolish}
+                disabled={busy || !canPolish}
+              >
+                {polish.isPending ? (
+                  <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                ) : (
+                  <Sparkles aria-hidden="true" className="size-4" />
+                )}
+                {polish.isPending ? "Polishing…" : "Polish"}
+              </Button>
+            </span>
+          </Hint>
+
+          <Button type="submit" size="sm" disabled={busy}>
+            {mutation.isPending ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <Send aria-hidden="true" className="size-4" />
+            )}
+            {mutation.isPending ? "Sending…" : "Send reply"}
+          </Button>
+        </div>
       </div>
     </form>
   );

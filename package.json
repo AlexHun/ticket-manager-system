@@ -8,6 +8,7 @@
     "dev": "bun --filter '*' dev",
     "dev:api": "bun --filter '@ticket/api' dev",
     "dev:web": "bun --filter '@ticket/web' dev",
+    "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-stop.ps1",
     "build": "bun --filter '*' build",
     "typecheck": "bun --filter '*' typecheck",
     "test:e2e": "playwright test",

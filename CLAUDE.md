@@ -9,7 +9,7 @@ Support ticket system that ingests email, classifies tickets with Claude, and dr
 ## Stack (authoritative: `tech-stack.md`)
 
 - Auth: **Better Auth** (`better-auth`) with the Prisma adapter. Server config at `apps/api/src/auth.ts` (email/password enabled, `disableSignUp: true`, `role` additional field `admin|agent`, `TRUSTED_ORIGINS` required, `BETTER_AUTH_SECRET` validated ≥32 chars, `rateLimit` enabled only in production). Server-side RBAC middleware at `apps/api/src/middleware/auth.ts` exports `requireAuth` and `requireAdmin` — apply to every protected route (frontend `AdminRoute` is UX, not security). Client at `apps/web/src/lib/auth-client.ts` exports `signIn` / `signOut` / `useSession` and reads `VITE_API_URL` for cross-origin baseURL. Cookie-based sessions — **not JWT**.
-- AI: Anthropic SDK (Claude). Use **prompt caching** for the KB block.
+- AI: Anthropic SDK (Claude). Use **prompt caching** for the KB block. **One exception ships today:** reply polishing uses OpenAI `gpt-5-nano` through the Vercel AI SDK (`ai` + `@ai-sdk/openai`) — `apps/api/src/ai/polish.ts`, served by `POST /api/ai/polish-reply`. It reads `OPENAI_API_KEY`; unset means that endpoint answers 503 and nothing else in the app changes. If the deferred classification/KB work lands on Anthropic as planned, the repo will carry two AI stacks — pick one deliberately rather than by accident.
 - Email: Postmark inbound + outbound. Thread via `Message-ID` / `In-Reply-To` / `References`.
 - Testing: see the `playwright-e2e-author` agent for the E2E setup (Playwright config, test DB, alt ports, env file, run/seed scripts).
 

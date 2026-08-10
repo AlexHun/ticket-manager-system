@@ -187,6 +187,32 @@ export type CreateTicketMessageValues = z.infer<
 >;
 
 /**
+ * Body for POST /api/ai/polish-reply.
+ *
+ * Its own schema rather than a reuse of `createTicketMessageSchema`, for two
+ * reasons that both show up in the UI: the field is `draft`, not `textBody`,
+ * because nothing here is written to the thread, and "before sending" is the
+ * wrong sentence to put in front of a button that does not send.
+ *
+ * The cap is deliberately the same one, though. A lower ceiling would save a
+ * fraction of a cent and buy a state where a reply can be sent but not polished
+ * — a button refusing work the button beside it accepts, for a reason no agent
+ * can see.
+ */
+export const polishReplySchema = z.object({
+  draft: z
+    .string({ error: "Write a draft before polishing" })
+    .trim()
+    .min(1, "Write a draft before polishing")
+    .max(
+      MAX_MESSAGE_BODY_LENGTH,
+      `A draft is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
+    ),
+});
+
+export type PolishReplyValues = z.infer<typeof polishReplySchema>;
+
+/**
  * Query params for GET /api/tickets/stats.
  *
  * Both default, so a bare `/api/tickets/stats` is the dashboard's resting state
