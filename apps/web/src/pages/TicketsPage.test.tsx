@@ -13,6 +13,7 @@ import {
   USER_ROLE,
   type Ticket,
   type TicketsListResponse,
+  type TicketWithAssignee,
 } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
 import { TicketsPage } from "./TicketsPage";
@@ -37,7 +38,9 @@ vi.mock("@/lib/auth-client", () => ({
 
 // --- Fixtures -------------------------------------------------------------
 
-function makeTicket(overrides: Partial<Ticket> & Pick<Ticket, "id">): Ticket {
+function makeTicket(
+  overrides: Partial<TicketWithAssignee> & Pick<Ticket, "id">,
+): TicketWithAssignee {
   return {
     subject: "Cannot log in",
     status: TICKET_STATUS.Open,
@@ -45,6 +48,9 @@ function makeTicket(overrides: Partial<Ticket> & Pick<Ticket, "id">): Ticket {
     customerEmail: "customer@example.com",
     customerName: "Casey Customer",
     assignedToId: null,
+    // The list resolves assignees server-side, so the fixture carries the
+    // resolved shape. Unassigned is the default because most seeded tickets are.
+    assignedTo: null,
     lastMessageAt: "2025-05-01T12:00:00.000Z",
     createdAt: "2025-05-01T12:00:00.000Z",
     updatedAt: "2025-05-01T12:00:00.000Z",
@@ -54,7 +60,7 @@ function makeTicket(overrides: Partial<Ticket> & Pick<Ticket, "id">): Ticket {
 
 /** Mirrors the paginated API envelope so tests exercise the real shape. */
 function ticketsResponse(
-  tickets: Ticket[],
+  tickets: TicketWithAssignee[],
   overrides: Partial<TicketsListResponse> = {},
 ): { data: TicketsListResponse } {
   return {
@@ -802,7 +808,11 @@ describe("TicketsPage pagination", () => {
 });
 
 describe("TicketsTable column widths", () => {
-  const COLUMN_COUNT = 5;
+  // Derived, not a literal: the table pins every column id to a sortable field
+  // and keys COLUMN_META by that same union, so the two counts are the same
+  // number by construction. Hard-coding it just means editing this line each
+  // time a column lands, which proves nothing.
+  const COLUMN_COUNT = Object.keys(TICKET_SORT_FIELD).length;
 
   function colCount(): number {
     return document.querySelectorAll("colgroup col").length;

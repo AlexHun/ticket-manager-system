@@ -45,6 +45,18 @@ const ORDER_BY: Record<
   [TICKET_SORT_FIELD.category]: (order) => ({
     category: { sort: order, nulls: "last" },
   }),
+  // By the assignee's name, through the relation — `assignedToId` is a cuid and
+  // would order by nothing anyone can see.
+  //
+  // Unlike category above, unassigned tickets are *not* pinned to the bottom:
+  // `nulls` is only accepted on a nullable scalar, and what is nullable here is
+  // the relation, not `user.name`. So this takes Postgres' default placement —
+  // unassigned last ascending, first descending. Pinning them would mean
+  // ordering on `assignedToId` first, and since a cuid is unique that key alone
+  // would decide the whole order and the name would never be consulted.
+  [TICKET_SORT_FIELD.assignedTo]: (order) => ({
+    assignedTo: { name: order },
+  }),
   [TICKET_SORT_FIELD.createdAt]: (order) => ({ createdAt: order }),
 };
 
@@ -210,9 +222,13 @@ ticketsRouter.get(
     const [tickets, total] = await prisma.$transaction([
       prisma.ticket.findMany({
         where,
+        // The list renders the assignee's name, so it is resolved here rather
+        // than left as a cuid the client cannot look up. Same narrow select as
+        // the detail view — a ticket list is not a window onto the user table.
+        include: { assignedTo: { select: ASSIGNEE_SELECT } },
         // `id` breaks ties so the order stays stable across requests. It matters
-        // most for status/category, where whole groups of rows share a value,
-        // and paging an unstable order would repeat or skip rows.
+        // most for status/category/assignee, where whole groups of rows share a
+        // value, and paging an unstable order would repeat or skip rows.
         orderBy: [ORDER_BY[sort](order), { id: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -224,18 +240,9 @@ ticketsRouter.get(
       total,
       page,
       pageSize,
-      tickets: tickets.map((t) => ({
-        id: t.id,
-        subject: t.subject,
-        status: t.status,
-        category: t.category,
-        customerEmail: t.customerEmail,
-        customerName: t.customerName,
-        assignedToId: t.assignedToId,
-        lastMessageAt: t.lastMessageAt.toISOString(),
-        createdAt: t.createdAt.toISOString(),
-        updatedAt: t.updatedAt.toISOString(),
-      })),
+      // The same shaper the detail route uses, so the two can't come to
+      // disagree about how a ticket looks on the wire.
+      tickets: tickets.map(toTicketWithAssignee),
     });
   },
 );

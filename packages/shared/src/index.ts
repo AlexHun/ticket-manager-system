@@ -46,6 +46,8 @@ export const TICKET_SORT_FIELD = {
   customerName: "customerName",
   status: "status",
   category: "category",
+  /** Sorts by the assignee's *name*, not the id — the id is a cuid and orders by nothing a reader can see. */
+  assignedTo: "assignedTo",
   createdAt: "createdAt",
 } as const;
 
@@ -134,8 +136,14 @@ export interface User {
 }
 
 export interface TicketsListResponse {
-  /** One page of tickets, already sorted and filtered by the server. */
-  tickets: Ticket[];
+  /**
+   * One page of tickets, already sorted and filtered by the server.
+   *
+   * Assignees are resolved server-side because the list renders them: an
+   * `assignedToId` alone is a cuid, and an agent has no route to turn it into a
+   * name — `/api/tickets/assignees` only lists who is still assignable.
+   */
+  tickets: TicketWithAssignee[];
   /** Tickets matching the current filters, ignoring pagination. */
   total: number;
   /** Echoed back because the server clamps both. 1-based. */

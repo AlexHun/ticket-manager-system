@@ -16,6 +16,7 @@ import {
   TICKET_SORT_FIELD,
   type Ticket,
   type TicketSortField,
+  type TicketWithAssignee,
 } from "@ticket/shared";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,7 +33,7 @@ const KEYBOARD_RESIZE_STEP = 16;
  * sort by won't compile, which is what lets a `SortingState` entry be handed
  * straight to the API as `?sort=<id>`.
  */
-type TicketColumn = ColumnDef<Ticket> & { id: TicketSortField };
+type TicketColumn = ColumnDef<TicketWithAssignee> & { id: TicketSortField };
 
 /**
  * One source for a column's label and its width bounds. Widths are explicit so
@@ -51,20 +52,30 @@ type TicketColumn = ColumnDef<Ticket> & { id: TicketSortField };
  * the redistributing behaviour gives way to horizontal scrolling. The sidebar
  * is why these are narrower than they used to be — check the sum, and that
  * headroom, before growing a column.
+ *
+ * "Assigned to" was fitted inside that 880 by taking width from its neighbours
+ * rather than added on top of it. Adding ~130 to the total instead would have
+ * pushed past the frame and left the table permanently scrolling sideways at
+ * 1280px, which is the failure this budget exists to prevent.
  */
 const COLUMN_META: Record<
   TicketSortField,
   { label: string; size: number; minSize: number }
 > = {
-  [TICKET_SORT_FIELD.subject]: { label: "Subject", size: 300, minSize: 160 },
+  [TICKET_SORT_FIELD.subject]: { label: "Subject", size: 240, minSize: 160 },
   [TICKET_SORT_FIELD.customerName]: {
     label: "Customer",
-    size: 200,
+    size: 170,
     minSize: 160,
   },
-  [TICKET_SORT_FIELD.status]: { label: "Status", size: 120, minSize: 100 },
-  [TICKET_SORT_FIELD.category]: { label: "Category", size: 130, minSize: 100 },
-  [TICKET_SORT_FIELD.createdAt]: { label: "Created", size: 130, minSize: 110 },
+  [TICKET_SORT_FIELD.status]: { label: "Status", size: 110, minSize: 100 },
+  [TICKET_SORT_FIELD.category]: { label: "Category", size: 120, minSize: 100 },
+  [TICKET_SORT_FIELD.assignedTo]: {
+    label: "Assigned to",
+    size: 130,
+    minSize: 110,
+  },
+  [TICKET_SORT_FIELD.createdAt]: { label: "Created", size: 110, minSize: 110 },
 };
 
 function metaOf(id: TicketSortField) {
@@ -118,6 +129,25 @@ const columns: TicketColumn[] = [
       ),
   },
   {
+    id: TICKET_SORT_FIELD.assignedTo,
+    // Not an accessorKey: the value lives at `assignedTo.name`, and the column
+    // is sorted by the server anyway — this only has to reach the cell.
+    accessorFn: (ticket) => ticket.assignedTo?.name ?? null,
+    ...metaOf(TICKET_SORT_FIELD.assignedTo),
+    header: metaOf(TICKET_SORT_FIELD.assignedTo).label,
+    cell: ({ row }) =>
+      row.original.assignedTo ? (
+        // The email is the tooltip rather than a second line: two agents can
+        // share a first name, but the row is already two lines tall under
+        // Customer and a third would set the row height for every ticket.
+        <span className="block truncate" title={row.original.assignedTo.email}>
+          {row.original.assignedTo.name}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">Unassigned</span>
+      ),
+  },
+  {
     id: TICKET_SORT_FIELD.createdAt,
     accessorKey: "createdAt",
     ...metaOf(TICKET_SORT_FIELD.createdAt),
@@ -166,7 +196,7 @@ const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
 const HEAD = "sticky top-0 z-10 bg-muted text-left font-medium";
 
 interface TicketsTableProps {
-  tickets: Ticket[];
+  tickets: TicketWithAssignee[];
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
   /** Shown instead of the table when there is nothing to render. */
@@ -296,7 +326,7 @@ export function TicketsTable({
  * sort. Double-click resets one column; arrow keys give it a keyboard path,
  * since a drag handle is otherwise mouse-only.
  */
-function ResizeHandle({ header }: { header: Header<Ticket, unknown> }) {
+function ResizeHandle({ header }: { header: Header<TicketWithAssignee, unknown> }) {
   if (!header.column.getCanResize()) return null;
 
   const label = COLUMN_META[header.column.id as TicketSortField].label;
@@ -392,6 +422,9 @@ export function TicketsTableSkeleton({ className }: { className?: string }) {
               </td>
               <td className="px-4 py-2">
                 <Skeleton className="h-5 w-20 rounded-md" />
+              </td>
+              <td className="px-4 py-2">
+                <Skeleton className="h-4 w-24" />
               </td>
               <td className="px-4 py-2">
                 <Skeleton className="h-4 w-20" />
