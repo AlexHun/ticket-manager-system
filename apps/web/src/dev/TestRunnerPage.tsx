@@ -11,6 +11,7 @@ import {
   Terminal,
   XCircle,
 } from "lucide-react";
+import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -585,9 +586,9 @@ function CaseList({ run, suite }: { run: SuiteRun; suite: SuiteDescriptor }) {
                 />
               )}
               <span className="sr-only">{result.status}: </span>
-              <span className="truncate font-mono" title={result.name}>
-                {result.name}
-              </span>
+              <Hint content={result.name} className="font-mono">
+                <span className="truncate font-mono">{result.name}</span>
+              </Hint>
               <span className="ml-auto flex shrink-0 items-center gap-3 text-muted-foreground tabular-nums">
                 {result.tests !== null && <span>{result.tests} tests</span>}
                 {result.durationMs !== null && (

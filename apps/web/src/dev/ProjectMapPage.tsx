@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Loader2, RefreshCw, Search, X } from "lucide-react";
+import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -328,9 +329,11 @@ function Legend({ layers }: { layers: Layer[] }) {
   return (
     <ul className="flex flex-wrap items-center gap-1.5">
       {layers.map((layer) => (
-        <li key={layer} title={LAYER_VISUAL[layer].blurb}>
-          <LayerBadge layer={layer} />
-        </li>
+        <Hint key={layer} content={LAYER_VISUAL[layer].blurb}>
+          <li>
+            <LayerBadge layer={layer} />
+          </li>
+        </Hint>
       ))}
     </ul>
   );

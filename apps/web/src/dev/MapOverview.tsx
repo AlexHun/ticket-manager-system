@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, PackageOpen, RotateCcw, Unplug } from "lucide-react";
+import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -118,15 +119,18 @@ export function MapOverview({ graph, onSelect }: MapOverviewProps) {
                     butting together, so adjacent hues read as two marks. */}
                 <div className="flex h-2 gap-0.5 overflow-hidden">
                   {workspace.layers.map((entry) => (
-                    <div
+                    <Hint
                       key={entry.layer}
-                      title={`${LAYER_VISUAL[entry.layer].label}: ${entry.count}`}
-                      style={{
-                        backgroundColor: LAYER_VISUAL[entry.layer].color,
-                        flexGrow: entry.count,
-                      }}
-                      className="rounded-sm"
-                    />
+                      content={`${LAYER_VISUAL[entry.layer].label}: ${entry.count}`}
+                    >
+                      <div
+                        style={{
+                          backgroundColor: LAYER_VISUAL[entry.layer].color,
+                          flexGrow: entry.count,
+                        }}
+                        className="rounded-sm"
+                      />
+                    </Hint>
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-1">

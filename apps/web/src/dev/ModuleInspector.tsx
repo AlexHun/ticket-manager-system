@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { FileCode2, FlaskConical, TriangleAlert } from "lucide-react";
+import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -262,26 +263,27 @@ function IdButton({
 }) {
   const cut = id.lastIndexOf("/");
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      title={id}
-      className={cn(
-        "flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs",
-        "hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
-        "[&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
-      )}
-    >
-      {icon}
-      <span className="flex min-w-0 items-baseline font-mono">
-        <span className="truncate text-muted-foreground">{id.slice(0, cut + 1)}</span>
-        <span className="shrink-0">{id.slice(cut + 1)}</span>
-      </span>
-      {note && (
-        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-          {note}
+    <Hint content={id} className="font-mono">
+      <button
+        type="button"
+        onClick={() => onSelect(id)}
+        className={cn(
+          "flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs",
+          "hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+          "[&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
+        )}
+      >
+        {icon}
+        <span className="flex min-w-0 items-baseline font-mono">
+          <span className="truncate text-muted-foreground">{id.slice(0, cut + 1)}</span>
+          <span className="shrink-0">{id.slice(cut + 1)}</span>
         </span>
-      )}
-    </button>
+        {note && (
+          <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+            {note}
+          </span>
+        )}
+      </button>
+    </Hint>
   );
 }

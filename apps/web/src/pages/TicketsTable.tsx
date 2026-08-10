@@ -18,6 +18,7 @@ import {
   type TicketSortField,
   type TicketWithAssignee,
 } from "@ticket/shared";
+import { Hint } from "@/components/Hint";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TicketListLocationState } from "@/lib/ticket-list-params";
@@ -97,15 +98,14 @@ const columns: TicketColumn[] = [
     header: metaOf(TICKET_SORT_FIELD.customerName).label,
     cell: ({ row }) => (
       <div className="flex flex-col">
-        <span className="truncate" title={row.original.customerName}>
-          {row.original.customerName}
-        </span>
-        <span
-          className="truncate text-xs text-muted-foreground"
-          title={row.original.customerEmail}
-        >
-          {row.original.customerEmail}
-        </span>
+        <Hint content={row.original.customerName}>
+          <span className="truncate">{row.original.customerName}</span>
+        </Hint>
+        <Hint content={row.original.customerEmail}>
+          <span className="truncate text-xs text-muted-foreground">
+            {row.original.customerEmail}
+          </span>
+        </Hint>
       </div>
     ),
   },
@@ -140,9 +140,9 @@ const columns: TicketColumn[] = [
         // The email is the tooltip rather than a second line: two agents can
         // share a first name, but the row is already two lines tall under
         // Customer and a third would set the row height for every ticket.
-        <span className="block truncate" title={row.original.assignedTo.email}>
-          {row.original.assignedTo.name}
-        </span>
+        <Hint content={row.original.assignedTo.email}>
+          <span className="block truncate">{row.original.assignedTo.name}</span>
+        </Hint>
       ) : (
         <span className="text-muted-foreground">Unassigned</span>
       ),
@@ -173,19 +173,20 @@ function SubjectCell({ ticket }: { ticket: Ticket }) {
   const location = useLocation();
 
   return (
-    <Link
-      to={`/tickets/${ticket.id}`}
-      state={{ listSearch: location.search } satisfies TicketListLocationState}
-      title={ticket.subject}
-      // `block` is what makes `truncate` work: an inline <a> isn't constrained
-      // by the fixed-layout cell, so the ellipsis would never appear.
-      className={cn(
-        "block truncate font-medium underline-offset-4",
-        "hover:underline focus-visible:underline",
-      )}
-    >
-      {ticket.subject}
-    </Link>
+    <Hint content={ticket.subject}>
+      <Link
+        to={`/tickets/${ticket.id}`}
+        state={{ listSearch: location.search } satisfies TicketListLocationState}
+        // `block` is what makes `truncate` work: an inline <a> isn't constrained
+        // by the fixed-layout cell, so the ellipsis would never appear.
+        className={cn(
+          "block truncate font-medium underline-offset-4",
+          "hover:underline focus-visible:underline",
+        )}
+      >
+        {ticket.subject}
+      </Link>
+    </Hint>
   );
 }
 

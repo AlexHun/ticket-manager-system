@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Hint } from "@/components/Hint";
 import {
   Card,
   CardContent,
@@ -28,11 +29,13 @@ export interface MiniBarRow {
  * On a dashboard whose panels resize whenever the sidebar moves, that difference
  * is the whole performance story — measured at ~20ms per chart per resize.
  *
- * The tradeoff is real and worth stating: there is no axis, no tooltip, and no
- * hover layer here. That is acceptable *because* every row is directly labelled
+ * The tradeoff is real and worth stating: there is no axis and no hover layer
+ * over the bars. That is acceptable *because* every row is directly labelled
  * with its own value, which is the relief channel a chart would otherwise need
- * its tooltip for. Do not use this for anything a reader must compare against a
- * scale, or for continuous data — that is what the two remaining charts are for.
+ * its tooltip for. (The label has a `Hint` on it, but that only reveals a name
+ * the 8rem column truncated — it carries no data.) Do not use this for anything
+ * a reader must compare against a scale, or for continuous data — that is what
+ * the two remaining charts are for.
  */
 export function MiniBarList({
   title,
@@ -63,9 +66,11 @@ export function MiniBarList({
           <ul className="flex flex-col gap-2">
             {rows.map((row) => (
               <li key={row.label} className="grid grid-cols-[8rem_1fr_auto] items-center gap-2">
-                <span className="truncate text-sm text-muted-foreground" title={row.label}>
-                  {row.label}
-                </span>
+                <Hint content={row.label}>
+                  <span className="truncate text-sm text-muted-foreground">
+                    {row.label}
+                  </span>
+                </Hint>
                 <span className="flex items-center gap-2">
                   {/* The track is what makes a short bar still read as "small"
                       rather than as a rendering failure. */}

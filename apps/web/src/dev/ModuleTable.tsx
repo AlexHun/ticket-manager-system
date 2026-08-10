@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
+import { Hint } from "@/components/Hint";
 import { cn } from "@/lib/utils";
 import { LayerBadge } from "./LayerBadge";
 import type { ModuleNode } from "./protocol";
@@ -112,35 +113,37 @@ export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps)
                   column.numeric && "text-right",
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() => toggle(column.key)}
-                  title={column.title}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-1 select-none hover:text-foreground",
-                    column.numeric && "ml-auto",
-                  )}
-                >
-                  {column.label}
-                  {key === column.key &&
-                    (descending ? (
-                      <ArrowDown aria-hidden="true" className="size-3" />
-                    ) : (
-                      <ArrowUp aria-hidden="true" className="size-3" />
-                    ))}
-                </button>
+                <Hint content={column.title}>
+                  <button
+                    type="button"
+                    onClick={() => toggle(column.key)}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1 select-none hover:text-foreground",
+                      column.numeric && "ml-auto",
+                    )}
+                  >
+                    {column.label}
+                    {key === column.key &&
+                      (descending ? (
+                        <ArrowDown aria-hidden="true" className="size-3" />
+                      ) : (
+                        <ArrowUp aria-hidden="true" className="size-3" />
+                      ))}
+                  </button>
+                </Hint>
               </th>
             ))}
             <th scope="col" className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium">
               Layer
             </th>
-            <th
-              scope="col"
-              title="Has a *.test.* file beside it"
-              className="sticky top-0 z-10 bg-muted px-3 py-2 text-center font-medium"
-            >
-              Test
-            </th>
+            <Hint content="Has a *.test.* file beside it">
+              <th
+                scope="col"
+                className="sticky top-0 z-10 bg-muted px-3 py-2 text-center font-medium"
+              >
+                Test
+              </th>
+            </Hint>
           </tr>
         </thead>
         <tbody>
@@ -165,16 +168,17 @@ export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps)
                       `truncate` on one string would eat the filename, which is
                       the part you are reading the column for. Flex does the work:
                       the leading span shrinks, the filename cannot. */}
-                  <button
-                    type="button"
-                    title={module.id}
-                    className="flex w-full cursor-pointer items-baseline font-mono text-xs"
-                  >
-                    <span className="truncate text-muted-foreground">
-                      {module.id.slice(0, cut + 1)}
-                    </span>
-                    <span className="shrink-0">{module.id.slice(cut + 1)}</span>
-                  </button>
+                  <Hint content={module.id} className="font-mono">
+                    <button
+                      type="button"
+                      className="flex w-full cursor-pointer items-baseline font-mono text-xs"
+                    >
+                      <span className="truncate text-muted-foreground">
+                        {module.id.slice(0, cut + 1)}
+                      </span>
+                      <span className="shrink-0">{module.id.slice(cut + 1)}</span>
+                    </button>
+                  </Hint>
                 </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{module.code}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">

@@ -1,5 +1,6 @@
 import { CornerDownRight, KeyRound, ShieldCheck, Webhook } from "lucide-react";
 import type { ReactNode } from "react";
+import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -264,18 +265,19 @@ function ModuleLink({
   icon?: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(id)}
-      title={id}
-      className={cn(
-        "flex cursor-pointer items-center gap-1 rounded text-left font-mono text-xs",
-        "hover:underline focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
-        "[&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
+    <Hint content={id} className="font-mono">
+      <button
+        type="button"
+        onClick={() => onSelect(id)}
+        className={cn(
+          "flex cursor-pointer items-center gap-1 rounded text-left font-mono text-xs",
+          "hover:underline focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+          "[&_svg]:size-3 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
+        )}
+      >
+        {icon}
+        {label}
+      </button>
+    </Hint>
   );
 }

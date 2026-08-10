@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { render, type RenderOptions, type RenderResult } from "@testing-library/react";
 import { MemoryRouter, type InitialEntry } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 type RenderWithQueryOptions = Omit<RenderOptions, "wrapper"> & {
   /**
@@ -29,8 +30,10 @@ export interface RenderWithQueryResult extends RenderResult {
 
 /**
  * Render a component inside the providers every page needs: a fresh
- * QueryClient (no retries, no cache carry-over between tests) and a
- * MemoryRouter so react-router hooks resolve.
+ * QueryClient (no retries, no cache carry-over between tests), a MemoryRouter
+ * so react-router hooks resolve, and a TooltipProvider — `Hint` is sprinkled
+ * through the tables and Radix throws outright without one above it, the same
+ * reason AppShell mounts it.
  */
 export function renderWithQuery(
   ui: ReactElement,
@@ -42,7 +45,9 @@ export function renderWithQuery(
     ...options,
     wrapper: ({ children }) => (
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+        <TooltipProvider delayDuration={0}>
+          <MemoryRouter initialEntries={initialEntries}>{children}</MemoryRouter>
+        </TooltipProvider>
       </QueryClientProvider>
     ),
   });

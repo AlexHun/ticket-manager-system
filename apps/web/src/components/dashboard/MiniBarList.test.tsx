@@ -1,12 +1,21 @@
-import { render, screen, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { render as rtlRender, screen, within } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { MiniBarList } from "./MiniBarList";
 
 /**
  * These render without `renderWithQuery` on purpose: MiniBarList takes plain
  * props and touches neither the router nor the query client, and wrapping it in
  * providers it does not use would hide that.
+ *
+ * The single exception is TooltipProvider. Each row label is a `Hint` — the
+ * 8rem column truncates it, and hovering reveals the whole name — and Radix
+ * throws rather than degrades when no provider is above it.
  */
+function render(ui: ReactElement) {
+  return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 const rows = [
   { label: "Technical", value: 10 },

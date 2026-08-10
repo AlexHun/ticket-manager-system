@@ -219,7 +219,13 @@ describe("TicketsPage subject link", () => {
     const link = await screen.findByRole("link", { name: "Newest ticket" });
     // `block` is load-bearing — an inline <a> would never show the ellipsis.
     expect(link).toHaveClass("block", "truncate");
-    expect(link).toHaveAttribute("title", "Newest ticket");
+    // ...and what the ellipsis hides is recoverable on hover. That used to be a
+    // native `title`; it is a shadcn Tooltip now, so the full subject lives in a
+    // portalled `tooltip` role rather than an attribute.
+    await userEvent.hover(link);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Newest ticket",
+    );
   });
 
   test("does not turn the other cells into links", async () => {
