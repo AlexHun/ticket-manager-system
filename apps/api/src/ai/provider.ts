@@ -1,0 +1,181 @@
+import { createOpenAI } from "@ai-sdk/openai";
+import { APICallError, RetryError } from "ai";
+
+/**
+ * The machinery every AI feature in this app needs, and none of the judgement
+ * any one of them makes.
+ *
+ * Extracted when reply polishing stopped being the only caller: `polish.ts` and
+ * `summarize.ts` disagree about the model, the prompt, the shape of the answer
+ * and what counts as a bad one, but they agree completely about the key, the
+ * provider handle, what a 429 means and how to quote a stranger's email. Those
+ * last four are what live here.
+ *
+ * What deliberately does *not* live here: prompts, models, token budgets and
+ * output validation. A shared `SYSTEM_PROMPT` would be a prompt written for
+ * neither caller, and a shared model constant would silently move the cost and
+ * quality of one feature when the other one was tuned.
+ *
+ * `tech-stack.md` names the Anthropic SDK for the classification and
+ * knowledge-base work still ahead; everything here is OpenAI-shaped because that
+ * is what the shipped features use. If that deferred work lands as documented,
+ * this is the module that grows a second provider — which is a cost worth
+ * knowing about rather than discovering.
+ */
+
+/**
+ * Empty means this deployment cannot run any of it, which is a supported state —
+ * see `isAiConfigured`.
+ */
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+
+/**
+ * Whether this deployment can call the provider at all.
+ *
+ * Read at import, checked per request. The alternative — throwing at import the
+ * way `auth.ts` does for `BETTER_AUTH_SECRET` — would be wrong here: no env file
+ * in this repo carries an OpenAI key, so a missing-key throw would take down
+ * every `bun run dev`, every E2E run and CI the moment this module was imported,
+ * to protect features the rest of the app does not depend on. The webhook's
+ * fail-closed-per-request stance is the right one for an optional integration.
+ *
+ * One key gates every AI feature because there is one account behind them. A
+ * deployment that could summarise but not polish is not a state that exists.
+ */
+export function isAiConfigured(): boolean {
+  return OPENAI_API_KEY.length > 0;
+}
+
+/**
+ * Built on first use rather than at import, and handed the key explicitly rather
+ * than left to the provider's ambient `OPENAI_API_KEY` lookup — that way
+ * `isAiConfigured()` and the call can never disagree about which value is in
+ * play.
+ *
+ * The provider handle is shared across models and callers; only the model id
+ * differs, and `provider(id)` is a cheap lookup rather than a connection.
+ */
+let provider: ReturnType<typeof createOpenAI> | undefined;
+
+export function openaiModel(modelId: string) {
+  provider ??= createOpenAI({ apiKey: OPENAI_API_KEY });
+  return provider(modelId);
+}
+
+/**
+ * Every way a provider call can fail that a caller might answer differently.
+ *
+ * Shared because the *diagnosis* is shared — a 401 is a 401 whatever was being
+ * generated. What each one is worth telling the person at the other end is not
+ * shared, and stays with the routes, which is why there are no user-facing
+ * sentences here.
+ *
+ * A feature that can fail its own way extends this rather than replacing it:
+ * see `POLISH_FAILURE`, which adds `invented` for a rewrite that promised money
+ * the draft never did.
+ */
+export const AI_FAILURE = {
+  /** The provider refused, or the network did. One remedy: try again. */
+  provider: "provider",
+  /** Genuinely rate-limited or overloaded. Worth retrying in a moment. */
+  busy: "busy",
+  /** The account is out of credit. Not transient, and not the agent's problem to retry. */
+  quota: "quota",
+  /** The key was rejected — missing scope, revoked, or simply wrong. */
+  auth: "auth",
+  /**
+   * The provider rejected the *request*: unknown model, or a parameter this
+   * model does not accept. A deployment bug, not a hiccup — it will fail
+   * identically forever, so it must never be reported as "try again".
+   */
+  config: "config",
+  /** A success that carried nothing usable — most likely the budget went on reasoning. */
+  empty: "empty",
+} as const;
+
+export type AiFailure = (typeof AI_FAILURE)[keyof typeof AI_FAILURE];
+
+/**
+ * Work out what actually went wrong, through the SDK's wrapping.
+ *
+ * Two traps live here, both found the hard way:
+ *
+ * 1. A retryable failure arrives as a `RetryError` once the attempts run out,
+ *    with the real error one level down in `lastError`. OpenAI marks *quota
+ *    exhaustion* retryable, so the interesting case is exactly the one that gets
+ *    wrapped — an `APICallError.isInstance(err)` check on the outer error looks
+ *    correct and silently never matches.
+ * 2. OpenAI answers **429 for two unrelated things**: "you are going too fast",
+ *    and "your balance is empty". Only the first is worth waiting out. Reading
+ *    the status alone turns a permanently broken feature into a "try again in a
+ *    moment" that will never come true, so the body has to be consulted.
+ */
+export function classify(err: unknown): AiFailure {
+  const cause = RetryError.isInstance(err) ? (err.lastError ?? err) : err;
+  if (!APICallError.isInstance(cause)) return AI_FAILURE.provider;
+
+  const body =
+    typeof cause.responseBody === "string" ? cause.responseBody : "";
+  if (/insufficient_quota|credit_balance_exhausted|billing/i.test(body)) {
+    return AI_FAILURE.quota;
+  }
+  if (cause.statusCode === 401 || cause.statusCode === 403) {
+    return AI_FAILURE.auth;
+  }
+  if (cause.statusCode === 429) return AI_FAILURE.busy;
+  // A rejected request (bad model id, a parameter this model does not take) is
+  // a deployment bug that will fail identically on every retry. Worth its own
+  // reason so the message can say "misconfigured" instead of "try again" —
+  // `gpt-5.4-mini` rejecting `reasoningEffort: "minimal"` landed exactly here.
+  if (cause.statusCode === 400 || cause.statusCode === 404) {
+    return AI_FAILURE.config;
+  }
+  return AI_FAILURE.provider;
+}
+
+/**
+ * Put untrusted text inside a fence it cannot close.
+ *
+ * The delimiters are stripped out of the content itself, so an email that
+ * contains the closing marker cannot end the block early and have what follows
+ * read as prompt. `>>>` is not hypothetical, by the way: it is what a
+ * thrice-quoted mail chain looks like. Removing those characters costs the model
+ * nothing — the words either side survive — and closes the cheapest way in.
+ *
+ * This is a fence, not a proof. Nothing stops a message from *arguing* its way
+ * out in plain prose; that is what the system prompts and the human reading the
+ * result are for.
+ */
+export function fenced(name: string, text: string): string {
+  const body = text.replaceAll("<<<", "").replaceAll(">>>", "").trim();
+  return `<<<${name}\n${body}\n>>>`;
+}
+
+/**
+ * Take the em and en dashes out, whatever the prompt achieved.
+ *
+ * Every prompt in this app bans them and mostly obeys, with one reliable
+ * exception: source text that already contains them. "Preserve this exactly" and
+ * "never output a dash" are both in those prompts, an agent who typed "your
+ * order — the shoes — shipped Friday" puts them in direct conflict, and
+ * preservation wins. Two dashes came back in exactly that case.
+ *
+ * So this runs afterwards, where no instruction can be outvoted. It is the same
+ * argument as stripping a code fence the model was told not to emit: a rule the
+ * output must satisfy every time, enforced in code rather than hoped for in
+ * prose.
+ *
+ * A comma is the substitution because it is the punctuation the dash displaced
+ * in almost every real sentence, and because it is the one choice that is never
+ * ungrammatical. A full stop would read better in places, but it would also
+ * have to re-capitalise what follows and would land mid-reference sooner or
+ * later. Anything already punctuated keeps its own mark rather than collecting a
+ * second one, and a dash opening a line is a bullet the line reads fine without.
+ */
+export function withoutDashes(text: string): string {
+  return text
+    .replace(/^[ \t]*[—–][ \t]*/gm, "")
+    .replace(/\s*[—–]\s*/g, (_match, offset: number, whole: string) =>
+      /[,;:(]/.test(whole[offset - 1] ?? "") ? " " : ", ",
+    );
+}

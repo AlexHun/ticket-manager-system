@@ -1,0 +1,15 @@
+{
+  // The only file under .vscode/ that is committed — see .gitignore, which
+  // ignores `.vscode/*` and then un-ignores this one. Editor preferences stay
+  // personal; "you will want this installed to work on this repo" is shared.
+  "recommendations": [
+    // Tailwind v4 keeps its entire configuration in `apps/web/src/index.css`,
+    // in at-rules (`@theme`, `@utility`, `@apply`, `@custom-variant`) that the
+    // editor's built-in CSS validator does not know. Without this extension
+    // those are dead text: no completion for the theme tokens, no hover showing
+    // what a utility expands to, and the validator flags every block as an
+    // unknown at-rule. settings.json silences the warnings; this is what
+    // actually understands the file.
+    "bradlc.vscode-tailwindcss"
+  ]
+}

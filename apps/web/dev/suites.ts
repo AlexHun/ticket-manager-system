@@ -60,6 +60,17 @@ const SUITES: Suite[] = [
     heavy: false,
   },
   {
+    id: "api-unit",
+    label: "API unit tests",
+    description:
+      "bun test in apps/api. The AI module and its route, with the provider, the database and the session all mocked — no key needed.",
+    kind: SUITE_KIND.unit,
+    argv: ["bun", "run", "--filter", "@ticket/api", "test"],
+    command: "bun run --filter @ticket/api test",
+    cwd: ".",
+    heavy: false,
+  },
+  {
     id: "web-unit",
     label: "Web component tests",
     description:
@@ -276,6 +287,15 @@ const VITEST_RUNNING = "❯";
 const VITEST_FILE_RE =
   /^\s*([✓×✗❯↓])\s+(\S+\.(?:test|spec)\.tsx?)\s*\((\d+)\s+tests?([^)]*)\)(?:\s+(\d+(?:\.\d+)?)(ms|s))?/;
 const VITEST_TOTAL_RE = /^\s*(Test Files|Tests)\s+(.+?)\s*$/;
+/**
+ * `bun test`'s totals, which is all it prints when a run is piped and passing —
+ * ` 49 pass`, ` 0 fail`, one per line, and no per-file lines to build case rows
+ * from.
+ *
+ * The `\b` is what keeps this off Vitest's own summary: "passed" and "failed"
+ * carry on past the word, so only Bun's bare `pass`/`fail`/`skip` match.
+ */
+const BUN_TOTAL_RE = /^\s*(\d+)\s+(pass|fail|skip)\b/;
 const PLAYWRIGHT_CASE_RE =
   /^\s*([✓✔✘×✗-])\s+\d+\s+(.+?)(?:\s+\((\d+(?:\.\d+)?)(ms|s)\))?\s*$/;
 const PLAYWRIGHT_TOTAL_RE = /^\s*(\d+)\s+(passed|failed|skipped|flaky|did not run)\b/;
@@ -341,6 +361,19 @@ class RunParser {
       const counts = parseVitestCounts(total[2]!);
       if (total[1] === "Test Files") this.files = counts;
       else this.tests = counts;
+      return null;
+    }
+
+    // Both unit suites land here; Bun only ever contributes totals.
+    const bun = BUN_TOTAL_RE.exec(line);
+    if (bun) {
+      const counts = this.tests ?? emptyCounts();
+      const n = Number(bun[1]);
+      if (bun[2] === "pass") counts.passed += n;
+      else if (bun[2] === "fail") counts.failed += n;
+      else counts.skipped += n;
+      counts.total = counts.passed + counts.failed + counts.skipped;
+      this.tests = counts;
       return null;
     }
 

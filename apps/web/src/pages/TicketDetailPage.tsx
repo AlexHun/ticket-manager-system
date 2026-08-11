@@ -31,6 +31,7 @@ import {
 } from "./TicketFieldSelects";
 import { TicketMessageThread } from "./TicketMessageThread";
 import { TicketReplyComposer } from "./TicketReplyComposer";
+import { TicketSummaryPanel } from "./TicketSummaryPanel";
 
 function useTicketQuery(id: string | undefined) {
   return useQuery({
@@ -120,9 +121,20 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
 
       <div className="flex flex-1 flex-col gap-6 lg:min-h-0 lg:flex-row lg:gap-8">
         {/* Scrolls on its own so a short viewport can't clip the fields off
-            the bottom of the card. */}
-        <aside className="lg:w-[22rem] lg:min-h-0 lg:shrink-0 lg:overflow-y-auto xl:w-[26rem]">
-          <Card>
+            the bottom of the card — which is also what makes it the right home
+            for the summary panel below, whose height depends on what the model
+            comes back with. */}
+        <aside className="flex flex-col gap-6 lg:w-[22rem] lg:min-h-0 lg:shrink-0 lg:overflow-y-auto xl:w-[26rem]">
+          {/* shrink-0 on both cards, and it is load-bearing rather than tidy.
+              A flex column shrinks its children by default, so with two cards in
+              here the browser squeezes each one to fit the available height
+              instead of letting the column scroll — and a Card clips what no
+              longer fits without reporting any overflow, so `aside.scrollHeight`
+              comes back equal to its height and the scrollbar never appears.
+              The bottom of the summary simply vanishes. Keeping both at their
+              natural height is what hands the overflow to the scroll container
+              that is meant to have it. */}
+          <Card className="shrink-0">
             <CardContent className="flex flex-col gap-5">
               {/* The customer is lifted out of the field grid entirely. As one
                   more `<dt>/<dd>` pair the address was a line of small grey
@@ -172,6 +184,17 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
               </dl>
             </CardContent>
           </Card>
+
+          {/* Keyed on the ticket, because this component holds a generated
+              summary in local state and React would otherwise reuse the
+              instance across a navigation — leaving ticket 41's summary sitting
+              under ticket 42's subject. The key is what makes "every click is a
+              fresh generation" true across routes as well as clicks. */}
+          <TicketSummaryPanel
+            key={ticket.id}
+            ticketId={ticket.id}
+            messageCount={ticket.messages.length}
+          />
         </aside>
 
         <section className="flex flex-col lg:min-h-0 lg:flex-1">

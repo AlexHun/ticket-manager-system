@@ -224,6 +224,25 @@ export const polishReplySchema = z.object({
 export type PolishReplyValues = z.infer<typeof polishReplySchema>;
 
 /**
+ * Body for POST /api/ai/summarize-ticket.
+ *
+ * One field, and that is the design rather than an oversight. Everything the
+ * summary is built from — the subject, the customer, every message in the thread
+ * — is read server-side from the ticket this id names. None of it is accepted
+ * from the caller, for the reason spelled out on `polishReplySchema`: the thread
+ * is written by strangers and ends up in a prompt, so the only copy that reaches
+ * the model is the one in our own database.
+ *
+ * There is deliberately no field for length, tone or focus. A summary the client
+ * can steer is a prompt the client can write.
+ */
+export const summarizeTicketSchema = z.object({
+  ticketId: ticketIdParamSchema.shape.id,
+});
+
+export type SummarizeTicketValues = z.infer<typeof summarizeTicketSchema>;
+
+/**
  * Query params for GET /api/tickets/stats.
  *
  * Both default, so a bare `/api/tickets/stats` is the dashboard's resting state

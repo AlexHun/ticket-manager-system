@@ -135,6 +135,28 @@
 
     --viz-accent: var(--chart-3);
 
+    /*
+     * The AI shine, and the one place in this file where a colour is chosen to
+     * be *light* rather than to hold a contrast ratio.
+     *
+     * Deliberately not `--primary`. That token is oklch(0.432 …) — a deep, low
+     * chroma green picked to sit under near-white text on a button. Run it
+     * through a one-pixel beam on a card whose own background is oklch(0.218 …)
+     * and you get a faint olive line: correct by the palette, invisible as
+     * light. These two are the same hue family taken to the top of the
+     * lightness range, where a moving highlight actually reads as one.
+     *
+     * `-core` is the hot centre of the beam, nearly white and barely tinted.
+     * That is what survives `disabled:opacity-50`, which is not an edge case:
+     * these buttons are disabled for the whole time the shine is on screen, so
+     * every colour here is effectively halved in the place it matters most.
+     *
+     * Neither is a text or a fill colour and neither is held to a contrast
+     * ratio — they are never behind type. Don't reach for them as accents.
+     */
+    --ai-shine: oklch(0.9 0.15 165);
+    --ai-shine-core: oklch(0.99 0.04 165);
+
     /* Chart furniture — quieter than every mark drawn on top of it. */
     --viz-grid: oklch(1 0 0 / 5%);         /* 1.82:1 — what border/50 resolved to */
     --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
@@ -217,6 +239,111 @@
 
 @utility animate-page-in {
   animation: page-in 180ms ease-out both;
+}
+
+/* The "something is being generated" animations, worn by anything waiting on the
+   model — the summary panel and the two AI buttons.
+
+   Two of them, answering two different questions. `ai-shine` is a thread of
+   light running right to left around an element's own edge: it says work is
+   happening on *this thing*, and because it traces the border rather than
+   covering the content it can sit on a button as readily as on a card. `ai-glow`
+   is the sparkles icon breathing, which says the click registered.
+
+   Both stay inside the compositor budget the block above sets out: each moves
+   only `transform` and `opacity`. Two tempting alternatives repaint every frame
+   and must be resisted — animating `background-position` across a gradient, and
+   spinning a conic gradient behind the box with an `@property` angle. Both look
+   the same and cost orders of magnitude more on a page this heavy.
+
+   Under reduced motion the global block above forces one iteration, so the light
+   finishes off-screen and never appears. That is fine and deliberate: the
+   waiting state does not depend on it. The button text says "Summarising…", the
+   placeholders are on screen, and a live region announces it. */
+@keyframes ai-shine {
+  /* Right to left, and fully clear of both edges at the ends of its travel: the
+     light should arrive and leave rather than snapping into existence. Paired
+     with a bar half the element's width, 200% starts it just off the right and
+     -100% carries it just past the left. */
+  from { transform: translateX(200%); }
+  to   { transform: translateX(-100%); }
+}
+
+@utility animate-ai-shine {
+  animation: ai-shine 1.6s linear infinite;
+}
+
+/* The track the light runs in: a one-pixel ring laid over the element's own
+   edge, following whatever radius it already has.
+
+   The mask is what confines it to the border. Two identical layers — one
+   clipped to the content box, one covering the whole element — subtracted from
+   each other leave exactly the 1px padding ring, so a plain rectangular bar
+   moving underneath is only ever visible along the edge. Doing it this way
+   rather than with four separate edge elements is what makes the light turn the
+   rounded corners.
+
+   `inset: 0` rather than `-1px`: a Card is `overflow-hidden`, so anything
+   outside the box is clipped away and the ring has to sit just inside the
+   border it traces. */
+@utility ai-shine-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  /* 1.5px rather than 1: the extra half pixel is the cheapest brightness in
+     here, because perceived brightness scales with the lit area and nothing
+     about the colour has to change to get it. Past about 2px it stops reading as
+     a beam and starts reading as a coloured border. */
+  padding: 1.5px;
+  overflow: hidden;
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/*
+ * The beam that travels inside that ring.
+ *
+ * A plateau, not a point. The obvious spelling of this is
+ * `from-transparent via-primary to-transparent`, and it is dim for a structural
+ * reason rather than a colour one: a three-stop gradient is at full strength on
+ * exactly one pixel column and is already half faded a quarter of the way out,
+ * so almost none of the beam is ever the colour you chose. Holding full strength
+ * across the middle third, with a white-hot core inside that, is most of the
+ * brightness gain here — more than the palette change and more than the extra
+ * half pixel of ring.
+ *
+ * The tails still fade to nothing. That part is not decoration: a beam with hard
+ * ends reads as a block sliding around the border, and the whole illusion is
+ * light passing over it.
+ */
+@utility ai-shine-beam {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--ai-shine) 30%, transparent) 18%,
+    var(--ai-shine) 36%,
+    var(--ai-shine-core) 50%,
+    var(--ai-shine) 64%,
+    color-mix(in oklab, var(--ai-shine) 30%, transparent) 82%,
+    transparent 100%
+  );
+}
+
+@keyframes ai-glow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.88); }
+}
+
+@utility animate-ai-glow {
+  animation: ai-glow 1.4s ease-in-out infinite;
 }
 
 @layer base {

@@ -1,5 +1,12 @@
-import { createOpenAI } from "@ai-sdk/openai";
-import { APICallError, RetryError, generateText } from "ai";
+import { generateText } from "ai";
+import {
+  AI_FAILURE,
+  classify,
+  fenced,
+  isAiConfigured,
+  openaiModel,
+  withoutDashes,
+} from "./provider";
 
 /**
  * Rewriting an agent's draft reply, against the customer message it answers.
@@ -18,18 +25,10 @@ import { APICallError, RetryError, generateText } from "ai";
  * who reads it before pressing Send. That human step is load-bearing; don't
  * build anything on this module that removes it.
  *
- * `tech-stack.md` names the Anthropic SDK for the classification and
- * knowledge-base work still ahead; this one endpoint uses OpenAI because that is
- * what was asked for. If the deferred work lands as documented the repo will
- * carry two AI stacks, which is a cost worth knowing about rather than
- * discovering.
+ * The key, the provider handle, the failure taxonomy and the fence live in
+ * `./provider`, which is shared with `./summarize`. Everything below is the part
+ * that is only true of polishing.
  */
-
-/**
- * Empty means this deployment cannot polish, which is a supported state — see
- * `isPolishConfigured`.
- */
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 
 /**
  * Copy-editing is the easiest thing a model does, so the floor of the range is
@@ -59,27 +58,13 @@ const TIMEOUT_MS = 20_000;
 /**
  * Whether this deployment can polish at all.
  *
- * Read at import, checked per request. The alternative — throwing at import the
- * way `auth.ts` does for `BETTER_AUTH_SECRET` — would be wrong here: no env file
- * in this repo carries an OpenAI key, so a missing-key throw would take down
- * every `bun run dev`, every E2E run and CI the moment this module was imported,
- * to protect a feature the rest of the app does not depend on. The webhook's
- * fail-closed-per-request stance is the right one for an optional integration.
+ * One line over `isAiConfigured`, kept as its own name because that is what the
+ * route asks and what the tests replace. There is one key behind every AI
+ * feature, so "can polish" and "can summarise" are the same question — but a
+ * route reading `isPolishConfigured()` says what it is guarding.
  */
 export function isPolishConfigured(): boolean {
-  return OPENAI_API_KEY.length > 0;
-}
-
-/**
- * Built on first use rather than at import, and handed the key explicitly rather
- * than left to the provider's ambient `OPENAI_API_KEY` lookup — that way
- * `isPolishConfigured()` and the call can never disagree about which value is in
- * play.
- */
-let provider: ReturnType<typeof createOpenAI> | undefined;
-function model() {
-  provider ??= createOpenAI({ apiKey: OPENAI_API_KEY });
-  return provider(POLISH_MODEL);
+  return isAiConfigured();
 }
 
 /**
@@ -180,24 +165,6 @@ export interface PolishContext {
  */
 const CUSTOMER_EXCERPT_LIMIT = 2_000;
 
-/**
- * Put untrusted text inside a fence it cannot close.
- *
- * The delimiters are stripped out of the content itself, so an email that
- * contains the closing marker cannot end the block early and have what follows
- * read as prompt. `>>>` is not hypothetical, by the way: it is what a
- * thrice-quoted mail chain looks like. Removing those characters costs the model
- * nothing — the words either side survive — and closes the cheapest way in.
- *
- * This is a fence, not a proof. Nothing stops a message from *arguing* its way
- * out in plain prose; that is what the system prompt and the agent reading the
- * result before sending are for.
- */
-function fenced(name: string, text: string): string {
-  const body = text.replaceAll("<<<", "").replaceAll(">>>", "").trim();
-  return `<<<${name}\n${body}\n>>>`;
-}
-
 /** Everything that changes per request, in one message. */
 function userPrompt(draft: string, context: PolishContext): string {
   const excerpt =
@@ -231,23 +198,16 @@ function userPrompt(draft: string, context: PolishContext): string {
   ].join("\n");
 }
 
+/**
+ * Everything a polish can fail with: the shared provider diagnoses, plus the one
+ * that is only meaningful here.
+ *
+ * Spread rather than restated, so a failure mode added to `AI_FAILURE` reaches
+ * this table — and the route's response map, which is keyed by this type — the
+ * moment it exists, instead of being a case nobody remembered to add.
+ */
 export const POLISH_FAILURE = {
-  /** The provider refused, or the network did. One remedy: try again. */
-  provider: "provider",
-  /** Genuinely rate-limited or overloaded. Worth retrying in a moment. */
-  busy: "busy",
-  /** The account is out of credit. Not transient, and not the agent's problem to retry. */
-  quota: "quota",
-  /** The key was rejected — missing scope, revoked, or simply wrong. */
-  auth: "auth",
-  /**
-   * The provider rejected the *request*: unknown model, or a parameter this
-   * model does not accept. A deployment bug, not a hiccup — it will fail
-   * identically forever, so it must never be reported as "try again".
-   */
-  config: "config",
-  /** A success that carried no usable text — most likely the budget went on reasoning. */
-  empty: "empty",
+  ...AI_FAILURE,
   /**
    * The rewrite promised money the draft never promised. Almost always an
    * injected instruction out of the customer's email, and never something to
@@ -263,67 +223,9 @@ export type PolishResult =
   | { ok: true; text: string }
   | { ok: false; reason: PolishFailure };
 
-/**
- * Work out what actually went wrong, through the SDK's wrapping.
- *
- * Two traps live here, both found the hard way:
- *
- * 1. A retryable failure arrives as a `RetryError` once the attempts run out,
- *    with the real error one level down in `lastError`. OpenAI marks *quota
- *    exhaustion* retryable, so the interesting case is exactly the one that gets
- *    wrapped — an `APICallError.isInstance(err)` check on the outer error looks
- *    correct and silently never matches.
- * 2. OpenAI answers **429 for two unrelated things**: "you are going too fast",
- *    and "your balance is empty". Only the first is worth waiting out. Reading
- *    the status alone turns a permanently broken feature into a "try again in a
- *    moment" that will never come true, so the body has to be consulted.
- */
-function classify(err: unknown): PolishFailure {
-  const cause = RetryError.isInstance(err) ? (err.lastError ?? err) : err;
-  if (!APICallError.isInstance(cause)) return POLISH_FAILURE.provider;
-
-  const body =
-    typeof cause.responseBody === "string" ? cause.responseBody : "";
-  if (/insufficient_quota|credit_balance_exhausted|billing/i.test(body)) {
-    return POLISH_FAILURE.quota;
-  }
-  if (cause.statusCode === 401 || cause.statusCode === 403) {
-    return POLISH_FAILURE.auth;
-  }
-  if (cause.statusCode === 429) return POLISH_FAILURE.busy;
-  // A rejected request (bad model id, a parameter this model does not take) is
-  // a deployment bug that will fail identically on every retry. Worth its own
-  // reason so the message can say "misconfigured" instead of "try again" —
-  // `gpt-5.4-mini` rejecting `reasoningEffort: "minimal"` landed exactly here.
-  if (cause.statusCode === 400 || cause.statusCode === 404) {
-    return POLISH_FAILURE.config;
-  }
-  return POLISH_FAILURE.provider;
-}
-
 /** A fence the model was told not to emit, stripped anyway rather than shown to an agent. */
 const CODE_FENCE = /^```[^\n]*\n([\s\S]*?)\n?```$/;
 
-/**
- * Take the em and en dashes out, whatever the prompt achieved.
- *
- * The prompt bans them and mostly obeys, with one reliable exception: a draft
- * that already contains them. "Preserve the draft exactly" and "never output a
- * dash" are both in that prompt, an agent who typed "your order — the shoes —
- * shipped Friday" puts them in direct conflict, and preservation wins. Two
- * dashes came back in exactly that case.
- *
- * So this runs afterwards, where no instruction can be outvoted. It is the same
- * argument as `CODE_FENCE` above: a rule the output must satisfy every time,
- * enforced in code rather than hoped for in prose.
- *
- * A comma is the substitution because it is the punctuation the dash displaced
- * in almost every real sentence, and because it is the one choice that is never
- * ungrammatical. A full stop would read better in places, but it would also
- * have to re-capitalise what follows and would land mid-reference sooner or
- * later. Anything already punctuated keeps its own mark rather than collecting a
- * second one, and a dash opening a line is a bullet the line reads fine without.
- */
 /**
  * Vocabulary that costs the company money, in the stems that survive inflection.
  *
@@ -376,14 +278,6 @@ function inventedCommitments(polished: string, draft: string): string[] {
   );
 }
 
-function withoutDashes(text: string): string {
-  return text
-    .replace(/^[ \t]*[—–][ \t]*/gm, "")
-    .replace(/\s*[—–]\s*/g, (_match, offset: number, whole: string) =>
-      /[,;:(]/.test(whole[offset - 1] ?? "") ? " " : ", ",
-    );
-}
-
 /**
  * Rewrite one draft.
  *
@@ -403,7 +297,7 @@ export async function polishDraft(
 ): Promise<PolishResult> {
   try {
     const { text } = await generateText({
-      model: model(),
+      model: openaiModel(POLISH_MODEL),
       system: SYSTEM_PROMPT,
       prompt: userPrompt(draft, context),
       maxOutputTokens: MAX_OUTPUT_TOKENS,

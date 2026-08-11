@@ -19,6 +19,7 @@ import {
   type ThreadMessage,
   type TicketDetail,
 } from "@ticket/shared";
+import { AiShine } from "@/components/AiShine";
 import { Hint } from "@/components/Hint";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -316,13 +317,19 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
               Wrapping it gives the trigger an element that stays interactive. */}
           <Hint content={polishHint}>
             <span className="inline-flex">
+              {/* `relative` positions the shine ring, which traces this
+                  button's own border while the rewrite is in flight — the same
+                  cue the summary panel wears, so "a model is working on this"
+                  looks the same wherever it happens. */}
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
+                className="relative"
                 onClick={runPolish}
                 disabled={busy || !canPolish}
               >
+                <AiShine active={polish.isPending} />
                 {polish.isPending ? (
                   <Loader2 aria-hidden="true" className="size-4 animate-spin" />
                 ) : (

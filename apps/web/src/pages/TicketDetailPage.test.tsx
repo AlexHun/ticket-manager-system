@@ -752,12 +752,11 @@ describe("TicketDetailPage reply composer", () => {
     settle(replyResponse());
 
     // The box is where the lock lifting shows: success cleared the draft, so
-    // Send is disabled again for the ordinary reason — there is nothing in it.
+    // Send stays disabled afterwards for the ordinary reason — there is nothing
+    // in it. That it comes back with the next keystroke is covered in
+    // TicketReplyComposer.test.tsx, which renders the composer alone.
     await waitFor(() => expect(replyBox()).toBeEnabled());
     expect(sendButton()).toBeDisabled();
-
-    await user.type(replyBox(), "One more thing.");
-    expect(sendButton()).toBeEnabled();
   });
 
   test("offers the composer on a ticket with no messages yet", async () => {
