@@ -2280,7 +2280,14 @@ test.describe("Ticket detail page", () => {
     await signIn(page, "agent");
     await page.goto(`/tickets/${id}`);
 
-    await page.getByRole("button", { name: "Send reply" }).click();
+    // An empty box disables Send, so the click never happens; the keyboard
+    // gesture is the way left in, and validation catches it there.
+    await expect(
+      page.getByRole("button", { name: "Send reply" }),
+    ).toBeDisabled();
+    const box = page.getByRole("textbox", { name: "Reply" });
+    await box.click();
+    await page.keyboard.press("Control+Enter");
 
     await expect(page.getByRole("alert")).toContainText(
       "Write a reply before sending",

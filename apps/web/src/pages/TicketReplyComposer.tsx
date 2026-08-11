@@ -114,6 +114,10 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
   const trimmedDraft = draft.trim();
   const draftTooLong = trimmedDraft.length > MAX_MESSAGE_BODY_LENGTH;
   const canPolish = trimmedDraft.length > 0 && !draftTooLong;
+  // Send is held only on an empty box — the one rejection the agent can see
+  // coming. A too-long draft keeps the button live on purpose: the schema's
+  // message is what explains it, and a silently greyed-out button would not.
+  const canSend = trimmedDraft.length > 0;
 
   // Declared above the send mutation only so that one can call `polish.reset()`
   // in its success path without a forward reference.
@@ -329,7 +333,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
             </span>
           </Hint>
 
-          <Button type="submit" size="sm" disabled={busy}>
+          <Button type="submit" size="sm" disabled={busy || !canSend}>
             {mutation.isPending ? (
               <Loader2 aria-hidden="true" className="size-4 animate-spin" />
             ) : (

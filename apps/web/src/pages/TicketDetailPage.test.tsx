@@ -674,7 +674,14 @@ describe("TicketDetailPage reply composer", () => {
     renderDetail();
     const user = await readyToReply();
 
-    await user.click(sendButton());
+    // Nothing to send, so the button is the first guard and a click can't get
+    // past it.
+    expect(sendButton()).toBeDisabled();
+
+    // ⌘/Ctrl+Enter goes around the button, so validation is still what stops
+    // the submit — and it is what says why.
+    await user.click(replyBox());
+    await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Write a reply before sending",
@@ -690,7 +697,10 @@ describe("TicketDetailPage reply composer", () => {
     // Trimmed before it is measured, so this is empty rather than three
     // characters long.
     await user.type(replyBox(), "   ");
-    await user.click(sendButton());
+
+    expect(sendButton()).toBeDisabled();
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Write a reply before sending",
@@ -741,7 +751,13 @@ describe("TicketDetailPage reply composer", () => {
 
     settle(replyResponse());
 
-    await waitFor(() => expect(sendButton()).toBeEnabled());
+    // The box is where the lock lifting shows: success cleared the draft, so
+    // Send is disabled again for the ordinary reason — there is nothing in it.
+    await waitFor(() => expect(replyBox()).toBeEnabled());
+    expect(sendButton()).toBeDisabled();
+
+    await user.type(replyBox(), "One more thing.");
+    expect(sendButton()).toBeEnabled();
   });
 
   test("offers the composer on a ticket with no messages yet", async () => {
