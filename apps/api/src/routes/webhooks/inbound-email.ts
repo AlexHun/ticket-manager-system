@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { z, ZodType } from "zod";
 import { inboundEmailSchema } from "@ticket/core";
+import { scheduleClassification } from "../../ai/auto-classify";
 import { prisma } from "../../db";
 
 function parseBody<S extends ZodType>(
@@ -150,4 +151,21 @@ inboundEmailRouter.post("/", async (req: Request, res: Response) => {
   });
 
   res.status(201).json({ ticketId: ticket.id, threaded: false });
+
+  // After the response, deliberately, and never awaited. The ticket and its
+  // message are what this endpoint owes Postmark; the category is an improvement
+  // to something already saved, and a mail provider timing this request must not
+  // be made to wait several seconds for a model to answer — a slow webhook is
+  // retried, and a retried webhook is duplicate ingestion.
+  //
+  // So a failed or slow classification costs a ticket its category and nothing
+  // else. It stays null, which is where every ticket starts and what an agent can
+  // fix in one click. `scheduleClassification` is synchronous, cannot throw, and
+  // is a no-op on a deployment with no AI key.
+  //
+  // Only on creation. A reply arriving on an existing thread does not re-open the
+  // question of what that ticket is about, and re-classifying on every inbound
+  // message would spend a call per email to argue with whatever an agent had
+  // already filed it under.
+  scheduleClassification(ticket.id);
 });

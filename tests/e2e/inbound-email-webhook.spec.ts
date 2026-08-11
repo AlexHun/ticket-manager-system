@@ -180,8 +180,13 @@ test.describe("Inbound-email webhook — ticket creation", () => {
     expect(ticket.customerEmail).toBe("alice@example.com");
     expect(ticket.customerName).toBe("Alice");
     expect(ticket.status).toBe(TICKET_STATUS.Open);
-    // A freshly ingested ticket is uncategorized and unassigned — classification
-    // and assignment are separate concerns.
+    // A freshly ingested ticket is uncategorized and unassigned. Assignment is a
+    // separate concern entirely; classification is a real one that has simply not
+    // happened yet, and both halves of that are load-bearing here. `.env.test`
+    // carries no OPENAI_API_KEY, so `scheduleClassification` is a no-op in this
+    // suite — and even against a deployment that has one it would still be null
+    // at this line, because the classifier is scheduled *after* the 201 and takes
+    // seconds. If this ever fails, the webhook has started waiting for a model.
     expect(ticket.category).toBeNull();
     expect(ticket.assignedToId).toBeNull();
 
