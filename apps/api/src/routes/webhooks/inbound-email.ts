@@ -1,5 +1,5 @@
-import { Router } from "express";
-import type { Request, Response } from "express";
+import express, { Router } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { z, ZodType } from "zod";
 import { fromPrisma } from "pg-boss";
@@ -7,6 +7,7 @@ import { inboundEmailSchema } from "@ticket/core";
 import { TICKET_STATUS } from "@ticket/shared";
 import { prisma } from "../../db";
 import { enqueueClassification } from "../../jobs/classify-ticket";
+import { postmarkAdapter } from "./postmark";
 
 function parseBody<S extends ZodType>(
   schema: S,
@@ -56,14 +57,22 @@ function checkBasicAuth(req: Request): boolean {
   );
 }
 
-export const inboundEmailRouter = Router();
-
-inboundEmailRouter.post("/", async (req: Request, res: Response) => {
+/**
+ * First in the chain, and specifically ahead of the multipart reader: an
+ * unauthenticated caller should be turned away before this process agrees to
+ * read a 20MB upload from them.
+ */
+const requireWebhookAuth: RequestHandler = (req, res, next) => {
   if (!checkBasicAuth(req)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  next();
+};
 
+export const inboundEmailRouter = Router();
+
+const handleInboundEmail = async (req: Request, res: Response) => {
   const body = parseBody(inboundEmailSchema, req, res);
   if (!body) return;
 
@@ -197,4 +206,23 @@ inboundEmailRouter.post("/", async (req: Request, res: Response) => {
   });
 
   res.status(201).json({ ticketId: ticket.id, threaded: false });
-});
+};
+
+// Auth, then the body, then the Postmark → `InboundEmail` translation, then the
+// handler that has always been here. The adapter passes a body it does not
+// recognise through untouched, so the provider-neutral JSON contract this route
+// was built on still works — what Postmark posts and what `curl` posts meet at
+// the same `inboundEmailSchema.safeParse`.
+inboundEmailRouter.post(
+  "/",
+  requireWebhookAuth,
+  // This router is mounted above the app-wide `express.json()` so it can carry
+  // its own limit. Postmark inlines attachments into the JSON body as base64 and
+  // allows 35MB of them, so the global 10mb cap would 413 a customer's
+  // screenshot — and a 413 is a delivery Postmark retries for six hours and then
+  // abandons, which is an email silently lost. Placed after the auth check on
+  // purpose: nobody unauthenticated gets to hand this process 45MB to buffer.
+  express.json({ limit: "45mb" }),
+  postmarkAdapter,
+  handleInboundEmail,
+);

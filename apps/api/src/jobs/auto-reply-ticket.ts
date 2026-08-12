@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/bun";
 import type { PgBoss, Queue } from "pg-boss";
 import { MESSAGE_DIRECTION, TICKET_CATEGORY, TICKET_STATUS } from "@ticket/shared";
 import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
@@ -402,6 +403,20 @@ export async function registerAutoReplyTicket(boss: PgBoss): Promise<void> {
       console.error(
         `[auto-reply] ticket ${ticketId} exhausted its retries; handing it to an agent`,
       );
+      // Same rule as the classifier's: the retry ladder is expected to be used,
+      // so only running out of it is worth an alert. Note what is *not*
+      // reported — a decline. `declined` and `ungrounded` are this feature
+      // working, the six checks refusing to send something they cannot stand
+      // behind, and routing them here would turn the safety design into a
+      // stream of alerts until someone silenced it.
+      Sentry.withScope((scope) => {
+        scope.setTag("queue", AUTO_REPLY_DEAD_QUEUE);
+        scope.setContext("job", { ticketId });
+        Sentry.captureMessage(
+          "auto-reply-ticket exhausted its retries",
+          "error",
+        );
+      });
       await release(ticketId, TICKET_STATUS.Open);
     },
   );

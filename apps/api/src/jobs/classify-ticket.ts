@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/bun";
 import type { PgBoss, Db, Queue } from "pg-boss";
 import { MESSAGE_DIRECTION } from "@ticket/shared";
 import { classifyTicket } from "../ai/classify";
@@ -346,6 +347,17 @@ export async function registerClassifyTicket(boss: PgBoss): Promise<void> {
       console.error(
         `[classify] ticket ${ticketId} exhausted its retries; leaving it uncategorised`,
       );
+      // Reported here and nowhere earlier. A failing attempt is not news — the
+      // retry ladder in this file exists because `provider`/`busy`/`empty` are
+      // expected to fail and expected to succeed on the next rung, and an alert
+      // per attempt would train everyone to ignore the channel. Arriving here
+      // means the ladder ran out. The ticket id is a tag rather than part of the
+      // message so every occurrence groups into one issue.
+      Sentry.withScope((scope) => {
+        scope.setTag("queue", CLASSIFY_DEAD_QUEUE);
+        scope.setContext("job", { ticketId });
+        Sentry.captureMessage("classify-ticket exhausted its retries", "error");
+      });
       // `updateMany`, not `update`: the ticket may have been deleted between the
       // last attempt and this one, and a missing row must not fail the job and
       // send it round again.

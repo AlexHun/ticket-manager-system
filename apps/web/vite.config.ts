@@ -19,8 +19,17 @@ import { devToolsPlugin } from "./dev/plugin";
  * `apiOrigin` is where the API lives: a separate origin in production, empty in
  * dev and in tests where Vite proxies `/api`. It has to be listed or every
  * request the app makes is blocked.
+ *
+ * `sentryOrigin` is the same story with a sharper failure mode: an unlisted
+ * ingest host means the browser blocks every error report, and the only trace is
+ * a CSP violation in the console of the session that broke — so the tool meant
+ * to tell you about failures fails silently, in exactly the case you needed it.
+ * Empty when `VITE_SENTRY_DSN` is unset, which is also when nothing tries to
+ * send.
  */
-function cspDirectives(apiOrigin: string): string[] {
+function cspDirectives(apiOrigin: string, sentryOrigin: string): string[] {
+  const connectSources = ["'self'", apiOrigin, sentryOrigin].filter(Boolean);
+
   return [
     "default-src 'self'",
     // The directive that would actually stop an XSS. It costs nothing here: the
@@ -38,7 +47,7 @@ function cspDirectives(apiOrigin: string): string[] {
     // Geist is bundled by @fontsource-variable and emitted into /assets, so
     // there is no font CDN to allow.
     "font-src 'self'",
-    apiOrigin ? `connect-src 'self' ${apiOrigin}` : "connect-src 'self'",
+    `connect-src ${connectSources.join(" ")}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -61,6 +70,24 @@ function apiOriginFrom(apiUrl: string): string {
 }
 
 /**
+ * The ingest origin out of a Sentry DSN.
+ *
+ * A DSN is a URL whose userinfo is the public key —
+ * `https://<key>@o0.ingest.de.sentry.io/123` — and `URL.origin` drops that,
+ * which is what makes this safe to put in a header: the CSP names the host, not
+ * the key. Region-specific by nature (`.us.`, `.de.`), so this is derived from
+ * the configured DSN rather than a wildcard guessed at.
+ */
+function sentryOriginFrom(dsn: string): string {
+  if (!dsn) return "";
+  try {
+    return new URL(dsn).origin;
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Ships the CSP inside the document.
  *
  * A meta tag rather than a response header because nothing in this repo serves
@@ -75,8 +102,8 @@ function apiOriginFrom(apiUrl: string): string {
  * Build-only: Vite's dev server injects the React Refresh preamble and its HMR
  * client as inline scripts, which `script-src 'self'` blocks outright.
  */
-function cspPlugin(apiOrigin: string): Plugin {
-  const policy = cspDirectives(apiOrigin)
+function cspPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
+  const policy = cspDirectives(apiOrigin, sentryOrigin)
     .filter((directive) => !directive.startsWith("frame-ancestors"))
     .join("; ");
 
@@ -101,7 +128,9 @@ function cspPlugin(apiOrigin: string): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const apiOrigin = apiOriginFrom(loadEnv(mode, __dirname).VITE_API_URL ?? "");
+  const env = loadEnv(mode, __dirname);
+  const apiOrigin = apiOriginFrom(env.VITE_API_URL ?? "");
+  const sentryOrigin = sentryOriginFrom(env.VITE_SENTRY_DSN ?? "");
 
   return {
     plugins: [
@@ -111,7 +140,7 @@ export default defineConfig(({ mode }) => {
       // `apply: "serve"` inside, so this contributes nothing to a build — see the
       // note at the top of dev/plugin.ts.
       devToolsPlugin(),
-      cspPlugin(apiOrigin),
+      cspPlugin(apiOrigin, sentryOrigin),
       // Writes a treemap of the production bundle on every build — the only way
       // to tell whether a dependency actually ships or merely looks like it does.
       // Recharts reaches the bundle through a namespace import in shadcn's chart
@@ -172,7 +201,9 @@ export default defineConfig(({ mode }) => {
     // page is the fallback for hosts that cannot set headers, not a substitute.
     preview: {
       headers: {
-        "Content-Security-Policy": cspDirectives(apiOrigin).join("; "),
+        "Content-Security-Policy": cspDirectives(apiOrigin, sentryOrigin).join(
+          "; ",
+        ),
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "no-referrer",
       },

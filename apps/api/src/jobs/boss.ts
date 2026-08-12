@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/bun";
 import { PgBoss, type Queue } from "pg-boss";
 
 /**
@@ -102,6 +103,11 @@ export async function startBoss(): Promise<PgBoss> {
   // could not reach the database for a moment.
   instance.on("error", (err) => {
     console.error("[jobs] pg-boss error:", err);
+    // Worth reporting even though it is survivable: this is the queue telling
+    // us it lost the database. Nothing else in the app would say so, and the
+    // symptom an agent notices — tickets that never get categorised — is hours
+    // downstream of the cause.
+    Sentry.captureException(err, { tags: { component: "pg-boss" } });
   });
 
   await instance.start();

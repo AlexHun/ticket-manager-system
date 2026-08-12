@@ -1,3 +1,8 @@
+// First import in the process, before Express, Prisma or pg-boss are pulled in:
+// the SDK patches what it instruments at import time, so anything loaded ahead
+// of it is instrumented not at all. No `SENTRY_DSN` means this is inert.
+import { Sentry } from "./instrument";
+
 import express from "express";
 import type { Request, Response } from "express";
 import compression from "compression";
@@ -70,6 +75,11 @@ app.all("/api/auth/{*any}", toNodeHandler(auth));
 // shape gzip does best on.
 app.use(compression());
 
+// Above the app-wide JSON parser, and therefore not covered by it: the inbound
+// webhook parses its own body behind its own auth check, with a limit sized for
+// a mail provider rather than for an API client. See the note on the route.
+app.use("/api/webhooks/inbound-email", inboundEmailRouter);
+
 app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
@@ -79,7 +89,12 @@ app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
 app.use("/api/tickets", ticketsRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/ai", aiRouter);
-app.use("/api/webhooks/inbound-email", inboundEmailRouter);
+
+// After every route, which is the only place it works: it is an Express error
+// middleware, and it can only see what routes registered before it throw.
+// Express 5 forwards rejected promises from `async` handlers here by itself, so
+// this covers the `await` calls the codebase deliberately leaves untried.
+Sentry.setupExpressErrorHandler(app);
 
 const port = Number(process.env.PORT ?? 3001);
 
@@ -111,7 +126,13 @@ async function shutdown(signal: string) {
 process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
-start().catch((err) => {
+start().catch(async (err) => {
   console.error("Failed to start API:", err);
+  // Flushed rather than fired: `process.exit` does not wait for an in-flight
+  // HTTP request, and the report of a process that failed to boot is exactly
+  // the one that has no second chance to arrive. Two seconds, then leave
+  // regardless — a hung Sentry must not turn a failed boot into a hung one.
+  Sentry.captureException(err, { tags: { phase: "startup" } });
+  await Sentry.flush(2000);
   process.exit(1);
 });
