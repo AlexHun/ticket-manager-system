@@ -2,9 +2,10 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { z, ZodType } from "zod";
+import { fromPrisma } from "pg-boss";
 import { inboundEmailSchema } from "@ticket/core";
-import { scheduleClassification } from "../../ai/auto-classify";
 import { prisma } from "../../db";
+import { enqueueClassification } from "../../jobs/classify-ticket";
 
 function parseBody<S extends ZodType>(
   schema: S,
@@ -140,32 +141,40 @@ inboundEmailRouter.post("/", async (req: Request, res: Response) => {
   const subject =
     body.subject.replace(/^(re|fwd?):\s*/gi, "").trim() || "(no subject)";
 
-  const ticket = await prisma.ticket.create({
-    data: {
-      subject,
-      customerEmail: body.senderEmail,
-      customerName: body.senderName,
-      messages: { create: messageData },
-    },
-    select: { id: true },
-  });
-
-  res.status(201).json({ ticketId: ticket.id, threaded: false });
-
-  // After the response, deliberately, and never awaited. The ticket and its
-  // message are what this endpoint owes Postmark; the category is an improvement
-  // to something already saved, and a mail provider timing this request must not
-  // be made to wait several seconds for a model to answer — a slow webhook is
-  // retried, and a retried webhook is duplicate ingestion.
+  // The ticket and the request to classify it commit together or not at all.
   //
-  // So a failed or slow classification costs a ticket its category and nothing
-  // else. It stays null, which is where every ticket starts and what an agent can
-  // fix in one click. `scheduleClassification` is synchronous, cannot throw, and
-  // is a no-op on a deployment with no AI key.
+  // What must never be awaited before answering Postmark is the *model call* —
+  // a mail provider times this request, a slow webhook is retried, and a retried
+  // webhook is duplicate ingestion. Enqueuing is not that: it is one INSERT into
+  // a table in the same database, inside the transaction that is already
+  // happening. The classification itself still runs long after this response, on
+  // a worker.
+  //
+  // Doing it inside the transaction closes a real gap. Scheduling after the
+  // response, as this did while the queue lived in memory, leaves a window
+  // between the ticket committing and the work being recorded; a crash inside it
+  // produced a ticket that nothing would ever classify and nothing would ever
+  // report. Now the two facts share a fate.
   //
   // Only on creation. A reply arriving on an existing thread does not re-open the
   // question of what that ticket is about, and re-classifying on every inbound
   // message would spend a call per email to argue with whatever an agent had
   // already filed it under.
-  scheduleClassification(ticket.id);
+  const ticket = await prisma.$transaction(async (tx) => {
+    const created = await tx.ticket.create({
+      data: {
+        subject,
+        customerEmail: body.senderEmail,
+        customerName: body.senderName,
+        messages: { create: messageData },
+      },
+      select: { id: true },
+    });
+
+    await enqueueClassification(created.id, fromPrisma(tx));
+
+    return created;
+  });
+
+  res.status(201).json({ ticketId: ticket.id, threaded: false });
 });

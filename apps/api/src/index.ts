@@ -7,6 +7,7 @@ import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
 import { auth, trustedOrigins } from "./auth";
+import { startJobs, stopJobs } from "./jobs";
 import { aiRouter } from "./routes/ai";
 import { ticketsRouter } from "./routes/tickets";
 import { usersRouter } from "./routes/users";
@@ -86,6 +87,12 @@ async function start() {
   await prisma.$queryRaw`SELECT 1`;
   console.log("Connected to Postgres");
 
+  // Before `listen`, so no request can enqueue onto a queue nobody is working
+  // yet. A failure here takes the boot with it on purpose — see the note in
+  // `jobs/boss.ts`: an API that is up but silently running no background work is
+  // the hardest kind of broken to notice.
+  await startJobs();
+
   app.listen(port, () => {
     console.log(`API listening on http://localhost:${port}`);
   });
@@ -93,6 +100,10 @@ async function start() {
 
 async function shutdown(signal: string) {
   console.log(`${signal} received, shutting down`);
+  // Before the Prisma disconnect: a job finishing gracefully still needs the
+  // database to write its result. Work that does not finish in time is not
+  // lost — it returns to the queue for whatever starts next.
+  await stopJobs();
   await prisma.$disconnect();
   process.exit(0);
 }

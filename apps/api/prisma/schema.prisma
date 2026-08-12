@@ -88,6 +88,19 @@ model Ticket {
   subject       String
   status        TicketStatus    @default(Open)
   category      TicketCategory?
+  // When the automatic classifier reached a *terminal* verdict on this ticket:
+  // it filed a category, or it gave up. Not "when the category was last set" —
+  // an agent choosing one by hand leaves this null, and that difference is the
+  // whole reason the column exists.
+  //
+  // `category` alone cannot answer "does this still need classifying". A null
+  // category means either "never attempted" or "attempted, and an agent then
+  // deliberately cleared it", and the reconciliation sweep in
+  // `jobs/classify-ticket.ts` must re-enqueue the first and leave the second
+  // alone. Set on success, and set again when a job exhausts its retries and
+  // lands in the dead-letter queue, which is what stops that sweep re-queueing
+  // a ticket forever.
+  classifiedAt  DateTime?
   customerEmail String
   customerName  String
   lastMessageAt DateTime        @default(now())

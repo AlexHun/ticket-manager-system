@@ -13,7 +13,7 @@
 | AI | Anthropic SDK (Claude) | Classification, summaries, draft replies. Use prompt caching for the knowledge base |
 | Inbound email | Postmark Inbound | Webhook delivers parsed JSON with `MessageID` / `In-Reply-To` for threading |
 | Outbound email | Postmark (or Resend) | Prefer one vendor for inbound + outbound |
-| Background jobs | None to start; Inngest or BullMQ if needed | Process AI inline in the webhook; add a queue only when timeouts or retries demand it |
+| Background jobs | **pg-boss** (adopted) | Postgres-backed, so no new service. Chosen over Inngest/BullMQ because it needs no Redis and no vendor — see below |
 | Frontend hosting | Vercel / Netlify / Cloudflare Pages | Any static host works |
 | Backend hosting | Railway / Render / Fly.io | Long-lived Node process; needs to receive Postmark webhooks |
 
@@ -48,5 +48,5 @@ A monorepo with two apps keeps types shared:
 
 - Vector DB / embeddings — knowledge base fits in Claude's context window with prompt caching.
 - JWT / refresh tokens — database sessions are simpler and meet the requirements.
-- Redis / queue — revisit when inbound volume or AI latency forces async processing.
+- ~~Redis / queue~~ — **the revisit happened.** "Add a queue only when timeouts or retries demand it" was the original bar, and retries cleared it: automatic ticket classification runs off the inbound-email webhook, three of its six failure modes are transient, and the in-memory queue it started on could act on none of them — a ticket that arrived during a provider blip stayed uncategorised forever, and a deploy dropped the queue silently. **pg-boss** was adopted rather than Inngest or BullMQ because the constraint this list was really expressing is "no new infrastructure": pg-boss runs in the Postgres already in the stack, in its own `pgboss` schema, so it costs a dependency instead of a service. **Redis itself is still deferred** and nothing here needs it. See `apps/api/src/jobs/`; Phase 3's outbound Postmark send is the next thing that belongs on it.
 - GraphQL — REST is enough for this surface area.

@@ -39,8 +39,9 @@ import {
  * filed as Technical on every run. Treat that as evidence, not a guarantee, and
  * read the paragraph above for why it is survivable when it eventually fails.
  *
- * The scheduling, the concurrency cap and the write live in `./auto-classify`.
- * This module decides; that one decides *when*, and refuses to overwrite a
+ * The scheduling, the retry policy, the concurrency cap and the write live in
+ * `../jobs/classify-ticket`. This module decides; that one decides *when*, works
+ * out which failures here are worth another attempt, and refuses to overwrite a
  * human.
  */
 
@@ -90,7 +91,8 @@ const BODY_LIMIT = 2_000;
 /**
  * Everything the classifier is allowed to know.
  *
- * Assembled by `./auto-classify` from the database, never from the webhook body
+ * Assembled by `../jobs/classify-ticket` from the database, never from a job
+ * payload or a webhook body
  * — the same rule the other two features follow, and it costs nothing here since
  * the caller is our own code. `htmlBody` is not in here and never will be: the
  * "never render email HTML" rule extends to prompts.
