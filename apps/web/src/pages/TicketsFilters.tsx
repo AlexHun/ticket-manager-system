@@ -3,11 +3,11 @@ import { Search, X } from "lucide-react";
 import {
   ASSIGNEE_NONE,
   CATEGORY_NONE,
+  CLIENT_TICKET_STATUS,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
-  TICKET_STATUS,
+  type ClientTicketStatus,
   type TicketCategoryFilter,
-  type TicketStatus,
 } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,13 @@ const ANY = "";
 const ANY_VALUE = "any";
 
 export interface TicketFilterState {
-  status: TicketStatus | typeof ANY;
+  /**
+   * Never `Processing`: the list refuses to return those, so the API rejects the
+   * filter — see `CLIENT_TICKET_STATUS`. A ticket a worker is answering is
+   * hidden precisely so that nobody picks it up and answers it twice, and a
+   * filter that revealed them would undo that.
+   */
+  status: ClientTicketStatus | typeof ANY;
   category: TicketCategoryFilter | typeof ANY;
   /** A user id, `ASSIGNEE_NONE` for unassigned, or `ANY`. */
   assignedTo: string;
@@ -91,7 +97,10 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
         label="Status"
         value={filters.status}
         anyLabel="Any status"
-        options={Object.values(TICKET_STATUS).map((s) => ({
+        // `CLIENT_TICKET_STATUS`, not every status: `Processing` is missing
+        // because the list never returns one, so offering it would be a filter
+        // guaranteed to show an empty page.
+        options={CLIENT_TICKET_STATUS.map((s) => ({
           value: s,
           label: s,
         }))}

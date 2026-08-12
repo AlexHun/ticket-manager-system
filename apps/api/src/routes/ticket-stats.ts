@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { ticketStatsQuerySchema } from "@ticket/core";
 import {
   AGE_BUCKET,
+  BACKLOG_STATUS,
   DASHBOARD_RANGE_BUCKET,
   DASHBOARD_RANGE_DAYS,
   DASHBOARD_SCOPE,
@@ -54,6 +55,8 @@ const ts = (d: Date) =>
  *  goes `undefined` at runtime. Each is mapped field-by-field into the response. */
 interface FactsRow {
   total: number;
+  new: number;
+  processing: number;
   open: number;
   resolved: number;
   closed: number;
@@ -67,6 +70,8 @@ interface FactsRow {
 
 interface VolumeRow {
   bucketStart: string;
+  New: number;
+  Processing: number;
   Open: number;
   Resolved: number;
   Closed: number;
@@ -95,6 +100,8 @@ interface AgeRow {
 interface WorkloadRow {
   id: string | null;
   name: string | null;
+  New: number;
+  Processing: number;
   Open: number;
   Resolved: number;
   Closed: number;
@@ -185,14 +192,24 @@ export async function ticketStatsHandler(
   //                          enum column is `operator does not exist`.
   // "user" is also a reserved word, so it is always double-quoted.
 
+  // `openUnassigned` counts New alongside Open, and that is the one place in
+  // this file where the two-status split changes an existing number rather than
+  // adding one. It is the triage tile: "arrived and nobody owns it". A ticket
+  // sitting in New is the purest example of that, and on a deployment with no AI
+  // key every ticket is in New — so scoping this to Open alone would report a
+  // clean desk in front of an untouched inbox.
+  const backlog = Prisma.sql`t.status IN (${TICKET_STATUS.New}::"TicketStatus", ${TICKET_STATUS.Open}::"TicketStatus")`;
+
   const factsSql = Prisma.sql`
     SELECT
       COUNT(*)::int AS "total",
+      COUNT(*) FILTER (WHERE t.status = ${TICKET_STATUS.New}::"TicketStatus")::int AS "new",
+      COUNT(*) FILTER (WHERE t.status = ${TICKET_STATUS.Processing}::"TicketStatus")::int AS "processing",
       COUNT(*) FILTER (WHERE t.status = ${TICKET_STATUS.Open}::"TicketStatus")::int AS "open",
       COUNT(*) FILTER (WHERE t.status = ${TICKET_STATUS.Resolved}::"TicketStatus")::int AS "resolved",
       COUNT(*) FILTER (WHERE t.status = ${TICKET_STATUS.Closed}::"TicketStatus")::int AS "closed",
       COUNT(*) FILTER (
-        WHERE t.status = ${TICKET_STATUS.Open}::"TicketStatus" AND t."assignedToId" IS NULL
+        WHERE ${backlog} AND t."assignedToId" IS NULL
       )::int AS "openUnassigned",
       COUNT(*) FILTER (WHERE t.category = ${TICKET_CATEGORY.General}::"TicketCategory")::int AS "general",
       COUNT(*) FILTER (WHERE t.category = ${TICKET_CATEGORY.Technical}::"TicketCategory")::int AS "technical",
@@ -225,6 +242,8 @@ export async function ticketStatsHandler(
     )
     SELECT
       to_char(b.bucket, 'YYYY-MM-DD') AS "bucketStart",
+      COALESCE(SUM(c.count) FILTER (WHERE c.status = ${TICKET_STATUS.New}::"TicketStatus"), 0)::int AS "New",
+      COALESCE(SUM(c.count) FILTER (WHERE c.status = ${TICKET_STATUS.Processing}::"TicketStatus"), 0)::int AS "Processing",
       COALESCE(SUM(c.count) FILTER (WHERE c.status = ${TICKET_STATUS.Open}::"TicketStatus"), 0)::int AS "Open",
       COALESCE(SUM(c.count) FILTER (WHERE c.status = ${TICKET_STATUS.Resolved}::"TicketStatus"), 0)::int AS "Resolved",
       COALESCE(SUM(c.count) FILTER (WHERE c.status = ${TICKET_STATUS.Closed}::"TicketStatus"), 0)::int AS "Closed"
@@ -290,7 +309,7 @@ export async function ticketStatsHandler(
     FROM (
       SELECT EXTRACT(EPOCH FROM (${HI} - t."createdAt"))::float8 / 3600.0 AS age
       FROM "ticket" t
-      WHERE t.status = ${TICKET_STATUS.Open}::"TicketStatus"
+      WHERE ${backlog}
         AND ${slice}
     ) a
   `;
@@ -315,6 +334,8 @@ export async function ticketStatsHandler(
       SELECT
         u.id AS "id",
         u.name AS "name",
+        COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.New}::"TicketStatus")::int AS "New",
+        COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Processing}::"TicketStatus")::int AS "Processing",
         COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Open}::"TicketStatus")::int AS "Open",
         COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Resolved}::"TicketStatus")::int AS "Resolved",
         COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Closed}::"TicketStatus")::int AS "Closed",
@@ -329,6 +350,8 @@ export async function ticketStatsHandler(
       SELECT
         NULL::text,
         NULL::text,
+        COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.New}::"TicketStatus")::int,
+        COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Processing}::"TicketStatus")::int,
         COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Open}::"TicketStatus")::int,
         COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Resolved}::"TicketStatus")::int,
         COUNT(s.id) FILTER (WHERE s.status = ${TICKET_STATUS.Closed}::"TicketStatus")::int,
@@ -348,7 +371,7 @@ export async function ticketStatsHandler(
       t."customerEmail" AS "email",
       (ARRAY_AGG(t."customerName" ORDER BY t."createdAt" DESC, t.id DESC))[1] AS "name",
       COUNT(*)::int AS "total",
-      COUNT(*) FILTER (WHERE t.status = ${TICKET_STATUS.Open}::"TicketStatus")::int AS "open",
+      COUNT(*) FILTER (WHERE ${backlog})::int AS "open",
       MAX(t."lastMessageAt") AS "lastMessageAt"
     FROM "ticket" t
     WHERE ${slice}
@@ -366,7 +389,11 @@ export async function ticketStatsHandler(
       prisma.$queryRaw<WorkloadRow[]>(workloadSql),
       prisma.$queryRaw<CustomerRow[]>(customersSql),
       prisma.ticket.findMany({
-        where: { status: TICKET_STATUS.Open, ...sliceWhere },
+        // Same "not dealt with" definition as `backlog` above, in Prisma's
+        // vocabulary. `Processing` is excluded by construction: a ticket a
+        // worker is answering right now is the one thing on the dashboard that
+        // needs no attention at all.
+        where: { status: { in: [...BACKLOG_STATUS] }, ...sliceWhere },
         // Longest silence first; id breaks ties because seeded threads share an
         // instant and an unstable order would reshuffle the card between loads.
         orderBy: [{ lastMessageAt: "asc" }, { id: "asc" }],
@@ -422,6 +449,8 @@ export async function ticketStatsHandler(
     .map((r) => ({
       id: r.id,
       name: r.name,
+      [TICKET_STATUS.New]: r.New,
+      [TICKET_STATUS.Processing]: r.Processing,
       [TICKET_STATUS.Open]: r.Open,
       [TICKET_STATUS.Resolved]: r.Resolved,
       [TICKET_STATUS.Closed]: r.Closed,
@@ -438,6 +467,8 @@ export async function ticketStatsHandler(
       total,
       previousTotal,
       byStatus: {
+        [TICKET_STATUS.New]: f?.new ?? 0,
+        [TICKET_STATUS.Processing]: f?.processing ?? 0,
         [TICKET_STATUS.Open]: f?.open ?? 0,
         [TICKET_STATUS.Resolved]: f?.resolved ?? 0,
         [TICKET_STATUS.Closed]: f?.closed ?? 0,
@@ -447,6 +478,8 @@ export async function ticketStatsHandler(
     },
     volume: volume.map((v) => ({
       bucketStart: v.bucketStart,
+      [TICKET_STATUS.New]: v.New,
+      [TICKET_STATUS.Processing]: v.Processing,
       [TICKET_STATUS.Open]: v.Open,
       [TICKET_STATUS.Resolved]: v.Resolved,
       [TICKET_STATUS.Closed]: v.Closed,
@@ -476,6 +509,8 @@ export async function ticketStatsHandler(
     },
     workload: agents,
     unassigned: {
+      [TICKET_STATUS.New]: unassignedRow?.New ?? 0,
+      [TICKET_STATUS.Processing]: unassignedRow?.Processing ?? 0,
       [TICKET_STATUS.Open]: unassignedRow?.Open ?? 0,
       [TICKET_STATUS.Resolved]: unassignedRow?.Resolved ?? 0,
       [TICKET_STATUS.Closed]: unassignedRow?.Closed ?? 0,

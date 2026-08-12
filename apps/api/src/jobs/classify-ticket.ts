@@ -1,9 +1,11 @@
 import type { PgBoss, Db, Queue } from "pg-boss";
 import { MESSAGE_DIRECTION } from "@ticket/shared";
 import { classifyTicket } from "../ai/classify";
-import { AI_FAILURE, isAiConfigured, type AiFailure } from "../ai/provider";
+import { isAiConfigured } from "../ai/provider";
 import { prisma } from "../db";
-import { getBoss } from "./boss";
+import { isRetryable } from "./ai-retry";
+import { enqueueAutoReply } from "./auto-reply-ticket";
+import { ensureQueue, getBoss } from "./boss";
 
 /**
  * Classifying a ticket, off the request that created it.
@@ -138,33 +140,6 @@ export interface ClassifyTicketJob {
 }
 
 /**
- * Which failures are worth another attempt.
- *
- * A `Record<AiFailure, boolean>` rather than a set or a list of cases, so that
- * adding a failure mode to `AI_FAILURE` is a compile error here until somebody
- * decides whether it is transient. Getting this wrong is expensive in both
- * directions: retrying a revoked key burns five calls to reach the same 401,
- * and giving up on a rate limit throws away a ticket over a hiccup.
- */
-const RETRYABLE: Record<AiFailure, boolean> = {
-  // The provider refused, or the network did. The whole reason this queue exists.
-  [AI_FAILURE.provider]: true,
-  // Rate-limited or overloaded. Clears on its own; that is what backoff is for.
-  [AI_FAILURE.busy]: true,
-  // A budget spent on reasoning, or an answer that was not the schema. Another
-  // roll of the dice is a real remedy for both.
-  [AI_FAILURE.empty]: true,
-  // Out of credit. Does not refill on a timer, and five retries per ticket
-  // across a morning's mail is a lot of calls to make into an empty account.
-  [AI_FAILURE.quota]: false,
-  // The key was rejected. It will be rejected identically in four minutes.
-  [AI_FAILURE.auth]: false,
-  // A bad model id or an unsupported parameter: a deployment bug that fails the
-  // same way forever. Retrying it only delays the log line somebody needs to see.
-  [AI_FAILURE.config]: false,
-};
-
-/**
  * Ask for this ticket to be classified.
  *
  * `db` takes a `fromPrisma(tx)` adapter so the enqueue can join the caller's
@@ -240,7 +215,7 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
 
   if (!result.ok) {
     // `classifyTicket` has already logged the cause with its stack.
-    if (RETRYABLE[result.reason]) {
+    if (isRetryable(result.reason)) {
       throw new Error(`classification failed (${result.reason})`);
     }
 
@@ -269,9 +244,22 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
   // Silent when the guard fired: an agent got there first, which is the system
   // working. Worth a line when it did write, because without one a classifier
   // that has quietly stopped working looks exactly like a quiet week.
-  if (written.count > 0) {
-    console.log(`[classify] ticket ${ticketId} filed as ${result.category}`);
-  }
+  if (written.count === 0) return;
+  console.log(`[classify] ticket ${ticketId} filed as ${result.category}`);
+
+  // Hand it to the auto-reply, which is the next stage of the pipeline
+  // `implementation-plan.md` Phase 6 describes: classify, then answer if the
+  // knowledge base covers it.
+  //
+  // Chained here rather than enqueued alongside this job from the webhook,
+  // because the category is one of the auto-reply's eligibility gates — a Refund
+  // ticket is never answered unattended — and a gate cannot read a column that
+  // has not been written yet. It also means the only tickets offered to the
+  // auto-reply are ones this job actually filed: a ticket an agent categorised
+  // by hand during the call took the `written.count === 0` branch above, and a
+  // person who is already looking at a ticket does not need a machine writing to
+  // their customer underneath them.
+  await enqueueAutoReply(ticketId);
 }
 
 /**
@@ -309,32 +297,6 @@ async function reconcile(): Promise<void> {
   for (const ticket of stale) {
     await enqueueClassification(ticket.id);
   }
-}
-
-/**
- * Create a queue, or bring an existing one up to date.
- *
- * `createQueue` is a no-op when the queue already exists — it does not reconcile
- * settings — and queues live in the database, not in this file. So on every
- * deployment after the first, editing `RETRY_LIMIT` above and restarting changes
- * nothing at all: the constant says one thing and the running queue does
- * another, silently and forever. That was not a hypothetical; it is exactly what
- * happened the first time these numbers were tuned, and the only symptom was a
- * retry ladder that did not match the source.
- *
- * `updateQueue` after `createQueue` makes this file the authority again. It
- * cannot carry `policy` or `partition` — pg-boss will not change those on a live
- * queue — so those stay create-only and changing one means deleting the queue.
- */
-async function ensureQueue(
-  boss: PgBoss,
-  name: string,
-  options: Omit<Queue, "name">,
-): Promise<void> {
-  await boss.createQueue(name, options);
-
-  const { policy: _policy, partition: _partition, ...updatable } = options;
-  await boss.updateQueue(name, updatable);
 }
 
 /** Queue settings shared by the live queue and its dead-letter twin. */

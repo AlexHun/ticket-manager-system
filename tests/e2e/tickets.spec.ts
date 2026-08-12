@@ -57,6 +57,11 @@ async function seedTickets(): Promise<void> {
         subject: "Newest ticket",
         customerEmail: "newest@example.com",
         customerName: "Newest Customer",
+        // Explicit, and deliberately not the column default. The status
+        // assertion below is a substring match, and "New" is a substring of both
+        // "Newest ticket" and "Newest Customer" — so a row left on the default
+        // would pass that assertion without rendering a badge at all.
+        status: TICKET_STATUS.Open,
         createdAt: new Date("2025-05-03T12:00:00.000Z"),
         lastMessageAt: new Date("2025-05-03T12:00:00.000Z"),
       },
@@ -73,9 +78,12 @@ async function seedTickets(): Promise<void> {
 }
 
 /**
- * Statuses seeded so that enum order (Open, Resolved, Closed) produces a
- * sequence that matches neither insertion order nor the default createdAt-desc
- * order — and differs from alphabetical, which would give Alpha, Bravo, Charlie.
+ * Statuses seeded so that enum order produces a sequence matching neither
+ * insertion order nor the default createdAt-desc order — and differing from
+ * alphabetical, which would give Alpha, Bravo, Charlie.
+ *
+ * The enum is New, Processing, Open, Resolved, Closed; these three sit in its
+ * back half, and their order relative to each other is what this checks.
  */
 async function seedForStatusSort(): Promise<void> {
   await testDb.ticket.createMany({
@@ -186,6 +194,11 @@ async function seedTicketWithThread(
       customerEmail: "threaded@example.com",
       customerName: "Threaded Customer",
       category: TICKET_CATEGORY.Technical,
+      // Explicit rather than the column default, which is now `New`. A ticket
+      // that already carries a support reply is past the untriaged state by
+      // definition, and "replying leaves the status alone" is only a meaningful
+      // assertion against a status somebody chose.
+      status: TICKET_STATUS.Open,
       assignedToId,
       createdAt: at("01"),
       lastMessageAt: at("03"),

@@ -28,9 +28,11 @@
     --color-viz-ord-2: var(--viz-ord-2);
     --color-viz-ord-3: var(--viz-ord-3);
     --color-viz-ord-4: var(--viz-ord-4);
+    --color-viz-new: var(--viz-new);
     --color-viz-open: var(--viz-open);
     --color-viz-resolved: var(--viz-resolved);
     --color-viz-closed: var(--viz-closed);
+    --color-viz-processing: var(--viz-processing);
     --color-viz-accent: var(--viz-accent);
     --color-viz-grid: var(--viz-grid);
     --color-viz-cursor: var(--viz-cursor);
@@ -125,13 +127,27 @@
     --viz-ord-3: var(--chart-3);
     --viz-ord-4: var(--chart-4);
 
-    /* "Open is loud, Closed recedes" is a statement about contrast, not about
+    /* "New is loud, Closed recedes" is a statement about contrast, not about
        darkness — on this surface the loudest step is the lightest one, which is
-       why Open takes the low chart index rather than the high one. Contrasts:
-       Open 7.02, Resolved 4.76, Closed 3.24. */
+       why the statuses that need work take the low chart indices rather than the
+       high ones. Contrasts: New 11.42, Open 7.02, Resolved 4.76, Closed 3.24,
+       Processing 2.28.
+
+       Every one of these but New and Processing is unchanged from when the
+       lifecycle had three states, so the dashboard someone knew still reads the
+       same. New takes the top of the ramp because an untriaged ticket is the
+       queue's actual work and has to win against a column of open ones.
+
+       Processing takes --chart-5, which is the step the ordinal ramp above
+       deliberately refuses to use for being near-invisible on this card. That is
+       the right call here rather than a compromise: it is a claim held by a
+       worker for a few seconds, it is almost always zero, and it is the one
+       status on this chart nobody can act on. */
+    --viz-new: var(--chart-1);
     --viz-open: var(--chart-2);
     --viz-resolved: var(--chart-3);
     --viz-closed: var(--chart-4);
+    --viz-processing: var(--chart-5);
 
     --viz-accent: var(--chart-3);
 

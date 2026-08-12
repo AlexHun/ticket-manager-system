@@ -7,14 +7,36 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 /**
- * Status is a progression, so it reads as emphasis: Open is solid and loud,
- * Resolved is a soft accent tint, Closed recedes to neutral. Scanning a page
- * of tickets, the ones still needing work are the ones that stand out.
+ * Status is a progression, so it reads as emphasis: New and Open are solid and
+ * loud, Resolved is a soft accent tint, Closed recedes to neutral. Scanning a
+ * page of tickets, the ones still needing work are the ones that stand out.
+ *
+ * New is the *only* one that takes a hue of its own rather than a tint, because
+ * it is the one an agent is looking for: an untriaged ticket is the queue's
+ * actual work, and it has to win against a screen of Open ones. Open keeps the
+ * solid `default` it always had.
+ *
+ * Processing is drawn even though the tickets list never shows one — the list
+ * filters that status out, deliberately, so an agent cannot answer a ticket a
+ * worker is already answering. It is still reachable on a detail page opened by
+ * deep link while the model is composing, and a blank badge there would be worse
+ * than a quiet one. Muted, because it is not anybody's work to pick up.
  */
 const STATUS_BADGE: Record<
   TicketStatus,
   { variant: "default" | "outline"; className?: string }
 > = {
+  [TICKET_STATUS.New]: {
+    variant: "outline",
+    className:
+      "border-transparent bg-sky-500/15 text-sky-800 dark:bg-sky-400/15 dark:text-sky-200",
+  },
+  [TICKET_STATUS.Processing]: {
+    variant: "outline",
+    // Same foreground/70-on-muted pairing as Closed, for the same contrast
+    // reason noted there.
+    className: "border-transparent bg-muted text-foreground/70",
+  },
   [TICKET_STATUS.Open]: { variant: "default" },
   [TICKET_STATUS.Resolved]: {
     variant: "outline",

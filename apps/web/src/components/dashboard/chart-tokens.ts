@@ -60,17 +60,32 @@ export const CHART_ANIMATION = { animationDuration: 200 } as const;
  * "fix" them to lowercase, the lookup is by exact key.
  */
 export const statusChartConfig = {
+  [TICKET_STATUS.New]: { label: "New", color: "var(--viz-new)" },
+  [TICKET_STATUS.Processing]: {
+    label: "Processing",
+    color: "var(--viz-processing)",
+  },
   [TICKET_STATUS.Open]: { label: "Open", color: "var(--viz-open)" },
   [TICKET_STATUS.Resolved]: { label: "Resolved", color: "var(--viz-resolved)" },
   [TICKET_STATUS.Closed]: { label: "Closed", color: "var(--viz-closed)" },
 } satisfies ChartConfig;
 
-/** Stack order, bottom to top. Closed at the bottom so Open — the status that
- *  needs work — sits at the top of the column where the eye lands. */
+/**
+ * Stack order, bottom to top. Settled at the bottom, so the statuses that need
+ * work sit at the top of the column where the eye lands — New highest of all,
+ * because it is the one an agent can do something about right now.
+ *
+ * Processing is in the stack even though it is nearly always zero. Leaving it
+ * out would be cheaper to draw and would make the column heights disagree with
+ * the total beside them, which is the kind of small lie a dashboard never
+ * recovers from.
+ */
 export const STATUS_STACK = [
   TICKET_STATUS.Closed,
   TICKET_STATUS.Resolved,
+  TICKET_STATUS.Processing,
   TICKET_STATUS.Open,
+  TICKET_STATUS.New,
 ] as const;
 
 /** One series, so one hue (see the --viz-accent note in index.css). */

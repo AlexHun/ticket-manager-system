@@ -1,4 +1,4 @@
-import { PgBoss } from "pg-boss";
+import { PgBoss, type Queue } from "pg-boss";
 
 /**
  * The job queue's lifecycle, and nothing about what runs on it.
@@ -109,6 +109,35 @@ export async function startBoss(): Promise<PgBoss> {
   console.log(`[jobs] pg-boss started (schema "${SCHEMA}")`);
 
   return instance;
+}
+
+/**
+ * Create a queue, or bring an existing one up to date.
+ *
+ * `createQueue` is a no-op when the queue already exists — it does not reconcile
+ * settings — and queues live in the database, not in a source file. So on every
+ * deployment after the first, editing a retry constant and restarting changes
+ * nothing at all: the constant says one thing and the running queue does another,
+ * silently and forever. That was not hypothetical; it is exactly what happened
+ * the first time the classifier's numbers were tuned, and the only symptom was a
+ * retry ladder that did not match the source.
+ *
+ * `updateQueue` after `createQueue` makes the source authoritative again. It
+ * cannot carry `policy` or `partition` — pg-boss will not change those on a live
+ * queue — so those stay create-only, and changing one means deleting the queue.
+ *
+ * Generic enough to live here: it takes the name as an argument, so this module
+ * still knows no queue by name.
+ */
+export async function ensureQueue(
+  boss: PgBoss,
+  name: string,
+  options: Omit<Queue, "name">,
+): Promise<void> {
+  await boss.createQueue(name, options);
+
+  const { policy: _policy, partition: _partition, ...updatable } = options;
+  await boss.updateQueue(name, updatable);
 }
 
 /** Stop polling, let in-flight work finish, and release the pool. */

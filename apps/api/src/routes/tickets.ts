@@ -14,6 +14,7 @@ import {
   CATEGORY_NONE,
   MESSAGE_DIRECTION,
   TICKET_SORT_FIELD,
+  TICKET_STATUS,
   type CreateTicketMessageResponse,
   type SortOrder,
   type TicketAssigneesResponse,
@@ -66,9 +67,21 @@ const ORDER_BY: Record<
  * when present. `category=none` and `assignedTo=none` are the two values that
  * can't be passed straight through — each maps to SQL NULL rather than to a
  * category or a user.
+ *
+ * One clause is not a filter at all and cannot be turned off: `Processing` is
+ * never returned. A ticket in that status is claimed by a worker composing a
+ * reply for it, and the reason it is hidden is that an agent who opens it and
+ * answers would send the customer a second reply written by somebody else. It
+ * lasts seconds. `CLIENT_TICKET_STATUS` keeps the value out of the filter schema
+ * too, so nobody can ask for the empty page this would otherwise produce.
  */
 function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
-  const where: Prisma.TicketWhereInput = {};
+  // In `AND`, deliberately. The free-text search below owns `where.OR` at this
+  // level, and expressing this as a second `OR` would replace it — the filter
+  // would silently stop narrowing and every search would return the whole table.
+  const where: Prisma.TicketWhereInput = {
+    AND: [{ status: { not: TICKET_STATUS.Processing } }],
+  };
 
   if (query.status) {
     where.status = query.status;
@@ -131,7 +144,9 @@ const ASSIGNEE_SELECT = { id: true, name: true, email: true } as const;
  * anything that reaches the client is one innerHTML away from running as the
  * signed-in agent. The plain-text part is what the UI renders. authorId is
  * absent too — nothing in the thread shows it, and `senderName`/`senderEmail`
- * already say who wrote a reply.
+ * already say who wrote a reply. `automated` is here for the opposite reason:
+ * the thread marks those, because "nobody wrote this" is exactly what an agent
+ * reading a reply needs told rather than left to infer.
  *
  * Shared by the thread on `GET /:id` and the single message `POST /:id/messages`
  * answers with, so the two can't come to disagree about the shape of the same
@@ -146,6 +161,7 @@ const MESSAGE_SELECT = {
   senderName: true,
   textBody: true,
   direction: true,
+  automated: true,
   createdAt: true,
 } as const;
 

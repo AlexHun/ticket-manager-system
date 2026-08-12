@@ -86,7 +86,7 @@ model Verification {
 model Ticket {
   id            Int             @id @default(autoincrement())
   subject       String
-  status        TicketStatus    @default(Open)
+  status        TicketStatus    @default(New)
   category      TicketCategory?
   // When the automatic classifier reached a *terminal* verdict on this ticket:
   // it filed a category, or it gave up. Not "when the category was last set" —
@@ -101,6 +101,20 @@ model Ticket {
   // lands in the dead-letter queue, which is what stops that sweep re-queueing
   // a ticket forever.
   classifiedAt  DateTime?
+  // When the knowledge-base auto-reply answered this ticket and resolved it.
+  //
+  // The classifier's `classifiedAt` records a verdict either way; this one only
+  // ever records success, because the failures already have somewhere to live:
+  // a declined ticket is moved to `Open`, which is a state an agent can see and
+  // act on, and there is nothing more to say about it.
+  //
+  // Two things read it. A customer replying to a ticket the machine resolved
+  // reopens it — that check is this column, and narrowing it that way is what
+  // keeps a human's own "Resolved" from being undone by a thank-you note. And it
+  // is the only durable record of how much of the queue answered itself, since
+  // the reply in the thread says who wrote it but not that the ticket closed
+  // because of it.
+  autoResolvedAt DateTime?
   customerEmail String
   customerName  String
   lastMessageAt DateTime        @default(now())
@@ -143,6 +157,14 @@ model Message {
   // a reply stays attributed after the FK has been cleared.
   authorId    String?
   author      User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  // Written by the knowledge-base auto-reply rather than by a person.
+  //
+  // Not derivable from `authorId`. That is null here, but it is also null on a
+  // reply whose author was deleted afterwards — and "nobody wrote this" and "the
+  // colleague who wrote this has left" are different facts an agent reading the
+  // thread needs told apart. Inbound messages are never automated: the flag
+  // describes who composed our side of the conversation.
+  automated   Boolean          @default(false)
   createdAt   DateTime         @default(now())
 
   @@index([ticketId, createdAt])
@@ -162,7 +184,18 @@ model Message {
   @@map("message")
 }
 
+/// Declaration order is sort order: Postgres orders an enum by the position of
+/// each label, and the tickets list sorts by this column. So these read as the
+/// lifecycle — New, Processing, Open, Resolved, Closed — and mirror
+/// `TICKET_STATUS` in `@ticket/shared` exactly.
+///
+/// Prisma appends a new label to the end of the type, so the two migrations that
+/// introduced New and Processing were hand-edited to `ADD VALUE ... BEFORE` in
+/// order to land them here. Adding another label means doing the same, or the
+/// list will silently sort it last whatever this file says.
 enum TicketStatus {
+  New
+  Processing
   Open
   Resolved
   Closed

@@ -1,10 +1,85 @@
+/**
+ * A ticket's lifecycle, in order:
+ *
+ *   New ──► Processing ──► Resolved         the knowledge base answered it
+ *    │           └───────► Open             it declined; a human's turn
+ *    └──────────────────► Open ──► Resolved ──► Closed
+ *
+ * The key order is the *declaration* order of the Postgres enum, which is how
+ * Postgres sorts it and therefore what "sort by status" means in the list. Keep
+ * the two in step: reordering here without a matching migration silently changes
+ * the order of a column nobody thought they were touching.
+ *
+ * `New` is where a ticket arrives and where it stays until something moves it.
+ * Only the auto-reply pipeline does that automatically, so a deployment with no
+ * AI key leaves every ticket here — which is the honest reading of "nobody has
+ * triaged this yet", and the reason the dashboard counts New as backlog
+ * alongside Open.
+ *
+ * `Processing` means a worker is composing a reply for this ticket right now.
+ * It is the one status the tickets list hides, so that an agent cannot open a
+ * ticket the model is about to answer and write a second reply to it. It lasts
+ * seconds, and nothing outside the job that set it may put a ticket into it —
+ * see `AGENT_SETTABLE_STATUS`.
+ */
 export const TICKET_STATUS = {
+  New: "New",
+  Processing: "Processing",
   Open: "Open",
   Resolved: "Resolved",
   Closed: "Closed",
 } as const;
 
 export type TicketStatus = (typeof TICKET_STATUS)[keyof typeof TICKET_STATUS];
+
+/**
+ * The statuses a client may *filter* by.
+ *
+ * Everything but `Processing`, because the list refuses to show those rows at
+ * all — offering a filter that is guaranteed to return nothing is worse than
+ * rejecting it, and rejecting it says why.
+ */
+export const CLIENT_TICKET_STATUS = [
+  TICKET_STATUS.New,
+  TICKET_STATUS.Open,
+  TICKET_STATUS.Resolved,
+  TICKET_STATUS.Closed,
+] as const;
+
+export type ClientTicketStatus = (typeof CLIENT_TICKET_STATUS)[number];
+
+/**
+ * The statuses a person may *set*.
+ *
+ * `Processing` is excluded because it is a claim held by a background worker: a
+ * person setting it by hand would hide a ticket from everyone else with nothing
+ * on its way to un-hide it. `New` is excluded because it is where a ticket
+ * begins and there is nothing to be gained from putting one back — an agent who
+ * wants to disown a ticket clears the assignee.
+ *
+ * Enforced server-side by `updateTicketStatusSchema`; the picker in the UI only
+ * offers these because the API only accepts these.
+ */
+export const AGENT_SETTABLE_STATUS = [
+  TICKET_STATUS.Open,
+  TICKET_STATUS.Resolved,
+  TICKET_STATUS.Closed,
+] as const;
+
+export type AgentSettableStatus = (typeof AGENT_SETTABLE_STATUS)[number];
+
+/**
+ * Statuses that mean "nobody has dealt with this yet".
+ *
+ * `New` and `Open` both count: before the two were split, every unhandled ticket
+ * was Open, and every backlog metric was written as `status = Open`. Leaving
+ * them that way would have made a deployment with no AI key report an empty
+ * queue while every ticket in it sat unread in `New`.
+ */
+export const BACKLOG_STATUS = [
+  TICKET_STATUS.New,
+  TICKET_STATUS.Open,
+] as const;
 
 export const TICKET_CATEGORY = {
   General: "General",
@@ -134,6 +209,15 @@ export interface Message {
    * deleted, so this is a credit line and never an ownership claim.
    */
   authorId: string | null;
+  /**
+   * This reply was written by the knowledge-base auto-reply, not by a person.
+   *
+   * Its own field rather than something inferred from `authorId`, which is null
+   * on an automated reply and *also* null on a reply whose author has since been
+   * deleted. Those two are not the same thing and an agent reading a thread has
+   * to be able to tell them apart, so the fact is recorded rather than guessed.
+   */
+  automated: boolean;
   createdAt: string;
 }
 

@@ -179,18 +179,24 @@ test.describe("Inbound-email webhook — ticket creation", () => {
     expect(ticket.subject).toBe("Cannot log in");
     expect(ticket.customerEmail).toBe("alice@example.com");
     expect(ticket.customerName).toBe("Alice");
-    expect(ticket.status).toBe(TICKET_STATUS.Open);
+    // `New`, not `Open`: a ticket arrives untriaged and only the auto-reply
+    // pipeline moves it off that status automatically. `.env.test` carries no
+    // OPENAI_API_KEY, so nothing does — which is exactly what an unconfigured
+    // deployment looks like, and `New` is the honest name for it.
+    expect(ticket.status).toBe(TICKET_STATUS.New);
     // A freshly ingested ticket is uncategorized and unassigned. Assignment is a
     // separate concern entirely; classification is a real one that has simply not
-    // happened yet, and both halves of that are load-bearing here. `.env.test`
-    // carries no OPENAI_API_KEY, so `enqueueClassification` queues nothing in
-    // this suite — and even against a deployment that has one it would still be
-    // null at this line, because the webhook only enqueues a job and a worker
-    // picks it up seconds later. If this ever fails, the webhook has started
-    // waiting for a model.
+    // happened yet, and both halves of that are load-bearing here. No key means
+    // `enqueueClassification` queues nothing in this suite — and even against a
+    // deployment that has one it would still be null at this line, because the
+    // webhook only enqueues a job and a worker picks it up seconds later. If this
+    // ever fails, the webhook has started waiting for a model.
     expect(ticket.category).toBeNull();
     expect(ticket.classifiedAt).toBeNull();
     expect(ticket.assignedToId).toBeNull();
+    // Nothing answered it either: the auto-reply runs off classification, which
+    // did not happen, so there is no automated reply and nothing was resolved.
+    expect(ticket.autoResolvedAt).toBeNull();
 
     expect(ticket.messages).toHaveLength(1);
     const message = ticket.messages[0]!;

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
+  AGENT_SETTABLE_STATUS,
   CATEGORY_NONE,
+  CLIENT_TICKET_STATUS,
   DASHBOARD_RANGE,
   DASHBOARD_SCOPE,
   DEFAULT_DASHBOARD_RANGE,
@@ -14,7 +16,6 @@ import {
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
   TICKET_SORT_FIELD,
-  TICKET_STATUS,
 } from "@ticket/shared";
 
 /**
@@ -40,8 +41,11 @@ export const ticketsQuerySchema = z.object({
   order: z
     .enum(SORT_ORDER, { error: "Invalid sort order" })
     .default(DEFAULT_TICKET_SORT.order),
+  // Every status except `Processing`, which the list refuses to return at all.
+  // Rejecting it is kinder than accepting it: a filter that always yields an
+  // empty page looks like a broken query, and this way the client is told.
   status: z
-    .enum(TICKET_STATUS, { error: "Invalid status filter" })
+    .enum(CLIENT_TICKET_STATUS, { error: "Invalid status filter" })
     .optional(),
   category: z
     .enum([...Object.values(TICKET_CATEGORY), CATEGORY_NONE], {
@@ -134,9 +138,15 @@ export type AssignTicketValues = z.infer<typeof assignTicketSchema>;
  * Not nullable, unlike the two fields beside it: the column is non-null with a
  * default, so every ticket is in one of these states and there is nothing to
  * clear it to.
+ *
+ * `AGENT_SETTABLE_STATUS` rather than the whole enum, and that narrowing is the
+ * enforcement rather than a convenience for the picker. `Processing` is a claim
+ * a background worker holds, and a request that could set it by hand could hide
+ * any ticket from every agent indefinitely — there is nothing to release it. The
+ * UI offering three options is downstream of this, not a substitute for it.
  */
 export const updateTicketStatusSchema = z.object({
-  status: z.enum(TICKET_STATUS, { error: "Invalid status" }),
+  status: z.enum(AGENT_SETTABLE_STATUS, { error: "Invalid status" }),
 });
 
 export type UpdateTicketStatusValues = z.infer<typeof updateTicketStatusSchema>;

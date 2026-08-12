@@ -50,6 +50,7 @@ function makeMessage(
     senderName: "Casey Customer",
     textBody: "Hello, I need help.",
     direction: MESSAGE_DIRECTION.inbound,
+    automated: false,
     createdAt: "2025-05-01T12:00:00.000Z",
     ...overrides,
   };

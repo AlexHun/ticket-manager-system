@@ -24,6 +24,8 @@ function summary(over: Partial<TicketStatsSummary> = {}): TicketStatsSummary {
     total: 100,
     previousTotal: 100,
     byStatus: {
+      [TICKET_STATUS.New]: 0,
+      [TICKET_STATUS.Processing]: 0,
       [TICKET_STATUS.Open]: 10,
       [TICKET_STATUS.Resolved]: 60,
       [TICKET_STATUS.Closed]: 30,
@@ -65,6 +67,9 @@ describe("openVerdict", () => {
         summary({
           total: 0,
           byStatus: {
+            [TICKET_STATUS.New]: 0,
+            [TICKET_STATUS.Processing]: 0,
+
             [TICKET_STATUS.Open]: 0,
             [TICKET_STATUS.Resolved]: 0,
             [TICKET_STATUS.Closed]: 0,
@@ -80,6 +85,9 @@ describe("openVerdict", () => {
       openVerdict(
         summary({
           byStatus: {
+            [TICKET_STATUS.New]: 0,
+            [TICKET_STATUS.Processing]: 0,
+
             [TICKET_STATUS.Open]: open,
             [TICKET_STATUS.Resolved]: 100 - open,
             [TICKET_STATUS.Closed]: 0,
@@ -95,6 +103,9 @@ describe("openVerdict", () => {
       openVerdict(
         summary({
           byStatus: {
+            [TICKET_STATUS.New]: 0,
+            [TICKET_STATUS.Processing]: 0,
+
             [TICKET_STATUS.Open]: open,
             [TICKET_STATUS.Resolved]: 100 - open,
             [TICKET_STATUS.Closed]: 0,
@@ -110,6 +121,9 @@ describe("openVerdict", () => {
    */
   test("judges by share, so the same count reads differently in a bigger slice", () => {
     const byStatus = {
+      [TICKET_STATUS.New]: 0,
+      [TICKET_STATUS.Processing]: 0,
+
       [TICKET_STATUS.Open]: 25,
       [TICKET_STATUS.Resolved]: 5,
       [TICKET_STATUS.Closed]: 0,

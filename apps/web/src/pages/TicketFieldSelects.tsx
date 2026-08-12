@@ -1,7 +1,7 @@
 import { Loader2 } from "lucide-react";
 import {
+  AGENT_SETTABLE_STATUS,
   TICKET_CATEGORY,
-  TICKET_STATUS,
   type TicketCategory,
   type TicketStatus,
   type TicketWithAssignee,
@@ -39,16 +39,40 @@ interface FieldOption<T extends string> {
   value: T;
   /** Shown both in the row and, once chosen, in the trigger. */
   label: string;
+  /** Rendered so the trigger has a label, but not selectable. */
+  disabled?: boolean;
 }
 
 /**
  * Plain labels, not badges. The coloured badge for this value is already in the
  * page header — this is the control that changes it, and a control that looks
  * unlike every other select on the page is a worse control for being prettier.
+ *
+ * `AGENT_SETTABLE_STATUS`, not every status, because the API only accepts these
+ * three: `New` is where a ticket begins and there is nothing to put one back
+ * for, and `Processing` is a claim a background worker holds — a person able to
+ * set it could hide any ticket from every agent with nothing scheduled to
+ * release it. A ticket *currently* in one of those two is handled by
+ * `statusOptions` below.
  */
-const STATUS_OPTIONS: FieldOption<TicketStatus>[] = Object.values(
-  TICKET_STATUS,
-).map((status) => ({ value: status, label: status }));
+const STATUS_OPTIONS: FieldOption<TicketStatus>[] = AGENT_SETTABLE_STATUS.map(
+  (status) => ({ value: status, label: status }),
+);
+
+/**
+ * The three settable statuses, plus the ticket's own if it is not one of them.
+ *
+ * Radix draws an **empty trigger** for a value it has no item for, so a New or
+ * Processing ticket would show a blank status control — the same trap the
+ * assignee filter documents. The extra row is disabled: it exists to give the
+ * trigger a label and to say what the ticket is, not to be chosen.
+ */
+function statusOptions(current: TicketStatus): FieldOption<TicketStatus>[] {
+  const settable = AGENT_SETTABLE_STATUS.some((status) => status === current);
+  return settable
+    ? STATUS_OPTIONS
+    : [{ value: current, label: current, disabled: true }, ...STATUS_OPTIONS];
+}
 
 /**
  * "Uncategorised" leads, as "Unassigned" does in the assignee picker: it is the
@@ -88,7 +112,7 @@ export function TicketStatusSelect({ ticket }: { ticket: TicketWithAssignee }) {
       // than w-full because the saving spinner shares the row with it.
       className="w-44 lg:flex-1"
       value={value}
-      options={STATUS_OPTIONS}
+      options={statusOptions(value)}
       pending={mutation.isPending}
       error={mutation.error}
       savingLabel="Saving status"
@@ -188,7 +212,11 @@ function FieldSelect<T extends string>({
           </SelectTrigger>
           <SelectContent>
             {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                disabled={option.disabled}
+              >
                 {option.label}
               </SelectItem>
             ))}

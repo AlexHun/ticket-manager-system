@@ -1,10 +1,12 @@
 import { useLayoutEffect, useRef } from "react";
+import { Sparkles } from "lucide-react";
 import {
   MESSAGE_DIRECTION,
   type MessageDirection,
   type ThreadMessage,
 } from "@ticket/shared";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { initialsOf } from "@/lib/initials";
 import { cn } from "@/lib/utils";
@@ -175,6 +177,17 @@ export function TicketMessageThread({
                     <span className="text-sm font-medium">
                       {message.senderName}
                     </span>
+                    {/* Said out loud rather than left to the sender name, which
+                        a real deployment will rename. This reply was written
+                        from the knowledge base with nobody reading it first, and
+                        an agent picking up the thread has to know that before
+                        they treat it as a colleague's work. */}
+                    {message.automated && (
+                      <Badge variant="outline" className="gap-1 px-1.5 py-0">
+                        <Sparkles aria-hidden="true" className="size-3" />
+                        Automated
+                      </Badge>
+                    )}
                     <span className="text-xs break-all text-muted-foreground">
                       {message.senderEmail}
                     </span>

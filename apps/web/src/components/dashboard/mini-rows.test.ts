@@ -15,6 +15,8 @@ import { AGE_LABEL, ORDINAL_FILL, UNCATEGORISED_LABEL } from "./chart-tokens";
 function counts(over: Partial<WorkloadCounts> = {}): WorkloadCounts {
   return {
     total: 0,
+    [TICKET_STATUS.New]: 0,
+    [TICKET_STATUS.Processing]: 0,
     [TICKET_STATUS.Open]: 0,
     [TICKET_STATUS.Resolved]: 0,
     [TICKET_STATUS.Closed]: 0,

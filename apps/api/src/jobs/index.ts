@@ -1,3 +1,4 @@
+import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
 
@@ -18,6 +19,7 @@ import { registerClassifyTicket } from "./classify-ticket";
 export async function startJobs(): Promise<void> {
   const boss = await startBoss();
   await registerClassifyTicket(boss);
+  await registerAutoReplyTicket(boss);
 }
 
 export { stopBoss as stopJobs };

@@ -45,6 +45,10 @@ function stats(over: Partial<TicketStatsResponse> = {}): TicketStatsResponse {
       total: 51,
       previousTotal: 47,
       byStatus: {
+        [TICKET_STATUS.New]: 0,
+
+        [TICKET_STATUS.Processing]: 0,
+
         [TICKET_STATUS.Open]: 24,
         [TICKET_STATUS.Resolved]: 26,
         [TICKET_STATUS.Closed]: 1,
@@ -55,6 +59,10 @@ function stats(over: Partial<TicketStatsResponse> = {}): TicketStatsResponse {
     volume: [
       {
         bucketStart: "2026-07-08",
+        [TICKET_STATUS.New]: 0,
+
+        [TICKET_STATUS.Processing]: 0,
+
         [TICKET_STATUS.Open]: 2,
         [TICKET_STATUS.Resolved]: 1,
         [TICKET_STATUS.Closed]: 0,
@@ -91,6 +99,10 @@ function stats(over: Partial<TicketStatsResponse> = {}): TicketStatsResponse {
         id: "u_1",
         name: "Admin",
         total: 18,
+        [TICKET_STATUS.New]: 0,
+
+        [TICKET_STATUS.Processing]: 0,
+
         [TICKET_STATUS.Open]: 6,
         [TICKET_STATUS.Resolved]: 12,
         [TICKET_STATUS.Closed]: 0,
@@ -98,6 +110,10 @@ function stats(over: Partial<TicketStatsResponse> = {}): TicketStatsResponse {
     ],
     unassigned: {
       total: 16,
+      [TICKET_STATUS.New]: 0,
+
+      [TICKET_STATUS.Processing]: 0,
+
       [TICKET_STATUS.Open]: 13,
       [TICKET_STATUS.Resolved]: 3,
       [TICKET_STATUS.Closed]: 0,
@@ -185,6 +201,10 @@ describe("DashboardPage", () => {
           total: 100,
           previousTotal: 90,
           byStatus: {
+            [TICKET_STATUS.New]: 0,
+
+            [TICKET_STATUS.Processing]: 0,
+
             [TICKET_STATUS.Open]: 5,
             [TICKET_STATUS.Resolved]: 90,
             [TICKET_STATUS.Closed]: 5,
@@ -271,6 +291,10 @@ describe("DashboardPage", () => {
           total: 0,
           previousTotal: 0,
           byStatus: {
+            [TICKET_STATUS.New]: 0,
+
+            [TICKET_STATUS.Processing]: 0,
+
             [TICKET_STATUS.Open]: 0,
             [TICKET_STATUS.Resolved]: 0,
             [TICKET_STATUS.Closed]: 0,
@@ -283,6 +307,10 @@ describe("DashboardPage", () => {
         workload: [],
         unassigned: {
           total: 0,
+          [TICKET_STATUS.New]: 0,
+
+          [TICKET_STATUS.Processing]: 0,
+
           [TICKET_STATUS.Open]: 0,
           [TICKET_STATUS.Resolved]: 0,
           [TICKET_STATUS.Closed]: 0,

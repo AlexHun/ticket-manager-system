@@ -1,5 +1,5 @@
 import {
-  TICKET_STATUS,
+  BACKLOG_STATUS,
   type FirstResponseStats,
   type TicketStatsSummary,
 } from "@ticket/shared";
@@ -45,7 +45,14 @@ export interface KpiVerdict {
  * because "nobody owns it" is the actionable part of "it is open".
  */
 export function openVerdict(summary: TicketStatsSummary): KpiVerdict | null {
-  const open = summary.byStatus[TICKET_STATUS.Open];
+  // New counts as backlog, and this is the line where forgetting that would do
+  // the most damage: on a deployment with no AI key every ticket sits in New,
+  // and a verdict scoped to Open alone would report a healthy queue in front of
+  // an untouched inbox. `Processing` is excluded — a worker is on it.
+  const open = BACKLOG_STATUS.reduce(
+    (sum, status) => sum + summary.byStatus[status],
+    0,
+  );
   if (summary.total === 0 || open === 0) return null;
   const share = open / summary.total;
 

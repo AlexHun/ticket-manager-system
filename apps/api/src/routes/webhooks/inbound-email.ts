@@ -4,6 +4,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { z, ZodType } from "zod";
 import { fromPrisma } from "pg-boss";
 import { inboundEmailSchema } from "@ticket/core";
+import { TICKET_STATUS } from "@ticket/shared";
 import { prisma } from "../../db";
 import { enqueueClassification } from "../../jobs/classify-ticket";
 
@@ -132,6 +133,25 @@ inboundEmailRouter.post("/", async (req: Request, res: Response) => {
       prisma.ticket.update({
         where: { id: ticketId },
         data: { lastMessageAt: new Date() },
+      }),
+      // A customer writing back to a ticket the *machine* resolved reopens it.
+      //
+      // Without this the auto-reply has a hole rather than a feature: a
+      // knowledge-base answer that missed the point leaves the customer replying
+      // "that didn't help" into a ticket marked Resolved, which no agent
+      // filtering for open work will ever see. A resolve that swallows the
+      // follow-up is not a resolve.
+      //
+      // Narrowed to `autoResolvedAt` on purpose, and that is why the column
+      // exists. A human who resolves a ticket has judged it finished and is
+      // usually right; undoing that on every "thanks, that worked!" would reopen
+      // half the queue. Nobody made that judgement here.
+      //
+      // `updateMany` because the `where` is doing the work — a plain `update`
+      // addresses by id and would reopen tickets a person had settled.
+      prisma.ticket.updateMany({
+        where: { id: ticketId, autoResolvedAt: { not: null } },
+        data: { status: TICKET_STATUS.Open, autoResolvedAt: null },
       }),
     ]);
     res.status(201).json({ ticketId, threaded: true });

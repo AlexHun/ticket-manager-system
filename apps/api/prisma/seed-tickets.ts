@@ -199,6 +199,16 @@ const DAY = 24 * HOUR;
  * answers instead of near-identical ones.
  */
 function statusFor(daysAgo: number, index: number): TicketStatus {
+  // The freshest tickets skew New: it is where every ticket now arrives, and a
+  // demo database with none of them would show a queue nobody has to triage.
+  //
+  // `Processing` is deliberately never seeded. It is a claim held by a worker
+  // for a few seconds, and the tickets list refuses to return one — so a seeded
+  // Processing ticket would be a row in the database that no page can show and
+  // nothing will ever release.
+  if (daysAgo < 7) {
+    return index % 3 === 0 ? TICKET_STATUS.Open : TICKET_STATUS.New;
+  }
   if (daysAgo < 45) {
     return index % 5 === 0 ? TICKET_STATUS.Resolved : TICKET_STATUS.Open;
   }

@@ -1,6 +1,6 @@
 import {
   AGE_BUCKET,
-  TICKET_STATUS,
+  BACKLOG_STATUS,
   type AgentWorkload,
   type BacklogAgeStats,
   type TicketCategoryCount,
@@ -56,20 +56,27 @@ export function workloadRows(
   const rows: MiniBarRow[] = workload.map((agent) => ({
     label: agent.name,
     value: agent.total,
-    note: agent[TICKET_STATUS.Open] > 0 ? `${agent[TICKET_STATUS.Open]} open` : undefined,
+    note: openNote(agent),
   }));
 
   if (unassigned.total > 0) {
     rows.push({
       label: UNASSIGNED_LABEL,
       value: unassigned.total,
-      note:
-        unassigned[TICKET_STATUS.Open] > 0
-          ? `${unassigned[TICKET_STATUS.Open]} open`
-          : undefined,
+      note: openNote(unassigned),
     });
   }
   return rows;
+}
+
+/**
+ * "N open" — how much of a pile still needs somebody, which counts New as well
+ * as Open. Still worded "open" rather than "unsettled": the number answers "how
+ * much is left", and nobody reads a workload row looking for a status name.
+ */
+function openNote(counts: WorkloadCounts): string | undefined {
+  const open = BACKLOG_STATUS.reduce((sum, status) => sum + counts[status], 0);
+  return open > 0 ? `${open} open` : undefined;
 }
 
 const AGE_ORDER = [
