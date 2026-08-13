@@ -36,10 +36,43 @@ import * as Sentry from "@sentry/react";
  */
 const dsn = import.meta.env.VITE_SENTRY_DSN;
 
+/**
+ * Which deployment an event came from — the field Sentry's environment filter
+ * reads, and the reason a developer's console noise and a real customer's broken
+ * page are two lists rather than one.
+ *
+ * The default is Vite's `MODE`, which is already right for the two cases that
+ * matter: `development` under `vite dev`, `production` from `vite build`. What
+ * it cannot express is anything *else* built in production mode, and there are
+ * two of those — `vite preview` on a developer's machine, and a staging deploy —
+ * both of which would otherwise file their errors under `production` and be
+ * indistinguishable from the real thing. Hence the override.
+ *
+ * It is read at build time like every other `VITE_` value, so it belongs in the
+ * build's environment (`VITE_SENTRY_ENVIRONMENT=staging bun run build`) or in a
+ * mode-specific `.env.staging` — **not** in `.env`, which Vite loads in every
+ * mode and which would therefore relabel production too.
+ */
+const environment = import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE;
+
 if (dsn) {
   Sentry.init({
     dsn,
-    environment: import.meta.env.MODE,
+    environment,
+
+    /**
+     * The other half of "which build was this?": `web@<version>+<commit>`, put
+     * into the environment by `releaseName()` in `vite.config.ts` — nobody sets
+     * this by hand except CI. Filtering by environment says whether an error is
+     * real; filtering by release says whether the deploy meant to fix it did.
+     *
+     * No source maps are uploaded, so Sentry will not resolve minified frames
+     * back to source for this release — the release name is still what points at
+     * the commit to read them in. Uploading them is a separate decision with its
+     * own tradeoff: they would make production stack traces legible, and they
+     * would put this app's source in a third party's hands.
+     */
+    release: import.meta.env.VITE_SENTRY_RELEASE,
 
     dataCollection: {
       userInfo: false,

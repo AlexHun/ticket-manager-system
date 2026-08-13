@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { visualizer } from "rollup-plugin-visualizer";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { devToolsPlugin } from "./dev/plugin";
 
 /**
@@ -88,6 +90,59 @@ function sentryOriginFrom(dsn: string): string {
 }
 
 /**
+ * A git command, or an empty string if git cannot answer.
+ *
+ * Every caller must tolerate the empty string: a deployment built from a
+ * tarball, a Docker context without `.git`, or a machine with no git installed
+ * are all normal, and none of them is a reason to fail a build. `stdio` silences
+ * git's own stderr so those cases don't print an alarming line during a build
+ * that is going to succeed anyway.
+ */
+function git(...args: string[]): string {
+  try {
+    return execFileSync("git", args, {
+      cwd: __dirname,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The release name reported to Sentry — the "version" half of narrowing an issue
+ * down to the code that produced it, with `environment` as the other half.
+ *
+ * Format is Sentry's own convention, `project@version`, so their UI groups and
+ * sorts these the way it expects to. The package version alone would be useless
+ * here — this is a private workspace pinned at `0.0.0` and nobody bumps it — so
+ * the commit is what actually identifies the build, and the version is kept in
+ * front of it for the day that changes.
+ *
+ * `-dirty` is not decoration. A release name is a claim that these errors came
+ * from that commit, and a build made over uncommitted edits is a different
+ * program wearing the same sha; without the marker, the one build you cannot
+ * reproduce is the one that looks most trustworthy. Untracked files are excluded
+ * — `.env` and `.vite/` are always there and say nothing about the code.
+ */
+function releaseName(): string {
+  const { version } = JSON.parse(
+    readFileSync(path.resolve(__dirname, "package.json"), "utf8"),
+  ) as { version: string };
+
+  const commit = git("rev-parse", "--short", "HEAD");
+  if (!commit) return `web@${version}`;
+
+  // No pathspec, so this is the whole repo rather than this workspace — right,
+  // because `packages/core` and `packages/shared` end up in this bundle too.
+  const dirty = git("status", "--porcelain", "--untracked-files=no")
+    ? "-dirty"
+    : "";
+  return `web@${version}+${commit}${dirty}`;
+}
+
+/**
  * Ships the CSP inside the document.
  *
  * A meta tag rather than a response header because nothing in this repo serves
@@ -131,6 +186,29 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname);
   const apiOrigin = apiOriginFrom(env.VITE_API_URL ?? "");
   const sentryOrigin = sentryOriginFrom(env.VITE_SENTRY_DSN ?? "");
+
+  // The commit is not an environment variable anybody sets — it has to be asked
+  // of git at the moment the bundle is produced, which is here. It reaches the
+  // app by being written into the environment Vite is about to read: `loadEnv`
+  // runs after this function and takes `VITE_*` keys from `process.env`, so this
+  // arrives as an ordinary `import.meta.env` value.
+  //
+  // **Not `define`.** That is the documented tool for exactly this and it does
+  // not work in dev: `vite:define` returns early for client code whenever the
+  // command isn't `build` (node_modules/vite/dist/node/chunks/dep-Dq2t6Dq0.js,
+  // the `consumer === "client" && !isBuild` guard), and nothing injects the
+  // global the docs promise in its place. A `define`d constant therefore builds
+  // fine and throws `ReferenceError` the moment you run `bun run dev` — measured
+  // here, not guessed. `import.meta.env` is the one channel that behaves the same
+  // in dev, in a build and under Vitest.
+  //
+  // Only when nothing supplied one already: an exported `VITE_SENTRY_RELEASE` or
+  // one in a `.env` file is a deliberate override (a CI tag, a build number) and
+  // is left alone. `env` above holds both, which is why the check reads it rather
+  // than `process.env`.
+  if (!env.VITE_SENTRY_RELEASE) {
+    process.env.VITE_SENTRY_RELEASE = releaseName();
+  }
 
   return {
     plugins: [
