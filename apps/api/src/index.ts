@@ -14,6 +14,7 @@ import { prisma } from "./db";
 import { auth, trustedOrigins } from "./auth";
 import { startJobs, stopJobs } from "./jobs";
 import { aiRouter } from "./routes/ai";
+import { knowledgeRouter } from "./routes/knowledge";
 import { ticketsRouter } from "./routes/tickets";
 import { usersRouter } from "./routes/users";
 import { inboundEmailRouter } from "./routes/webhooks/inbound-email";
@@ -89,6 +90,10 @@ app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
 app.use("/api/tickets", ticketsRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/ai", aiRouter);
+// Admin-only on every route inside it, which is worth knowing here as well as
+// there: this one edits the prompt of the feature that writes to customers
+// unattended.
+app.use("/api/knowledge-articles", knowledgeRouter);
 
 // After every route, which is the only place it works: it is an Express error
 // middleware, and it can only see what routes registered before it throw.
