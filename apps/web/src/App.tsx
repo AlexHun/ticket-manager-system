@@ -34,6 +34,9 @@ const TicketDetailPage = lazy(() =>
 const UsersPage = lazy(() =>
   import("@/pages/UsersPage").then((m) => ({ default: m.UsersPage })),
 );
+const KnowledgePage = lazy(() =>
+  import("@/pages/KnowledgePage").then((m) => ({ default: m.KnowledgePage })),
+);
 
 /**
  * The dev tools, at `/__dev` — the project map and the test runner.
@@ -70,6 +73,12 @@ export function App() {
                 down and rebuilding the sidebar on every visit. */}
             <Route element={<AdminRoute />}>
               <Route path="/users" element={<UsersPage />} />
+              {/* The knowledge base is admin-only for a stronger reason than
+                  the user list is: editing an article writes into the system
+                  prompt of the feature that answers customers unattended. This
+                  guard is UX — `requireAdmin` on every route in
+                  `apps/api/src/routes/knowledge.ts` is the control. */}
+              <Route path="/knowledge" element={<KnowledgePage />} />
             </Route>
             {/* Inside the shell, so an unknown address keeps the sidebar and
                 says so rather than redirecting to the dashboard and pretending

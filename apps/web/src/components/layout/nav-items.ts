@@ -1,4 +1,5 @@
 import {
+  BookTextIcon,
   FlaskConicalIcon,
   LayoutDashboardIcon,
   NetworkIcon,
@@ -28,6 +29,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboardIcon, end: true },
   { to: "/tickets", label: "Tickets", icon: TicketIcon },
   { to: "/users", label: "Users", icon: UsersIcon, role: USER_ROLE.admin },
+  {
+    to: "/knowledge",
+    label: "Knowledge base",
+    icon: BookTextIcon,
+    role: USER_ROLE.admin,
+  },
 ] as const;
 
 /**
