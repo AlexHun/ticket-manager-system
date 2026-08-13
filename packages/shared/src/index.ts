@@ -123,6 +123,16 @@ export const TICKET_SORT_FIELD = {
   category: "category",
   /** Sorts by the assignee's *name*, not the id — the id is a cuid and orders by nothing a reader can see. */
   assignedTo: "assignedTo",
+  /**
+   * When anything last happened on the thread, in either direction.
+   *
+   * This is the column a support queue is actually about: `createdAt` says when
+   * a ticket arrived and never changes again, so a customer who replies to a
+   * three-week-old ticket stays three weeks down the list under it. Ascending
+   * is "longest silence first", which is the order the dashboard's
+   * needs-attention panel already uses.
+   */
+  lastMessageAt: "lastMessageAt",
   createdAt: "createdAt",
 } as const;
 
@@ -136,9 +146,23 @@ export const SORT_ORDER = {
 
 export type SortOrder = (typeof SORT_ORDER)[keyof typeof SORT_ORDER];
 
-/** What the API sorts by when the request carries no sort params. */
+/**
+ * What the API sorts by when the request carries no sort params.
+ *
+ * Most recent activity first, not most recently created. The two agree on a
+ * quiet queue and diverge exactly when it matters: a customer replying to an
+ * old ticket moves it to the top here, where sorting by `createdAt` left it
+ * buried under three weeks of newer arrivals and no column on the page showed
+ * that anything had happened.
+ *
+ * Descending rather than ascending, deliberately. "Longest silence first" is
+ * the more pointed question, but it is only meaningful for tickets still in
+ * play — as a *default*, over a list that includes Resolved and Closed, it
+ * would head the page with the deadest threads in the database. It is one
+ * click away instead: sort by the same column ascending, with a status filter.
+ */
 export const DEFAULT_TICKET_SORT = {
-  field: TICKET_SORT_FIELD.createdAt,
+  field: TICKET_SORT_FIELD.lastMessageAt,
   order: SORT_ORDER.desc,
 } as const;
 

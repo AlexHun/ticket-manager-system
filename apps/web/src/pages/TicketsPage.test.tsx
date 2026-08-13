@@ -268,14 +268,14 @@ describe("TicketsPage", () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
-  test("requests the default newest-first sort on mount", async () => {
+  test("requests the default most-recent-activity sort on mount", async () => {
     mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
 
     expect(sortParamsOfCall(0)).toEqual({
-      sort: TICKET_SORT_FIELD.createdAt,
+      sort: TICKET_SORT_FIELD.lastMessageAt,
       order: SORT_ORDER.desc,
       page: FIRST_PAGE,
       pageSize: DEFAULT_PAGE_SIZE,
@@ -382,6 +382,7 @@ describe("TicketsPage", () => {
       "Customer",
       "Status",
       "Category",
+      "Activity",
       "Created",
     ]) {
       expect(
@@ -459,12 +460,13 @@ describe("TicketsPage sorting", () => {
   test("clicking the active column flips its direction", async () => {
     const user = await renderLoaded();
 
-    // Created starts descending, so the first click flips it to ascending.
-    await user.click(screen.getByRole("button", { name: "Created" }));
+    // Activity is the default sort and starts descending, so the first click
+    // flips it to ascending — which is "longest silence first".
+    await user.click(screen.getByRole("button", { name: "Activity" }));
 
     await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1)).toEqual({
-      sort: TICKET_SORT_FIELD.createdAt,
+      sort: TICKET_SORT_FIELD.lastMessageAt,
       order: SORT_ORDER.asc,
       page: FIRST_PAGE,
       pageSize: DEFAULT_PAGE_SIZE,
@@ -496,14 +498,14 @@ describe("TicketsPage sorting", () => {
   test("marks the sorted column with aria-sort and leaves the rest neutral", async () => {
     const user = await renderLoaded();
 
-    expect(sortIndicator("Created")).toBe("descending");
+    expect(sortIndicator("Activity")).toBe("descending");
     expect(sortIndicator("Subject")).toBe("none");
     expect(sortIndicator("Status")).toBe("none");
 
     await user.click(screen.getByRole("button", { name: "Subject" }));
 
     await waitFor(() => expect(sortIndicator("Subject")).toBe("ascending"));
-    expect(sortIndicator("Created")).toBe("none");
+    expect(sortIndicator("Activity")).toBe("none");
   });
 
   test("renders the server's order without re-sorting it client-side", async () => {
@@ -906,7 +908,7 @@ describe("TicketsPage URL state", () => {
     // A stale or hand-edited link must not throw away the params beside the
     // bad ones — pageSize survives while the three invalid values default.
     expect(sortParamsOfCall(0)).toEqual({
-      sort: TICKET_SORT_FIELD.createdAt,
+      sort: TICKET_SORT_FIELD.lastMessageAt,
       order: SORT_ORDER.desc,
       page: FIRST_PAGE,
       pageSize: 10,

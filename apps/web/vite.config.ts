@@ -291,6 +291,16 @@ export default defineConfig(({ mode }) => {
       environment: "jsdom",
       setupFiles: ["./src/test/setup.ts"],
       css: false,
+      // Vitest's default is 5s, and the heaviest specs here sit just under it:
+      // a test that opens two Radix Selects and clicks through the results is
+      // several seconds of jsdom on its own, before any parallel load. That put
+      // the tickets-list specs in the position where an ordinary change — one
+      // more column, one more control in the filter bar — tipped passing tests
+      // into timeouts that looked like logic failures and were not.
+      //
+      // 15s is chosen to absorb that variance while still failing fast on a
+      // genuine hang; nothing here legitimately takes more than a few seconds.
+      testTimeout: 15_000,
     },
   };
 });

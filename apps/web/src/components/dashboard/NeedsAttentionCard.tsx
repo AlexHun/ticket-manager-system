@@ -17,6 +17,11 @@ import { formatSince } from "@/lib/format";
  * is a link into the ticket, so the dashboard can be acted on instead of only
  * read. `waitingOnUs` comes from the direction of the newest message — the
  * customer had the last word, or nobody has said anything at all.
+ *
+ * It is also the one panel the date range does not touch (see `mineWhere` in
+ * `ticket-stats.ts`), which the description has to say out loud: every other
+ * card on the screen answers for the selected range, and a card that quietly
+ * answered for a different span would be read as though it did too.
  */
 export function NeedsAttentionCard({
   tickets,
@@ -30,7 +35,7 @@ export function NeedsAttentionCard({
       <CardHeader>
         <CardTitle>Needs attention</CardTitle>
         <CardDescription>
-          Open tickets with the longest silence
+          Open tickets with the longest silence · any date
         </CardDescription>
       </CardHeader>
       <CardContent>

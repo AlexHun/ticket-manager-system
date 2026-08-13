@@ -1,10 +1,11 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AdminRoute } from "@/components/AdminRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { RouteFallback } from "@/components/RouteFallback";
 import { LoginPage } from "@/pages/LoginPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 
 /**
  * Every page but the login screen is loaded on demand.
@@ -70,6 +71,12 @@ export function App() {
             <Route element={<AdminRoute />}>
               <Route path="/users" element={<UsersPage />} />
             </Route>
+            {/* Inside the shell, so an unknown address keeps the sidebar and
+                says so rather than redirecting to the dashboard and pretending
+                the link worked. `Routes` scores matches by specificity rather
+                than order, so the `/__dev/*` route below still wins over this
+                splat for its own paths. */}
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>
         {/* Outside ProtectedRoute deliberately: the project map reads the source
@@ -77,7 +84,6 @@ export function App() {
             API or the database is down — see the note in dev/DevRoutes.tsx.
             `null` in production, and Routes ignores a non-element child. */}
         {DevRoutes && <Route path="/__dev/*" element={<DevRoutes />} />}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );

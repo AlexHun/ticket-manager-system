@@ -46,7 +46,27 @@ export function LoginPage() {
     const { error } = await signIn.email(values);
 
     if (error) {
-      setServerError(error.message ?? "Invalid email or password");
+      // Better Auth reports the transport failure and the rejected credential
+      // through the same channel, and they need different words. A network
+      // failure arrives with no status at all; a server fault arrives as 5xx.
+      // Neither says anything about what was typed, and answering both with
+      // "Invalid email or password" sends someone off to reset a password that
+      // was never the problem — which is exactly what happened here when the
+      // API was down and sign-in returned 500.
+      // Only when the status positively says so. A missing status is absence of
+      // evidence, not evidence of a transport failure, and defaulting it to
+      // "unreachable" would answer a plain rejected credential — which is what
+      // Better Auth returns with no status in some paths — by blaming the
+      // network.
+      const status = error.status;
+      const unreachable =
+        typeof status === "number" && (status === 0 || status >= 500);
+
+      setServerError(
+        unreachable
+          ? "Can't reach the ticket manager. Check your connection, or try again in a moment."
+          : (error.message ?? "Invalid email or password"),
+      );
       return;
     }
 

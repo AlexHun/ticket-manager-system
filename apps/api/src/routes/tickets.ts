@@ -59,6 +59,10 @@ const ORDER_BY: Record<
   [TICKET_SORT_FIELD.assignedTo]: (order) => ({
     assignedTo: { name: order },
   }),
+  // Backed by the `@@index([lastMessageAt])` already on the model, which was
+  // added for the customer panels rather than for this — but it is the same
+  // column and the same ordering, so the list's default sort costs no new index.
+  [TICKET_SORT_FIELD.lastMessageAt]: (order) => ({ lastMessageAt: order }),
   [TICKET_SORT_FIELD.createdAt]: (order) => ({ createdAt: order }),
 };
 

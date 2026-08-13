@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, UserPlus } from "lucide-react";
 import type { TicketAssignee, TicketWithAssignee } from "@ticket/shared";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -9,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSession } from "@/lib/auth-client";
 import { extractErrorMessage } from "@/lib/errors";
 import { ticketAssigneesKey } from "@/lib/ticket-queries";
 import { useAssigneesQuery } from "@/lib/use-assignees";
@@ -28,6 +30,7 @@ const UNASSIGNED_LABEL = "Unassigned";
 
 export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee }) {
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
   const {
     data: assignees,
     isPending: rosterLoading,
@@ -74,6 +77,11 @@ export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee })
 
   const selected = options.find((a) => a.id === selectedId) ?? null;
 
+  // `selectedId` rather than `ticket.assignedToId`, so the button disappears the
+  // moment it is clicked rather than after the round trip it started.
+  const myId = session?.user.id;
+  const canTakeIt = Boolean(myId) && selectedId !== myId;
+
   const handleChange = (value: string) => {
     const next = value === UNASSIGNED ? null : value;
     if (next === ticket.assignedToId) return; // picking the current value again
@@ -112,6 +120,30 @@ export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee })
           </span>
         )}
       </div>
+
+      {/* The one assignment an agent makes constantly, off the roster's critical
+          path. Picking yourself out of the select means waiting for the user
+          list and then finding your own name in it; the session already knows
+          who you are, so this needs neither.
+
+          Hidden once the ticket is already yours rather than disabled — there
+          is nothing to explain, and a permanently greyed button in a sidebar
+          reads as something broken. */}
+      {canTakeIt && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="self-start"
+          disabled={mutation.isPending}
+          onClick={() => {
+            if (myId) mutation.mutate(myId);
+          }}
+        >
+          <UserPlus aria-hidden="true" className="size-4" />
+          Assign to me
+        </Button>
+      )}
 
       <AssigneeStatus
         selected={selected}

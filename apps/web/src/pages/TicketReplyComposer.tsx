@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Send, Sparkles, Undo2 } from "lucide-react";
+import { CheckCheck, Loader2, Send, Sparkles, Undo2 } from "lucide-react";
 import {
   createTicketMessageSchema,
   type CreateTicketMessageValues,
@@ -14,10 +14,12 @@ import {
 } from "@ticket/core";
 import {
   MAX_MESSAGE_BODY_LENGTH,
+  TICKET_STATUS,
   type CreateTicketMessageResponse,
   type PolishReplyResponse,
   type ThreadMessage,
   type TicketDetail,
+  type TicketStatus,
 } from "@ticket/shared";
 import { AiShine } from "@/components/AiShine";
 import { Hint } from "@/components/Hint";
@@ -28,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import { ticketKeys } from "@/lib/ticket-queries";
+import { useTicketField } from "@/lib/use-ticket-field";
 
 /** The textarea's id, so the label above it points somewhere. */
 const REPLY_FIELD_ID = "ticket-reply";
@@ -106,6 +109,35 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
    */
   const [prePolish, setPrePolish] = useState<string | null>(null);
 
+  /**
+   * Whether the send now in flight should resolve the ticket after it lands.
+   *
+   * Read in the send's `onSuccess`, so it has to be set before `mutate` and
+   * survive the round trip. State rather than a mutation variable because the
+   * form owns the payload shape — `CreateTicketMessageValues` is the request
+   * body, and smuggling a UI intent into it would put a field on the wire that
+   * the endpoint does not have.
+   */
+  const [resolveOnSend, setResolveOnSend] = useState(false);
+
+  /**
+   * The status change behind "Send & resolve".
+   *
+   * Replying deliberately has no status side-effect on the server (see the
+   * route), and that stays true — this is a second, explicit call the agent
+   * asked for by choosing that button. Its error text carries the partial
+   * success, because by the time it can fail the reply is already in the thread
+   * and "failed to update the status" alone would read as though nothing
+   * happened.
+   */
+  const resolve = useTicketField<TicketStatus>({
+    ticketId,
+    field: "status",
+    toBody: (status) => ({ status }),
+    describe: () => "Reply sent · ticket resolved",
+    errorMessage: "Reply sent, but the ticket could not be resolved",
+  });
+
   // The textarea is uncontrolled, so nothing re-renders as it is typed into —
   // and Polish has to know whether there is anything to polish. `watch` buys
   // that for a re-render per keystroke, which on a form of one textarea and
@@ -180,9 +212,23 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
       // into a box that was cleared on purpose is a trap.
       setPrePolish(null);
       polish.reset();
+
+      // One click, one toast. When the agent asked for both, the resolve's own
+      // message covers the pair — two toasts for one button is noise, and the
+      // second would arrive a round trip after the first and read as a separate
+      // event.
+      if (resolveOnSend) {
+        setResolveOnSend(false);
+        resolve.mutate(TICKET_STATUS.Resolved);
+        return;
+      }
+
       toast.success("Reply added to the thread");
     },
     onError: (err) => {
+      // The intent belonged to the attempt that just failed. Left set, the next
+      // plain "Send reply" would silently resolve the ticket too.
+      setResolveOnSend(false);
       toast.error(extractErrorMessage(err, SEND_FAILED));
     },
   });
@@ -207,7 +253,23 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     mutation.mutate(values);
   });
 
-  const busy = mutation.isPending || polish.isPending;
+  const busy =
+    mutation.isPending || polish.isPending || resolve.isPending;
+
+  /**
+   * "Send & resolve", as one gesture.
+   *
+   * Sets the intent and then submits the same form, so validation, the payload
+   * and the failure path are the ones "Send reply" already uses — there is no
+   * second send path to keep in step. ⌘/Ctrl+Enter deliberately stays a plain
+   * send: a keyboard shortcut that also closed the ticket would be the kind of
+   * thing you only discover by having done it.
+   */
+  const sendAndResolve = () => {
+    if (busy || !canSend) return;
+    setResolveOnSend(true);
+    void submit();
+  };
 
   /**
    * One alert, one message, newest cause first.
@@ -339,6 +401,26 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
               </Button>
             </span>
           </Hint>
+
+          {/* Two visible buttons rather than a split button with the second
+              action behind a chevron. Answer-and-close is the commonest way a
+              ticket ends, so it earns its own target — and hiding it would
+              leave the multi-step version (send, then open the status select)
+              as the discoverable one. */}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={sendAndResolve}
+            disabled={busy || !canSend}
+          >
+            {resolve.isPending ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <CheckCheck aria-hidden="true" className="size-4" />
+            )}
+            Send &amp; resolve
+          </Button>
 
           <Button type="submit" size="sm" disabled={busy || !canSend}>
             {mutation.isPending ? (

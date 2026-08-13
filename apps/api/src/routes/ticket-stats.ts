@@ -172,12 +172,25 @@ export async function ticketStatsHandler(
     : Prisma.empty;
 
   /** The window predicate, written once and interpolated into every raw query
-   *  below. Its Prisma-API twin is `sliceWhere` — keep the two in step. */
+   *  below. Every panel here is a measurement *of the range* — how many
+   *  arrived, how fast they were answered, who they were from. */
   const slice = Prisma.sql`t."createdAt" >= ${LO} AND t."createdAt" < ${HI} ${mine}`;
-  const sliceWhere = {
-    createdAt: { gte: from, lt: to },
-    ...(isMine ? { assignedToId: session.user.id } : {}),
-  };
+
+  /**
+   * The scope half on its own, with no date window.
+   *
+   * "Needs attention" is the one panel that is a worklist rather than a
+   * measurement, and the range window was actively working against it: scoped
+   * by `createdAt`, a ticket that arrived 60 days ago and has been silent ever
+   * since *cannot appear* on the 7d or 30d range — which is precisely the
+   * ticket the panel exists to surface. The longest-neglected work was hidden
+   * exactly when someone narrowed the view to look for problems.
+   *
+   * Scope still applies: Everyone/Mine is a question about whose queue this is,
+   * and it means the same thing on a worklist as on a metric. Only the dates
+   * are dropped.
+   */
+  const mineWhere = isMine ? { assignedToId: session.user.id } : {};
 
   // Three casting rules hold throughout the SQL below, each of which is a
   // runtime failure rather than a type error if forgotten:
@@ -393,7 +406,7 @@ export async function ticketStatsHandler(
         // vocabulary. `Processing` is excluded by construction: a ticket a
         // worker is answering right now is the one thing on the dashboard that
         // needs no attention at all.
-        where: { status: { in: [...BACKLOG_STATUS] }, ...sliceWhere },
+        where: { status: { in: [...BACKLOG_STATUS] }, ...mineWhere },
         // Longest silence first; id breaks ties because seeded threads share an
         // instant and an unstable order would reshuffle the card between loads.
         orderBy: [{ lastMessageAt: "asc" }, { id: "asc" }],

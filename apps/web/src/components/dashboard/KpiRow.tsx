@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import {
+  ASSIGNEE_NONE,
   CATEGORY_NONE,
   TICKET_STATUS,
   type FirstResponseStats,
@@ -52,12 +53,20 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
             // Links to the list already filtered the same way, so the count is a
             // starting point rather than a thing to go and reproduce by hand.
             //
+            // `assignedTo`, not `status`: this count is "arrived and nobody owns
+            // it", which spans New *and* Open (see `openUnassigned` in
+            // ticket-stats.ts), and the list's status filter takes one value. So
+            // the assignee axis is the one that can be expressed honestly — it
+            // over-counts by including settled-but-unassigned tickets rather
+            // than silently dropping every untriaged one, which is what
+            // `status=Open` did.
+            //
             // Overrides the tile's muted colour and underlines unconditionally:
             // inheriting text-muted-foreground put an interactive control at
             // 4.65:1 in light mode and, worse, left "this is a link" carried by
             // nothing but a hover state that a touch device never shows.
             <Link
-              to={`/tickets?status=${TICKET_STATUS.Open}`}
+              to={`/tickets?assignedTo=${ASSIGNEE_NONE}`}
               className="text-foreground underline underline-offset-2"
             >
               {summary.openUnassigned} unassigned

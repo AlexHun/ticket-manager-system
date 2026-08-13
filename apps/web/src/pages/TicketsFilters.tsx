@@ -21,6 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useSession } from "@/lib/auth-client";
 import { useAssigneesQuery } from "@/lib/use-assignees";
 
 /** `""` is the "no filter" choice in our own state. */
@@ -134,6 +136,11 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
         onChange={(assignedTo) => onChange({ ...filters, assignedTo })}
       />
 
+      <AssigneeShortcuts
+        value={filters.assignedTo}
+        onChange={(assignedTo) => onChange({ ...filters, assignedTo })}
+      />
+
       {active && (
         <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)}>
           <X />
@@ -146,6 +153,71 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
 
 const ANY_ASSIGNEE_LABEL = "Any assignee";
 const UNASSIGNED_LABEL = "Unassigned";
+
+/** Local tokens for the two shortcut chips — neither ever leaves this module. */
+const SHORTCUT = { mine: "mine", unassigned: "unassigned" } as const;
+
+/**
+ * The two assignee filters worth reaching in one click, beside the select that
+ * can express all of them.
+ *
+ * They exist because the dropdown next door is the slowest control on the page
+ * for the two questions asked most: it fetches the roster on first open, so
+ * "what's mine" meant opening a menu, waiting for a request, and finding your
+ * own name in an alphabetical list of colleagues. The session already knows who
+ * you are, so that whole round trip buys nothing here.
+ *
+ * Not a replacement for the select — picking a *colleague* is still a roster
+ * job. These write the same `assignedTo` field, so the two controls always
+ * agree, and "Clear filters" clears them like anything else.
+ */
+function AssigneeShortcuts({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { data: session } = useSession();
+  const myId = session?.user.id;
+
+  const active =
+    myId && value === myId
+      ? SHORTCUT.mine
+      : value === ASSIGNEE_NONE
+        ? SHORTCUT.unassigned
+        : ANY;
+
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      spacing={0}
+      value={active}
+      // Radix emits "" when the pressed item is clicked again, and unlike the
+      // dashboard's ranges that is meaningful here: clicking the lit chip is
+      // how you take the filter off, so the empty value is written through
+      // rather than ignored.
+      onValueChange={(next) => {
+        if (next === SHORTCUT.mine && myId) onChange(myId);
+        else if (next === SHORTCUT.unassigned) onChange(ASSIGNEE_NONE);
+        else onChange(ANY);
+      }}
+      aria-label="Assignee shortcuts"
+    >
+      {/* Hidden rather than disabled without a session: there is no session to
+          resolve "mine" against, and a dead control is worse than no control.
+          In practice `ProtectedRoute` means this is always present. */}
+      {myId && (
+        <ToggleGroupItem value={SHORTCUT.mine}>Mine</ToggleGroupItem>
+      )}
+      <ToggleGroupItem value={SHORTCUT.unassigned}>
+        {UNASSIGNED_LABEL}
+      </ToggleGroupItem>
+    </ToggleGroup>
+  );
+}
 
 /**
  * Narrow the list to one person's tickets, or to the ones nobody owns.

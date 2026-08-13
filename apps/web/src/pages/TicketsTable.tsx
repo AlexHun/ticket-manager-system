@@ -21,6 +21,7 @@ import {
 import { Hint } from "@/components/Hint";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatSince } from "@/lib/format";
 import type { TicketListLocationState } from "@/lib/ticket-list-params";
 import { cn } from "@/lib/utils";
 
@@ -58,25 +59,35 @@ type TicketColumn = ColumnDef<TicketWithAssignee> & { id: TicketSortField };
  * rather than added on top of it. Adding ~130 to the total instead would have
  * pushed past the frame and left the table permanently scrolling sideways at
  * 1280px, which is the failure this budget exists to prevent.
+ *
+ * "Activity" was fitted the same way, and the total is still exactly 880. It is
+ * the narrowest column here because `formatSince` renders "6d" or "45m" rather
+ * than a date — the header word is the widest thing in it, which is why the
+ * label is "Activity" and not "Last activity".
  */
 const COLUMN_META: Record<
   TicketSortField,
   { label: string; size: number; minSize: number }
 > = {
-  [TICKET_SORT_FIELD.subject]: { label: "Subject", size: 240, minSize: 160 },
+  [TICKET_SORT_FIELD.subject]: { label: "Subject", size: 205, minSize: 160 },
   [TICKET_SORT_FIELD.customerName]: {
     label: "Customer",
-    size: 170,
-    minSize: 160,
+    size: 160,
+    minSize: 150,
   },
-  [TICKET_SORT_FIELD.status]: { label: "Status", size: 110, minSize: 100 },
-  [TICKET_SORT_FIELD.category]: { label: "Category", size: 120, minSize: 100 },
+  [TICKET_SORT_FIELD.status]: { label: "Status", size: 100, minSize: 100 },
+  [TICKET_SORT_FIELD.category]: { label: "Category", size: 110, minSize: 100 },
   [TICKET_SORT_FIELD.assignedTo]: {
     label: "Assigned to",
-    size: 130,
+    size: 115,
     minSize: 110,
   },
-  [TICKET_SORT_FIELD.createdAt]: { label: "Created", size: 110, minSize: 110 },
+  [TICKET_SORT_FIELD.lastMessageAt]: {
+    label: "Activity",
+    size: 90,
+    minSize: 80,
+  },
+  [TICKET_SORT_FIELD.createdAt]: { label: "Created", size: 100, minSize: 90 },
 };
 
 function metaOf(id: TicketSortField) {
@@ -146,6 +157,27 @@ const columns: TicketColumn[] = [
       ) : (
         <span className="text-muted-foreground">Unassigned</span>
       ),
+  },
+  {
+    id: TICKET_SORT_FIELD.lastMessageAt,
+    accessorKey: "lastMessageAt",
+    ...metaOf(TICKET_SORT_FIELD.lastMessageAt),
+    header: metaOf(TICKET_SORT_FIELD.lastMessageAt).label,
+    // Elapsed rather than absolute, and the same `formatSince` the dashboard's
+    // needs-attention panel uses — "6d" answers "has this been ignored?" at a
+    // glance, where a date makes every reader do the subtraction.
+    //
+    // No `Hint`, unlike the three columns above. Theirs reveal text the cell
+    // truncated; this value never truncates, so a tooltip here would be a
+    // second job for a cell that has one, and the exact instant is already on
+    // the ticket's own page under "Last message". It is not free either: every
+    // Hint is a Radix Tooltip per row, and adding a fourth was enough to push
+    // the slowest specs in TicketsPage.test.tsx past their timeout.
+    cell: ({ row }) => (
+      <span className="text-muted-foreground tabular-nums">
+        {formatSince(row.original.lastMessageAt)}
+      </span>
+    ),
   },
   {
     id: TICKET_SORT_FIELD.createdAt,
