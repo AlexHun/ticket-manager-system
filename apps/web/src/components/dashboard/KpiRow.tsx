@@ -42,7 +42,7 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
   const replyState = firstReplyVerdict(firstResponse);
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 [&>*]:animate-panel-in">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 *:animate-panel-in">
       <StatTile
         label="Open"
         value={open}

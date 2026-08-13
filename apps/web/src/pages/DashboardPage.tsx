@@ -124,7 +124,7 @@ export function DashboardPage() {
               animates a single time when it first appears — a range change
               re-renders these panels but does not remount them, so switching
               7d/30d/90d does not replay it. */}
-          <div className={cn(DASHBOARD_GRID, "[&>*]:animate-panel-in")}>
+          <div className={cn(DASHBOARD_GRID, "*:animate-panel-in")}>
             <VolumeChart
               className={PANEL_SPAN.twoThirds}
               volume={data.volume}
