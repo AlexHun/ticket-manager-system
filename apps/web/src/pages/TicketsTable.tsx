@@ -23,6 +23,7 @@ import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatSince } from "@/lib/format";
 import type { TicketListLocationState } from "@/lib/ticket-list-params";
+import { ROW_DENSITY, type RowDensity } from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
 
 const SKELETON_ROW_COUNT = 5;
@@ -228,12 +229,34 @@ const DEFAULT_TOTAL_WIDTH = columns.reduce((sum, c) => sum + (c.size ?? 0), 0);
 const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
 const HEAD = "sticky top-0 z-10 bg-muted text-left font-medium";
 
+/**
+ * What a row's density actually changes: the cell padding, and the leading the
+ * two-line Customer cell inherits.
+ *
+ * Both lines survive compaction, and that is the deliberate part. The obvious
+ * way to halve a row here is to drop the customer's email to a tooltip — but
+ * this queue holds two distinct customers both named "Marta Kowalska", told
+ * apart only by `@example.com` against `@gmail.com`. Hiding that behind a hover
+ * would make the mode meant for scanning the one mode you cannot safely scan,
+ * and the hover in question is a shadcn Tooltip on a 2s delay. So compact takes
+ * the space out of the padding and the line height, where nothing is lost.
+ *
+ * `leading-tight` is set on the cell rather than inside the Customer renderer
+ * because line-height inherits — one class here reaches both lines without the
+ * column definitions needing to know density exists.
+ */
+const CELL_DENSITY: Record<RowDensity, string> = {
+  [ROW_DENSITY.comfortable]: "py-2",
+  [ROW_DENSITY.compact]: "py-1 leading-tight",
+};
+
 interface TicketsTableProps {
   tickets: TicketWithAssignee[];
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
   /** Shown instead of the table when there is nothing to render. */
   emptyMessage?: string;
+  density?: RowDensity;
   className?: string;
 }
 
@@ -242,6 +265,7 @@ export function TicketsTable({
   sorting,
   onSortingChange,
   emptyMessage = "No tickets found.",
+  density = ROW_DENSITY.comfortable,
   className,
 }: TicketsTableProps) {
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
@@ -342,7 +366,7 @@ export function TicketsTable({
               className="border-t border-border transition-colors hover:bg-muted/50"
             >
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className="px-4 py-2">
+                <td key={cell.id} className={cn("px-4", CELL_DENSITY[density])}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}
@@ -415,7 +439,33 @@ function ResizeHandle({ header }: { header: Header<TicketWithAssignee, unknown> 
   );
 }
 
-export function TicketsTableSkeleton({ className }: { className?: string }) {
+/**
+ * The placeholder shape per column, keyed by column id rather than written as a
+ * list of cells in row order.
+ *
+ * That is not tidiness. The cells here used to be six hand-written `<td>`s while
+ * `<colgroup>` and `<thead>` mapped over `columns` — so adding the Activity
+ * column left every skeleton row one cell short, silently, because a short row
+ * is still valid HTML and the missing cell is invisible against an empty table.
+ * A `Record` over the id union makes the next added column a compile error here.
+ */
+const SKELETON_CELL: Record<TicketSortField, string> = {
+  [TICKET_SORT_FIELD.subject]: "h-4 w-40",
+  [TICKET_SORT_FIELD.customerName]: "h-4 w-28",
+  [TICKET_SORT_FIELD.status]: "h-5 w-16 rounded-md",
+  [TICKET_SORT_FIELD.category]: "h-5 w-16 rounded-md",
+  [TICKET_SORT_FIELD.assignedTo]: "h-4 w-20",
+  [TICKET_SORT_FIELD.lastMessageAt]: "h-4 w-10",
+  [TICKET_SORT_FIELD.createdAt]: "h-4 w-16",
+};
+
+export function TicketsTableSkeleton({
+  density = ROW_DENSITY.comfortable,
+  className,
+}: {
+  density?: RowDensity;
+  className?: string;
+}) {
   return (
     <div
       className={cn(FRAME, className)}
@@ -444,24 +494,14 @@ export function TicketsTableSkeleton({ className }: { className?: string }) {
         <tbody>
           {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
             <tr key={i} className="border-t border-border">
-              <td className="px-4 py-2">
-                <Skeleton className="h-4 w-56" />
-              </td>
-              <td className="px-4 py-2">
-                <Skeleton className="h-4 w-40" />
-              </td>
-              <td className="px-4 py-2">
-                <Skeleton className="h-5 w-16 rounded-md" />
-              </td>
-              <td className="px-4 py-2">
-                <Skeleton className="h-5 w-20 rounded-md" />
-              </td>
-              <td className="px-4 py-2">
-                <Skeleton className="h-4 w-24" />
-              </td>
-              <td className="px-4 py-2">
-                <Skeleton className="h-4 w-20" />
-              </td>
+              {columns.map((column) => (
+                <td
+                  key={column.id}
+                  className={cn("px-4", CELL_DENSITY[density])}
+                >
+                  <Skeleton className={SKELETON_CELL[column.id]} />
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Rows3 } from "lucide-react";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import {
   DEFAULT_TICKET_SORT,
@@ -20,7 +21,9 @@ import {
 } from "@/lib/ticket-list-params";
 import { ticketKeys } from "@/lib/ticket-queries";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { ROW_DENSITY, useRowDensity, type RowDensity } from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
+import { Toggle } from "@/components/ui/toggle";
 import {
   hasActiveFilters,
   TicketsFilters,
@@ -31,6 +34,42 @@ import { TicketsTable, TicketsTableSkeleton } from "./TicketsTable";
 
 /** Keystrokes settle for this long before the search hits the API. */
 const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * One pressed-state control rather than a Comfortable/Compact pair.
+ *
+ * Two exclusive options would be honest but wasteful: comfortable is simply the
+ * table as everyone already knows it, so there is nothing to name, and a
+ * segmented control announcing both states earns a second target for a setting
+ * most people will touch once. Radix's Toggle carries `aria-pressed`, so the one
+ * button says what it is and whether it is on.
+ *
+ * Labelled, not icon-only. An icon here would be legible to whoever guessed it
+ * and to nobody else — the only label would be a Tooltip, and this app holds
+ * those for 2s by design (see `AppShell`), which is an eternity for a control
+ * you are hunting for.
+ */
+function DensityToggle({
+  density,
+  onChange,
+}: {
+  density: RowDensity;
+  onChange: (next: RowDensity) => void;
+}) {
+  return (
+    <Toggle
+      variant="outline"
+      size="sm"
+      pressed={density === ROW_DENSITY.compact}
+      onPressedChange={(pressed) =>
+        onChange(pressed ? ROW_DENSITY.compact : ROW_DENSITY.comfortable)
+      }
+    >
+      <Rows3 aria-hidden="true" />
+      Compact rows
+    </Toggle>
+  );
+}
 
 function isTicketSortField(value: string): value is TicketSortField {
   return value in TICKET_SORT_FIELD;
@@ -180,6 +219,8 @@ export function TicketsPage() {
 
   const { data, isPending, isFetching, error } = useTicketsQuery(params);
 
+  const [density, setDensity] = useRowDensity();
+
   // Every patch below drops `page` unless it names one — see
   // writeTicketListParams for why re-sorting and re-filtering go back to page 1.
   const handleSortingChange: OnChangeFn<SortingState> = (updater) => {
@@ -233,11 +274,18 @@ export function TicketsPage() {
     // what lets this be shorter than its content — see the height chain in
     // AppShell, which this is the bottom of.
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
-      <div className="mb-4">
+      {/* Filters left, display setting right — they are different kinds of
+          thing. Everything on the left changes which tickets are in the table
+          and travels in the URL; the toggle on the right changes how they are
+          drawn for whoever is looking and does not. */}
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <TicketsFilters filters={filters} onChange={handleFiltersChange} />
+        <DensityToggle density={density} onChange={setDensity} />
       </div>
 
-      {isPending && <TicketsTableSkeleton className="min-h-0 flex-1" />}
+      {isPending && (
+        <TicketsTableSkeleton density={density} className="min-h-0 flex-1" />
+      )}
 
       {error && (
         <p className="text-sm text-destructive" role="alert">
@@ -260,6 +308,7 @@ export function TicketsPage() {
             tickets={data.tickets}
             sorting={sorting}
             onSortingChange={handleSortingChange}
+            density={density}
             emptyMessage={
               filtered ? "No tickets match these filters." : "No tickets found."
             }
