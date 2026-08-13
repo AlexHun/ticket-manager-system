@@ -41,7 +41,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
  *
  * These sit apart from `NAV_ITEMS` on purpose: they are not part of the app's
  * navigation model. They have no role gate (in dev, everyone sees them), and
- * following one leaves `AppShell` entirely, which `topBarTitle` below would
+ * following one leaves `AppShell` entirely, which `sectionTitle` below would
  * otherwise be asked to name.
  */
 export const DEV_NAV_ITEMS: readonly NavItem[] = import.meta.env.DEV
@@ -61,22 +61,21 @@ export function navItemsFor(role: UserRole | undefined): NavItem[] {
 }
 
 /**
- * What the top bar calls the current page.
+ * Which section the current route belongs to, for the document title.
  *
- * Derived from the same table the sidebar maps, so the title and the marked nav
- * item can never drift apart — `/tickets/42` reads "Tickets" in both places.
+ * Derived from the same table the sidebar maps, so the tab name and the marked
+ * nav item can never drift apart — `/tickets/42` reads "Tickets" in both
+ * places until the ticket loads and names the tab after its subject.
  *
- * `heading` is false where the page renders its own `<h1>` (the ticket detail
- * page's is the subject). There the bar shows the section as plain text rather
- * than competing for the document's one top-level heading.
+ * `null` for a route in no section, which today is only the 404. That is what
+ * `useDocumentTitle` wants: it appends the app name itself, so returning
+ * "Ticket Manager" here — as this used to — produced "Ticket Manager · Ticket
+ * Manager" in the tab strip.
+ *
+ * Nothing here feeds the top bar any more. Pages name themselves now, in a
+ * heading you can actually see; see `PageHeader`.
  */
-export function topBarTitle(pathname: string): {
-  label: string;
-  heading: boolean;
-} {
+export function sectionTitle(pathname: string): string | null {
   const item = NAV_ITEMS.find((candidate) => isNavItemActive(candidate, pathname));
-  if (!item) return { label: "Ticket Manager", heading: false };
-
-  const isTicketDetail = matchPath({ path: "/tickets/:id" }, pathname) !== null;
-  return { label: item.label, heading: !isTicketDetail };
+  return item?.label ?? null;
 }

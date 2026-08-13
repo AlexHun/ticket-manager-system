@@ -6,7 +6,7 @@ import { RouteFallback } from "@/components/RouteFallback";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { AppSidebar } from "./AppSidebar";
 import { AppTopBar } from "./AppTopBar";
-import { topBarTitle } from "./nav-items";
+import { sectionTitle } from "./nav-items";
 
 /**
  * SidebarProvider writes `sidebar_state` on every toggle but only ever *reads*
@@ -36,7 +36,7 @@ export function AppShell() {
   // title from the subject once it has one and overwrites this — which is the
   // right order rather than a race: until the ticket has loaded, "Tickets" is
   // the honest name for what is on screen.
-  useDocumentTitle(topBarTitle(pathname).label);
+  useDocumentTitle(sectionTitle(pathname));
 
   // Where focus goes on a route change, and where the skip link lands.
   //

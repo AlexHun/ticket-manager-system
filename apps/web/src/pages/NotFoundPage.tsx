@@ -34,7 +34,15 @@ export function NotFoundPage() {
     <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>No such page</CardTitle>
+          {/* The document's `<h1>`, and the only page under the shell that has
+              to say so out loud — everywhere else the heading is the page's own
+              (see `PageHeader`), and `CardTitle` is a `<div>`. Nesting rather
+              than restyling because preflight resets a heading's size and
+              weight to `inherit`, so this looks identical to every other card
+              title in the app while giving the page a heading to land on. */}
+          <CardTitle>
+            <h1>No such page</h1>
+          </CardTitle>
           <CardDescription>
             Nothing here answers to{" "}
             <span className="break-all text-foreground">{pathname}</span>. The

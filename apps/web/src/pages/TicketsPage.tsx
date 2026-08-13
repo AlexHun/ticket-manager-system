@@ -24,6 +24,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { ROW_DENSITY, useRowDensity, type RowDensity } from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
 import { Toggle } from "@/components/ui/toggle";
+import { PageHeader } from "@/components/layout/PageHeader";
 import {
   hasActiveFilters,
   TicketsFilters,
@@ -274,13 +275,17 @@ export function TicketsPage() {
     // what lets this be shorter than its content — see the height chain in
     // AppShell, which this is the bottom of.
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
-      {/* Filters left, display setting right — they are different kinds of
-          thing. Everything on the left changes which tickets are in the table
-          and travels in the URL; the toggle on the right changes how they are
-          drawn for whoever is looking and does not. */}
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <TicketsFilters filters={filters} onChange={handleFiltersChange} />
+      {/* The density toggle sits with the heading, the filters sit with the
+          table, and the split is the difference between them: filters change
+          which tickets are in the table and travel in the URL, so they belong
+          to the result; the toggle changes how those rows are drawn for
+          whoever is looking and does not, so it belongs to the page. */}
+      <PageHeader title="Tickets">
         <DensityToggle density={density} onChange={setDensity} />
+      </PageHeader>
+
+      <div className="mb-4 shrink-0">
+        <TicketsFilters filters={filters} onChange={handleFiltersChange} />
       </div>
 
       {/* What the filters just did, for anyone not watching the table redraw.

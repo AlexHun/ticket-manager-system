@@ -17,6 +17,7 @@ import {
   workloadRows,
 } from "@/components/dashboard/mini-rows";
 import { DASHBOARD_GRID, PANEL_SPAN } from "@/components/dashboard/grid";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { api } from "@/lib/api";
 import {
   parseDashboardParams,
@@ -68,16 +69,23 @@ export function DashboardPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-        {/* One filter row, above everything it scopes — so every panel is
-            always describing the same slice. */}
+      {/* The controls ride on the heading's line rather than a row of their own,
+          which is what stops the heading costing any vertical space here. They
+          still sit above everything they scope — so every panel is always
+          describing the same slice — and the description says so, because a
+          panel that is empty for the selected range looks exactly like a panel
+          that is empty. */}
+      <PageHeader
+        title="Dashboard"
+        description="Every panel below follows the selected range and scope."
+      >
         <DashboardFilters
           range={params.range}
           scope={params.scope}
           onRangeChange={(range) => update({ range })}
           onScopeChange={(scope) => update({ scope })}
         />
-      </div>
+      </PageHeader>
 
       {isPending && <DashboardSkeleton />}
 

@@ -3,6 +3,7 @@ import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
 import type { User, UsersListResponse } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { api } from "@/lib/api";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { UserDialog } from "./UserDialog";
@@ -42,21 +43,38 @@ export function UsersPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
-      <div className="mb-4 flex items-center justify-end">
-        <Button onClick={openCreate}>New user</Button>
+      {/* A measure cap, and the only page that needs one.
+
+          Six columns of short values — a name, an address, a role, two dates —
+          stretched to whatever width the window happened to be, so on a wide
+          screen a two-person team read as five words stranded at the far left
+          and a delete button a foot away at the far right. The dashboard's
+          panels earn their width by plotting into it and the ticket table has
+          subjects to fill it; this has neither. 64rem is where the address
+          column stops growing and the row still tracks left-to-right. Not
+          centred: the sidebar is the left edge of the app, and a block floating
+          in the middle of the frame would only move the void rather than close
+          it. */}
+      <div className="max-w-5xl">
+        <PageHeader
+          title="Users"
+          description="Everyone who can sign in to the ticket manager."
+        >
+          <Button onClick={openCreate}>New user</Button>
+        </PageHeader>
+
+        {isPending && <UsersTableSkeleton />}
+
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {formatError(error)}
+          </p>
+        )}
+
+        {users && (
+          <UsersTable users={users} onEdit={openEdit} onDelete={openDelete} />
+        )}
       </div>
-
-      {isPending && <UsersTableSkeleton />}
-
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {formatError(error)}
-        </p>
-      )}
-
-      {users && (
-        <UsersTable users={users} onEdit={openEdit} onDelete={openDelete} />
-      )}
 
       <UserDialog
         user={editingUser}
