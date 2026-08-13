@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
-import type { TicketDetail, TicketDetailResponse } from "@ticket/shared";
+import {
+  AUTO_REPLY_DECLINE,
+  type AutoReplyDecline,
+  type TicketDetail,
+  type TicketDetailResponse,
+} from "@ticket/shared";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -18,6 +23,7 @@ import {
 } from "@/lib/errors";
 import { listPathFrom } from "@/lib/ticket-list-params";
 import { ticketKeys } from "@/lib/ticket-queries";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import {
   ASSIGNEE_SELECT_ID,
@@ -58,6 +64,12 @@ export function TicketDetailPage() {
   const backTo = listPathFrom(location.state);
 
   const { data: ticket, isPending, error } = useTicketQuery(id);
+
+  // Overrides the section name `AppShell` sets, once there is a subject to use.
+  // This is the route where it matters most: three tickets open in three tabs
+  // are otherwise three tabs called "Tickets", and the ticket number is what
+  // someone is switching between them to find.
+  useDocumentTitle(ticket ? `#${ticket.id} ${ticket.subject}` : null);
 
   return (
     // Splits the frame from `lg` up, like the list page: the details and the
@@ -181,6 +193,14 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
                 <Field label="Last message">
                   <DateValue value={ticket.lastMessageAt} />
                 </Field>
+                {ticket.autoReplyDecline && (
+                  <Field label="Auto-reply">
+                    <AutoReplyDeclineValue
+                      decline={ticket.autoReplyDecline}
+                      at={ticket.autoReplyDeclinedAt}
+                    />
+                  </Field>
+                )}
               </dl>
             </CardContent>
           </Card>
@@ -255,6 +275,51 @@ function Field({
  *  during the day something arrived is part of the story. */
 function DateValue({ value }: { value: string }) {
   return <time dateTime={value}>{new Date(value).toLocaleString()}</time>;
+}
+
+/**
+ * What the auto-reply concluded, in words rather than in a key.
+ *
+ * The wording separates two things an agent must not confuse. Three of these
+ * mean *it never wrote anything* — the ticket was ineligible, already answered,
+ * or unreadable. Four mean *it wrote a reply and the safety checks destroyed
+ * it*, which is a different event entirely and is what an injection attempt
+ * looks like from the outside. And one means the assistant was simply
+ * unreachable, which is no verdict on the ticket at all.
+ *
+ * None of it is an error state. Declining is the designed, common outcome, so
+ * this is drawn as another field in the card and not as a warning — the ticket
+ * is `Open` and waiting, which is exactly what should happen.
+ */
+const DECLINE_LABEL: Record<AutoReplyDecline, string> = {
+  [AUTO_REPLY_DECLINE.category]: "Not eligible — refunds and unfiled tickets are never auto-answered",
+  [AUTO_REPLY_DECLINE.answered]: "Already answered — only opening messages are auto-answered",
+  [AUTO_REPLY_DECLINE.noText]: "Nothing to read — the email carried no plain text",
+  [AUTO_REPLY_DECLINE.notCovered]: "Not covered by the knowledge base",
+  [AUTO_REPLY_DECLINE.noCitation]: "Draft discarded — it cited no article that exists",
+  [AUTO_REPLY_DECLINE.unbackedCommitment]: "Draft discarded — it promised something no cited article states",
+  [AUTO_REPLY_DECLINE.unbackedReference]: "Draft discarded — it carried a link or address no cited article contains",
+  [AUTO_REPLY_DECLINE.tooLong]: "Draft discarded — too long to be a knowledge-base answer",
+  [AUTO_REPLY_DECLINE.unavailable]: "The assistant could not be reached",
+};
+
+function AutoReplyDeclineValue({
+  decline,
+  at,
+}: {
+  decline: AutoReplyDecline;
+  at: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span>{DECLINE_LABEL[decline]}</span>
+      {at && (
+        <time dateTime={at} className="text-xs text-muted-foreground">
+          {new Date(at).toLocaleString()}
+        </time>
+      )}
+    </div>
+  );
 }
 
 function TicketDetailSkeleton() {

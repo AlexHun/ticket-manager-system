@@ -1,6 +1,12 @@
 import * as Sentry from "@sentry/bun";
 import type { PgBoss, Queue } from "pg-boss";
-import { MESSAGE_DIRECTION, TICKET_CATEGORY, TICKET_STATUS } from "@ticket/shared";
+import {
+  AUTO_REPLY_DECLINE,
+  MESSAGE_DIRECTION,
+  TICKET_CATEGORY,
+  TICKET_STATUS,
+  type AutoReplyDecline,
+} from "@ticket/shared";
 import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import { autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
@@ -171,11 +177,31 @@ export async function enqueueAutoReply(ticketId: number): Promise<void> {
   await getBoss().send(AUTO_REPLY_QUEUE, { ticketId } satisfies AutoReplyJob);
 }
 
-/** Hand a claimed ticket back, without disturbing one that is no longer ours. */
-async function release(ticketId: number, to: "New" | "Open"): Promise<void> {
+/**
+ * Hand a claimed ticket back, without disturbing one that is no longer ours.
+ *
+ * `decline` is recorded on the way out to `Open`, which is the only exit that
+ * means "a person's turn now". Going back to `New` is a retry in progress and
+ * says nothing yet — stamping a reason there would put a verdict on a ticket the
+ * machine is still thinking about, and the next attempt may well answer it.
+ *
+ * Still conditional on holding the claim, like everything else here: a ticket a
+ * recovery sweep released while the model was thinking is no longer ours to
+ * annotate.
+ */
+async function release(
+  ticketId: number,
+  to: "New" | "Open",
+  decline?: AutoReplyDecline,
+): Promise<void> {
   await prisma.ticket.updateMany({
     where: { id: ticketId, status: TICKET_STATUS.Processing },
-    data: { status: to },
+    data: {
+      status: to,
+      ...(decline
+        ? { autoReplyDecline: decline, autoReplyDeclinedAt: new Date() }
+        : {}),
+    },
   });
 }
 
@@ -237,13 +263,22 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // Gate 1: money. Gate 2: somebody already replied, so this is a conversation
   // and not a new question — the knowledge base answers openings, not threads.
   // Gate 3: nothing to answer from.
-  if (
+  //
+  // Split out of the single condition these used to share so each can say which
+  // one it was. The gates are unchanged and still evaluated in the same order;
+  // only the reporting is new.
+  const gated =
     ticket.category === null ||
-    !ANSWERABLE_CATEGORIES.some((c) => c === ticket.category) ||
-    answeredAlready ||
-    inbound.length === 0
-  ) {
-    await release(ticketId, TICKET_STATUS.Open);
+    !ANSWERABLE_CATEGORIES.some((c) => c === ticket.category)
+      ? AUTO_REPLY_DECLINE.category
+      : answeredAlready
+        ? AUTO_REPLY_DECLINE.answered
+        : inbound.length === 0
+          ? AUTO_REPLY_DECLINE.noText
+          : null;
+
+  if (gated) {
+    await release(ticketId, TICKET_STATUS.Open, gated);
     return;
   }
 
@@ -273,7 +308,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
         `[auto-reply] ticket ${ticketId} not answered: ${result.reason}`,
       );
     }
-    await release(ticketId, TICKET_STATUS.Open);
+    await release(ticketId, TICKET_STATUS.Open, result.decline);
     return;
   }
 
@@ -292,6 +327,12 @@ async function handle(job: AutoReplyJob): Promise<void> {
         status: TICKET_STATUS.Resolved,
         autoResolvedAt: sentAt,
         lastMessageAt: sentAt,
+        // A ticket must never show both verdicts. A retryable failure releases
+        // to `New` without stamping one, but the recovery sweep re-enqueues a
+        // ticket that has already been declined once — so a later success has
+        // to clear the earlier reason rather than sit beside it.
+        autoReplyDecline: null,
+        autoReplyDeclinedAt: null,
       },
     });
     if (resolved.count === 0) return false;
@@ -309,6 +350,11 @@ async function handle(job: AutoReplyJob): Promise<void> {
         // being read as "the agent who wrote it has been deleted".
         authorId: null,
         automated: true,
+        // The audit trail. These are the resolved ids — every one exists in the
+        // corpus the model was handed, because check 4 discarded the reply
+        // otherwise — so the thread can show what this answer was built from
+        // rather than asking anyone to trust it.
+        citedArticleIds: result.articleIds,
         createdAt: sentAt,
       },
       select: { id: true },
@@ -417,7 +463,12 @@ export async function registerAutoReplyTicket(boss: PgBoss): Promise<void> {
           "error",
         );
       });
-      await release(ticketId, TICKET_STATUS.Open);
+      // `unavailable`, not a judgement about the ticket: the retries ran out, so
+      // nothing was ever decided about whether the knowledge base covers this.
+      // An agent reading "the assistant could not be reached" knows to answer it
+      // themselves; "not covered by the knowledge base" would be a claim nobody
+      // made.
+      await release(ticketId, TICKET_STATUS.Open, AUTO_REPLY_DECLINE.unavailable);
     },
   );
 

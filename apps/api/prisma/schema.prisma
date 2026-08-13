@@ -115,6 +115,26 @@ model Ticket {
   // the reply in the thread says who wrote it but not that the ticket closed
   // because of it.
   autoResolvedAt DateTime?
+  // Why the auto-reply handed this ticket back, and when — the other half of
+  // `autoResolvedAt`, which only ever records success.
+  //
+  // Declining is the designed outcome, not an error path, and until these
+  // columns existed it was invisible: the reason went to a log line and the
+  // ticket became an ordinary `Open` row, indistinguishable from one the
+  // machine never saw. That cost an agent the knowledge that it had already
+  // been considered, and an admin any way to tell a knowledge base that is
+  // working from one that is failing every check.
+  //
+  // A plain string rather than a Postgres enum, unlike `status` and `category`.
+  // Those are queried and filtered on and have a fixed small set; this one is
+  // display-only, is written by exactly one function, and grows a value every
+  // time a safety check is added to `ai/auto-reply.ts` — an enum would put a
+  // migration in front of each of those. `AUTO_REPLY_DECLINE` in
+  // `@ticket/shared` is the authority, and the API validates against it.
+  //
+  // Cleared when a reply eventually succeeds, so a ticket never carries both.
+  autoReplyDecline    String?
+  autoReplyDeclinedAt DateTime?
   customerEmail String
   customerName  String
   lastMessageAt DateTime        @default(now())
@@ -165,6 +185,20 @@ model Message {
   // thread needs told apart. Inbound messages are never automated: the flag
   // describes who composed our side of the conversation.
   automated   Boolean          @default(false)
+  // The knowledge-base articles this reply was built from — "KB-004", and so on.
+  //
+  // Empty on everything a person wrote and on everything inbound; only the
+  // auto-reply fills it. It is the audit trail for the one feature here that
+  // writes to a customer with nobody reading it first: the ids are already
+  // resolved and validated against the corpus the model was actually given
+  // (check 4 in `ai/auto-reply.ts`, which throws the reply away when none of
+  // them resolve), so storing them costs a column and turns "a machine sent
+  // this" into "a machine sent this, and here is what it read".
+  //
+  // Without it the only trace was a log line, which is the wrong place: the
+  // question "why did we tell this customer that?" is asked at the ticket,
+  // often weeks later, by someone who does not have the logs.
+  citedArticleIds String[]
   createdAt   DateTime         @default(now())
 
   @@index([ticketId, createdAt])

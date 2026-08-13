@@ -1,6 +1,10 @@
 import { NoObjectGeneratedError, Output, generateText } from "ai";
 import { z } from "zod";
-import { MAX_MESSAGE_BODY_LENGTH } from "@ticket/shared";
+import {
+  AUTO_REPLY_DECLINE,
+  MAX_MESSAGE_BODY_LENGTH,
+  type AutoReplyDecline,
+} from "@ticket/shared";
 import {
   autoReplyArticleById,
   autoReplyArticles,
@@ -218,9 +222,26 @@ export const AUTO_REPLY_FAILURE = {
 export type AutoReplyFailure =
   (typeof AUTO_REPLY_FAILURE)[keyof typeof AUTO_REPLY_FAILURE];
 
+/**
+ * Two verdicts on the same failure, for two different readers.
+ *
+ * `reason` is for pg-boss: it decides retry against give-up through
+ * `isRetryable`, and it must stay coarse, because four of the checks below all
+ * mean exactly "never try this again".
+ *
+ * `decline` is for the agent who opens the ticket afterwards. Those same four
+ * checks mean four completely different things to a person — "the corpus does
+ * not cover this" and "it tried to promise your customer money" are not the same
+ * news — and collapsing them into `ungrounded` threw that away at the only point
+ * anyone could have used it.
+ *
+ * Both, rather than one derived from the other: widening `reason` would put
+ * display strings into the retry table, and narrowing `decline` would put retry
+ * semantics into the UI.
+ */
 export type AutoReplyResult =
   | { ok: true; reply: string; articleIds: string[] }
-  | { ok: false; reason: AutoReplyFailure };
+  | { ok: false; reason: AutoReplyFailure; decline: AutoReplyDecline };
 
 /**
  * The shape the model must answer in.
@@ -566,7 +587,11 @@ export async function autoReply(
     // Nothing to answer from. Config rather than a provider fault: someone
     // deleted the knowledge base, or every article in it is withheld.
     console.error("[auto-reply] no auto-replyable articles in the knowledge base");
-    return { ok: false, reason: AUTO_REPLY_FAILURE.config };
+    return {
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.config,
+      decline: AUTO_REPLY_DECLINE.unavailable,
+    };
   }
 
   let output: z.infer<typeof autoReplySchema>;
@@ -597,13 +622,30 @@ export async function autoReply(
     output = generated.output;
   } catch (err) {
     console.error("[auto-reply] generateText failed:", err);
+    // Every provider fault reads the same way to an agent — the machine could
+    // not be asked — so they share one `decline` while keeping the `reason` that
+    // decides whether a retry is coming.
     if (NoObjectGeneratedError.isInstance(err)) {
-      return { ok: false, reason: AI_FAILURE.empty };
+      return {
+        ok: false,
+        reason: AI_FAILURE.empty,
+        decline: AUTO_REPLY_DECLINE.unavailable,
+      };
     }
-    return { ok: false, reason: classifyFailure(err) };
+    return {
+      ok: false,
+      reason: classifyFailure(err),
+      decline: AUTO_REPLY_DECLINE.unavailable,
+    };
   }
 
-  if (!output.answered) return { ok: false, reason: AUTO_REPLY_FAILURE.declined };
+  if (!output.answered) {
+    return {
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.declined,
+      decline: AUTO_REPLY_DECLINE.notCovered,
+    };
+  }
 
   const composed = composeReply(
     greetingName(context.customerName),
@@ -612,14 +654,23 @@ export async function autoReply(
   );
   if (composed === null) {
     // Said yes and wrote nothing. Treated as a decline rather than an error:
-    // whatever it meant, it did not produce an answer.
-    return { ok: false, reason: AUTO_REPLY_FAILURE.declined };
+    // whatever it meant, it did not produce an answer — which is the same thing
+    // an agent needs to hear as an outright "not covered".
+    return {
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.declined,
+      decline: AUTO_REPLY_DECLINE.notCovered,
+    };
   }
 
   const reply = withoutDashes(composed);
   if (reply.length > REPLY_LIMIT) {
     console.warn(`[auto-reply] discarding a ${reply.length}-character reply`);
-    return { ok: false, reason: AUTO_REPLY_FAILURE.ungrounded };
+    return {
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.ungrounded,
+      decline: AUTO_REPLY_DECLINE.tooLong,
+    };
   }
 
   // Check 4. Citations are resolved against the articles the model was actually
@@ -633,7 +684,11 @@ export async function autoReply(
     console.warn(
       `[auto-reply] no usable citation among [${output.articleIds.join(", ")}]`,
     );
-    return { ok: false, reason: AUTO_REPLY_FAILURE.ungrounded };
+    return {
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.ungrounded,
+      decline: AUTO_REPLY_DECLINE.noCitation,
+    };
   }
 
   // Checks 5 and 6 both measure the reply against the same thing: the text of
@@ -661,7 +716,11 @@ export async function autoReply(
         .map((a) => a.id)
         .join(", ")}] do not state`,
     );
-    return { ok: false, reason: AUTO_REPLY_FAILURE.ungrounded };
+    return {
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.ungrounded,
+      decline: AUTO_REPLY_DECLINE.unbackedCommitment,
+    };
   }
 
   const references = unbackedReferences(reply, source);
@@ -669,7 +728,11 @@ export async function autoReply(
     console.error(
       `[auto-reply] discarded a reply carrying unsourced link(s)/address(es): ${references.join(", ")}`,
     );
-    return { ok: false, reason: AUTO_REPLY_FAILURE.ungrounded };
+    return {
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.ungrounded,
+      decline: AUTO_REPLY_DECLINE.unbackedReference,
+    };
   }
 
   return { ok: true, reply, articleIds: cited.map((article) => article.id) };

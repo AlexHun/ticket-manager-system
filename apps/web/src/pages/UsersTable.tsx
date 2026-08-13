@@ -1,4 +1,4 @@
-import { CheckCircle2, Pencil, Trash2, XCircle } from "lucide-react";
+﻿import { CheckCircle2, Pencil, Trash2, XCircle } from "lucide-react";
 import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,12 +24,12 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
       <table className="w-full text-sm">
         <thead className="bg-muted text-left text-muted-foreground">
           <tr>
-            <th className="px-4 py-2 font-medium">Name</th>
-            <th className="px-4 py-2 font-medium">Email</th>
-            <th className="px-4 py-2 font-medium">Role</th>
-            <th className="px-4 py-2 font-medium">Verified</th>
-            <th className="px-4 py-2 font-medium">Created</th>
-            <th className="px-4 py-2 font-medium text-right">Actions</th>
+            <th scope="col" className="px-4 py-2 font-medium">Name</th>
+            <th scope="col" className="px-4 py-2 font-medium">Email</th>
+            <th scope="col" className="px-4 py-2 font-medium">Role</th>
+            <th scope="col" className="px-4 py-2 font-medium">Verified</th>
+            <th scope="col" className="px-4 py-2 font-medium">Created</th>
+            <th scope="col" className="px-4 py-2 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -92,12 +92,12 @@ export function UsersTableSkeleton() {
       <table className="w-full text-sm">
         <thead className="bg-muted text-left text-muted-foreground">
           <tr>
-            <th className="px-4 py-2 font-medium">Name</th>
-            <th className="px-4 py-2 font-medium">Email</th>
-            <th className="px-4 py-2 font-medium">Role</th>
-            <th className="px-4 py-2 font-medium">Verified</th>
-            <th className="px-4 py-2 font-medium">Created</th>
-            <th className="px-4 py-2 font-medium text-right">Actions</th>
+            <th scope="col" className="px-4 py-2 font-medium">Name</th>
+            <th scope="col" className="px-4 py-2 font-medium">Email</th>
+            <th scope="col" className="px-4 py-2 font-medium">Role</th>
+            <th scope="col" className="px-4 py-2 font-medium">Verified</th>
+            <th scope="col" className="px-4 py-2 font-medium">Created</th>
+            <th scope="col" className="px-4 py-2 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody>

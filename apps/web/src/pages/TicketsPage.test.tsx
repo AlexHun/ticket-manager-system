@@ -961,7 +961,17 @@ describe("TicketsPage URL state", () => {
     await screen.findByText("Newest ticket");
     await user.type(screen.getByLabelText("Search"), "refund");
 
-    await waitFor(() => expect(urlParams().q).toBe("refund"));
+    // Explicit timeout, because this is the one assertion in the file waiting on
+    // a real timer: the search is debounced by SEARCH_DEBOUNCE_MS (300) before
+    // it reaches the URL. `waitFor` has its own 1000ms default that Vitest's
+    // `testTimeout` does not govern, so the margin here was 700ms of React work
+    // on a page that renders a table, six controls and two Radix Selects — and
+    // it went whenever the whole suite ran in parallel on a loaded machine. It
+    // passes alone every time, which is what made it look like a real failure
+    // rather than a short clock.
+    await waitFor(() => expect(urlParams().q).toBe("refund"), {
+      timeout: 5_000,
+    });
   });
 
   test("drops the page when a filter changes", async () => {

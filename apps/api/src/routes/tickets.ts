@@ -11,6 +11,7 @@ import {
 } from "@ticket/core";
 import {
   ASSIGNEE_NONE,
+  AUTO_REPLY_DECLINE,
   BACKLOG_STATUS,
   CATEGORY_NONE,
   MESSAGE_DIRECTION,
@@ -20,6 +21,7 @@ import {
   TICKET_VIEWS,
   ticketViewParams,
   type CreateTicketMessageResponse,
+  type AutoReplyDecline,
   type SortOrder,
   type TicketAssigneesResponse,
   type TicketDetailResponse,
@@ -155,6 +157,21 @@ const ASSIGNABLE_USER = {
 const ASSIGNEE_SELECT = { id: true, name: true, email: true } as const;
 
 /**
+ * A stored decline reason, narrowed to one the client has wording for.
+ *
+ * `Ticket.autoReplyDecline` is a plain `text` column (see the note on the model
+ * for why), so the type on the wire is a promise this function has to keep
+ * rather than one Postgres keeps for us. Anything unrecognised becomes null: a
+ * reason the UI cannot name is not better than silence, and the alternative is
+ * rendering a raw database string at an agent.
+ */
+function asDecline(value: string | null): AutoReplyDecline | null {
+  return value !== null && (AUTO_REPLY_DECLINE as Record<string, string>)[value]
+    ? (value as AutoReplyDecline)
+    : null;
+}
+
+/**
  * The columns a `ThreadMessage` is made of.
  *
  * htmlBody is deliberately absent: it is attacker-supplied inbound email, and
@@ -179,6 +196,9 @@ const MESSAGE_SELECT = {
   textBody: true,
   direction: true,
   automated: true,
+  // Which knowledge-base articles an automated reply cited. Ids from our own
+  // corpus, never model output — see the note on `Message.citedArticleIds`.
+  citedArticleIds: true,
   createdAt: true,
 } as const;
 
@@ -423,6 +443,13 @@ ticketsRouter.get(
           ...m,
           createdAt: m.createdAt.toISOString(),
         })),
+        // Validated on the way out rather than trusted. The column is a plain
+        // string, so a value written by an older build, a hand-edited row or a
+        // reason since renamed would otherwise reach the client as a key the UI
+        // has no wording for. Unrecognised reads as null — "nothing to report" —
+        // which is what an unknown verdict honestly is.
+        autoReplyDecline: asDecline(ticket.autoReplyDecline),
+        autoReplyDeclinedAt: ticket.autoReplyDeclinedAt?.toISOString() ?? null,
       },
     });
   },

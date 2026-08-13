@@ -51,6 +51,9 @@ function makeMessage(
     textBody: "Hello, I need help.",
     direction: MESSAGE_DIRECTION.inbound,
     automated: false,
+    // Empty on everything a person wrote, which is the default a fixture wants.
+    // Only the auto-reply fills it.
+    citedArticleIds: [],
     createdAt: "2025-05-01T12:00:00.000Z",
     ...overrides,
   };
@@ -70,6 +73,10 @@ function makeTicketDetail(overrides: Partial<TicketDetail> = {}): TicketDetail {
     createdAt: "2025-05-01T12:00:00.000Z",
     updatedAt: "2025-05-03T12:00:00.000Z",
     messages: [],
+    // Null is the state of nearly every ticket: the auto-reply either has not
+    // looked at it, or answered it.
+    autoReplyDecline: null,
+    autoReplyDeclinedAt: null,
     ...overrides,
   };
 }

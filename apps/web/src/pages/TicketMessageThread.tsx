@@ -71,8 +71,22 @@ export function TicketMessageThread({
 }) {
   const scrollRef = useRef<HTMLOListElement>(null);
 
-  // A thread opens on its newest message, the way a chat does: the last reply
-  // is what an agent came for, and the history is a scroll up.
+  // A thread opens on its newest message, the way a chat does — but never with
+  // the customer's last message scrolled off the top.
+  //
+  // The bottom alone was wrong in the one case this product exists for. When the
+  // knowledge base answers a ticket unattended it writes several paragraphs, so
+  // opening at the bottom put an agent in front of the machine's answer with the
+  // question that prompted it above the fold. You were reading our reply before
+  // you knew what was asked, which is the wrong way round for judging whether it
+  // was any good — and judging that is the entire reason a person opens one of
+  // these.
+  //
+  // So: go to the bottom, then pull back up if that left the newest inbound
+  // message above the viewport. Short threads are unaffected, which is why this
+  // is not simply "scroll to the last inbound" — that would push our own reply
+  // out of sight on every ticket instead, and trade one half of the exchange for
+  // the other.
   //
   // Keyed on the count and the ticket rather than on `messages` itself — a
   // background refetch rebuilds that array with identical contents, and
@@ -85,7 +99,21 @@ export function TicketMessageThread({
   const ticketId = messages[0]?.ticketId;
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+
+    el.scrollTop = el.scrollHeight;
+
+    const inbound = el.querySelectorAll<HTMLElement>("[data-inbound]");
+    const newest = inbound[inbound.length - 1];
+    if (!newest) return;
+
+    // Rects rather than `offsetTop`: this list is not a positioned ancestor, so
+    // `offsetParent` is some div further up and the offsets would be measured
+    // against the wrong origin. Reading a rect after writing `scrollTop` is
+    // safe — layout is flushed synchronously on read.
+    const delta =
+      newest.getBoundingClientRect().top - el.getBoundingClientRect().top;
+    if (delta < 0) el.scrollTop += delta;
   }, [count, ticketId]);
 
   // Reachable: the inbound webhook always writes a message with its ticket, but
@@ -137,6 +165,11 @@ export function TicketMessageThread({
         return (
           <li
             key={message.id}
+            // Read by the scroll anchor above to find the newest thing the
+            // customer said. An attribute rather than a ref map: there is one
+            // reader, it runs once per thread, and a `querySelectorAll` on
+            // mount is cheaper than a ref callback on every message.
+            data-inbound={outbound ? undefined : ""}
             className={cn("flex flex-col", startsRun && index > 0 && "mt-5")}
           >
             {newDay && <DayDivider label={dayLabel(sentAt)} first={index === 0} />}
@@ -204,8 +237,22 @@ export function TicketMessageThread({
                     // scrolls the window by a few hundred px for a span nobody
                     // can see.
                     "relative rounded-2xl px-3.5 py-2.5 text-sm",
+                    // Both sides are quiet surfaces, and the outbound one is the
+                    // side that changed. It used to be a solid `bg-primary`
+                    // block, which on an auto-replied ticket meant the machine's
+                    // several paragraphs arrived as the loudest thing on the
+                    // screen while the customer's question sat in grey above it
+                    // — the accent spent on the half of the conversation nobody
+                    // needs convincing of. We know what we said; the thing worth
+                    // reading closely is what they wrote.
+                    //
+                    // A tint, not a removal: direction is still carried by the
+                    // side, the avatar, the name and the sr-only label, and the
+                    // green keeps "ours" legible at a glance down a long thread.
+                    // Text goes to `text-foreground` on both sides, so contrast
+                    // no longer depends on the accent's own lightness.
                     outbound
-                      ? "rounded-tr-sm bg-primary text-primary-foreground"
+                      ? "rounded-tr-sm bg-primary/15 text-foreground ring-1 ring-primary/30"
                       : "rounded-tl-sm bg-muted text-foreground ring-1 ring-border",
                   )}
                 >
@@ -226,14 +273,10 @@ export function TicketMessageThread({
                     // deliberately not available to render, and stripping tags
                     // by hand to fake a plain-text part is exactly how that
                     // hole gets reopened.
-                    <p
-                      className={cn(
-                        "italic",
-                        outbound
-                          ? "text-primary-foreground/75"
-                          : "text-muted-foreground",
-                      )}
-                    >
+                    // Muted on both sides now that the outbound bubble is a
+                    // tint rather than a solid fill — the accent-derived
+                    // variant it used to need would be unreadable on it.
+                    <p className="italic text-muted-foreground">
                       This message has no plain-text content.
                     </p>
                   )}
@@ -245,6 +288,36 @@ export function TicketMessageThread({
                 >
                   {TIME_FORMAT.format(sentAt)}
                 </time>
+
+                {/* What the machine read, and that nobody checked it.
+
+                    The "Automated" badge above says a machine wrote this. It
+                    does not say the two things an agent actually needs when
+                    deciding whether to stand behind it: that no colleague
+                    approved it before the customer got it, and what it was
+                    built from. Both were computed and thrown away — the ids
+                    went to a log line, and "unreviewed" was never stated
+                    anywhere. A support reply nobody read is the most consequential
+                    thing this app does, and it looked exactly like a colleague's
+                    work minus a chip.
+
+                    The ids are safe to render: they are keys from our own
+                    corpus that were looked up and found, not text the model
+                    returned — a reply whose citations did not resolve was
+                    discarded rather than sent. */}
+                {message.automated && (
+                  <p className="px-1 text-xs text-muted-foreground">
+                    Sent without review
+                    {message.citedArticleIds.length > 0 && (
+                      <>
+                        {" · from "}
+                        <span className="font-mono">
+                          {message.citedArticleIds.join(", ")}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
             </div>
           </li>

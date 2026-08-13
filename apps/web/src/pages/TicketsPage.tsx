@@ -283,6 +283,23 @@ export function TicketsPage() {
         <DensityToggle density={density} onChange={setDensity} />
       </div>
 
+      {/* What the filters just did, for anyone not watching the table redraw.
+          Searching is the case that needs it: the input is debounced, so the
+          result arrives 300ms after the last keystroke with no cue at all, and
+          the row count sits at the far bottom of the page where a screen reader
+          reaches it long after deciding whether to keep typing.
+
+          `role="status"` is polite by definition — it waits for a gap rather
+          than cutting in on every character. Rendered only once a result is in
+          hand, so nothing is announced for the empty first paint, and it stays
+          out of the DOM while a fetch is in flight so the previous page's count
+          is never re-read as if it were the new one. */}
+      <p role="status" className="sr-only">
+        {data && !isFetching
+          ? `${data.total} ${data.total === 1 ? "ticket" : "tickets"} found`
+          : ""}
+      </p>
+
       {isPending && (
         <TicketsTableSkeleton density={density} className="min-h-0 flex-1" />
       )}

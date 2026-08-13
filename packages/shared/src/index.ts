@@ -98,6 +98,48 @@ export const USER_ROLE = {
 
 export type UserRole = (typeof USER_ROLE)[keyof typeof USER_ROLE];
 
+/**
+ * Why the knowledge-base auto-reply left a ticket for a person.
+ *
+ * Declining is the designed, common outcome — most support mail is not a
+ * knowledge-base question, and six checks fail closed on the rest. Until this
+ * existed none of that reached anyone: a declined ticket and a ticket the
+ * machine never looked at were the same `Open` row, so an agent could not learn
+ * the system's edges and an admin could not tell a working knowledge base from
+ * a broken one. The reason was written to a log line and nowhere else.
+ *
+ * Deliberately finer than `AutoReplyFailure` in the API, which drives *retries*
+ * and must stay coarse — four different checks all mean "do not try again" to
+ * pg-boss and four different things to a person reading the ticket. The two
+ * travel together and neither replaces the other.
+ *
+ * The ordering below is the order they occur in: three gates before the model is
+ * called, then its own verdict, then the checks over what it wrote.
+ */
+export const AUTO_REPLY_DECLINE = {
+  /** Refund, or still unclassified. A machine may not answer either. */
+  category: "category",
+  /** Somebody had already replied — the corpus answers openings, not threads. */
+  answered: "answered",
+  /** The opening email had no plain text to read. */
+  noText: "noText",
+  /** It read the corpus and said this is not covered. The common one. */
+  notCovered: "notCovered",
+  /** It answered, but cited nothing that resolves against the corpus. */
+  noCitation: "noCitation",
+  /** The reply promised money its cited articles do not mention. */
+  unbackedCommitment: "unbackedCommitment",
+  /** The reply carried a link or address its cited articles do not contain. */
+  unbackedReference: "unbackedReference",
+  /** Longer than a knowledge-base answer has any business being. */
+  tooLong: "tooLong",
+  /** The provider failed, or the retry ladder ran out. Not a judgement. */
+  unavailable: "unavailable",
+} as const;
+
+export type AutoReplyDecline =
+  (typeof AUTO_REPLY_DECLINE)[keyof typeof AUTO_REPLY_DECLINE];
+
 export interface Ticket {
   id: number;
   subject: string;
@@ -325,6 +367,20 @@ export interface Message {
    * to be able to tell them apart, so the fact is recorded rather than guessed.
    */
   automated: boolean;
+  /**
+   * The knowledge-base articles an automated reply was built from — `["KB-004"]`.
+   *
+   * Always empty on anything a person wrote and on everything inbound, so an
+   * agent reading the thread can tell "a machine sent this, from these articles"
+   * from "a colleague sent this". Every id here resolved against the corpus the
+   * model was actually given, because a reply whose citations did not resolve
+   * was thrown away rather than sent — see check 4 in `ai/auto-reply.ts`.
+   *
+   * Safe to render. These are ids from our own file, not model output: the
+   * strings that reached the database are the ids of articles that were looked
+   * up and found, never the raw text the model returned.
+   */
+  citedArticleIds: string[];
   createdAt: string;
 }
 
@@ -385,10 +441,21 @@ export interface TicketWithAssignee extends Ticket {
   assignedTo: TicketAssignee | null;
 }
 
-/** A ticket plus the two things only the detail view needs. */
+/** A ticket plus the things only the detail view needs. */
 export interface TicketDetail extends TicketWithAssignee {
   /** The whole thread, oldest first. */
   messages: ThreadMessage[];
+  /**
+   * Why the auto-reply left this one for a person, and when.
+   *
+   * On `TicketDetail` rather than on `Ticket`, so it does not ride along on
+   * every row of a 25-row list that has nowhere to show it. Null on the great
+   * majority of tickets: a human-created ticket, one the machine answered, and
+   * one it has not reached yet all read the same here — this says only "it
+   * looked, and here is what it concluded".
+   */
+  autoReplyDecline: AutoReplyDecline | null;
+  autoReplyDeclinedAt: string | null;
 }
 
 export interface TicketDetailResponse {
