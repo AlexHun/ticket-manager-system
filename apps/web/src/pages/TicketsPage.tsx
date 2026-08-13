@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
@@ -120,19 +120,39 @@ export function TicketsPage() {
     setSearchParams((prev) => writeTicketListParams(prev, patch), { replace });
   };
 
-  // The settled search lands in the URL. `replace`, because every pause in
-  // typing would otherwise leave a history entry to click back through.
+  // The `q` this component last agreed with, so the effect below can tell which
+  // side moved. Without it the two directions are indistinguishable, and the
+  // input wins a fight it should lose — see the effect.
+  const settledSearch = useRef(urlSearch);
+
+  // Input and URL, kept in step. One effect rather than two, because the whole
+  // question is *which of them changed*, and that cannot be answered by two
+  // effects that each see only their own dependency.
   useEffect(() => {
+    // The URL moved on its own: Back/Forward, or a saved view in the sidebar.
+    // Whatever is in the box belongs to the view being left, so it is adopted
+    // and nothing is written back.
+    //
+    // This branch has to come first and has to exist. Without it the write
+    // below fires on the same pass — its guards are satisfied, since a settled
+    // input necessarily disagrees with a `q` that has just been cleared — and
+    // puts the old search straight back into the URL. Clicking "Mine" with
+    // `race` still in the box then landed on Mine *and* race: one row where the
+    // sidebar badge said seven, with the filters showing no sign of why.
+    if (settledSearch.current !== urlSearch) {
+      settledSearch.current = urlSearch;
+      setSearchInput(urlSearch);
+      return;
+    }
+
     if (debouncedSearch !== searchInput) return; // still settling
     if (debouncedSearch === urlSearch) return; // URL already agrees
+
+    // The settled search lands in the URL. `replace`, because every pause in
+    // typing would otherwise leave a history entry to click back through.
+    settledSearch.current = debouncedSearch;
     update({ q: debouncedSearch || undefined }, true);
   }, [debouncedSearch, searchInput, urlSearch]);
-
-  // Adopt a search that changed from outside the input — Back/Forward, or a
-  // shared link. The guard above is what stops the two from ping-ponging.
-  useEffect(() => {
-    setSearchInput(urlSearch);
-  }, [urlSearch]);
 
   const sorting = useMemo<SortingState>(
     () => [

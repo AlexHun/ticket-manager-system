@@ -104,7 +104,7 @@ export function DashboardPage() {
             // entirely. The cue still lands on the plots themselves, and
             // `aria-busy` above carries it for anyone not looking at the
             // colour.
-            isFetching && "[&_[data-slot=chart]]:opacity-60",
+            isFetching && "**:data-[slot=chart]:opacity-60",
           )}
         >
           <KpiRow

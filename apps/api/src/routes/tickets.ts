@@ -11,16 +11,22 @@ import {
 } from "@ticket/core";
 import {
   ASSIGNEE_NONE,
+  BACKLOG_STATUS,
   CATEGORY_NONE,
   MESSAGE_DIRECTION,
+  STATUS_BACKLOG,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
+  TICKET_VIEWS,
+  ticketViewParams,
   type CreateTicketMessageResponse,
   type SortOrder,
   type TicketAssigneesResponse,
   type TicketDetailResponse,
   type TicketSortField,
   type TicketsListResponse,
+  type TicketView,
+  type TicketViewCountsResponse,
   type TicketWithAssignee,
   type UpdateTicketResponse,
 } from "@ticket/shared";
@@ -87,8 +93,15 @@ function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
     AND: [{ status: { not: TICKET_STATUS.Processing } }],
   };
 
+  // `backlog` is the one status value that names a set rather than a status, so
+  // it is the one that has to be resolved here — see `STATUS_BACKLOG`. This is
+  // the single place it turns into statuses, which is what lets the saved views
+  // count through this function and be certain of matching the page they link to.
   if (query.status) {
-    where.status = query.status;
+    where.status =
+      query.status === STATUS_BACKLOG
+        ? { in: [...BACKLOG_STATUS] }
+        : query.status;
   }
 
   if (query.category) {
@@ -316,10 +329,56 @@ ticketsRouter.get(
  */
 ticketsRouter.get("/stats", requireAuth, ticketStatsHandler);
 
+/**
+ * How many tickets are behind each saved view in the sidebar.
+ *
+ * The counting is deliberately indirect: every view is turned into the same
+ * query params the sidebar puts in its `href`, parsed by the same schema
+ * `GET /api/tickets` parses, and narrowed by the same `buildWhere`. Nothing here
+ * knows what "unassigned" means — `ticketViewParams` does, once, for both ends.
+ * That is what makes a badge and the page it links to incapable of disagreeing,
+ * which two shipped bugs in this app had already managed the other way round.
+ *
+ * `parse`, not `safeParse`: the input is our own table rather than the request,
+ * so a rejection means the views and the list API have come apart and a 500 is
+ * the honest answer. There is no client mistake to report.
+ *
+ * One transaction so the four numbers are a single snapshot — otherwise a ticket
+ * assigned between two of them could leave the sidebar showing more unassigned
+ * tickets than there are tickets in the backlog.
+ */
+ticketsRouter.get(
+  "/views",
+  requireAuth,
+  async (_req: Request, res: Response<TicketViewCountsResponse>) => {
+    const session = sessionOf(res);
+
+    const totals = await prisma.$transaction(
+      TICKET_VIEWS.map((view) =>
+        prisma.ticket.count({
+          where: buildWhere(
+            ticketsQuerySchema.parse(ticketViewParams(view, session.user.id)),
+          ),
+        }),
+      ),
+    );
+
+    // `TICKET_VIEWS` is every view, so the record is total — but
+    // `Object.fromEntries` types its result as a partial map and cannot know
+    // that. The cast is the only thing standing in for it.
+    const counts = Object.fromEntries(
+      TICKET_VIEWS.map((view, i) => [view, totals[i]]),
+    ) as Record<TicketView, number>;
+
+    res.json({ counts });
+  },
+);
+
 // Route order: any future literal child route (`/export`) has to be registered
-// ABOVE this one, or `:id` will swallow it — which is why `/assignees` and
-// `/stats` sit above. Registered below, `/stats` reaches `ticketIdParamSchema`,
-// which answers `400 Invalid ticket id` and sends you looking in the wrong place.
+// ABOVE this one, or `:id` will swallow it — which is why `/assignees`, `/stats`
+// and `/views` sit above. Registered below, `/stats` reaches
+// `ticketIdParamSchema`, which answers `400 Invalid ticket id` and sends you
+// looking in the wrong place.
 ticketsRouter.get(
   "/:id",
   requireAuth,

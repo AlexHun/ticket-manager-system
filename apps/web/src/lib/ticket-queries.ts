@@ -28,6 +28,18 @@ export const ticketKeys = {
   list: (params: object) => ["tickets", params] as const,
 
   /**
+   * The sidebar's saved-view counts. No params — the server derives every view
+   * from the session.
+   *
+   * Under the `all` prefix like everything else, so a ticket mutation marks it
+   * stale. Note that marking is not enough on its own here: this query has a
+   * permanently mounted observer, and the sweeps that reach it pass
+   * `refetchType: "none"`. `useTicketField` therefore invalidates this key
+   * separately, and on purpose — see the comment there.
+   */
+  views: ["tickets", "views"] as const,
+
+  /**
    * One dashboard slice, keyed by range + scope.
    *
    * Under the `all` prefix on purpose: `useTicketField`'s

@@ -4,9 +4,10 @@ import {
   ASSIGNEE_NONE,
   CATEGORY_NONE,
   CLIENT_TICKET_STATUS,
+  STATUS_BACKLOG,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
-  type ClientTicketStatus,
+  type ClientTicketStatusFilter,
   type TicketCategoryFilter,
 } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
@@ -37,12 +38,14 @@ const ANY_VALUE = "any";
 
 export interface TicketFilterState {
   /**
+   * One status, `STATUS_BACKLOG` for New and Open together, or `ANY`.
+   *
    * Never `Processing`: the list refuses to return those, so the API rejects the
    * filter — see `CLIENT_TICKET_STATUS`. A ticket a worker is answering is
    * hidden precisely so that nobody picks it up and answers it twice, and a
    * filter that revealed them would undo that.
    */
-  status: ClientTicketStatus | typeof ANY;
+  status: ClientTicketStatusFilter | typeof ANY;
   category: TicketCategoryFilter | typeof ANY;
   /** A user id, `ASSIGNEE_NONE` for unassigned, or `ANY`. */
   assignedTo: string;
@@ -102,10 +105,20 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
         // `CLIENT_TICKET_STATUS`, not every status: `Processing` is missing
         // because the list never returns one, so offering it would be a filter
         // guaranteed to show an empty page.
-        options={CLIENT_TICKET_STATUS.map((s) => ({
-          value: s,
-          label: s,
-        }))}
+        //
+        // Backlog leads, and is the only entry here that is a set rather than a
+        // status. It has to be offered: the sidebar's saved views all select it,
+        // and a value the select cannot draw leaves Radix rendering an empty
+        // trigger — a filtered list that looks unfiltered. It is the same word
+        // the sidebar uses, deliberately, so arriving from "Backlog" and reading
+        // the control you arrived at agree.
+        options={[
+          { value: STATUS_BACKLOG, label: "Backlog" },
+          ...CLIENT_TICKET_STATUS.map((s) => ({
+            value: s,
+            label: s,
+          })),
+        ]}
         onChange={(value) =>
           onChange({ ...filters, status: value as TicketFilterState["status"] })
         }

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sidebar";
 import { LogoMark } from "./Logo";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
+import { SidebarViews } from "./SidebarViews";
 
 export function AppSidebar() {
   const { data: session } = useSession();
@@ -85,6 +86,12 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {/* Under Tickets, because every one of these is a cut of that page
+              rather than a place of its own. Same reason they are one group with
+              a label: the sidebar's top group is where you are, this one is what
+              you are looking for. */}
+          <SidebarViews />
 
           {/* Empty in a production build — `DEV_NAV_ITEMS` is `[]` there, and the
               group renders nothing rather than being conditional on a flag. A

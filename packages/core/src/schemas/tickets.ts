@@ -13,6 +13,7 @@ import {
   MAX_PAGE_SIZE,
   MAX_TICKET_ID,
   SORT_ORDER,
+  STATUS_BACKLOG,
   TICKET_CATEGORY,
   TICKET_SEARCH_MAX_LENGTH,
   TICKET_SORT_FIELD,
@@ -44,8 +45,15 @@ export const ticketsQuerySchema = z.object({
   // Every status except `Processing`, which the list refuses to return at all.
   // Rejecting it is kinder than accepting it: a filter that always yields an
   // empty page looks like a broken query, and this way the client is told.
+  //
+  // Plus `STATUS_BACKLOG`, which is not a status but a set — `New` and `Open`
+  // together. It is the one filter the list could not previously express and the
+  // one every "not dealt with" number on the dashboard means, so every link from
+  // such a number now lands on exactly the tickets it counted.
   status: z
-    .enum(CLIENT_TICKET_STATUS, { error: "Invalid status filter" })
+    .enum([...CLIENT_TICKET_STATUS, STATUS_BACKLOG], {
+      error: "Invalid status filter",
+    })
     .optional(),
   category: z
     .enum([...Object.values(TICKET_CATEGORY), CATEGORY_NONE], {

@@ -63,6 +63,14 @@ export function useTicketField<TValue>({
         queryKey: ticketKeys.all,
         refetchType: "none",
       });
+      // The sidebar's counts are the exception, and they need the refetch the
+      // sweep above withholds. Status, category and assignee are precisely the
+      // three fields the saved views are cut by, so every mutation here moves at
+      // least one of those numbers — and unlike a cached list page, the sidebar
+      // is on screen while it happens. Marked-stale-but-not-refetched would mean
+      // taking a ticket and watching "Unassigned" keep its old number until you
+      // alt-tabbed. It is one small request against a page the user is looking at.
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.views });
       toast.success(describe(updated));
     },
     onError: (err) => {

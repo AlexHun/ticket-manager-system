@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import {
   ASSIGNEE_NONE,
   CATEGORY_NONE,
+  STATUS_BACKLOG,
   TICKET_STATUS,
   type FirstResponseStats,
   type TicketCategoryCount,
@@ -53,20 +54,24 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
             // Links to the list already filtered the same way, so the count is a
             // starting point rather than a thing to go and reproduce by hand.
             //
-            // `assignedTo`, not `status`: this count is "arrived and nobody owns
-            // it", which spans New *and* Open (see `openUnassigned` in
-            // ticket-stats.ts), and the list's status filter takes one value. So
-            // the assignee axis is the one that can be expressed honestly — it
-            // over-counts by including settled-but-unassigned tickets rather
-            // than silently dropping every untriaged one, which is what
-            // `status=Open` did.
+            // Both axes, and the status one is `STATUS_BACKLOG` — this count is
+            // "arrived and nobody owns it", which spans New *and* Open (see
+            // `openUnassigned` in ticket-stats.ts). Until the list could express
+            // that as one filter there was no honest destination: `status=Open`
+            // dropped every untriaged ticket and omitting status swept in
+            // everything already settled. Now the link selects the same set the
+            // number counted, on both axes.
+            //
+            // The one remaining difference is the date window — the tile is
+            // scoped to the dashboard's range and the list has no such filter —
+            // so a wider range can still show fewer tickets here than there.
             //
             // Overrides the tile's muted colour and underlines unconditionally:
             // inheriting text-muted-foreground put an interactive control at
             // 4.65:1 in light mode and, worse, left "this is a link" carried by
             // nothing but a hover state that a touch device never shows.
             <Link
-              to={`/tickets?assignedTo=${ASSIGNEE_NONE}`}
+              to={`/tickets?status=${STATUS_BACKLOG}&assignedTo=${ASSIGNEE_NONE}`}
               className="text-foreground underline underline-offset-2"
             >
               {summary.openUnassigned} unassigned
