@@ -5,11 +5,7 @@ import {
   MAX_MESSAGE_BODY_LENGTH,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import {
-  autoReplyArticleById,
-  autoReplyArticles,
-  type KbArticle,
-} from "./knowledge-base";
+import { autoReplyArticles, type KbArticle } from "./knowledge-base";
 import {
   AI_FAILURE,
   classify as classifyFailure,
@@ -35,8 +31,9 @@ import {
  *   2. **only `Auto-reply: yes` articles are in the prompt at all** — the file
  *      decides what a machine may answer, and a withheld article is absent
  *      rather than discouraged
- *   3. **internal notes never enter the prompt** (stripped in `knowledge-base.ts`),
- *      so the reply cannot leak what the model never saw
+ *   3. **internal notes never enter the prompt** — they are a column
+ *      `knowledge-base.ts` does not select, so the reply cannot leak what the
+ *      model was never given
  *   4. **the reply must cite articles that exist**; citations that do not
  *      resolve are dropped and a reply with none left is thrown away
  *   5. **no money word may appear that its cited articles do not contain**
@@ -285,10 +282,11 @@ const autoReplySchema = z.object({
 /**
  * The corpus, as the prompt carries it.
  *
- * Built once per call from `autoReplyArticles()`, which has already removed the
- * internal notes and the withheld articles. The id is on its own line in front
- * of each body so the model has something concrete to cite, and the categories
- * travel because "which article is this" is easier when the piles are named.
+ * Built once per call from `autoReplyArticles()`, which has already withheld the
+ * `Auto-reply: no` articles and never selected the internal notes at all. The id
+ * is on its own line in front of each body so the model has something concrete
+ * to cite, and the categories travel because "which article is this" is easier
+ * when the piles are named.
  */
 function corpusBlock(articles: KbArticle[]): string {
   return articles
@@ -301,11 +299,13 @@ function corpusBlock(articles: KbArticle[]): string {
  *
  * The knowledge base goes in here rather than in the user message, which is the
  * opposite of where the customer's email goes, and both placements are on
- * purpose. The corpus is static per deployment, so keeping it in the system
- * prompt keeps the prefix identical across requests for OpenAI's automatic
- * prompt caching — a 6KB block re-sent per ticket otherwise. It also keeps the
- * only text we wrote ourselves in the instruction half of the prompt, and the
- * only text a stranger wrote in the data half.
+ * purpose. The corpus changes only when an admin edits it, so keeping it in the
+ * system prompt keeps the prefix identical across every request in between, for
+ * OpenAI's automatic prompt caching — a 6KB block re-sent per ticket otherwise.
+ * That is also why `autoReplyArticles` orders by id: an edit is supposed to cost
+ * one cold prefix, not every request a reshuffled one. It also keeps the only
+ * text we wrote ourselves in the instruction half of the prompt, and the only
+ * text a stranger wrote in the data half.
  *
  * The hardest thing to get out of a model here is a *refusal*. Left to itself it
  * will answer anything with something, because a helpful-sounding paragraph
@@ -582,7 +582,7 @@ export async function autoReply(
   context: AutoReplyContext,
   signal?: AbortSignal,
 ): Promise<AutoReplyResult> {
-  const articles = autoReplyArticles();
+  const articles = await autoReplyArticles();
   if (articles.length === 0) {
     // Nothing to answer from. Config rather than a provider fault: someone
     // deleted the knowledge base, or every article in it is withheld.
@@ -674,10 +674,21 @@ export async function autoReply(
   }
 
   // Check 4. Citations are resolved against the articles the model was actually
-  // given, so an id that exists in the file but was withheld does not count —
+  // given, so an id that exists in the table but was withheld does not count —
   // that is not a citation, it is a guess that happened to land on a real id.
+  //
+  // Resolved against the local `articles` array, and that is now load-bearing
+  // rather than a convenience. This used to call `autoReplyArticleById`, which
+  // re-derived the corpus; against a file cached for the life of the process
+  // that returned the identical list, so the distinction cost nothing. Against a
+  // live table it does not: an admin saving an edit while this call is in flight
+  // would have the citation checked against a corpus the model never saw, and
+  // checks 5 and 6 below would then measure the reply against the *new* article
+  // text. `articles` is the exact set that went into the prompt. Do not
+  // reintroduce a lookup that queries again.
+  const byId = new Map(articles.map((article) => [article.id, article]));
   const cited = output.articleIds
-    .map((id) => autoReplyArticleById(id.trim().toUpperCase()))
+    .map((id) => byId.get(id.trim().toUpperCase()))
     .filter((article): article is KbArticle => article !== undefined);
 
   if (cited.length === 0) {

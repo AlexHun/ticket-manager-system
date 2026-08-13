@@ -24,6 +24,7 @@ model User {
   accounts        Account[]
   assignedTickets Ticket[]  @relation("TicketAssignee")
   authoredMessages Message[]
+  knowledgeEdits  KnowledgeArticleRevision[]
 
   @@unique([email])
   @@map("user")
@@ -245,4 +246,109 @@ enum TicketCategory {
 enum MessageDirection {
   inbound
   outbound
+}
+
+/// A knowledge-base article: the grounding material the unattended auto-reply
+/// answers from, and the single most privileged content in this database.
+///
+/// It used to be `apps/api/knowledge-base.md`, parsed at boot, and that file's
+/// own header argued for keeping it a file — reviewable in a pull request, and
+/// beyond the reach of anyone who talks their way into an admin session. It set
+/// one condition for moving here, which this schema is the first half of: "a
+/// table can come later; it should come with an audit log." Every write to this
+/// model must therefore write a `KnowledgeArticleRevision` in the same
+/// transaction. That is not a convention, it is the entire reason the trade was
+/// acceptable. The markdown file survives as the seed corpus for a fresh
+/// deployment; it is no longer read at runtime.
+model KnowledgeArticle {
+  /// `KB-001`, and the citation contract. `message.citedArticleIds` holds these
+  /// strings on every reply the machine has ever written, so an id is stable
+  /// and is **never reused** — `nextArticleId` counts from the highest that has
+  /// ever existed, archived rows included, rather than from the row count.
+  id           String         @id
+  /// The question, phrased the way a customer would ask it.
+  title        String
+  category     TicketCategory
+  /// The answer, and the only column here that ever reaches a model.
+  body         String
+  /// What a person needs to know and a customer must never be told: what not to
+  /// promise, when to escalate, which figure to check first.
+  ///
+  /// A column of its own rather than `> Internal:` lines inside the body, which
+  /// is how the markdown file carried them. The parser stripped those with a
+  /// regex before assembling the corpus; here the corpus query simply does not
+  /// select this column, so the guarantee moved from "a regex removed it" to
+  /// "the prompt was never given it". Keep it that way: no query that builds a
+  /// prompt may name this field.
+  internalNote String?
+  /// Whether the unattended auto-reply may answer from this article at all.
+  ///
+  /// The **first** gate on the whole feature and the only one that lives in
+  /// content rather than in code — everything downstream checks what a model
+  /// produced, this decides what it was ever asked. Default false, deliberately:
+  /// a new article is withheld until somebody says otherwise, so the failure
+  /// mode of a half-finished edit is an article nobody answers from.
+  autoReply    Boolean        @default(false)
+  /// Retired, but still resolvable.
+  ///
+  /// Archived rather than deleted because `message.citedArticleIds` points here
+  /// from replies already sitting in customers' threads, and "why did we tell
+  /// them that?" is asked weeks later. An archived article is out of every
+  /// prompt and out of the corpus, and still readable at the id that cited it.
+  archived     Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  revisions    KnowledgeArticleRevision[]
+
+  /// The corpus query: live, auto-replyable, ordered by id.
+  @@index([archived, autoReply])
+  @@map("knowledge_article")
+}
+
+/// One recorded change to one article: what it became, who made it, when.
+///
+/// A full snapshot per revision rather than a diff. A diff chain is only as good
+/// as every link in it, and the question this exists to answer — "what did the
+/// prompt say on the day we sent that reply?" — is asked about one moment, not
+/// about a sequence.
+model KnowledgeArticleRevision {
+  id           Int                     @id @default(autoincrement())
+  articleId    String
+  /// `Restrict`, not `Cascade`: an article with revisions cannot be deleted, so
+  /// the audit trail cannot be erased by removing what it describes. Since every
+  /// article gets a `created` revision in the same transaction that inserts it,
+  /// this makes articles undeletable through the ORM by construction. Archive
+  /// instead — that is what `archived` is for.
+  article      KnowledgeArticle        @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  action       KnowledgeRevisionAction
+  /// The article as it stood *after* this change.
+  title        String
+  category     TicketCategory
+  body         String
+  internalNote String?
+  autoReply    Boolean
+  archived     Boolean
+  /// Who did it. Null for the one-time import from `knowledge-base.md`, and null
+  /// again once that admin's account is deleted — hence `SetNull` and hence the
+  /// two denormalised columns below, which are what keep the trail readable
+  /// after the account is gone. An audit log that forgets who acted the moment
+  /// they leave is not an audit log.
+  editorId     String?
+  editor       User?                   @relation(fields: [editorId], references: [id], onDelete: SetNull)
+  editorName   String
+  /// Null for the import, which had no account behind it.
+  editorEmail  String?
+  createdAt    DateTime                @default(now())
+
+  @@index([articleId, createdAt])
+  @@index([editorId])
+  @@index([createdAt])
+  @@map("knowledge_article_revision")
+}
+
+enum KnowledgeRevisionAction {
+  created
+  updated
+  archived
+  restored
 }

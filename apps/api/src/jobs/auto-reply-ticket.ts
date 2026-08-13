@@ -8,7 +8,7 @@ import {
   type AutoReplyDecline,
 } from "@ticket/shared";
 import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
-import { autoReplyArticles } from "../ai/knowledge-base";
+import { autoReplyArticleCount } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
 import { prisma } from "../db";
 import { newOutboundMessageId } from "../message-id";
@@ -135,10 +135,12 @@ const SUPPORT_NAME = "Support (automated)";
  *
  * `Refund` is absent, and this is the second of two independent gates — every
  * refund article in the knowledge base is also marked `Auto-reply: no`. Two,
- * because they fail differently: the file can be edited by anyone with commit
- * access and one careless `yes` would put an unattended reply on a ticket about
- * somebody's money, while this constant is a code change with a reviewer. They
- * have to disagree before anything can go wrong.
+ * because they fail differently, and the gap between them widened the day the
+ * corpus moved into the database: the flag is now a checkbox on an admin screen,
+ * so one careless `yes` — or one admin session in the wrong hands — would put an
+ * unattended reply on a ticket about somebody's money, while this constant is a
+ * code change with a reviewer and a deploy in front of it. They have to disagree
+ * before anything can go wrong. Do not derive one from the other.
  */
 const ANSWERABLE_CATEGORIES = [
   TICKET_CATEGORY.General,
@@ -156,12 +158,16 @@ export interface AutoReplyJob {
  * Three ways to be off, and the kill switch is first because it is the only one
  * an operator can reach in a hurry. A feature that writes to customers
  * unattended needs a way to be stopped that is not "revoke the API key and lose
- * classification too" or "delete the knowledge base".
+ * classification too" or "archive every article".
+ *
+ * Async now that the corpus is a table rather than a cached file. The two cheap
+ * checks stay first and still short-circuit, so a deployment with the feature
+ * switched off or no API key never touches the database to find that out.
  */
-function autoReplyEnabled(): boolean {
+async function autoReplyEnabled(): Promise<boolean> {
   if (process.env.AUTO_REPLY_ENABLED === "false") return false;
   if (!isAiConfigured()) return false;
-  return autoReplyArticles().length > 0;
+  return (await autoReplyArticleCount()) > 0;
 }
 
 /**
@@ -173,7 +179,7 @@ function autoReplyEnabled(): boolean {
  * form, take the same `Db` the classifier does.
  */
 export async function enqueueAutoReply(ticketId: number): Promise<void> {
-  if (!autoReplyEnabled()) return;
+  if (!(await autoReplyEnabled())) return;
   await getBoss().send(AUTO_REPLY_QUEUE, { ticketId } satisfies AutoReplyJob);
 }
 

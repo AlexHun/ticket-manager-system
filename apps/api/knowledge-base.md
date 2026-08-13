@@ -1,9 +1,19 @@
 # Support Knowledge Base
 
-Grounding material for AI-drafted replies, and **live**: `apps/api/src/ai/knowledge-base.ts`
-parses this file at boot and `auto-reply.ts` puts the articles marked
-`Auto-reply: yes` into the prompt that answers newly arrived tickets. Editing an
-article changes what the support desk tells customers, without a deploy.
+**Seed corpus, no longer live.** This file used to be read at boot and put
+straight into the reply prompt. The articles now live in the `knowledge_article`
+table, are edited at `/knowledge` by an admin, and carry an audit trail; nothing
+reads this file at runtime. `bun run db:seed:kb` imports it into an empty
+deployment, skipping any id the table already has — so re-running it can never
+undo somebody's decision to withhold an article from the machine.
+
+Keep it in step with the table by hand, or do not: it is the starting point and
+the worked example of the format, not a mirror. What is still true is everything
+below about *how to write an article*, because the table stores exactly the same
+fields — with one improvement. `> Internal:` notes are their own column there
+rather than lines a parser strips, so the guarantee that they never reach a model
+is now "the corpus query does not select that column" rather than "a regex
+removed them".
 
 The business below is fictional: **Example Academy**, an online course platform
 that sells individual courses, an all-access subscription and team licences.
@@ -37,9 +47,10 @@ stranger emailed in.
 7. **`Auto-reply: no` means a person answers this one.** The flag decides
    whether the article is put in front of the unattended auto-reply at all, so a
    `no` article can never appear in a reply nobody read. It is the control that
-   lives in this file rather than in code, and it is deliberately the *first*
-   gate rather than the last: everything downstream is a check on what a model
-   produced, and this is the one that decides what it was ever asked.
+   lives in content rather than in code — a switch on `/knowledge` now, a `no`
+   here — and it is deliberately the *first* gate rather than the last:
+   everything downstream is a check on what a model produced, and this is the
+   one that decides what it was ever asked.
 
    Say no whenever the honest answer needs a fact only a person can look up (has
    this customer actually been charged twice?), commits the company to spending
@@ -54,19 +65,25 @@ This is the only text in a draft-reply prompt that the support team wrote
 itself. The customer's email sitting beside it is not, and the defences in
 `apps/api/src/ai/polish.ts` and `classify.ts` exist for that reason.
 
-The internal notes never reach the model. `knowledge-base.ts` strips every
-`> Internal:` line before the corpus is assembled, so rule 2 above is enforced by
-the parser rather than by asking a prompt nicely not to quote them — the auto-
-reply cannot leak what it was never shown. That is also why the notes can be
-blunt: they are for people.
+The internal notes never reach the model. In the table they are a column of
+their own that the corpus query does not select, so rule 2 above is enforced by
+the shape of the query rather than by asking a prompt nicely not to quote them —
+the auto-reply cannot leak what it was never shown. (In this file they are
+`> Internal:` lines, and the importer moves them into that column.) That is also
+why the notes can be blunt: they are for people.
 
 Three consequences worth stating before someone builds on this:
 
-- **Editing this content is a privileged action.** Phase 5 plans an admin CRUD
-  UI for the knowledge base. Whoever can edit an article can write into every
-  draft-reply prompt the system will ever run, which is a strictly larger power
-  than editing a document. Treat it as an admin-only surface and keep the
-  articles under review, not as free-text a support agent can amend in place.
+- **Editing this content is a privileged action**, and it now has a screen.
+  `/knowledge` is admin-only in the router and `requireAdmin` on every route in
+  `apps/api/src/routes/knowledge.ts`; the frontend guard is UX, that middleware
+  is the control. Whoever can edit an article can write into every draft-reply
+  prompt the system will ever run, which is a strictly larger power than editing
+  a document — so every write records who made it in the same transaction, and
+  articles are archived rather than deleted, because replies already sent cite
+  their ids. That audit trail is the condition on which this content was allowed
+  to leave version control at all. A write path that skips it is not a bug in a
+  feature; it is the feature's justification failing.
 - **A policy here does not authorise a promise.** `inventedCommitments` compares
   a polished reply against *the agent's draft*, not against this file, so a draft
   that never mentioned a refund cannot acquire one during polishing even where

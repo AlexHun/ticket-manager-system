@@ -27,9 +27,10 @@ import * as Sentry from "@sentry/bun";
  *   One failing insert would put it in an issue tracker. Set to `[]`.
  * - `genAI.inputs`/`outputs` default to true, and the AI integrations record
  *   prompts. Every prompt in `ai/` is built from that same customer text, and
- *   the knowledge-base corpus — including the `> Internal:` notes that
- *   `knowledge-base.ts` strips precisely so the model never sees them — passes
- *   through the same calls. Both false.
+ *   the knowledge-base corpus passes through the same calls. Both false.
+ *   (The internal notes are the one thing that cannot leak this way: they live
+ *   in a column `knowledge-base.ts` does not select, so they are not in a prompt
+ *   to be captured. Everything else in an article is.)
  * - `cookies` defaults to true. These are Better Auth session cookies; a
  *   captured one is a live session for whoever reads the issue.
  * - `httpHeaders` defaults to true both ways. The inbound webhook authenticates
