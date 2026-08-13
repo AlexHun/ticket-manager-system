@@ -694,7 +694,7 @@ function LogView({
             <li
               key={line.id}
               className={cn(
-                "border-l-2 pl-2 break-words whitespace-pre-wrap text-foreground/85",
+                "border-l-2 pl-2 wrap-break-word whitespace-pre-wrap text-foreground/85",
                 // stderr is marked, not reddened. It is not an error channel —
                 // `bun run` echoes the command it is about to run there — and
                 // painting that line destructive-red said something false about

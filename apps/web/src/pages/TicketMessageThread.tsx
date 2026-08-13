@@ -262,10 +262,10 @@ export function TicketMessageThread({
 
                   {message.textBody ? (
                     // pre-wrap keeps the line breaks and quoting email depends
-                    // on; break-words stops a long URL from widening the
+                    // on; wrap-break-word stops a long URL from widening the
                     // column. React escapes this, so an HTML-looking body
                     // renders as text.
-                    <p className="whitespace-pre-wrap break-words">
+                    <p className="whitespace-pre-wrap wrap-break-word">
                       {message.textBody}
                     </p>
                   ) : (

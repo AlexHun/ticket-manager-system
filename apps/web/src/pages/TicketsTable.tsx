@@ -13,6 +13,7 @@ import {
 import { Link, useLocation } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import {
+  BACKLOG_STATUS,
   TICKET_SORT_FIELD,
   type Ticket,
   type TicketSortField,
@@ -213,7 +214,11 @@ function SubjectCell({ ticket }: { ticket: Ticket }) {
         // `block` is what makes `truncate` work: an inline <a> isn't constrained
         // by the fixed-layout cell, so the ellipsis would never appear.
         className={cn(
-          "block truncate font-medium underline-offset-4",
+          // The serif's other home. A subject is the one string on this page a
+          // stranger typed, and at 15px in a table cell it is also the hardest
+          // place to put a second family — which is why the face is a
+          // screen-drawn transitional serif and not a display one.
+          "block truncate font-display text-[0.95rem] font-medium underline-offset-4",
           "hover:underline focus-visible:underline",
         )}
       >
@@ -224,6 +229,46 @@ function SubjectCell({ ticket }: { ticket: Ticket }) {
 }
 
 const DEFAULT_TOTAL_WIDTH = columns.reduce((sum, c) => sum + (c.size ?? 0), 0);
+
+/**
+ * The silence meter: how long this ticket has been quiet, as a bar on the
+ * leading edge of its row.
+ *
+ * One element, in one place, encoding the single thing this product exists to
+ * fix. The dashboard already measures silence in four buckets and the list could
+ * not show it at all — you had to read a duration in the Activity column and do
+ * the arithmetic per row. Heat does that at a glance down fifty rows.
+ *
+ * **It only lights for the backlog.** A Closed ticket that has been quiet for
+ * eighteen months is not waiting for anybody, and letting the ramp run over
+ * settled rows would paint the loudest thing on the page onto the work that is
+ * finished — which is exactly the mistake the old all-green palette made in the
+ * other direction. `BACKLOG_STATUS` is the same predicate the saved views and
+ * every "not dealt with" number use.
+ *
+ * The thresholds are `AGE_BUCKET`'s, not new ones, so this bar and the backlog
+ * age panel on the dashboard are one measurement drawn twice.
+ *
+ * It reads `lastMessageAt`, which is the last message in *either* direction —
+ * so this is "quiet", not "waiting on us". The stronger claim needs the last
+ * message's direction, which the list does not carry; see `waitingOnUs` in
+ * ticket-stats.ts. Naming it honestly is the reason the tooltip says quiet.
+ */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const SILENCE_STEPS = [
+  { after: 7 * DAY_MS, className: "bg-ember-3", label: "quiet over a week" },
+  { after: 3 * DAY_MS, className: "bg-ember-2", label: "quiet 3–7 days" },
+  { after: 1 * DAY_MS, className: "bg-ember-1", label: "quiet 1–3 days" },
+] as const;
+
+function silenceOf(
+  ticket: TicketWithAssignee,
+): { className: string; label: string } | null {
+  if (!BACKLOG_STATUS.some((s) => s === ticket.status)) return null;
+  const quiet = Date.now() - new Date(ticket.lastMessageAt).getTime();
+  return SILENCE_STEPS.find((step) => quiet >= step.after) ?? null;
+}
 
 /** Border, rounding and scrolling, shared by the table and its skeleton. */
 const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
@@ -360,18 +405,39 @@ export function TicketsTable({
           ))}
         </thead>
         <tbody>
-          {table.getRowModel().rows.map((row) => (
-            <tr
-              key={row.id}
-              className="border-t border-border transition-colors hover:bg-muted/50"
-            >
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id} className={cn("px-4", CELL_DENSITY[density])}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {table.getRowModel().rows.map((row) => {
+            const silence = silenceOf(row.original);
+            return (
+              <tr
+                key={row.id}
+                className="border-t border-border transition-colors hover:bg-muted/50"
+              >
+                {row.getVisibleCells().map((cell, index) => (
+                  <td
+                    key={cell.id}
+                    className={cn("relative px-4", CELL_DENSITY[density])}
+                  >
+                    {/* The meter, on the first cell only — a table row cannot
+                        carry a positioned child of its own, and the leading
+                        edge is where the eye starts. `inset-y-px` keeps it off
+                        the row borders so a column of them reads as separate
+                        marks rather than one continuous stripe. */}
+                    {index === 0 && silence && (
+                      <span
+                        aria-hidden="true"
+                        title={`Last message ${silence.label}`}
+                        className={cn(
+                          "absolute inset-y-px left-0 w-[3px] rounded-r-sm",
+                          silence.className,
+                        )}
+                      />
+                    )}
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

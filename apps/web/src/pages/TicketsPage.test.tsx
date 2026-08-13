@@ -328,9 +328,13 @@ describe("TicketsPage", () => {
     const resolved = table.getByText(TICKET_STATUS.Resolved);
     const closed = table.getByText(TICKET_STATUS.Closed);
 
-    // Open is the solid accent; Resolved a soft tint; Closed neutral.
-    expect(open).toHaveAttribute("data-variant", "default");
-    expect(resolved.className).toContain("bg-emerald-500/12");
+    // Hue carries the division that matters: ember means somebody is waiting,
+    // calm means settled, neutral means nobody can act. Open and Resolved are
+    // therefore in different families rather than two steps of one green ramp,
+    // which is what they used to be — and what made them hard to tell apart in
+    // the Status mix meter.
+    expect(open.className).toContain("ember-2");
+    expect(resolved.className).toContain("calm");
     expect(closed.className).toContain("bg-muted");
 
     // Whatever the styling, the three must not collapse into one look.

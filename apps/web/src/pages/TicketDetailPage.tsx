@@ -128,7 +128,12 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
           {ticket.category && <CategoryBadge category={ticket.category} />}
           <span className="text-sm text-muted-foreground">#{ticket.id}</span>
         </div>
-        <h1 className="text-2xl font-semibold break-words">{ticket.subject}</h1>
+        {/* The serif, and one of only two places it appears. This is the
+            customer's own sentence — everything else on this screen is the
+            app talking about them. */}
+        <h1 className="font-display text-3xl font-semibold wrap-break-word">
+          {ticket.subject}
+        </h1>
       </div>
 
       <div className="flex flex-1 flex-col gap-6 lg:min-h-0 lg:flex-row lg:gap-8">

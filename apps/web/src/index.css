@@ -2,12 +2,43 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/source-serif-4";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+    /*
+     * Two families, two jobs.
+     *
+     * `--font-display` is a transitional serif and it is used in exactly one
+     * place: the customer's own subject line, in the list and at the top of a
+     * ticket. Nowhere else — not on headings, not on empty prose, and never on a
+     * label, a number or a control.
+     *
+     * The point is not decoration. Every other word on these screens was written
+     * by this system: statuses, categories, counts, buttons, the machine's own
+     * replies. The subject is the one string a person outside the company typed,
+     * and it is what an agent is actually looking for when they scan a queue.
+     * Giving it a different voice makes correspondence read as correspondence
+     * instead of as another column of telemetry.
+     *
+     * Source Serif 4 rather than a display serif: this has to hold at 15px in a
+     * table cell, which is where most subjects are read, and it was drawn for
+     * screen text rather than for headlines.
+     *
+     * `--font-heading` still exists and still resolves to the sans. Page
+     * headings are chrome — the app naming its own sections — and giving them
+     * the serif would spend the distinction on the least interesting words here.
+     */
+    --font-display: 'Source Serif 4 Variable', ui-serif, Georgia, serif;
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
+    /* Elapsed silence, in four steps. See the values in :root for what each one
+       means and what it was measured at. */
+    --color-ember-1: var(--ember-1);
+    --color-ember-2: var(--ember-2);
+    --color-ember-3: var(--ember-3);
+    --color-calm: var(--calm);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -127,29 +158,77 @@
     --viz-ord-3: var(--chart-3);
     --viz-ord-4: var(--chart-4);
 
-    /* "New is loud, Closed recedes" is a statement about contrast, not about
-       darkness — on this surface the loudest step is the lightest one, which is
-       why the statuses that need work take the low chart indices rather than the
-       high ones. Contrasts: New 11.42, Open 7.02, Resolved 4.76, Closed 3.24,
-       Processing 2.28.
+    /* The status ramp, now split across both families instead of being five
+       greens.
 
-       Every one of these but New and Processing is unchanged from when the
-       lifecycle had three states, so the dashboard someone knew still reads the
-       same. New takes the top of the ramp because an untriaged ticket is the
-       queue's actual work and has to win against a column of open ones.
+       These used to be `--chart-1` through `--chart-5` — one emerald ramp, so
+       the only thing telling two statuses apart was lightness, and in the Status
+       mix meter they were genuinely indistinguishable. Hue now carries the
+       division that actually matters, and it is the same one `BACKLOG_STATUS`
+       draws in code:
 
-       Processing takes --chart-5, which is the step the ordinal ramp above
-       deliberately refuses to use for being near-invisible on this card. That is
-       the right call here rather than a compromise: it is a claim held by a
-       worker for a few seconds, it is almost always zero, and it is the one
-       status on this chart nobody can act on. */
-    --viz-new: var(--chart-1);
-    --viz-open: var(--chart-2);
-    --viz-resolved: var(--chart-3);
-    --viz-closed: var(--chart-4);
-    --viz-processing: var(--chart-5);
+         New, Open           ember — somebody is waiting on us
+         Processing          neutral — a worker holds it, nobody can act
+         Resolved, Closed    calm — settled
+
+       Lightness still separates within each family, so the ordering survives
+       greyscale and the old "New is loud, Closed recedes" reading is intact:
+       New is the hottest and lightest ember because an untriaged ticket is the
+       queue's real work; Closed is the dimmest calm because it is over.
+
+       Processing moves off `--chart-5` and onto a true neutral. It was on the
+       one step the ordinal ramp refuses to use for being near-invisible, which
+       was a fair call while everything was green — but with hue meaning
+       something, a *green* Processing would now read as settled, which is the
+       opposite of true. Grey says "not yours to act on" without claiming a side.
+
+       Measured on the card, not eyeballed — see the check in the header above. */
+    --viz-new: var(--ember-1);
+    --viz-open: var(--ember-2);
+    --viz-resolved: var(--calm);
+    --viz-closed: oklch(0.508 0.118 165.612);
+    --viz-processing: oklch(0.55 0.012 220);
 
     --viz-accent: var(--chart-3);
+
+    /*
+     * Calm and ember: the one idea this palette now carries.
+     *
+     * Green used to mean status, series, brand, primary action and "good" at the
+     * same time, which is another way of saying it meant nothing — every use had
+     * to ship an icon and a word to be legible, and the file said so. The split
+     * gives hue a job it can actually do on a support desk: **green is settled,
+     * warm is somebody waiting.**
+     *
+     * `--calm` is the existing emerald, unchanged in feel: answered, resolved,
+     * ours, done.
+     *
+     * The ember ramp is elapsed silence, and its three steps are not chosen by
+     * eye — they are the `AGE_BUCKET` boundaries the dashboard already reports
+     * against (1d / 3d / 7d), so the meter on a ticket row and the backlog-age
+     * panel are the same measurement drawn twice. A ticket under a day old gets
+     * no ember at all; the absence is the first step.
+     *
+     * Hue travels 85° → 45° → 25° as it heats, and lightness *falls* while
+     * chroma rises. That is deliberate on a dark ground: going lighter as well
+     * as hotter would make a week-old ticket the brightest thing on a page of
+     * fifty rows and turn the queue into a hazard sign. These are ~3:1 marks,
+     * not text — measured on the card below, and re-measure rather than eyeball
+     * if they move. Measured: ember-1 10.92, ember-2 5.62, ember-3 4.32.
+     *
+     * `--calm` is deliberately the *dimmer* emerald step (0.596), not the
+     * brighter 0.696 the charts use elsewhere, and that is a measured choice
+     * rather than taste. On this card the ramp lands at New 10.92, Open 5.62,
+     * Resolved 4.76, Closed 3.24 — so the queue's emphasis order is intact:
+     * unfinished work is always louder than finished work. The brighter calm
+     * measures 7.02 and put Resolved *above* Open, which would have made the
+     * settled half of the queue the first thing the eye caught. It still clears
+     * 4.5:1, so it is safe as badge text as well as as a mark.
+     */
+    --calm: oklch(0.596 0.145 163.225);
+    --ember-1: oklch(0.85 0.14 85);
+    --ember-2: oklch(0.68 0.19 45);
+    --ember-3: oklch(0.62 0.21 25);
 
     /*
      * The AI shine, and the one place in this file where a colour is chosen to
@@ -188,9 +267,17 @@
      * than eyeball if they change. The canonical status hexes are deliberately
      * not used — #fab219 and #ec835a were picked against a light surface.
      *
-     * --status-good is green, and so is every series colour in this theme, so
-     * it cannot carry "good" by hue alone — nothing here may. Every use ships
-     * an icon and a word (see StatusPill).
+     * These now sit in the same two families as everything else, which is what
+     * the calm/ember split bought: good is calm, warning and critical are ember
+     * hues (85° and 22°, against the ramp's 85 / 45 / 25). They are separate
+     * tokens rather than aliases because they are *text* at 4.5:1 while the ramp
+     * is ~3:1 marks — the same hue at two different jobs, not two palettes.
+     *
+     * The old note here said hue could not carry meaning because everything was
+     * green, and that every use therefore had to ship an icon and a word. Hue
+     * carries meaning now. Keep the icon and the word anyway (see StatusPill):
+     * roughly one reader in twelve cannot use the hue, and a status that is only
+     * a colour is a status they cannot read at all.
      *
      * The -soft steps are chip fills, not text: low-alpha washes of the same
      * hue that sit under the label on top of them.

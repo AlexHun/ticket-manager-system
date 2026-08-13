@@ -26,22 +26,27 @@ const STATUS_BADGE: Record<
   TicketStatus,
   { variant: "default" | "outline"; className?: string }
 > = {
+  // Ember: somebody is waiting. New is the hotter of the two because an
+  // untriaged ticket is the queue's actual work and has to win against a screen
+  // of open ones.
   [TICKET_STATUS.New]: {
     variant: "outline",
-    className:
-      "border-transparent bg-sky-500/15 text-sky-800 dark:bg-sky-400/15 dark:text-sky-200",
+    className: "border-transparent bg-ember-1/15 text-ember-1",
   },
+  [TICKET_STATUS.Open]: {
+    variant: "outline",
+    className: "border-transparent bg-ember-2/15 text-ember-2",
+  },
+  // Neutral: a worker holds it for a few seconds and nobody can act on it.
+  // Deliberately neither family — a green Processing would read as settled.
   [TICKET_STATUS.Processing]: {
     variant: "outline",
-    // Same foreground/70-on-muted pairing as Closed, for the same contrast
-    // reason noted there.
     className: "border-transparent bg-muted text-foreground/70",
   },
-  [TICKET_STATUS.Open]: { variant: "default" },
+  // Calm: settled. Resolved keeps presence, Closed recedes.
   [TICKET_STATUS.Resolved]: {
     variant: "outline",
-    className:
-      "border-transparent bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+    className: "border-transparent bg-calm/12 text-calm",
   },
   [TICKET_STATUS.Closed]: {
     variant: "outline",
@@ -52,21 +57,39 @@ const STATUS_BADGE: Record<
 };
 
 /**
- * Categories are peers rather than a ranking, so each gets its own hue at a
- * matched lightness. The theme's chart ramp is monochrome emerald — fine for
- * a chart, useless for telling four labels apart — hence explicit hues, with
- * `dark:` text so each stays legible on both themes.
+ * Category is a nominal facet and must never outshout state.
+ *
+ * This used to be four saturated hues from Tailwind's own palette — a second
+ * colour system, disconnected from the theme tokens, which rendered "Other" in
+ * alarm-red. Nothing is wrong with an "Other" ticket. On a queue where hue now
+ * means *is anybody waiting*, a red badge on a filed-and-answered ticket is not
+ * merely noisy, it is a false statement.
+ *
+ * So categories are neutral, and the mark tells them apart rather than the
+ * colour. That is the honest encoding: which of four boxes a ticket was filed
+ * in ranks nothing and is nobody's alarm, and an agent who wants only Refunds
+ * has a filter for exactly that.
+ *
+ * Refund is the single exception, and it is not decoration: a refund is the one
+ * category the auto-reply may never answer and the one an agent should know
+ * they are looking at before they read a word of the thread. It gets weight —
+ * the same neutral hue, one step brighter with a visible edge — rather than a
+ * hue of its own.
  */
+const CATEGORY_MARK: Record<TicketCategory, string> = {
+  [TICKET_CATEGORY.General]: "◦",
+  [TICKET_CATEGORY.Technical]: "◆",
+  [TICKET_CATEGORY.Refund]: "◈",
+  [TICKET_CATEGORY.Other]: "·",
+};
+
 const CATEGORY_BADGE: Record<TicketCategory, string> = {
   [TICKET_CATEGORY.General]:
-    "border-transparent bg-sky-500/12 text-sky-700 dark:text-sky-300",
+    "border-transparent bg-muted text-muted-foreground",
   [TICKET_CATEGORY.Technical]:
-    "border-transparent bg-violet-500/12 text-violet-700 dark:text-violet-300",
-  // amber-700 measures 4.5:1 on the light tint — one step darker to clear AA.
-  [TICKET_CATEGORY.Refund]:
-    "border-transparent bg-amber-500/15 text-amber-800 dark:text-amber-300",
-  [TICKET_CATEGORY.Other]:
-    "border-transparent bg-rose-500/12 text-rose-700 dark:text-rose-300",
+    "border-transparent bg-muted text-muted-foreground",
+  [TICKET_CATEGORY.Refund]: "border-border bg-muted text-foreground",
+  [TICKET_CATEGORY.Other]: "border-transparent bg-muted text-muted-foreground",
 };
 
 export function StatusBadge({ status }: { status: TicketStatus }) {
@@ -81,6 +104,12 @@ export function StatusBadge({ status }: { status: TicketStatus }) {
 export function CategoryBadge({ category }: { category: TicketCategory }) {
   return (
     <Badge variant="outline" className={CATEGORY_BADGE[category]}>
+      {/* Decorative: the label beside it is the accessible name, and a screen
+          reader announcing "black diamond Technical" would be worse than
+          silence. The mark is for scanning a column of four, not for reading. */}
+      <span aria-hidden="true" className="opacity-70">
+        {CATEGORY_MARK[category]}
+      </span>
       {category}
     </Badge>
   );
