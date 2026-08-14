@@ -15,6 +15,7 @@ import { auth, trustedOrigins } from "./auth";
 import { startJobs, stopJobs } from "./jobs";
 import { aiRouter } from "./routes/ai";
 import { knowledgeRouter } from "./routes/knowledge";
+import { pipelineRouter } from "./routes/pipeline";
 import { ticketsRouter } from "./routes/tickets";
 import { usersRouter } from "./routes/users";
 import { inboundEmailRouter } from "./routes/webhooks/inbound-email";
@@ -94,6 +95,10 @@ app.use("/api/ai", aiRouter);
 // there: this one edits the prompt of the feature that writes to customers
 // unattended.
 app.use("/api/knowledge-articles", knowledgeRouter);
+// Admin-only throughout, like the one above it, and for two reasons rather than
+// one: it reads back how the unattended pipeline is behaving, and — behind
+// `PIPELINE_SIMULATOR_ENABLED` — it can post an email into it.
+app.use("/api/pipeline", pipelineRouter);
 
 // After every route, which is the only place it works: it is an Express error
 // middleware, and it can only see what routes registered before it throw.
