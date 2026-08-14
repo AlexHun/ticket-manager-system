@@ -18,7 +18,7 @@ const MESSAGE_ID_DOMAIN = "tickets.example.com";
  *
  * That is the load-bearing detail, not a formatting preference. When the
  * customer answers, their mail client sends `In-Reply-To: <this-id>`, and
- * `stripAngles` in `routes/webhooks/inbound-email.ts` takes the brackets off
+ * `stripAngles` in `ingest.ts` takes the brackets off
  * before looking the parent up. An id stored *with* them would never match that
  * lookup, and the customer's reply would open a second ticket instead of
  * threading onto this one.

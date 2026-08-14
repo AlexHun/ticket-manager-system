@@ -2,12 +2,21 @@ import express, { Router } from "express";
 import type { Request, RequestHandler, Response } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { z, ZodType } from "zod";
-import { fromPrisma } from "pg-boss";
 import { inboundEmailSchema } from "@ticket/core";
-import { TICKET_STATUS } from "@ticket/shared";
-import { prisma } from "../../db";
-import { enqueueClassification } from "../../jobs/classify-ticket";
+import { INGEST_OUTCOME, ingestInboundEmail } from "../../ingest";
 import { postmarkAdapter } from "./postmark";
+
+/**
+ * The front door: what a mail provider posts to.
+ *
+ * Everything about *receiving* an email — dedup, threading, the reopen rule, the
+ * transaction that creates a ticket and enqueues its classification — moved to
+ * `src/ingest.ts`, because the pipeline simulator at `/pipeline` needs to run
+ * exactly the same path and a second copy of it would be a demonstration of the
+ * copy. What stays here is what only a webhook has: a shared-secret check, a
+ * body limit sized for a provider that inlines attachments, and the Postmark
+ * translation.
+ */
 
 function parseBody<S extends ZodType>(
   schema: S,
@@ -20,10 +29,6 @@ function parseBody<S extends ZodType>(
     return null;
   }
   return parsed.data;
-}
-
-function stripAngles(value: string): string {
-  return value.trim().replace(/^<|>$/g, "");
 }
 
 function sha256(value: string): Buffer {
@@ -76,136 +81,19 @@ const handleInboundEmail = async (req: Request, res: Response) => {
   const body = parseBody(inboundEmailSchema, req, res);
   if (!body) return;
 
-  const messageId = stripAngles(body.messageId);
-  const inReplyTo = body.inReplyTo ? stripAngles(body.inReplyTo) : undefined;
-  const refs = (body.references ?? [])
-    .map(stripAngles)
-    .filter((s) => s.length > 0);
+  const result = await ingestInboundEmail(body);
 
-  // Only the ticket id is read below. Without the select this loads `textBody`
-  // and `htmlBody` — two full email bodies, the largest columns in the schema —
-  // to answer a yes/no question.
-  const existing = await prisma.message.findUnique({
-    where: { messageId },
-    select: { ticketId: true },
-  });
-  if (existing) {
-    res.status(200).json({ deduped: true, ticketId: existing.ticketId });
+  // The wire shape predates the shared ingest module and is unchanged: Postmark
+  // is configured against it, and the E2E suite asserts on it.
+  if (result.outcome === INGEST_OUTCOME.deduped) {
+    res.status(200).json({ deduped: true, ticketId: result.ticketId });
     return;
   }
 
-  // Best parent first: the direct reply, then references newest-first.
-  const parentCandidates = [inReplyTo, ...[...refs].reverse()].filter(
-    (v): v is string => Boolean(v),
-  );
-
-  // One query for every candidate rather than one per candidate. A long thread
-  // carries a dozen or more ids in `References`, and asked one at a time that
-  // is a dozen sequential round trips on a webhook the provider is timing.
-  //
-  // The order above is the whole point of this block, and the database does not
-  // preserve it — so the rows go into a map and the winner is chosen by walking
-  // `parentCandidates`, never by taking the first row returned.
-  // A first email carries neither header, and that is the common case — so it
-  // skips the lookup entirely rather than asking the database to match nothing.
-  let ticketId: number | null = null;
-  if (parentCandidates.length > 0) {
-    const parents = await prisma.message.findMany({
-      where: { messageId: { in: parentCandidates } },
-      select: { messageId: true, ticketId: true },
-    });
-    const ticketByMessageId = new Map(
-      parents.map((p) => [p.messageId, p.ticketId]),
-    );
-
-    for (const candidate of parentCandidates) {
-      const found = ticketByMessageId.get(candidate);
-      if (found !== undefined) {
-        ticketId = found;
-        break;
-      }
-    }
-  }
-
-  const messageData = {
-    messageId,
-    inReplyTo: inReplyTo ?? null,
-    senderEmail: body.senderEmail,
-    senderName: body.senderName,
-    textBody: body.textBody ?? null,
-    htmlBody: body.htmlBody ?? null,
-  };
-
-  if (ticketId !== null) {
-    await prisma.$transaction([
-      prisma.message.create({ data: { ...messageData, ticketId } }),
-      prisma.ticket.update({
-        where: { id: ticketId },
-        data: { lastMessageAt: new Date() },
-      }),
-      // A customer writing back to a ticket the *machine* resolved reopens it.
-      //
-      // Without this the auto-reply has a hole rather than a feature: a
-      // knowledge-base answer that missed the point leaves the customer replying
-      // "that didn't help" into a ticket marked Resolved, which no agent
-      // filtering for open work will ever see. A resolve that swallows the
-      // follow-up is not a resolve.
-      //
-      // Narrowed to `autoResolvedAt` on purpose, and that is why the column
-      // exists. A human who resolves a ticket has judged it finished and is
-      // usually right; undoing that on every "thanks, that worked!" would reopen
-      // half the queue. Nobody made that judgement here.
-      //
-      // `updateMany` because the `where` is doing the work — a plain `update`
-      // addresses by id and would reopen tickets a person had settled.
-      prisma.ticket.updateMany({
-        where: { id: ticketId, autoResolvedAt: { not: null } },
-        data: { status: TICKET_STATUS.Open, autoResolvedAt: null },
-      }),
-    ]);
-    res.status(201).json({ ticketId, threaded: true });
-    return;
-  }
-
-  const subject =
-    body.subject.replace(/^(re|fwd?):\s*/gi, "").trim() || "(no subject)";
-
-  // The ticket and the request to classify it commit together or not at all.
-  //
-  // What must never be awaited before answering Postmark is the *model call* —
-  // a mail provider times this request, a slow webhook is retried, and a retried
-  // webhook is duplicate ingestion. Enqueuing is not that: it is one INSERT into
-  // a table in the same database, inside the transaction that is already
-  // happening. The classification itself still runs long after this response, on
-  // a worker.
-  //
-  // Doing it inside the transaction closes a real gap. Scheduling after the
-  // response, as this did while the queue lived in memory, leaves a window
-  // between the ticket committing and the work being recorded; a crash inside it
-  // produced a ticket that nothing would ever classify and nothing would ever
-  // report. Now the two facts share a fate.
-  //
-  // Only on creation. A reply arriving on an existing thread does not re-open the
-  // question of what that ticket is about, and re-classifying on every inbound
-  // message would spend a call per email to argue with whatever an agent had
-  // already filed it under.
-  const ticket = await prisma.$transaction(async (tx) => {
-    const created = await tx.ticket.create({
-      data: {
-        subject,
-        customerEmail: body.senderEmail,
-        customerName: body.senderName,
-        messages: { create: messageData },
-      },
-      select: { id: true },
-    });
-
-    await enqueueClassification(created.id, fromPrisma(tx));
-
-    return created;
+  res.status(201).json({
+    ticketId: result.ticketId,
+    threaded: result.outcome === INGEST_OUTCOME.threaded,
   });
-
-  res.status(201).json({ ticketId: ticket.id, threaded: false });
 };
 
 // Auth, then the body, then the Postmark → `InboundEmail` translation, then the
