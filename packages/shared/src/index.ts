@@ -140,6 +140,26 @@ export const AUTO_REPLY_DECLINE = {
 export type AutoReplyDecline =
   (typeof AUTO_REPLY_DECLINE)[keyof typeof AUTO_REPLY_DECLINE];
 
+/**
+ * A stored decline reason, narrowed to one the client has wording for.
+ *
+ * `Ticket.autoReplyDecline` is a plain `text` column (see the note on the model
+ * for why), so the type on the wire is a promise the API has to keep rather than
+ * one Postgres keeps for it. Anything unrecognised becomes null: a reason the UI
+ * cannot name is not better than silence, and the alternative is rendering a raw
+ * database string at an agent.
+ *
+ * Here rather than in a route because two routes now need it — the ticket detail
+ * and the pipeline — and a narrowing that exists twice is a narrowing that will
+ * eventually disagree with itself.
+ */
+export function asAutoReplyDecline(value: string | null): AutoReplyDecline | null {
+  if (value === null) return null;
+  return (
+    Object.values(AUTO_REPLY_DECLINE).find((d) => d === value) ?? null
+  );
+}
+
 export interface Ticket {
   id: number;
   subject: string;
@@ -941,3 +961,317 @@ export interface TicketStatsResponse {
   topCustomers: CustomerStats[];
   needsAttention: NeedsAttentionTicket[];
 }
+
+/**
+ * The unattended path a ticket takes, as six stops in order.
+ *
+ * This is the pipeline `/pipeline` draws, and it is not a new idea about the
+ * system — it is the existing one written down. Every stop corresponds to a
+ * decision already made in code: `jobs/classify-ticket.ts` reaches `classified`,
+ * the three gates at the top of `jobs/auto-reply-ticket.ts` decide `eligible`,
+ * `ai/auto-reply.ts` produces `drafted` and then runs the checks that decide
+ * `checked`, and the transaction at the bottom of the job writes `resolved`.
+ *
+ * Declaration order is render order, top to bottom.
+ */
+export const PIPELINE_STAGE = {
+  /** The email arrived and a ticket exists. Nothing leaves the rail here. */
+  received: "received",
+  /** The classifier reached a verdict and filed a category. */
+  classified: "classified",
+  /** It passed the three gates that run before the model is called. */
+  eligible: "eligible",
+  /** The model was asked, and returned something. */
+  drafted: "drafted",
+  /** What it wrote survived the grounding checks. */
+  checked: "checked",
+  /** Answered from the knowledge base and resolved. The only calm exit. */
+  resolved: "resolved",
+} as const;
+
+export type PipelineStage = (typeof PIPELINE_STAGE)[keyof typeof PIPELINE_STAGE];
+
+/** Render order. A `const` array so the page never has to restate it. */
+export const PIPELINE_STAGES = [
+  PIPELINE_STAGE.received,
+  PIPELINE_STAGE.classified,
+  PIPELINE_STAGE.eligible,
+  PIPELINE_STAGE.drafted,
+  PIPELINE_STAGE.checked,
+  PIPELINE_STAGE.resolved,
+] as const;
+
+/**
+ * Where each decline reason leaves the rail.
+ *
+ * A `Record` over the whole union rather than a lookup with a fallback, and that
+ * is the point of it: adding a tenth reason to `AUTO_REPLY_DECLINE` is a
+ * compile error here until somebody says where it belongs on the diagram. The
+ * same trick `RETRYABLE` plays in `jobs/ai-retry.ts`, for the same reason — a
+ * picture of the pipeline that quietly stops matching the pipeline is worse than
+ * no picture.
+ *
+ * Read the groupings, because they are the interesting part:
+ *
+ * - Three at `eligible` are the gates that run **before** the model is called.
+ *   They cost nothing and they are structural.
+ * - One at `drafted` is the model's own verdict — the common, correct decline.
+ * - **Four at `checked` are the ones where a reply was written and destroyed.**
+ *   That is a different fact from the model declining to write one, and it is
+ *   the group worth watching: two of these are the checks that beat the prompt
+ *   7-of-9 and 10-of-10 in the measurements recorded in `ai/auto-reply.ts`.
+ *
+ * `unavailable` sits at `drafted` because that is where the attempt died, but it
+ * is the one entry here that is **not a verdict about the ticket** — the
+ * provider could not be reached, so nothing was ever decided. Its label says so.
+ */
+export const DECLINE_STAGE: Record<AutoReplyDecline, PipelineStage> = {
+  [AUTO_REPLY_DECLINE.category]: PIPELINE_STAGE.eligible,
+  [AUTO_REPLY_DECLINE.answered]: PIPELINE_STAGE.eligible,
+  [AUTO_REPLY_DECLINE.noText]: PIPELINE_STAGE.eligible,
+  [AUTO_REPLY_DECLINE.notCovered]: PIPELINE_STAGE.drafted,
+  [AUTO_REPLY_DECLINE.unavailable]: PIPELINE_STAGE.drafted,
+  [AUTO_REPLY_DECLINE.noCitation]: PIPELINE_STAGE.checked,
+  [AUTO_REPLY_DECLINE.unbackedCommitment]: PIPELINE_STAGE.checked,
+  [AUTO_REPLY_DECLINE.unbackedReference]: PIPELINE_STAGE.checked,
+  [AUTO_REPLY_DECLINE.tooLong]: PIPELINE_STAGE.checked,
+};
+
+/**
+ * Render order for the declines within a stage, and the whole list elsewhere.
+ *
+ * `Object.keys` on the record above would order by insertion, which happens to
+ * be right today and would silently stop being right the moment somebody sorted
+ * the object. This is the list the rail iterates.
+ */
+export const AUTO_REPLY_DECLINES = [
+  AUTO_REPLY_DECLINE.category,
+  AUTO_REPLY_DECLINE.answered,
+  AUTO_REPLY_DECLINE.noText,
+  AUTO_REPLY_DECLINE.notCovered,
+  AUTO_REPLY_DECLINE.unavailable,
+  AUTO_REPLY_DECLINE.noCitation,
+  AUTO_REPLY_DECLINE.unbackedCommitment,
+  AUTO_REPLY_DECLINE.unbackedReference,
+  AUTO_REPLY_DECLINE.tooLong,
+] as const;
+
+/**
+ * Whether this deployment runs the unattended path at all, and how far.
+ *
+ * Presence booleans and one count — never an env value, never a key or a prefix
+ * of one. Three of these being false is the difference between "a quiet week"
+ * and "the lower half of this diagram is dead", and until this existed there was
+ * no way to tell those apart from any screen in the app.
+ */
+export interface PipelineConfig {
+  /** `OPENAI_API_KEY` is set. False means nothing below `received` ever runs. */
+  aiConfigured: boolean;
+  /** The `AUTO_REPLY_ENABLED` kill switch is not off. */
+  autoReplyEnabled: boolean;
+  /** Live, non-archived, `autoReply: true` articles. Zero means the same as off. */
+  autoReplyArticleCount: number;
+  /** Whether `POST /api/pipeline/simulate` will accept anything. */
+  simulatorEnabled: boolean;
+}
+
+/**
+ * The raw facts the overview reports. Stage numbers are **derived** from these
+ * by `pipelineStageCounts` rather than sent, so the arithmetic exists once.
+ */
+export interface PipelineCounts {
+  /** Tickets created inside the window. The top of the rail. */
+  received: number;
+  /** Of those, filed by the classifier — `classifiedAt` and `category` both set. */
+  machineClassified: number;
+  /** Attempted and given up on: `classifiedAt` set, `category` still null. */
+  classifyAbandoned: number;
+  /** Neither yet. In flight, queued, or never offered. */
+  classifyPending: number;
+  /** Answered from the knowledge base and resolved. */
+  autoResolved: number;
+  /** Every decline reason, including the zeroes — a zero is information here. */
+  declines: Record<AutoReplyDecline, number>;
+}
+
+/** How many tickets were still on the rail at each stop. */
+export type PipelineStageCounts = Record<PipelineStage, number>;
+
+/**
+ * Derive the six stop counts from the raw facts.
+ *
+ * Here rather than in the API because the rail draws both the aggregate and the
+ * arithmetic that produced it, and two implementations of "how many were still
+ * on the rail" would disagree on exactly the day somebody cared. Each stop is
+ * the one above it minus what left there — which is also the sentence the page
+ * is trying to say out loud.
+ */
+export function pipelineStageCounts(
+  counts: PipelineCounts,
+): PipelineStageCounts {
+  const declinedAt = (stage: PipelineStage) =>
+    AUTO_REPLY_DECLINES.filter((d) => DECLINE_STAGE[d] === stage).reduce(
+      (sum, d) => sum + counts.declines[d],
+      0,
+    );
+
+  const received = counts.received;
+  const classified = counts.machineClassified;
+  const eligible = classified - declinedAt(PIPELINE_STAGE.eligible);
+  const drafted = eligible;
+  const checked = drafted - declinedAt(PIPELINE_STAGE.drafted);
+
+  return {
+    [PIPELINE_STAGE.received]: received,
+    [PIPELINE_STAGE.classified]: classified,
+    [PIPELINE_STAGE.eligible]: eligible,
+    [PIPELINE_STAGE.drafted]: drafted,
+    [PIPELINE_STAGE.checked]: checked,
+    [PIPELINE_STAGE.resolved]: counts.autoResolved,
+  };
+}
+
+/**
+ * How far one ticket got, as a verdict.
+ *
+ * `notOffered` is the honest answer for a ticket nothing will ever pick up —
+ * no API key, the switch off, an empty corpus — and it exists so the page never
+ * draws a ticket as "still thinking" about work that is not scheduled.
+ */
+export const PIPELINE_OUTCOME = {
+  pending: "pending",
+  resolved: "resolved",
+  declined: "declined",
+  /** The classifier exhausted its retries. Nothing downstream was ever asked. */
+  abandoned: "abandoned",
+  /** Nothing will run: the feature is off, unkeyed, or has no corpus. */
+  notOffered: "notOffered",
+} as const;
+
+export type PipelineOutcome =
+  (typeof PIPELINE_OUTCOME)[keyof typeof PIPELINE_OUTCOME];
+
+/** What happened at one stop, for one ticket. */
+export const PIPELINE_STAGE_STATE = {
+  /** Reached and passed. */
+  done: "done",
+  /** The ticket is here now. At most one stop is ever active. */
+  active: "active",
+  /** The ticket left the rail here. */
+  exited: "exited",
+  /** Not reached yet. */
+  pending: "pending",
+  /** Never will be — everything below an exit. */
+  skipped: "skipped",
+} as const;
+
+export type PipelineStageState =
+  (typeof PIPELINE_STAGE_STATE)[keyof typeof PIPELINE_STAGE_STATE];
+
+export interface PipelineStageResult {
+  stage: PipelineStage;
+  state: PipelineStageState;
+  /**
+   * When it happened, where a column records it — `createdAt`, `classifiedAt`,
+   * `autoResolvedAt`, `autoReplyDeclinedAt`. Null everywhere else, and that is
+   * not an omission: a successful reply stamps one instant for the whole
+   * auto-reply job, so `drafted` and `checked` have no separate time to report
+   * and this says so rather than inventing one.
+   */
+  at: string | null;
+}
+
+/**
+ * How much work one queue is holding, split the way pg-boss splits it.
+ *
+ * Three numbers rather than one total, because they mean different things and
+ * the difference is the whole diagnostic value. `ready` is a genuine backlog:
+ * jobs runnable now that nobody has picked up. `deferred` is the retry ladder
+ * doing its job — jobs waiting out a backoff after a transient provider failure,
+ * which is the system working, not falling behind. A single "pending" number
+ * would average those two into a figure that means neither.
+ */
+export interface PipelineQueueDepth {
+  /** Runnable right now and unclaimed. */
+  ready: number;
+  /** Held by a worker at this instant. */
+  active: number;
+  /** Waiting out a retry backoff, not yet runnable. */
+  deferred: number;
+}
+
+export interface PipelineQueues {
+  classify: PipelineQueueDepth;
+  autoReply: PipelineQueueDepth;
+}
+
+/** One ticket's trip down the rail, rebuilt from the columns it left behind. */
+export interface PipelineRun {
+  ticketId: number;
+  subject: string;
+  customerName: string;
+  status: TicketStatus;
+  category: TicketCategory | null;
+  createdAt: string;
+  outcome: PipelineOutcome;
+  /** Set only when `outcome` is `declined`. */
+  decline: AutoReplyDecline | null;
+  declinedAt: string | null;
+  /** Set only when `outcome` is `resolved` — the articles the reply was built from. */
+  citedArticleIds: string[];
+  stages: PipelineStageResult[];
+}
+
+export interface PipelineOverviewResponse {
+  config: PipelineConfig;
+  /** Echoed: the server pins the window and the page quotes it. */
+  range: DashboardRange;
+  from: string;
+  to: string;
+  counts: PipelineCounts;
+  /**
+   * What each queue is holding right now. The one thing on this page the ticket
+   * table genuinely cannot produce — a backlog here means the pipeline is
+   * behind, which looks identical from every other screen to nothing happening.
+   */
+  queues: PipelineQueues;
+  /** Most recent arrivals with their verdicts, newest first. */
+  recent: PipelineRun[];
+}
+
+export interface PipelineRunResponse {
+  run: PipelineRun;
+}
+
+export interface PipelineSimulateResponse {
+  ticketId: number;
+  /** True when the email threaded onto an existing ticket instead of opening one. */
+  threaded: boolean;
+  /**
+   * The `Message-ID` this email was stored under.
+   *
+   * Returned so the simulator can offer "reply to this thread" without anyone
+   * hunting for an id — which is the only practical way to demonstrate the
+   * `answered` gate, since that gate only fires on a ticket that already has a
+   * reply. The id is minted server-side and is on the reserved domain, so
+   * handing it back reveals nothing that was not just created.
+   */
+  messageId: string;
+}
+
+/** How many runs the overview carries. Named here because the heading quotes it. */
+export const PIPELINE_RECENT_LIMIT = 12;
+
+/**
+ * The domain every simulated sender is forced onto.
+ *
+ * `example.com` and its subdomains are reserved by RFC 2606, so a simulated
+ * ticket can never cause mail to reach a real person once Phase 3's transport
+ * lands. The client sends a localpart and the server builds the address; this
+ * constant is shared so the form can show the address it is going to get.
+ *
+ * The **display name** is deliberately not constrained — it is the one piece of
+ * attacker-controlled text `ai/auto-reply.ts` has to neutralise (`greetingName`),
+ * and being able to type a hostile one is how you watch it work.
+ */
+export const SIMULATED_SENDER_DOMAIN = "sim.example.com";

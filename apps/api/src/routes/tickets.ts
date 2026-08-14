@@ -11,7 +11,7 @@ import {
 } from "@ticket/core";
 import {
   ASSIGNEE_NONE,
-  AUTO_REPLY_DECLINE,
+  asAutoReplyDecline,
   BACKLOG_STATUS,
   CATEGORY_NONE,
   MESSAGE_DIRECTION,
@@ -21,7 +21,6 @@ import {
   TICKET_VIEWS,
   ticketViewParams,
   type CreateTicketMessageResponse,
-  type AutoReplyDecline,
   type SortOrder,
   type TicketAssigneesResponse,
   type TicketDetailResponse,
@@ -155,21 +154,6 @@ const ASSIGNABLE_USER = {
 
 /** The columns an assignee is described by — never role, ban state or the rest. */
 const ASSIGNEE_SELECT = { id: true, name: true, email: true } as const;
-
-/**
- * A stored decline reason, narrowed to one the client has wording for.
- *
- * `Ticket.autoReplyDecline` is a plain `text` column (see the note on the model
- * for why), so the type on the wire is a promise this function has to keep
- * rather than one Postgres keeps for us. Anything unrecognised becomes null: a
- * reason the UI cannot name is not better than silence, and the alternative is
- * rendering a raw database string at an agent.
- */
-function asDecline(value: string | null): AutoReplyDecline | null {
-  return value !== null && (AUTO_REPLY_DECLINE as Record<string, string>)[value]
-    ? (value as AutoReplyDecline)
-    : null;
-}
 
 /**
  * The columns a `ThreadMessage` is made of.
@@ -448,7 +432,7 @@ ticketsRouter.get(
         // reason since renamed would otherwise reach the client as a key the UI
         // has no wording for. Unrecognised reads as null — "nothing to report" —
         // which is what an unknown verdict honestly is.
-        autoReplyDecline: asDecline(ticket.autoReplyDecline),
+        autoReplyDecline: asAutoReplyDecline(ticket.autoReplyDecline),
         autoReplyDeclinedAt: ticket.autoReplyDeclinedAt?.toISOString() ?? null,
       },
     });
