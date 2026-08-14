@@ -58,6 +58,24 @@ async function upsertUser(
 }
 
 await upsertUser(adminEmail, "Admin", adminPassword, Role.admin);
-await upsertUser("agent@example.com", "Agent", "password123", Role.agent);
+
+/**
+ * The demo agent is dev and test only.
+ *
+ * Its credentials are hard-coded here and repeated across the E2E helpers and
+ * the component tests, which is fine for a database that gets reset — and is an
+ * account with a published password the moment this script is pointed at a
+ * deployed one. Sign-up is disabled (`disableSignUp: true` in `src/auth.ts`), so
+ * seeding is the only way a first user exists; running it against production is
+ * therefore a normal, expected thing to do, and this is what stops that from
+ * quietly creating a second way in.
+ *
+ * Real agents are created by the admin through `POST /api/users`.
+ */
+if (process.env.NODE_ENV === "production") {
+  console.log("NODE_ENV=production — skipping the demo agent account");
+} else {
+  await upsertUser("agent@example.com", "Agent", "password123", Role.agent);
+}
 
 await prisma.$disconnect();

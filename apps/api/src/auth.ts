@@ -22,6 +22,58 @@ if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 3
 const isProduction = process.env.NODE_ENV === "production";
 const isTest = process.env.NODE_ENV === "test";
 
+/**
+ * The parent domain the session cookie is scoped to, or empty.
+ *
+ * This exists because "same site" is decided by the *registrable* domain, and
+ * the two deployments this app supports land on opposite sides of that line:
+ *
+ * - **A shared parent domain** (`app.example.com` calling `api.example.com`)
+ *   is same-site. Set this to `.example.com` and the cookie is issued for the
+ *   parent, so `SameSite=Lax` — the strong default — keeps working.
+ * - **Railway's generated domains** are not. `up.railway.app` is on the Public
+ *   Suffix List, so `web-x.up.railway.app` and `api-x.up.railway.app` are
+ *   different sites, no cookie may be scoped to their shared suffix, and a
+ *   `Lax` cookie is simply never sent on the app's XHR. The symptom is a login
+ *   that returns 200 and leaves the user signed out.
+ *
+ * Unset therefore falls back to `SameSite=None; Secure` in production, which is
+ * what makes a Railway-domain deployment work at all. That is the weaker
+ * setting and it is deliberate: the alternative is not a safer deployment, it
+ * is a broken one. What still stands behind it is `trustedOrigins` — CORS will
+ * not let an unlisted origin read a response, and Better Auth's own origin
+ * check runs on top (both enabled here; only the test environment turns them
+ * off, and only because the E2E ports make the browser call it cross-site).
+ *
+ * Local development needs none of this: web on :4000 and API on :3001 are the
+ * same site, ports being irrelevant to that judgement.
+ */
+const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || "";
+
+/**
+ * A `COOKIE_DOMAIN` no trusted origin sits under is a cookie no browser will
+ * store, and the failure is invisible from the server: every request simply
+ * arrives without a session. Caught at boot instead, next to the other two
+ * environment checks in this file, because a typo here costs an afternoon.
+ */
+if (cookieDomain) {
+  const suffix = cookieDomain.startsWith(".") ? cookieDomain : `.${cookieDomain}`;
+  const covered = trustedOrigins.some((origin) => {
+    try {
+      const { hostname } = new URL(origin);
+      return hostname === suffix.slice(1) || hostname.endsWith(suffix);
+    } catch {
+      return false;
+    }
+  });
+
+  if (!covered) {
+    throw new Error(
+      `COOKIE_DOMAIN (${cookieDomain}) does not cover any host in TRUSTED_ORIGINS (${trustedOrigins.join(", ")}) — the session cookie would be rejected by the browser`,
+    );
+  }
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   trustedOrigins,
@@ -60,6 +112,23 @@ export const auth = betterAuth({
     // 403s the request before CORS can answer. CORS still gates the request.
     disableOriginCheck: isTest,
     disableCSRFCheck: isTest,
+    // Both of these are decided by `cookieDomain` above, and exactly one of
+    // them applies at a time — see the note there for why.
+    crossSubDomainCookies: cookieDomain
+      ? { enabled: true, domain: cookieDomain }
+      : undefined,
+    defaultCookieAttributes:
+      isProduction && !cookieDomain
+        ? { sameSite: "none" as const, secure: true }
+        : undefined,
+    // Railway (and any other platform proxy) terminates TLS and forwards, so
+    // the socket's peer address is the edge, not the caller. Left at its
+    // default every request would look like it came from one IP, and the
+    // 5-per-minute rule on `/sign-in/email` above would become a global budget
+    // that any one visitor could exhaust for everybody.
+    ipAddress: {
+      ipAddressHeaders: ["x-forwarded-for"],
+    },
   },
   plugins: [
     admin({

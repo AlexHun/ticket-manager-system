@@ -22,6 +22,13 @@ import { inboundEmailRouter } from "./routes/webhooks/inbound-email";
 
 const app = express();
 
+// One proxy in front of this process: Railway's edge, which terminates TLS and
+// forwards. Without this, `req.protocol` reads "http" behind a request the
+// browser made over HTTPS and `req.ip` is the edge's address for every caller.
+// The number is a hop count, not a boolean — `true` would trust an
+// `X-Forwarded-For` chain a caller can extend at will.
+app.set("trust proxy", 1);
+
 app.use(
   cors({
     origin: trustedOrigins,

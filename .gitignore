@@ -41,6 +41,10 @@ coverage
 # Prisma generated client
 apps/api/src/generated/
 
+# The production CSP, emitted by `vite build` for apps/web/Caddyfile to import.
+# Build output like dist/ — the source of truth is apps/web/csp.ts.
+apps/web/csp.caddy
+
 # --- Test output ------------------------------------------------------------
 /test-results/
 /playwright-report/

@@ -5,89 +5,14 @@ import tailwindcss from "@tailwindcss/vite";
 import { visualizer } from "rollup-plugin-visualizer";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { devToolsPlugin } from "./dev/plugin";
-
-/**
- * The page's Content-Security-Policy, one directive per entry.
- *
- * This is containment, not the primary defence. Message bodies render as React
- * text nodes and the API never sends the inbound `htmlBody` at all — it is left
- * out of `MESSAGE_SELECT` in `apps/api/src/routes/tickets.ts` and out of the
- * `ThreadMessage` wire type, so attacker-supplied email markup cannot reach the
- * DOM today. This is what limits the damage on the day some future change makes
- * that untrue.
- *
- * `apiOrigin` is where the API lives: a separate origin in production, empty in
- * dev and in tests where Vite proxies `/api`. It has to be listed or every
- * request the app makes is blocked.
- *
- * `sentryOrigin` is the same story with a sharper failure mode: an unlisted
- * ingest host means the browser blocks every error report, and the only trace is
- * a CSP violation in the console of the session that broke — so the tool meant
- * to tell you about failures fails silently, in exactly the case you needed it.
- * Empty when `VITE_SENTRY_DSN` is unset, which is also when nothing tries to
- * send.
- */
-function cspDirectives(apiOrigin: string, sentryOrigin: string): string[] {
-  const connectSources = ["'self'", apiOrigin, sentryOrigin].filter(Boolean);
-
-  return [
-    "default-src 'self'",
-    // The directive that would actually stop an XSS. It costs nothing here: the
-    // built index.html loads one external module script and carries no inline
-    // script of its own, so no nonce or hash plumbing is needed. Check that is
-    // still true of `dist/index.html` before relaxing this.
-    "script-src 'self'",
-    // Inline *styles* have to be allowed, and are a far weaker vector. shadcn's
-    // chart wrapper injects a <style> element for the per-chart colour
-    // variables, and Radix, Recharts and sonner all write style attributes as
-    // they position and animate things. Without 'unsafe-inline' every popover,
-    // toast and chart in the app breaks.
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
-    // Geist is bundled by @fontsource-variable and emitted into /assets, so
-    // there is no font CDN to allow.
-    "font-src 'self'",
-    `connect-src ${connectSources.join(" ")}`,
-    "object-src 'none'",
-    "base-uri 'none'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-  ];
-}
-
-/**
- * `VITE_API_URL` reduced to a bare origin, which is the only form a CSP source
- * accepts. Empty when the API is same-origin — either unset (dev, behind the
- * proxy) or a relative path, both of which `'self'` already covers.
- */
-function apiOriginFrom(apiUrl: string): string {
-  if (!apiUrl) return "";
-  try {
-    return new URL(apiUrl).origin;
-  } catch {
-    return "";
-  }
-}
-
-/**
- * The ingest origin out of a Sentry DSN.
- *
- * A DSN is a URL whose userinfo is the public key —
- * `https://<key>@o0.ingest.de.sentry.io/123` — and `URL.origin` drops that,
- * which is what makes this safe to put in a header: the CSP names the host, not
- * the key. Region-specific by nature (`.us.`, `.de.`), so this is derived from
- * the configured DSN rather than a wildcard guessed at.
- */
-function sentryOriginFrom(dsn: string): string {
-  if (!dsn) return "";
-  try {
-    return new URL(dsn).origin;
-  } catch {
-    return "";
-  }
-}
+import {
+  apiOriginFrom,
+  cspMetaPolicy,
+  cspPolicy,
+  sentryOriginFrom,
+} from "./csp";
 
 /**
  * A git command, or an empty string if git cannot answer.
@@ -158,9 +83,7 @@ function releaseName(): string {
  * client as inline scripts, which `script-src 'self'` blocks outright.
  */
 function cspPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
-  const policy = cspDirectives(apiOrigin, sentryOrigin)
-    .filter((directive) => !directive.startsWith("frame-ancestors"))
-    .join("; ");
+  const policy = cspMetaPolicy(apiOrigin, sentryOrigin);
 
   return {
     name: "ticket:csp-meta",
@@ -178,6 +101,47 @@ function cspPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
           injectTo: "head-prepend",
         },
       ];
+    },
+  };
+}
+
+/**
+ * Writes the policy out as a Caddy header field, for the production web server.
+ *
+ * `apps/web/Caddyfile` imports this file *inside* its `header` block — Caddy's
+ * `import` splices tokens in wherever it appears — so the deployed SPA is served
+ * with the *real* header rather than only the meta tag above. That is what
+ * `frame-ancestors` needs, and what `CLAUDE.md` has been asking for
+ * ("Production hosting must set that header").
+ *
+ * Generated rather than written by hand for the reason at the top of `csp.ts`:
+ * the policy depends on `VITE_API_URL` and `VITE_SENTRY_DSN`, both of which are
+ * build inputs, so a static Caddyfile could only ever hold a stale guess at
+ * them. A deployment that points at a new API origin would serve a header
+ * blocking every request the freshly built bundle makes.
+ *
+ * It lands beside the Caddyfile rather than inside `dist/`, because `dist/` is
+ * `file_server`'d wholesale and this is server configuration, not an asset.
+ * Gitignored — it is build output.
+ */
+function cspCaddyPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
+  const policy = cspPolicy(apiOrigin, sentryOrigin);
+  const outFile = path.resolve(__dirname, "csp.caddy");
+
+  return {
+    name: "ticket:csp-caddy",
+    apply: "build",
+    closeBundle() {
+      writeFileSync(
+        outFile,
+        [
+          "# Generated by vite.config.ts — do not edit.",
+          "# Source of truth: apps/web/csp.ts",
+          `Content-Security-Policy "${policy}"`,
+          "",
+        ].join("\n"),
+        "utf8",
+      );
     },
   };
 }
@@ -219,6 +183,7 @@ export default defineConfig(({ mode }) => {
       // note at the top of dev/plugin.ts.
       devToolsPlugin(),
       cspPlugin(apiOrigin, sentryOrigin),
+      cspCaddyPlugin(apiOrigin, sentryOrigin),
       // Writes a treemap of the production bundle on every build — the only way
       // to tell whether a dependency actually ships or merely looks like it does.
       // Recharts reaches the bundle through a namespace import in shadcn's chart
@@ -272,16 +237,15 @@ export default defineConfig(({ mode }) => {
         "/api": "http://localhost:3001",
       },
     },
-    // `vite preview` is the only place this repo serves a build itself, so it is
-    // the only place the policy can be delivered the way production should
-    // deliver it: as a header, `frame-ancestors` included. Treat this as the
-    // reference for whatever host ends up serving `dist/` — the meta tag in the
-    // page is the fallback for hosts that cannot set headers, not a substitute.
+    // `vite preview` serves a build the way production should serve it: as a
+    // header, `frame-ancestors` included. It is no longer the *only* place that
+    // happens — `apps/web/Caddyfile` sets the same policy from the same source
+    // on the deployed service — so treat this as the local rehearsal of it. The
+    // meta tag in the page is the fallback for hosts that cannot set headers,
+    // not a substitute.
     preview: {
       headers: {
-        "Content-Security-Policy": cspDirectives(apiOrigin, sentryOrigin).join(
-          "; ",
-        ),
+        "Content-Security-Policy": cspPolicy(apiOrigin, sentryOrigin),
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "no-referrer",
       },

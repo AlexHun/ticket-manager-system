@@ -14,8 +14,8 @@
 | Inbound email | Postmark Inbound | Webhook delivers parsed JSON with `MessageID` / `In-Reply-To` for threading |
 | Outbound email | Postmark (or Resend) | Prefer one vendor for inbound + outbound |
 | Background jobs | **pg-boss** (adopted) | Postgres-backed, so no new service. Chosen over Inngest/BullMQ because it needs no Redis and no vendor — see below |
-| Frontend hosting | Vercel / Netlify / Cloudflare Pages | Any static host works |
-| Backend hosting | Railway / Render / Fly.io | Long-lived Node process; needs to receive Postmark webhooks |
+| Frontend hosting | **Railway (adopted)** | Static `dist/` served by Caddy. Any static host still works, but a host in the same project as the API is what lets the CSP, the cookie domain and the API origin be configured once — see `DEPLOYMENT.md` |
+| Backend hosting | **Railway (adopted)** | Long-lived Bun process; receives Postmark webhooks and runs the pg-boss workers. Postgres is a service in the same project |
 
 ## Project layout
 

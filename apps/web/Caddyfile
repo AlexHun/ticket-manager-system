@@ -1,0 +1,104 @@
+# Production web server for the SPA. Serves `dist/` and nothing else — the API
+# is a separate Railway service on its own origin, which is the arrangement the
+# whole frontend is built for (`VITE_API_URL`, `withCredentials`, the CORS
+# allowlist in `apps/api/src/auth.ts`, and the `connect-src` entry the CSP
+# derives from `VITE_API_URL`).
+{
+	# No admin API is needed in Railway's environment, and config storage there
+	# is not persistent anyway.
+	admin off
+	persist_config off
+	# Railway terminates TLS at its edge. Leaving this on would make Caddy try to
+	# provision its own certificate for a hostname it does not control.
+	auto_https off
+
+	log {
+		format json
+	}
+
+	servers {
+		# Trust Railway's proxy so client IPs and `X-Forwarded-*` are read from
+		# the edge rather than from whatever a caller sends.
+		trusted_proxies static private_ranges 100.0.0.0/8
+	}
+}
+
+# Railway injects PORT and health-checks the same port.
+:{$PORT:3000} {
+	log {
+		format json
+	}
+
+	# Security headers on every response this service writes.
+	header {
+		# The Content-Security-Policy line is generated at build time by
+		# `cspCaddyPlugin` in vite.config.ts, from `csp.ts` — the same function
+		# that produces the page's <meta> tag and the `vite preview` header.
+		# It is a build output because the policy's `connect-src` is derived
+		# from VITE_API_URL, so a hand-written copy here could only ever be a
+		# stale guess at which API origin the bundle actually calls.
+		#
+		# This is the delivery `frame-ancestors` requires: browsers ignore that
+		# directive in a meta tag. See the note in `csp.ts`.
+		import csp.caddy
+
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		# Redundant beside `frame-ancestors 'none'` in the CSP, and kept for the
+		# same reason `apps/api/src/index.ts` keeps it: a browser old enough to
+		# support neither directive is the one case where the weaker rule wins.
+		X-Frame-Options DENY
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Vite emits content-hashed filenames under /assets, so those are safe to
+	# cache forever. The SPA document must not be, or a deploy leaves browsers
+	# running the previous bundle against the new API.
+	#
+	# The negated matcher is load-bearing and was written the obvious way first:
+	# `header /index.html ...` matched almost nothing, because `try_files` serves
+	# that file for `/` and for every client-side route while the matcher still
+	# sees the *request* path. Measured — `/`, `/tickets` and `/pipeline` all came
+	# back with no Cache-Control at all, which is the one case browsers are free
+	# to invent their own.
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+	@document not path /assets/*
+	header @document Cache-Control "no-cache"
+
+	# Railway's healthcheck target. Cheaper and less ambiguous than serving the
+	# SPA shell for it — a 200 here means Caddy is up, not that a rewrite chain
+	# happened to end somewhere.
+	handle /health {
+		respond "OK" 200
+	}
+
+	# This service has no API. Without this block the catch-all below would
+	# answer /api/* with the SPA's index.html, and a misconfigured VITE_API_URL
+	# would surface as axios receiving HTML where it expected JSON — a confusing
+	# symptom a long way from its cause. Fail loudly instead.
+	#
+	# If you ever move to a same-origin topology, this is the block to replace:
+	#
+	#   handle /api/* {
+	#       reverse_proxy <api-service>.railway.internal:3001
+	#   }
+	#
+	# with VITE_API_URL left empty. That removes the cross-site cookie problem
+	# entirely (see COOKIE_DOMAIN in apps/api/.env.example) at the cost of a hop
+	# and of the API no longer being reachable for Postmark's webhook except
+	# through this proxy.
+	handle /api/* {
+		respond "This service serves the SPA only. The API is a separate service — set VITE_API_URL to its public URL and rebuild the web service." 404
+	}
+
+	handle {
+		root * dist
+
+		encode zstd gzip
+
+		# Client-side routing: unknown paths are React Router's, not 404s.
+		try_files {path} /index.html
+		file_server
+	}
+}
