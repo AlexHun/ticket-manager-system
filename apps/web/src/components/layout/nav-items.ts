@@ -5,6 +5,7 @@ import {
   NetworkIcon,
   TicketIcon,
   UsersIcon,
+  WorkflowIcon,
   type LucideIcon,
 } from "lucide-react";
 import { matchPath } from "react-router-dom";
@@ -33,6 +34,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: "/knowledge",
     label: "Knowledge base",
     icon: BookTextIcon,
+    role: USER_ROLE.admin,
+  },
+  {
+    to: "/pipeline",
+    label: "Pipeline",
+    icon: WorkflowIcon,
     role: USER_ROLE.admin,
   },
 ] as const;

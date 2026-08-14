@@ -37,6 +37,9 @@ const UsersPage = lazy(() =>
 const KnowledgePage = lazy(() =>
   import("@/pages/KnowledgePage").then((m) => ({ default: m.KnowledgePage })),
 );
+const PipelinePage = lazy(() =>
+  import("@/pages/PipelinePage").then((m) => ({ default: m.PipelinePage })),
+);
 
 /**
  * The dev tools, at `/__dev` — the project map and the test runner.
@@ -79,6 +82,11 @@ export function App() {
                   guard is UX — `requireAdmin` on every route in
                   `apps/api/src/routes/knowledge.ts` is the control. */}
               <Route path="/knowledge" element={<KnowledgePage />} />
+              {/* Admin-only for two reasons at once: it reads back how the
+                  unattended pipeline is behaving, and it can post an email into
+                  it. `requireAdmin` on every route in
+                  `apps/api/src/routes/pipeline.ts` is the control. */}
+              <Route path="/pipeline" element={<PipelinePage />} />
             </Route>
             {/* Inside the shell, so an unknown address keeps the sidebar and
                 says so rather than redirecting to the dashboard and pretending
