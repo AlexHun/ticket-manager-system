@@ -35,6 +35,13 @@ COPY packages/shared/package.json packages/shared/
 # the pre-deploy command on every release.
 RUN bun install --frozen-lockfile
 
+# Every workspace's tsconfig extends this one, and it lives at the root rather
+# than inside any of them. `prisma generate` is what finds out: `prisma.config.ts`
+# is TypeScript, so loading it resolves `apps/api/tsconfig.json` and its
+# `extends` chain, and a missing base file fails the build here with
+# "File '../../tsconfig.base.json' not found" — nothing to do with Prisma.
+COPY tsconfig.base.json ./
+
 COPY packages packages
 COPY apps/api apps/api
 

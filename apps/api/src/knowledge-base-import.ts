@@ -106,7 +106,15 @@ export function parseKnowledgeBaseMarkdown(markdown: string): ImportedArticle[] 
   // articles, not an answer to anybody's question, so it is not an article.
   let inInternal = false;
 
-  for (const line of markdown.split("\n")) {
+  // `\r?\n`, not `\n`. Git checks this file out with CRLF wherever
+  // `core.autocrlf` is on, which is the Windows default — and a trailing `\r`
+  // silently defeats every `$`-anchored pattern above, because JS counts `\r` as
+  // a line terminator so `.` will not match it and `$` will not step over it.
+  // The failure is total and quiet: 32 headings, 0 articles parsed, an empty
+  // corpus, and an auto-reply feature that declines everything. Found by
+  // building the image on Windows, where the working tree's bytes are what
+  // `COPY` puts in it.
+  for (const line of markdown.split(/\r?\n/)) {
     const heading = HEADING.exec(line);
     if (heading) {
       flush();

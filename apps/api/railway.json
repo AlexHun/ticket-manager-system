@@ -8,6 +8,7 @@
       "packages/**",
       "package.json",
       "bun.lock",
+      "tsconfig.base.json",
       ".dockerignore"
     ]
   },

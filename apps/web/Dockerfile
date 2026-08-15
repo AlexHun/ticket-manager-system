@@ -18,6 +18,11 @@ COPY packages/shared/package.json packages/shared/
 
 RUN bun install --frozen-lockfile
 
+# The root tsconfig every workspace's own config extends — `apps/web/tsconfig.json`
+# only holds references, and both `tsconfig.app.json` and `tsconfig.node.json`
+# reach up to this file. Without it the `tsc -b` half of the build below fails.
+COPY tsconfig.base.json ./
+
 COPY packages packages
 COPY apps/web apps/web
 
