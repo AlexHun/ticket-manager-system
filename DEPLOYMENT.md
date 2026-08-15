@@ -96,11 +96,19 @@ variables, then deploy.
 Push, or `railway up`. On the `api` service, each release runs
 
 ```
-cd /app/apps/api && bunx --bun prisma migrate deploy
+bunx --bun prisma migrate deploy
 ```
 
 (`--bun` matters: plain `bunx` honours the Prisma CLI's `#!/usr/bin/env node`
 shebang and there is no Node in the image.)
+
+No `cd` in front of it, deliberately. The image's `WORKDIR` is already
+`/app/apps/api`, so the `cd /app/apps/api &&` this used to carry bought nothing
+and cost the one thing that matters here: a command containing `&&` only runs if
+Railway hands it to a shell, and a pre-deploy container that fails to *start*
+reports "Pre-deploy command failed" with an empty log, which is the least
+debuggable failure in the whole pipeline. This form is a plain argv and runs
+either way.
 
 as its **pre-deploy command**, so migrations are applied before the new version
 takes traffic and a failed migration aborts the release rather than half-applying
