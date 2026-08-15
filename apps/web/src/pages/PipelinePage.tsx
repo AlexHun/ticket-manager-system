@@ -27,6 +27,7 @@ import {
   RUN_POLL_TIMEOUT_MS,
 } from "@/lib/pipeline-queries";
 import { cn } from "@/lib/utils";
+import { PipelineHandoff } from "./PipelineHandoff";
 import { PipelineRail } from "./PipelineRail";
 import { PipelineSimulator } from "./PipelineSimulator";
 import type { Scenario } from "./pipeline-scenarios";
@@ -196,6 +197,12 @@ export function PipelinePage() {
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0 space-y-6">
             <ConfigPanel config={config} queues={overview.data.queues} />
+
+            {/* Between the switches and the rail, which is where it belongs:
+                the panel above says whether any of this runs, this says where
+                what it produces ends up, and the diagram under it draws the
+                exits both of them describe. */}
+            <PipelineHandoff />
 
             <section
               aria-labelledby="rail-heading"

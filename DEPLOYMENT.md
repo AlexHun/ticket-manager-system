@@ -145,6 +145,16 @@ The seed **skips the demo `agent@example.com` / `password123` account when
 published-password account on a deployed database. Real agents are created by the
 admin through the Users screen.
 
+It does create the **assistant's account** (`assistant@automation.invalid`,
+`user.automated = true`) in production as well, and that one is safe there
+because there is no password to leave behind: it has no credential record at all,
+so nothing can sign in as it, and both mutating user routes 403 on it. It exists
+to be the assignee on tickets the knowledge base answered by itself. Without it
+those tickets keep an empty Assignee cell, which is precisely how an untouched
+ticket looks — `/pipeline` says so on the "Who ends up with it" card rather than
+leaving you to work it out. The seed looks before it creates, so re-running it
+never makes a second one.
+
 Then seed the knowledge base, if you want the shipped corpus:
 
 ```bash

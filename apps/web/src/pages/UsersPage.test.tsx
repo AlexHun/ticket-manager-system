@@ -35,6 +35,7 @@ const adminUser: User = {
   email: "admin@example.com",
   role: USER_ROLE.admin,
   emailVerified: true,
+  automated: false,
   createdAt: "2025-01-15T12:00:00.000Z",
 };
 
@@ -44,6 +45,7 @@ const agentUser: User = {
   email: "agent@example.com",
   role: USER_ROLE.agent,
   emailVerified: false,
+  automated: false,
   createdAt: "2025-02-20T12:00:00.000Z",
 };
 
@@ -53,6 +55,7 @@ const newAgentUser: User = {
   email: "nora@example.com",
   role: USER_ROLE.agent,
   emailVerified: false,
+  automated: false,
   createdAt: "2025-03-10T12:00:00.000Z",
 };
 

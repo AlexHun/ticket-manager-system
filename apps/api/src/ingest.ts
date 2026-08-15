@@ -1,6 +1,7 @@
 import { fromPrisma } from "pg-boss";
 import type { InboundEmail } from "@ticket/core";
 import { TICKET_STATUS } from "@ticket/shared";
+import { assistantUser, resolveHandoff } from "./automation";
 import { prisma } from "./db";
 import { enqueueClassification } from "./jobs/classify-ticket";
 
@@ -140,7 +141,7 @@ export async function ingestInboundEmail(
   };
 
   if (ticketId !== null) {
-    await prisma.$transaction([
+    const [, , reopened] = await prisma.$transaction([
       prisma.message.create({ data: { ...messageData, ticketId } }),
       prisma.ticket.update({
         where: { id: ticketId },
@@ -171,6 +172,32 @@ export async function ingestInboundEmail(
         data: { status: TICKET_STATUS.Open, autoResolvedAt: null },
       }),
     ]);
+
+    // A reopened ticket is assigned to the assistant, and the assistant is not
+    // coming back for it.
+    //
+    // The auto-reply files a ticket it resolved under its own account, which is
+    // an accurate record right up to the moment the customer says "that didn't
+    // help". From then on it is an open ticket owned by something that cannot
+    // read it — worse than an unowned one, because every "unassigned" view an
+    // agent works from now skips it. So the reopen hands it to whoever the
+    // handoff setting names, which is the same route every other ticket the
+    // machine could not finish takes.
+    //
+    // Conditional on the update above having fired, so the two lookups are paid
+    // for by a reopen and not by every reply on every thread — which is the
+    // common case by a wide margin. Narrowed to the assistant's own account as
+    // well: a ticket a *person* resolved and a customer reopened stays theirs.
+    if (reopened.count > 0) {
+      const assistant = await assistantUser();
+      if (assistant) {
+        await prisma.ticket.updateMany({
+          where: { id: ticketId, assignedToId: assistant.id },
+          data: { assignedToId: await resolveHandoff() },
+        });
+      }
+    }
+
     return { outcome: INGEST_OUTCOME.threaded, ticketId, messageId };
   }
 

@@ -14,6 +14,7 @@ import { prisma } from "./db";
 import { auth, trustedOrigins } from "./auth";
 import { startJobs, stopJobs } from "./jobs";
 import { aiRouter } from "./routes/ai";
+import { automationRouter } from "./routes/automation";
 import { knowledgeRouter } from "./routes/knowledge";
 import { pipelineRouter } from "./routes/pipeline";
 import { ticketsRouter } from "./routes/tickets";
@@ -106,6 +107,9 @@ app.use("/api/knowledge-articles", knowledgeRouter);
 // one: it reads back how the unattended pipeline is behaving, and — behind
 // `PIPELINE_SIMULATOR_ENABLED` — it can post an email into it.
 app.use("/api/pipeline", pipelineRouter);
+// Admin-only as well: it decides where every ticket the assistant hands back
+// lands, which is a staffing decision rather than something an agent picks.
+app.use("/api/automation", automationRouter);
 
 // After every route, which is the only place it works: it is an Express error
 // middleware, and it can only see what routes registered before it throw.

@@ -1,4 +1,4 @@
-﻿import { CheckCircle2, Pencil, Trash2, XCircle } from "lucide-react";
+﻿import { Bot, CheckCircle2, Pencil, Trash2, XCircle } from "lucide-react";
 import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,12 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
               <td className="px-4 py-2">{u.name}</td>
               <td className="px-4 py-2 text-muted-foreground">{u.email}</td>
               <td className="px-4 py-2">
-                <RoleBadge role={u.role} />
+                {/* The assistant's row is on the roster because tickets are
+                    filed under it and somebody has to be able to see what that
+                    name is. Its `role` is `agent` and saying so would be
+                    misleading — it is not a colleague with an agent's
+                    permissions, it is an account nothing can sign into. */}
+                {u.automated ? <AssistantBadge /> : <RoleBadge role={u.role} />}
               </td>
               <td className="px-4 py-2">
                 <VerifiedBadge verified={u.emailVerified} />
@@ -51,15 +56,25 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
               </td>
               <td className="px-4 py-2">
                 <div className="flex items-center justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => onEdit(u)}
-                    aria-label={`Edit ${u.name}`}
-                  >
-                    <Pencil />
-                  </Button>
-                  {u.role !== USER_ROLE.admin ? (
+                  {/* No actions on the assistant, matching the API rather than
+                      duplicating its reasoning: both routes 403 on this row.
+                      Editing it can set a password, which would create the
+                      credential record it deliberately has none of; deleting it
+                      would clear the assignee on every ticket it has ever
+                      resolved, and only the seed can make another. */}
+                  {u.automated ? (
+                    <span aria-hidden className="size-7" />
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => onEdit(u)}
+                      aria-label={`Edit ${u.name}`}
+                    >
+                      <Pencil />
+                    </Button>
+                  )}
+                  {!u.automated && u.role !== USER_ROLE.admin ? (
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -129,6 +144,15 @@ export function UsersTableSkeleton() {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function AssistantBadge() {
+  return (
+    <Badge variant="outline">
+      <Bot />
+      Assistant
+    </Badge>
   );
 }
 

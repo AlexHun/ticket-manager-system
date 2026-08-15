@@ -10,6 +10,7 @@ import {
 import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import { autoReplyArticleCount } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
+import { assistantUser, resolveHandoff } from "../automation";
 import { prisma } from "../db";
 import { newOutboundMessageId } from "../message-id";
 import { isRetryable } from "./ai-retry";
@@ -184,12 +185,52 @@ export async function enqueueAutoReply(ticketId: number): Promise<void> {
 }
 
 /**
+ * Give a ticket an owner, unless it already has one.
+ *
+ * Every write below the claim is conditional on the state it expects, and this
+ * is no exception — the condition is just a different one. The claim required
+ * `assignedToId: null`, but nothing stops an agent opening the ticket by id and
+ * putting their name on it during the seconds the model is thinking; only the
+ * *list* hides `Processing`. So the assignee is filled in rather than set, and a
+ * person who got there first keeps the ticket.
+ *
+ * Separate from `release` and from the resolve transaction on purpose. Folding
+ * `assignedToId` into either would make one statement carry two conditions that
+ * are not the same condition, and the status write must happen whether or not
+ * the assignee one does — a ticket stuck in `Processing` because somebody was
+ * already assigned is invisible to everybody.
+ *
+ * A null `userId` is not an error: `unassigned` is a target an admin can choose,
+ * and a deployment with no seeded assistant has nobody to file automated tickets
+ * under. Both mean "leave it as it was".
+ */
+async function assignIfUnowned(
+  ticketId: number,
+  userId: string | null,
+): Promise<void> {
+  if (userId === null) return;
+  await prisma.ticket.updateMany({
+    where: { id: ticketId, assignedToId: null },
+    data: { assignedToId: userId },
+  });
+}
+
+/**
  * Hand a claimed ticket back, without disturbing one that is no longer ours.
  *
  * `decline` is recorded on the way out to `Open`, which is the only exit that
  * means "a person's turn now". Going back to `New` is a retry in progress and
  * says nothing yet — stamping a reason there would put a verdict on a ticket the
  * machine is still thinking about, and the next attempt may well answer it.
+ *
+ * **`Open` is also the only exit that assigns anybody**, and for the same
+ * reason turned the other way round: the claim can only take a ticket whose
+ * `assignedToId` is null, so naming an owner on the way back to `New` would put
+ * the ticket beyond the reach of the retry that is already scheduled for it —
+ * and beyond the recovery sweep, which releases to `New` as well. A provider
+ * outage would quietly become a queue of tickets nothing would ever look at
+ * again. Ownership is for when the machine is finished, never for when it is
+ * pausing.
  *
  * Still conditional on holding the claim, like everything else here: a ticket a
  * recovery sweep released while the model was thinking is no longer ours to
@@ -200,7 +241,7 @@ async function release(
   to: "New" | "Open",
   decline?: AutoReplyDecline,
 ): Promise<void> {
-  await prisma.ticket.updateMany({
+  const released = await prisma.ticket.updateMany({
     where: { id: ticketId, status: TICKET_STATUS.Processing },
     data: {
       status: to,
@@ -209,6 +250,13 @@ async function release(
         : {}),
     },
   });
+
+  // Only if this call is the one that released it. A second delivery that found
+  // the ticket already handed back must not re-assign it, or it would undo an
+  // agent who had picked it up in between.
+  if (to === TICKET_STATUS.Open && released.count > 0) {
+    await assignIfUnowned(ticketId, await resolveHandoff());
+  }
 }
 
 /**
@@ -369,6 +417,20 @@ async function handle(job: AutoReplyJob): Promise<void> {
   });
 
   if (written) {
+    // File it under the assistant. Outside the transaction because it is not
+    // part of the reply being correct: the ticket is answered and resolved
+    // either way, and a deployment that has never been seeded has no assistant
+    // account to name — that must leave the assignee empty, not roll back a
+    // reply the customer is going to receive.
+    //
+    // Note what this does *not* touch. The message keeps `authorId: null` and
+    // `automated: true`, because "nobody wrote this" is the fact an agent
+    // reading the thread needs, and it is not the same fact as "this ticket is
+    // filed under the assistant". Making the assistant the author would put a
+    // name above the bubble and undo the one thing the automated badge exists
+    // to say.
+    await assignIfUnowned(ticketId, (await assistantUser())?.id ?? null);
+
     console.log(
       `[auto-reply] ticket ${ticketId} answered from [${result.articleIds.join(", ")}] and resolved`,
     );

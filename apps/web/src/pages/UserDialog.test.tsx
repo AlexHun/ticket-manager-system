@@ -22,6 +22,7 @@ const baseUser: User = {
   email: "agent@example.com",
   role: USER_ROLE.agent,
   emailVerified: false,
+  automated: false,
   createdAt: "2026-04-01T12:00:00.000Z",
 };
 
@@ -31,6 +32,7 @@ const otherUser: User = {
   email: "beth@example.com",
   role: USER_ROLE.admin,
   emailVerified: true,
+  automated: false,
   createdAt: "2026-04-02T12:00:00.000Z",
 };
 
@@ -40,6 +42,7 @@ const newAgent: User = {
   email: "nora@example.com",
   role: USER_ROLE.agent,
   emailVerified: false,
+  automated: false,
   createdAt: "2026-04-03T12:00:00.000Z",
 };
 

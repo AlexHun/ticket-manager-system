@@ -410,7 +410,92 @@ export interface User {
   email: string;
   role: UserRole;
   emailVerified: boolean;
+  /**
+   * This row stands for the assistant, not for a person.
+   *
+   * There is at most one — a partial unique index in the database says so — and
+   * it exists to be an *assignee*: a ticket the knowledge base answered by
+   * itself carries its name, so "who dealt with this?" has the same kind of
+   * answer whether a colleague or a machine dealt with it.
+   *
+   * Not a third `UserRole`. A role decides what an account may *do*, and this
+   * account does nothing: it has no credential row, so nothing can sign in as
+   * it, and every mutating route refuses it. Widening the role union would have
+   * put a machine in every place the codebase asks "admin or agent?" — including
+   * Better Auth's own config and the route guards — to describe something that
+   * is not a permission level.
+   *
+   * Deliberately not the author of the replies it is assigned to. Those keep
+   * `authorId: null` and `automated: true`, because "nobody wrote this" is what
+   * an agent reading the thread needs told, and it is not the same fact as "this
+   * ticket is filed under the assistant".
+   */
+  automated: boolean;
   createdAt: string;
+}
+
+/**
+ * Who picks up a ticket the assistant could not finish.
+ *
+ * The auto-reply hands a ticket back on every path but one — most support mail
+ * is not a knowledge-base question, six checks fail closed on the rest, and the
+ * provider can simply be down. Until this existed, all of that landed in `Open`
+ * with no owner, which is the same place a ticket sits when nobody has looked at
+ * it yet. The point of the setting is that the two stop looking alike.
+ *
+ * Three targets rather than a nullable user id, because "nobody" and "we have
+ * not chosen" are different answers and only one of them is a decision.
+ */
+export const HANDOFF_TARGET = {
+  /**
+   * The longest-serving admin, resolved at the moment a ticket is handed back
+   * rather than stored. The default, and the only target that keeps working
+   * through a change of staff — a stored id would name a person who may have
+   * left, and there is nobody to notice until tickets start piling up under a
+   * deleted account.
+   */
+  admin: "admin",
+  /** The specific person named in `userId`. */
+  user: "user",
+  /** Nobody. The ticket goes back to the queue unowned, as it did before. */
+  unassigned: "unassigned",
+} as const;
+
+export type HandoffTarget =
+  (typeof HANDOFF_TARGET)[keyof typeof HANDOFF_TARGET];
+
+/** Render order for the picker: the default, then a person, then nobody. */
+export const HANDOFF_TARGETS = [
+  HANDOFF_TARGET.admin,
+  HANDOFF_TARGET.user,
+  HANDOFF_TARGET.unassigned,
+] as const;
+
+/**
+ * The automation settings as the API serves them.
+ *
+ * `user` is resolved server-side for the same reason a ticket's assignee is: an
+ * id alone is a cuid, and the screen that shows this has to name somebody.
+ *
+ * `resolvedTo` is the answer to the question the admin is actually asking —
+ * *who would get the next handed-back ticket* — computed the same way the job
+ * computes it. Without it the `admin` target is a promise the page cannot show
+ * the consequence of, and a target of `user` naming somebody since deleted would
+ * read as settled when it has silently fallen back.
+ */
+export interface AutomationSettings {
+  target: HandoffTarget;
+  user: TicketAssignee | null;
+  resolvedTo: TicketAssignee | null;
+  /** The assistant's own account, if it has been seeded. */
+  assistant: TicketAssignee | null;
+  updatedAt: string | null;
+  /** Denormalised, so the trail survives the account being deleted. */
+  updatedByName: string | null;
+}
+
+export interface AutomationSettingsResponse {
+  settings: AutomationSettings;
 }
 
 export interface TicketsListResponse {

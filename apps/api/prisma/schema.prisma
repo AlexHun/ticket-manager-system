@@ -14,6 +14,26 @@ model User {
   emailVerified   Boolean   @default(false)
   image           String?
   role            Role      @default(agent)
+  /// This row stands for the assistant rather than for a person.
+  ///
+  /// **Meant to be unique, and kept that way by having one writer.** Nothing in
+  /// the API can set this column — not `POST /api/users`, not the Better Auth
+  /// handler, not the admin update route — so the only thing that ever writes
+  /// `true` is `prisma/seed.ts`, which looks for the row before creating one and
+  /// is therefore safe to run repeatedly. A partial unique index (`WHERE
+  /// "automated"`) would state the invariant in the database, and it was left
+  /// out on purpose: Prisma cannot express one, so it would live only in the
+  /// migration, read as drift on the next `migrate dev`, and be silently dropped
+  /// by the migration that got generated to "fix" it. `assistantUser()` orders
+  /// the lookup so that even a second row could not change which one is used.
+  ///
+  /// Not a third `Role`, and the distinction is the point: a role says what an
+  /// account may do, and this account may do nothing. It has no `Account` row,
+  /// so there is no password to check and nothing can sign in as it, and the
+  /// mutating user routes refuse it outright. It exists to be the assignee on a
+  /// ticket the machine finished, so the assignee column answers "who dealt with
+  /// this" for every ticket instead of going blank on the automated ones.
+  automated       Boolean   @default(false)
   banned          Boolean?  @default(false)
   banReason       String?
   banExpires      DateTime?
@@ -25,9 +45,69 @@ model User {
   assignedTickets Ticket[]  @relation("TicketAssignee")
   authoredMessages Message[]
   knowledgeEdits  KnowledgeArticleRevision[]
+  handoffFor      AutomationSettings[] @relation("HandoffAssignee")
+  automationEdits AutomationSettings[] @relation("AutomationEditor")
 
   @@unique([email])
+  /// One row matches, and several things ask for it — every handed-back ticket,
+  /// every reopen, and the `/pipeline` screen.
+  @@index([automated])
   @@map("user")
+}
+
+/// Where a ticket goes when the assistant is finished with it. One row, id 1.
+///
+/// A singleton table rather than an env var, because this is the one thing about
+/// the unattended pipeline that a support lead has an opinion about and no
+/// deploy access to change. Everything else on `/pipeline` — the API key, the
+/// kill switch, the simulator — is a deployment decision and stays one.
+///
+/// The row may not exist. A deployment that has never opened the screen has no
+/// settings, and that reads as `admin` (the default) everywhere rather than as
+/// an error: `resolveHandoff` treats a missing row and a default row as the same
+/// thing, so nothing has to be seeded for the feature to work.
+///
+/// Success is deliberately **not** configurable. A ticket the machine resolved
+/// goes to the assistant's own account, full stop — that assignment is a record
+/// of what happened, not a routing choice, and an admin who could point it at a
+/// person would be filing a machine's work under somebody's name.
+model AutomationSettings {
+  /// Always 1. The default is what makes the upsert in `routes/automation.ts` a
+  /// single statement with no "have we got a row yet" branch above it.
+  id Int @id @default(1)
+
+  /// Which of the three answers the admin chose.
+  target HandoffTarget @default(admin)
+
+  /// The person, when `target` is `user`; null otherwise, and the API rejects
+  /// any other combination.
+  ///
+  /// `SetNull` covers a hard delete, but users here are *soft*-deleted, so the
+  /// FK never fires and this can go on naming somebody who has left. That is
+  /// handled where it has to be — `resolveHandoff` checks `deletedAt` and falls
+  /// back to an admin — because a handoff target nobody can see is a ticket
+  /// nobody works.
+  handoffUserId String?
+  handoffUser   User?   @relation("HandoffAssignee", fields: [handoffUserId], references: [id], onDelete: SetNull)
+
+  updatedAt     DateTime @updatedAt
+  /// Who changed it last. Denormalised alongside the FK for the same reason the
+  /// knowledge-base revisions are: the name has to outlive the account.
+  updatedById   String?
+  updatedBy     User?    @relation("AutomationEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedByName String?
+
+  @@index([handoffUserId])
+  @@index([updatedById])
+  @@map("automation_settings")
+}
+
+/// The three answers to "who picks up a ticket the assistant handed back".
+/// Mirrors `HANDOFF_TARGET` in `@ticket/shared`; the API validates against that.
+enum HandoffTarget {
+  admin
+  user
+  unassigned
 }
 
 model Session {

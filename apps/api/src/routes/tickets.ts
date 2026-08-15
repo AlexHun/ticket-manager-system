@@ -147,9 +147,19 @@ function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
  * Deleting a user is a soft delete that also bans them, so `deletedAt` already
  * covers "can't sign in". If a standalone ban ever lands, this is the predicate
  * to extend.
+ *
+ * The assistant is excluded, and that is the one narrowing here that is about
+ * meaning rather than access. Assigning a ticket is asking somebody to deal
+ * with it; the assistant deals with a ticket exactly once, unattended, at the
+ * moment it arrives, and has no way to be asked again. It reaches the column
+ * from the other side — `jobs/auto-reply-ticket.ts` files a ticket under it
+ * after answering — so a ticket can *show* the assistant as its assignee while
+ * nobody can *choose* it. Because this predicate builds the picker and validates
+ * what comes back, both halves are settled by the one line.
  */
 const ASSIGNABLE_USER = {
   deletedAt: null,
+  automated: false,
 } satisfies Prisma.UserWhereInput;
 
 /** The columns an assignee is described by — never role, ban state or the rest. */

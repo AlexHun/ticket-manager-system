@@ -59,16 +59,30 @@ mock.module("../db", () => ({ prisma: { ticket: { findUnique } } }));
 // route's behaviour turns on. The user id comes off a header so each test can
 // have its own, which matters: the rate limiter's budget is per user and lives
 // for the lifetime of the module.
+//
+// `mock.module` registrations are **process-global and permanent**, and this
+// factory does not spread the real module — so from the moment it runs, this
+// object *is* `../middleware/auth` for every test file `bun test` loads after
+// it. That is why `requireAdmin` is here despite no route in this file using
+// one: `routes/automation.test.ts` imports a router that needs it, and without
+// this line that file dies at import with "Export named 'requireAdmin' not
+// found". The two stubs read the same headers and default the same way, so it
+// does not matter which file's registration a given router bound against.
+const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
+  res.locals.session = {
+    user: {
+      id: req.header("x-test-user") ?? "agent-1",
+      name: req.header("x-test-agent-name") ?? "Aaron Agent",
+      email: req.header("x-test-user-email") ?? "agent@example.com",
+    },
+    session: { id: req.header("x-test-session") ?? "sess-1" },
+  };
+  next();
+};
+
 mock.module("../middleware/auth", () => ({
-  requireAuth: (req: Request, res: Response, next: NextFunction) => {
-    res.locals.session = {
-      user: {
-        id: req.header("x-test-user") ?? "agent-1",
-        name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      },
-    };
-    next();
-  },
+  requireAuth: fakeGuard,
+  requireAdmin: fakeGuard,
   sessionOf: (res: Response) => res.locals.session,
 }));
 

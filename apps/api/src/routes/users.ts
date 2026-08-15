@@ -28,6 +28,34 @@ function parseBody<S extends ZodType>(
 
 export const usersRouter = Router();
 
+/**
+ * Refuse to touch the assistant's account.
+ *
+ * It is on the roster because an admin should be able to see the thing tickets
+ * are being filed under, and it is read-only because there is nothing about it
+ * worth changing and one thing worth being careful about: `PATCH` below can set
+ * a password, and Better Auth's `setUserPassword` will create the credential row
+ * this account deliberately does not have. Renaming it is harmless; a way to
+ * sign in as it is not, and the two arrive through the same handler. So neither.
+ *
+ * 403 rather than 404 — the row exists and the caller can see it in the list;
+ * pretending otherwise would read as a bug in the list.
+ */
+async function rejectAssistant(
+  userId: string,
+  res: Response<{ error: string }>,
+): Promise<boolean> {
+  const target = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { automated: true },
+  });
+  if (target?.automated) {
+    res.status(403).json({ error: "The assistant's account cannot be changed" });
+    return true;
+  }
+  return false;
+}
+
 usersRouter.get(
   "/",
   requireAdmin,
@@ -40,6 +68,7 @@ usersRouter.get(
         email: true,
         role: true,
         emailVerified: true,
+        automated: true,
         createdAt: true,
       },
       orderBy: { createdAt: "asc" },
@@ -52,6 +81,7 @@ usersRouter.get(
         email: u.email,
         role: u.role,
         emailVerified: u.emailVerified,
+        automated: u.automated,
         createdAt: u.createdAt.toISOString(),
       })),
     });
@@ -81,6 +111,9 @@ usersRouter.post(
         email: user.email,
         role: user.role as UserRole,
         emailVerified: user.emailVerified,
+        // Never. This route makes colleagues; the assistant is made by the seed
+        // and by nothing else, which is the whole reason there is only one.
+        automated: false,
         createdAt: new Date(user.createdAt).toISOString(),
       },
     });
@@ -98,8 +131,10 @@ usersRouter.patch(
     if (!data) return;
 
     const { name, email, password } = data;
-    
+
     const userId = req.params.id as string;
+    if (await rejectAssistant(userId, res)) return;
+
     const headers = fromNodeHeaders(req.headers);
 
     await auth.api.adminUpdateUser({
@@ -122,6 +157,7 @@ usersRouter.patch(
         email: true,
         role: true,
         emailVerified: true,
+        automated: true,
         createdAt: true,
       },
     });
@@ -133,6 +169,7 @@ usersRouter.patch(
         email: user.email,
         role: user.role as UserRole,
         emailVerified: user.emailVerified,
+        automated: user.automated,
         createdAt: user.createdAt.toISOString(),
       },
     });
@@ -147,7 +184,7 @@ usersRouter.delete(
 
     const target = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, deletedAt: true },
+      select: { id: true, role: true, automated: true, deletedAt: true },
     });
 
     if (!target || target.deletedAt !== null) {
@@ -157,6 +194,17 @@ usersRouter.delete(
 
     if (target.role === "admin") {
       res.status(403).json({ error: "Admin users cannot be deleted" });
+      return;
+    }
+
+    // Deleting it would clear the assignee on every ticket the assistant has
+    // ever resolved (see the `updateMany` below), erasing the record of what the
+    // machine handled and leaving nothing to file the next one under. There is
+    // no re-creating it from the UI either — only the seed makes this row.
+    if (target.automated) {
+      res
+        .status(403)
+        .json({ error: "The assistant's account cannot be deleted" });
       return;
     }
 
