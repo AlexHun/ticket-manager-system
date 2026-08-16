@@ -89,6 +89,8 @@ A reopen re-routes. A customer replying to a machine-resolved ticket clears `aut
 
 For E2E test commands (`test:e2e`, `db:test:*`), see the `playwright-e2e-author` agent.
 
+**Every script and all three seeds are catalogued in `SCRIPTS.md`** — what each writes, which of the three environments it belongs to, and the fresh-machine and first-deploy orders. Go there before guessing at a command; the sharp part is which ones may point at production (`db:seed` and `db:seed:kb` yes, `db:seed:tickets` and `db:migrate` never).
+
 Bun env gotchas: `bun --env-file=X x ...` and `bun --env-file=X run <script that calls bun>` do **not** propagate the env to the child — the inner `bun` re-loads default `.env`. For Prisma CLI use `dotenv-cli`. Workspace filter syntax is `bun run --filter <pkg> <script>`, not `bun --filter <pkg> run <script>`.
 
 ## Fetching documentation
