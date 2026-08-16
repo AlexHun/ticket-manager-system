@@ -11,6 +11,25 @@ if (!adminEmail || !adminPassword) {
 
 const ctx = await auth.$context;
 
+/**
+ * Better Auth's `generateId` returns `false` when the config hands id
+ * generation to the database (`advanced.database.generateId: false`). Neither
+ * `user.id` nor `account.id` carries a `@default` in `schema.prisma`, so that
+ * setting would leave every insert below without an id — fail loudly here
+ * rather than at the first `create`.
+ */
+function newId(model: "user" | "account"): string {
+  const id = ctx.generateId({ model });
+
+  if (id === false) {
+    throw new Error(
+      `Better Auth is configured to let the database generate ${model} ids, but ${model}.id has no default in schema.prisma`,
+    );
+  }
+
+  return id;
+}
+
 async function upsertUser(
   email: string,
   name: string,
@@ -33,8 +52,8 @@ async function upsertUser(
   }
 
   const hash = await ctx.password.hash(password);
-  const userId = ctx.generateId({ model: "user" });
-  const accountId = ctx.generateId({ model: "account" });
+  const userId = newId("user");
+  const accountId = newId("account");
 
   await prisma.user.create({
     data: {
@@ -100,7 +119,7 @@ async function upsertAssistant(): Promise<void> {
     return;
   }
 
-  const id = ctx.generateId({ model: "user" });
+  const id = newId("user");
   await prisma.user.create({
     data: {
       id,
