@@ -1,4 +1,9 @@
-import { TICKET_EVENT } from "@ticket/shared";
+import {
+  ACTIVITY_EVENT_FIELD,
+  TICKET_EVENT,
+  type TicketEventField,
+} from "@ticket/shared";
+import type { ActivityEntry } from "../ticket-activity";
 import { publish } from "./hub";
 
 /**
@@ -45,4 +50,79 @@ export function publishPipelineChanged(ticketId: number): void {
     ticketId,
     at: new Date().toISOString(),
   });
+}
+
+/**
+ * An inbound email opened a ticket.
+ *
+ * The one event with no ticket on anyone's screen to correct: nobody has this
+ * ticket open, because it did not exist a moment ago. What it moves is the
+ * sidebar's saved-view counts, which are mounted on every page — so this is the
+ * event with the widest audience and the smallest effect.
+ */
+export function publishTicketCreated(ticketId: number): void {
+  publish({
+    kind: TICKET_EVENT.ticket_created,
+    ticketId,
+    at: new Date().toISOString(),
+  });
+}
+
+/**
+ * A message was appended to a thread, in either direction.
+ *
+ * Direction is deliberately not on the wire. An agent's own reply and a
+ * customer's reply invalidate exactly the same queries, and the client re-reads
+ * the thread to find out which it was — putting it here would be the beginning
+ * of a payload.
+ */
+export function publishTicketMessage(ticketId: number): void {
+  publish({
+    kind: TICKET_EVENT.ticket_message,
+    ticketId,
+    at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Status, category or assignee moved.
+ *
+ * `fields` is what lets the client decide, without fetching anything, whether a
+ * change could have moved a saved-view count or only the detail pane.
+ *
+ * Publishing nothing for an empty array is the same rule `ticketChanges` keeps:
+ * a PATCH that changed nothing is not a change, and an event announcing one
+ * would make every open list refetch to render what it already shows.
+ */
+export function publishTicketUpdated(
+  ticketId: number,
+  fields: TicketEventField[],
+): void {
+  if (fields.length === 0) return;
+
+  publish({
+    kind: TICKET_EVENT.ticket_updated,
+    ticketId,
+    at: new Date().toISOString(),
+    fields,
+  });
+}
+
+/**
+ * The same thing, from the entries a caller has already written to the trail.
+ *
+ * For `updateTicket`, which has just diffed the ticket to decide what to record
+ * and must not diff it again to decide what to announce. Duplicates are dropped
+ * because two entries can name one field — nothing does that today, but
+ * `ticketChanges` returns an array precisely so that one day something can.
+ */
+export function publishTicketChanges(
+  ticketId: number,
+  entries: ActivityEntry[],
+): void {
+  const fields = entries
+    .map((entry) => ACTIVITY_EVENT_FIELD[entry.action])
+    .filter((field): field is TicketEventField => field !== null);
+
+  publishTicketUpdated(ticketId, [...new Set(fields)]);
 }

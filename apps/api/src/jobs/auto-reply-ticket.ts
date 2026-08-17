@@ -5,6 +5,7 @@ import {
   MESSAGE_DIRECTION,
   TICKET_ACTIVITY_ACTION,
   TICKET_CATEGORY,
+  TICKET_EVENT_FIELD,
   TICKET_STATUS,
   type AutoReplyDecline,
 } from "@ticket/shared";
@@ -13,7 +14,11 @@ import { autoReplyArticleCount } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
 import { assistantUser, resolveHandoff } from "../automation";
 import { prisma } from "../db";
-import { publishPipelineChanged } from "../events/ticket-events";
+import {
+  publishPipelineChanged,
+  publishTicketMessage,
+  publishTicketUpdated,
+} from "../events/ticket-events";
 import { newOutboundMessageId } from "../message-id";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
@@ -266,6 +271,16 @@ async function release(
   if (to === TICKET_STATUS.Open && released.count > 0) {
     await assignIfUnowned(ticketId, await resolveHandoff());
 
+    // Only this exit, and only because of what agents can see. `Processing` is
+    // never published to them, so their lists still show this ticket as `New` —
+    // the exit to `Open` is the first thing that is genuinely different from
+    // what they have cached. A release back to `New` returns it to the state
+    // they were already showing, so there is nothing to tell them.
+    publishTicketUpdated(ticketId, [
+      TICKET_EVENT_FIELD.status,
+      TICKET_EVENT_FIELD.assignee,
+    ]);
+
     // One entry for the whole handing-back, not three. The claim and this
     // release are a matched pair that a person never sees — `Processing` lasts
     // seconds and the tickets list refuses to return it — so logging both would
@@ -491,7 +506,17 @@ async function handle(job: AutoReplyJob): Promise<void> {
     // simulated ticket descend is waiting for. After the transaction and after
     // the assignment, so a subscriber that re-reads on this event sees the
     // finished ticket rather than a half-built one.
+    //
+    // Three events for one commit, because three different things became wrong
+    // at once: the rail (admins), the ticket's status and owner, and the thread,
+    // which has gained a reply nobody typed. An agent with this ticket open sees
+    // the answer appear.
     publishPipelineChanged(ticketId);
+    publishTicketUpdated(ticketId, [
+      TICKET_EVENT_FIELD.status,
+      TICKET_EVENT_FIELD.assignee,
+    ]);
+    publishTicketMessage(ticketId);
   }
 }
 
