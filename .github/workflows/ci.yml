@@ -1,0 +1,146 @@
+# Verification only — this workflow does not deploy.
+#
+# Railway owns the deploy: each service's `railway.json` decides what rebuilds
+# (`watchPatterns`), the API applies migrations as its pre-deploy command, and a
+# healthcheck gates the switchover. Reimplementing any of that here would give
+# the project two answers to "is this change deployable", and they would
+# disagree on exactly the day it mattered. This is the gate in front of it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A superseded push has nothing to tell us. Never cancel on main, where the run
+# is the record of what was deployed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: 1.3.13
+
+jobs:
+  check:
+    name: Typecheck, unit tests, web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      # --frozen-lockfile is what the Dockerfiles use. A lockfile that only
+      # resolves when Bun is allowed to update it is a build that works here and
+      # fails in the image.
+      - run: bun install --frozen-lockfile
+
+      # The Prisma client is generated into apps/api/src/generated/prisma, which
+      # is gitignored, and there is no postinstall — nothing typechecks until
+      # this runs. `prisma generate` loads prisma.config.ts, which reads
+      # DATABASE_URL, so it needs *a* value; this one never opens a connection.
+      # Same placeholder apps/api/Dockerfile passes for the same reason.
+      - name: Generate Prisma client
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+        run: bunx --bun prisma generate
+
+      - name: Typecheck all workspaces
+        run: bun run typecheck
+
+      # Provider, database and session are mocked, so this needs no
+      # OPENAI_API_KEY and no Postgres.
+      - name: API unit tests
+        run: bun run --filter '@ticket/api' test
+
+      - name: Web component tests
+        run: bun run --filter '@ticket/web' test
+
+      # VITE_API_URL is baked in at build time and is both the axios baseURL and
+      # the CSP's connect-src entry, so a build without one is not the build
+      # Railway makes. The value is irrelevant here — only that the bundle and
+      # the generated csp.caddy come out of the same run.
+      - name: Build web
+        working-directory: apps/web
+        env:
+          VITE_API_URL: https://api.example.com
+        run: bun run build
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ticket_manager_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      # .env.test is gitignored. The committed example already points at
+      # localhost:5432/ticket_manager_test with postgres/postgres — the service
+      # container above — and deliberately leaves OPENAI_API_KEY empty with
+      # AUTO_REPLY_ENABLED=false, so a CI run spends no money and touches no
+      # network.
+      - name: Write the test environment
+        run: cp apps/api/.env.test.example apps/api/.env.test
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+        run: bunx --bun prisma generate
+
+      # migrate deploy, not reset: nothing here needs wiping, and reset is the
+      # command with Prisma 7's consent guard on it.
+      - name: Migrate the test database
+        run: bun run db:test:migrate
+
+      - run: bunx playwright install --with-deps chromium
+
+      # playwright.config.ts starts its own API (:3002) and web (:4001) from
+      # .env.test, and the global setup seeds users idempotently.
+      - name: Playwright
+        run: bun run test:e2e
+
+      - name: Upload the report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
