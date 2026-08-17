@@ -2188,15 +2188,19 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
-    const created = page.getByRole("columnheader", { name: "Created" });
+    // The default sort is `lastMessageAt` desc, whose column is labelled
+    // "Activity" — not `createdAt`. See DEFAULT_TICKET_SORT in @ticket/shared
+    // for why: a customer replying to an old ticket has to reach the top, and
+    // sorting by creation left it buried under three weeks of newer arrivals.
+    const activity = page.getByRole("columnheader", { name: "Activity" });
     const subject = page.getByRole("columnheader", { name: "Subject" });
-    await expect(created).toHaveAttribute("aria-sort", "descending");
+    await expect(activity).toHaveAttribute("aria-sort", "descending");
     await expect(subject).toHaveAttribute("aria-sort", "none");
 
     await page.getByRole("button", { name: "Subject" }).click();
 
     await expect(subject).toHaveAttribute("aria-sort", "ascending");
-    await expect(created).toHaveAttribute("aria-sort", "none");
+    await expect(activity).toHaveAttribute("aria-sort", "none");
     await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
   });
 });
@@ -2231,7 +2235,12 @@ test.describe("Ticket detail page", () => {
       page.getByRole("heading", { name: "Clickable subject", level: 1 }),
     ).toBeVisible();
     await expect(page.getByText("Threaded Customer").first()).toBeVisible();
-    await expect(page.getByText("Unassigned")).toBeVisible();
+    // Scoped to the field. Bare `getByText("Unassigned")` is ambiguous — the
+    // sidebar's saved-view links carry the same word — and an ambiguous locator
+    // is a strict-mode failure, not a soft one.
+    await expect(
+      page.getByRole("combobox", { name: "Assigned to" }),
+    ).toContainText("Unassigned");
   });
 
   test("renders the whole thread oldest first", async ({ page }) => {
@@ -2359,7 +2368,20 @@ test.describe("Ticket detail page", () => {
     await page.goto("/tickets");
 
     // Build a view that is not the default in three ways at once.
-    await chooseFilter(page, "Status", TICKET_STATUS.Open);
+    // `New`, because that is what `seedNumberedTickets` actually produces: it
+    // sets no status, so the rows take the schema default, and that default
+    // became `New` when the auto-reply pipeline landed.
+    //
+    // Filtering on `Open` matched none of the thirty, which swapped the entire
+    // table — column headers included — for the empty state. The sort click
+    // below then had no "Subject" button to hit, and this test only passed by
+    // racing that render: the click landed on the outgoing header and sorted
+    // against the pre-filter URL, which silently dropped `status` and left all
+    // thirty tickets on screen in subject order. Green for the wrong reason,
+    // and it went red the moment CI was slow enough to lose the race the other
+    // way. Filtered properly, sorting keeps the filter: the URL below is
+    // `?status=New&sort=subject&order=asc`.
+    await chooseFilter(page, "Status", TICKET_STATUS.New);
     await page.getByRole("button", { name: "Subject" }).click();
     await expect(page.getByRole("row").nth(1)).toContainText("Ticket 01");
     await page.getByRole("button", { name: "Next page" }).click();
@@ -2387,7 +2409,11 @@ test.describe("Ticket detail page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
-    await chooseFilter(page, "Status", TICKET_STATUS.Open);
+    // `New`, for the reason spelled out in the test above: these thirty take the
+    // schema default, and filtering them on `Open` leaves the list empty and the
+    // pager gone. This one was green in CI, but only by winning the same race —
+    // it clicks Next before the empty state has replaced the table.
+    await chooseFilter(page, "Status", TICKET_STATUS.New);
     await page.getByRole("button", { name: "Next page" }).click();
     await expect(page.getByText("Page 2 of 2")).toBeVisible();
     const listUrl = page.url();
