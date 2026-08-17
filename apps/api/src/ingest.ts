@@ -1,9 +1,10 @@
 import { fromPrisma } from "pg-boss";
 import type { InboundEmail } from "@ticket/core";
-import { TICKET_STATUS } from "@ticket/shared";
+import { TICKET_ACTIVITY_ACTION, TICKET_STATUS } from "@ticket/shared";
 import { assistantUser, resolveHandoff } from "./automation";
 import { prisma } from "./db";
 import { enqueueClassification } from "./jobs/classify-ticket";
+import { customerActor, recordActivity, writeActivity } from "./ticket-activity";
 
 /**
  * Turning an inbound email into a ticket, or into a message on one.
@@ -188,13 +189,53 @@ export async function ingestInboundEmail(
     // for by a reopen and not by every reply on every thread — which is the
     // common case by a wide margin. Narrowed to the assistant's own account as
     // well: a ticket a *person* resolved and a customer reopened stays theirs.
+    // Guarded on `count`, like the reassignment below it and for the same
+    // reason: `updateMany`'s whole job here is to match nothing on a ticket a
+    // person resolved, and an entry written regardless would report a reopen
+    // that did not happen on exactly those tickets.
+    //
+    // Recorded after the transaction rather than inside it, and swallowed on
+    // failure. A mail provider times this webhook and retries a slow one, and a
+    // retried webhook is duplicate ingestion — so nothing about writing the
+    // audit line may be allowed to fail the request that received the email.
     if (reopened.count > 0) {
+      const actor = customerActor(email.senderName);
+
+      await recordActivity(
+        ticketId,
+        { action: TICKET_ACTIVITY_ACTION.reopened, toValue: TICKET_STATUS.Open },
+        actor,
+      );
+
       const assistant = await assistantUser();
       if (assistant) {
-        await prisma.ticket.updateMany({
+        const handoffId = await resolveHandoff();
+        const reassigned = await prisma.ticket.updateMany({
           where: { id: ticketId, assignedToId: assistant.id },
-          data: { assignedToId: await resolveHandoff() },
+          data: { assignedToId: handoffId },
         });
+
+        // Again on `count`: the ticket may have been resolved by the machine and
+        // then picked up by a person, in which case it is theirs and nothing
+        // moved.
+        if (reassigned.count > 0) {
+          const handoff = handoffId
+            ? await prisma.user.findUnique({
+                where: { id: handoffId },
+                select: { name: true },
+              })
+            : null;
+
+          await recordActivity(
+            ticketId,
+            {
+              action: TICKET_ACTIVITY_ACTION.assignee_changed,
+              fromValue: assistant.name,
+              toValue: handoff?.name ?? null,
+            },
+            actor,
+          );
+        }
       }
     }
 
@@ -233,6 +274,22 @@ export async function ingestInboundEmail(
       },
       select: { id: true },
     });
+
+    // Inside the transaction, unlike the reopen entries above — the same
+    // argument this function already makes for enqueuing here. It is one INSERT
+    // into a table in the same database, in a transaction that is happening
+    // anyway, and the first line of a ticket's history sharing a fate with the
+    // ticket is the point: an audit trail whose opening entry can go missing is
+    // one you cannot tell "no history" apart from "history lost" in.
+    await writeActivity(
+      tx,
+      created.id,
+      {
+        action: TICKET_ACTIVITY_ACTION.created,
+        toValue: TICKET_STATUS.New,
+      },
+      customerActor(email.senderName),
+    );
 
     await enqueueClassification(created.id, fromPrisma(tx));
 

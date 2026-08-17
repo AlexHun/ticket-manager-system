@@ -1,9 +1,10 @@
 import * as Sentry from "@sentry/bun";
 import type { PgBoss, Db, Queue } from "pg-boss";
-import { MESSAGE_DIRECTION } from "@ticket/shared";
+import { MESSAGE_DIRECTION, TICKET_ACTIVITY_ACTION } from "@ticket/shared";
 import { classifyTicket } from "../ai/classify";
 import { isAiConfigured } from "../ai/provider";
 import { prisma } from "../db";
+import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import { enqueueAutoReply } from "./auto-reply-ticket";
 import { ensureQueue, getBoss } from "./boss";
@@ -247,6 +248,22 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
   // that has quietly stopped working looks exactly like a quiet week.
   if (written.count === 0) return;
   console.log(`[classify] ticket ${ticketId} filed as ${result.category}`);
+
+  // Below the guard, so the trail records what the classifier *wrote* rather
+  // than what it decided. A ticket an agent filed during the call took the
+  // branch above, and an entry there would tell whoever reads this ticket that a
+  // machine overruled them — on precisely the tickets where it did not.
+  //
+  // `fromValue` is null by construction: the `where` above only matched because
+  // the column was empty.
+  await recordActivity(
+    ticketId,
+    {
+      action: TICKET_ACTIVITY_ACTION.category_changed,
+      toValue: result.category,
+    },
+    await assistantActor(),
+  );
 
   // Hand it to the auto-reply, which is the next stage of the pipeline
   // `implementation-plan.md` Phase 6 describes: classify, then answer if the

@@ -22,6 +22,7 @@ import {
   ticketViewParams,
   type CreateTicketMessageResponse,
   type SortOrder,
+  type TicketActivityResponse,
   type TicketAssigneesResponse,
   type TicketDetailResponse,
   type TicketSortField,
@@ -34,6 +35,12 @@ import {
 import { prisma, type Prisma } from "../db";
 import { newOutboundMessageId } from "../message-id";
 import { requireAuth, sessionOf } from "../middleware/auth";
+import {
+  agentActor,
+  ticketChanges,
+  writeActivity,
+  type TicketFields,
+} from "../ticket-activity";
 import { ticketStatsHandler } from "./ticket-stats";
 
 /**
@@ -227,6 +234,19 @@ function toTicketWithAssignee(ticket: TicketRow): TicketWithAssignee {
   };
 }
 
+/** The three mutable fields as the audit trail stores them: display strings. */
+function fieldsOf(ticket: {
+  status: string;
+  category: string | null;
+  assignedTo: { name: string } | null;
+}): TicketFields {
+  return {
+    status: ticket.status,
+    category: ticket.category,
+    assignee: ticket.assignedTo?.name ?? null,
+  };
+}
+
 /**
  * Write one field and reply with the whole ticket — the tail every PATCH below
  * shares. They differ only in what they validate and what they write; the reply
@@ -236,6 +256,12 @@ function toTicketWithAssignee(ticket: TicketRow): TicketWithAssignee {
  * The existence check is a separate query rather than a catch around Prisma's
  * "record not found": a missing ticket is a 404, and letting the update throw
  * to say so would route a plainly bad id through the error pipeline as a 500.
+ * It now also reads the values being replaced, because an audit entry is a
+ * *transition* and the previous value is gone the moment the update lands.
+ *
+ * Update and entry share one transaction, the way every write to a knowledge
+ * article shares one with its revision (`routes/knowledge.ts`). The trail is
+ * only worth reading if it cannot disagree with the row it describes.
  */
 async function updateTicket(
   id: number,
@@ -244,17 +270,37 @@ async function updateTicket(
 ): Promise<void> {
   const existing = await prisma.ticket.findUnique({
     where: { id },
-    select: { id: true },
+    select: {
+      id: true,
+      status: true,
+      category: true,
+      assignedTo: { select: { name: true } },
+    },
   });
   if (!existing) {
     res.status(404).json({ error: "Ticket not found" });
     return;
   }
 
-  const ticket = await prisma.ticket.update({
-    where: { id },
-    data,
-    include: { assignedTo: { select: ASSIGNEE_SELECT } },
+  const actor = agentActor(sessionOf(res).user);
+
+  const ticket = await prisma.$transaction(async (tx) => {
+    const updated = await tx.ticket.update({
+      where: { id },
+      data,
+      include: { assignedTo: { select: ASSIGNEE_SELECT } },
+    });
+
+    // Diffed rather than read off `data`, which is the difference between
+    // recording what changed and recording what was submitted. A PATCH setting
+    // the status a ticket already has writes nothing — an agent pressing Save
+    // twice has not changed anything, and a trail that says otherwise teaches
+    // people to distrust it.
+    for (const entry of ticketChanges(fieldsOf(existing), fieldsOf(updated))) {
+      await writeActivity(tx, id, entry, actor);
+    }
+
+    return updated;
   });
 
   res.json({ ticket: toTicketWithAssignee(ticket) });
@@ -445,6 +491,63 @@ ticketsRouter.get(
         autoReplyDecline: asAutoReplyDecline(ticket.autoReplyDecline),
         autoReplyDeclinedAt: ticket.autoReplyDeclinedAt?.toISOString() ?? null,
       },
+    });
+  },
+);
+
+/**
+ * The ticket's audit trail, oldest first.
+ *
+ * A sub-resource rather than a field on `GET /:id`, following
+ * `/knowledge/:id/revisions`, and for a second reason of its own: the trail
+ * changes at different moments than the thread does. Every status and assignee
+ * mutation on the detail page adds to it while leaving the messages untouched,
+ * so a client holding it separately refetches the short list instead of the
+ * ticket and its whole conversation.
+ *
+ * `requireAuth`, not `requireAdmin`: both roles work tickets, and an agent who
+ * can see a ticket can already see its status and who it belongs to. What this
+ * adds is when those became true and who made them so.
+ *
+ * No pagination. A ticket accumulates a handful of these over its life — unlike
+ * a knowledge article, which is edited indefinitely — and the whole point is to
+ * read it in one piece against the thread beside it.
+ */
+ticketsRouter.get(
+  "/:id/activity",
+  requireAuth,
+  async (req: Request, res: Response<TicketActivityResponse | { error: string }>) => {
+    const parsed = ticketIdParamSchema.safeParse(req.params);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0].message });
+      return;
+    }
+
+    // No existence check. An empty trail is the honest answer for a ticket that
+    // predates this feature, and it is indistinguishable from one that never
+    // moved — so 404-ing on a missing ticket would buy nothing but a second
+    // query on every read.
+    const activity = await prisma.ticketActivity.findMany({
+      where: { ticketId: parsed.data.id },
+      // `id` breaks ties: entries written in the same transaction share an
+      // instant, and a reopen that also reassigns must read in that order.
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        action: true,
+        fromValue: true,
+        toValue: true,
+        actorKind: true,
+        actorName: true,
+        createdAt: true,
+      },
+    });
+
+    res.json({
+      activity: activity.map((entry) => ({
+        ...entry,
+        createdAt: entry.createdAt.toISOString(),
+      })),
     });
   },
 );

@@ -613,6 +613,79 @@ export interface CreateTicketMessageResponse {
 }
 
 /**
+ * What happened to a ticket. The Postgres enum of the same name mirrors this.
+ *
+ * Seven and not more: each one is a change an agent reading the ticket has to be
+ * able to account for. Things that change no field a person reads are absent on
+ * purpose — the auto-reply's `Processing` claim (invisible by design, and over in
+ * seconds), the `classifiedAt` stamp a dead-lettered job leaves behind, and a
+ * reply, which is already the most visible thing in the thread and needs no line
+ * beside it saying a reply happened.
+ */
+export const TICKET_ACTIVITY_ACTION = {
+  /** The ticket was opened by an inbound email. Always the first entry. */
+  created: "created",
+  status_changed: "status_changed",
+  category_changed: "category_changed",
+  assignee_changed: "assignee_changed",
+  /** A customer replied to a ticket the machine had resolved. */
+  reopened: "reopened",
+  /** The knowledge base answered it and it was filed under the assistant. */
+  auto_resolved: "auto_resolved",
+  /** The auto-reply handed it back. `toValue` carries the `AutoReplyDecline`. */
+  auto_declined: "auto_declined",
+} as const;
+
+export type TicketActivityAction =
+  (typeof TICKET_ACTIVITY_ACTION)[keyof typeof TICKET_ACTIVITY_ACTION];
+
+/**
+ * What kind of thing made the change.
+ *
+ * Not a `UserRole`. The question a trail has to answer first is whether a person
+ * did this at all, and two of these three answers are not people — which is the
+ * entire reason the ticket log was worth building while three of the writers are
+ * machines.
+ */
+export const TICKET_ACTOR_KIND = {
+  /** A signed-in person, agent or admin. */
+  agent: "agent",
+  /** The automated user row. `actorId` points at it. */
+  assistant: "assistant",
+  /** An inbound email did it. No account, so no `actorId` and no `actorEmail`. */
+  customer: "customer",
+} as const;
+
+export type TicketActorKind =
+  (typeof TICKET_ACTOR_KIND)[keyof typeof TICKET_ACTOR_KIND];
+
+/**
+ * One recorded change, as the thread renders it.
+ *
+ * `fromValue`/`toValue` are already display strings — a status, a category, an
+ * assignee's *name*, or a decline reason — and never ids. The trail has to stay
+ * readable after the account it names is deleted, which is exactly when it gets
+ * read; same argument `KnowledgeArticleRevision` makes for `editorName`.
+ *
+ * No `actorId` on the wire. Nothing in the UI links to a user from here, and the
+ * name beside the entry is the denormalised copy rather than a join, so sending
+ * the id would only invite somebody to join on it later and undo that.
+ */
+export interface TicketActivity {
+  id: number;
+  action: TicketActivityAction;
+  fromValue: string | null;
+  toValue: string | null;
+  actorKind: TicketActorKind;
+  actorName: string;
+  createdAt: string;
+}
+
+export interface TicketActivityResponse {
+  activity: TicketActivity[];
+}
+
+/**
  * The reply to POST /api/ai/polish-reply.
  *
  * Plain text, never markup. The composer puts it straight into a textarea and

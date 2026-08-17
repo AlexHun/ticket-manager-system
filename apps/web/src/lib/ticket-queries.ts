@@ -24,6 +24,17 @@ export const ticketKeys = {
   isDetailKey: (key: readonly unknown[]) =>
     key[0] === "tickets" && key[1] === "detail",
 
+  /**
+   * One ticket's audit trail.
+   *
+   * Its own entry rather than part of `detail`, because the two change at
+   * different moments: every status, category and assignee mutation appends to
+   * this while leaving the thread untouched, so the page refetches a short list
+   * instead of the ticket and its whole conversation. `isDetailKey` stays
+   * correct beside it — that tests `key[1] === "detail"`.
+   */
+  activity: (id: string | number) => ["tickets", "activity", String(id)] as const,
+
   /** The params object is part of the key: each filter/sort/page is its own entry. */
   list: (params: object) => ["tickets", params] as const,
 

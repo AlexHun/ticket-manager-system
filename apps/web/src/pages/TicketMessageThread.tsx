@@ -1,13 +1,15 @@
-import { useLayoutEffect, useRef } from "react";
+import { Fragment, useLayoutEffect, useMemo, useRef } from "react";
 import { Sparkles } from "lucide-react";
 import {
   MESSAGE_DIRECTION,
   type MessageDirection,
   type ThreadMessage,
+  type TicketActivity,
 } from "@ticket/shared";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { ACTIVITY_PHRASING } from "@/lib/activity-labels";
 import { initialsOf } from "@/lib/initials";
 import { cn } from "@/lib/utils";
 
@@ -61,15 +63,141 @@ function dayLabel(date: Date): string {
   return DAY_FORMAT.format(date);
 }
 
+/**
+ * A thread is messages *and* what happened to the ticket between them, in one
+ * column and in one order.
+ *
+ * Interleaved rather than given a panel of its own, because every one of these
+ * entries is about the conversation beside it: the machine declining to answer
+ * belongs directly under the email it declined to answer, and a status change
+ * belongs where the reply that prompted it is. A separate history tab would make
+ * the reader join two timelines by timestamp in their head.
+ *
+ * **Interleaved on screen, but never its own `<li>`.** The list is
+ * `aria-label="Message thread"` and one `<li>` means one message — assistive tech
+ * counts them, and so does `threadMessages()` in the E2E suite, whose comment
+ * says what it is for: "the messages in the thread, and nothing else". Entries
+ * ride inside the `<li>` of the message they precede, exactly as `DayDivider`
+ * does and for the reason written on it: the thread is an ordered list of
+ * messages, and neither a date nor a status change is one of them.
+ */
+interface ActivityAt {
+  entry: TicketActivity;
+  /** This entry opens a new day, so a divider goes above it. */
+  newDay: boolean;
+}
+
+interface ThreadRow {
+  message: ThreadMessage;
+  /** Entries between the previous message and this one. */
+  before: ActivityAt[];
+  /** Everything after the last message. Only ever set on the final row. */
+  after: ActivityAt[];
+  newDay: boolean;
+  startsRun: boolean;
+}
+
 export function TicketMessageThread({
   messages,
+  activity = [],
   className,
 }: {
   messages: ThreadMessage[];
+  /**
+   * Defaulted, so a caller that has not loaded it yet — or a ticket that
+   * predates the trail — renders exactly the thread it used to.
+   */
+  activity?: TicketActivity[];
   /** Sizing from the pane that holds it — the scrolling itself lives here. */
   className?: string;
 }) {
   const scrollRef = useRef<HTMLOListElement>(null);
+
+  // Activity is *inserted into* the message sequence, never merged by sorting
+  // both. The order the API sent the messages in is the correct one and this
+  // component does not second-guess it — two messages written in the same
+  // transaction share a timestamp, and a client-side sort would reorder them by
+  // whatever it chose to break the tie with. So: walk the messages, emitting any
+  // entries that predate each one on the way past.
+  //
+  // An entry sharing a timestamp with a message lands *after* it, which is the
+  // right way round for the pair that actually collides — a reply and the status
+  // change made in the same breath. The message is what caused the entry.
+  const rows = useMemo<ThreadRow[]>(() => {
+    const pending = [...activity].sort((a, b) => {
+      const byTime = Date.parse(a.createdAt) - Date.parse(b.createdAt);
+      return byTime !== 0 ? byTime : a.id - b.id;
+    });
+
+    const built: ThreadRow[] = [];
+    let next = 0;
+    // The last thing *rendered*, of either kind — what a day divider and a
+    // sender run are both measured against.
+    let previousAt: number | null = null;
+    let previousMessage: ThreadMessage | null = null;
+
+    const take = (until: number | null): ActivityAt[] => {
+      const taken: ActivityAt[] = [];
+      while (
+        next < pending.length &&
+        (until === null || Date.parse(pending[next].createdAt) < until)
+      ) {
+        const entry = pending[next++];
+        const at = Date.parse(entry.createdAt);
+        taken.push({
+          entry,
+          newDay:
+            previousAt === null ||
+            startOfDay(new Date(previousAt)) !== startOfDay(new Date(at)),
+        });
+        previousAt = at;
+      }
+      return taken;
+    };
+
+    for (const message of messages) {
+      const sentAt = Date.parse(message.createdAt);
+      // Entries strictly before this message. An equal timestamp lands *after*
+      // it, which is the right way round for the pair that actually collides —
+      // a reply and the status change made in the same breath, where the
+      // message is what caused the entry.
+      const before = take(sentAt);
+
+      const newDay =
+        previousAt === null ||
+        startOfDay(new Date(previousAt)) !== startOfDay(new Date(sentAt));
+
+      built.push({
+        message,
+        before,
+        after: [],
+        newDay,
+        // Consecutive messages from one address are one run. An entry rendered
+        // between them ends it: the line is a visual break, and continuing a run
+        // across it would leave the message under it with no name or avatar to
+        // belong to.
+        startsRun:
+          newDay ||
+          previousMessage === null ||
+          before.length > 0 ||
+          previousMessage.senderEmail !== message.senderEmail ||
+          previousMessage.direction !== message.direction,
+      });
+
+      previousAt = sentAt;
+      previousMessage = message;
+    }
+
+    // Everything after the last message — where most entries end up on a ticket
+    // that has been triaged but not answered. They join the final row rather
+    // than opening one of their own, because a row is a message.
+    const trailing = take(null);
+    if (trailing.length > 0 && built.length > 0) {
+      built[built.length - 1].after = trailing;
+    }
+
+    return built;
+  }, [messages, activity]);
 
   // A thread opens on its newest message, the way a chat does — but never with
   // the customer's last message scrolled off the top.
@@ -145,26 +273,16 @@ export function TicketMessageThread({
       aria-label="Message thread"
       className={cn("flex flex-col gap-1 overflow-y-auto pe-2", className)}
     >
-      {messages.map((message, index) => {
-        const previous = index > 0 ? messages[index - 1] : null;
-        const outbound = message.direction === MESSAGE_DIRECTION.outbound;
+      {rows.map((row, index) => {
+        const { message, before, after, newDay, startsRun } = row;
         const sentAt = new Date(message.createdAt);
-
-        const newDay =
-          previous === null ||
-          startOfDay(new Date(previous.createdAt)) !== startOfDay(sentAt);
-
-        // Consecutive messages from one address are one run: repeating the
-        // avatar and address under every line is what makes an email client
-        // look like an email client rather than a conversation.
-        const startsRun =
-          newDay ||
-          previous.senderEmail !== message.senderEmail ||
-          previous.direction !== message.direction;
+        const outbound = message.direction === MESSAGE_DIRECTION.outbound;
+        // The very first thing in the column, whichever kind it is.
+        const opensThread = index === 0 && before.length === 0;
 
         return (
           <li
-            key={message.id}
+            key={`message-${message.id}`}
             // Read by the scroll anchor above to find the newest thing the
             // customer said. An attribute rather than a ref map: there is one
             // reader, it runs once per thread, and a `querySelectorAll` on
@@ -172,7 +290,11 @@ export function TicketMessageThread({
             data-inbound={outbound ? undefined : ""}
             className={cn("flex flex-col", startsRun && index > 0 && "mt-5")}
           >
-            {newDay && <DayDivider label={dayLabel(sentAt)} first={index === 0} />}
+            {/* Everything that happened between the previous message and this
+                one, inside this message's <li> — see the note on ThreadRow. */}
+            <ActivityRun items={before} opensThread={index === 0} />
+
+            {newDay && <DayDivider label={dayLabel(sentAt)} first={opensThread} />}
 
             <div className={cn("flex gap-2", outbound && "flex-row-reverse")}>
               {startsRun ? (
@@ -320,10 +442,75 @@ export function TicketMessageThread({
                 )}
               </div>
             </div>
+
+            {/* Entries with no message after them. They belong to the last row
+                rather than to one of their own, because a row is a message —
+                and this is where most of a triaged-but-unanswered ticket's
+                history ends up. */}
+            <ActivityRun items={after} opensThread={false} />
           </li>
         );
       })}
     </ol>
+  );
+}
+
+/**
+ * A run of recorded changes, with the day dividers they need.
+ *
+ * Not a list item of its own: see the note on `ThreadRow`. `opensThread` says
+ * whether the first of these is the very first thing in the column, which is the
+ * only thing the divider above it needs to know.
+ */
+function ActivityRun({
+  items,
+  opensThread,
+}: {
+  items: ActivityAt[];
+  opensThread: boolean;
+}) {
+  return (
+    <>
+      {items.map((item, position) => {
+        const at = new Date(item.entry.createdAt);
+        return (
+          <Fragment key={`activity-${item.entry.id}`}>
+            {item.newDay && (
+              <DayDivider
+                label={dayLabel(at)}
+                first={opensThread && position === 0}
+              />
+            )}
+            <ActivityLine entry={item.entry} at={at} />
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * One recorded change, centred between the bubbles it happened between.
+ *
+ * Deliberately the quietest thing in the column — no bubble, no avatar, muted
+ * and small. These are frequent and individually minor; a ticket the machine
+ * declined and an agent then worked collects half a dozen. Rendered with the
+ * weight of a message they would push the conversation off the screen, and the
+ * conversation is what the pane is for.
+ *
+ * The name is not marked up as the sender of anything, because for two of the
+ * three actor kinds nobody sent anything at all.
+ */
+function ActivityLine({ entry, at }: { entry: TicketActivity; at: Date }) {
+  return (
+    <div className="my-2 flex items-baseline justify-center gap-2 px-6 text-center">
+      <p className="text-xs text-muted-foreground">
+        <span className="font-medium">{entry.actorName}</span>{" "}
+        {ACTIVITY_PHRASING[entry.action](entry)}
+        {" · "}
+        <time dateTime={entry.createdAt}>{TIME_FORMAT.format(at)}</time>
+      </p>
+    </div>
   );
 }
 

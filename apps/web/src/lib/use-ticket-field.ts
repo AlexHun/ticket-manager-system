@@ -71,6 +71,14 @@ export function useTicketField<TValue>({
       // taking a ticket and watching "Unassigned" keep its old number until you
       // alt-tabbed. It is one small request against a page the user is looking at.
       void queryClient.invalidateQueries({ queryKey: ticketKeys.views });
+      // The trail is the other thing on screen that this mutation just changed:
+      // the entry recording it was written in the same transaction as the update
+      // whose response we are holding. Refetched rather than marked, for the
+      // same reason as the counts above — the agent is looking at the thread
+      // they just added a line to.
+      void queryClient.invalidateQueries({
+        queryKey: ticketKeys.activity(updated.id),
+      });
       toast.success(describe(updated));
     },
     onError: (err) => {

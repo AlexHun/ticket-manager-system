@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
 import {
   type AutoReplyDecline,
+  type TicketActivityResponse,
   type TicketDetail,
   type TicketDetailResponse,
 } from "@ticket/shared";
@@ -54,6 +55,33 @@ function useTicketQuery(id: string | undefined) {
     // A rejected request is an answer, not a flake: a bad id will still be bad
     // three retries later, and the backoff only delays the screen that explains
     // it. Genuine transient failures (network, 5xx) still get the default.
+    retry: (failureCount, error) => !isClientError(error) && failureCount < 3,
+  });
+}
+
+/**
+ * The ticket's audit trail, fetched beside the ticket rather than inside it.
+ *
+ * Its own request because it moves on its own: every field mutation on this page
+ * appends an entry while leaving the thread alone, so `useTicketField`
+ * invalidates this key and the page reloads a short list instead of the whole
+ * conversation.
+ *
+ * A failure here is deliberately not surfaced. The trail is context beside the
+ * thread, and a ticket that will not show its history is still a ticket an agent
+ * can read and answer — an error panel over the conversation would be a worse
+ * outcome than the quiet absence of an annotation.
+ */
+function useTicketActivityQuery(id: number) {
+  return useQuery({
+    queryKey: ticketKeys.activity(id),
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<TicketActivityResponse>(
+        `/api/tickets/${id}/activity`,
+        { signal },
+      );
+      return data.activity;
+    },
     retry: (failureCount, error) => !isClientError(error) && failureCount < 3,
   });
 }
@@ -112,6 +140,11 @@ export function TicketDetailPage() {
 }
 
 function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
+  // Keyed by the ticket's own id rather than by the one in the URL, so the entry
+  // `useTicketField` invalidates after a mutation is the entry this is reading —
+  // `/tickets/012` and `/tickets/12` are the same ticket and must not be two
+  // keys. Same reasoning as `ticketKeys.isDetailKey`.
+  const { data: activity } = useTicketActivityQuery(ticket.id);
   return (
     <div className="flex flex-1 flex-col gap-6 lg:min-h-0">
       {/* A band across both panes rather than a column heading: a long subject
@@ -233,6 +266,7 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
           <TicketMessageThread
             className="lg:min-h-0 lg:flex-1"
             messages={ticket.messages}
+            activity={activity}
           />
           {/* A sibling of the thread, never a child: the thread's `<ol>` *is*
               the scroll container, so a composer inside it would scroll away

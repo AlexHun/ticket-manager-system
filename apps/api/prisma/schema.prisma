@@ -45,6 +45,7 @@ model User {
   assignedTickets Ticket[]  @relation("TicketAssignee")
   authoredMessages Message[]
   knowledgeEdits  KnowledgeArticleRevision[]
+  ticketActivity  TicketActivity[]
   handoffFor      AutomationSettings[] @relation("HandoffAssignee")
   automationEdits AutomationSettings[] @relation("AutomationEditor")
 
@@ -224,6 +225,7 @@ model Ticket {
   assignedToId  String?
   assignedTo    User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   messages      Message[]
+  activity      TicketActivity[]
 
   @@index([customerEmail])
   @@index([lastMessageAt])
@@ -326,6 +328,89 @@ enum TicketCategory {
 enum MessageDirection {
   inbound
   outbound
+}
+
+/// One recorded change to a ticket.
+///
+/// The knowledge base has had a trail since the day its corpus moved into the
+/// database; tickets have not, and they need one more, because **three of the
+/// writers are machines**. The classifier files a category with nobody watching,
+/// and the auto-reply either resolves a ticket under the assistant's account or
+/// hands it back `Open` for one of nine reasons. Until this table, the answer to
+/// "why is this Resolved and filed under the assistant?" was a log line nobody
+/// kept, read weeks later by someone who does not have the logs.
+///
+/// **A transition, not a snapshot** — the one place it departs from
+/// `KnowledgeArticleRevision`. A revision copies the whole article because an
+/// article is a document you may want to diff or restore. A ticket's history is
+/// a sequence of single-field moves, and copying the subject and the customer
+/// onto every row would buy nothing.
+///
+/// **`Cascade`, where the revision uses `Restrict`** — the other departure. A
+/// revision is evidence for replies already sitting in customers' inboxes, so
+/// what it describes must never be deletable. This is *about* its ticket and
+/// means nothing without it; `Message` cascades for the same reason, and
+/// `prisma/seed-tickets.ts --reset` depends on it.
+model TicketActivity {
+  id       Int                  @id @default(autoincrement())
+  ticketId Int
+  ticket   Ticket               @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  action   TicketActivityAction
+  /// The move, as it will be read — `"Open"`, `"Technical"`, an assignee's
+  /// *name*, or an `AutoReplyDecline` reason. Null on either side means there was
+  /// nothing there: an unassigned ticket, a cleared category, a `created` entry.
+  ///
+  /// Text rather than three typed column pairs, and an assignee by name rather
+  /// than by id, for the reason `autoReplyDecline` is text and `editorName` is
+  /// denormalised: this column is display-only, is never filtered on, and has to
+  /// stay readable on the day the account it names is deleted — which is exactly
+  /// when a trail gets read. `ACTIVITY_PHRASING` in `@ticket/shared` is the one
+  /// authority on how a row reads.
+  fromValue  String?
+  toValue    String?
+  actorKind  TicketActorKind
+  /// Null for a customer, who has no account, and null again once an agent's
+  /// account is deleted — hence `SetNull`, and hence the two columns under it.
+  actorId    String?
+  actor      User?                @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorName  String
+  /// Null for a customer: the address is on the ticket and on every message they
+  /// sent, and copying it here would put it in a third place to keep in step.
+  actorEmail String?
+  createdAt  DateTime             @default(now())
+
+  /// The only way this table is ever read: one ticket, oldest first.
+  @@index([ticketId, createdAt])
+  /// Postgres does not index a foreign key for you, and clearing `actorId` on a
+  /// user delete would otherwise seq-scan the whole table. Same reason
+  /// `message.authorId` is indexed.
+  @@index([actorId])
+  @@map("ticket_activity")
+}
+
+/// What happened. Mirrors `TICKET_ACTIVITY_ACTION` in `@ticket/shared`, where
+/// `ACTIVITY_PHRASING` is a `Record` over this union — so a tenth action cannot
+/// be added without someone saying how it reads on screen.
+enum TicketActivityAction {
+  created
+  status_changed
+  category_changed
+  assignee_changed
+  reopened
+  auto_resolved
+  auto_declined
+}
+
+/// Who acted. Not a `Role`: the question here is what kind of thing made the
+/// change, and two of the three answers are not people.
+enum TicketActorKind {
+  /// A signed-in person, agent or admin.
+  agent
+  /// The automated `User` row — `actorId` points at it, so this table and the
+  /// assignee column name the machine identically.
+  assistant
+  /// An inbound email did it. No account behind it, so no `actorId`.
+  customer
 }
 
 /// A knowledge-base article: the grounding material the unattended auto-reply

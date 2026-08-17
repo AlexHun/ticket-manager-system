@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { fromNodeHeaders } from "better-auth/node";
 import type { z, ZodType } from "zod";
 import { createUserSchema, updateUserSchema } from "@ticket/core";
+import { TICKET_ACTIVITY_ACTION } from "@ticket/shared";
 import type {
   CreateUserResponse,
   UpdateUserResponse,
@@ -11,7 +12,8 @@ import type {
 } from "@ticket/shared";
 import { auth } from "../auth";
 import { prisma } from "../db";
-import { requireAdmin } from "../middleware/auth";
+import { requireAdmin, sessionOf } from "../middleware/auth";
+import { agentActor } from "../ticket-activity";
 
 function parseBody<S extends ZodType>(
   schema: S,
@@ -184,7 +186,15 @@ usersRouter.delete(
 
     const target = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, automated: true, deletedAt: true },
+      // `name` is for the audit entries below: the account is about to be
+      // deleted, so the trail has to keep its own copy.
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        automated: true,
+        deletedAt: true,
+      },
     });
 
     if (!target || target.deletedAt !== null) {
@@ -216,6 +226,18 @@ usersRouter.delete(
     // sessions table being read at all. The user keeps access until that cookie
     // ages out (currently 60s). If revocation ever has to be immediate, that
     // cache is the thing to turn off — not something to fix here.
+    // Read before the write, because `updateMany` returns a count and an audit
+    // trail needs the ids. This is the one place a single statement changes many
+    // tickets at once, and it is also the one an agent is most likely to be
+    // puzzled by later: a ticket they were watching becomes unassigned overnight
+    // with nothing in its history to say why. The name is captured here too —
+    // the account is about to be deleted, which is exactly the case the
+    // denormalised `actorName` exists for.
+    const orphaned = await prisma.ticket.findMany({
+      where: { assignedToId: userId },
+      select: { id: true },
+    });
+
     await prisma.$transaction([
       prisma.user.update({
         where: { id: userId },
@@ -236,6 +258,19 @@ usersRouter.delete(
       prisma.ticket.updateMany({
         where: { assignedToId: userId },
         data: { assignedToId: null },
+      }),
+      // In the same transaction as the unassignment: these describe a change
+      // that either happened to all of them or to none.
+      prisma.ticketActivity.createMany({
+        data: orphaned.map((ticket) => ({
+          ticketId: ticket.id,
+          action: TICKET_ACTIVITY_ACTION.assignee_changed,
+          fromValue: target.name,
+          toValue: null,
+          // The admin who deleted the account, not the agent who lost the
+          // tickets: the actor is whoever caused the change.
+          ...agentActor(sessionOf(res).user),
+        })),
       }),
     ]);
 

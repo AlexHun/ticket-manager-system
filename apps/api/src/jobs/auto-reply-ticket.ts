@@ -3,6 +3,7 @@ import type { PgBoss, Queue } from "pg-boss";
 import {
   AUTO_REPLY_DECLINE,
   MESSAGE_DIRECTION,
+  TICKET_ACTIVITY_ACTION,
   TICKET_CATEGORY,
   TICKET_STATUS,
   type AutoReplyDecline,
@@ -13,6 +14,7 @@ import { isAiConfigured } from "../ai/provider";
 import { assistantUser, resolveHandoff } from "../automation";
 import { prisma } from "../db";
 import { newOutboundMessageId } from "../message-id";
+import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import { ensureQueue, getBoss } from "./boss";
 
@@ -256,6 +258,28 @@ async function release(
   // agent who had picked it up in between.
   if (to === TICKET_STATUS.Open && released.count > 0) {
     await assignIfUnowned(ticketId, await resolveHandoff());
+
+    // One entry for the whole handing-back, not three. The claim and this
+    // release are a matched pair that a person never sees — `Processing` lasts
+    // seconds and the tickets list refuses to return it — so logging both would
+    // bury the only part that carries information under two lines describing a
+    // state nobody can observe. The reason is that information: `/pipeline`
+    // counts declines in aggregate, and until now the ticket an agent is
+    // actually looking at never said which one it hit.
+    //
+    // Guarded on `decline` as well as on `count`, because a release to `New` is
+    // a retry in progress and has no verdict to record yet — the same reason
+    // `autoReplyDecline` is only stamped on this exit.
+    if (decline) {
+      await recordActivity(
+        ticketId,
+        {
+          action: TICKET_ACTIVITY_ACTION.auto_declined,
+          toValue: decline,
+        },
+        await assistantActor(),
+      );
+    }
   }
 }
 
@@ -430,6 +454,20 @@ async function handle(job: AutoReplyJob): Promise<void> {
     // name above the bubble and undo the one thing the automated badge exists
     // to say.
     await assignIfUnowned(ticketId, (await assistantUser())?.id ?? null);
+
+    // One entry for the resolve and the assignment together: they are one event
+    // — the machine finished this ticket and filed it under itself — and two
+    // lines saying so would only make a short history harder to read. The
+    // articles it answered from are already on the message, where the thread
+    // shows them beside the words they produced.
+    await recordActivity(
+      ticketId,
+      {
+        action: TICKET_ACTIVITY_ACTION.auto_resolved,
+        toValue: TICKET_STATUS.Resolved,
+      },
+      await assistantActor(),
+    );
 
     console.log(
       `[auto-reply] ticket ${ticketId} answered from [${result.articleIds.join(", ")}] and resolved`,
