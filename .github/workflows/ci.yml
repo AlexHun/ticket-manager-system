@@ -90,8 +90,14 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: ticket_manager_test
         ports: ["5432:5432"]
+        # `-U postgres` is not decoration: bare `pg_isready` connects as the
+        # container's OS user, which is root, and there is no such role — so the
+        # probe still passes (the server answered) while logging
+        # `FATAL: role "root" does not exist` every interval for the life of the
+        # job. Dozens of FATALs in the service log of a green run is exactly the
+        # noise that makes a real one easy to miss.
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d ticket_manager_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
