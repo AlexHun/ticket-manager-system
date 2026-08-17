@@ -13,6 +13,7 @@ import { autoReplyArticleCount } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
 import { assistantUser, resolveHandoff } from "../automation";
 import { prisma } from "../db";
+import { publishPipelineChanged } from "../events/ticket-events";
 import { newOutboundMessageId } from "../message-id";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
@@ -253,6 +254,12 @@ async function release(
     },
   });
 
+  // One publish for both exits, guarded the same way the assignment below is:
+  // only the call that actually released it has anything to announce. A release
+  // to `New` matters to the rail as much as one to `Open` — the ticket has gone
+  // back to waiting, and a stop on the diagram just emptied.
+  if (released.count > 0) publishPipelineChanged(ticketId);
+
   // Only if this call is the one that released it. A second delivery that found
   // the ticket already handed back must not re-assign it, or it would undo an
   // agent who had picked it up in between.
@@ -314,6 +321,13 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // of this same job. All of them mean there is nothing to do — and between them
   // they are what makes at-least-once delivery harmless here.
   if (claimed.count === 0) return;
+
+  // The claim itself. This is the one event that exists *because* the audience
+  // filter does: `Processing` is invisible to agents on purpose and lasts
+  // seconds, so pushing it to everyone would make every open list refetch twice
+  // per auto-replied ticket to render no change at all. `/pipeline` is admin-only
+  // and this is the moment its rail is drawing.
+  publishPipelineChanged(ticketId);
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
@@ -472,6 +486,12 @@ async function handle(job: AutoReplyJob): Promise<void> {
     console.log(
       `[auto-reply] ticket ${ticketId} answered from [${result.articleIds.join(", ")}] and resolved`,
     );
+
+    // The verdict: the last stop on the rail, and the one anyone watching a
+    // simulated ticket descend is waiting for. After the transaction and after
+    // the assignment, so a subscriber that re-reads on this event sees the
+    // finished ticket rather than a half-built one.
+    publishPipelineChanged(ticketId);
   }
 }
 

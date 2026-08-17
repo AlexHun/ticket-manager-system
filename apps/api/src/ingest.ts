@@ -3,6 +3,7 @@ import type { InboundEmail } from "@ticket/core";
 import { TICKET_ACTIVITY_ACTION, TICKET_STATUS } from "@ticket/shared";
 import { assistantUser, resolveHandoff } from "./automation";
 import { prisma } from "./db";
+import { publishPipelineChanged } from "./events/ticket-events";
 import { enqueueClassification } from "./jobs/classify-ticket";
 import { customerActor, recordActivity, writeActivity } from "./ticket-activity";
 
@@ -295,6 +296,14 @@ export async function ingestInboundEmail(
 
     return created;
   });
+
+  // Outside the transaction, unlike the two writes above, and that is the rule
+  // rather than an oversight: an event says "re-read this", and a subscriber
+  // that acted on one published mid-transaction could read the row before it
+  // commits, cache what it saw, and never be told again — the event it needed
+  // has already been spent. Publishing after the commit is the only ordering
+  // that cannot do that.
+  publishPipelineChanged(ticket.id);
 
   return { outcome: INGEST_OUTCOME.created, ticketId: ticket.id, messageId };
 }

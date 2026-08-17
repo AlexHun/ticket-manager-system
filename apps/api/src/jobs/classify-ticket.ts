@@ -4,6 +4,7 @@ import { MESSAGE_DIRECTION, TICKET_ACTIVITY_ACTION } from "@ticket/shared";
 import { classifyTicket } from "../ai/classify";
 import { isAiConfigured } from "../ai/provider";
 import { prisma } from "../db";
+import { publishPipelineChanged } from "../events/ticket-events";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import { enqueueAutoReply } from "./auto-reply-ticket";
@@ -231,6 +232,10 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
       where: { id: ticketId },
       data: { classifiedAt: new Date() },
     });
+    // The stamp moved this ticket from "still to be classified" to "abandoned"
+    // on the rail, which is a stop on the diagram changing without anything an
+    // agent would notice. `/pipeline` is the only screen that draws it.
+    publishPipelineChanged(ticketId);
     return;
   }
 
@@ -248,6 +253,11 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
   // that has quietly stopped working looks exactly like a quiet week.
   if (written.count === 0) return;
   console.log(`[classify] ticket ${ticketId} filed as ${result.category}`);
+
+  // Below the same guard the activity row is, and for the same reason: this
+  // announces what the classifier *wrote*. A ticket an agent filed during the
+  // call took the branch above and has nothing to announce.
+  publishPipelineChanged(ticketId);
 
   // Below the guard, so the trail records what the classifier *wrote* rather
   // than what it decided. A ticket an agent filed during the call took the
@@ -382,6 +392,7 @@ export async function registerClassifyTicket(boss: PgBoss): Promise<void> {
         where: { id: ticketId, classifiedAt: null },
         data: { classifiedAt: new Date() },
       });
+      publishPipelineChanged(ticketId);
     },
   );
 

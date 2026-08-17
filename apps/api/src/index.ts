@@ -5,6 +5,7 @@ import { Sentry } from "./instrument";
 
 import express from "express";
 import type { Request, Response } from "express";
+import type { Server } from "node:http";
 import compression from "compression";
 import cors from "cors";
 import helmet from "helmet";
@@ -12,9 +13,11 @@ import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
 import { auth, trustedOrigins } from "./auth";
+import { closeAll } from "./events/hub";
 import { startJobs, stopJobs } from "./jobs";
 import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
+import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
 import { pipelineRouter } from "./routes/pipeline";
 import { ticketsRouter } from "./routes/tickets";
@@ -78,6 +81,23 @@ app.use(
 
 app.all("/api/auth/{*any}", toNodeHandler(auth));
 
+// Above `compression()`, and that is the entire reason this line is here rather
+// than beside the other routers below.
+//
+// `compression` would gzip `text/event-stream`: there is no mime-db entry for it,
+// so it falls through to the `/^text\//` fallback and compresses, and the
+// below-the-threshold escape never fires because a streamed response has no
+// known length at `writeHead` time. Every `res.write` would then sit in a zlib
+// buffer until it filled. **The stream would still work** — events arriving in
+// clumps, minutes late — which is the worst version of this bug, because it
+// reads as "SSE is unreliable" rather than as a middleware in the way.
+//
+// The route sets `Cache-Control: no-transform` as well, so a future re-order of
+// this stack degrades to "correct" rather than to "mysteriously laggy". It needs
+// no body parser: it is a `GET`. Same move, and the same kind of reason, as the
+// inbound webhook sitting above `express.json` below.
+app.use("/api/events", eventsRouter);
+
 // Below the auth handler, which writes its own responses, and above everything
 // that answers with JSON. The dashboard payload is the reason: it is one
 // response carrying volume buckets, workload rows, top customers and the
@@ -119,6 +139,11 @@ Sentry.setupExpressErrorHandler(app);
 
 const port = Number(process.env.PORT ?? 3001);
 
+// Captured rather than discarded, so `shutdown` can stop taking connections
+// before it starts ending the open ones. Only matters since `/api/events` — a
+// process whose responses all complete in milliseconds has nothing to close.
+let server: Server | undefined;
+
 async function start() {
   await prisma.$queryRaw`SELECT 1`;
   console.log("Connected to Postgres");
@@ -129,13 +154,25 @@ async function start() {
   // the hardest kind of broken to notice.
   await startJobs();
 
-  app.listen(port, () => {
+  server = app.listen(port, () => {
     console.log(`API listening on http://localhost:${port}`);
   });
 }
 
 async function shutdown(signal: string) {
   console.log(`${signal} received, shutting down`);
+
+  // Stop accepting, then end what is open. Both are needed and neither replaces
+  // the other: `close()` waits for in-flight responses, and an event stream is
+  // in-flight forever by definition, so on its own it would simply hang.
+  server?.close();
+
+  // Before `stopJobs`, which waits up to 30s for a graceful pg-boss stop. A slow
+  // job must not hold every open tab's stream for half a minute — the browser
+  // reconnects on its own, and the sooner it is told to, the sooner it lands on
+  // whatever process replaces this one.
+  closeAll();
+
   // Before the Prisma disconnect: a job finishing gracefully still needs the
   // database to write its result. Work that does not finish in time is not
   // lost — it returns to the queue for whatever starts next.

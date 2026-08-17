@@ -12,30 +12,36 @@ export const pipelineKeys = {
 };
 
 /**
- * How often a run is re-read while it is still moving.
+ * How often a run is re-read while the push channel is down.
  *
- * This is the only `refetchInterval` in the app, and the app otherwise sets
- * `refetchOnWindowFocus: false` globally — so it is worth saying why this page
- * gets an exception. Everywhere else, staleness costs an agent a reload.
- * Here the entire point is watching a thing happen: the work runs on a queue in
- * another process, takes tens of seconds, and reports only by changing columns.
- * Without polling the page would show a ticket frozen at "received" until
- * somebody thought to refresh, which is precisely the invisibility it exists to
- * fix.
+ * **This used to be the only `refetchInterval` in the app, at two seconds, and
+ * it was how the page worked.** It is now a fallback: `pipeline_changed` arrives
+ * over `/api/events` the instant a worker commits, so the ordinary path has no
+ * interval at all and beats the old two seconds on both axes — no wait for the
+ * next tick, and a hidden tab is served too, which is what
+ * `refetchIntervalInBackground` used to be for.
  *
- * Two seconds is under the resolution of anything being watched (classification
- * lands in 4-17s) and cheap: one indexed read of one row.
+ * It survives, narrowly, because this is the one screen whose whole purpose is
+ * watching something move. Everywhere else "the channel is down" costs a stale
+ * number until the next navigation; here it would mean a ticket frozen at
+ * "received" on the page built to prove it is not. Fifteen seconds rather than
+ * two: this is insurance against a disconnected stream, not the mechanism.
  */
-export const RUN_POLL_MS = 2_000;
+export const RUN_FALLBACK_POLL_MS = 15_000;
 
 /**
- * When to stop polling a run that never reaches a verdict.
+ * When a run has taken long enough to say so on screen.
  *
  * Sized against the real ladder rather than guessed: classification takes
  * 4-17s, the auto-reply call is capped at 30s, and a transient provider failure
  * adds a 30s first retry. Past two minutes the honest thing to say is "this is
- * taking longer than it should" and stop asking — the retry ladder runs for
- * about seven and a half minutes, which is far longer than anyone is watching a
- * screen, and the row will be correct whenever they come back.
+ * taking longer than it should".
+ *
+ * **It no longer stops anything, and that is the point of the rename.** It used
+ * to clear `watching`, which ended the poll — so a run that landed at three
+ * minutes was reported as stalled forever even though it had succeeded, because
+ * nothing was left asking. Push does not need to be told to keep listening, so
+ * this is now purely a deadline for what the page *says*: the verdict still
+ * arrives and still replaces this line whenever it lands.
  */
-export const RUN_POLL_TIMEOUT_MS = 120_000;
+export const RUN_STALLED_MS = 120_000;

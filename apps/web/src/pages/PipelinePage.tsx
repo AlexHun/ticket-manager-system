@@ -23,9 +23,10 @@ import { extractErrorMessage } from "@/lib/errors";
 import { DECLINE_LABEL } from "@/lib/pipeline-labels";
 import {
   pipelineKeys,
-  RUN_POLL_MS,
-  RUN_POLL_TIMEOUT_MS,
+  RUN_FALLBACK_POLL_MS,
+  RUN_STALLED_MS,
 } from "@/lib/pipeline-queries";
+import { useRealtimeStatus } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { PipelineHandoff } from "./PipelineHandoff";
 import { PipelineRail } from "./PipelineRail";
@@ -77,13 +78,24 @@ function useOverview(range: DashboardRange) {
 /**
  * Watch one ticket move.
  *
- * The only polling query in the app — see the note on `RUN_POLL_MS` for why this
- * page earns the exception. It stops itself twice over: `refetchInterval`
- * returns false the moment the run reaches a verdict, and `watching` is cleared
- * by the page after `RUN_POLL_TIMEOUT_MS` so a job that never lands does not
- * poll for the rest of the session.
+ * **No interval on the ordinary path.** The job that moves this ticket publishes
+ * `pipeline_changed` when it commits, `RealtimeProvider` invalidates
+ * `pipelineKeys.all`, and this query — mounted, so `refetchType: "active"`
+ * reaches it — refetches immediately. That is strictly better than the two-second
+ * poll it replaces: no wait for the next tick, and a hidden tab is served just
+ * the same, which is the whole thing `refetchIntervalInBackground` was here to
+ * work around.
+ *
+ * The interval that remains is insurance for a disconnected stream, on the one
+ * page where "nothing is arriving" and "nothing is happening" look identical and
+ * the difference is the point. See `RUN_FALLBACK_POLL_MS`.
  */
-function useRun(ticketId: number | null, watching: boolean) {
+function useRun(
+  ticketId: number | null,
+  watching: boolean,
+  connected: boolean,
+  stalled: boolean,
+) {
   return useQuery({
     queryKey: pipelineKeys.run(ticketId ?? 0),
     enabled: ticketId !== null,
@@ -95,27 +107,21 @@ function useRun(ticketId: number | null, watching: boolean) {
       return data.run;
     },
     refetchInterval: (query) => {
-      if (!watching) return false;
+      // `stalled` bounds this the way the give-up timer used to bound the old
+      // two-second poll: a run that has not landed in two minutes is not going to
+      // be caught by asking every fifteen seconds for the rest of the session.
+      // The push channel keeps listening either way and costs nothing to keep
+      // listening on, which is why only the *poll* is bounded.
+      if (!watching || connected || stalled) return false;
       const outcome = query.state.data?.outcome;
       return outcome === undefined || outcome === PIPELINE_OUTCOME.pending
-        ? RUN_POLL_MS
+        ? RUN_FALLBACK_POLL_MS
         : false;
     },
-    // Keep polling while the tab is hidden, which TanStack does not do by
-    // default — and the default is wrong here for a reason worth writing down.
-    //
-    // The work runs on a queue in another process whether or not anyone is
-    // looking at it. Suppressed in the background, a run that finished while you
-    // were in another tab comes back reading "Working…", and nothing corrects it
-    // quickly: this app sets `refetchOnWindowFocus: false` globally. Worse, the
-    // give-up timer below is a `setTimeout` and keeps running when the interval
-    // does not, so a run that lands after two minutes of hidden time would be
-    // reported as stalled when it had actually succeeded. Measured with
-    // `document.visibilityState: "hidden"`, which is exactly what a minimised
-    // window gives you.
-    //
-    // The cost is one indexed single-row read every two seconds, for at most two
-    // minutes, on a page only admins can open.
+    // Kept, and only meaningful now while the fallback above is running: a tab
+    // in the background with a dead stream is exactly the case this covers, and
+    // the work runs on a queue in another process whether anyone is looking or
+    // not.
     refetchIntervalInBackground: true,
   });
 }
@@ -124,23 +130,26 @@ export function PipelinePage() {
   const [range, setRange] = useState<DashboardRange>(DEFAULT_DASHBOARD_RANGE);
   const [watchedTicketId, setWatchedTicketId] = useState<number | null>(null);
   const [watching, setWatching] = useState(false);
+  const [stalled, setStalled] = useState(false);
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const queryClient = useQueryClient();
+  const { connected } = useRealtimeStatus();
 
   const overview = useOverview(range);
-  const run = useRun(watchedTicketId, watching);
+  const run = useRun(watchedTicketId, watching, connected, stalled);
 
-  // Give up on a run that never reaches a verdict. Two minutes covers the model
-  // call and its first retry; past that the honest thing is to stop asking and
-  // say so, because the retry ladder runs far longer than anyone watches a
-  // screen and the row will be right whenever they come back.
+  // Say so when a run has taken longer than the ladder should need. Two minutes
+  // covers the model call and its first retry.
+  //
+  // This used to clear `watching`, which stopped the poll — and that was a bug
+  // as well as a mechanism: a run that landed at three minutes stayed on screen
+  // as "stalled" forever, because nothing was left asking. It now sets a flag the
+  // verdict panel reads and nothing else. The event that finishes the run still
+  // arrives and still replaces the line.
   const timeoutRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!watching) return;
-    timeoutRef.current = window.setTimeout(
-      () => setWatching(false),
-      RUN_POLL_TIMEOUT_MS,
-    );
+    timeoutRef.current = window.setTimeout(() => setStalled(true), RUN_STALLED_MS);
     return () => window.clearTimeout(timeoutRef.current);
   }, [watching, watchedTicketId]);
 
@@ -149,6 +158,7 @@ export function PipelinePage() {
   useEffect(() => {
     if (!outcome || outcome === PIPELINE_OUTCOME.pending) return;
     setWatching(false);
+    setStalled(false);
     void queryClient.invalidateQueries({ queryKey: pipelineKeys.all });
   }, [outcome, queryClient]);
 
@@ -156,6 +166,7 @@ export function PipelinePage() {
     setWatchedTicketId(ticketId);
     setScenario(sentScenario);
     setWatching(true);
+    setStalled(false);
   };
 
   const config = overview.data?.config;
@@ -238,7 +249,7 @@ export function PipelinePage() {
                 <RunVerdict
                   run={run.data}
                   scenario={scenario}
-                  stalled={!watching && run.data.outcome === PIPELINE_OUTCOME.pending}
+                  stalled={stalled && run.data.outcome === PIPELINE_OUTCOME.pending}
                   pipelineLive={
                     config.aiConfigured &&
                     config.autoReplyEnabled &&
@@ -448,9 +459,9 @@ function RunVerdict({
 
       {stalled ? (
         <p className="text-xs leading-relaxed text-ember-2">
-          Still no verdict after two minutes, so this stopped watching. The retry
-          ladder runs for about seven and a half minutes — the ticket will be
-          right whenever you come back.
+          Still no verdict after two minutes. The retry ladder runs for about
+          seven and a half minutes — this is still listening, and the verdict will
+          replace this line whenever it lands.
         </p>
       ) : pending ? (
         <p className="text-xs text-muted-foreground">Working…</p>

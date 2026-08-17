@@ -686,6 +686,105 @@ export interface TicketActivityResponse {
 }
 
 /**
+ * What a screen just stopped being right about.
+ *
+ * Deliberately **not** `TicketActivityAction`, though they sit next to each other
+ * so the difference is read once. The trail above answers "what does an agent
+ * reading this ticket have to account for?" — durable, human-readable, mirrored
+ * by a Postgres enum. This answers "what does a mounted query have to re-read?" —
+ * ephemeral, machine-read, gone the moment it is applied.
+ *
+ * The comment on `TICKET_ACTIVITY_ACTION` is the proof they cannot be one union:
+ * it lists what it excludes on purpose, and one of those is **a reply** ("already
+ * the most visible thing in the thread"), which is the single most valuable thing
+ * to push. Reusing it would guarantee the channel is silent for exactly the event
+ * agents most want to hear. It would also make every new event a Postgres enum
+ * migration, for a fact nothing stores.
+ *
+ * Same shape of argument as `TICKET_ACTOR_KIND` not being a `UserRole`.
+ */
+export const TICKET_EVENT = {
+  /** An inbound email opened a ticket. */
+  ticket_created: "ticket_created",
+  /** Status, category or assignee moved. `fields` says which. */
+  ticket_updated: "ticket_updated",
+  /** A message was appended, either direction. */
+  ticket_message: "ticket_message",
+  /**
+   * The unattended pipeline moved: a claim, a release, a verdict, a queue depth.
+   *
+   * Admin-only, and that is what earns this a fourth kind rather than folding it
+   * into `ticket_updated`. The `Processing` claim is invisible by design and over
+   * in seconds — pushing it to agents would make every list refetch twice per
+   * auto-replied ticket to render no change. `/pipeline` is the one screen that
+   * genuinely wants to watch it.
+   */
+  pipeline_changed: "pipeline_changed",
+} as const;
+
+export type TicketEventKind =
+  (typeof TICKET_EVENT)[keyof typeof TICKET_EVENT];
+
+/** The three mutable fields, as `ticketChanges` already names them. */
+export const TICKET_EVENT_FIELD = {
+  status: "status",
+  category: "category",
+  assignee: "assignee",
+} as const;
+
+export type TicketEventField =
+  (typeof TICKET_EVENT_FIELD)[keyof typeof TICKET_EVENT_FIELD];
+
+/**
+ * One event, as it goes down the wire.
+ *
+ * **An id and a verb, never a payload.** The client is told what to re-read and
+ * then re-reads it through the same authenticated `GET` it would have used
+ * anyway, so authorization stays in the routes and there is exactly one place it
+ * can be got wrong. A payload here would be a second read path with no guard
+ * watching it: `GET /api/tickets` refuses to return a `Processing` ticket — "the
+ * concurrency control, not cosmetics" — and an event carrying the ticket would
+ * push onto an agent's screen precisely the state the list exists to withhold.
+ *
+ * Today every agent may read every ticket, so a payload would happen to be safe.
+ * That is the condition that stops holding the day visibility is scoped per team,
+ * quietly and everywhere at once. Same reasoning as `htmlBody` being absent from
+ * `ThreadMessage` rather than filtered out of it: the wire type is the
+ * enforcement.
+ *
+ * It is also the reason this stays small. A future `LISTEN/NOTIFY` fan-out caps
+ * payloads at 8000 bytes, and a design that only ever sends ids can never meet
+ * that wall.
+ */
+export interface TicketEvent {
+  kind: TicketEventKind;
+  ticketId: number;
+  /** ISO. Ordering, and a "last updated" affordance on screen. */
+  at: string;
+  /** Only on `ticket_updated`, so the client knows whether counts can have moved. */
+  fields?: TicketEventField[];
+}
+
+/**
+ * Who may hear each kind.
+ *
+ * A `Record` over the union rather than a check at the publish site, for the same
+ * reason `DECLINE_STAGE` is one: a tenth event kind is a compile error until
+ * somebody says who is allowed to receive it. Getting that wrong is a disclosure
+ * bug, and this is the only place it can be decided.
+ *
+ * `pipeline_changed` is `admin` because every route in `routes/pipeline.ts` is
+ * `requireAdmin` — an event that outran its own endpoint would be a leak that no
+ * route guard could catch.
+ */
+export const EVENT_AUDIENCE: Record<TicketEventKind, UserRole | "all"> = {
+  ticket_created: "all",
+  ticket_updated: "all",
+  ticket_message: "all",
+  pipeline_changed: USER_ROLE.admin,
+};
+
+/**
  * The reply to POST /api/ai/polish-reply.
  *
  * Plain text, never markup. The composer puts it straight into a textarea and

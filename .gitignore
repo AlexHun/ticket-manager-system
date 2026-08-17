@@ -70,3 +70,4 @@ desktop.ini
 .claude/agent-memory/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+apps/web/src/skills-lock.json
