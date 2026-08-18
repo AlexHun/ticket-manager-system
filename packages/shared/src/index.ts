@@ -736,6 +736,36 @@ export type TicketEventField =
   (typeof TICKET_EVENT_FIELD)[keyof typeof TICKET_EVENT_FIELD];
 
 /**
+ * Which field each recorded change moved, for the push channel's `fields`.
+ *
+ * The two vocabularies stay separate — see the note on `TICKET_EVENT` — but the
+ * places that write a trail entry and the places that publish an event are the
+ * same places, and both already know what moved. This is the one translation
+ * between them, so `updateTicket` can hand the array `ticketChanges` returned
+ * straight to the publisher instead of diffing the ticket a second time. Two
+ * implementations of "what changed" would disagree on exactly the day it
+ * mattered.
+ *
+ * A full `Record` rather than a lookup with a fallback: `null` is a stated
+ * answer ("this action moves no field a list is sorted or filtered by"), and an
+ * eighth activity action cannot be added without someone deciding which it is.
+ */
+export const ACTIVITY_EVENT_FIELD: Record<
+  TicketActivityAction,
+  TicketEventField | null
+> = {
+  /** The ticket did not change; it began. `ticket_created` carries that. */
+  created: null,
+  status_changed: TICKET_EVENT_FIELD.status,
+  category_changed: TICKET_EVENT_FIELD.category,
+  assignee_changed: TICKET_EVENT_FIELD.assignee,
+  /** A reopen is a status change wearing a more specific name. */
+  reopened: TICKET_EVENT_FIELD.status,
+  auto_resolved: TICKET_EVENT_FIELD.status,
+  auto_declined: TICKET_EVENT_FIELD.status,
+};
+
+/**
  * One event, as it goes down the wire.
  *
  * **An id and a verb, never a payload.** The client is told what to re-read and

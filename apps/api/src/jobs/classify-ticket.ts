@@ -1,10 +1,17 @@
 import * as Sentry from "@sentry/bun";
 import type { PgBoss, Db, Queue } from "pg-boss";
-import { MESSAGE_DIRECTION, TICKET_ACTIVITY_ACTION } from "@ticket/shared";
+import {
+  MESSAGE_DIRECTION,
+  TICKET_ACTIVITY_ACTION,
+  TICKET_EVENT_FIELD,
+} from "@ticket/shared";
 import { classifyTicket } from "../ai/classify";
 import { isAiConfigured } from "../ai/provider";
 import { prisma } from "../db";
-import { publishPipelineChanged } from "../events/ticket-events";
+import {
+  publishPipelineChanged,
+  publishTicketUpdated,
+} from "../events/ticket-events";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import { enqueueAutoReply } from "./auto-reply-ticket";
@@ -257,7 +264,12 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
   // Below the same guard the activity row is, and for the same reason: this
   // announces what the classifier *wrote*. A ticket an agent filed during the
   // call took the branch above and has nothing to announce.
+  //
+  // Two events, two audiences: the rail is admin-only, while a category landing
+  // on a ticket is something every agent's list and any open detail pane has
+  // just stopped being right about.
   publishPipelineChanged(ticketId);
+  publishTicketUpdated(ticketId, [TICKET_EVENT_FIELD.category]);
 
   // Below the guard, so the trail records what the classifier *wrote* rather
   // than what it decided. A ticket an agent filed during the call took the

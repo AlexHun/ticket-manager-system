@@ -1,9 +1,19 @@
 import { fromPrisma } from "pg-boss";
 import type { InboundEmail } from "@ticket/core";
-import { TICKET_ACTIVITY_ACTION, TICKET_STATUS } from "@ticket/shared";
+import {
+  TICKET_ACTIVITY_ACTION,
+  TICKET_EVENT_FIELD,
+  TICKET_STATUS,
+  type TicketEventField,
+} from "@ticket/shared";
 import { assistantUser, resolveHandoff } from "./automation";
 import { prisma } from "./db";
-import { publishPipelineChanged } from "./events/ticket-events";
+import {
+  publishPipelineChanged,
+  publishTicketCreated,
+  publishTicketMessage,
+  publishTicketUpdated,
+} from "./events/ticket-events";
 import { enqueueClassification } from "./jobs/classify-ticket";
 import { customerActor, recordActivity, writeActivity } from "./ticket-activity";
 
@@ -199,6 +209,12 @@ export async function ingestInboundEmail(
     // failure. A mail provider times this webhook and retries a slow one, and a
     // retried webhook is duplicate ingestion — so nothing about writing the
     // audit line may be allowed to fail the request that received the email.
+    // Accumulated rather than published as we go, so a reopen that also
+    // reassigns is one event and not two. Both are the same commit as far as
+    // anyone watching is concerned, and two events would mean two refetches of
+    // the same thread to show one arrival.
+    const changed: TicketEventField[] = [];
+
     if (reopened.count > 0) {
       const actor = customerActor(email.senderName);
 
@@ -207,6 +223,7 @@ export async function ingestInboundEmail(
         { action: TICKET_ACTIVITY_ACTION.reopened, toValue: TICKET_STATUS.Open },
         actor,
       );
+      changed.push(TICKET_EVENT_FIELD.status);
 
       const assistant = await assistantUser();
       if (assistant) {
@@ -236,9 +253,19 @@ export async function ingestInboundEmail(
             },
             actor,
           );
+          changed.push(TICKET_EVENT_FIELD.assignee);
         }
       }
     }
+
+    // After every write above has committed, and after the audit lines, so a
+    // subscriber that re-reads on this sees the thread and its trail agreeing.
+    //
+    // The message event fires on every reply; the update only when something
+    // actually moved, which on the common path — a customer replying to a
+    // ticket a person is already working — is nothing.
+    publishTicketMessage(ticketId);
+    publishTicketUpdated(ticketId, changed);
 
     return { outcome: INGEST_OUTCOME.threaded, ticketId, messageId };
   }
@@ -304,6 +331,7 @@ export async function ingestInboundEmail(
   // has already been spent. Publishing after the commit is the only ordering
   // that cannot do that.
   publishPipelineChanged(ticket.id);
+  publishTicketCreated(ticket.id);
 
   return { outcome: INGEST_OUTCOME.created, ticketId: ticket.id, messageId };
 }

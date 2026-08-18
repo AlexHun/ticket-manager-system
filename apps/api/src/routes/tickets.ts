@@ -33,6 +33,10 @@ import {
   type UpdateTicketResponse,
 } from "@ticket/shared";
 import { prisma, type Prisma } from "../db";
+import {
+  publishTicketChanges,
+  publishTicketMessage,
+} from "../events/ticket-events";
 import { newOutboundMessageId } from "../message-id";
 import { requireAuth, sessionOf } from "../middleware/auth";
 import {
@@ -284,7 +288,7 @@ async function updateTicket(
 
   const actor = agentActor(sessionOf(res).user);
 
-  const ticket = await prisma.$transaction(async (tx) => {
+  const { ticket, changes } = await prisma.$transaction(async (tx) => {
     const updated = await tx.ticket.update({
       where: { id },
       data,
@@ -296,12 +300,23 @@ async function updateTicket(
     // the status a ticket already has writes nothing — an agent pressing Save
     // twice has not changed anything, and a trail that says otherwise teaches
     // people to distrust it.
-    for (const entry of ticketChanges(fieldsOf(existing), fieldsOf(updated))) {
+    const entries = ticketChanges(fieldsOf(existing), fieldsOf(updated));
+    for (const entry of entries) {
       await writeActivity(tx, id, entry, actor);
     }
 
-    return updated;
+    return { ticket: updated, changes: entries };
   });
+
+  // Outside the transaction on purpose — the rule for every publish in this
+  // codebase. An event says "re-read this", and one published before the commit
+  // could be acted on by a colleague's tab that then reads the old row, caches
+  // it, and is never told again.
+  //
+  // Driven by the same array the trail was written from, so the two cannot
+  // disagree about what moved, and so a PATCH that changed nothing stays silent
+  // on the channel exactly as it stays absent from the trail.
+  publishTicketChanges(id, changes);
 
   res.json({ ticket: toTicketWithAssignee(ticket) });
 }
@@ -654,6 +669,17 @@ ticketsRouter.post(
         select: { id: true },
       }),
     ]);
+
+    // No status side-effect, so no `ticket_updated` — but `lastMessageAt` moved,
+    // which reorders any list sorted by it. That is the list's problem to
+    // re-read, not something to describe in the event.
+    //
+    // The sending tab receives this too and will refetch a thread it has already
+    // appended to. `appendMessage` in `TicketReplyComposer` dedupes by message
+    // id — a guard written for background refetches that covers this unchanged —
+    // so the cost is one indexed read, and suppressing it would mean a
+    // connection id on every mutation to save exactly that.
+    publishTicketMessage(ticket.id);
 
     res.status(201).json({
       message: { ...message, createdAt: message.createdAt.toISOString() },
