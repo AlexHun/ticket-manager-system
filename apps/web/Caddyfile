@@ -1,8 +1,19 @@
-# Production web server for the SPA. Serves `dist/` and nothing else — the API
-# is a separate Railway service on its own origin, which is the arrangement the
-# whole frontend is built for (`VITE_API_URL`, `withCredentials`, the CORS
-# allowlist in `apps/api/src/auth.ts`, and the `connect-src` entry the CSP
-# derives from `VITE_API_URL`).
+# Production web server for the SPA, and the front door for the API.
+#
+# The API is still a separate Railway service, but the browser never talks to it
+# directly: `/api/*` is proxied from here, so the app and its API share one
+# origin. That is a **cookie** decision, not a routing preference. Sessions are
+# cookies, and `up.railway.app` is on the Public Suffix List — so while the app
+# called `api-x.up.railway.app` from `web-x.up.railway.app`, the two were
+# different *sites*, the session cookie had to be `SameSite=None; Secure`, and
+# every browser that blocks third-party cookies by default (Chrome incognito,
+# Safari) presented sign-in as a 200 followed by a user who was still signed
+# out. Measured: allowing third-party cookies for the site fixed it, which is
+# not a thing anyone should have to ask a support agent to do.
+#
+# Same-origin removes the question rather than answering it. See `API_UPSTREAM`
+# on the `handle /api/*` block below, and the `COOKIE_DOMAIN` note in
+# `apps/api/src/auth.ts`.
 {
 	# No admin API is needed in Railway's environment, and config storage there
 	# is not persistent anyway.
@@ -20,6 +31,13 @@
 		# Trust Railway's proxy so client IPs and `X-Forwarded-*` are read from
 		# the edge rather than from whatever a caller sends.
 		trusted_proxies static private_ranges 100.0.0.0/8
+		# Parse X-Forwarded-For right to left, stopping at the first address
+		# that is not a trusted proxy. Without this Caddy takes the *leftmost*
+		# entry, which is whatever the caller sent — so `{client_ip}` below
+		# would be attacker-chosen, and the 5-per-minute rule on
+		# /sign-in/email would be per-fake-IP. The edge appends the real peer,
+		# so right-to-left lands on it and ignores anything prepended.
+		trusted_proxies_strict
 	}
 }
 
@@ -73,23 +91,42 @@
 		respond "OK" 200
 	}
 
-	# This service has no API. Without this block the catch-all below would
-	# answer /api/* with the SPA's index.html, and a misconfigured VITE_API_URL
-	# would surface as axios receiving HTML where it expected JSON — a confusing
-	# symptom a long way from its cause. Fail loudly instead.
+	# The API, on this origin. Everything the browser calls lives under /api —
+	# Better Auth included (`app.all("/api/auth/{*any}")` in
+	# apps/api/src/index.ts) — so one block covers the session cookie too, which
+	# is the whole point.
 	#
-	# If you ever move to a same-origin topology, this is the block to replace:
+	# API_UPSTREAM is host:port, no scheme: on Railway it is the API service's
+	# private address, set as a reference variable on *this* service so it
+	# cannot go stale —
 	#
-	#   handle /api/* {
-	#       reverse_proxy <api-service>.railway.internal:3001
-	#   }
+	#   API_UPSTREAM = ${{<api-service>.RAILWAY_PRIVATE_DOMAIN}}:3001
 	#
-	# with VITE_API_URL left empty. That removes the cross-site cookie problem
-	# entirely (see COOKIE_DOMAIN in apps/api/.env.example) at the cost of a hop
-	# and of the API no longer being reachable for Postmark's webhook except
-	# through this proxy.
+	# Private networking is IPv6-only and the API binds `::` (Bun's node:http
+	# default — verified, not assumed), so this reaches it without leaving
+	# Railway's network. The default below is for running this image beside a
+	# local API; in a container that cannot reach one it fails as a 502 with the
+	# refused dial in Caddy's log, which is a legible way to be wrong.
+	#
+	# `VITE_API_URL` must be **empty** for the build that runs behind this, so
+	# axios uses relative URLs and the CSP's connect-src collapses to 'self'.
+	# Both are baked in at build time — this is a rebuild, not a redeploy.
+	#
+	# The API keeps its own public domain, so Postmark's webhook still reaches it
+	# directly and does not come through here.
 	handle /api/* {
-		respond "This service serves the SPA only. The API is a separate service — set VITE_API_URL to its public URL and rebuild the web service." 404
+		reverse_proxy {$API_UPSTREAM:localhost:3001} {
+			# Caddy *appends* the peer to X-Forwarded-For, so behind Railway's
+			# edge the API would receive `client, edge` and, with its
+			# `trust proxy 1`, read the edge as the caller — one IP for every
+			# visitor, which turns the 5-per-minute rule on /sign-in/email into
+			# a global budget any one person can exhaust for everybody. Pinning
+			# the header to the real client keeps the API's hop count honest
+			# without it having to know this proxy exists. `{client_ip}` is
+			# resolved against the `trusted_proxies` set in the global block
+			# above, so it is not simply the last thing a caller sent.
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 
 	handle {

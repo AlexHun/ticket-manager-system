@@ -36,6 +36,11 @@ const isTest = process.env.NODE_ENV === "test";
  *   different sites, no cookie may be scoped to their shared suffix, and a
  *   `Lax` cookie is simply never sent on the app's XHR. The symptom is a login
  *   that returns 200 and leaves the user signed out.
+ * - **One origin** — the web service proxying `/api/*` to the API service
+ *   (`apps/web/Caddyfile`) — does not have the question. The cookie is
+ *   first-party, so leave this empty and `sameOriginApi` below keeps `Lax`.
+ *   This is the arrangement to prefer on Railway's own domains, because it is
+ *   the only one of the three that needs no domain you own.
  *
  * Unset therefore falls back to `SameSite=None; Secure` in production, which is
  * what makes a Railway-domain deployment work at all. That is the weaker
@@ -45,10 +50,52 @@ const isTest = process.env.NODE_ENV === "test";
  * check runs on top (both enabled here; only the test environment turns them
  * off, and only because the E2E ports make the browser call it cross-site).
  *
+ * It is not, however, weak-but-fine: `SameSite=None` is a **third-party**
+ * cookie, and Chrome incognito and Safari refuse those by default. That is not
+ * a hardening problem, it is a locked-out user — sign-in answers 200 and the
+ * session never arrives. Measured on the Railway deployment; the only per-user
+ * workaround is to allow third-party cookies for the site. So the third
+ * topology below is the one to prefer, and this fallback is what a deployment
+ * that has not moved to it yet still runs on.
+ *
  * Local development needs none of this: web on :4000 and API on :3001 are the
  * same site, ports being irrelevant to that judgement.
  */
 const cookieDomain = process.env.COOKIE_DOMAIN?.trim() || "";
+
+/**
+ * True when the browser reaches this API on the same origin as the app itself —
+ * the reverse-proxy topology in `apps/web/Caddyfile`, where the web service
+ * answers `/api/*` and `VITE_API_URL` is empty.
+ *
+ * Then the session cookie is **first-party** and needs none of the machinery
+ * above: `SameSite=Lax` works, which is the setting the whole `COOKIE_DOMAIN`
+ * note is about wanting back. Without this the proxy would fix the *symptom*
+ * (third-party cookie blocking) and keep the weaker attribute that only existed
+ * to survive it.
+ *
+ * The test is the definition rather than a guess at one: `BETTER_AUTH_URL` is
+ * this API's own public origin, so if that origin is *also* one the app is
+ * served from, the two are the same origin. Unset — Better Auth infers the
+ * origin per request — reads as false, so the fallback below stays, which is
+ * the safe direction: `None` works first-party too, it is merely weaker. A
+ * deployment that gets this wrong therefore still logs in.
+ */
+const sameOriginApi = (() => {
+  const baseUrl = process.env.BETTER_AUTH_URL?.trim();
+  if (!baseUrl) return false;
+  // Both sides through `URL` rather than compared as strings: a trailing slash
+  // on one of them is a configuration typo, not a different origin.
+  const originOf = (value: string) => {
+    try {
+      return new URL(value).origin;
+    } catch {
+      return "";
+    }
+  };
+  const base = originOf(baseUrl);
+  return base !== "" && trustedOrigins.some((o) => originOf(o) === base);
+})();
 
 /**
  * A `COOKIE_DOMAIN` no trusted origin sits under is a cookie no browser will
@@ -112,13 +159,15 @@ export const auth = betterAuth({
     // 403s the request before CORS can answer. CORS still gates the request.
     disableOriginCheck: isTest,
     disableCSRFCheck: isTest,
-    // Both of these are decided by `cookieDomain` above, and exactly one of
-    // them applies at a time — see the note there for why.
+    // Three topologies, at most one of these set. A shared parent domain gets
+    // the first; cross-site Railway domains get the second; same-origin (the
+    // proxy, and all of local dev) needs neither and keeps `SameSite=Lax`. See
+    // the notes on `cookieDomain` and `sameOriginApi` above.
     crossSubDomainCookies: cookieDomain
       ? { enabled: true, domain: cookieDomain }
       : undefined,
     defaultCookieAttributes:
-      isProduction && !cookieDomain
+      isProduction && !cookieDomain && !sameOriginApi
         ? { sameSite: "none" as const, secure: true }
         : undefined,
     // Railway (and any other platform proxy) terminates TLS and forwards, so
