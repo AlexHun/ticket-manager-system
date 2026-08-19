@@ -6,7 +6,14 @@ Three services in one Railway project, from one GitHub repo:
 |---|---|---|
 | `postgres` | Railway's Postgres | Railway template |
 | `api` | Express + Bun, long-lived; also runs the pg-boss workers | `apps/api/Dockerfile` |
-| `web` | The built SPA, served by Caddy | `apps/web/Dockerfile` |
+| `web` | The built SPA, served by Caddy — and the public front door for the API | `apps/web/Dockerfile` |
+
+`web` proxies `/api/*` to `api` over Railway's private network, so the browser
+only ever talks to one origin. That is a **cookie** decision: sessions are
+cookies and `up.railway.app` is on the Public Suffix List, so two Railway
+domains are two *sites*, and a session that has to span them is a third-party
+cookie that Chrome incognito and Safari drop. See
+[Cookies](#cookies-read-this-before-the-first-login).
 
 Both images build from the **repository root** — `@ticket/core` and `@ticket/shared`
 are workspace dependencies, so a build context scoped to one app could not see
@@ -55,9 +62,9 @@ policy, and — for `api` — the pre-deploy migration command. They also set
 |---|---|---|
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Reference variable. pg-boss opens its own small pool against the same string, in its own `pgboss` schema. |
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 32` | Validated at boot: ≥32 chars or the process refuses to start. |
-| `BETTER_AUTH_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | This service's own public origin, **not** the web app's. |
+| `BETTER_AUTH_URL` | `https://<web-domain>` | The origin the **browser** reaches this API on. Behind the `/api/*` proxy that is the *web* service's domain, not this one's — and it is what tells the API it is same-origin and may keep `SameSite=Lax`. |
 | `TRUSTED_ORIGINS` | `https://<web-domain>` | The web service's public URL. Drives both CORS and Better Auth's origin check; an origin missing here cannot sign in. |
-| `COOKIE_DOMAIN` | *(empty)* | See [Cookies](#cookies-read-this-before-the-first-login) below. Leave empty on `*.up.railway.app`. |
+| `COOKIE_DOMAIN` | *(empty)* | See [Cookies](#cookies-read-this-before-the-first-login) below. Empty is correct behind the proxy. |
 | `INBOUND_EMAIL_WEBHOOK_USERNAME` / `_PASSWORD` | your choice | Empty values reject every webhook request. |
 | `OPENAI_API_KEY` | your key | Optional. Empty ⇒ the two AI endpoints answer 503 and new tickets stay uncategorised in `New`. |
 | `AUTO_REPLY_ENABLED` | `true` / `false` | The kill switch for the one feature that writes to customers unattended. |
@@ -77,7 +84,7 @@ variable into the build. Changing one requires a **rebuild**, not a redeploy.
 
 | Variable | Value |
 |---|---|
-| `VITE_API_URL` | `https://<api-domain>` — the API service's public URL |
+| `VITE_API_URL` | ***(empty)*** — the app calls `/api/*` on its own origin |
 | `VITE_SENTRY_DSN` | optional |
 | `VITE_SENTRY_TRACES_SAMPLE_RATE` | optional, defaults to 0 |
 | `VITE_SENTRY_ENVIRONMENT` | optional; set to `staging` for a non-production build |
@@ -86,6 +93,19 @@ variable into the build. Changing one requires a **rebuild**, not a redeploy.
 `VITE_SENTRY_RELEASE` is worth setting because `.git` is excluded from the build
 context, so `releaseName()` in `vite.config.ts` cannot ask git for a commit and
 falls back to a version with no sha in it.
+
+`web` needs one **runtime** variable as well, which is not a Vite value and is
+not baked into the bundle:
+
+| Variable | Value |
+|---|---|
+| `API_UPSTREAM` | `${{<api-service>.RAILWAY_PRIVATE_DOMAIN}}:3001` |
+
+That is what the Caddyfile's `handle /api/*` block proxies to. A reference
+variable rather than a literal so it cannot go stale; private networking is
+IPv6-only and the API binds `::`, so the hop never leaves Railway's network. The
+API keeps its own public domain regardless — Postmark's webhook still calls it
+directly rather than through here.
 
 There is a chicken-and-egg here: each service needs the other's domain. Generate
 both domains first (*Settings → Networking → Generate Domain*), then fill in the
@@ -134,11 +154,22 @@ run the seed **inside the container**:
 railway ssh --service api --command 'cd /app/apps/api && bun run db:seed'
 ```
 
+`--service` takes the service's **actual name in your project**, which is only
+`api` if you named it that; `railway status` lists them. Every `railway ssh`
+line in this document uses the generic names from section 1.
+
 Note the command: `railway run` executes **locally** with Railway's variables
 injected, which is not what you want here (it would need Bun, the generated
 Prisma client and a publicly reachable database on your own machine).
 `railway ssh --command` runs in the deployed container. Delete the two seed
 variables afterwards; nothing reads them again.
+
+**Changing `SEED_ADMIN_PASSWORD` and re-running the seed does nothing.**
+`upsertUser` sets a password only when it *creates* the account — an existing
+one has its role reconciled and its credentials left alone, deliberately, so
+that re-running the seed on a live database cannot reset a real person's
+password. To change the admin password after the fact, use the app: sign in and
+change it, or have another admin do it from the Users screen.
 
 The seed **skips the demo `agent@example.com` / `password123` account when
 `NODE_ENV=production`** — which the image sets — so this cannot quietly leave a
@@ -180,32 +211,52 @@ does not exist yet — the auto-reply writes a `Message` row and sends nothing.
 
 ## Cookies: read this before the first login
 
-Sessions are cookie-based, and the web and API services are on different origins.
-Whether that is *cross-origin* or *cross-site* decides everything, and Railway's
-generated domains fall on the wrong side of it:
+Sessions are cookie-based, so the only question that matters is whether the
+browser considers the app and the API to be the same **site**. Not the same
+origin — the same site, which is decided by the registrable domain.
 
-- **`*.up.railway.app`** — that suffix is on the Public Suffix List, so
-  `web-x.up.railway.app` and `api-x.up.railway.app` are different **sites**. No
-  cookie may be scoped to their shared suffix, and a `SameSite=Lax` cookie is
-  never sent on the app's XHR. The symptom is a login that returns `200` and
-  leaves the user signed out.
-  **Leave `COOKIE_DOMAIN` empty.** The API then issues `SameSite=None; Secure`,
-  which is what makes this work at all.
-- **A domain you own** — `app.example.com` + `api.example.com` are the same site.
-  **Set `COOKIE_DOMAIN=.example.com`**, add both to `TRUSTED_ORIGINS`, and the
-  cookie goes back to `SameSite=Lax`, which is strictly stronger. Do this as soon
-  as you have a domain.
+**The web service proxies `/api/*` to the API, so they are one origin and the
+question does not arise.** That is what `API_UPSTREAM` and the empty
+`VITE_API_URL` above are for. The cookie is first-party and `SameSite=Lax`, the
+strongest of the three arrangements, and it needs no domain of your own.
+
+The API works out that it is same-origin from `BETTER_AUTH_URL`: if that origin
+is one of `TRUSTED_ORIGINS`, it is being reached on the app's own origin and the
+`SameSite=None` fallback below is not applied. Getting it wrong is not a
+lockout — `None` works first-party too, it is only weaker.
+
+### Why not call the API directly
+
+Because `up.railway.app` is on the Public Suffix List, which makes
+`web-x.up.railway.app` and `api-x.up.railway.app` different **sites**. No cookie
+may be scoped to their shared suffix, a `SameSite=Lax` cookie is never sent on
+the app's XHR, and the workaround — `COOKIE_DOMAIN` empty, so the cookie becomes
+`SameSite=None; Secure` — makes the session a **third-party** cookie.
+
+That is not merely the weaker setting. **Chrome incognito and Safari block
+third-party cookies by default**, so sign-in answers `200`, the browser drops
+the cookie, and the user stays signed out with nothing in the API log to show
+for it. Measured on this deployment: allowing third-party cookies for the site
+made it work immediately — which is not a thing to ask a support agent to do.
+This is the arrangement the proxy exists to replace.
+
+### If you own a domain
+
+`app.example.com` + `api.example.com` are the same site. Set
+`COOKIE_DOMAIN=.example.com`, put both origins in `TRUSTED_ORIGINS`, and the
+cookie is issued for the shared parent — also `Lax`. Then the proxy is optional;
+keep it or drop it on latency grounds, not cookie grounds.
 
 `COOKIE_DOMAIN` is validated at boot against `TRUSTED_ORIGINS`: a value no
 trusted origin sits under fails the boot instead of presenting as an
 unexplainable logged-out loop. See the note in `apps/api/src/auth.ts`.
 
-**The stronger option, if you want it:** serve both from one origin by having
-Caddy reverse-proxy `/api/*` to the API over Railway's private network. That
-removes the cross-site cookie question entirely and lets `connect-src` stay at
-`'self'`. The `handle /api/*` block in `apps/web/Caddyfile` carries the
-replacement, commented; you would also blank `VITE_API_URL` and rebuild. The cost
-is a hop, and that Postmark's webhook then arrives through the web service.
+### The cost of the proxy
+
+One extra hop inside Railway's network, and the web service is in the path of
+every API call — if Caddy is down, the API is unreachable to the browser even
+when it is healthy. Postmark is unaffected: the API keeps its own public domain
+and the webhook still arrives there directly.
 
 ## The CSP is generated, not written
 
@@ -248,16 +299,24 @@ do not need Docker to run the actual production config against the actual
 
 ```bash
 cd apps/web
-VITE_API_URL="https://api.example.com" bun run build   # also emits csp.caddy
+bun run build                                          # also emits csp.caddy
 caddy validate --config Caddyfile --adapter caddyfile
-PORT=8899 caddy run --config Caddyfile --adapter caddyfile
+PORT=8899 API_UPSTREAM=localhost:3001 caddy run --config Caddyfile --adapter caddyfile
 ```
+
+`VITE_API_URL` is left unset because that is what production uses now — the app
+calls `/api/*` on its own origin. Run the API on :3001 beside it and the whole
+thing works end to end, session cookie included.
 
 Then check what comes back. `/` and every client route must carry
 `Cache-Control: no-cache` and the full CSP including `frame-ancestors 'none'`;
-`/assets/*` must be `immutable`; `/api/*` must 404. (On Windows, `curl` cannot
-reach local ports from the bundled shell — use PowerShell's
-`Invoke-WebRequest -Method Head` instead.)
+`/assets/*` must be `immutable`; `/api/health` must reach the API rather than
+returning the SPA shell. (On Windows, `curl` cannot reach local ports from the
+bundled shell — use PowerShell's `Invoke-WebRequest -Method Head` instead.)
+
+The Caddyfile is validated **at image build time** too (`caddy validate` in
+`apps/web/Dockerfile`), so a syntax error there fails the build rather than the
+first request after a deploy.
 
 **Rehearse the API image's build steps** without a daemon by replaying what the
 Dockerfile does, in an empty directory: copy the five `package.json` files and
@@ -278,17 +337,21 @@ cd apps/api
 DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
 BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
 NODE_ENV=production TRUSTED_ORIGINS="https://web-x.up.railway.app" COOKIE_DOMAIN="" \
+BETTER_AUTH_URL="https://web-x.up.railway.app" \
 bun -e 'const { auth } = await import("./src/auth.ts"); const c = await auth.$context; console.log(c.authCookies.sessionToken.name, JSON.stringify(c.authCookies.sessionToken.attributes))'
 ```
 
-Expected, and verified for all four cases:
+The first row is the one that matters: `BETTER_AUTH_URL` sitting inside
+`TRUSTED_ORIGINS` is what the same-origin proxy looks like from the API's side.
+Expected, and verified for all five cases:
 
-| `NODE_ENV` | `COOKIE_DOMAIN` | cookie name | `secure` | `sameSite` | `domain` |
-|---|---|---|---|---|---|
-| production | *(empty)* | `__Secure-…` | `true` | `none` | — |
-| production | `.example.com` | `__Secure-…` | `true` | `lax` | `.example.com` |
-| *(dev)* | *(empty)* | plain | `false` | `lax` | — |
-| test | *(empty)* | plain | `false` | `lax` | — |
+| `NODE_ENV` | `COOKIE_DOMAIN` | `BETTER_AUTH_URL` | cookie name | `secure` | `sameSite` | `domain` |
+|---|---|---|---|---|---|---|
+| production | *(empty)* | a trusted origin | `__Secure-…` | `true` | `lax` | — |
+| production | *(empty)* | the API's own | `__Secure-…` | `true` | `none` | — |
+| production | `.example.com` | either | `__Secure-…` | `true` | `lax` | `.example.com` |
+| *(dev)* | *(empty)* | either | plain | `false` | `lax` | — |
+| test | *(empty)* | either | plain | `false` | `lax` | — |
 
 Dev and test are deliberately untouched by any of this — the E2E suite depends on
 them.
@@ -297,7 +360,7 @@ them.
 
 ```bash
 docker build -f apps/api/Dockerfile -t ticket-api .
-docker build -f apps/web/Dockerfile --build-arg VITE_API_URL=https://api.example.com -t ticket-web .
+docker build -f apps/web/Dockerfile -t ticket-web .
 ```
 
 That last step is the one thing here that has not been run.
