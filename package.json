@@ -24,6 +24,7 @@
     "@prisma/client": "^7.8.0",
     "@ticket/shared": "workspace:*",
     "@types/node": "^22.10.0",
+    "chrome-devtools-mcp": "^1.7.0",
     "typescript": "^5.7.2"
   }
 }
