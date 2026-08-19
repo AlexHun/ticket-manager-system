@@ -19,7 +19,7 @@ import {
   publishTicketMessage,
   publishTicketUpdated,
 } from "../events/ticket-events";
-import { newOutboundMessageId } from "../message-id";
+import { REPLY_ORIGIN, SEND_OUTCOME, sendReply } from "../outbound";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import { ensureQueue, getBoss } from "./boss";
@@ -121,23 +121,6 @@ const NOTIFY_POLL_SECONDS = 5;
  * a dead one.
  */
 const EXPIRE_IN_SECONDS = 120;
-
-/**
- * Who the reply comes from.
- *
- * Constants rather than env vars, following `message-id.ts`: there is no mail
- * transport yet, so there is nothing to configure them for, and a required env
- * var that nothing reads is a deployment trap. These are two of the handful of
- * lines to change when Phase 3 lands. `example.com` is reserved by RFC 2606, so
- * a misconfigured test cannot reach a real address.
- *
- * The name says "automated" because it is rendered: it sits above the bubble in
- * the thread, beside the badge that `Message.automated` drives. A support desk
- * that hides which replies it wrote by machine is one bad reply away from
- * needing to explain why.
- */
-const SUPPORT_EMAIL = "support@example.com";
-const SUPPORT_NAME = "Support (automated)";
 
 /**
  * Categories a machine may answer.
@@ -352,7 +335,9 @@ async function handle(job: AutoReplyJob): Promise<void> {
       category: true,
       messages: {
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: { messageId: true, textBody: true, direction: true },
+        // No `messageId`: the parent an outbound reply threads onto is found by
+        // `sendReply`, from the same ordering, rather than carried here.
+        select: { textBody: true, direction: true },
       },
     },
   });
@@ -420,20 +405,24 @@ async function handle(job: AutoReplyJob): Promise<void> {
   }
 
   const sentAt = new Date();
-  const lastMessageId = ticket.messages.at(-1)?.messageId ?? null;
 
   // One transaction, and the resolve goes first so its `where` decides whether
   // the message is written at all. `Processing` is still ours only if nothing
   // released it while the model was thinking — the recovery sweep, say, or a
   // second delivery. Writing the message first and finding out afterwards would
-  // leave a reply on a ticket that had moved on.
+  // leave a reply on a ticket that had moved on. `sendReply` joins this
+  // transaction rather than opening its own, which is what makes the reply and
+  // the claim it was written under commit together or not at all.
   const written = await prisma.$transaction(async (tx) => {
     const resolved = await tx.ticket.updateMany({
       where: { id: ticketId, status: TICKET_STATUS.Processing },
       data: {
         status: TICKET_STATUS.Resolved,
         autoResolvedAt: sentAt,
-        lastMessageAt: sentAt,
+        // `lastMessageAt` is not set here: `sendReply` moves it, from the same
+        // `sentAt` this stamps `autoResolvedAt` with, so the two cannot end up
+        // a moment apart.
+        //
         // A ticket must never show both verdicts. A retryable failure releases
         // to `New` without stamping one, but the recovery sweep re-enqueues a
         // ticket that has already been declined once — so a later success has
@@ -444,28 +433,36 @@ async function handle(job: AutoReplyJob): Promise<void> {
     });
     if (resolved.count === 0) return false;
 
-    await tx.message.create({
-      data: {
+    // The origin is the whole of what makes this reply different from an
+    // agent's: no author, the automated flag, and the articles it was built
+    // from. Every one of those ids exists in the corpus the model was handed,
+    // because check 4 in `ai/auto-reply.ts` discarded the reply otherwise — so
+    // the thread can show what this answer was built from rather than asking
+    // anyone to trust it.
+    const sent = await sendReply(
+      {
         ticketId,
-        messageId: newOutboundMessageId(ticketId),
-        inReplyTo: lastMessageId,
-        senderEmail: SUPPORT_EMAIL,
-        senderName: SUPPORT_NAME,
         textBody: result.reply,
-        direction: MESSAGE_DIRECTION.outbound,
-        // No author: nobody wrote this. The flag beside it is what stops that
-        // being read as "the agent who wrote it has been deleted".
-        authorId: null,
-        automated: true,
-        // The audit trail. These are the resolved ids — every one exists in the
-        // corpus the model was handed, because check 4 discarded the reply
-        // otherwise — so the thread can show what this answer was built from
-        // rather than asking anyone to trust it.
-        citedArticleIds: result.articleIds,
-        createdAt: sentAt,
+        origin: {
+          kind: REPLY_ORIGIN.assistant,
+          citedArticleIds: result.articleIds,
+        },
+        sentAt,
       },
-      select: { id: true },
-    });
+      tx,
+    );
+
+    // Unreachable today: the `updateMany` above matched a row, so the ticket
+    // exists inside this transaction. Thrown rather than returned so it stays
+    // unreachable — returning `false` here would *commit* the resolve, leaving
+    // a ticket marked answered, stamped `autoResolvedAt` and cleared of its
+    // decline reason, with no answer on it and no event to say so. That is the
+    // one outcome this transaction exists to prevent, and it is the kind that
+    // is never noticed. Throwing rolls the resolve back; the retry that follows
+    // finds nothing to claim and stops.
+    if (sent.outcome !== SEND_OUTCOME.sent) {
+      throw new Error(`auto-reply wrote no message for ticket ${ticketId}`);
+    }
     return true;
   });
 

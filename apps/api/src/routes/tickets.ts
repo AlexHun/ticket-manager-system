@@ -14,7 +14,6 @@ import {
   asAutoReplyDecline,
   BACKLOG_STATUS,
   CATEGORY_NONE,
-  MESSAGE_DIRECTION,
   STATUS_BACKLOG,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
@@ -37,8 +36,13 @@ import {
   publishTicketChanges,
   publishTicketMessage,
 } from "../events/ticket-events";
-import { newOutboundMessageId } from "../message-id";
 import { requireAuth, sessionOf } from "../middleware/auth";
+import {
+  MESSAGE_SELECT,
+  REPLY_ORIGIN,
+  SEND_OUTCOME,
+  sendReply,
+} from "../outbound";
 import {
   agentActor,
   ticketChanges,
@@ -175,37 +179,6 @@ const ASSIGNABLE_USER = {
 
 /** The columns an assignee is described by — never role, ban state or the rest. */
 const ASSIGNEE_SELECT = { id: true, name: true, email: true } as const;
-
-/**
- * The columns a `ThreadMessage` is made of.
- *
- * htmlBody is deliberately absent: it is attacker-supplied inbound email, and
- * anything that reaches the client is one innerHTML away from running as the
- * signed-in agent. The plain-text part is what the UI renders. authorId is
- * absent too — nothing in the thread shows it, and `senderName`/`senderEmail`
- * already say who wrote a reply. `automated` is here for the opposite reason:
- * the thread marks those, because "nobody wrote this" is exactly what an agent
- * reading a reply needs told rather than left to infer.
- *
- * Shared by the thread on `GET /:id` and the single message `POST /:id/messages`
- * answers with, so the two can't come to disagree about the shape of the same
- * thing.
- */
-const MESSAGE_SELECT = {
-  id: true,
-  ticketId: true,
-  messageId: true,
-  inReplyTo: true,
-  senderEmail: true,
-  senderName: true,
-  textBody: true,
-  direction: true,
-  automated: true,
-  // Which knowledge-base articles an automated reply cited. Ids from our own
-  // corpus, never model output — see the note on `Message.citedArticleIds`.
-  citedArticleIds: true,
-  createdAt: true,
-} as const;
 
 /**
  * The row behind a `TicketWithAssignee`: the same fields, still carrying `Date`
@@ -608,67 +581,28 @@ ticketsRouter.post(
       return;
     }
 
-    // The existence check and the parent lookup are one query. The check is a
-    // query rather than a catch around a foreign-key violation for the same
-    // reason `updateTicket` does it that way: a missing ticket is a 404, and
-    // letting the insert throw would route it through the error pipeline as a
-    // 500.
-    //
-    // `take: 1` on the reverse of the thread's own ordering *is* its last
-    // message — the same tie-break, so the parent is the one the agent can see
-    // at the bottom of the pane. A ticket with no messages yet threads nothing
-    // and gets a null, which is what a first email looks like anyway.
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: params.data.id },
-      select: {
-        id: true,
-        messages: {
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 1,
-          select: { messageId: true },
-        },
-      },
+    const { user } = sessionOf(res);
+
+    // Everything that is true of any reply leaving the desk — the id, the
+    // parent it threads onto, the direction, the ticket's last-message time —
+    // belongs to `outbound.ts`, which the auto-reply writes through too. What
+    // is left here is what is genuinely this route's: the session the sender
+    // comes from, the 404, and the shape of the response.
+    const sent = await sendReply({
+      ticketId: params.data.id,
+      textBody: body.data.textBody,
+      // From the session, never the body: the sender is whoever is signed in.
+      origin: { kind: REPLY_ORIGIN.agent, author: user },
     });
-    if (!ticket) {
+
+    // A missing ticket is a 404, and the module answers it rather than throwing
+    // — an insert allowed to fail on the foreign key would come back through
+    // the error pipeline as a 500.
+    if (sent.outcome === SEND_OUTCOME.noSuchTicket) {
       res.status(404).json({ error: "Ticket not found" });
       return;
     }
-
-    const { user } = sessionOf(res);
-
-    // One instant for both writes rather than two `now()` defaults a moment
-    // apart. The client moves the ticket's "Last message" to the createdAt of
-    // the message it gets back, and that is only true if the two columns were
-    // written from the same value.
-    const sentAt = new Date();
-
-    const [message] = await prisma.$transaction([
-      prisma.message.create({
-        data: {
-          ticketId: ticket.id,
-          messageId: newOutboundMessageId(ticket.id),
-          inReplyTo: ticket.messages[0]?.messageId ?? null,
-          // From the session, never the body: the sender is whoever is signed
-          // in. Denormalised beside `authorId` on purpose — deleting the agent
-          // nulls the FK, and the thread still has to say who wrote this.
-          senderEmail: user.email,
-          senderName: user.name,
-          textBody: body.data.textBody,
-          // The column defaults to `inbound`, so this is not optional.
-          direction: MESSAGE_DIRECTION.outbound,
-          authorId: user.id,
-          createdAt: sentAt,
-        },
-        select: MESSAGE_SELECT,
-      }),
-      prisma.ticket.update({
-        where: { id: ticket.id },
-        data: { lastMessageAt: sentAt },
-        // Nothing reads the ticket back; without this Prisma returns every
-        // column of a row the response doesn't carry.
-        select: { id: true },
-      }),
-    ]);
+    const { message } = sent;
 
     // No status side-effect, so no `ticket_updated` — but `lastMessageAt` moved,
     // which reorders any list sorted by it. That is the list's problem to
@@ -679,7 +613,7 @@ ticketsRouter.post(
     // id — a guard written for background refetches that covers this unchanged —
     // so the cost is one indexed read, and suppressing it would mean a
     // connection id on every mutation to save exactly that.
-    publishTicketMessage(ticket.id);
+    publishTicketMessage(message.ticketId);
 
     res.status(201).json({
       message: { ...message, createdAt: message.createdAt.toISOString() },
