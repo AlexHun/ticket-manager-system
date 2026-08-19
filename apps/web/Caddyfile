@@ -31,13 +31,6 @@
 		# Trust Railway's proxy so client IPs and `X-Forwarded-*` are read from
 		# the edge rather than from whatever a caller sends.
 		trusted_proxies static private_ranges 100.0.0.0/8
-		# Parse X-Forwarded-For right to left, stopping at the first address
-		# that is not a trusted proxy. Without this Caddy takes the *leftmost*
-		# entry, which is whatever the caller sent — so `{client_ip}` below
-		# would be attacker-chosen, and the 5-per-minute rule on
-		# /sign-in/email would be per-fake-IP. The edge appends the real peer,
-		# so right-to-left lands on it and ignores anything prepended.
-		trusted_proxies_strict
 	}
 }
 
@@ -114,19 +107,28 @@
 	#
 	# The API keeps its own public domain, so Postmark's webhook still reaches it
 	# directly and does not come through here.
+	# X-Forwarded-For is deliberately left alone here, and that took a
+	# measurement against the real deployment to get right. Recorded because the
+	# obvious-looking change is the wrong one:
+	#
+	#   - Railway's edge **overwrites** the header. Sending
+	#     `X-Forwarded-For: 9.9.9.9` arrived as `82.135.202.248, 152.233.43.33`
+	#     — the real client and a Railway hop, with the forged value gone. So
+	#     the leftmost entry is not attacker-controlled and needs no defending.
+	#   - **Better Auth reads the leftmost entry** (`value.split(",")[0]` in
+	#     `utils/get-request-ip.mjs`), and that is what the 5-per-minute rule on
+	#     /sign-in/email is keyed on. Caddy appending its own peer on the right
+	#     does not disturb it.
+	#   - Rewriting the header to `{client_ip}` looked like the careful thing to
+	#     do and was the opposite: Railway's inner hop (`152.233.43.33`) is a
+	#     *public* address, so it is not in `trusted_proxies` and `{client_ip}`
+	#     resolves to it rather than to the visitor. That would have given every
+	#     visitor one shared sign-in budget — an outage anyone could cause with
+	#     five bad passwords.
+	#
+	# Leave it unset unless you have re-measured on the platform you are on.
 	handle /api/* {
-		reverse_proxy {$API_UPSTREAM:localhost:3001} {
-			# Caddy *appends* the peer to X-Forwarded-For, so behind Railway's
-			# edge the API would receive `client, edge` and, with its
-			# `trust proxy 1`, read the edge as the caller — one IP for every
-			# visitor, which turns the 5-per-minute rule on /sign-in/email into
-			# a global budget any one person can exhaust for everybody. Pinning
-			# the header to the real client keeps the API's hop count honest
-			# without it having to know this proxy exists. `{client_ip}` is
-			# resolved against the `trusted_proxies` set in the global block
-			# above, so it is not simply the last thing a caller sent.
-			header_up X-Forwarded-For {client_ip}
-		}
+		reverse_proxy {$API_UPSTREAM:localhost:3001}
 	}
 
 	handle {
