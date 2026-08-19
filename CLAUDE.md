@@ -112,3 +112,20 @@ Prefer context7 over web search for library docs. Skip it for refactoring, busin
 - Don't introduce JWT, Redis, a queue, or vector DB without a concrete need — `tech-stack.md` explicitly defers them.
 
 Workspace-specific conventions live in `apps/api/CLAUDE.md` and `apps/web/CLAUDE.md`.
+
+## Agent skills
+
+Configuration the `mattpocock-skills` engineering skills read. Written by
+`/mattpocock-skills:setup-matt-pocock-skills`.
+
+### Issue tracker
+
+GitHub Issues on `AlexHun/ticket-manager-system`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, label strings unchanged. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — `CONTEXT.md` + `docs/adr/` at the repo root, created lazily by `/domain-modeling`. See `docs/agents/domain.md`.
