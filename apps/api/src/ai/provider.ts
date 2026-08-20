@@ -63,6 +63,85 @@ export function openaiModel(modelId: string) {
 }
 
 /**
+ * Published `gpt-5-nano` rates, in USD per million tokens.
+ *
+ * Here so the log line below can carry a number somebody can act on rather than
+ * four token counts they have to price by hand at the moment they are trying to
+ * answer "why is the bill that". **They will go stale** — they are a printed
+ * price list, not an API — so the estimate is logged as an estimate and nothing
+ * bills off it. If a second model is ever used for a second feature, this stops
+ * being a constant and becomes a lookup.
+ *
+ * The cached rate is the reason the auto-reply puts the whole corpus in the
+ * *system* prompt: a stable prefix costs a tenth of a fresh one.
+ */
+const USD_PER_MTOK = { input: 0.05, cachedInput: 0.005, output: 0.4 } as const;
+
+/** What `generateText` reports back about one call. */
+export interface AiUsage {
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
+  totalTokens?: number | undefined;
+  reasoningTokens?: number | undefined;
+  cachedInputTokens?: number | undefined;
+}
+
+/**
+ * One line per model call, in one format, from one place.
+ *
+ * Every AI feature here is a single request with no streaming and no tool loop,
+ * so a line per call is a line per feature invocation — which makes "what does
+ * this cost" answerable by grepping rather than by instrumenting. Structured as
+ * `key=value` pairs on purpose: it is greppable by eye and parseable by a log
+ * shipper without either of them being told a schema.
+ *
+ * **`cached` is the field worth watching.** Prompt caching is the difference
+ * between the auto-reply costing what it does and costing ten times that, it
+ * engages silently, and it stops engaging just as silently the moment something
+ * perturbs the front of the prompt — reordering the corpus, interpolating a
+ * timestamp, or letting article text vary per request. A run of calls with
+ * `cached=0` on a feature that should be hitting it is that regression, and
+ * there is otherwise nothing on any screen that would show it.
+ *
+ * Never logs prompt or completion text: these calls carry customer email, and a
+ * log is the one place it would sit in plaintext outside the database.
+ *
+ * `usage` is optional and every field inside it is too, because accounting is
+ * the provider's to report and not ours to require. A call that came back fine
+ * but said nothing about tokens must not become a failed feature on the way to
+ * a log line — the caller already has the answer it asked for.
+ */
+export function logUsage(
+  feature: string,
+  model: string,
+  usage: AiUsage | undefined,
+): void {
+  if (!usage) {
+    console.log(`[ai] feature=${feature} model=${model} usage=unreported`);
+    return;
+  }
+
+  const input = usage.inputTokens ?? 0;
+  const cached = usage.cachedInputTokens ?? 0;
+  const output = usage.outputTokens ?? 0;
+
+  // Cached tokens are a subset of the input count, not an addition to it, so
+  // charging both would double-count the cheap half.
+  const fresh = Math.max(input - cached, 0);
+  const usd =
+    (fresh * USD_PER_MTOK.input +
+      cached * USD_PER_MTOK.cachedInput +
+      output * USD_PER_MTOK.output) /
+    1_000_000;
+
+  console.log(
+    `[ai] feature=${feature} model=${model} input=${input} cached=${cached} ` +
+      `output=${output} reasoning=${usage.reasoningTokens ?? 0} ` +
+      `total=${usage.totalTokens ?? input + output} usd~${usd.toFixed(6)}`,
+  );
+}
+
+/**
  * Every way a provider call can fail that a caller might answer differently.
  *
  * Shared because the *diagnosis* is shared — a 401 is a 401 whatever was being
