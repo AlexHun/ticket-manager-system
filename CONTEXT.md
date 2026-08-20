@@ -147,3 +147,37 @@ _Avoid_: enhance, improve, rewrite
 A generated account of a thread, drawn for one agent beside the thread it
 describes and never kept.
 _Avoid_: digest, overview, recap
+
+### Sending
+
+**Outbox**:
+The record of every email the desk means to send, and of what became of each
+one. An email is in the outbox before it is anywhere else.
+_Avoid_: queue, spool, mail log, email table
+
+**Delivery**:
+What became of one outbound email — still to go, taken by a provider, refused,
+or never attempted because there is nobody to attempt it with.
+_Avoid_: status, send state, result
+
+**Undeliverable**:
+Not attempted, because this deployment has no mail provider. A supported state
+and the ordinary one today; distinct from an email that was tried and refused.
+_Avoid_: failed, unsent, error, pending
+
+**Mail provider**:
+The outside service that accepts an email and carries it. The desk speaks to
+exactly one, through one module, and works without any.
+_Avoid_: transport, mailer, SMTP, Postmark (in prose about the domain)
+
+### Getting in
+
+**Invitation**:
+The link that lets a new colleague choose their first password. An account
+exists before it is accepted and cannot be signed into until it is.
+_Avoid_: welcome email, activation, signup link, onboarding
+
+**Reset**:
+The link that lets a colleague who has lost their password choose another. The
+same mechanism as an invitation, told apart by whether they ever had one.
+_Avoid_: recovery, forgot-password, change password

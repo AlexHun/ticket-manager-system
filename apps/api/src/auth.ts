@@ -1,7 +1,10 @@
+import * as Sentry from "@sentry/bun";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin } from "better-auth/plugins";
+import { USER_ROLE } from "@ticket/shared";
 import { prisma } from "./db";
+import { enqueueEmail } from "./jobs/send-email";
 
 const parsedOrigins = process.env.TRUSTED_ORIGINS?.split(",")
   .map((o) => o.trim())
@@ -12,6 +15,19 @@ if (!parsedOrigins?.length) {
 }
 
 export const trustedOrigins = parsedOrigins;
+
+/**
+ * Where the browser-facing app lives, for links this process puts in an email.
+ *
+ * The first trusted origin, because that is what the list is: the origins the
+ * app is served from. A reset link has to land on a *page*, and this process
+ * serves JSON — pointing it at `BETTER_AUTH_URL` would work behind the
+ * same-origin proxy and send people to the API's own domain everywhere else.
+ *
+ * Only ever used to build a `redirectTo`, which Better Auth then checks against
+ * this same list before honouring it, so a bad value here fails closed.
+ */
+export const appOrigin = parsedOrigins[0] as string;
 
 if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) {
   throw new Error(
@@ -124,7 +140,120 @@ if (cookieDomain) {
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   trustedOrigins,
-  emailAndPassword: { enabled: true, disableSignUp: true },
+  emailAndPassword: {
+    enabled: true,
+    disableSignUp: true,
+    /**
+     * Twenty-four hours, and the number is a compromise between two flows that
+     * share one setting.
+     *
+     * Better Auth has a single `resetPasswordTokenExpiresIn`, and this app puts
+     * two things through it — a password reset and an invitation (see
+     * `sendResetPassword` below, which is both). An hour is the sensible default
+     * for a reset and plainly wrong for an invitation: a new colleague who reads
+     * their mail the next morning would find their first contact with this
+     * system is a dead link. A day is unremarkable for a single-use token mailed
+     * to the account's own address, and it keeps the two flows on one mechanism
+     * rather than growing a second token table to hold a different number.
+     */
+    resetPasswordTokenExpiresIn: 60 * 60 * 24,
+    /**
+     * Where a reset link is written, for both flows that produce one.
+     *
+     * **This is the only place either flow touches mail**, and it does not send
+     * anything: it writes an `OutboundEmail` row and lets `jobs/send-email.ts`
+     * deal with providers. On a deployment with no provider — which is every
+     * deployment today — the row is marked `undeliverable` and an admin reads
+     * the link out of the outbox. That is not a degraded mode standing in for
+     * the real one; it is how this app is meant to work until Postmark is bound,
+     * and it is what makes removing admin-typed passwords survivable.
+     *
+     * **Which of the two flows this is, is derived rather than signalled.** An
+     * invited colleague has no `credential` account row yet, because
+     * `POST /api/users` creates them without a password on purpose; somebody who
+     * has forgotten theirs has one. So the account row answers the question, and
+     * no caller has to remember to say. It also stays right in the awkward case:
+     * an invited user who never accepted and then uses "forgot password" is
+     * still being invited, and still gets told so.
+     */
+    sendResetPassword: async ({ user, url }) => {
+      // Not awaited, on Better Auth's own advice: this callback runs only for
+      // an address that exists, so the time it takes is a signal about whether
+      // it exists. The work behind it is a local INSERT either way, but the
+      // account lookup below is a second query and the margin is not worth
+      // handing out. Failures still surface — they just surface to us.
+      void (async () => {
+        /**
+         * Two accounts that must never receive one of these, checked here
+         * because this is the one place every door leads to.
+         *
+         * **The assistant.** `/request-password-reset` is public — that is what
+         * makes a forgot-password form possible — so anyone may type any address
+         * into it, the assistant's included. Left alone, that would mint a link
+         * which sets a password on an account that deliberately has none, and
+         * `resetPassword` creates the missing credential row exactly as
+         * `setUserPassword` would. The result is a signable-in assistant: the
+         * precise thing `rejectAssistant` in `routes/users.ts` exists to prevent,
+         * reached by a route that never touches `routes/users.ts` at all. This
+         * feature opened that door and closes it in the same breath.
+         *
+         * **A deleted colleague.** `deletedAt` is set on accounts that are gone;
+         * mailing one an invitation would be inviting them back.
+         */
+        const account = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { automated: true, deletedAt: true },
+        });
+        if (!account || account.automated || account.deletedAt !== null) return;
+
+        const credential = await prisma.account.findFirst({
+          where: { userId: user.id, providerId: "credential" },
+          select: { id: true },
+        });
+        const invited = credential === null;
+
+        await enqueueEmail({
+          kind: invited ? "invitation" : "passwordReset",
+          toEmail: user.email,
+          toName: user.name,
+          subject: invited
+            ? "You have been given a support desk account"
+            : "Reset your support desk password",
+          textBody: invited
+            ? [
+                `Hello ${user.name},`,
+                "",
+                "An account has been created for you on the support desk. Choose a password to finish setting it up:",
+                "",
+                url,
+                "",
+                "The link is good for 24 hours. If it has expired, ask an admin to send you another.",
+                "",
+                "Best regards,",
+                "The Support Team",
+              ].join("\n")
+            : [
+                `Hello ${user.name},`,
+                "",
+                "Someone asked to reset the password on your support desk account. Choose a new one here:",
+                "",
+                url,
+                "",
+                "The link is good for 24 hours. If this was not you, no action is needed — your current password still works.",
+                "",
+                "Best regards,",
+                "The Support Team",
+              ].join("\n"),
+        });
+      })().catch((err) => {
+        // The token exists whatever happens here, so a failure is a person who
+        // asked for a link and will never see one, with nothing on screen to say
+        // so. Nowhere else would report it.
+        console.error("[auth] failed to enqueue a reset email:", err);
+        Sentry.captureException(err, { tags: { component: "auth-mail" } });
+      });
+    },
+  },
   /**
    * Session data is carried in a short-lived signed cookie, so the common case
    * costs no database work at all.
@@ -181,8 +310,8 @@ export const auth = betterAuth({
   },
   plugins: [
     admin({
-      defaultRole: "agent",
-      adminRoles: ["admin"],
+      defaultRole: USER_ROLE.agent,
+      adminRoles: [USER_ROLE.admin],
     }),
   ],
 });

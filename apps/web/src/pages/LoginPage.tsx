@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -146,6 +146,15 @@ export function LoginPage() {
                 {isSubmitting && <Loader2 className="size-4 animate-spin" />}
                 {isSubmitting ? "Signing in…" : "Sign in"}
               </Button>
+              {/* The only route back in. An admin cannot type a colleague a new
+                  password any more, so this link is not a convenience — for
+                  anyone locked out, it is the whole recovery path. */}
+              <Link
+                to="/forgot-password"
+                className="text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                Forgot your password?
+              </Link>
             </form>
           </CardContent>
         </Card>

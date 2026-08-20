@@ -34,7 +34,7 @@ interface UserDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const EMPTY_VALUES: CreateUserValues = { name: "", email: "", password: "" };
+const EMPTY_VALUES: CreateUserValues = { name: "", email: "" };
 
 export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
   const isEdit = user !== null;
@@ -55,27 +55,16 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
 
   useEffect(() => {
     if (!open) return;
-    reset(
-      user
-        ? { name: user.name, email: user.email, password: "" }
-        : EMPTY_VALUES,
-    );
+    reset(user ? { name: user.name, email: user.email } : EMPTY_VALUES);
     setServerError(null);
   }, [open, user, reset]);
 
   const mutation = useMutation({
     mutationFn: async (values: CreateUserValues) => {
       if (user) {
-        const payload: { name: string; email: string; password?: string } = {
-          name: values.name,
-          email: values.email,
-        };
-        if (values.password.length > 0) {
-          payload.password = values.password;
-        }
         const { data } = await api.patch<UpdateUserResponse>(
           `/api/users/${user.id}`,
-          payload,
+          values,
         );
         return data;
       }
@@ -126,8 +115,8 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
   const idPrefix = isEdit ? "edit-user" : "new-user";
   const title = isEdit ? "Edit user" : "Create user";
   const description = isEdit
-    ? "Update this user's details. Leave the password blank to keep it unchanged."
-    : "Add a new agent to the system.";
+    ? "Update this user's details."
+    : "They will be sent a link to choose their own password.";
   const submitLabel = isEdit
     ? isSubmitting
       ? "Saving…"
@@ -135,7 +124,6 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
     : isSubmitting
       ? "Creating…"
       : "Create user";
-  const passwordLabel = isEdit ? "New password" : "Password";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -178,25 +166,6 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
             {errors.email && (
               <p className="text-sm text-destructive" role="alert">
                 {errors.email.message}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${idPrefix}-password`}>{passwordLabel}</Label>
-            <Input
-              id={`${idPrefix}-password`}
-              type="password"
-              autoComplete="new-password"
-              aria-invalid={Boolean(errors.password)}
-              disabled={isSubmitting}
-              placeholder={
-                isEdit ? "Leave blank to keep current password" : undefined
-              }
-              {...register("password")}
-            />
-            {errors.password && (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.password.message}
               </p>
             )}
           </div>
