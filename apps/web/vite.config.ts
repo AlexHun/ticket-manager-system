@@ -6,13 +6,13 @@ import { visualizer } from "rollup-plugin-visualizer";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { devToolsPlugin } from "./dev/plugin";
+import { devToolsPlugin } from "./dev/plugin.ts";
 import {
   apiOriginFrom,
   cspMetaPolicy,
   cspPolicy,
   sentryOriginFrom,
-} from "./csp";
+} from "./csp.ts";
 
 /**
  * A git command, or an empty string if git cannot answer.
@@ -26,7 +26,7 @@ import {
 function git(...args: string[]): string {
   try {
     return execFileSync("git", args, {
-      cwd: __dirname,
+      cwd: import.meta.dirname,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
@@ -53,7 +53,7 @@ function git(...args: string[]): string {
  */
 function releaseName(): string {
   const { version } = JSON.parse(
-    readFileSync(path.resolve(__dirname, "package.json"), "utf8"),
+    readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8"),
   ) as { version: string };
 
   const commit = git("rev-parse", "--short", "HEAD");
@@ -126,7 +126,7 @@ function cspPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
  */
 function cspCaddyPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
   const policy = cspPolicy(apiOrigin, sentryOrigin);
-  const outFile = path.resolve(__dirname, "csp.caddy");
+  const outFile = path.resolve(import.meta.dirname, "csp.caddy");
 
   return {
     name: "ticket:csp-caddy",
@@ -147,7 +147,7 @@ function cspCaddyPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, __dirname);
+  const env = loadEnv(mode, import.meta.dirname);
   const apiOrigin = apiOriginFrom(env.VITE_API_URL ?? "");
   const sentryOrigin = sentryOriginFrom(env.VITE_SENTRY_DSN ?? "");
 
@@ -199,34 +199,46 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": path.resolve(import.meta.dirname, "./src"),
       },
     },
     build: {
       rollupOptions: {
         output: {
           // Only the framework is pinned to its own chunk. Everything else is left
-          // to Rollup, which splits per dynamic import — so each lazy route in
+          // to the bundler, which splits per dynamic import — so each lazy route in
           // App.tsx already gets its own chunk, and hand-listing them here would
           // just fight that. React and the router change on their own schedule
           // (rarely), so holding them apart keeps app edits from busting the
           // cache entry that costs the most to re-download.
           //
-          // The subpaths are listed, not just the package names: these entries are
-          // matched against resolved module ids, and `react-dom` does not cover
-          // `react-dom/client` (what main.tsx imports) or `react/jsx-runtime` (what
-          // the JSX transform emits). Listing only the bare names silently leaves
-          // all of react-dom in the entry chunk — which is exactly what happened
-          // the first time. If this list is edited, check the built `vendor-*.js`
-          // is still ~130 kB and not ~50 kB.
-          manualChunks: {
-            vendor: [
-              "react",
-              "react/jsx-runtime",
-              "react-dom",
-              "react-dom/client",
-              "react-router-dom",
-            ],
+          // **Function form, not the object form, and that is forced.** Vite 8
+          // bundles with Rolldown, whose `manualChunks` accepts only a callback;
+          // the `{ vendor: [...] }` map this replaced is Rollup-only and fails
+          // typecheck outright under Vite 8 (TS2769 — "provides no match for the
+          // signature"). It is a rename of the mechanism, not of the intent.
+          //
+          // What changed with it: the old form listed *module ids*, so subpaths
+          // had to be spelled out (`react-dom` did not cover `react-dom/client`,
+          // nor `react` cover `react/jsx-runtime`, and omitting them silently
+          // left all of react-dom in the entry chunk). Matching the resolved
+          // path instead covers every subpath of a package at once, so the
+          // subpath entries are gone rather than lost. `scheduler` is now named
+          // explicitly because the old form pulled it in as a dependency of
+          // react-dom for free, and a path match gets nothing for free.
+          //
+          // The trailing separator in each alternative is load-bearing: without
+          // it `react` also matches `react-router-dom`, `react-hook-form` and
+          // every other `react-*` package in node_modules, which quietly turns
+          // this into a single-vendor-chunk build. If this list is edited, check
+          // the built `vendor-*.js` is still ~230 kB and not ~50 kB (too little:
+          // react-dom escaped) or ~600 kB (too much: the guard above failed).
+          manualChunks(id) {
+            return /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(
+              id,
+            )
+              ? "vendor"
+              : undefined;
           },
         },
       },

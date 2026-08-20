@@ -28,7 +28,7 @@ import {
   type RunSummary,
   type SuiteDescriptor,
   type SuiteKind,
-} from "../src/dev/protocol";
+} from "../src/dev/protocol.ts";
 
 interface Suite extends SuiteDescriptor {
   /** Argv, joined by the shell. Kept split so `command` can be rendered

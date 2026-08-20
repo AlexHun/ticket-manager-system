@@ -127,6 +127,14 @@
 	#     five bad passwords.
 	#
 	# Leave it unset unless you have re-measured on the platform you are on.
+	#
+	# The API end of this is pinned to match. `better-auth` is held at an exact
+	# `1.6.13` because `1.6.22` stopped reading the leftmost entry and now
+	# resolves a multi-value X-Forwarded-For to *nothing* unless it is told which
+	# hops to trust — which collapses the sign-in rate limit onto one shared
+	# bucket for every visitor, i.e. the same outage described above. Changing
+	# the header here and unpinning there are one decision, not two; see the
+	# Better Auth bullet in CLAUDE.md.
 	handle /api/* {
 		reverse_proxy {$API_UPSTREAM:localhost:3001}
 	}

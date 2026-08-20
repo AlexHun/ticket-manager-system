@@ -21,13 +21,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { scanProject } from "./scan";
-import { findSuite, runSuite, suiteDescriptors, type RunHandle } from "./suites";
+import { scanProject } from "./scan.ts";
+import { findSuite, runSuite, suiteDescriptors, type RunHandle } from "./suites.ts";
 import {
   DEVTOOLS_API,
   type DevStreamMessage,
   type RunEvent,
-} from "../src/dev/protocol";
+} from "../src/dev/protocol.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** `apps/web/dev` → the repo root. */
