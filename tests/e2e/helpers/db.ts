@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../../apps/api/src/generated/prisma/client";
+import { OUTBOUND_EMAIL_KIND } from "@ticket/shared";
 import { DATABASE_URL } from "./env";
 
 /** Prisma client pointed at the test DB. `log: []` keeps test output readable. */
@@ -36,4 +37,59 @@ export async function resetE2eUsers(): Promise<number> {
     where: { email: { startsWith: E2E_EMAIL_PREFIX } },
   });
   return count;
+}
+
+/**
+ * Delete the outbox rows the suite caused.
+ *
+ * `OutboundEmail` carries no foreign key to `User` — deliberately, so the send
+ * worker knows nothing about who an email is for — which means sweeping the e2e
+ * users leaves their invitations sitting in the table, each holding a link that
+ * still works until it expires.
+ */
+export async function resetE2eEmails(): Promise<number> {
+  const { count } = await testDb.outboundEmail.deleteMany({
+    where: { toEmail: { startsWith: E2E_EMAIL_PREFIX } },
+  });
+  return count;
+}
+
+/**
+ * The link out of the newest invitation written to `email`.
+ *
+ * With no mail provider bound, the outbox *is* the inbox: `jobs/send-email.ts`
+ * marks these rows `undeliverable` and an admin reads the link off `/outbox`.
+ * This does the same thing one layer down — the row carries the body either
+ * way, and reading it from Postgres does not depend on that page's polling.
+ *
+ * Polled rather than read once, because `POST /api/users` answers 201 before
+ * the invitation exists. `sendResetPassword` is deliberately not awaited (the
+ * time it takes is otherwise a signal about whether an address exists), so the
+ * row lands a moment after the response the caller was waiting on.
+ */
+export async function waitForInvitationLink(
+  email: string,
+  timeoutMs = 10_000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+
+  for (;;) {
+    const row = await testDb.outboundEmail.findFirst({
+      where: { toEmail: email, kind: OUTBOUND_EMAIL_KIND.invitation },
+      orderBy: { id: "desc" },
+      select: { textBody: true },
+    });
+
+    const link = row?.textBody.match(/https?:\/\/\S+/)?.[0];
+    if (link) return link;
+
+    if (Date.now() > deadline) {
+      throw new Error(
+        `No invitation reached the outbox for ${email} within ${timeoutMs}ms. ` +
+          `Expected POST /api/users to enqueue one.`,
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
 }

@@ -1,22 +1,23 @@
 import { test, expect } from "@playwright/test";
-import { CREDENTIALS, signIn } from "./helpers/auth";
-import { resetE2eUsers } from "./helpers/db";
+import { acceptInvitation, CREDENTIALS, signIn } from "./helpers/auth";
+import { resetE2eEmails, resetE2eUsers } from "./helpers/db";
 
 const ADMIN = CREDENTIALS.admin;
 const AGENT = CREDENTIALS.agent;
 
 // Every test below creates users through the UI, and the API's delete is a
 // soft delete — so without this the rows survive the run and pile up in the
-// test DB. global-setup sweeps too, covering runs that die before this hook.
+// test DB. Their invitations outlive them too, since the outbox carries no FK
+// to User. global-setup sweeps both, covering runs that die before this hook.
 test.afterAll(async () => {
   await resetE2eUsers();
+  await resetE2eEmails();
 });
 
 // Unique per test run so parallel/repeated runs never collide on email.
 const NEW_USER_EMAIL = `e2e-user-${Date.now()}@example.com`;
 const NEW_USER_NAME = "E2E Created User";
 const RENAMED_USER_NAME = "E2E Renamed User";
-const NEW_USER_PASSWORD = "password123";
 
 // Tests run in order and share the user created in "create a new user" —
 // serial so create/edit/delete each build on the previous test's state.
@@ -41,7 +42,7 @@ test.describe.serial("User management (admin)", () => {
     await expect(agentRow.getByText("agent", { exact: true })).toBeVisible();
   });
 
-  test("creates a new user", async ({ page }) => {
+  test("creates a new user without setting a password", async ({ page }) => {
     await page.getByRole("button", { name: "New user" }).click();
 
     const dialog = page.getByRole("dialog");
@@ -51,7 +52,12 @@ test.describe.serial("User management (admin)", () => {
 
     await dialog.getByLabel("Name").fill(NEW_USER_NAME);
     await dialog.getByLabel("Email").fill(NEW_USER_EMAIL);
-    await dialog.getByLabel("Password").fill(NEW_USER_PASSWORD);
+
+    // There is nowhere to type one. An admin able to set a colleague's password
+    // is a person other than its owner who knows it, which is the whole thing
+    // this form gave up — see
+    // docs/adr/0011-nobody-types-somebody-elses-password.md.
+    await expect(dialog.getByLabel("Password")).toHaveCount(0);
 
     await dialog.getByRole("button", { name: "Create user" }).click();
 
@@ -77,9 +83,11 @@ test.describe.serial("User management (admin)", () => {
     await nameInput.clear();
     await nameInput.fill(RENAMED_USER_NAME);
 
-    await expect(
-      dialog.getByPlaceholder("Leave blank to keep current password"),
-    ).toBeVisible();
+    // This form used to carry an optional password field ("Leave blank to keep
+    // current password"), and it was the sharper of the two: `setUserPassword`
+    // creates a credential row where none existed, which is how an admin could
+    // once have made the assistant signable-in through an ordinary edit.
+    await expect(dialog.getByLabel("Password")).toHaveCount(0);
 
     await dialog.getByRole("button", { name: "Save changes" }).click();
 
@@ -161,14 +169,22 @@ test.describe("User lifecycle — sign-in consequences", () => {
     const createDialog = page.getByRole("dialog");
     await createDialog.getByLabel("Name").fill(name);
     await createDialog.getByLabel("Email").fill(email);
-    await createDialog.getByLabel("Password").fill(password);
     await createDialog.getByRole("button", { name: "Create user" }).click();
     await expect(createDialog).toBeHidden();
 
-    const row = page.getByRole("row", { name: email });
-    await expect(row).toBeVisible();
+    await expect(page.getByRole("row", { name: email })).toBeVisible();
+
+    // Give them working credentials first, or this test proves nothing: an
+    // account created today has no password at all, so the sign-in at the end
+    // would fail whether or not the delete did anything. Accepting an
+    // invitation signs nobody in, so the admin session survives it.
+    await acceptInvitation(page, email, password);
+
+    await page.goto("/users");
+    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
 
     // Delete them via the UI.
+    const row = page.getByRole("row", { name: email });
     await row.getByRole("button", { name: `Delete ${name}` }).click();
     const deleteDialog = page.getByRole("dialog");
     await expect(
@@ -194,7 +210,7 @@ test.describe("User lifecycle — sign-in consequences", () => {
     await expect(page.getByRole("alert")).toBeVisible();
   });
 
-  test("a newly-created user can sign in with their own password", async ({
+  test("an invited user chooses their own password and signs in as an agent", async ({
     page,
   }) => {
     const email = `e2e-newlogin-${Date.now()}@example.com`;
@@ -205,13 +221,16 @@ test.describe("User lifecycle — sign-in consequences", () => {
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("Name").fill(name);
     await dialog.getByLabel("Email").fill(email);
-    await dialog.getByLabel("Password").fill(password);
     await dialog.getByRole("button", { name: "Create user" }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("row", { name: email })).toBeVisible();
 
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL("/login");
+
+    // The path a new colleague actually walks: an invitation lands in the
+    // outbox, they follow its link and pick a password nobody else has seen.
+    await acceptInvitation(page, email, password);
 
     await page.getByLabel("Email").clear();
     await page.getByLabel("Email").fill(email);

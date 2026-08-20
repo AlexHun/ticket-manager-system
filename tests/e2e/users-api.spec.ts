@@ -56,7 +56,6 @@ test.describe("Users API — unauthenticated", () => {
       data: {
         name: "Nobody",
         email: `e2e-unauth-${Date.now()}@example.com`,
-        password: "password123",
       },
     });
     expect(res.status()).toBe(401);
@@ -96,7 +95,6 @@ test.describe("Users API — agent session (forbidden)", () => {
       data: {
         name: "Nobody",
         email: `e2e-agent-forbidden-${Date.now()}@example.com`,
-        password: "password123",
       },
     });
     expect(res.status()).toBe(403);

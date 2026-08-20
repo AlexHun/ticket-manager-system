@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resetE2eUsers, testDb } from "./helpers/db";
+import { resetE2eEmails, resetE2eUsers, testDb } from "./helpers/db";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
@@ -30,6 +30,15 @@ export default async function globalSetup() {
   if (removed > 0) {
     console.log(`[global-setup] Removed ${removed} leftover e2e user(s).`);
   }
+
+  // Swept separately because the outbox has no foreign key to User — deleting
+  // the accounts leaves their invitations behind, each holding a link that
+  // still works.
+  const unsent = await resetE2eEmails();
+  if (unsent > 0) {
+    console.log(`[global-setup] Removed ${unsent} leftover e2e email(s).`);
+  }
+
   await testDb.$disconnect();
 
   console.log("[global-setup] Test database ready.\n");
