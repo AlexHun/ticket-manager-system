@@ -118,7 +118,6 @@ describe("UserDialog — create mode", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("");
     expect(within(dialog).getByLabelText("Email")).toHaveValue("");
-    expect(within(dialog).getByLabelText("Password")).toHaveValue("");
   });
 
   test("submits POST /api/users and closes on success", async () => {
@@ -130,7 +129,6 @@ describe("UserDialog — create mode", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Nora New");
     await user.type(within(dialog).getByLabelText("Email"), "nora@example.com");
-    await user.type(within(dialog).getByLabelText("Password"), "password123");
     await user.click(within(dialog).getByRole("button", { name: "Create user" }));
 
     await waitFor(() => {
@@ -139,35 +137,23 @@ describe("UserDialog — create mode", () => {
     expect(mockPost).toHaveBeenCalledTimes(1);
     const [url, body] = mockPost.mock.calls[0] as [
       string,
-      { name: string; email: string; password: string },
+      { name: string; email: string },
     ];
     expect(url).toBe("/api/users");
     expect(body).toEqual({
       name: "Nora New",
       email: "nora@example.com",
-      password: "password123",
     });
+    // The account is created without one; the new colleague sets their own from
+    // the invitation link. A password reaching this endpoint would mean the
+    // form had grown a field back.
+    expect(body).not.toHaveProperty("password");
     expect(mockPatch).not.toHaveBeenCalled();
-  });
-
-  test("rejects empty password in create mode", async () => {
-    renderHarness();
-    const user = await openCreate();
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText("Name"), "Nora New");
-    await user.type(within(dialog).getByLabelText("Email"), "nora@example.com");
-    await user.click(within(dialog).getByRole("button", { name: "Create user" }));
-
-    expect(
-      await within(dialog).findByText("Password must be at least 8 characters"),
-    ).toBeInTheDocument();
-    expect(mockPost).not.toHaveBeenCalled();
   });
 });
 
 describe("UserDialog — edit mode", () => {
-  test("opens pre-populated with name and email, empty password, 'Edit user' heading", async () => {
+  test("opens pre-populated with name and email, 'Edit user' heading", async () => {
     renderHarness();
     await openEdit("Aaron Agent");
 
@@ -177,14 +163,9 @@ describe("UserDialog — edit mode", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Aaron Agent");
     expect(within(dialog).getByLabelText("Email")).toHaveValue("agent@example.com");
-    expect(within(dialog).getByLabelText("New password")).toHaveValue("");
-    expect(within(dialog).getByLabelText("New password")).toHaveAttribute(
-      "placeholder",
-      "Leave blank to keep current password",
-    );
   });
 
-  test("PATCH omits password when blank, closes on success", async () => {
+  test("PATCH sends name and email only, closes on success", async () => {
     mockPatch.mockResolvedValue({ data: { user: baseUser } });
 
     renderHarness();
@@ -215,48 +196,6 @@ describe("UserDialog — edit mode", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(mockPost).not.toHaveBeenCalled();
-  });
-
-  test("PATCH includes password when filled", async () => {
-    mockPatch.mockResolvedValue({ data: { user: baseUser } });
-
-    renderHarness();
-    const user = await openEdit("Aaron Agent");
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(
-      within(dialog).getByLabelText("New password"),
-      "newpassword123",
-    );
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save changes" }),
-    );
-
-    await waitFor(() => {
-      expect(mockPatch).toHaveBeenCalledTimes(1);
-    });
-    const [, body] = mockPatch.mock.calls[0] as [string, Record<string, string>];
-    expect(body).toEqual({
-      name: "Aaron Agent",
-      email: "agent@example.com",
-      password: "newpassword123",
-    });
-  });
-
-  test("rejects a non-empty password shorter than 8 characters", async () => {
-    renderHarness();
-    const user = await openEdit("Aaron Agent");
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText("New password"), "short");
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save changes" }),
-    );
-
-    expect(
-      await within(dialog).findByText("Password must be at least 8 characters"),
-    ).toBeInTheDocument();
-    expect(mockPatch).not.toHaveBeenCalled();
   });
 
   test("switching to a different user repopulates the form", async () => {
@@ -292,7 +231,6 @@ describe("UserDialog — mode transitions", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("");
     expect(within(dialog).getByLabelText("Email")).toHaveValue("");
-    expect(within(dialog).getByLabelText("Password")).toHaveValue("");
   });
 
   test("closing create then opening edit populates from the selected user", async () => {

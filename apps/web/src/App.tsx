@@ -5,6 +5,8 @@ import { AdminRoute } from "@/components/AdminRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { RouteFallback } from "@/components/RouteFallback";
 import { LoginPage } from "@/pages/LoginPage";
+import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 /**
@@ -37,6 +39,9 @@ const UsersPage = lazy(() =>
 const KnowledgePage = lazy(() =>
   import("@/pages/KnowledgePage").then((m) => ({ default: m.KnowledgePage })),
 );
+const OutboxPage = lazy(() =>
+  import("@/pages/OutboxPage").then((m) => ({ default: m.OutboxPage })),
+);
 const PipelinePage = lazy(() =>
   import("@/pages/PipelinePage").then((m) => ({ default: m.PipelinePage })),
 );
@@ -63,6 +68,12 @@ export function App() {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* Signed-out, like /login: somebody following an invitation has no
+            session yet, and a colleague resetting a forgotten password cannot
+            get one. Both must sit outside ProtectedRoute or the link bounces
+            straight back to sign-in. */}
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route element={<ProtectedRoute />}>
           {/* The shell renders the sidebar, the top bar and the app's one
               <main>; the pages inside render only their own content. */}
@@ -82,6 +93,7 @@ export function App() {
                   guard is UX — `requireAdmin` on every route in
                   `apps/api/src/routes/knowledge.ts` is the control. */}
               <Route path="/knowledge" element={<KnowledgePage />} />
+              <Route path="/outbox" element={<OutboxPage />} />
               {/* Admin-only for two reasons at once: it reads back how the
                   unattended pipeline is behaving, and it can post an email into
                   it. `requireAdmin` on every route in

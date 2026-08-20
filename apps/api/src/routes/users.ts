@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/bun";
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { fromNodeHeaders } from "better-auth/node";
@@ -10,7 +11,7 @@ import type {
   UserRole,
   UsersListResponse,
 } from "@ticket/shared";
-import { auth } from "../auth";
+import { appOrigin, auth } from "../auth";
 import { prisma } from "../db";
 import { requireAdmin, sessionOf } from "../middleware/auth";
 import { agentActor } from "../ticket-activity";
@@ -35,10 +36,16 @@ export const usersRouter = Router();
  *
  * It is on the roster because an admin should be able to see the thing tickets
  * are being filed under, and it is read-only because there is nothing about it
- * worth changing and one thing worth being careful about: `PATCH` below can set
- * a password, and Better Auth's `setUserPassword` will create the credential row
- * this account deliberately does not have. Renaming it is harmless; a way to
- * sign in as it is not, and the two arrive through the same handler. So neither.
+ * worth changing and one thing worth being careful about.
+ *
+ * That one thing used to be `PATCH` accepting a password, since
+ * `setUserPassword` creates the credential row this account deliberately does
+ * not have. The field is gone, but the hazard only moved: `POST /:id/invite`
+ * mails a link that does the same job, and so does the public
+ * `/request-password-reset` behind it. So this guard still stands here, and
+ * `sendResetPassword` in `auth.ts` carries the matching one for the door that
+ * never comes through this file. Renaming the assistant is harmless; a way to
+ * sign in as it is not.
  *
  * 403 rather than 404 — the row exists and the caller can see it in the list;
  * pretending otherwise would read as a bug in the list.
@@ -99,12 +106,49 @@ usersRouter.post(
   ) => {
     const data = parseBody(createUserSchema, req, res);
     if (!data) return;
-    const { name, email, password } = data;
+    const { name, email } = data;
 
+    const headers = fromNodeHeaders(req.headers);
+
+    /**
+     * Created **without a password**, which is a supported shape in Better Auth
+     * — the account simply has no `credential` row until somebody sets one.
+     *
+     * That absence is doing two jobs. It means no password to this account has
+     * ever been known to anyone but its owner, which is the whole point of
+     * replacing the field an admin used to type into. And it is what
+     * `sendResetPassword` reads to tell an invitation from a reset, so no caller
+     * has to carry that distinction around.
+     *
+     * `emailVerified` is set true here rather than left to default false. This
+     * app has no verification flow and is not getting one: sign-up is disabled,
+     * an admin creates every account and already knows the address, so the only
+     * thing the column did was draw an "unverified" badge on the roster that no
+     * action in the app could ever clear. See
+     * `docs/adr/0010-no-email-verification.md`.
+     */
     const { user } = await auth.api.createUser({
-      body: { name, email, password },
-      headers: fromNodeHeaders(req.headers),
+      body: { name, email, data: { emailVerified: true } },
+      headers,
     });
+
+    /**
+     * The invitation, which is the password-reset flow wearing different words.
+     *
+     * Not awaited for the same reason the callback itself is not: this is a
+     * write to the outbox and an admin is holding a spinner on the 201 below.
+     * A failure leaves an account with no way in, which is recoverable — the
+     * admin resends — and is reported rather than swallowed.
+     */
+    auth.api
+      .requestPasswordReset({
+        body: { email, redirectTo: `${appOrigin}/reset-password?invite=1` },
+        headers,
+      })
+      .catch((err: unknown) => {
+        console.error(`[users] failed to invite ${email}:`, err);
+        Sentry.captureException(err, { tags: { component: "user-invite" } });
+      });
 
     res.status(201).json({
       user: {
@@ -132,24 +176,23 @@ usersRouter.patch(
     const data = parseBody(updateUserSchema, req, res);
     if (!data) return;
 
-    const { name, email, password } = data;
+    const { name, email } = data;
 
     const userId = req.params.id as string;
     if (await rejectAssistant(userId, res)) return;
 
     const headers = fromNodeHeaders(req.headers);
 
+    // Name and email only. Setting a password from here is gone on purpose —
+    // `POST /:id/invite` below sends the owner a link instead, so a locked-out
+    // colleague gets a password nobody else has seen. That also removed the
+    // sharpest edge on this handler: `setUserPassword` creates a credential row
+    // where none existed, which is how an admin could once have made the
+    // assistant signable-in through an ordinary-looking edit.
     await auth.api.adminUpdateUser({
       body: { userId, data: { name, email } },
       headers,
     });
-
-    if (password && password.length > 0) {
-      await auth.api.setUserPassword({
-        body: { userId, newPassword: password },
-        headers,
-      });
-    }
 
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -175,6 +218,50 @@ usersRouter.patch(
         createdAt: user.createdAt.toISOString(),
       },
     });
+  },
+);
+
+/**
+ * Send this colleague their invitation again.
+ *
+ * The replacement for the password box that used to sit on the edit form, and
+ * the answer to every situation that box used to answer: a link expired before
+ * it was read, an invitation went to an address that was wrong and has since
+ * been corrected, somebody is locked out. In each case the person who ends up
+ * knowing the password is the person it belongs to.
+ *
+ * It is the same Better Auth call the create route makes, which is the same one
+ * behind the public "forgot password" form — one mechanism, three doors. What
+ * this door adds is `requireAdmin` and the assistant check, and it answers 204
+ * without saying whether anything was sent, because an admin looking at the
+ * roster already knows the account exists and does not need telling twice.
+ */
+usersRouter.post(
+  "/:id/invite",
+  requireAdmin,
+  async (req: Request, res: Response<{ error: string } | Record<string, never>>) => {
+    const userId = req.params.id as string;
+    if (await rejectAssistant(userId, res)) return;
+
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, deletedAt: true },
+    });
+
+    if (!target || target.deletedAt !== null) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    await auth.api.requestPasswordReset({
+      body: {
+        email: target.email,
+        redirectTo: `${appOrigin}/reset-password?invite=1`,
+      },
+      headers: fromNodeHeaders(req.headers),
+    });
+
+    res.status(204).json({});
   },
 );
 

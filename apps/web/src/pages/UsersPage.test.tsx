@@ -136,16 +136,14 @@ describe("UsersPage", () => {
     expect(agentBadge).toHaveAttribute("data-variant", "secondary");
   });
 
-  test("shows a verified badge for verified users and unverified otherwise", async () => {
+  test("shows no verification badge — the app has no verification flow", async () => {
     mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
 
-    const adminRow = (await screen.findByText("Ada Admin")).closest("tr");
-    const agentRow = screen.getByText("Aaron Agent").closest("tr");
-    if (!adminRow || !agentRow) throw new Error("rows not found");
+    await screen.findByText("Ada Admin");
 
-    expect(within(adminRow).getByText("Verified")).toBeInTheDocument();
-    expect(within(agentRow).getByText("Unverified")).toBeInTheDocument();
+    expect(screen.queryByText("Verified")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unverified")).not.toBeInTheDocument();
   });
 
   test("renders the createdAt as a localised date", async () => {
@@ -183,7 +181,7 @@ describe("UsersPage", () => {
 
     await screen.findByText("Ada Admin");
 
-    for (const header of ["Name", "Email", "Role", "Verified", "Created"]) {
+    for (const header of ["Name", "Email", "Role", "Created"]) {
       expect(
         screen.getByRole("columnheader", { name: header }),
       ).toBeInTheDocument();
@@ -210,7 +208,7 @@ describe("UsersPage — create user", () => {
     expect(screen.getByRole("button", { name: "New user" })).toBeInTheDocument();
   });
 
-  test("opens the dialog with name, email, password fields", async () => {
+  test("opens the dialog with name and email fields", async () => {
     mockGet.mockResolvedValue({ data: { users: [] } });
     renderUsersPage();
 
@@ -222,7 +220,6 @@ describe("UsersPage — create user", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Email")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("Password")).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "Create user" }),
     ).toBeInTheDocument();
@@ -237,7 +234,6 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Jo");
     await user.type(within(dialog).getByLabelText("Email"), "ok@example.com");
-    await user.type(within(dialog).getByLabelText("Password"), "longenoughpw");
     await user.click(within(dialog).getByRole("button", { name: "Create user" }));
 
     expect(
@@ -255,29 +251,10 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Valid Name");
     await user.type(within(dialog).getByLabelText("Email"), "not-an-email");
-    await user.type(within(dialog).getByLabelText("Password"), "longenoughpw");
     await user.click(within(dialog).getByRole("button", { name: "Create user" }));
 
     expect(
       await within(dialog).findByText("Enter a valid email"),
-    ).toBeInTheDocument();
-    expect(mockPost).not.toHaveBeenCalled();
-  });
-
-  test("shows a validation error when password is shorter than 8 characters", async () => {
-    mockGet.mockResolvedValue({ data: { users: [] } });
-    renderUsersPage();
-
-    const user = await openNewUserDialog();
-    const dialog = await screen.findByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText("Name"), "Valid Name");
-    await user.type(within(dialog).getByLabelText("Email"), "ok@example.com");
-    await user.type(within(dialog).getByLabelText("Password"), "short");
-    await user.click(within(dialog).getByRole("button", { name: "Create user" }));
-
-    expect(
-      await within(dialog).findByText("Password must be at least 8 characters"),
     ).toBeInTheDocument();
     expect(mockPost).not.toHaveBeenCalled();
   });
@@ -296,7 +273,6 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Nora New");
     await user.type(within(dialog).getByLabelText("Email"), "nora@example.com");
-    await user.type(within(dialog).getByLabelText("Password"), "password123");
     await user.click(within(dialog).getByRole("button", { name: "Create user" }));
 
     await waitFor(() => {
@@ -304,13 +280,12 @@ describe("UsersPage — create user", () => {
     });
     const [postUrl, postBody] = mockPost.mock.calls[0] as [
       string,
-      { name: string; email: string; password: string },
+      { name: string; email: string },
     ];
     expect(postUrl).toBe("/api/users");
     expect(postBody).toEqual({
       name: "Nora New",
       email: "nora@example.com",
-      password: "password123",
     });
 
     // Dialog closes
@@ -339,7 +314,6 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Dup Name");
     await user.type(within(dialog).getByLabelText("Email"), "dup@example.com");
-    await user.type(within(dialog).getByLabelText("Password"), "password123");
     await user.click(within(dialog).getByRole("button", { name: "Create user" }));
 
     expect(

@@ -19,6 +19,7 @@ import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
 import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
+import { outboxRouter } from "./routes/outbox";
 import { pipelineRouter } from "./routes/pipeline";
 import { ticketsRouter } from "./routes/tickets";
 import { usersRouter } from "./routes/users";
@@ -130,6 +131,10 @@ app.use("/api/pipeline", pipelineRouter);
 // Admin-only as well: it decides where every ticket the assistant hands back
 // lands, which is a staffing decision rather than something an agent picks.
 app.use("/api/automation", automationRouter);
+
+// Admin-only, and read-only. On a deployment with no mail provider this is how
+// an invitation actually reaches somebody — see the note in routes/outbox.ts.
+app.use("/api/outbox", outboxRouter);
 
 // After every route, which is the only place it works: it is an Express error
 // middleware, and it can only see what routes registered before it throw.

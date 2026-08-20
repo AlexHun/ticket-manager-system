@@ -50,9 +50,9 @@ Phased build for the AI-Powered Ticket Management System. Each phase is independ
 ## Phase 3 — Email ingestion + outbound
 
 - Postmark account + inbound stream configured
-- `POST /webhooks/postmark` with signature verification
+- `POST /webhooks/postmark` — **Postmark does not sign inbound webhooks.** There is no HMAC to verify; their documented recommendation is HTTP Basic Auth credentials in the webhook URL plus allowlisting their published IP ranges. The Basic Auth is built (`routes/webhooks/inbound-email.ts`); the IP allowlist belongs in `apps/web/Caddyfile`. This line used to say "with signature verification", which described something the provider does not offer.
 - Thread inbound by `In-Reply-To` / `References`; otherwise create new ticket
-- Outbound send via Postmark on agent reply
+- Outbound send via Postmark on agent reply — goes through the outbox (`docs/adr/0009`), so this is binding `mail/transport.ts`, not touching callers
 - Set outbound `Message-ID` + `References` so customer replies thread back
 - Local dev via ngrok
 

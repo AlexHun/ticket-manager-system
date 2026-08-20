@@ -1,14 +1,15 @@
 import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
+import { registerSendEmail } from "./send-email";
 
 /**
  * Where background work is wired up.
  *
  * One line per consumer, and the reason this file exists rather than letting
  * `./boss` register things itself: the lifecycle should not know what runs on
- * it, and the consumers should not know how it starts. Phase 3's outbound
- * Postmark send is the next entry here.
+ * it, and the consumers should not know how it starts. The outbound mail send
+ * was the third entry; a fourth goes on the same list.
  *
  * Registration order does not matter — each `register*` creates its own queues
  * and workers — but every one of them must complete before `startJobs` resolves,
@@ -20,6 +21,7 @@ export async function startJobs(): Promise<void> {
   const boss = await startBoss();
   await registerClassifyTicket(boss);
   await registerAutoReplyTicket(boss);
+  await registerSendEmail(boss);
 }
 
 export { stopBoss as stopJobs };

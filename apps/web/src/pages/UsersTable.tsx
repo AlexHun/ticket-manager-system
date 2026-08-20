@@ -1,4 +1,4 @@
-﻿import { Bot, CheckCircle2, Pencil, Trash2, XCircle } from "lucide-react";
+﻿import { Bot, Pencil, Trash2 } from "lucide-react";
 import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,6 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
             <th scope="col" className="px-4 py-2 font-medium">Name</th>
             <th scope="col" className="px-4 py-2 font-medium">Email</th>
             <th scope="col" className="px-4 py-2 font-medium">Role</th>
-            <th scope="col" className="px-4 py-2 font-medium">Verified</th>
             <th scope="col" className="px-4 py-2 font-medium">Created</th>
             <th scope="col" className="px-4 py-2 font-medium text-right">Actions</th>
           </tr>
@@ -48,9 +47,6 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
                     permissions, it is an account nothing can sign into. */}
                 {u.automated ? <AssistantBadge /> : <RoleBadge role={u.role} />}
               </td>
-              <td className="px-4 py-2">
-                <VerifiedBadge verified={u.emailVerified} />
-              </td>
               <td className="px-4 py-2 text-muted-foreground">
                 {new Date(u.createdAt).toLocaleDateString()}
               </td>
@@ -58,10 +54,11 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
                 <div className="flex items-center justify-end gap-1">
                   {/* No actions on the assistant, matching the API rather than
                       duplicating its reasoning: both routes 403 on this row.
-                      Editing it can set a password, which would create the
-                      credential record it deliberately has none of; deleting it
-                      would clear the assignee on every ticket it has ever
-                      resolved, and only the seed can make another. */}
+                      Editing it would offer to resend an invitation, and
+                      accepting one creates the credential record it deliberately
+                      has none of; deleting it would clear the assignee on every
+                      ticket it has ever resolved, and only the seed can make
+                      another. */}
                   {u.automated ? (
                     <span aria-hidden className="size-7" />
                   ) : (
@@ -110,7 +107,6 @@ export function UsersTableSkeleton() {
             <th scope="col" className="px-4 py-2 font-medium">Name</th>
             <th scope="col" className="px-4 py-2 font-medium">Email</th>
             <th scope="col" className="px-4 py-2 font-medium">Role</th>
-            <th scope="col" className="px-4 py-2 font-medium">Verified</th>
             <th scope="col" className="px-4 py-2 font-medium">Created</th>
             <th scope="col" className="px-4 py-2 font-medium text-right">Actions</th>
           </tr>
@@ -126,9 +122,6 @@ export function UsersTableSkeleton() {
               </td>
               <td className="px-4 py-2">
                 <Skeleton className="h-5 w-16 rounded-md" />
-              </td>
-              <td className="px-4 py-2">
-                <Skeleton className="h-5 w-24 rounded-md" />
               </td>
               <td className="px-4 py-2">
                 <Skeleton className="h-4 w-20" />
@@ -164,19 +157,12 @@ function RoleBadge({ role }: { role: UserRole }) {
   );
 }
 
-function VerifiedBadge({ verified }: { verified: boolean }) {
-  if (verified) {
-    return (
-      <Badge variant="secondary">
-        <CheckCircle2 />
-        Verified
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline">
-      <XCircle />
-      Unverified
-    </Badge>
-  );
-}
+/*
+ * There was a Verified / Unverified badge in this column until this app decided
+ * it had no verification flow and was not getting one. It was worse than
+ * useless: `emailVerified` defaulted false on every account an admin created,
+ * and nothing anywhere could ever set it true, so the roster showed a permanent
+ * warning against every real colleague and a clean tick against the assistant —
+ * the one account with no mailbox at all. See
+ * `docs/adr/0010-no-email-verification.md`.
+ */

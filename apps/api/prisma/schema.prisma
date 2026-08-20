@@ -8,12 +8,12 @@ datasource db {
 }
 
 model User {
-  id              String    @id
-  name            String
-  email           String
-  emailVerified   Boolean   @default(false)
-  image           String?
-  role            Role      @default(agent)
+  id               String                     @id
+  name             String
+  email            String
+  emailVerified    Boolean                    @default(false)
+  image            String?
+  role             Role                       @default(agent)
   /// This row stands for the assistant rather than for a person.
   ///
   /// **Meant to be unique, and kept that way by having one writer.** Nothing in
@@ -33,21 +33,21 @@ model User {
   /// mutating user routes refuse it outright. It exists to be the assignee on a
   /// ticket the machine finished, so the assignee column answers "who dealt with
   /// this" for every ticket instead of going blank on the automated ones.
-  automated       Boolean   @default(false)
-  banned          Boolean?  @default(false)
-  banReason       String?
-  banExpires      DateTime?
-  deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  sessions        Session[]
-  accounts        Account[]
-  assignedTickets Ticket[]  @relation("TicketAssignee")
+  automated        Boolean                    @default(false)
+  banned           Boolean?                   @default(false)
+  banReason        String?
+  banExpires       DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  sessions         Session[]
+  accounts         Account[]
+  assignedTickets  Ticket[]                   @relation("TicketAssignee")
   authoredMessages Message[]
-  knowledgeEdits  KnowledgeArticleRevision[]
-  ticketActivity  TicketActivity[]
-  handoffFor      AutomationSettings[] @relation("HandoffAssignee")
-  automationEdits AutomationSettings[] @relation("AutomationEditor")
+  knowledgeEdits   KnowledgeArticleRevision[]
+  ticketActivity   TicketActivity[]
+  handoffFor       AutomationSettings[]       @relation("HandoffAssignee")
+  automationEdits  AutomationSettings[]       @relation("AutomationEditor")
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -166,10 +166,10 @@ model Verification {
 }
 
 model Ticket {
-  id            Int             @id @default(autoincrement())
-  subject       String
-  status        TicketStatus    @default(New)
-  category      TicketCategory?
+  id                  Int              @id @default(autoincrement())
+  subject             String
+  status              TicketStatus     @default(New)
+  category            TicketCategory?
   // When the automatic classifier reached a *terminal* verdict on this ticket:
   // it filed a category, or it gave up. Not "when the category was last set" —
   // an agent choosing one by hand leaves this null, and that difference is the
@@ -182,7 +182,7 @@ model Ticket {
   // alone. Set on success, and set again when a job exhausts its retries and
   // lands in the dead-letter queue, which is what stops that sweep re-queueing
   // a ticket forever.
-  classifiedAt  DateTime?
+  classifiedAt        DateTime?
   // When the knowledge-base auto-reply answered this ticket and resolved it.
   //
   // The classifier's `classifiedAt` records a verdict either way; this one only
@@ -196,7 +196,7 @@ model Ticket {
   // is the only durable record of how much of the queue answered itself, since
   // the reply in the thread says who wrote it but not that the ticket closed
   // because of it.
-  autoResolvedAt DateTime?
+  autoResolvedAt      DateTime?
   // Why the auto-reply handed this ticket back, and when — the other half of
   // `autoResolvedAt`, which only ever records success.
   //
@@ -217,15 +217,15 @@ model Ticket {
   // Cleared when a reply eventually succeeds, so a ticket never carries both.
   autoReplyDecline    String?
   autoReplyDeclinedAt DateTime?
-  customerEmail String
-  customerName  String
-  lastMessageAt DateTime        @default(now())
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  assignedToId  String?
-  assignedTo    User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  messages      Message[]
-  activity      TicketActivity[]
+  customerEmail       String
+  customerName        String
+  lastMessageAt       DateTime         @default(now())
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  assignedToId        String?
+  assignedTo          User?            @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  messages            Message[]
+  activity            TicketActivity[]
 
   @@index([customerEmail])
   @@index([lastMessageAt])
@@ -242,24 +242,24 @@ model Ticket {
 }
 
 model Message {
-  id          Int              @id @default(autoincrement())
-  ticketId    Int
-  ticket      Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  messageId   String           @unique
-  inReplyTo   String?
-  senderEmail String
-  senderName  String
-  textBody    String?
-  htmlBody    String?
-  direction   MessageDirection @default(inbound)
+  id              Int              @id @default(autoincrement())
+  ticketId        Int
+  ticket          Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messageId       String           @unique
+  inReplyTo       String?
+  senderEmail     String
+  senderName      String
+  textBody        String?
+  htmlBody        String?
+  direction       MessageDirection @default(inbound)
   // The agent who wrote an outbound reply. Null on everything inbound — a
   // customer has no row in the user table — and null again once that agent is
   // deleted, which is why SetNull and not Cascade: removing a colleague must
   // not take their replies out of a customer's thread. `senderName` and
   // `senderEmail` are written alongside it and are what the thread renders, so
   // a reply stays attributed after the FK has been cleared.
-  authorId    String?
-  author      User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  authorId        String?
+  author          User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
   // Written by the knowledge-base auto-reply rather than by a person.
   //
   // Not derivable from `authorId`. That is null here, but it is also null on a
@@ -267,7 +267,7 @@ model Message {
   // colleague who wrote this has left" are different facts an agent reading the
   // thread needs told apart. Inbound messages are never automated: the flag
   // describes who composed our side of the conversation.
-  automated   Boolean          @default(false)
+  automated       Boolean          @default(false)
   // The knowledge-base articles this reply was built from — "KB-004", and so on.
   //
   // Empty on everything a person wrote and on everything inbound; only the
@@ -282,7 +282,13 @@ model Message {
   // question "why did we tell this customer that?" is asked at the ticket,
   // often weeks later, by someone who does not have the logs.
   citedArticleIds String[]
-  createdAt   DateTime         @default(now())
+  /// The outbox row that carries this message to the customer, once there is one.
+  ///
+  /// Null on every inbound message — nothing we received is anything we send —
+  /// and null on an outbound one only in the window between the two writes,
+  /// which is no window at all: they commit in the same transaction.
+  outboundEmail   OutboundEmail?
+  createdAt       DateTime         @default(now())
 
   @@index([ticketId, createdAt])
   // For the first-response LATERAL in `ticket-stats.ts`, which wants the
@@ -352,10 +358,10 @@ enum MessageDirection {
 /// means nothing without it; `Message` cascades for the same reason, and
 /// `prisma/seed-tickets.ts --reset` depends on it.
 model TicketActivity {
-  id       Int                  @id @default(autoincrement())
-  ticketId Int
-  ticket   Ticket               @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  action   TicketActivityAction
+  id         Int                  @id @default(autoincrement())
+  ticketId   Int
+  ticket     Ticket               @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  action     TicketActivityAction
   /// The move, as it will be read — `"Open"`, `"Technical"`, an assignee's
   /// *name*, or an `AutoReplyDecline` reason. Null on either side means there was
   /// nothing there: an unassigned ticket, a cleared category, a `created` entry.
@@ -430,7 +436,7 @@ model KnowledgeArticle {
   /// strings on every reply the machine has ever written, so an id is stable
   /// and is **never reused** — `nextArticleId` counts from the highest that has
   /// ever existed, archived rows included, rather than from the row count.
-  id           String         @id
+  id           String                     @id
   /// The question, phrased the way a customer would ask it.
   title        String
   category     TicketCategory
@@ -453,16 +459,16 @@ model KnowledgeArticle {
   /// produced, this decides what it was ever asked. Default false, deliberately:
   /// a new article is withheld until somebody says otherwise, so the failure
   /// mode of a half-finished edit is an article nobody answers from.
-  autoReply    Boolean        @default(false)
+  autoReply    Boolean                    @default(false)
   /// Retired, but still resolvable.
   ///
   /// Archived rather than deleted because `message.citedArticleIds` points here
   /// from replies already sitting in customers' threads, and "why did we tell
   /// them that?" is asked weeks later. An archived article is out of every
   /// prompt and out of the corpus, and still readable at the id that cited it.
-  archived     Boolean        @default(false)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  archived     Boolean                    @default(false)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
   revisions    KnowledgeArticleRevision[]
 
   /// The corpus query: live, auto-replyable, ordered by id.
@@ -516,4 +522,103 @@ enum KnowledgeRevisionAction {
   updated
   archived
   restored
+}
+
+/// One email this system intends to hand to a mail provider.
+///
+/// **The outbox.** Until this table existed, "we wrote a row" and "the customer
+/// got an email" were the same event, because writing was all that happened.
+/// The moment a provider is wired in they are two events that can disagree: the
+/// row commits, the HTTP call fails, and nothing anywhere records the
+/// difference. This table is where that difference lives.
+///
+/// It also settles a problem that has no other answer. `sendReply` is called
+/// *inside* `prisma.$transaction` by `jobs/auto-reply-ticket.ts`, deliberately,
+/// so the reply and the status transition that proves the worker still held its
+/// claim commit together. An HTTP call cannot go there — it would hold a
+/// Postgres transaction open across a round trip to a third party, and a
+/// rollback cannot un-send an email. So the transaction writes *this row*
+/// instead, and a `pg-boss` worker does the network call afterwards, outside any
+/// transaction. That is the same shape `ingest.ts` already uses when it enqueues
+/// classification inside the transaction that creates the ticket.
+///
+/// **Self-contained on purpose.** Everything the provider needs is a column
+/// here, including the threading headers that also live on `Message`. The
+/// duplication is the point: the worker takes a row and sends it, knowing
+/// nothing about tickets, agents, articles or auth. A worker that had to reach
+/// back through a relation for a reply and take a different path for a password
+/// reset would be two workers wearing one name.
+model OutboundEmail {
+  id                Int                 @id @default(autoincrement())
+  kind              OutboundEmailKind
+  /// The thread message this email carries, when it carries one.
+  ///
+  /// Null on everything from the auth side — a password reset belongs to no
+  /// ticket and must never appear in a customer's thread. Unique because a
+  /// message is sent once; a second row for the same message would be a
+  /// duplicate email, and the database says so rather than the code remembering
+  /// to.
+  messageId         Int?                @unique
+  message           Message?            @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  toEmail           String
+  toName            String?
+  subject           String
+  textBody          String
+  /// The RFC 5322 `Message-ID`, `In-Reply-To` and `References` this email is to
+  /// be sent with — stored without angle brackets, exactly as `Message` and
+  /// `ingest.ts` store them, so a customer's reply threads back onto the same
+  /// ticket. Null/empty on auth mail, which is not part of any conversation.
+  emailMessageId    String?
+  inReplyTo         String?
+  references        String[]
+  status            OutboundEmailStatus @default(queued)
+  /// How many times the worker has handed this to a provider and been refused.
+  /// Distinct from pg-boss's own retry count, which is lost once a job leaves
+  /// the queue — this survives on the row an admin is looking at.
+  attempts          Int                 @default(0)
+  /// The provider's own id for the accepted message, for the day somebody has to
+  /// ask Postmark what happened to it.
+  providerMessageId String?
+  /// Why the last attempt failed. Prose from the provider, shown to an admin and
+  /// read by nothing.
+  lastError         String?
+  createdAt         DateTime            @default(now())
+  /// When a provider accepted it. Null until then, and null forever on anything
+  /// that never left.
+  sentAt            DateTime?
+
+  /// The viewer lists newest-first within a status, and the send worker's
+  /// recovery sweep asks for `queued` by age.
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("outbound_email")
+}
+
+/// What an outbound email is for.
+///
+/// Not cosmetic, and not derivable from `messageId` being null. The two auth
+/// kinds carry a **live single-use credential in `textBody`** — a reset link is
+/// a working way into somebody's account until it expires — and `reply` never
+/// does. Anything that decides how long a row is kept, or who may read one, has
+/// to be able to tell them apart.
+enum OutboundEmailKind {
+  reply
+  passwordReset
+  invitation
+}
+
+/// How far an email got.
+///
+/// `undeliverable` is the one worth explaining: it means there was no provider
+/// configured, so nothing was attempted. Deliberately not `failed` — nothing is
+/// wrong with the email and nothing is wrong with the system; this deployment
+/// simply has nowhere to send mail, which is a supported state and the one the
+/// app runs in today. Collapsing the two would make a working deployment with no
+/// Postmark key look like a broken one, and would hide real failures among
+/// hundreds of rows that were never tried.
+enum OutboundEmailStatus {
+  queued
+  sent
+  failed
+  undeliverable
 }

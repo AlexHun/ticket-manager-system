@@ -4,6 +4,7 @@ import {
   LayoutDashboardIcon,
   NetworkIcon,
   TicketIcon,
+  SendIcon,
   UsersIcon,
   WorkflowIcon,
   type LucideIcon,
@@ -34,6 +35,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: "/knowledge",
     label: "Knowledge base",
     icon: BookTextIcon,
+    role: USER_ROLE.admin,
+  },
+  {
+    to: "/outbox",
+    label: "Outbox",
+    icon: SendIcon,
     role: USER_ROLE.admin,
   },
   {
