@@ -62,7 +62,25 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: `bunx --bun vite --port ${WEB_PORT} --strictPort`,
+      // **`bunx vite`, not `bunx --bun vite`** — the one difference from
+      // `apps/web`'s own `dev` script, and it is deliberate. Under `--bun`,
+      // Vite runs on Bun's runtime rather than Node's, and spawned from
+      // Playwright it deadlocks on this machine: the process reaches ~240mb
+      // resident, binds this port and accepts Playwright's readiness probe,
+      // then sits at **0% CPU with the request unanswered, no listening socket
+      // left, and not one line on stdout** — no banner, no error, nothing for
+      // Playwright to report but its own timeout. Started by hand, or from a
+      // script, the same command is fine: 14 consecutive starts under `--bun`
+      // served in 2-8s, including with the API server up alongside it. Only the
+      // Playwright-spawned one hangs, and only sometimes.
+      //
+      // The mechanism inside Bun is **not** established — what is established is
+      // that the stall follows `--bun` and that dropping it costs nothing here
+      // (Vite is a Node tool; the flag was buying a runtime it does not need).
+      // If this ever comes back, the next thing to try is `stdout: "ignore"`
+      // below: a child blocked writing to a pipe nobody drained would look
+      // exactly like this.
+      command: `bunx vite --port ${WEB_PORT} --strictPort`,
       cwd: path.join(__dirname, "apps/web"),
       // A distinct `VITE_API_URL` from the dev server's, which is also what
       // gives this run its own dependency cache — see `cacheDir` in
@@ -78,28 +96,22 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       // Longer than the API's, which starts in about a second.
       //
-      // Raised from 120s while chasing a startup that hangs on this machine, and
-      // **it did not fix that** — a run blew through 420s too. It is headroom for
-      // a slow cold optimize, not a cure. Read the note below before raising it
-      // again; more time was already tried.
+      // Raised from 120s while chasing the deadlock described on `command`
+      // above, and **more time was never the answer** — a run blew through 420s
+      // too, because a process at 0% CPU does not finish starting no matter how
+      // long you wait. Kept as headroom for a genuinely cold dependency
+      // optimize, which is the only thing here that legitimately takes minutes;
+      // a warm start is 3-4s. Don't raise it again in response to a timeout.
       //
-      // What *is* established: when this server starts at all it is ready in
-      // ~3-4s, and the failure looks identical every time — Vite logs the
-      // dev-tools plugin line, never reaches its own "ready" banner, and
-      // Playwright reports only `Timed out waiting …ms from config.webServer`
-      // with nothing about the cause. It is intermittent and independent of
-      // whether the dependency cache is warm.
-      //
-      // The reliable workaround is to start the web server yourself first —
-      // `reuseExistingServer` below then adopts it:
+      // If this ever times out again: **a timeout can leave Vite alive on 4001.**
+      // `reuseExistingServer` below then silently adopts the survivor on the next
+      // run — possibly built with different settings — so a green run straight
+      // after a timeout proves nothing until the port owner has been checked.
+      // Starting the web server by hand and letting the suite adopt it is also
+      // the fallback if the spawned one misbehaves:
       //
       //   cd apps/web && VITE_API_URL=http://localhost:3002 \
-      //     bunx --bun vite --port 4001 --strictPort
-      //
-      // **A timeout here can leave that Vite alive on 4001.** Because
-      // `reuseExistingServer` is on, the next run silently adopts the survivor —
-      // possibly built with different settings — so a green run straight after a
-      // timeout proves nothing until the port owner has been checked.
+      //     bunx vite --port 4001 --strictPort
       timeout: 420_000,
       stdout: "pipe",
       stderr: "pipe",
