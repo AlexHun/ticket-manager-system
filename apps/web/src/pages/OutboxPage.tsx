@@ -119,9 +119,31 @@ export function OutboxPage() {
       )}
 
       {data && (
-        <p className="text-sm text-muted-foreground">
-          {data.total} email{data.total === 1 ? "" : "s"}
-        </p>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-muted-foreground">
+            {data.total} email{data.total === 1 ? "" : "s"}
+          </p>
+          {/* Said on the screen because it is the one thing here that would
+              otherwise look like data loss. An invitation row is a link and
+              nothing else, so it is kept for exactly as long as the link works
+              and then deleted (`jobs/prune-outbox.ts`) — an admin who came back
+              the next day for one would find it gone with no explanation. The
+              remedy is a button they already have.
+
+              The two numbers are spelled out here and decided on the server
+              (`RESET_TOKEN_TTL_SECONDS` in `auth.ts`, `REPLY_RETENTION_MS` in
+              the sweep). Changing either there without changing this sentence
+              leaves the screen lying; if a third number ever joins them, send
+              them down with `mailConfigured` instead of adding another copy. */}
+          <p className="text-xs text-muted-foreground">
+            Invitation and password-reset links work for 24 hours, and their
+            emails are cleared once they expire — resend from{" "}
+            <Link to="/users" className="underline underline-offset-2">
+              Users
+            </Link>{" "}
+            if one has gone. Ticket replies are kept for 90 days.
+          </p>
+        </div>
       )}
 
       {error && (

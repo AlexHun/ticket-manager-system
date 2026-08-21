@@ -1,6 +1,7 @@
 import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
+import { registerPruneOutbox } from "./prune-outbox";
 import { registerSendEmail } from "./send-email";
 
 /**
@@ -8,8 +9,8 @@ import { registerSendEmail } from "./send-email";
  *
  * One line per consumer, and the reason this file exists rather than letting
  * `./boss` register things itself: the lifecycle should not know what runs on
- * it, and the consumers should not know how it starts. The outbound mail send
- * was the third entry; a fourth goes on the same list.
+ * it, and the consumers should not know how it starts. The outbox retention
+ * sweep was the fourth entry; a fifth goes on the same list.
  *
  * Registration order does not matter — each `register*` creates its own queues
  * and workers — but every one of them must complete before `startJobs` resolves,
@@ -22,6 +23,7 @@ export async function startJobs(): Promise<void> {
   await registerClassifyTicket(boss);
   await registerAutoReplyTicket(boss);
   await registerSendEmail(boss);
+  await registerPruneOutbox(boss);
 }
 
 export { stopBoss as stopJobs };
