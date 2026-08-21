@@ -154,6 +154,34 @@ export async function enqueueEmail(
 }
 
 /**
+ * Ask for an existing row to be sent again.
+ *
+ * The counterpart to `enqueueEmail` for a row that already exists: no email is
+ * composed, nothing is addressed again, only the nudge is repeated. It exists
+ * because the worker settles a row it could not deliver — `undeliverable` with
+ * no provider, `failed` once the ladder is exhausted — and those are terminal
+ * on purpose. Without this, every email written before a provider was bound
+ * would stay stuck with nothing able to move it, which is the one failure the
+ * outbox design would otherwise have built in.
+ *
+ * **The caller must have already put the row back to `queued`, conditionally,
+ * in the transaction it passes here.** That ordering is the whole safety story:
+ * the handler refuses to act on a row that is not queued, so a job enqueued
+ * against a `sent` row is inert — but only if nothing flipped that row to
+ * queued first. `routes/outbox.ts` is the one caller and does exactly that.
+ */
+export async function requeueEmail(
+  outboundEmailId: number,
+  tx: Prisma.TransactionClient,
+): Promise<void> {
+  await getBoss().send(
+    SEND_EMAIL_QUEUE,
+    { outboundEmailId } satisfies SendEmailJob,
+    { db: fromPrisma(tx) },
+  );
+}
+
+/**
  * Try to send one outbox row.
  *
  * Returns normally on every terminal outcome and throws only on a retryable one,

@@ -39,6 +39,18 @@ contains a working single-use link until it expires, so `GET /api/outbox` is
 admin-only and read-only. An admin can already create and delete accounts, so
 this grants no authority they lacked; it does make that authority more direct.
 
+**Terminal statuses need a human way out, and it is one route.** The worker
+settles a row it could not deliver — `undeliverable` with no provider, `failed`
+once the ladder is exhausted — and nothing reopens either on a schedule, because
+an outbox that retries indefinitely turns a provider outage into duplicate mail.
+That leaves every email written before a provider was bound stuck, which is not
+a hypothetical: it is the state this whole deployment is in. `POST
+/api/outbox/:id/retry` is the answer — admin-only, conditional on the row still
+being in one of those two statuses, with the re-enqueue inside the same
+transaction as the flip. The condition lives in the `updateMany`'s `where`
+rather than in a preceding read, so two admins pressing the button at once
+cannot both win, and a `sent` row is unreachable from it.
+
 **Duplicate sends are prevented by timing margin, not by a claim.** The handler
 checks that a row is still `queued` and then calls the provider; there is no
 `sending` state. A second worker could only pick the job up if the first stalled
