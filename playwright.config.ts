@@ -64,10 +64,43 @@ export default defineConfig({
     {
       command: `bunx --bun vite --port ${WEB_PORT} --strictPort`,
       cwd: path.join(__dirname, "apps/web"),
+      // A distinct `VITE_API_URL` from the dev server's, which is also what
+      // gives this run its own dependency cache — see `cacheDir` in
+      // `apps/web/vite.config.ts`.
+      //
+      // Sharing one cache with the dev server was tried and is worse: two Vite
+      // processes optimizing into the same directory contend, and the E2E server
+      // then never becomes ready at all. Measured — a warm run with its own cache
+      // is ready in ~4s; the same run sharing the dev server's cache while
+      // `bun run dev` is up hangs past 420s.
       env: { VITE_API_URL: API_URL },
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
+      // Longer than the API's, which starts in about a second.
+      //
+      // Raised from 120s while chasing a startup that hangs on this machine, and
+      // **it did not fix that** — a run blew through 420s too. It is headroom for
+      // a slow cold optimize, not a cure. Read the note below before raising it
+      // again; more time was already tried.
+      //
+      // What *is* established: when this server starts at all it is ready in
+      // ~3-4s, and the failure looks identical every time — Vite logs the
+      // dev-tools plugin line, never reaches its own "ready" banner, and
+      // Playwright reports only `Timed out waiting …ms from config.webServer`
+      // with nothing about the cause. It is intermittent and independent of
+      // whether the dependency cache is warm.
+      //
+      // The reliable workaround is to start the web server yourself first —
+      // `reuseExistingServer` below then adopts it:
+      //
+      //   cd apps/web && VITE_API_URL=http://localhost:3002 \
+      //     bunx --bun vite --port 4001 --strictPort
+      //
+      // **A timeout here can leave that Vite alive on 4001.** Because
+      // `reuseExistingServer` is on, the next run silently adopts the survivor —
+      // possibly built with different settings — so a green run straight after a
+      // timeout proves nothing until the port owner has been checked.
+      timeout: 420_000,
       stdout: "pipe",
       stderr: "pipe",
     },
