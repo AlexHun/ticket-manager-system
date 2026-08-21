@@ -51,6 +51,25 @@ transaction as the flip. The condition lives in the `updateMany`'s `where`
 rather than in a preceding read, so two admins pressing the button at once
 cannot both win, and a `sent` row is unreachable from it.
 
+**The table has a retention policy, and it is per kind because the rows are two
+different things.** `jobs/prune-outbox.ts` sweeps hourly. A `reply` row is a
+duplicate of `Message.textBody`, which is the copy an agent reads and is never
+pruned, so what expires at ninety days is the delivery record rather than the
+correspondence. An `invitation` or `passwordReset` row is a working single-use
+credential and nothing besides, so it lives exactly as long as the token in it —
+the retention imports `RESET_TOKEN_TTL_SECONDS` from `auth.ts` instead of
+restating it, which makes the two impossible to drift apart. The consequence
+worth stating: an invitation that goes unread for a day disappears from the
+screen that was delivering it. Nothing is lost, because the link had already
+stopped working and the remedy was always to resend from the roster, but an
+admin who expects the outbox to be an archive will find it is a queue.
+
+Deletion rather than redaction, and that follows from the retry route above: it
+sends whatever is in `textBody`, so a row with its body blanked is one click away
+from emailing somebody a placeholder. `queued` is excluded from the sweep for the
+same class of reason — a queued row has a job on its way to fetch it, and
+removing it would drop an email the app has already promised.
+
 **Duplicate sends are prevented by timing margin, not by a claim.** The handler
 checks that a row is still `queued` and then calls the provider; there is no
 `sending` state. A second worker could only pick the job up if the first stalled
