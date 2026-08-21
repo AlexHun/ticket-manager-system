@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Inbox } from "lucide-react";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { AlertTriangle, Inbox, Loader2, RotateCw } from "lucide-react";
 import {
   OUTBOUND_EMAIL_STATUS,
   type OutboundEmailKind,
@@ -148,15 +148,46 @@ export function OutboxPage() {
       )}
 
         {data?.emails.map((email) => (
-          <OutboxRow key={email.id} email={email} />
+          <OutboxRow
+            key={email.id}
+            email={email}
+            mailConfigured={data.mailConfigured}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function OutboxRow({ email }: { email: OutboundEmailRow }) {
+/**
+ * The two states the worker settles a row into when it could not deliver it.
+ * Mirrors `RETRYABLE_STATUS` in `routes/outbox.ts`, which is the one that
+ * actually decides — this only governs whether a button is drawn.
+ */
+function isRetryable(status: OutboundEmailStatus): boolean {
+  return status === "undeliverable" || status === "failed";
+}
+
+function OutboxRow({
+  email,
+  mailConfigured,
+}: {
+  email: OutboundEmailRow;
+  mailConfigured: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const retry = useMutation({
+    mutationFn: async () => {
+      await api.post(`/api/outbox/${email.id}/retry`);
+    },
+    onSuccess: () => {
+      // The row is now queued and a worker has it; what it becomes is the
+      // server's to say, so refetch rather than guessing at the new status.
+      void queryClient.invalidateQueries({ queryKey: ["outbox"] });
+    },
+  });
 
   return (
     <Card>
@@ -184,15 +215,42 @@ function OutboxRow({ email }: { email: OutboundEmailRow }) {
         {email.lastError && (
           <p className="text-sm text-muted-foreground">{email.lastError}</p>
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="self-start"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-        >
-          {open ? "Hide message" : "Show message"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+          >
+            {open ? "Hide message" : "Show message"}
+          </Button>
+
+          {/* Only where it can do something. With no provider bound the server
+              refuses the retry outright — it would travel the queue and land
+              back on the same status — so the button is not offered either. The
+              card at the top of the page is where that is explained. */}
+          {isRetryable(email.status) && mailConfigured && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => retry.mutate()}
+              disabled={retry.isPending}
+            >
+              {retry.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RotateCw className="size-4" />
+              )}
+              {retry.isPending ? "Queueing…" : "Try again"}
+            </Button>
+          )}
+        </div>
+
+        {retry.error && (
+          <p className="text-sm text-destructive" role="alert">
+            {retry.error.message}
+          </p>
+        )}
         {/* Plain text in a text node, never `dangerouslySetInnerHTML`. Every
             body here is composed by this app rather than received, but the rule
             in CLAUDE.md is about the habit as much as the input. */}

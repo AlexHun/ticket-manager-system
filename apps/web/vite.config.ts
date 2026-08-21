@@ -146,6 +146,24 @@ function cspCaddyPlugin(apiOrigin: string, sentryOrigin: string): Plugin {
   };
 }
 
+/**
+ * A directory-safe name for one `VITE_API_URL`, for `cacheDir` below.
+ *
+ * Empty is the production and dev shape — the app calls its own origin through
+ * the Caddy proxy — and it has to produce a name rather than an empty segment,
+ * hence the fallback. Everything else collapses to letters, digits and dashes,
+ * so `http://localhost:3002` becomes `http-localhost-3002`: still readable in a
+ * directory listing, which matters the day someone is wondering why there are
+ * three of these.
+ */
+function cacheKeyFor(apiUrl: string): string {
+  const slug = apiUrl
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : "same-origin";
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname);
   const apiOrigin = apiOriginFrom(env.VITE_API_URL ?? "");
@@ -197,6 +215,23 @@ export default defineConfig(({ mode }) => {
         brotliSize: true,
       }),
     ],
+    // One dependency cache per API origin, instead of one shared by everything.
+    //
+    // **This is what keeps the E2E suite startable.** Vite invalidates the
+    // optimizer cache when the config changes, `VITE_API_URL` is part of this
+    // config (it decides `connect-src` and the axios baseURL), and the E2E run
+    // uses a different value from the dev server: empty for `bun run dev`,
+    // `http://localhost:3002` for Playwright. Sharing `node_modules/.vite` meant
+    // each run invalidated the other's cache, so whichever started next paid a
+    // full re-optimize — **measured at 299,581ms on this project**, against a
+    // `webServer.timeout` of 120,000. The suite could not start, and the error
+    // named the timeout rather than the cause. Running the two alternately made
+    // it ping-pong: every run re-optimized, forever.
+    //
+    // Keyed on the origin rather than on a boolean, so a third arrangement
+    // (pointing the dev server at a deployed API, say) gets its own cache too
+    // instead of joining a queue behind the other two.
+    cacheDir: `node_modules/.vite/${cacheKeyFor(env.VITE_API_URL ?? "")}`,
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "./src"),
@@ -246,7 +281,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 4000,
       proxy: {
-        "/api": "http://localhost:3001",
+        // Overridable so a dev server can be pointed at another API without
+        // editing this file. No `VITE_` prefix: it is server-side routing and has
+        // no business in the client bundle. The E2E suite does *not* use it — it
+        // sets `VITE_API_URL` instead, deliberately, because that is what keeps
+        // its dependency cache separate from this one (see `cacheDir` above).
+        "/api": process.env.DEV_API_PROXY ?? "http://localhost:3001",
       },
     },
     // `vite preview` serves a build the way production should serve it: as a
