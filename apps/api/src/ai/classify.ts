@@ -5,6 +5,7 @@ import {
   AI_FAILURE,
   classify as classifyFailure,
   fenced,
+  logUsage,
   openaiModel,
   type AiFailure,
 } from "./provider";
@@ -234,7 +235,7 @@ export async function classifyTicket(
   signal?: AbortSignal,
 ): Promise<ClassifyResult> {
   try {
-    const { output } = await generateText({
+    const { output, usage } = await generateText({
       model: openaiModel(CLASSIFY_MODEL),
       // `Output.object` rather than `generateObject`, which omits `timeout` from
       // its options — see the note in `summarize.ts`. It matters more here, not
@@ -262,6 +263,8 @@ export async function classifyTicket(
       // No `temperature`: `openai(id)` resolves to the Responses API, which
       // rejects it on reasoning models. Don't add it "for determinism".
     });
+
+    logUsage("classify", CLASSIFY_MODEL, usage);
 
     return { ok: true, category: output.category };
   } catch (err) {

@@ -10,6 +10,7 @@ import {
   AI_FAILURE,
   classify as classifyFailure,
   fenced,
+  logUsage,
   openaiModel,
   unbackedCommitments,
   withoutDashes,
@@ -619,6 +620,7 @@ export async function autoReply(
       // No `temperature`: `openai(id)` resolves to the Responses API, which
       // rejects it on reasoning models.
     });
+    logUsage("auto-reply", AUTO_REPLY_MODEL, generated.usage);
     output = generated.output;
   } catch (err) {
     console.error("[auto-reply] generateText failed:", err);

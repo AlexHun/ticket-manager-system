@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { MESSAGE_DIRECTION } from "@ticket/shared";
+import { MESSAGE_DIRECTION, OUTBOUND_EMAIL_KIND } from "@ticket/shared";
 import { prisma, type Prisma } from "./db";
+import { enqueueEmail } from "./jobs/send-email";
 
 /**
  * Sending a reply from the desk.
@@ -13,10 +14,17 @@ import { prisma, type Prisma } from "./db";
  * ticket's last-message time — and nothing made the two agree. The counterpart
  * is `ingest.ts`, which owns the other edge of the desk for the same reason.
  *
- * **Nothing is sent yet.** There is still no mail transport: this writes a row,
- * exactly as both callers did. That is the point of building it now — when a
- * transport lands there is one implementation to change, and every reply the
- * desk makes already passes through it.
+ * **A reply is two rows now, written together.** The `Message` is the thread as
+ * the app sees it; the `OutboundEmail` beside it is the same reply as the
+ * customer will get it, and `enqueueEmail` writes it into whatever transaction
+ * this call is already in. They commit together or not at all, which is the
+ * only arrangement where "it is on the thread" and "we tried to send it" cannot
+ * disagree — see `docs/adr/0009-outbound-email-goes-through-a-transactional-outbox.md`.
+ *
+ * **Nothing is delivered yet**, and that is now a fact about the *transport*
+ * rather than about this module. With no provider bound the worker marks the
+ * row `undeliverable` and it shows up on `/outbox`; when Postmark is bound,
+ * `mail/transport.ts` changes and nothing here does.
  *
  * What the callers keep is what is genuinely theirs. The route has the session,
  * the 404 and the response shape. The job has the claim on the ticket, the
@@ -73,6 +81,22 @@ const SUPPORT_NAME = "Support (automated)";
  */
 function newOutboundMessageId(ticketId: number): string {
   return `${ticketId}.${randomUUID()}@${MESSAGE_ID_DOMAIN}`;
+}
+
+/**
+ * What a mail client puts in front of a subject when you answer.
+ *
+ * Only once: a thread that has been round a few times should read `Re: Cannot
+ * log in`, not `Re: Re: Re: Cannot log in`. Checked case-insensitively because
+ * the prefix arrives however the customer's client wrote it, and only at the
+ * front, so a subject that merely mentions "re:" somewhere is left alone.
+ *
+ * Deliberately not localised. Mail clients thread on `In-Reply-To` and
+ * `References`, which are set beside this — the subject is for a person to read.
+ */
+function replySubject(subject: string): string {
+  const trimmed = subject.trim();
+  return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
 }
 
 /**
@@ -206,28 +230,41 @@ async function write(
   // letting the insert throw would route it through the error pipeline as a
   // 500.
   //
-  // `take: 1` on the reverse of the thread's own ordering *is* its last
-  // message — the same tie-break, so the parent is the one the agent can see at
-  // the bottom of the pane. A ticket with no messages yet threads nothing and
-  // gets a null, which is what a first email looks like anyway.
+  // The whole thread in its own order, rather than just the last message.
+  //
+  // The last of them is the parent — the same tie-break as before, so it is
+  // still the message an agent can see at the bottom of the pane — and the list
+  // in front of it is the `References` header. That equivalence holds because
+  // this desk threads linearly: every reply hangs off whatever the thread ended
+  // with, so the ancestors of the new message are the thread. It would stop
+  // being true the day a ticket could branch, and `References` would then have
+  // to be walked rather than read off in order.
+  //
+  // A ticket with no messages yet threads nothing and references nothing, which
+  // is what a first email looks like anyway.
   const ticket = await client.ticket.findUnique({
     where: { id: reply.ticketId },
     select: {
       id: true,
+      subject: true,
+      customerEmail: true,
+      customerName: true,
       messages: {
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: 1,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: { messageId: true },
       },
     },
   });
   if (!ticket) return { outcome: SEND_OUTCOME.noSuchTicket };
 
+  const references = ticket.messages.map((m) => m.messageId);
+  const parentMessageId = references.at(-1) ?? null;
+
   const message = await client.message.create({
     data: {
       ticketId: ticket.id,
       messageId: newOutboundMessageId(ticket.id),
-      inReplyTo: ticket.messages[0]?.messageId ?? null,
+      inReplyTo: parentMessageId,
       textBody: reply.textBody,
       // The column defaults to `inbound`, so this is not optional.
       direction: MESSAGE_DIRECTION.outbound,
@@ -248,6 +285,30 @@ async function write(
     // of a row no caller wants.
     select: { id: true },
   });
+
+  // The same reply, addressed. In this transaction on purpose: a thread showing
+  // an answer the desk never queued is a customer waiting on something nobody
+  // is going to send, and it would be invisible — the agent saw their message
+  // appear.
+  //
+  // `emailMessageId` carries the id minted above rather than one of its own, so
+  // the header the customer's client threads on is the id `ingest.ts` will look
+  // up when they answer. Two ids here would silently open a new ticket per
+  // reply, and it is the sort of thing nobody notices until a thread splits.
+  await enqueueEmail(
+    {
+      kind: OUTBOUND_EMAIL_KIND.reply,
+      messageId: message.id,
+      toEmail: ticket.customerEmail,
+      toName: ticket.customerName,
+      subject: replySubject(ticket.subject),
+      textBody: reply.textBody,
+      emailMessageId: message.messageId,
+      inReplyTo: parentMessageId,
+      references,
+    },
+    client,
+  );
 
   return { outcome: SEND_OUTCOME.sent, message };
 }

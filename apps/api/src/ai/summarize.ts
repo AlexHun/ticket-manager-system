@@ -12,6 +12,7 @@ import {
   AI_FAILURE,
   classify,
   fenced,
+  logUsage,
   openaiModel,
   withoutDashes,
   type AiFailure,
@@ -524,7 +525,7 @@ export async function summarizeTicket(
   signal?: AbortSignal,
 ): Promise<SummarizeResult> {
   try {
-    const { output } = await generateText({
+    const { output, usage } = await generateText({
       model: openaiModel(SUMMARY_MODEL),
       // `Output.object` rather than the `generateObject` function next to it in
       // the SDK, for one concrete reason: `generateObject` omits `timeout` from
@@ -553,6 +554,8 @@ export async function summarizeTicket(
       // No `temperature`: `openai(id)` resolves to the Responses API, which
       // rejects it on reasoning models. Don't add it "for determinism".
     });
+
+    logUsage("summarize", SUMMARY_MODEL, usage);
 
     const summary = tidy(output);
     if (!summary) return { ok: false, reason: AI_FAILURE.empty };

@@ -4,6 +4,7 @@ import {
   classify,
   fenced,
   isAiConfigured,
+  logUsage,
   openaiModel,
   unbackedCommitments,
   withoutDashes,
@@ -259,7 +260,7 @@ export async function polishDraft(
   signal?: AbortSignal,
 ): Promise<PolishResult> {
   try {
-    const { text } = await generateText({
+    const { text, usage } = await generateText({
       model: openaiModel(POLISH_MODEL),
       system: SYSTEM_PROMPT,
       prompt: userPrompt(draft, context),
@@ -294,6 +295,8 @@ export async function polishDraft(
       // No `temperature`: `openai(id)` resolves to the Responses API, which
       // rejects it on reasoning models. Don't add it "for determinism".
     });
+
+    logUsage("polish", POLISH_MODEL, usage);
 
     const polished = withoutDashes(
       (CODE_FENCE.exec(text.trim())?.[1] ?? text).trim(),
