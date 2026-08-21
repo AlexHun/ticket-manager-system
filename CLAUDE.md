@@ -113,6 +113,20 @@ Flow: `mcp__context7__resolve-library-id` → `mcp__context7__query-docs`.
 
 Prefer context7 over web search for library docs. Skip it for refactoring, business-logic debugging, or general programming concepts.
 
+## Driving a real browser
+
+The **chrome-devtools** MCP server is registered in **`.mcp.json`** — project-scoped and checked in, so everyone gets the same one. It drives a real Chrome: navigation, DOM, console, network, performance traces. Use it to look at the running app; use Playwright for anything that should still be true tomorrow (and see the "never write new tests" rule before writing a spec).
+
+It runs the workspace's pinned `chrome-devtools-mcp` through `bunx`, **not** `npx chrome-devtools-mcp@latest`. The version is the lockfile's, the same way every other dependency here is, and a tool that silently upgrades itself mid-session is one that changes behaviour for reasons no commit explains. Chrome is launched lazily on the first tool call, not at startup, and `--channel` picks a non-stable one if the machine has no stable install.
+
+`.mcp.json` is JSON and cannot hold comments, so the flags are explained here:
+
+- **`--redactNetworkHeaders`** is the load-bearing one. Sessions in this app are **cookies, not JWT**, so without it the network tools would pull a live `Cookie` / `Set-Cookie` session token into the transcript the moment anyone inspected a request. Don't drop it to "see the real headers" — sign-in problems here are almost always `SameSite`/origin issues, which the `COOKIE_DOMAIN` note in `auth.ts` covers without needing the token itself.
+- **`--isolated`** gives each run a throwaway profile and never touches a real Chrome profile. It also means every session starts signed out, which is the honest state to debug an auth-gated app from; the seeded credentials are one form fill away.
+- **`--viewport=1280x720`** matches Playwright's `devices["Desktop Chrome"]`. `tickets.spec.ts` asserts column widths, that the header stays put while rows scroll, and that the window never scrolls — debugging at some other size would disagree with those for reasons that are not bugs.
+- **`--usageStatistics=false`** and **`--performanceCrux=false`** stop it calling outward. CrUX ships trace URLs to a Google API, which for a localhost dev server is noise at best.
+- **`--screenshotFormat=webp`** with **`--screenshotMaxWidth=1280`**: screenshots are by far the biggest thing this server puts in context, and a full-size PNG of this dashboard buys nothing a WebP does not.
+
 ## Conventions
 
 - **Never write new tests unless explicitly asked.** No new spec files, no new `it`/`test` cases, no new E2E specs — not "for coverage", not as a bonus after a feature, not proactively after a bug fix. Do not launch the `playwright-e2e-author` agent on your own initiative. When a change breaks an *existing* test, fix that test (or the code) as part of the change — that is maintenance, not new tests. If you think something needs coverage, say so in one line and move on; wait for the user to ask.

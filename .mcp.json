@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "bunx",
+      "args": [
+        "chrome-devtools-mcp",
+        "--isolated",
+        "--viewport=1280x720",
+        "--redactNetworkHeaders",
+        "--usageStatistics=false",
+        "--performanceCrux=false",
+        "--screenshotFormat=webp",
+        "--screenshotMaxWidth=1280"
+      ]
+    }
+  }
+}
