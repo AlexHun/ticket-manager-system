@@ -296,3 +296,21 @@ export const ticketStatsQuerySchema = z.object({
 });
 
 export type TicketStatsQuery = z.infer<typeof ticketStatsQuerySchema>;
+
+/**
+ * Query params for GET /api/tickets/effectiveness.
+ *
+ * `range` only — no `scope`. This panel answers "is the assistant helping",
+ * a system-wide question with no "mine" reading: the assistant is not an
+ * agent, and `categoryOverride` is about tickets the classifier touched, not
+ * about which agent is signed in.
+ */
+export const ticketEffectivenessQuerySchema = z.object({
+  range: z
+    .enum(DASHBOARD_RANGE, { error: "Invalid range" })
+    .default(DEFAULT_DASHBOARD_RANGE),
+});
+
+export type TicketEffectivenessQuery = z.infer<
+  typeof ticketEffectivenessQuerySchema
+>;

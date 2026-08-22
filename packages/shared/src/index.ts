@@ -1250,6 +1250,59 @@ export interface TicketStatsResponse {
 }
 
 /**
+ * Whether the assistant is helping or getting in the way — part of #16.
+ *
+ * `classified` is the shared denominator for every rate below: tickets the
+ * classifier reached a terminal, *successful* verdict on in the slice —
+ * `classifiedAt` and `category` both set, the same definition `machineClassified`
+ * uses on `/pipeline`. Kept identical on purpose: two definitions of "classified"
+ * across the same dashboard would disagree on exactly the day someone compared
+ * them.
+ */
+export interface AssistantEffectivenessResponse {
+  range: DashboardRange;
+  from: string;
+  to: string;
+  classified: number;
+  autoReply: {
+    /**
+     * Currently assigned to the assistant's own account — the durable signal a
+     * resolution was the machine's (see `docs/standards/domain.md`: "Resolved by
+     * the machine ⇒ assigned to the assistant's own account"). Not `autoResolvedAt`
+     * alone: a reopen clears that column just as it moves the assignee off the
+     * assistant, so the two never disagree, and reading the assignee is what the
+     * ticket asked for.
+     */
+    resolved: number;
+    /** `resolved / classified`. Null, not 0, when nothing was classified — there is no rate to report. */
+    rate: number | null;
+  };
+  decline: {
+    count: number;
+    rate: number | null;
+    /** Every reason, including the zeroes — a zero is information, same as on `/pipeline`. */
+    reasons: Record<AutoReplyDecline, number>;
+  };
+  categoryOverride: {
+    /** Tickets the classifier filed a category on where an agent later changed it. */
+    count: number;
+    rate: number | null;
+  };
+  /**
+   * Average edit distance between a polished draft and what an agent actually
+   * sent, once `Message.polishedDraft` (persisted by the sibling chunk, #20) has
+   * enough sent-and-polished pairs to make the number meaningful. Always `null`
+   * today: computed as a plain Levenshtein distance in Node, a 10k-character pair
+   * (the ceiling `MAX_MESSAGE_BODY_LENGTH` allows) measured at ~14-18s and even
+   * 50 pairs of ordinary ~400-character replies at ~1s — blocking the event loop
+   * for the length of an HTTP request. Needs a bounded algorithm or a database-side
+   * implementation before it can be computed inline; tracked separately rather
+   * than shipped slow.
+   */
+  avgEditDistance: number | null;
+}
+
+/**
  * The unattended path a ticket takes, as six stops in order.
  *
  * This is the pipeline `/pipeline` draws, and it is not a new idea about the
