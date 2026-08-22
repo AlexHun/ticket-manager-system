@@ -1,7 +1,12 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import type { TicketStatsQuery } from "@ticket/core";
-import { DASHBOARD_SCOPE, type TicketStatsResponse } from "@ticket/shared";
+import type { TicketEffectivenessQuery, TicketStatsQuery } from "@ticket/core";
+import {
+  DASHBOARD_SCOPE,
+  type AssistantEffectivenessResponse,
+  type TicketStatsResponse,
+} from "@ticket/shared";
+import { AssistantEffectivenessCard } from "@/components/dashboard/AssistantEffectivenessCard";
 import { DashboardFilters } from "@/components/dashboard/DashboardFilters";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { FirstResponseChart } from "@/components/dashboard/FirstResponseChart";
@@ -44,6 +49,20 @@ function useTicketStatsQuery(params: TicketStatsQuery) {
   });
 }
 
+function useAssistantEffectivenessQuery(params: TicketEffectivenessQuery) {
+  return useQuery({
+    queryKey: ticketKeys.effectiveness(params),
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<AssistantEffectivenessResponse>(
+        "/api/tickets/effectiveness",
+        { params, signal },
+      );
+      return data;
+    },
+    placeholderData: keepPreviousData,
+  });
+}
+
 /**
  * The dashboard, at `/` — where every user already lands after signing in.
  *
@@ -65,7 +84,22 @@ export function DashboardPage() {
     });
   };
 
-  const { data, isPending, isFetching, error } = useTicketStatsQuery(params);
+  const {
+    data,
+    isPending: statsPending,
+    isFetching: statsFetching,
+    error: statsError,
+  } = useTicketStatsQuery(params);
+  const {
+    data: effectiveness,
+    isPending: effectivenessPending,
+    isFetching: effectivenessFetching,
+    error: effectivenessError,
+  } = useAssistantEffectivenessQuery({ range: params.range });
+
+  const isPending = statsPending || effectivenessPending;
+  const isFetching = statsFetching || effectivenessFetching;
+  const error = statsError ?? effectivenessError;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -95,7 +129,7 @@ export function DashboardPage() {
         </p>
       )}
 
-      {data && (
+      {data && effectiveness && (
         <div
           aria-busy={isFetching}
           className={cn(
@@ -183,6 +217,11 @@ export function DashboardPage() {
             <TopCustomersCard
               className={PANEL_SPAN.wide}
               customers={data.topCustomers}
+            />
+
+            <AssistantEffectivenessCard
+              className={PANEL_SPAN.wide}
+              data={effectiveness}
             />
           </div>
         </div>

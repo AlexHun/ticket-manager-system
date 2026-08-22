@@ -61,6 +61,14 @@ export const ticketKeys = {
    * `isDetailKey` stays correct alongside this — it tests `key[1] === "detail"`.
    */
   stats: (params: object) => ["tickets", "stats", params] as const,
+
+  /**
+   * The assistant-effectiveness panel, keyed by range alone — the endpoint
+   * takes no `scope`. Under the `all` prefix for the same reason as `stats`:
+   * resolving a ticket on the detail page should mark this stale too.
+   */
+  effectiveness: (params: object) =>
+    ["tickets", "effectiveness", params] as const,
 };
 
 /**
