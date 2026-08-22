@@ -155,6 +155,12 @@ export type ReplyOrigin =
   | {
       kind: typeof REPLY_ORIGIN.agent;
       author: { id: string; name: string; email: string };
+      /**
+       * The polished draft this reply was sent from, when there was one —
+       * see `Message.polishedDraft`. Never set by the assistant branch:
+       * nothing there was ever handed to Polish.
+       */
+      polishedDraft?: string | null;
     }
   | {
       kind: typeof REPLY_ORIGIN.assistant;
@@ -205,6 +211,7 @@ function senderOf(origin: ReplyOrigin) {
       authorId: origin.author.id,
       automated: false,
       citedArticleIds: [],
+      polishedDraft: origin.polishedDraft ?? null,
     };
   }
 

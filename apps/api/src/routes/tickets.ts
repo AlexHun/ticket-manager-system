@@ -592,7 +592,11 @@ ticketsRouter.post(
       ticketId: params.data.id,
       textBody: body.data.textBody,
       // From the session, never the body: the sender is whoever is signed in.
-      origin: { kind: REPLY_ORIGIN.agent, author: user },
+      origin: {
+        kind: REPLY_ORIGIN.agent,
+        author: user,
+        polishedDraft: body.data.polishedDraft,
+      },
     });
 
     // A missing ticket is a 404, and the module answers it rather than throwing
