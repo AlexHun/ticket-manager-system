@@ -110,6 +110,19 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
   const [prePolish, setPrePolish] = useState<string | null>(null);
 
   /**
+   * The polished draft the box currently reflects, or null when it does not.
+   *
+   * Set alongside `prePolish`, one polish later, and cleared on the same two
+   * edges — Undo and a successful send — for the same reason: once either
+   * fires, whatever is in the box is no longer traceable to a particular
+   * Polish call. What survives an ordinary edit is deliberate: the agent may
+   * rewrite the polished text before sending, and that gap between what Polish
+   * proposed and what actually went out is the thing `polishedDraft` on the
+   * wire exists to capture, not to hide.
+   */
+  const [polishedDraft, setPolishedDraft] = useState<string | null>(null);
+
+  /**
    * Whether the send now in flight should resolve the ticket after it lands.
    *
    * Read in the send's `onSuccess`, so it has to be set before `mutate` and
@@ -173,6 +186,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     // request and no way to stash the wrong thing.
     onSuccess: (polished, sent) => {
       setPrePolish(sent);
+      setPolishedDraft(polished);
       // Writes through to the registered <textarea>; an uncontrolled box shows
       // nothing new otherwise. `shouldValidate` clears a stale "Write a reply
       // before sending" left behind by an earlier empty submit.
@@ -211,6 +225,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
       // The draft Undo would restore has just been sent. Offering to put it back
       // into a box that was cleared on purpose is a trap.
       setPrePolish(null);
+      setPolishedDraft(null);
       polish.reset();
 
       // One click, one toast. When the agent asked for both, the resolve's own
@@ -245,12 +260,16 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     if (prePolish === null) return;
     setValue("textBody", prePolish, { shouldDirty: true, shouldValidate: true });
     setPrePolish(null);
+    setPolishedDraft(null);
     polish.reset();
   };
 
   const submit = handleSubmit((values) => {
     polish.reset();
-    mutation.mutate(values);
+    // `polishedDraft` is local UI state, not a form field — same reasoning as
+    // `resolveOnSend` below. Undefined when Polish was never run or was undone,
+    // so a plain send drops the key rather than sending an empty string.
+    mutation.mutate({ ...values, polishedDraft: polishedDraft ?? undefined });
   });
 
   const busy =

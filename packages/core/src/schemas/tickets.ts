@@ -198,6 +198,22 @@ export const createTicketMessageSchema = z.object({
       MAX_MESSAGE_BODY_LENGTH,
       `A reply is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
     ),
+  /**
+   * The polished draft this reply was sent from, when Polish produced the text
+   * still in the box — or text since hand-edited from it. Optional and absent
+   * on anything that was never polished, or that undid its polish before
+   * sending: those are indistinguishable from a draft that never touched
+   * Polish, which is the honest reading of "the agent typed this".
+   *
+   * Same cap as `textBody`: this started as a reply the composer already
+   * accepted, so a tighter bound here would reject text the box already holds.
+   */
+  polishedDraft: z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_MESSAGE_BODY_LENGTH)
+    .optional(),
 });
 
 export type CreateTicketMessageValues = z.infer<

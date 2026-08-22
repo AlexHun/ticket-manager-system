@@ -282,6 +282,18 @@ model Message {
   // question "why did we tell this customer that?" is asked at the ticket,
   // often weeks later, by someone who does not have the logs.
   citedArticleIds String[]
+  // The AI-polished draft this reply was sent from — what `POST
+  // /api/ai/polish-reply` handed the agent, whether they sent it unedited or
+  // rewrote it further before pressing Send.
+  //
+  // Null on everything inbound, on an assistant reply (the auto-reply never
+  // touches Polish), and on an agent reply that was typed by hand or that
+  // undid its polish before sending. Non-null is what lets `textBody` above be
+  // compared against the draft it started from — "average agent edit
+  // distance" (part of #16) needs both halves of that pair, and this column is
+  // what stops the second half being thrown away at send time. Nothing
+  // computes the distance yet; this only stops the data being lost.
+  polishedDraft   String?
   /// The outbox row that carries this message to the customer, once there is one.
   ///
   /// Null on every inbound message — nothing we received is anything we send —

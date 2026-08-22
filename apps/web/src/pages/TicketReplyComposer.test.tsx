@@ -268,7 +268,59 @@ describe("TicketReplyComposer polish — undo", () => {
     // trap.
     await waitFor(() => expect(replyBox()).toHaveValue(""));
     expect(screen.queryByRole("button", { name: "Undo polish" })).toBeNull();
-    expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, { textBody: POLISHED });
+    // Sent unedited, so the draft it came from is the same text that went out
+    // — still worth recording, since #20 wants the pair even when the two agree.
+    expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, {
+      textBody: POLISHED,
+      polishedDraft: POLISHED,
+    });
+  });
+});
+
+describe("TicketReplyComposer polish — the draft a send is compared against", () => {
+  test("a reply never polished carries no polished draft", async () => {
+    mockApi();
+    const user = renderComposer();
+    fillDraft(DRAFT);
+
+    await user.click(sendButton());
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, { textBody: DRAFT }),
+    );
+  });
+
+  test("a hand-edit after polishing is sent against the text Polish returned", async () => {
+    mockApi();
+    const user = renderComposer();
+    fillDraft(DRAFT);
+    await user.click(polishButton());
+    await waitFor(() => expect(replyBox()).toHaveValue(POLISHED));
+
+    const edited = `${POLISHED}\n\nPS: tracking updates tomorrow.`;
+    fillDraft(edited);
+    await user.click(sendButton());
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, {
+        textBody: edited,
+        polishedDraft: POLISHED,
+      }),
+    );
+  });
+
+  test("undoing a polish before sending carries no polished draft", async () => {
+    mockApi();
+    const user = renderComposer();
+    fillDraft(DRAFT);
+    await user.click(polishButton());
+    await user.click(await screen.findByRole("button", { name: "Undo polish" }));
+
+    await user.click(sendButton());
+
+    await waitFor(() =>
+      expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, { textBody: DRAFT }),
+    );
   });
 });
 
