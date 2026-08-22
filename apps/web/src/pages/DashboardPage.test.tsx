@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   AGE_BUCKET,
+  AUTO_REPLY_DECLINES,
   DASHBOARD_BUCKET,
   DASHBOARD_RANGE,
   DASHBOARD_SCOPE,
@@ -11,6 +12,8 @@ import {
   TICKET_CATEGORY,
   TICKET_STATUS,
   USER_ROLE,
+  type AssistantEffectivenessResponse,
+  type AutoReplyDecline,
   type TicketStatsResponse,
 } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
@@ -18,10 +21,20 @@ import { DashboardPage } from "./DashboardPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-const mockGet = vi.fn();
+// Two independent fakes, dispatched on the URL: the two endpoints have to be
+// controllable separately (a test that fails one must not silently drag the
+// other's fixture into an incompatible shape) but a single-argument
+// `mockResolvedValue` can't distinguish them.
+const mockStatsGet = vi.fn();
+const mockEffectivenessGet = vi.fn();
 
 vi.mock("@/lib/api", () => ({
-  api: { get: (...args: unknown[]) => mockGet(...args) },
+  api: {
+    get: (url: string, ...rest: unknown[]) =>
+      url === "/api/tickets/effectiveness"
+        ? mockEffectivenessGet(url, ...rest)
+        : mockStatsGet(url, ...rest),
+  },
 }));
 
 vi.mock("@/lib/auth-client", () => ({
@@ -142,13 +155,37 @@ function stats(over: Partial<TicketStatsResponse> = {}): TicketStatsResponse {
   };
 }
 
+function effectiveness(
+  over: Partial<AssistantEffectivenessResponse> = {},
+): AssistantEffectivenessResponse {
+  return {
+    range: DEFAULT_DASHBOARD_RANGE,
+    from: "2026-07-08T00:00:00.000Z",
+    to: "2026-08-07T00:00:00.000Z",
+    classified: 40,
+    autoReply: { resolved: 20, rate: 0.5 },
+    decline: {
+      count: 12,
+      rate: 0.3,
+      reasons: Object.fromEntries(
+        AUTO_REPLY_DECLINES.map((d) => [d, 0]),
+      ) as Record<AutoReplyDecline, number>,
+    },
+    categoryOverride: { count: 4, rate: 0.1 },
+    avgEditDistance: null,
+    ...over,
+  };
+}
+
 function renderDashboard() {
   return renderWithQuery(<DashboardPage />, { initialEntries: ["/"] });
 }
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockGet.mockResolvedValue({ data: stats() });
+  mockStatsGet.mockReset();
+  mockEffectivenessGet.mockReset();
+  mockStatsGet.mockResolvedValue({ data: stats() });
+  mockEffectivenessGet.mockResolvedValue({ data: effectiveness() });
 });
 
 // --- Tests ----------------------------------------------------------------
@@ -165,6 +202,7 @@ describe("DashboardPage", () => {
       "Workload",
       "Open backlog age",
       "Top customers",
+      "Assistant effectiveness",
     ]) {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
@@ -195,7 +233,7 @@ describe("DashboardPage", () => {
   });
 
   test("congratulates a healthy slice instead", async () => {
-    mockGet.mockResolvedValue({
+    mockStatsGet.mockResolvedValue({
       data: stats({
         summary: {
           total: 100,
@@ -254,8 +292,16 @@ describe("DashboardPage", () => {
     // A bare "/" carries no range param, so the resting request is the default
     // rather than whatever the fixture happens to echo back.
     await waitFor(() =>
-      expect(mockGet).toHaveBeenCalledWith(
+      expect(mockStatsGet).toHaveBeenCalledWith(
         "/api/tickets/stats",
+        expect.objectContaining({
+          params: expect.objectContaining({ range: DEFAULT_DASHBOARD_RANGE }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(mockEffectivenessGet).toHaveBeenCalledWith(
+        "/api/tickets/effectiveness",
         expect.objectContaining({
           params: expect.objectContaining({ range: DEFAULT_DASHBOARD_RANGE }),
         }),
@@ -268,8 +314,16 @@ describe("DashboardPage", () => {
     await user.click(screen.getByLabelText("Last 7d"));
 
     await waitFor(() =>
-      expect(mockGet).toHaveBeenCalledWith(
+      expect(mockStatsGet).toHaveBeenCalledWith(
         "/api/tickets/stats",
+        expect.objectContaining({
+          params: expect.objectContaining({ range: DASHBOARD_RANGE.d7 }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(mockEffectivenessGet).toHaveBeenCalledWith(
+        "/api/tickets/effectiveness",
         expect.objectContaining({
           params: expect.objectContaining({ range: DASHBOARD_RANGE.d7 }),
         }),
@@ -278,14 +332,14 @@ describe("DashboardPage", () => {
   });
 
   test("shows an error instead of panels when the request fails", async () => {
-    mockGet.mockRejectedValue(new Error("boom"));
+    mockStatsGet.mockRejectedValue(new Error("boom"));
     renderDashboard();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("Tickets created")).not.toBeInTheDocument();
   });
 
   test("renders an empty slice without crashing", async () => {
-    mockGet.mockResolvedValue({
+    mockStatsGet.mockResolvedValue({
       data: stats({
         summary: {
           total: 0,
@@ -319,8 +373,25 @@ describe("DashboardPage", () => {
         needsAttention: [],
       }),
     });
+    mockEffectivenessGet.mockResolvedValue({
+      data: effectiveness({
+        classified: 0,
+        autoReply: { resolved: 0, rate: null },
+        decline: {
+          count: 0,
+          rate: null,
+          reasons: Object.fromEntries(
+            AUTO_REPLY_DECLINES.map((d) => [d, 0]),
+          ) as Record<AutoReplyDecline, number>,
+        },
+        categoryOverride: { count: 0, rate: null },
+      }),
+    });
     renderDashboard();
     expect(await screen.findByText("Needs attention")).toBeInTheDocument();
     expect(screen.getByText("Nothing waiting. Inbox zero.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No tickets were classified in this range."),
+    ).toBeInTheDocument();
   });
 });

@@ -46,6 +46,7 @@ export function DashboardSkeleton() {
         <PanelSkeleton className={PANEL_SPAN.narrow} short />
 
         <PanelSkeleton className={PANEL_SPAN.wide} short />
+        <PanelSkeleton className={PANEL_SPAN.wide} short />
       </div>
     </div>
   );
