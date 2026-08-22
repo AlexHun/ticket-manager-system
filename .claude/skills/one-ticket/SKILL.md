@@ -27,12 +27,13 @@ If it would hurt to lose it, it belongs in a comment on the issue.
 
 ## Workflow
 
-### 1. Claim exactly one
+### 1. Claim exactly one, move it in progress
 
 ```bash
 gh issue list --state open --assignee @me          # must come back empty
 gh issue view <n> --comments                       # read it and its history
 gh issue edit <n> --add-assignee @me               # the session's first write
+git checkout -b <type>/<n>-<slug>                  # e.g. feat/42-reply-drafts
 ```
 
 If something is already assigned to `@me`, that is the ticket in work. Finish or
@@ -41,6 +42,10 @@ park it before claiming another — say so rather than picking up the new reques
 **Refuse a blocked ticket.** `gh api repos/{owner}/{repo}/issues/<n> --jq
 .issue_dependencies_summary.blocked_by` must be `0`. A parent issue with
 sub-issues is an epic, not a ticket — claim one of its children.
+
+The assignment **is** "in progress" — this tracker has no separate status
+label or board column, so a ticket assigned to `@me` on an open branch is the
+whole signal. Nothing else to set.
 
 ### 2. Work it
 
@@ -77,24 +82,35 @@ EOF
 )"
 ```
 
-### 5. Close, then clear
+### 5. Complete: commit, push, open the PR
 
-Ticket done means: work committed on a branch, the issue closed with a comment
-saying what shipped, and nothing uncommitted left behind.
+Ticket done means: the ticket's own checks pass (whatever `coding-standards`
+requires — tests, typecheck, build), the work is committed, pushed, and a PR
+is open against `main` with `Closes #<n>` in the body — that is what flips
+the issue to closed, so don't `gh issue close` it directly.
 
 ```bash
-git status --short                                 # must be clean
-gh issue close <n> --comment "<what shipped, and where>"
+git status --short                                 # review what's staged
+git add <files>                                    # never a blind -A
+git commit -m "<type>(<scope>): <what, and why if non-obvious>"
+git push -u origin <type>/<n>-<slug>
+gh pr create --title "<type>(<scope>): ..." --body "Closes #<n>. <summary>"
 ```
 
+Confirm before pushing and opening the PR — both are visible, hard-to-reverse
+actions. If review turns up more work, keep going on the same branch; the
+ticket isn't done until the PR is open and `git status --short` is clean.
+
 Then stop and tell the user to run **`/clear`** before the next ticket — the
-ticket is closed and its context is now dead weight.
+PR is out for review and the rest of this thread is dead weight. Don't wait
+on the merge inside this conversation; the issue closes on its own once the
+PR lands.
 
 ## Which command to ask for
 
 | Situation | Ask for | Because |
 |---|---|---|
 | Mid-ticket, context heavy | `/compact` | the thread still matters; keep the thread, drop the bulk |
-| Ticket closed | `/clear` | nothing here is needed again; the issue holds what matters |
+| PR open, ticket done | `/clear` | nothing here is needed again; the issue and PR hold what matters |
 | Switching tickets for any reason | `/clear` | this is the whole point of the skill |
 | User asks to keep going anyway | neither | say the risk once, then continue — it is their call |
