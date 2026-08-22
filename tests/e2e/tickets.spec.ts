@@ -2286,7 +2286,12 @@ test.describe("Ticket detail page", () => {
     await signIn(page, "agent");
     await page.goto(`/tickets/${id}`);
     // The thread is on screen; the ticket is gone by the time Send is pressed.
-    await expect(page.getByText("Messages (3)")).toBeVisible();
+    // Longer than the default 5000ms: under a full-suite run this page's first
+    // render can be slow enough to trip the default, which reads as a reply-path
+    // regression when it is really just a late paint (see #34).
+    await expect(page.getByText("Messages (3)")).toBeVisible({
+      timeout: 15_000,
+    });
     await testDb.ticket.delete({ where: { id } });
 
     const box = page.getByRole("textbox", { name: "Reply" });
