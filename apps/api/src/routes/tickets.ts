@@ -49,6 +49,7 @@ import {
   writeActivity,
   type TicketFields,
 } from "../ticket-activity";
+import { ticketEffectivenessHandler } from "./ticket-effectiveness";
 import { ticketStatsHandler } from "./ticket-stats";
 
 /**
@@ -376,6 +377,16 @@ ticketsRouter.get(
  * nothing new.
  */
 ticketsRouter.get("/stats", requireAuth, ticketStatsHandler);
+
+/**
+ * Whether the assistant is helping. Implementation lives in
+ * `./ticket-effectiveness`, beside `./ticket-stats` rather than folded into it —
+ * part of #16.
+ *
+ * `requireAuth`, matching `/stats`: both roles already see every ticket this is
+ * aggregated from.
+ */
+ticketsRouter.get("/effectiveness", requireAuth, ticketEffectivenessHandler);
 
 /**
  * How many tickets are behind each saved view in the sidebar.
