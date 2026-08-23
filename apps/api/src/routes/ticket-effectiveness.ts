@@ -4,12 +4,14 @@ import {
   asAutoReplyDecline,
   AUTO_REPLY_DECLINES,
   DASHBOARD_RANGE_DAYS,
+  MESSAGE_DIRECTION,
   TICKET_ACTIVITY_ACTION,
   TICKET_ACTOR_KIND,
   type AssistantEffectivenessResponse,
   type AutoReplyDecline,
 } from "@ticket/shared";
 import { Prisma, prisma } from "../db";
+import { averageEditDistance } from "./ticket-effectiveness-edit-distance";
 import { countCategoryOverrides } from "./ticket-effectiveness-override";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -32,9 +34,10 @@ interface FactsRow {
  *
  * The assistant's numbers, aggregated the way `ticket-stats.ts` already does
  * it — raw SQL for the facts a single scan answers, `groupBy`/`findMany` for
- * the two counts that are more naturally a Prisma query, all three run inside
- * one transaction so the whole response describes the same slice. Part of #16;
- * `avgEditDistance` stays null for the reason on its field in `@ticket/shared`.
+ * the counts that are more naturally a Prisma query, all four run inside one
+ * transaction so the whole response describes the same slice. Part of #16;
+ * see `ticket-effectiveness-edit-distance.ts` for how `avgEditDistance` is
+ * computed and why it no longer has to stay null.
  */
 export async function ticketEffectivenessHandler(
   req: Request,
@@ -72,27 +75,46 @@ export async function ticketEffectivenessHandler(
     WHERE ${slice}
   `;
 
-  const [facts, declineGroups, overrideRows] = await prisma.$transaction([
-    prisma.$queryRaw<FactsRow[]>(factsSql),
-    // Every reason, including the zeroes — same pattern `routes/pipeline.ts`
-    // uses for the identical column.
-    prisma.ticket.groupBy({
-      by: ["autoReplyDecline"],
-      where: { ...window, autoReplyDecline: { not: null } },
-      _count: { _all: true },
-    }),
-    // Bounded by "tickets classified or re-categorised in the slice", not by
-    // ticket volume — most tickets never generate a second `category_changed`
-    // row at all.
-    prisma.ticketActivity.findMany({
-      where: {
-        action: TICKET_ACTIVITY_ACTION.category_changed,
-        actorKind: { in: [TICKET_ACTOR_KIND.assistant, TICKET_ACTOR_KIND.agent] },
-        ticket: window,
-      },
-      select: { ticketId: true, actorKind: true },
-    }),
-  ]);
+  const [facts, declineGroups, overrideRows, editDistancePairs] =
+    await prisma.$transaction([
+      prisma.$queryRaw<FactsRow[]>(factsSql),
+      // Every reason, including the zeroes — same pattern `routes/pipeline.ts`
+      // uses for the identical column.
+      prisma.ticket.groupBy({
+        by: ["autoReplyDecline"],
+        where: { ...window, autoReplyDecline: { not: null } },
+        _count: { _all: true },
+      }),
+      // Bounded by "tickets classified or re-categorised in the slice", not by
+      // ticket volume — most tickets never generate a second `category_changed`
+      // row at all.
+      prisma.ticketActivity.findMany({
+        where: {
+          action: TICKET_ACTIVITY_ACTION.category_changed,
+          actorKind: {
+            in: [TICKET_ACTOR_KIND.assistant, TICKET_ACTOR_KIND.agent],
+          },
+          ticket: window,
+        },
+        select: { ticketId: true, actorKind: true },
+      }),
+      // Scoped through the `ticket` relation rather than the message's own
+      // `createdAt`, so this reads "sent-and-polished pairs on tickets in the
+      // slice" — the same slice every other field on this response uses,
+      // `ticket.createdAt`, not "replies sent in the slice" (a ticket opened
+      // just inside the window can be answered just after it). `automated`
+      // replies are excluded implicitly: the auto-reply never touches Polish,
+      // so `polishedDraft` is always null on one.
+      prisma.message.findMany({
+        where: {
+          direction: MESSAGE_DIRECTION.outbound,
+          polishedDraft: { not: null },
+          textBody: { not: null },
+          ticket: window,
+        },
+        select: { polishedDraft: true, textBody: true },
+      }),
+    ]);
 
   const f = facts[0];
   const classified = f?.classified ?? 0;
@@ -118,6 +140,6 @@ export async function ticketEffectivenessHandler(
     autoReply: { resolved, rate: rate(resolved) },
     decline: { count: declined, rate: rate(declined), reasons },
     categoryOverride: { count: overridden, rate: rate(overridden) },
-    avgEditDistance: null,
+    avgEditDistance: averageEditDistance(editDistancePairs),
   });
 }
