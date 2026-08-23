@@ -950,6 +950,21 @@ export type KnowledgeRevisionAction =
   (typeof KNOWLEDGE_REVISION_ACTION)[keyof typeof KNOWLEDGE_REVISION_ACTION];
 
 /**
+ * Where a revision sits in the approval workflow. `approved` is also the
+ * default for a revision an edit applied immediately — an article not (yet)
+ * flagged for auto-reply needs no second admin, so its edits still take effect
+ * on write, exactly as every edit did before this existed.
+ */
+export const KNOWLEDGE_REVISION_STATUS = {
+  pending: "pending",
+  approved: "approved",
+  rejected: "rejected",
+} as const;
+
+export type KnowledgeRevisionStatus =
+  (typeof KNOWLEDGE_REVISION_STATUS)[keyof typeof KNOWLEDGE_REVISION_STATUS];
+
+/**
  * A knowledge-base article, as the admin screen sees it.
  *
  * **This type carries `internalNote` and the corpus type in the API does not.**
@@ -999,6 +1014,15 @@ export interface KnowledgeArticleRevision {
   archived: boolean;
   editorName: string;
   editorEmail: string | null;
+  /** Pending, approved, or turned down. See `KNOWLEDGE_REVISION_STATUS`. */
+  status: KnowledgeRevisionStatus;
+  /**
+   * Who closed out the review, and when — set on an actual approve or reject,
+   * never backfilled to match `status`. Both null for a `pending` revision and
+   * for one that is `approved` only because no review was needed.
+   */
+  approvedByName: string | null;
+  approvedAt: string | null;
   createdAt: string;
 }
 
@@ -1010,8 +1034,31 @@ export interface KnowledgeArticleResponse {
   article: KnowledgeArticle;
 }
 
+/**
+ * The result of submitting an edit. `pendingRevision` is null when the edit
+ * applied immediately (`article` reflects it); otherwise `article` is
+ * unchanged and `pendingRevision` is the proposal now awaiting a second
+ * admin — see `docs/adr` and issue #17 for why an auto-replyable article's
+ * edits take this path.
+ */
+export interface KnowledgeArticleEditResponse {
+  article: KnowledgeArticle;
+  pendingRevision: KnowledgeArticleRevision | null;
+}
+
 export interface KnowledgeArticleRevisionsResponse {
   revisions: KnowledgeArticleRevision[];
+}
+
+/** A pending revision approved: the live article and the closed-out revision. */
+export interface KnowledgeRevisionApprovalResponse {
+  article: KnowledgeArticle;
+  revision: KnowledgeArticleRevision;
+}
+
+/** A pending revision turned down: the article is untouched. */
+export interface KnowledgeRevisionRejectionResponse {
+  revision: KnowledgeArticleRevision;
 }
 
 /** Ceilings on what an admin may write into a prompt. See `knowledgeArticleSchema`. */
