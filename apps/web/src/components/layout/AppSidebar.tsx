@@ -3,6 +3,7 @@ import { useSession } from "@/lib/auth-client";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -123,6 +124,21 @@ export function AppSidebar() {
           )}
         </nav>
       </SidebarContent>
+
+      <SidebarFooter>
+        {/* `VITE_SENTRY_RELEASE` is already `web@<version>+<commit>[-dirty]` —
+            see the comment on `releaseName()` in vite.config.ts — so this reads
+            it rather than tracking a second version string. sr-only rather than
+            hidden outright when collapsed, same reasoning as the brand text
+            above: still in the accessible tree, just not fighting the icon
+            rail for width. */}
+        <span
+          className="truncate px-2 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:sr-only"
+          title={import.meta.env.VITE_SENTRY_RELEASE}
+        >
+          {import.meta.env.VITE_SENTRY_RELEASE ?? "dev"}
+        </span>
+      </SidebarFooter>
 
       {/* Drag/click target on the sidebar's edge — the second way to collapse,
           for people who never find the keyboard shortcut. */}
