@@ -11,6 +11,7 @@ import {
   KB_BODY_MAX_LENGTH,
   TICKET_CATEGORY,
   type KnowledgeArticle,
+  type KnowledgeArticleEditResponse,
   type KnowledgeArticleResponse,
 } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
@@ -110,7 +111,7 @@ export function KnowledgeArticleDialog({
   const mutation = useMutation({
     mutationFn: async (values: KnowledgeArticleValues) => {
       if (article) {
-        const { data } = await api.patch<KnowledgeArticleResponse>(
+        const { data } = await api.patch<KnowledgeArticleEditResponse>(
           `/api/knowledge-articles/${article.id}`,
           values,
         );
@@ -120,12 +121,24 @@ export function KnowledgeArticleDialog({
         "/api/knowledge-articles",
         values,
       );
-      return data;
+      return { ...data, pendingRevision: null };
     },
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
       setServerError(null);
       onOpenChange(false);
+      if (data.pendingRevision) {
+        // Nothing customer-visible moved — say so, rather than "updated",
+        // which would read as if the edit already took effect.
+        toast.success(
+          `${data.article.id} submitted for approval`,
+          {
+            description:
+              "A second admin needs to approve it before it goes live.",
+          },
+        );
+        return;
+      }
       toast.success(
         isEdit
           ? `${data.article.id} updated`
