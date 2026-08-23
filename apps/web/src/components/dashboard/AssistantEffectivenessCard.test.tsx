@@ -105,17 +105,20 @@ describe("AssistantEffectivenessCard", () => {
     expect(screen.queryByText("Decline reasons")).not.toBeInTheDocument();
   });
 
-  test("notes that edit distance isn't tracked yet while it ships null", () => {
+  test("notes that edit distance isn't tracked yet when the slice has no pairs", () => {
     render(<AssistantEffectivenessCard data={effectiveness({ avgEditDistance: null })} />);
     expect(
       screen.getByText("Draft-vs-sent edit distance isn't tracked yet."),
     ).toBeInTheDocument();
   });
 
-  test("hides the edit-distance note once a number exists", () => {
+  test("shows the rounded average once a number exists", () => {
     render(<AssistantEffectivenessCard data={effectiveness({ avgEditDistance: 12.5 })} />);
     expect(
       screen.queryByText("Draft-vs-sent edit distance isn't tracked yet."),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Average draft-vs-sent edit distance: 13 characters"),
+    ).toBeInTheDocument();
   });
 });

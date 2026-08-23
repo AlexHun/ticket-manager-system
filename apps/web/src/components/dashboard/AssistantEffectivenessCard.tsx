@@ -22,9 +22,10 @@ function pct(rate: number | null): string {
  * question, not three: auto-reply rate, decline rate and category-override
  * rate all share the same denominator (`classified`).
  *
- * `avgEditDistance` ships null from the API today — see the field comment on
- * `AssistantEffectivenessResponse` in `@ticket/shared` for why. The footer
- * says so rather than the panel silently pretending the number doesn't exist.
+ * `avgEditDistance` is `null` until the slice has at least one sent-and-polished
+ * pair — see the field comment on `AssistantEffectivenessResponse` in
+ * `@ticket/shared`. The footer says so rather than the panel silently
+ * rendering nothing where a number is expected.
  */
 export function AssistantEffectivenessCard({
   data,
@@ -104,11 +105,11 @@ export function AssistantEffectivenessCard({
               </div>
             )}
 
-            {avgEditDistance === null && (
-              <p className="text-xs text-muted-foreground">
-                Draft-vs-sent edit distance isn't tracked yet.
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {avgEditDistance === null
+                ? "Draft-vs-sent edit distance isn't tracked yet."
+                : `Average draft-vs-sent edit distance: ${Math.round(avgEditDistance)} characters`}
+            </p>
           </>
         )}
       </CardContent>

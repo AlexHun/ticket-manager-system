@@ -1290,14 +1290,18 @@ export interface AssistantEffectivenessResponse {
   };
   /**
    * Average edit distance between a polished draft and what an agent actually
-   * sent, once `Message.polishedDraft` (persisted by the sibling chunk, #20) has
-   * enough sent-and-polished pairs to make the number meaningful. Always `null`
-   * today: computed as a plain Levenshtein distance in Node, a 10k-character pair
-   * (the ceiling `MAX_MESSAGE_BODY_LENGTH` allows) measured at ~14-18s and even
-   * 50 pairs of ordinary ~400-character replies at ~1s — blocking the event loop
-   * for the length of an HTTP request. Needs a bounded algorithm or a database-side
-   * implementation before it can be computed inline; tracked separately rather
-   * than shipped slow.
+   * sent, over every `Message` in the slice with both halves of that pair (see
+   * `Message.polishedDraft`, persisted by the sibling chunk, #20). `null` when
+   * the slice has no such pair yet, not `0` — there is no rate to report.
+   *
+   * A plain Levenshtein distance in Node was measured too slow to compute
+   * inline: a 10k-character pair (the ceiling `MAX_MESSAGE_BODY_LENGTH` allows)
+   * took ~14-18s, and even 50 pairs of ordinary ~400-character replies took
+   * ~1s, blocking the event loop for the length of the request.
+   * `apps/api/src/routes/ticket-effectiveness-edit-distance.ts` computes this
+   * with Ukkonen's banded algorithm instead — cheap in proportion to how
+   * different the two strings actually are, which for a lightly-edited draft
+   * is small.
    */
   avgEditDistance: number | null;
 }
