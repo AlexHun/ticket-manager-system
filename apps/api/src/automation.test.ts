@@ -46,6 +46,11 @@ import {
 import express from "express";
 import { HANDOFF_TARGET, USER_ROLE, type HandoffTarget } from "@ticket/shared";
 
+// Pure query-string builders with no connection behind them — safe to pull
+// off the generated client directly rather than through `./db`, which is the
+// module being mocked below.
+const { Prisma } = await import("./generated/prisma/client");
+
 /* ── The world behind the modules ────────────────────────────────────────── */
 
 interface FakeUser {
@@ -175,6 +180,15 @@ const revisionCreate = mock((args: { data: Omit<RevisionRow, "id" | "createdAt">
 const transaction = mock((ops: Promise<unknown>[]) => Promise.all(ops));
 
 mock.module("./db", () => ({
+  // A real, connection-free namespace — not because this file's route calls
+  // `Prisma.sql`, but because `mock.module("./db"/"../db", …)` shares one
+  // process-wide registry across every file that mocks this specifier (see
+  // the note above), and the *first* factory registered fixes which export
+  // names exist at all. `./routes/activity.test.ts` needs `Prisma` on this
+  // same module; omitting it here would make that file's collision depend on
+  // load order — passing alone, failing in the suite — for a key this file
+  // never reads. See the `mock.module("../db", …)` comment there.
+  Prisma,
   prisma: {
     user: { findFirst },
     automationSettings: { findUnique: settingsFindUnique, upsert },

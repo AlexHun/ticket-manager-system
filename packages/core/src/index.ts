@@ -1,3 +1,4 @@
+export * from "./schemas/activity";
 export * from "./schemas/auth";
 export * from "./schemas/automation";
 export * from "./schemas/users";

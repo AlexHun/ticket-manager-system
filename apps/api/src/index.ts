@@ -15,6 +15,7 @@ import { prisma } from "./db";
 import { auth, trustedOrigins } from "./auth";
 import { closeAll } from "./events/hub";
 import { startJobs, stopJobs } from "./jobs";
+import { activityRouter } from "./routes/activity";
 import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
 import { eventsRouter } from "./routes/events";
@@ -135,6 +136,11 @@ app.use("/api/automation", automationRouter);
 // Admin-only, and read-only. On a deployment with no mail provider this is how
 // an invitation actually reaches somebody — see the note in routes/outbox.ts.
 app.use("/api/outbox", outboxRouter);
+
+// Admin-only, and read-only: a query-time merge of the trails above plus
+// sent replies. Registered last among these because it reads across all of
+// them rather than owning a domain of its own.
+app.use("/api/activity", activityRouter);
 
 // After every route, which is the only place it works: it is an Express error
 // middleware, and it can only see what routes registered before it throw.

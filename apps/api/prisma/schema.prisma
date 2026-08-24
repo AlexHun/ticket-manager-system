@@ -369,6 +369,13 @@ model Message {
   // has this agent answered" query. `ticket.assignedToId` is indexed for the
   // identical reason.
   @@index([authorId])
+  // Same reasoning as `TicketActivity`'s own `@@index([createdAt])`: the
+  // unified activity feed reads every outbound reply, newest first, across
+  // every ticket, and the index above leads with `ticketId` — no help to a
+  // query that doesn't have one. `direction` first, not `createdAt` first,
+  // because the feed always filters to `outbound` and never wants inbound mail
+  // in the same scan.
+  @@index([direction, createdAt])
   @@map("message")
 }
 
@@ -450,12 +457,21 @@ model TicketActivity {
   actorEmail String?
   createdAt  DateTime             @default(now())
 
-  /// The only way this table is ever read: one ticket, oldest first.
+  /// The only way this table is read on its own: one ticket, oldest first.
   @@index([ticketId, createdAt])
   /// Postgres does not index a foreign key for you, and clearing `actorId` on a
   /// user delete would otherwise seq-scan the whole table. Same reason
   /// `message.authorId` is indexed.
   @@index([actorId])
+  /// The unified activity feed (`GET /api/activity`, `routes/activity.ts`)
+  /// reads this table with no `ticketId` in the predicate at all — newest
+  /// first, across every ticket — which the index above cannot serve: `ticketId`
+  /// leads it, so a global scan skips straight past it. Mirrors the plain
+  /// `@@index([createdAt])` `AdminActivity`, `AutomationSettingsRevision` and
+  /// `KnowledgeArticleRevision` already carry for the same reason — this table
+  /// was the one still missing it, because until the feed existed nothing ever
+  /// read it that way.
+  @@index([createdAt])
   @@map("ticket_activity")
 }
 

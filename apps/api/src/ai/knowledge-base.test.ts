@@ -26,7 +26,17 @@ const findMany = mock((args: FindManyArgs) => {
 });
 const count = mock(() => Promise.resolve(0));
 
+// `Prisma` is included even though nothing in this file calls `Prisma.sql`:
+// `mock.module("../db", …)` shares one process-wide registry with every
+// other file that mocks this specifier, the first factory registered fixes
+// which export names exist at all, and `../routes/activity.test.ts` needs
+// `Prisma` on this same module. Omitting it here would make that file's
+// collision depend on load order. See the comment on its own `mock.module`
+// call.
+const { Prisma } = await import("../generated/prisma/client");
+
 mock.module("../db", () => ({
+  Prisma,
   prisma: { knowledgeArticle: { findMany, count } },
 }));
 
