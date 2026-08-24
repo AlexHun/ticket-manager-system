@@ -1,23 +1,12 @@
 import { useState } from "react";
 import axios from "axios";
-import { useQuery } from "@tanstack/react-query";
-import type { User, UsersListResponse } from "@ticket/shared";
+import type { User } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { api } from "@/lib/api";
+import { useUsersQuery } from "@/lib/use-users";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { UserDialog } from "./UserDialog";
 import { UsersTable, UsersTableSkeleton } from "./UsersTable";
-
-function useUsersQuery() {
-  return useQuery({
-    queryKey: ["users"],
-    queryFn: async ({ signal }) => {
-      const { data } = await api.get<UsersListResponse>("/api/users", { signal });
-      return data.users;
-    },
-  });
-}
 
 export function UsersPage() {
   const { data: users, isPending, error } = useUsersQuery();

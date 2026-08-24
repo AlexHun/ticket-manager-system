@@ -1,6 +1,7 @@
 import {
   BookTextIcon,
   FlaskConicalIcon,
+  HistoryIcon,
   LayoutDashboardIcon,
   NetworkIcon,
   TicketIcon,
@@ -47,6 +48,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: "/pipeline",
     label: "Pipeline",
     icon: WorkflowIcon,
+    role: USER_ROLE.admin,
+  },
+  {
+    to: "/activity",
+    label: "Activity",
+    icon: HistoryIcon,
     role: USER_ROLE.admin,
   },
 ] as const;
