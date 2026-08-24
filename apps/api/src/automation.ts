@@ -182,3 +182,49 @@ export async function resolveHandoffUser(): Promise<AutomationUser | null> {
 export async function resolveHandoff(): Promise<string | null> {
   return (await resolveHandoffUser())?.id ?? null;
 }
+
+/** Either side of a handoff change: the target, and the person it names. */
+export interface HandoffSide {
+  target: HandoffTarget;
+  /** Present only when `target` is `user`; null on `admin` and `unassigned`. */
+  user: { id: string; name: string } | null;
+}
+
+/** One row for `AutomationSettingsRevision`, or the diff before it is written. */
+export interface AutomationSettingsRevisionEntry {
+  fromTarget: HandoffTarget;
+  toTarget: HandoffTarget;
+  fromUserId: string | null;
+  fromUserName: string | null;
+  toUserId: string | null;
+  toUserName: string | null;
+}
+
+/**
+ * What changed between two readings of the handoff setting, as a single
+ * revision entry — or null when nothing did.
+ *
+ * Unlike `userEditChanges` in `admin-activity.ts`, this never returns more
+ * than one entry: there is only one field pair here (`target` and the user it
+ * names), so a change is one row or none, never several. A PATCH that
+ * re-sends the setting a deployment already has — same target, same named
+ * person — writes nothing, same guard `ticketChanges` and `userEditChanges`
+ * both use.
+ */
+export function handoffChange(
+  before: HandoffSide,
+  after: HandoffSide,
+): AutomationSettingsRevisionEntry | null {
+  const sameTarget = before.target === after.target;
+  const sameUser = (before.user?.id ?? null) === (after.user?.id ?? null);
+  if (sameTarget && sameUser) return null;
+
+  return {
+    fromTarget: before.target,
+    toTarget: after.target,
+    fromUserId: before.user?.id ?? null,
+    fromUserName: before.user?.name ?? null,
+    toUserId: after.user?.id ?? null,
+    toUserName: after.user?.name ?? null,
+  };
+}

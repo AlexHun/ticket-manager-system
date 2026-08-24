@@ -8,6 +8,7 @@ import {
 } from "@ticket/shared";
 import {
   assistantUser,
+  handoffChange,
   readHandoffSettings,
   resolveHandoffUser,
   SETTINGS_ID,
@@ -97,10 +98,11 @@ automationRouter.patch(
 
     const { target, userId } = parsed.data;
 
+    let candidate: { id: string; name: string } | null = null;
     if (userId !== null) {
-      const candidate = await prisma.user.findFirst({
+      candidate = await prisma.user.findFirst({
         where: { id: userId, deletedAt: null, automated: false },
-        select: { id: true },
+        select: { id: true, name: true },
       });
       if (!candidate) {
         res.status(400).json({ error: "Assignee not found" });
@@ -109,6 +111,10 @@ automationRouter.patch(
     }
 
     const session = sessionOf(res);
+
+    // Read before the write — the revision diffs against what the setting had
+    // a moment ago, and the upsert below does not hand that back.
+    const before = await readHandoffSettings();
 
     // Upsert rather than update: the row does not exist until somebody changes
     // the setting for the first time, because the default has to work on a
@@ -123,11 +129,33 @@ automationRouter.patch(
       updatedByName: session.user.name,
     };
 
-    await prisma.automationSettings.upsert({
-      where: { id: SETTINGS_ID },
-      create: { id: SETTINGS_ID, ...audit },
-      update: audit,
+    // One row per change, same guard `userEditChanges` uses: a PATCH that
+    // re-sends the setting a deployment already has writes nothing.
+    const revision = handoffChange(before, {
+      target,
+      user: target === HANDOFF_TARGET.user ? candidate : null,
     });
+
+    await prisma.$transaction([
+      prisma.automationSettings.upsert({
+        where: { id: SETTINGS_ID },
+        create: { id: SETTINGS_ID, ...audit },
+        update: audit,
+      }),
+      // In the same transaction as the setting itself: the two must never
+      // disagree about how many times the setting has changed.
+      ...(revision
+        ? [
+            prisma.automationSettingsRevision.create({
+              data: {
+                ...revision,
+                changedById: session.user.id,
+                changedByName: session.user.name,
+              },
+            }),
+          ]
+        : []),
+    ]);
 
     console.log(
       `[automation] ${session.user.email} set the handoff target to ${target}${
