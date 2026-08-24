@@ -48,6 +48,9 @@ const PipelinePage = lazy(() =>
 const ActivityPage = lazy(() =>
   import("@/pages/ActivityPage").then((m) => ({ default: m.ActivityPage })),
 );
+const TutorialsPage = lazy(() =>
+  import("@/pages/TutorialsPage").then((m) => ({ default: m.TutorialsPage })),
+);
 
 /**
  * The dev tools, at `/__dev` — the project map and the test runner.
@@ -108,6 +111,12 @@ export function App() {
                   `apps/api/src/routes/activity.ts` is the control; this guard
                   is UX. */}
               <Route path="/activity" element={<ActivityPage />} />
+              {/* Admin-only for the same reason the knowledge base is: this is
+                  where the copy shown to every user gets written. No separate
+                  API guard note needed beyond `requireAdmin` on
+                  `GET /api/tutorials` and `PUT /api/tutorials/:pageKey` — see
+                  `apps/api/src/routes/tutorials.ts`. */}
+              <Route path="/tutorials" element={<TutorialsPage />} />
             </Route>
             {/* Inside the shell, so an unknown address keeps the sidebar and
                 says so rather than redirecting to the dashboard and pretending
