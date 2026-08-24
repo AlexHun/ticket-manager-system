@@ -2,6 +2,7 @@ import { isAiConfigured } from "../ai/provider";
 import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
+import { registerPruneActivityTrails } from "./prune-activity-trails";
 import { registerPruneOutbox } from "./prune-outbox";
 import { registerSendEmail } from "./send-email";
 
@@ -28,8 +29,9 @@ import { registerSendEmail } from "./send-email";
  * `pgboss` schema and doing nothing but poll. That stopped being merely wasted
  * the day a second, AI-enabled process could point at the same database: an
  * idle-but-registered worker on the keyless process can still pick up a job the
- * other process enqueued and fail it for want of a key. `send-email` and
- * `prune-outbox` have no such split — every deployment runs them.
+ * other process enqueued and fail it for want of a key. `send-email`,
+ * `prune-outbox` and `prune-activity-trails` have no such split — every
+ * deployment runs them.
  */
 export async function startJobs(): Promise<void> {
   const boss = await startBoss();
@@ -39,6 +41,7 @@ export async function startJobs(): Promise<void> {
   }
   await registerSendEmail(boss);
   await registerPruneOutbox(boss);
+  await registerPruneActivityTrails(boss);
 }
 
 export { stopBoss as stopJobs };
