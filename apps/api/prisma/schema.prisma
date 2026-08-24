@@ -8,12 +8,12 @@ datasource db {
 }
 
 model User {
-  id                 String                     @id
-  name               String
-  email              String
-  emailVerified      Boolean                    @default(false)
-  image              String?
-  role               Role                       @default(agent)
+  id                   String                       @id
+  name                 String
+  email                String
+  emailVerified        Boolean                      @default(false)
+  image                String?
+  role                 Role                         @default(agent)
   /// This row stands for the assistant rather than for a person.
   ///
   /// **Meant to be unique, and kept that way by having one writer.** Nothing in
@@ -33,24 +33,27 @@ model User {
   /// mutating user routes refuse it outright. It exists to be the assignee on a
   /// ticket the machine finished, so the assignee column answers "who dealt with
   /// this" for every ticket instead of going blank on the automated ones.
-  automated          Boolean                    @default(false)
-  banned             Boolean?                   @default(false)
-  banReason          String?
-  banExpires         DateTime?
-  deletedAt          DateTime?
-  createdAt          DateTime                   @default(now())
-  updatedAt          DateTime                   @updatedAt
-  sessions           Session[]
-  accounts           Account[]
-  assignedTickets    Ticket[]                   @relation("TicketAssignee")
-  authoredMessages   Message[]
-  knowledgeEdits     KnowledgeArticleRevision[]
-  knowledgeApprovals KnowledgeArticleRevision[] @relation("KnowledgeRevisionApprover")
-  ticketActivity     TicketActivity[]
-  handoffFor         AutomationSettings[]       @relation("HandoffAssignee")
-  automationEdits    AutomationSettings[]       @relation("AutomationEditor")
-  adminActivityActed AdminActivity[]            @relation("AdminActivityActor")
-  adminActivityOn    AdminActivity[]            @relation("AdminActivityTarget")
+  automated            Boolean                      @default(false)
+  banned               Boolean?                     @default(false)
+  banReason            String?
+  banExpires           DateTime?
+  deletedAt            DateTime?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  sessions             Session[]
+  accounts             Account[]
+  assignedTickets      Ticket[]                     @relation("TicketAssignee")
+  authoredMessages     Message[]
+  knowledgeEdits       KnowledgeArticleRevision[]
+  knowledgeApprovals   KnowledgeArticleRevision[]   @relation("KnowledgeRevisionApprover")
+  ticketActivity       TicketActivity[]
+  handoffFor           AutomationSettings[]         @relation("HandoffAssignee")
+  automationEdits      AutomationSettings[]         @relation("AutomationEditor")
+  adminActivityActed   AdminActivity[]              @relation("AdminActivityActor")
+  adminActivityOn      AdminActivity[]              @relation("AdminActivityTarget")
+  handoffRevisionsFrom AutomationSettingsRevision[] @relation("AutomationRevisionFromUser")
+  handoffRevisionsTo   AutomationSettingsRevision[] @relation("AutomationRevisionToUser")
+  handoffRevisionsMade AutomationSettingsRevision[] @relation("AutomationRevisionChangedBy")
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -112,6 +115,53 @@ enum HandoffTarget {
   admin
   user
   unassigned
+}
+
+/// One recorded change to `AutomationSettings` — the handoff-target history.
+///
+/// `AutomationSettings` is a singleton row: every write overwrites `target` and
+/// `handoffUserId` in place, so only the *current* value and its last editor
+/// were ever known. This is the account-management trail's shape (a
+/// transition, not a snapshot — the `AdminActivity` model's comment explains
+/// why that fits here and not `KnowledgeArticleRevision`'s full-snapshot
+/// shape) applied to the one other admin action with nothing durable behind
+/// it: `PATCH /api/automation/handoff` used to only `console.log` a change.
+///
+/// **One field pair, one row per change.** Unlike `AdminActivity`, which
+/// covers several distinct actions and therefore needs an `action` column,
+/// there is only one thing that can change here — the target, and the user it
+/// names when that target is `user` — so a before/after on that pair is the
+/// whole story and no action enum is needed.
+model AutomationSettingsRevision {
+  id            Int           @id @default(autoincrement())
+  fromTarget    HandoffTarget
+  toTarget      HandoffTarget
+  /// The named person on either side, only when that side's target is `user`;
+  /// null otherwise. `SetNull` plus a denormalised name, same reasoning as
+  /// `AutomationSettings.handoffUser`: the row has to keep naming somebody
+  /// after their account is gone.
+  fromUserId    String?
+  fromUser      User?         @relation("AutomationRevisionFromUser", fields: [fromUserId], references: [id], onDelete: SetNull)
+  fromUserName  String?
+  toUserId      String?
+  toUser        User?         @relation("AutomationRevisionToUser", fields: [toUserId], references: [id], onDelete: SetNull)
+  toUserName    String?
+  /// The admin who made the change. Always present at write time — the route
+  /// sits behind `requireAdmin` — and loses only its id, via `SetNull`, if
+  /// that admin's account is later deleted.
+  changedById   String?
+  changedBy     User?         @relation("AutomationRevisionChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+  changedByName String
+  createdAt     DateTime      @default(now())
+
+  /// The only way this table is read today: everything, newest first.
+  @@index([createdAt])
+  /// Postgres does not index a foreign key for you — same reasoning as
+  /// `AdminActivity`'s FK indexes.
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([changedById])
+  @@map("automation_settings_revision")
 }
 
 model Session {

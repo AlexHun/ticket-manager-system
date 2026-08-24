@@ -141,10 +141,45 @@ const upsert = mock((args: UpsertArgs) => {
   return Promise.resolve(settingsRow);
 });
 
+interface RevisionRow {
+  id: number;
+  fromTarget: HandoffTarget;
+  toTarget: HandoffTarget;
+  fromUserId: string | null;
+  fromUserName: string | null;
+  toUserId: string | null;
+  toUserName: string | null;
+  changedById: string | null;
+  changedByName: string;
+  createdAt: Date;
+}
+
+/** Every revision ever written, oldest first — what the trail would read. */
+let revisions: RevisionRow[];
+
+const revisionCreate = mock((args: { data: Omit<RevisionRow, "id" | "createdAt"> }) => {
+  const row: RevisionRow = {
+    id: revisions.length + 1,
+    createdAt: new Date("2026-08-24T09:00:00.000Z"),
+    ...args.data,
+  };
+  revisions.push(row);
+  return Promise.resolve(row);
+});
+
+/**
+ * `$transaction`'s array form: every element is already a called mock (a
+ * pending promise) by the time this runs, exactly like the real client — this
+ * only has to await them together.
+ */
+const transaction = mock((ops: Promise<unknown>[]) => Promise.all(ops));
+
 mock.module("./db", () => ({
   prisma: {
     user: { findFirst },
     automationSettings: { findUnique: settingsFindUnique, upsert },
+    automationSettingsRevision: { create: revisionCreate },
+    $transaction: transaction,
   },
 }));
 
@@ -180,6 +215,7 @@ mock.module("./middleware/auth", () => ({
 
 const {
   assistantUser,
+  handoffChange,
   readHandoffSettings,
   resolveHandoff,
   resolveHandoffUser,
@@ -256,8 +292,11 @@ beforeEach(() => {
   findFirst.mockClear();
   settingsFindUnique.mockClear();
   upsert.mockClear();
+  revisionCreate.mockClear();
+  transaction.mockClear();
   users = [FOUNDER, SECOND_ADMIN, AGENT, GONE, ASSISTANT].map((u) => ({ ...u }));
   settingsRow = null;
+  revisions = [];
 });
 
 /* ── Reading the setting ─────────────────────────────────────────────────── */
@@ -461,6 +500,74 @@ describe("assistantUser", () => {
     ];
 
     expect(await assistantUser()).toMatchObject({ id: ASSISTANT.id });
+  });
+});
+
+/* ── The revision diff — no mocking needed, it touches nothing ─────────────── */
+
+describe("handoffChange", () => {
+  test("is null when nothing moved", () => {
+    expect(
+      handoffChange(
+        { target: HANDOFF_TARGET.admin, user: null },
+        { target: HANDOFF_TARGET.admin, user: null },
+      ),
+    ).toBeNull();
+  });
+
+  test("is null when the same person is re-sent under `user`", () => {
+    expect(
+      handoffChange(
+        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
+        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
+      ),
+    ).toBeNull();
+  });
+
+  test("records the target moving, with no user on either side", () => {
+    expect(
+      handoffChange(
+        { target: HANDOFF_TARGET.admin, user: null },
+        { target: HANDOFF_TARGET.unassigned, user: null },
+      ),
+    ).toEqual({
+      fromTarget: HANDOFF_TARGET.admin,
+      toTarget: HANDOFF_TARGET.unassigned,
+      fromUserId: null,
+      fromUserName: null,
+      toUserId: null,
+      toUserName: null,
+    });
+  });
+
+  test("records swapping the named person, target unchanged", () => {
+    expect(
+      handoffChange(
+        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
+        { target: HANDOFF_TARGET.user, user: { id: SECOND_ADMIN.id, name: "Bo Admin" } },
+      ),
+    ).toEqual({
+      fromTarget: HANDOFF_TARGET.user,
+      toTarget: HANDOFF_TARGET.user,
+      fromUserId: AGENT.id,
+      fromUserName: "Aaron Agent",
+      toUserId: SECOND_ADMIN.id,
+      toUserName: "Bo Admin",
+    });
+  });
+
+  test("records leaving `user`, keeping who it used to name", () => {
+    expect(
+      handoffChange(
+        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
+        { target: HANDOFF_TARGET.admin, user: null },
+      ),
+    ).toMatchObject({
+      fromUserId: AGENT.id,
+      fromUserName: "Aaron Agent",
+      toUserId: null,
+      toUserName: null,
+    });
   });
 });
 
@@ -700,5 +807,68 @@ describe("PATCH /api/automation/handoff — the audit trail", () => {
     await patch({ target: HANDOFF_TARGET.admin, userId: null });
 
     expect((await get()).body.settings?.updatedByName).toBe("Ada Admin");
+  });
+});
+
+describe("PATCH /api/automation/handoff — the revision trail", () => {
+  test("writes nothing on the first PATCH when it only restates the default", async () => {
+    // No row exists yet, so `readHandoffSettings` reads as `{ admin, null }` —
+    // the same thing this PATCH asks for. Nothing changed, so nothing should
+    // be written to the trail even though this is the very first write.
+    await patch({ target: HANDOFF_TARGET.admin, userId: null });
+
+    expect(revisionCreate).not.toHaveBeenCalled();
+    expect(revisions).toHaveLength(0);
+  });
+
+  test("records the target changing, and who made the change", async () => {
+    const sent = await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
+
+    expect(sent.status).toBe(200);
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({
+      fromTarget: HANDOFF_TARGET.admin,
+      toTarget: HANDOFF_TARGET.user,
+      fromUserId: null,
+      toUserId: AGENT.id,
+      toUserName: "Aaron Agent",
+      changedById: FOUNDER.id,
+      changedByName: "Ada Admin",
+    });
+  });
+
+  test("records only the named person changing, target held at `user`", async () => {
+    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
+    await patch({ target: HANDOFF_TARGET.user, userId: SECOND_ADMIN.id });
+
+    expect(revisions).toHaveLength(2);
+    expect(revisions[1]).toMatchObject({
+      fromTarget: HANDOFF_TARGET.user,
+      toTarget: HANDOFF_TARGET.user,
+      fromUserId: AGENT.id,
+      fromUserName: "Aaron Agent",
+      toUserId: SECOND_ADMIN.id,
+      toUserName: "Bo Admin",
+    });
+  });
+
+  test("writes no second row when a PATCH re-sends the setting already in force", async () => {
+    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
+    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
+
+    expect(revisions).toHaveLength(1);
+  });
+
+  test("commits the setting and the revision in one transaction", async () => {
+    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  test("writes nothing to the trail when the request is refused", async () => {
+    await patch({ target: HANDOFF_TARGET.user, userId: "u_nobody" });
+
+    expect(transaction).not.toHaveBeenCalled();
+    expect(revisionCreate).not.toHaveBeenCalled();
   });
 });
