@@ -45,6 +45,9 @@ const OutboxPage = lazy(() =>
 const PipelinePage = lazy(() =>
   import("@/pages/PipelinePage").then((m) => ({ default: m.PipelinePage })),
 );
+const ActivityPage = lazy(() =>
+  import("@/pages/ActivityPage").then((m) => ({ default: m.ActivityPage })),
+);
 
 /**
  * The dev tools, at `/__dev` — the project map and the test runner.
@@ -99,6 +102,12 @@ export function App() {
                   it. `requireAdmin` on every route in
                   `apps/api/src/routes/pipeline.ts` is the control. */}
               <Route path="/pipeline" element={<PipelinePage />} />
+              {/* Admin-only for the same reason knowledge and pipeline are:
+                  it reads across account and automation history an agent has
+                  no route to elsewhere. `requireAdmin` on every route in
+                  `apps/api/src/routes/activity.ts` is the control; this guard
+                  is UX. */}
+              <Route path="/activity" element={<ActivityPage />} />
             </Route>
             {/* Inside the shell, so an unknown address keeps the sidebar and
                 says so rather than redirecting to the dashboard and pretending
