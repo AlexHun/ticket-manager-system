@@ -6,3 +6,4 @@ export * from "./schemas/inbound-email";
 export * from "./schemas/tickets";
 export * from "./schemas/knowledge";
 export * from "./schemas/pipeline";
+export * from "./schemas/tutorials";

@@ -23,6 +23,7 @@ import { knowledgeRouter } from "./routes/knowledge";
 import { outboxRouter } from "./routes/outbox";
 import { pipelineRouter } from "./routes/pipeline";
 import { ticketsRouter } from "./routes/tickets";
+import { tutorialsRouter } from "./routes/tutorials";
 import { usersRouter } from "./routes/users";
 import { inboundEmailRouter } from "./routes/webhooks/inbound-email";
 
@@ -121,6 +122,9 @@ app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
 app.use("/api/tickets", ticketsRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/ai", aiRouter);
+// Mixed guards inside: both roles read/dismiss a page's tutorial, only an
+// admin edits what it says — see the router's own comment.
+app.use("/api/tutorials", tutorialsRouter);
 // Admin-only on every route inside it, which is worth knowing here as well as
 // there: this one edits the prompt of the feature that writes to customers
 // unattended.
