@@ -9,6 +9,19 @@ const WEB_PORT = 4001;
 const API_URL = `http://localhost:${API_PORT}`;
 const WEB_URL = `http://localhost:${WEB_PORT}`;
 
+// A second, AI-enabled API instance for issue #26's real-pipeline E2E spec
+// (tests/e2e/knowledge-auto-reply-approval.spec.ts) — see that file and
+// apps/api/.env.test.ai for why this cannot just be the ordinary :3002 server
+// with AUTO_REPLY_ENABLED flipped on: every other spec in this suite asserts
+// tickets stay uncategorised while AI is off, and flipping it suite-wide would
+// make all of them flaky. `AI_API_PORT` must match `.env.test.ai`'s `PORT`;
+// `FAKE_OPENAI_PORT` must match `tests/e2e/fake-openai/constants.ts`'s
+// `STUB_PORT`. Safe to share the ordinary run's `ticket_manager_test` database
+// only because `workers: 1` below means nothing else is writing concurrently.
+const AI_API_PORT = 3003;
+const FAKE_OPENAI_PORT = 3999;
+const AI_API_URL = `http://localhost:${AI_API_PORT}`;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   globalSetup: "./tests/e2e/global-setup.ts",
@@ -113,6 +126,37 @@ export default defineConfig({
       //   cd apps/web && VITE_API_URL=http://localhost:3002 \
       //     bunx vite --port 4001 --strictPort
       timeout: 420_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      // The fake OpenAI stub — see tests/e2e/fake-openai/server.ts. Plain
+      // node:http under Bun, no framework, up for the whole suite alongside
+      // everything else at negligible cost.
+      command: `bun tests/e2e/fake-openai/server.ts`,
+      cwd: __dirname,
+      url: `http://localhost:${FAKE_OPENAI_PORT}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      // The second, AI-enabled API instance. `-o`/`--override` is load-bearing,
+      // not a style choice: dotenv's default is to leave a key alone once an
+      // earlier `-e` file has set it, so without this flag `.env.test.ai`'s
+      // PORT/OPENAI_API_KEY/OPENAI_BASE_URL/AUTO_REPLY_ENABLED/
+      // PIPELINE_SIMULATOR_ENABLED would silently lose to .env.test's values —
+      // verified against dotenv's own `populate()` rather than assumed. Every
+      // other key (DATABASE_URL, BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
+      // SEED_ADMIN_*, webhook creds, NODE_ENV=test) is untouched by
+      // `.env.test.ai` and keeps flowing from `.env.test`.
+      command:
+        "bunx dotenv -e .env.test -e .env.test.ai -o -- bun src/index.ts",
+      cwd: path.join(__dirname, "apps/api"),
+      url: `${AI_API_URL}/api/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
       stdout: "pipe",
       stderr: "pipe",
     },

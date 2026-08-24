@@ -11,4 +11,6 @@ export const knowledgeKeys = {
   all: ["knowledge"] as const,
   list: ["knowledge", "list"] as const,
   revisions: (id: string) => ["knowledge", "revisions", id] as const,
+  /** Every pending revision, across the whole corpus — the review queue. */
+  pending: ["knowledge", "pending"] as const,
 };

@@ -122,8 +122,17 @@ jobs:
       # container above — and deliberately leaves OPENAI_API_KEY empty with
       # AUTO_REPLY_ENABLED=false, so a CI run spends no money and touches no
       # network.
+      #
+      # .env.test.ai is the second, AI-enabled API instance's env layer (see
+      # playwright.config.ts and tests/e2e/knowledge-auto-reply-approval.spec.ts)
+      # — also gitignored, also copied from a committed .example. Without this,
+      # dotenv-cli silently loads nothing for the missing file and that second
+      # process boots with .env.test's own PORT/OPENAI_API_KEY/AUTO_REPLY_ENABLED,
+      # colliding with the ordinary :3002 server instead of running its own.
       - name: Write the test environment
-        run: cp apps/api/.env.test.example apps/api/.env.test
+        run: |
+          cp apps/api/.env.test.example apps/api/.env.test
+          cp apps/api/.env.test.ai.example apps/api/.env.test.ai
 
       - name: Generate Prisma client
         working-directory: apps/api

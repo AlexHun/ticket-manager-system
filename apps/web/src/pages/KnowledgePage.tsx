@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { ArchiveRestore, History, Pencil, Sparkles } from "lucide-react";
 import type {
   KnowledgeArticle,
+  KnowledgeArticleRevisionsResponse,
   KnowledgeArticlesResponse,
 } from "@ticket/shared";
 import { CategoryBadge } from "@/components/TicketBadges";
+import { Hint } from "@/components/Hint";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,8 +52,27 @@ function useKnowledgeArticles() {
   });
 }
 
+/**
+ * Every pending revision across the corpus, keyed by article — the map that
+ * lets a list of articles say "this one has a proposal waiting" without a
+ * request per row.
+ */
+function usePendingRevisions() {
+  return useQuery({
+    queryKey: knowledgeKeys.pending,
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<KnowledgeArticleRevisionsResponse>(
+        "/api/knowledge-articles/pending-revisions",
+        { signal },
+      );
+      return new Map(data.revisions.map((r) => [r.articleId, r]));
+    },
+  });
+}
+
 export function KnowledgePage() {
   const { data: articles, isPending, error } = useKnowledgeArticles();
+  const { data: pendingByArticle } = usePendingRevisions();
 
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<KnowledgeArticle | null>(null);
@@ -132,6 +153,7 @@ export function KnowledgePage() {
               <ArticleRow
                 key={article.id}
                 article={article}
+                pending={pendingByArticle?.has(article.id) ?? false}
                 onEdit={() => openEdit(article)}
                 onArchive={() => setArchiving(article)}
                 onHistory={() => setHistoryOf(article)}
@@ -174,11 +196,14 @@ export function KnowledgePage() {
  */
 function ArticleRow({
   article,
+  pending,
   onEdit,
   onArchive,
   onHistory,
 }: {
   article: KnowledgeArticle;
+  /** Whether a revision on this article is awaiting a second admin. */
+  pending: boolean;
   onEdit: () => void;
   onArchive: () => void;
   onHistory: () => void;
@@ -221,6 +246,17 @@ function ArticleRow({
                 Archived
               </Badge>
             )}
+            {pending && (
+              // Names the risk this whole review step exists for: an edit
+              // sitting here has not reached a customer yet, whatever the
+              // rest of the row still shows.
+              <Badge
+                variant="outline"
+                className="border-transparent bg-status-warning-soft text-status-warning"
+              >
+                Awaiting approval
+              </Badge>
+            )}
           </div>
           {/* The serif, and the third place it appears. Same argument as the
               ticket subject: this is the customer's question, in the customer's
@@ -248,10 +284,25 @@ function ArticleRow({
             History
           </Button>
           {!article.archived && (
-            <Button variant="ghost" size="sm" onClick={onEdit}>
-              <Pencil aria-hidden="true" />
-              Edit
-            </Button>
+            <Hint
+              content={
+                pending
+                  ? "Resolve the pending revision before editing again"
+                  : ""
+              }
+            >
+              <span className="inline-flex">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={pending}
+                  onClick={onEdit}
+                >
+                  <Pencil aria-hidden="true" />
+                  Edit
+                </Button>
+              </span>
+            </Hint>
           )}
           <Button variant="ghost" size="sm" onClick={onArchive}>
             <ArchiveRestore aria-hidden="true" />

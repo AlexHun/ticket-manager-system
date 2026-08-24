@@ -4,11 +4,15 @@ import type { z, ZodType } from "zod";
 import { knowledgeArchiveSchema, knowledgeArticleSchema } from "@ticket/core";
 import {
   KNOWLEDGE_REVISION_ACTION,
+  KNOWLEDGE_REVISION_STATUS,
   type KnowledgeArticle,
+  type KnowledgeArticleEditResponse,
   type KnowledgeArticleResponse,
   type KnowledgeArticleRevision,
   type KnowledgeArticleRevisionsResponse,
   type KnowledgeArticlesResponse,
+  type KnowledgeRevisionApprovalResponse,
+  type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
 import { prisma } from "../db";
 import { requireAdmin, sessionOf } from "../middleware/auth";
@@ -108,6 +112,57 @@ function toArticle(row: ArticleRow): KnowledgeArticle {
 }
 
 /**
+ * Every column the revision endpoints need, shared by the history list, the
+ * pending-review queue, and the two routes that resolve one.
+ */
+const REVISION_SELECT = {
+  id: true,
+  articleId: true,
+  action: true,
+  title: true,
+  category: true,
+  body: true,
+  internalNote: true,
+  autoReply: true,
+  archived: true,
+  editorId: true,
+  editorName: true,
+  editorEmail: true,
+  status: true,
+  approvedByName: true,
+  approvedAt: true,
+  createdAt: true,
+} as const;
+
+type RevisionRow = {
+  id: number;
+  articleId: string;
+  action: KnowledgeArticleRevision["action"];
+  title: string;
+  category: KnowledgeArticle["category"];
+  body: string;
+  internalNote: string | null;
+  autoReply: boolean;
+  archived: boolean;
+  editorId: string | null;
+  editorName: string;
+  editorEmail: string | null;
+  status: KnowledgeArticleRevision["status"];
+  approvedByName: string | null;
+  approvedAt: Date | null;
+  createdAt: Date;
+};
+
+function toRevision(row: RevisionRow): KnowledgeArticleRevision {
+  const { editorId: _editorId, ...rest } = row;
+  return {
+    ...rest,
+    createdAt: row.createdAt.toISOString(),
+    approvedAt: row.approvedAt ? row.approvedAt.toISOString() : null,
+  };
+}
+
+/**
  * The next free article id.
  *
  * Counts from the highest id that has **ever** existed, archived rows included,
@@ -187,30 +242,30 @@ knowledgeRouter.get(
     const revisions = await prisma.knowledgeArticleRevision.findMany({
       where: { articleId: id },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: {
-        id: true,
-        articleId: true,
-        action: true,
-        title: true,
-        category: true,
-        body: true,
-        internalNote: true,
-        autoReply: true,
-        archived: true,
-        editorName: true,
-        editorEmail: true,
-        createdAt: true,
-      },
+      select: REVISION_SELECT,
     });
 
-    res.json({
-      revisions: revisions.map(
-        (revision): KnowledgeArticleRevision => ({
-          ...revision,
-          createdAt: revision.createdAt.toISOString(),
-        }),
-      ),
+    res.json({ revisions: revisions.map(toRevision) });
+  },
+);
+
+/**
+ * Every pending revision, across the whole corpus — the review queue.
+ *
+ * Oldest first, so a proposal cannot sit unreviewed indefinitely just because
+ * newer ones keep landing on top of it.
+ */
+knowledgeRouter.get(
+  "/pending-revisions",
+  requireAdmin,
+  async (_req: Request, res: Response<KnowledgeArticleRevisionsResponse>) => {
+    const revisions = await prisma.knowledgeArticleRevision.findMany({
+      where: { status: KNOWLEDGE_REVISION_STATUS.pending },
+      orderBy: { createdAt: "asc" },
+      select: REVISION_SELECT,
     });
+
+    res.json({ revisions: revisions.map(toRevision) });
   },
 );
 
@@ -264,12 +319,28 @@ knowledgeRouter.post(
   },
 );
 
+/**
+ * An edit to an article already in (or about to enter) the auto-reply corpus
+ * needs a second admin. Everything else keeps writing straight through, the
+ * way every edit here always has.
+ *
+ * Checked against **either** side of the change, not just the article's
+ * current state: an article not yet flagged `autoReply` still gates the edit
+ * that turns the flag on, because that edit is what puts brand-new, unreviewed
+ * text in front of the model — the exact risk this whole chain exists to
+ * catch. Only an edit that is `autoReply: false` on both sides is genuinely
+ * outside the blast radius (`docs/adr`, issue #17).
+ */
+function needsApproval(existing: { autoReply: boolean }, data: { autoReply: boolean }): boolean {
+  return existing.autoReply || data.autoReply;
+}
+
 knowledgeRouter.patch(
   "/:id",
   requireAdmin,
   async (
     req: Request,
-    res: Response<KnowledgeArticleResponse | { error: string }>,
+    res: Response<KnowledgeArticleEditResponse | { error: string }>,
   ) => {
     const parsed = parseBody(knowledgeArticleSchema, req, res);
     if (!parsed) return;
@@ -279,7 +350,7 @@ knowledgeRouter.patch(
 
     const existing = await prisma.knowledgeArticle.findUnique({
       where: { id },
-      select: { archived: true },
+      select: ARTICLE_SELECT,
     });
     if (!existing) {
       res.status(404).json({ error: "Article not found" });
@@ -298,25 +369,205 @@ knowledgeRouter.patch(
       return;
     }
 
-    const article = await prisma.$transaction(async (tx) => {
-      const updated = await tx.knowledgeArticle.update({
-        where: { id },
-        data,
-        select: ARTICLE_SELECT,
+    if (!needsApproval(existing, data)) {
+      const article = await prisma.$transaction(async (tx) => {
+        const updated = await tx.knowledgeArticle.update({
+          where: { id },
+          data,
+          select: ARTICLE_SELECT,
+        });
+        await tx.knowledgeArticleRevision.create({
+          data: {
+            ...data,
+            articleId: id,
+            action: KNOWLEDGE_REVISION_ACTION.updated,
+            archived: false,
+            ...editorOf(res),
+          },
+        });
+        return updated;
       });
-      await tx.knowledgeArticleRevision.create({
-        data: {
-          ...data,
-          articleId: id,
-          action: KNOWLEDGE_REVISION_ACTION.updated,
-          archived: false,
-          ...editorOf(res),
-        },
+
+      res.json({ article: toArticle(article), pendingRevision: null });
+      return;
+    }
+
+    // Two proposals in flight for the same article would leave "approve" and
+    // "reject" pointed at whichever one an admin happens to click, with the
+    // other silently forgotten. One at a time, so the review queue always
+    // means exactly what it shows.
+    const alreadyPending = await prisma.knowledgeArticleRevision.findFirst({
+      where: { articleId: id, status: KNOWLEDGE_REVISION_STATUS.pending },
+      select: { id: true },
+    });
+    if (alreadyPending) {
+      res.status(409).json({
+        error: "This article already has a revision awaiting approval.",
       });
-      return updated;
+      return;
+    }
+
+    const revision = await prisma.knowledgeArticleRevision.create({
+      data: {
+        ...data,
+        articleId: id,
+        action: KNOWLEDGE_REVISION_ACTION.updated,
+        archived: false,
+        status: KNOWLEDGE_REVISION_STATUS.pending,
+        ...editorOf(res),
+      },
+      select: REVISION_SELECT,
     });
 
-    res.json({ article: toArticle(article) });
+    // Unchanged — the whole point is that nothing customer-visible moved yet.
+    res.status(202).json({
+      article: toArticle(existing),
+      pendingRevision: toRevision(revision),
+    });
+  },
+);
+
+/**
+ * The pending revision named by the URL, or the 400/404 that explains why
+ * there isn't one — shared by approve and reject, which differ only in what
+ * they do with it.
+ */
+async function pendingRevisionOf(
+  req: Request,
+  res: Response<{ error: string }>,
+): Promise<{ id: number; editorId: string | null } | null> {
+  const articleId = req.params.id as string;
+  const revisionId = Number(req.params.revisionId);
+  if (!Number.isInteger(revisionId)) {
+    res.status(400).json({ error: "Invalid revision id" });
+    return null;
+  }
+
+  const revision = await prisma.knowledgeArticleRevision.findUnique({
+    where: { id: revisionId },
+    select: { id: true, articleId: true, editorId: true },
+  });
+  if (!revision || revision.articleId !== articleId) {
+    res.status(404).json({ error: "Revision not found" });
+    return null;
+  }
+
+  return { id: revision.id, editorId: revision.editorId };
+}
+
+/**
+ * Copy a pending revision's content onto the live article and close it out.
+ *
+ * **An admin cannot approve their own revision** — the entire point of the
+ * step is that one careless session cannot both write and clear unattended,
+ * customer-facing content. The claim is a conditional `updateMany` on
+ * `status: pending`, the same pattern `auto-reply-ticket.ts` uses for a
+ * ticket: two admins approving at once means the second one matches nothing
+ * and 409s, rather than double-applying or racing the live-article write.
+ */
+knowledgeRouter.post(
+  "/:id/revisions/:revisionId/approve",
+  requireAdmin,
+  async (
+    req: Request,
+    res: Response<KnowledgeRevisionApprovalResponse | { error: string }>,
+  ) => {
+    const pending = await pendingRevisionOf(req, res);
+    if (!pending) return;
+
+    const { user } = sessionOf(res);
+    if (pending.editorId === user.id) {
+      res.status(403).json({ error: "You cannot approve your own revision." });
+      return;
+    }
+
+    const id = req.params.id as string;
+
+    const result = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.knowledgeArticleRevision.updateMany({
+        where: { id: pending.id, status: KNOWLEDGE_REVISION_STATUS.pending },
+        data: {
+          status: KNOWLEDGE_REVISION_STATUS.approved,
+          approvedById: user.id,
+          approvedByName: user.name,
+          approvedAt: new Date(),
+        },
+      });
+      if (claimed.count === 0) return null;
+
+      const revision = await tx.knowledgeArticleRevision.findUniqueOrThrow({
+        where: { id: pending.id },
+        select: REVISION_SELECT,
+      });
+      const article = await tx.knowledgeArticle.update({
+        where: { id },
+        data: {
+          title: revision.title,
+          category: revision.category,
+          body: revision.body,
+          internalNote: revision.internalNote,
+          autoReply: revision.autoReply,
+        },
+        select: ARTICLE_SELECT,
+      });
+      return { article, revision };
+    });
+
+    if (!result) {
+      res.status(409).json({
+        error: "This revision is no longer awaiting approval.",
+      });
+      return;
+    }
+
+    res.json({
+      article: toArticle(result.article),
+      revision: toRevision(result.revision),
+    });
+  },
+);
+
+/**
+ * Turn a pending revision down. The trail keeps it — nothing is deleted here
+ * any more than anywhere else in this router — and the live article is
+ * untouched, so declining is free to do as often as it takes.
+ *
+ * No self-rejection rule: an admin having second thoughts about their own
+ * proposal is not the failure mode this step defends against.
+ */
+knowledgeRouter.post(
+  "/:id/revisions/:revisionId/reject",
+  requireAdmin,
+  async (
+    req: Request,
+    res: Response<KnowledgeRevisionRejectionResponse | { error: string }>,
+  ) => {
+    const pending = await pendingRevisionOf(req, res);
+    if (!pending) return;
+
+    const { user } = sessionOf(res);
+
+    const claimed = await prisma.knowledgeArticleRevision.updateMany({
+      where: { id: pending.id, status: KNOWLEDGE_REVISION_STATUS.pending },
+      data: {
+        status: KNOWLEDGE_REVISION_STATUS.rejected,
+        approvedById: user.id,
+        approvedByName: user.name,
+        approvedAt: new Date(),
+      },
+    });
+    if (claimed.count === 0) {
+      res.status(409).json({
+        error: "This revision is no longer awaiting approval.",
+      });
+      return;
+    }
+
+    const revision = await prisma.knowledgeArticleRevision.findUniqueOrThrow({
+      where: { id: pending.id },
+      select: REVISION_SELECT,
+    });
+    res.json({ revision: toRevision(revision) });
   },
 );
 

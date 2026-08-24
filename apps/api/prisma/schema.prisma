@@ -8,12 +8,12 @@ datasource db {
 }
 
 model User {
-  id               String                     @id
-  name             String
-  email            String
-  emailVerified    Boolean                    @default(false)
-  image            String?
-  role             Role                       @default(agent)
+  id                 String                     @id
+  name               String
+  email              String
+  emailVerified      Boolean                    @default(false)
+  image              String?
+  role               Role                       @default(agent)
   /// This row stands for the assistant rather than for a person.
   ///
   /// **Meant to be unique, and kept that way by having one writer.** Nothing in
@@ -33,21 +33,22 @@ model User {
   /// mutating user routes refuse it outright. It exists to be the assignee on a
   /// ticket the machine finished, so the assignee column answers "who dealt with
   /// this" for every ticket instead of going blank on the automated ones.
-  automated        Boolean                    @default(false)
-  banned           Boolean?                   @default(false)
-  banReason        String?
-  banExpires       DateTime?
-  deletedAt        DateTime?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
-  sessions         Session[]
-  accounts         Account[]
-  assignedTickets  Ticket[]                   @relation("TicketAssignee")
-  authoredMessages Message[]
-  knowledgeEdits   KnowledgeArticleRevision[]
-  ticketActivity   TicketActivity[]
-  handoffFor       AutomationSettings[]       @relation("HandoffAssignee")
-  automationEdits  AutomationSettings[]       @relation("AutomationEditor")
+  automated          Boolean                    @default(false)
+  banned             Boolean?                   @default(false)
+  banReason          String?
+  banExpires         DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  sessions           Session[]
+  accounts           Account[]
+  assignedTickets    Ticket[]                   @relation("TicketAssignee")
+  authoredMessages   Message[]
+  knowledgeEdits     KnowledgeArticleRevision[]
+  knowledgeApprovals KnowledgeArticleRevision[] @relation("KnowledgeRevisionApprover")
+  ticketActivity     TicketActivity[]
+  handoffFor         AutomationSettings[]       @relation("HandoffAssignee")
+  automationEdits    AutomationSettings[]       @relation("AutomationEditor")
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -495,37 +496,58 @@ model KnowledgeArticle {
 /// prompt say on the day we sent that reply?" — is asked about one moment, not
 /// about a sequence.
 model KnowledgeArticleRevision {
-  id           Int                     @id @default(autoincrement())
-  articleId    String
+  id             Int                     @id @default(autoincrement())
+  articleId      String
   /// `Restrict`, not `Cascade`: an article with revisions cannot be deleted, so
   /// the audit trail cannot be erased by removing what it describes. Since every
   /// article gets a `created` revision in the same transaction that inserts it,
   /// this makes articles undeletable through the ORM by construction. Archive
   /// instead — that is what `archived` is for.
-  article      KnowledgeArticle        @relation(fields: [articleId], references: [id], onDelete: Restrict)
-  action       KnowledgeRevisionAction
+  article        KnowledgeArticle        @relation(fields: [articleId], references: [id], onDelete: Restrict)
+  action         KnowledgeRevisionAction
   /// The article as it stood *after* this change.
-  title        String
-  category     TicketCategory
-  body         String
-  internalNote String?
-  autoReply    Boolean
-  archived     Boolean
+  title          String
+  category       TicketCategory
+  body           String
+  internalNote   String?
+  autoReply      Boolean
+  archived       Boolean
   /// Who did it. Null for the one-time import from `knowledge-base.md`, and null
   /// again once that admin's account is deleted — hence `SetNull` and hence the
   /// two denormalised columns below, which are what keep the trail readable
   /// after the account is gone. An audit log that forgets who acted the moment
   /// they leave is not an audit log.
-  editorId     String?
-  editor       User?                   @relation(fields: [editorId], references: [id], onDelete: SetNull)
-  editorName   String
+  editorId       String?
+  editor         User?                   @relation(fields: [editorId], references: [id], onDelete: SetNull)
+  editorName     String
   /// Null for the import, which had no account behind it.
-  editorEmail  String?
-  createdAt    DateTime                @default(now())
+  editorEmail    String?
+  /// Pending, approved, or turned down — see the enum's own comment.
+  ///
+  /// Default `approved`. Every write this codebase makes today
+  /// (`routes/knowledge.ts`) still applies the change to the live article and
+  /// logs it in the same transaction — there is no second admin yet, so the one
+  /// who wrote it is the only approval that has ever existed, and this default
+  /// says that truthfully rather than backdating a workflow that does not exist
+  /// yet. The approval flow this unlocks — submit a `pending` revision, copy it
+  /// onto the live article only once a second admin approves it — is the next
+  /// ticket in this chain.
+  status         KnowledgeRevisionStatus @default(approved)
+  /// Who approved this revision, and when. Both stay null for a revision that
+  /// is `approved` only by the default above, or still `pending` — set only by
+  /// an actual second-admin approval, never backfilled to match a status.
+  approvedById   String?
+  approvedBy     User?                   @relation("KnowledgeRevisionApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedByName String?
+  approvedAt     DateTime?
+  createdAt      DateTime                @default(now())
 
   @@index([articleId, createdAt])
   @@index([editorId])
   @@index([createdAt])
+  /// The pending-revision review queue this status column exists for: every
+  /// article with something awaiting a second admin, across the whole corpus.
+  @@index([status])
   @@map("knowledge_article_revision")
 }
 
@@ -534,6 +556,16 @@ enum KnowledgeRevisionAction {
   updated
   archived
   restored
+}
+
+/// Where a revision sits in the approval workflow the next ticket in this
+/// chain builds on this column. `approved` is also the default for every
+/// revision written before that workflow exists — see the field's own comment
+/// for why that is honest rather than a placeholder.
+enum KnowledgeRevisionStatus {
+  pending
+  approved
+  rejected
 }
 
 /// One email this system intends to hand to a mail provider.
