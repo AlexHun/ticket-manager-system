@@ -686,6 +686,24 @@ export interface TicketActivityResponse {
 }
 
 /**
+ * What happened to a colleague's account. The Postgres enum of the same name
+ * mirrors this — see the `AdminActivity` model for what each one records and
+ * how `fromValue`/`toValue` are used.
+ */
+export const ADMIN_ACTIVITY_ACTION = {
+  user_created: "user_created",
+  /** Covers both the initial invite and a resend; `toValue` says which. */
+  user_invited: "user_invited",
+  user_edited: "user_edited",
+  /** Reserved — nothing writes this yet. See the schema comment. */
+  role_changed: "role_changed",
+  user_deleted: "user_deleted",
+} as const;
+
+export type AdminActivityAction =
+  (typeof ADMIN_ACTIVITY_ACTION)[keyof typeof ADMIN_ACTIVITY_ACTION];
+
+/**
  * What a screen just stopped being right about.
  *
  * Deliberately **not** `TicketActivityAction`, though they sit next to each other
