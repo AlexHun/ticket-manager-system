@@ -54,6 +54,8 @@ model User {
   handoffRevisionsFrom AutomationSettingsRevision[] @relation("AutomationRevisionFromUser")
   handoffRevisionsTo   AutomationSettingsRevision[] @relation("AutomationRevisionToUser")
   handoffRevisionsMade AutomationSettingsRevision[] @relation("AutomationRevisionChangedBy")
+  tutorialEdits        TutorialContent[]            @relation("TutorialContentEditor")
+  tutorialProgress     TutorialProgress[]
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -792,4 +794,81 @@ enum OutboundEmailStatus {
   sent
   failed
   undeliverable
+}
+
+/// The per-page walkthrough shown the first time (and again after a material
+/// change) a user opens each of the eight main pages. Mirrors `TutorialPageKey`
+/// in `@ticket/shared`.
+///
+/// A fixed enum, not a free-form string: nothing in the API can create a page
+/// that isn't one of these eight, so `TutorialContent` can only ever hold
+/// exactly the rows the frontend knows what to do with.
+enum TutorialPageKey {
+  dashboard
+  tickets
+  ticketDetail
+  pipeline
+  knowledge
+  users
+  activity
+  outbox
+}
+
+/// One page's tutorial copy, admin-editable. One row per `TutorialPageKey` —
+/// never created or removed through the API, only ever written to.
+///
+/// **The version that decides whether to re-show a tutorial lives in code, not
+/// here.** `TUTORIAL_PAGE_VERSIONS` in `@ticket/shared` is a constant a
+/// developer bumps by hand when a page's UI or business logic changes
+/// materially — editing the title or steps below does not bump it and does not
+/// re-trigger the tutorial for anyone who has already seen it. That is
+/// deliberate: content edits (typo fixes, clearer wording) and "this page now
+/// works differently" are different events, and only the second one should
+/// interrupt someone who already knows the page.
+///
+/// A row may not exist — a page nobody has authored a tutorial for yet — and
+/// that reads as "no content" rather than an error, the same way a missing
+/// `AutomationSettings` row reads as its default: `GET /api/tutorials/:pageKey`
+/// answers with empty steps, and empty steps is exactly what keeps the
+/// tutorial from ever showing (see the route). Nothing needs seeding for the
+/// feature to work.
+model TutorialContent {
+  pageKey       TutorialPageKey @id
+  title         String
+  /// `TutorialStep[]` (`{ title, body }`), in display order. Free-form Json
+  /// rather than a child table: nothing here is ever queried by field, and
+  /// order is exactly array order.
+  steps         Json
+  updatedAt     DateTime        @updatedAt
+  /// Who edited it last. `SetNull` plus a denormalised name, same reasoning as
+  /// `AutomationSettings.updatedBy`: the byline has to survive the editor's
+  /// account being deleted.
+  updatedById   String?
+  updatedBy     User?           @relation("TutorialContentEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedByName String?
+
+  @@index([updatedById])
+  @@map("tutorial_content")
+}
+
+/// One user's "seen" mark for one page's tutorial: the highest version of that
+/// page they have dismissed. Compared against `TUTORIAL_PAGE_VERSIONS[pageKey]`
+/// at read time — there is no history here, only the latest mark, because
+/// nothing ever needs to ask what version someone saw two changes ago.
+///
+/// `onDelete: Cascade`, unlike the audit-style relations elsewhere in this
+/// schema: this row is not a record of an event, it is per-user UI state that
+/// means nothing once the account it belongs to is gone — the same reasoning
+/// Better Auth's own `Session`/`Account` models use, not the "outlive the
+/// account" reasoning `TutorialContent.updatedBy` uses.
+model TutorialProgress {
+  id          Int             @id @default(autoincrement())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageKey     TutorialPageKey
+  seenVersion Int
+  seenAt      DateTime        @default(now())
+
+  @@unique([userId, pageKey])
+  @@map("tutorial_progress")
 }
