@@ -30,6 +30,18 @@ import { APICallError, RetryError } from "ai";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
 
 /**
+ * Where the provider is actually reached, or unset for OpenAI's own endpoint.
+ *
+ * Every real deployment and the ordinary `.env.test` leave this unset, so
+ * `createOpenAI` falls back to its own default and nothing here changes their
+ * behaviour. It exists for a deployment that fronts the API with something
+ * OpenAI-compatible, and for the E2E suite's own fake-OpenAI stub
+ * (`tests/e2e/fake-openai`), which is the only thing in this repo that sets it
+ * today — see `apps/api/.env.test.ai`.
+ */
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || undefined;
+
+/**
  * Whether this deployment can call the provider at all.
  *
  * Read at import, checked per request. The alternative — throwing at import the
@@ -58,7 +70,7 @@ export function isAiConfigured(): boolean {
 let provider: ReturnType<typeof createOpenAI> | undefined;
 
 export function openaiModel(modelId: string) {
-  provider ??= createOpenAI({ apiKey: OPENAI_API_KEY });
+  provider ??= createOpenAI({ apiKey: OPENAI_API_KEY, baseURL: OPENAI_BASE_URL });
   return provider(modelId);
 }
 
