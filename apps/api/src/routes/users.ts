@@ -4,13 +4,14 @@ import type { Request, Response } from "express";
 import { fromNodeHeaders } from "better-auth/node";
 import type { z, ZodType } from "zod";
 import { createUserSchema, updateUserSchema } from "@ticket/core";
-import { TICKET_ACTIVITY_ACTION } from "@ticket/shared";
+import { ADMIN_ACTIVITY_ACTION, TICKET_ACTIVITY_ACTION } from "@ticket/shared";
 import type {
   CreateUserResponse,
   UpdateUserResponse,
   UserRole,
   UsersListResponse,
 } from "@ticket/shared";
+import { adminActor, userEditChanges } from "../admin-activity";
 import { appOrigin, auth } from "../auth";
 import { prisma } from "../db";
 import { requireAdmin, sessionOf } from "../middleware/auth";
@@ -132,6 +133,24 @@ usersRouter.post(
       headers,
     });
 
+    await prisma.adminActivity.createMany({
+      data: [
+        {
+          action: ADMIN_ACTIVITY_ACTION.user_created,
+          ...adminActor(sessionOf(res).user),
+          targetUserId: user.id,
+          targetUserName: user.name,
+        },
+        {
+          action: ADMIN_ACTIVITY_ACTION.user_invited,
+          toValue: "initial",
+          ...adminActor(sessionOf(res).user),
+          targetUserId: user.id,
+          targetUserName: user.name,
+        },
+      ],
+    });
+
     /**
      * The invitation, which is the password-reset flow wearing different words.
      *
@@ -181,6 +200,13 @@ usersRouter.patch(
     const userId = req.params.id as string;
     if (await rejectAssistant(userId, res)) return;
 
+    // Read before the write — the audit trail diffs against what the account
+    // had a moment ago, and `adminUpdateUser` below does not hand that back.
+    const before = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+
     const headers = fromNodeHeaders(req.headers);
 
     // Name and email only. Setting a password from here is gone on purpose —
@@ -193,6 +219,20 @@ usersRouter.patch(
       body: { userId, data: { name, email } },
       headers,
     });
+
+    // One row per field that actually moved — a Save that re-sends the same
+    // name and email writes nothing, same guard `ticketChanges` uses.
+    const changes = userEditChanges(before, { name, email });
+    if (changes.length > 0) {
+      await prisma.adminActivity.createMany({
+        data: changes.map((entry) => ({
+          ...entry,
+          ...adminActor(sessionOf(res).user),
+          targetUserId: userId,
+          targetUserName: name,
+        })),
+      });
+    }
 
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -245,7 +285,7 @@ usersRouter.post(
 
     const target = await prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, deletedAt: true },
+      select: { name: true, email: true, deletedAt: true },
     });
 
     if (!target || target.deletedAt !== null) {
@@ -259,6 +299,16 @@ usersRouter.post(
         redirectTo: `${appOrigin}/reset-password?invite=1`,
       },
       headers: fromNodeHeaders(req.headers),
+    });
+
+    await prisma.adminActivity.create({
+      data: {
+        action: ADMIN_ACTIVITY_ACTION.user_invited,
+        toValue: "resend",
+        ...adminActor(sessionOf(res).user),
+        targetUserId: userId,
+        targetUserName: target.name,
+      },
     });
 
     res.status(204).json({});
@@ -358,6 +408,14 @@ usersRouter.delete(
           // tickets: the actor is whoever caused the change.
           ...agentActor(sessionOf(res).user),
         })),
+      }),
+      prisma.adminActivity.create({
+        data: {
+          action: ADMIN_ACTIVITY_ACTION.user_deleted,
+          ...adminActor(sessionOf(res).user),
+          targetUserId: userId,
+          targetUserName: target.name,
+        },
       }),
     ]);
 

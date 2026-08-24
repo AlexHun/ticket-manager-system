@@ -49,6 +49,8 @@ model User {
   ticketActivity     TicketActivity[]
   handoffFor         AutomationSettings[]       @relation("HandoffAssignee")
   automationEdits    AutomationSettings[]       @relation("AutomationEditor")
+  adminActivityActed AdminActivity[]            @relation("AdminActivityActor")
+  adminActivityOn    AdminActivity[]            @relation("AdminActivityTarget")
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -430,6 +432,65 @@ enum TicketActorKind {
   assistant
   /// An inbound email did it. No account behind it, so no `actorId`.
   customer
+}
+
+/// One recorded admin action against a colleague's account.
+///
+/// The account-management analogue of `TicketActivity`, written for the same
+/// reason: `routes/users.ts` performs create/invite/edit/delete with nothing
+/// durable behind it today, unlike tickets and the knowledge base, which both
+/// already have a trail. Same shape as `TicketActivity` — a transition, not a
+/// snapshot, `fromValue`/`toValue` are display strings and never ids, both
+/// account columns are denormalised and `SetNull` so the row outlives either
+/// account it names — but there is no cascade parent here: an `AdminActivity`
+/// row is not *about* a ticket, it stands on its own.
+model AdminActivity {
+  id             Int                 @id @default(autoincrement())
+  action         AdminActivityAction
+  /// The move, as it will be read — currently only meaningful for `user_edited`
+  /// (`"Name: Old"` / `"Name: New"`, one row per changed field) and
+  /// `user_invited` (`"initial"` / `"resend"`, `toValue` only). Null on both
+  /// sides for `user_created` and `user_deleted`, where the action says
+  /// everything there is to say. `role_changed` would use the two roles the
+  /// same way once something writes it — see the enum note below.
+  fromValue      String?
+  toValue        String?
+  /// The admin who acted. Always present at write time — every route here sits
+  /// behind `requireAdmin` — so unlike `TicketActivity.actorEmail` this is
+  /// never null going in; it only loses its id, via `SetNull`, if that admin's
+  /// account is later hard-deleted.
+  actorId        String?
+  actor          User?               @relation("AdminActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorName      String
+  actorEmail     String
+  /// The account acted on. Denormalised for the same reason as the actor: a
+  /// `user_deleted` row's whole point is to outlive the row it describes.
+  targetUserId   String?
+  target         User?               @relation("AdminActivityTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetUserName String
+  createdAt      DateTime            @default(now())
+
+  /// The only way this table is read today: everything, newest first.
+  @@index([createdAt])
+  /// Postgres does not index a foreign key for you — same reasoning as
+  /// `TicketActivity`'s two FK indexes.
+  @@index([actorId])
+  @@index([targetUserId])
+  @@map("admin_activity")
+}
+
+/// What happened. Mirrors `ADMIN_ACTIVITY_ACTION` in `@ticket/shared`.
+enum AdminActivityAction {
+  user_created
+  /// Covers both the initial invite (`POST /`) and a resend
+  /// (`POST /:id/invite`) — `toValue` says which.
+  user_invited
+  user_edited
+  /// No route sets a colleague's role today — `role` is fixed at creation
+  /// (`Role.agent` by default) and there is no admin-facing way to change it.
+  /// Reserved so the enum does not need a migration the day one is added.
+  role_changed
+  user_deleted
 }
 
 /// A knowledge-base article: the grounding material the unattended auto-reply
