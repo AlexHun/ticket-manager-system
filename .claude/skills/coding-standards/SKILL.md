@@ -38,7 +38,7 @@ Done when every matching file has been read and every rule in it either applied 
 
 These are the sources the standards were distilled from — reach for them when a standard's *reason* matters more than the rule:
 
-- `project-scope.md`, `tech-stack.md`, `implementation-plan.md` — what the system is meant to be. `tech-stack.md` is authoritative for stack choices.
+- `project-scope.md`, `tech-stack.md` — what the system is meant to be. `tech-stack.md` is authoritative for stack choices.
 - `CONTEXT.md` + `docs/adr/` — the domain model and the decisions behind it.
 - `SCRIPTS.md` — every script and seed, and which may point at production.
 - `DEPLOYMENT.md` — the full Railway runbook.
