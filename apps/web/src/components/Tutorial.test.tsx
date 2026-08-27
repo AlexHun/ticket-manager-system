@@ -299,6 +299,58 @@ describe("Tutorial — anchored callout", () => {
     rectSpy.mockRestore();
   });
 
+  test("scrolls the target into view when it resolves off-screen", async () => {
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    const rectSpy = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        top: -50,
+        left: 0,
+        bottom: 20,
+        right: 100,
+        width: 100,
+        height: 70,
+        x: 0,
+        y: -50,
+        toJSON() {},
+      } as DOMRect);
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
+
+    renderWithQuery(
+      <>
+        <div data-tutorial-anchor="kpis">KPI row</div>
+        <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+      </>,
+    );
+
+    await screen.findByRole("dialog");
+
+    expect(scrollSpy).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    rectSpy.mockRestore();
+    scrollSpy.mockRestore();
+  });
+
+  test("does not scroll when the target is already fully visible", async () => {
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
+
+    renderWithQuery(
+      <>
+        <div data-tutorial-anchor="kpis">KPI row</div>
+        <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+      </>,
+    );
+
+    await screen.findByRole("dialog");
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+    scrollSpy.mockRestore();
+  });
+
   test("falls back to the centered dialog when the tagged element never appears", async () => {
     mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     renderWithQuery(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);
