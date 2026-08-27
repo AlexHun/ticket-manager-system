@@ -69,6 +69,18 @@ export const ticketKeys = {
    */
   effectiveness: (params: object) =>
     ["tickets", "effectiveness", params] as const,
+
+  /**
+   * Tickets assigned to the signed-in agent that they have not opened yet.
+   * No params — like `views`, the server derives it from the session.
+   *
+   * Under the `all` prefix so a ticket mutation marks it stale, but — like
+   * `views` — that alone is not enough: this query has a permanently
+   * mounted observer (`useAssignmentToasts`), so the realtime layer
+   * invalidates it directly on a `ticket_updated` event naming the assignee
+   * field, the same exception `views` makes and for the same reason.
+   */
+  unread: ["tickets", "unread"] as const,
 };
 
 /**

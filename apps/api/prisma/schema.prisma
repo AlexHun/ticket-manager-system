@@ -279,12 +279,22 @@ model Ticket {
   updatedAt           DateTime         @updatedAt
   assignedToId        String?
   assignedTo          User?            @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  // Null once the assignee has opened the ticket, or if it was never assigned.
+  // Cleared back to null by the assignee route (the sole writer of
+  // `assignedToId`) in the same update, and set by `GET /:id`'s conditional
+  // write the moment the assignee opens it — see ADR-0013. Not a `Notification`
+  // table: `assignedToId` is single-valued, so there is only ever one live
+  // answer to "has the current assignment been seen", not a history of them.
+  assignmentSeenAt    DateTime?
   messages            Message[]
   activity            TicketActivity[]
 
   @@index([customerEmail])
   @@index([lastMessageAt])
   @@index([assignedToId])
+  // "My unread tickets" — assignedTo = viewer AND assignmentSeenAt IS NULL —
+  // as a single indexed lookup. See ADR-0013.
+  @@index([assignedToId, assignmentSeenAt])
   // Every dashboard aggregate scopes on `createdAt >= from AND < to`, and the
   // ticket list's default sort is the same column.
   @@index([createdAt])
