@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { pipelineKeys } from "@/lib/pipeline-queries";
 import { applyEvent } from "@/lib/realtime-events";
 import { ticketKeys } from "@/lib/ticket-queries";
+import { useAssignmentToasts } from "@/lib/use-assignment-toasts";
 
 /**
  * The app's one connection to `GET /api/events`.
@@ -59,6 +60,10 @@ export function useRealtimeStatus(): RealtimeStatus {
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
+
+  // Reacts to the same stream this provider applies events from — see its
+  // own comment for why it lives here rather than nearer `/tickets`.
+  useAssignmentToasts();
 
   /** Received but not yet applied. */
   const pendingRef = useRef<TicketEvent[]>([]);

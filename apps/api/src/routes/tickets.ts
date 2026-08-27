@@ -26,6 +26,7 @@ import {
   type TicketDetailResponse,
   type TicketSortField,
   type TicketsListResponse,
+  type TicketUnreadResponse,
   type TicketView,
   type TicketViewCountsResponse,
   type TicketWithAssignee,
@@ -433,11 +434,40 @@ ticketsRouter.get(
   },
 );
 
+/**
+ * Tickets assigned to the caller whose assignment they have not opened yet.
+ *
+ * `assignedTo = viewer AND assignmentSeenAt IS NULL`, no status filter — a
+ * Resolved or Closed ticket handed to someone is still news to them
+ * (ADR-0013). Deliberately not `ticketViewParams(TICKET_VIEW.mine, ...)`,
+ * which is a workload view (`status ∈ backlog`) answering a different
+ * question. Marked seen as a side effect of `GET /:id`, not by this route —
+ * there is no separate "mark as read".
+ */
+ticketsRouter.get(
+  "/unread",
+  requireAuth,
+  async (_req: Request, res: Response<TicketUnreadResponse>) => {
+    const session = sessionOf(res);
+
+    const tickets = await prisma.ticket.findMany({
+      where: { assignedToId: session.user.id, assignmentSeenAt: null },
+      select: { id: true, subject: true },
+      // Most recently touched first. There is no `assignedAt` column (see the
+      // model comment), so `updatedAt` is the closest proxy — the assignee
+      // route's `update` bumps it, same as every other mutation on the row.
+      orderBy: { updatedAt: "desc" },
+    });
+
+    res.json({ tickets });
+  },
+);
+
 // Route order: any future literal child route (`/export`) has to be registered
-// ABOVE this one, or `:id` will swallow it — which is why `/assignees`, `/stats`
-// and `/views` sit above. Registered below, `/stats` reaches
-// `ticketIdParamSchema`, which answers `400 Invalid ticket id` and sends you
-// looking in the wrong place.
+// ABOVE this one, or `:id` will swallow it — which is why `/assignees`,
+// `/stats`, `/views` and `/unread` sit above. Registered below, `/stats`
+// reaches `ticketIdParamSchema`, which answers `400 Invalid ticket id` and
+// sends you looking in the wrong place.
 ticketsRouter.get(
   "/:id",
   requireAuth,
@@ -471,6 +501,23 @@ ticketsRouter.get(
     if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
       return;
+    }
+
+    // "The assignee opened the detail page" is precisely what this request
+    // means, so marking the assignment seen is a side effect of the read
+    // rather than a second endpoint a client could forget to call
+    // (ADR-0013). Conditional and outside any transaction, the same
+    // read-nothing-then-conditional-write shape as
+    // `POST /api/outbox/:id/retry` (ADR-0009): two tabs opening the same
+    // ticket at once both match-or-miss without a preceding read to race on.
+    // Guarded on the row already in hand so the common case — reading a
+    // ticket that isn't yours — costs no write at all.
+    const viewerId = sessionOf(res).user.id;
+    if (ticket.assignedToId === viewerId) {
+      await prisma.ticket.updateMany({
+        where: { id: ticket.id, assignedToId: viewerId, assignmentSeenAt: null },
+        data: { assignmentSeenAt: new Date() },
+      });
     }
 
     res.json({
@@ -691,7 +738,15 @@ ticketsRouter.patch(
       }
     }
 
-    await updateTicket(params.data.id, { assignedToId }, res);
+    // Cleared in the same write that sets the new owner, so a reassignment is
+    // unread from the instant it lands rather than a separate follow-up write
+    // — this route is `assignedToId`'s sole writer, so it is the only place
+    // that has to know (ADR-0013).
+    await updateTicket(
+      params.data.id,
+      { assignedToId, assignmentSeenAt: null },
+      res,
+    );
   },
 );
 

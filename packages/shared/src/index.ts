@@ -591,6 +591,23 @@ export interface TicketViewCountsResponse {
 }
 
 /**
+ * A ticket the caller has been assigned but has not yet opened.
+ *
+ * `assignedTo = viewer AND assignmentSeenAt IS NULL` (ADR-0013) —
+ * deliberately not `TICKET_VIEW.mine`, which is status-scoped and answers a
+ * different question. Only what a toast or badge needs to name the ticket;
+ * everything else is a `GET /api/tickets/:id` away.
+ */
+export interface UnreadAssignment {
+  id: number;
+  subject: string;
+}
+
+export interface TicketUnreadResponse {
+  tickets: UnreadAssignment[];
+}
+
+/**
  * The reply to an assignment change. No `messages` — reassigning doesn't touch
  * the thread, and re-sending it would grow with every reply on the ticket.
  */

@@ -1,5 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { TICKET_EVENT, type TicketEvent, type TicketEventKind } from "@ticket/shared";
+import {
+  TICKET_EVENT,
+  TICKET_EVENT_FIELD,
+  type TicketEvent,
+  type TicketEventKind,
+} from "@ticket/shared";
 import { pipelineKeys } from "@/lib/pipeline-queries";
 import { ticketKeys } from "@/lib/ticket-queries";
 
@@ -64,6 +69,16 @@ export const EVENT_EFFECT: Record<
     void queryClient.invalidateQueries({
       queryKey: ticketKeys.activity(event.ticketId),
     });
+    // The assignee-toast exception, matching `views` above: refetched rather
+    // than marked, because `useAssignmentToasts` is permanently mounted and
+    // "stale but not refetched" would mean the toast never fires until
+    // something else happens to touch the query. Narrowed to events that
+    // actually moved the assignee — status/category churn on somebody else's
+    // ticket would otherwise refetch this on every list's worth of traffic
+    // for no client that could possibly have a new answer.
+    if (event.fields?.includes(TICKET_EVENT_FIELD.assignee)) {
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.unread });
+    }
   },
 
   /**
