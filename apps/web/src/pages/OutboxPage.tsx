@@ -77,24 +77,26 @@ export function OutboxPage() {
         title="Outbox"
         description="Every email the desk has written, and what became of it."
       >
-        <Select
-          value={status}
-          onValueChange={(v) =>
-            setStatus(v as OutboundEmailStatus | typeof ANY_STATUS)
-          }
-        >
-          <SelectTrigger className="w-44" aria-label="Filter by status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ANY_STATUS}>Any status</SelectItem>
-            {Object.values(OUTBOUND_EMAIL_STATUS).map((s) => (
-              <SelectItem key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div data-tutorial-anchor="status" className="contents">
+          <Select
+            value={status}
+            onValueChange={(v) =>
+              setStatus(v as OutboundEmailStatus | typeof ANY_STATUS)
+            }
+          >
+            <SelectTrigger className="w-44" aria-label="Filter by status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY_STATUS}>Any status</SelectItem>
+              {Object.values(OUTBOUND_EMAIL_STATUS).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABEL[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </PageHeader>
 
       {/* Said out loud rather than left to be inferred from a page of rows all
@@ -173,13 +175,15 @@ export function OutboxPage() {
         </div>
       )}
 
-        {data?.emails.map((email) => (
-          <OutboxRow
-            key={email.id}
-            email={email}
-            mailConfigured={data.mailConfigured}
-          />
-        ))}
+        <div data-tutorial-anchor="rows" className="contents">
+          {data?.emails.map((email) => (
+            <OutboxRow
+              key={email.id}
+              email={email}
+              mailConfigured={data.mailConfigured}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

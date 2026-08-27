@@ -117,12 +117,14 @@ export function DashboardPage() {
         title="Dashboard"
         description="Every panel below follows the selected range and scope."
       >
-        <DashboardFilters
-          range={params.range}
-          scope={params.scope}
-          onRangeChange={(range) => update({ range })}
-          onScopeChange={(scope) => update({ scope })}
-        />
+        <div data-tutorial-anchor="range" className="contents">
+          <DashboardFilters
+            range={params.range}
+            scope={params.scope}
+            onRangeChange={(range) => update({ range })}
+            onScopeChange={(scope) => update({ scope })}
+          />
+        </div>
       </PageHeader>
 
       {isPending && <DashboardSkeleton />}
@@ -153,11 +155,13 @@ export function DashboardPage() {
             isFetching && "**:data-[slot=chart]:opacity-60",
           )}
         >
-          <KpiRow
-            summary={data.summary}
-            firstResponse={data.firstResponse}
-            categories={data.categories}
-          />
+          <div data-tutorial-anchor="kpis" className="contents">
+            <KpiRow
+              summary={data.summary}
+              firstResponse={data.firstResponse}
+              categories={data.categories}
+            />
+          </div>
 
           {/* Two Recharts panels on the page, not five.
 
@@ -223,10 +227,12 @@ export function DashboardPage() {
               customers={data.topCustomers}
             />
 
-            <AssistantEffectivenessCard
-              className={PANEL_SPAN.wide}
-              data={effectiveness}
-            />
+            <div data-tutorial-anchor="assistant" className="contents">
+              <AssistantEffectivenessCard
+                className={PANEL_SPAN.wide}
+                data={effectiveness}
+              />
+            </div>
           </div>
         </div>
       )}

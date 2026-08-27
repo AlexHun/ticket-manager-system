@@ -271,3 +271,56 @@ describe("TutorialsPage — editing", () => {
     expect(mockGet).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("TutorialsPage — step anchors", () => {
+  test("a step's anchor picker defaults to centered, with that page's own options", async () => {
+    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    renderTutorialsPage();
+    await screen.findByText("Outbox");
+
+    const user = await openEditDialog("Edit");
+    const dialog = await screen.findByRole("dialog");
+
+    const trigger = within(dialog).getByRole("combobox", {
+      name: "Step 1 points at",
+    });
+    expect(trigger).toHaveTextContent("No target (centered)");
+
+    await user.click(trigger);
+    expect(
+      await screen.findByRole("option", { name: "Status filter" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "An email row" })).toBeInTheDocument();
+  });
+
+  test("picking an anchor saves it on that step", async () => {
+    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    mockPut.mockResolvedValue({ data: { tutorial: unwritten } });
+
+    renderTutorialsPage();
+    await screen.findByText("Outbox");
+
+    const user = await openEditDialog("Edit");
+    const dialog = await screen.findByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText("Title"), "Filtering the outbox");
+    await user.type(within(dialog).getByLabelText("Step 1 title"), "Status");
+    await user.type(
+      within(dialog).getByLabelText("Step 1 body"),
+      "Filter down to failed or pending emails.",
+    );
+    await user.click(
+      within(dialog).getByRole("combobox", { name: "Step 1 points at" }),
+    );
+    await user.click(await screen.findByRole("option", { name: "Status filter" }));
+
+    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(mockPut).toHaveBeenCalledTimes(1));
+    const [, body] = mockPut.mock.calls[0] as [
+      string,
+      { steps: { anchor?: string }[] },
+    ];
+    expect(body.steps[0]?.anchor).toBe("status");
+  });
+});
