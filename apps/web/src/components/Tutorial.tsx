@@ -265,6 +265,18 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
+/** Whether `rect` is entirely within the current viewport — a partially or
+ * fully off-screen target still needs a scroll before `computePlacement`
+ * positions a callout against it. */
+function isInViewport(rect: DOMRect): boolean {
+  return (
+    rect.top >= 0 &&
+    rect.left >= 0 &&
+    rect.bottom <= window.innerHeight &&
+    rect.right <= window.innerWidth
+  );
+}
+
 interface Placement {
   side: "right" | "left" | "bottom" | "top";
   dot: { x: number; y: number };
@@ -405,7 +417,14 @@ function AnchoredCallout({
         el = null;
       }
       if (el instanceof HTMLElement) {
-        setTarget(resolveMeasurable(el));
+        const measurable = resolveMeasurable(el);
+        setTarget(measurable);
+        // The scroll-triggered `reposition` in the effect below keeps
+        // `placement` correct for the duration of this smooth scroll, so
+        // there's nothing else to wire up here.
+        if (!isInViewport(measurable.getBoundingClientRect())) {
+          measurable.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
         return;
       }
       if (Date.now() - startedAt >= ANCHOR_WAIT_MS) {
