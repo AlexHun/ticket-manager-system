@@ -267,6 +267,36 @@ describe("Tutorial — anchored callout", () => {
     );
   });
 
+  test("resolves through a display:contents anchor wrapper to measure its real child", async () => {
+    // Several pages tag the anchor on a `display: contents` wrapper so the
+    // attribute can sit beside a grid/flex item without becoming the item
+    // itself — see e.g. TicketsPage.tsx. `display: contents` generates no
+    // box, so `getBoundingClientRect()` on the wrapper itself would be
+    // degenerate; this pins down that positioning measures the real child
+    // underneath instead.
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect");
+
+    const { container } = renderWithQuery(
+      <>
+        <div data-tutorial-anchor="kpis" style={{ display: "contents" }}>
+          <button type="button">Actual target</button>
+        </div>
+        <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+      </>,
+    );
+
+    await screen.findByRole("dialog");
+
+    const wrapper = container.querySelector('[data-tutorial-anchor="kpis"]')!;
+    const button = screen.getByRole("button", { name: "Actual target" });
+
+    expect(rectSpy.mock.instances).not.toContain(wrapper);
+    expect(rectSpy.mock.instances).toContain(button);
+
+    rectSpy.mockRestore();
+  });
+
   test("falls back to the centered dialog when the tagged element never appears", async () => {
     mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     renderWithQuery(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);

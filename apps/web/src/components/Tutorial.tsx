@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import {
@@ -209,6 +210,27 @@ const VIEWPORT_PADDING = 16;
 const ANCHOR_WAIT_MS = 4000;
 const ANCHOR_POLL_MS = 150;
 
+/**
+ * Several pages tag an anchor on a `display: contents` wrapper — see the
+ * `<div data-tutorial-anchor="..." className="contents">` wrappers in e.g.
+ * `TicketsPage.tsx` — so the attribute can sit beside a CSS grid/flex item
+ * without becoming the item itself. `display: contents` means the element
+ * generates no box of its own: `getBoundingClientRect()` on it, and anything
+ * a `ResizeObserver` would report for it, come back all zero. This walks
+ * into the first real box instead, which is what needs the ring and the
+ * connector in the first place.
+ */
+function resolveMeasurable(el: HTMLElement): HTMLElement {
+  let current = el;
+  while (
+    getComputedStyle(current).display === "contents" &&
+    current.firstElementChild instanceof HTMLElement
+  ) {
+    current = current.firstElementChild;
+  }
+  return current;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
@@ -350,7 +372,7 @@ function AnchoredCallout({
         el = null;
       }
       if (el instanceof HTMLElement) {
-        setTarget(el);
+        setTarget(resolveMeasurable(el));
         return;
       }
       if (Date.now() - startedAt >= ANCHOR_WAIT_MS) {
@@ -408,7 +430,16 @@ function AnchoredCallout({
   // and then swap it out a moment later.
   if (!target || !placement) return null;
 
-  return (
+  // Portalled straight to `document.body` rather than rendered in place: this
+  // sits deep inside each page's own JSX, and `position: fixed` stops being
+  // relative to the viewport the moment ANY ancestor sets a `transform` —
+  // including an identity one, which a finished CSS animation can leave
+  // behind (`animate-page-in` on the page's own root wrapper does exactly
+  // this). Without the portal, the ring/line/callout render at coordinates
+  // computed for the viewport but interpreted relative to that ancestor's
+  // box instead, landing visibly offset from the element they are meant to
+  // point at. Same reason `DialogPortal`/Radix's own `Popover.Portal` exist.
+  return createPortal(
     <div className="pointer-events-none fixed inset-0 z-50">
       <div
         aria-hidden="true"
@@ -459,6 +490,7 @@ function AnchoredCallout({
         {body}
         {footer}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
