@@ -31,8 +31,10 @@ export const TUTORIAL_ANCHORS: Record<
   ],
   [TUTORIAL_PAGE_KEY.ticketDetail]: [
     { id: "fields", label: "Status, category, assignee fields" },
+    { id: "summary", label: "AI summary panel" },
     { id: "thread", label: "The message thread" },
     { id: "reply", label: "The reply composer" },
+    { id: "polish", label: "AI polish button" },
   ],
   [TUTORIAL_PAGE_KEY.pipeline]: [
     { id: "config", label: "Whether it's running" },
