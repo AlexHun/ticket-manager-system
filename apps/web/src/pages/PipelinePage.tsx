@@ -211,7 +211,9 @@ export function PipelinePage() {
       {overview.data && config && (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0 space-y-6">
-            <ConfigPanel config={config} queues={overview.data.queues} />
+            <div data-tutorial-anchor="config" className="contents">
+              <ConfigPanel config={config} queues={overview.data.queues} />
+            </div>
 
             {/* Between the switches and the rail, which is where it belongs:
                 the panel above says whether any of this runs, this says where
@@ -221,6 +223,7 @@ export function PipelinePage() {
 
             <section
               aria-labelledby="rail-heading"
+              data-tutorial-anchor="rail"
               className="rounded-lg border bg-card p-5"
             >
               <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
@@ -272,7 +275,7 @@ export function PipelinePage() {
             <RecentRuns runs={overview.data.recent} onWatch={setWatchedTicketId} />
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0" data-tutorial-anchor="simulator">
             {/* Sticky on wide screens only: on a narrow one it sits under the
                 rail, which is where you want to look after pressing send. */}
             <PipelineSimulator

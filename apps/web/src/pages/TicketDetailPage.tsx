@@ -219,7 +219,10 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
               {/* Wraps as a row while the card is full-width, and stacks once
                   it is a sidebar — five items of very different widths would
                   otherwise break into ragged rows in a 22rem column. */}
-              <dl className="flex flex-wrap gap-x-10 gap-y-4 lg:flex-col lg:flex-nowrap lg:gap-y-5">
+              <dl
+                data-tutorial-anchor="fields"
+                className="flex flex-wrap gap-x-10 gap-y-4 lg:flex-col lg:flex-nowrap lg:gap-y-5"
+              >
                 <Field label="Status" htmlFor={STATUS_SELECT_ID}>
                   <TicketStatusSelect ticket={ticket} />
                 </Field>
@@ -267,15 +270,19 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
               left over. min-h-0 is load-bearing — without it a flex item won't
               shrink below its content, and the pane would push the page taller
               instead of scrolling inside. */}
-          <TicketMessageThread
-            className="lg:min-h-0 lg:flex-1"
-            messages={ticket.messages}
-            activity={activity}
-          />
+          <div data-tutorial-anchor="thread" className="contents">
+            <TicketMessageThread
+              className="lg:min-h-0 lg:flex-1"
+              messages={ticket.messages}
+              activity={activity}
+            />
+          </div>
           {/* A sibling of the thread, never a child: the thread's `<ol>` *is*
               the scroll container, so a composer inside it would scroll away
               with the history. Out here it is the column's fixed footer. */}
-          <TicketReplyComposer ticketId={ticket.id} />
+          <div data-tutorial-anchor="reply" className="contents">
+            <TicketReplyComposer ticketId={ticket.id} />
+          </div>
         </section>
       </div>
     </div>

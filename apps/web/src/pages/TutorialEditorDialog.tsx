@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useFieldArray, useForm } from "react-hook-form";
+import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import {
@@ -25,12 +25,28 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import { tutorialKeys } from "@/lib/tutorial-queries";
 import { TUTORIAL_PAGE_LABEL } from "@/lib/tutorial-labels";
+import { TUTORIAL_ANCHORS } from "@/lib/tutorial-anchors";
+
+/**
+ * Radix rejects `value=""` on a `SelectItem` — it reserves the empty string
+ * for "cleared" — so "this step is centered, not anchored" needs its own
+ * non-empty token, mapped to/from `undefined` right at the form boundary
+ * (see the `Controller` below).
+ */
+const NO_ANCHOR = "none";
 
 /**
  * Writing one page's tutorial.
@@ -112,6 +128,7 @@ export function TutorialEditorDialog({
 
   const idPrefix = `tutorial-${tutorial.pageKey}`;
   const label = TUTORIAL_PAGE_LABEL[tutorial.pageKey];
+  const anchors = TUTORIAL_ANCHORS[tutorial.pageKey];
 
   return (
     <Dialog
@@ -211,6 +228,49 @@ export function TutorialEditorDialog({
                         {errors.steps[index]?.body?.message}
                       </p>
                     )}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`${idPrefix}-step-${index}-anchor`}>
+                      Step {index + 1} points at
+                    </Label>
+                    <Controller
+                      control={control}
+                      name={`steps.${index}.anchor`}
+                      render={({ field }) => (
+                        <Select
+                          value={field.value ?? NO_ANCHOR}
+                          onValueChange={(value) =>
+                            field.onChange(
+                              value === NO_ANCHOR ? undefined : value,
+                            )
+                          }
+                          disabled={isSubmitting}
+                        >
+                          <SelectTrigger
+                            id={`${idPrefix}-step-${index}-anchor`}
+                            className="w-full"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_ANCHOR}>
+                              No target (centered)
+                            </SelectItem>
+                            {anchors.map((anchor) => (
+                              <SelectItem key={anchor.id} value={anchor.id}>
+                                {anchor.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Points the step at that element on the live page with a
+                      dot and a connector line. Leave it centered for a step
+                      that isn't about one specific thing.
+                    </p>
                   </div>
                 </div>
               </div>

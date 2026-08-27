@@ -1913,9 +1913,27 @@ export const TUTORIAL_STEP_BODY_MAX_LENGTH = 1_000;
 /** Most steps one tutorial may have, mirrored by the zod schema. */
 export const TUTORIAL_MAX_STEPS = 10;
 
+/** Longest accepted anchor id, mirrored by the zod schema. */
+export const TUTORIAL_STEP_ANCHOR_MAX_LENGTH = 60;
+
 export interface TutorialStep {
   title: string;
   body: string;
+  /**
+   * Which on-page element this step points to, if any — a key into that
+   * page's entry in `apps/web/src/lib/tutorial-anchors.ts`, matched at
+   * render time against a `data-tutorial-anchor` attribute somewhere on the
+   * live page. Not a CSS selector: an admin can only pick from a fixed list
+   * a developer maintains, so a typo here is a wrong dropdown choice, never
+   * a broken query string reaching the DOM.
+   *
+   * Undefined, or an id nothing on the current page carries, both mean the
+   * same thing to `<Tutorial>` — fall back to a screen-centered callout
+   * rather than pointing at nothing. A page changing out from under a saved
+   * anchor is expected (elements get renamed, moved, removed) and must never
+   * be a rendering error.
+   */
+  anchor?: string;
 }
 
 /**

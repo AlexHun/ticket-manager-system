@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TUTORIAL_PAGE_KEY, type TutorialStatus } from "@ticket/shared";
@@ -161,4 +161,119 @@ describe("Tutorial", () => {
       `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}/seen`,
     );
   });
+});
+
+// --- Anchored callouts -------------------------------------------------------
+
+const anchoredDueToShow: TutorialStatus = {
+  content: {
+    pageKey: TUTORIAL_PAGE_KEY.dashboard,
+    title: "Reading the dashboard",
+    steps: [
+      {
+        title: "The stat row",
+        body: "Four numbers, one glance.",
+        anchor: "kpis",
+      },
+      {
+        title: "The chart",
+        body: "Volume over time.",
+        anchor: "range",
+      },
+    ],
+    updatedAt: "2026-08-01T12:00:00.000Z",
+    updatedByName: "Ada Admin",
+  },
+  shouldShow: true,
+};
+
+describe("Tutorial — anchored callout", () => {
+  test("positions a callout against the tagged element instead of a centered dialog", async () => {
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    renderWithQuery(
+      <>
+        <div data-tutorial-anchor="kpis">KPI row</div>
+        <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+      </>,
+    );
+
+    const callout = await screen.findByRole("dialog", {
+      name: "Reading the dashboard",
+    });
+    expect(callout).toHaveTextContent("The stat row");
+    expect(callout.parentElement?.querySelector("svg line")).toBeInTheDocument();
+    expect(callout.parentElement?.querySelector("svg circle")).toBeInTheDocument();
+    expect(callout).toHaveTextContent("Step 1 of 2");
+  });
+
+  test("Next re-resolves the callout against the following step's own anchor", async () => {
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    const user = userEvent.setup();
+    renderWithQuery(
+      <>
+        <div data-tutorial-anchor="kpis">KPI row</div>
+        <div data-tutorial-anchor="range">Range controls</div>
+        <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+      </>,
+    );
+
+    const first = await screen.findByRole("dialog");
+    expect(first).toHaveTextContent("The stat row");
+    await user.click(within(first).getByRole("button", { name: "Next" }));
+
+    const second = await screen.findByRole("dialog");
+    expect(second).toHaveTextContent("The chart");
+  });
+
+  test("the callout's close button marks the tutorial seen", async () => {
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    const user = userEvent.setup();
+    renderWithQuery(
+      <>
+        <div data-tutorial-anchor="kpis">KPI row</div>
+        <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+      </>,
+    );
+
+    const callout = await screen.findByRole("dialog");
+    await user.click(within(callout).getByRole("button", { name: "Close" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(mockPost).toHaveBeenCalledWith(
+      `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}/seen`,
+    );
+  });
+
+  test("Escape closes the callout and marks the tutorial seen", async () => {
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    const user = userEvent.setup();
+    renderWithQuery(
+      <>
+        <div data-tutorial-anchor="kpis">KPI row</div>
+        <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+      </>,
+    );
+
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(mockPost).toHaveBeenCalledWith(
+      `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}/seen`,
+    );
+  });
+
+  test("falls back to the centered dialog when the tagged element never appears", async () => {
+    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    renderWithQuery(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);
+
+    const dialog = await screen.findByRole("dialog", undefined, {
+      timeout: 6000,
+    });
+    expect(dialog).toHaveTextContent("Step 1 of 2");
+  }, 8000);
 });

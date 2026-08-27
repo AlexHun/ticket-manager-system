@@ -141,7 +141,7 @@ export function ActivityPage() {
         description="Every recorded change across tickets, the knowledge base, accounts and automation — newest first."
       />
 
-      <div className="mb-4 shrink-0">
+      <div className="mb-4 shrink-0" data-tutorial-anchor="filters">
         <ActivityFilters filters={filters} onChange={handleFiltersChange} />
       </div>
 
@@ -162,6 +162,7 @@ export function ActivityPage() {
           {data && (
             <div
               aria-busy={isFetching}
+              data-tutorial-anchor="feed"
               className={cn(
                 "flex min-h-0 flex-1 flex-col transition-opacity",
                 isFetching && "opacity-60",

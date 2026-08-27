@@ -52,7 +52,9 @@ export function UsersPage() {
           title="Users"
           description="Everyone who can sign in to the ticket manager."
         >
-          <Button onClick={openCreate}>New user</Button>
+          <div data-tutorial-anchor="new" className="contents">
+            <Button onClick={openCreate}>New user</Button>
+          </div>
         </PageHeader>
 
         {isPending && <UsersTableSkeleton />}
@@ -64,7 +66,9 @@ export function UsersPage() {
         )}
 
         {users && (
-          <UsersTable users={users} onEdit={openEdit} onDelete={openDelete} />
+          <div data-tutorial-anchor="list" className="contents">
+            <UsersTable users={users} onEdit={openEdit} onDelete={openDelete} />
+          </div>
         )}
       </div>
 

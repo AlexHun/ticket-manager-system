@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   TUTORIAL_MAX_STEPS,
+  TUTORIAL_STEP_ANCHOR_MAX_LENGTH,
   TUTORIAL_STEP_BODY_MAX_LENGTH,
   TUTORIAL_STEP_TITLE_MAX_LENGTH,
   TUTORIAL_TITLE_MAX_LENGTH,
@@ -31,6 +32,17 @@ export const tutorialStepSchema = z.object({
       TUTORIAL_STEP_BODY_MAX_LENGTH,
       `Step body must be ${TUTORIAL_STEP_BODY_MAX_LENGTH} characters or fewer`,
     ),
+  // Whatever the admin picked from that page's anchor dropdown, or omitted
+  // for a centered step — see `TutorialStep.anchor` in `@ticket/shared` for
+  // why this is never validated against a live element here.
+  anchor: z
+    .string()
+    .trim()
+    .max(
+      TUTORIAL_STEP_ANCHOR_MAX_LENGTH,
+      `Anchor id must be ${TUTORIAL_STEP_ANCHOR_MAX_LENGTH} characters or fewer`,
+    )
+    .optional(),
 });
 
 /**

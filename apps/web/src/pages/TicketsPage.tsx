@@ -285,10 +285,12 @@ export function TicketsPage() {
           to the result; the toggle changes how those rows are drawn for
           whoever is looking and does not, so it belongs to the page. */}
       <PageHeader title="Tickets">
-        <DensityToggle density={density} onChange={setDensity} />
+        <div data-tutorial-anchor="density" className="contents">
+          <DensityToggle density={density} onChange={setDensity} />
+        </div>
       </PageHeader>
 
-      <div className="mb-4 shrink-0">
+      <div className="mb-4 shrink-0" data-tutorial-anchor="filters">
         <TicketsFilters filters={filters} onChange={handleFiltersChange} />
       </div>
 
@@ -324,6 +326,7 @@ export function TicketsPage() {
         // without it, and the frame would overflow instead of scrolling.
         <div
           aria-busy={isFetching}
+          data-tutorial-anchor="table"
           className={cn(
             "flex min-h-0 flex-1 flex-col transition-opacity",
             isFetching && "opacity-60",

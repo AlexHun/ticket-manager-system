@@ -121,7 +121,9 @@ export function KnowledgePage() {
               Show archived ({archived})
             </Toggle>
           )}
-          <Button onClick={openCreate}>New article</Button>
+          <div data-tutorial-anchor="new" className="contents">
+            <Button onClick={openCreate}>New article</Button>
+          </div>
         </PageHeader>
 
         {/* The number that matters, stated rather than counted off the list. An
@@ -129,7 +131,10 @@ export function KnowledgePage() {
             machine say?", and it is not answerable by looking at a column of
             switches. */}
         {articles && (
-          <p className="mb-4 text-sm text-muted-foreground">
+          <p
+            data-tutorial-anchor="answerable"
+            className="mb-4 text-sm text-muted-foreground"
+          >
             <span className="font-medium text-foreground">{answerable}</span> of{" "}
             {articles.length - archived} live articles are available to the
             auto-reply. The rest are for agents to answer from.
