@@ -40,10 +40,10 @@ function git(...args: string[]): string {
  * down to the code that produced it, with `environment` as the other half.
  *
  * Format is Sentry's own convention, `project@version`, so their UI groups and
- * sorts these the way it expects to. The package version alone would be useless
- * here — this is a private workspace pinned at `0.0.0` and nobody bumps it — so
- * the commit is what actually identifies the build, and the version is kept in
- * front of it for the day that changes.
+ * sorts these the way it expects to. The package version alone identifies which
+ * deploy shipped (CI's `bump-version` job in `ci.yml` bumps the patch version on
+ * every push to main) but not which commit produced it, so the commit is
+ * appended whenever one is available.
  *
  * `-dirty` is not decoration. A release name is a claim that these errors came
  * from that commit, and a build made over uncommitted edits is a different
