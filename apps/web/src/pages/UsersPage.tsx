@@ -1,7 +1,8 @@
 import { useState } from "react";
 import axios from "axios";
-import type { User } from "@ticket/shared";
+import { TUTORIAL_PAGE_KEY, type User } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
+import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useUsersQuery } from "@/lib/use-users";
 import { DeleteUserDialog } from "./DeleteUserDialog";
@@ -32,6 +33,8 @@ export function UsersPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.users} />
+
       {/* A measure cap, and the only page that needs one.
 
           Six columns of short values — a name, an address, a role, two dates —

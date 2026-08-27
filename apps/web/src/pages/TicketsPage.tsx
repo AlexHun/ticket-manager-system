@@ -7,10 +7,12 @@ import {
   DEFAULT_TICKET_SORT,
   SORT_ORDER,
   TICKET_SORT_FIELD,
+  TUTORIAL_PAGE_KEY,
   type SortOrder,
   type TicketSortField,
   type TicketsListResponse,
 } from "@ticket/shared";
+import { Tutorial } from "@/components/Tutorial";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import {
@@ -275,6 +277,8 @@ export function TicketsPage() {
     // what lets this be shorter than its content — see the height chain in
     // AppShell, which this is the bottom of.
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.tickets} />
+
       {/* The density toggle sits with the heading, the filters sit with the
           table, and the split is the difference between them: filters change
           which tickets are in the table and travel in the URL, so they belong
