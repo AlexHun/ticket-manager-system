@@ -159,3 +159,50 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Bumps apps/web's package.json patch version on every push to main, so the
+  # sidebar footer (which reads VITE_SENTRY_RELEASE, itself derived from this
+  # version — see releaseName() in apps/web/vite.config.ts) actually changes on
+  # each deploy. Without this the version was hand-set once at 0.1.0 and never
+  # touched again, and .git is excluded from the Docker build context (see
+  # .dockerignore), so there was no commit sha to fall back on either —
+  # production showed the same string forever regardless of what shipped.
+  #
+  # `[skip ci]` in the commit message is GitHub's own convention: it stops this
+  # push from starting another CI run (which would otherwise re-run this job
+  # against its own bump commit). Railway is not listening for that convention
+  # — it watches pushes to main directly — so this commit still triggers the
+  # real rebuild that is the point of the job.
+  bump-version:
+    name: Bump web version
+    runs-on: ubuntu-latest
+    needs: [check, e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump apps/web patch version
+        id: bump
+        run: |
+          set -euo pipefail
+          NEXT=$(node -e "
+            const fs = require('fs');
+            const path = 'apps/web/package.json';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const [major, minor, patch] = pkg.version.split('.').map(Number);
+            pkg.version = \`\${major}.\${minor}.\${patch + 1}\`;
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+            console.log(pkg.version);
+          ")
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/web/package.json
+          git commit -m "chore(web): bump version to ${{ steps.bump.outputs.next }} [skip ci]"
+          git push
