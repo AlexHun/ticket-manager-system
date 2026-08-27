@@ -397,7 +397,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
               greyed out?" is the one question this hint exists to answer.
               Wrapping it gives the trigger an element that stays interactive. */}
           <Hint content={polishHint}>
-            <span className="inline-flex">
+            <span data-tutorial-anchor="polish" className="inline-flex">
               {/* `relative` positions the shine ring, which traces this
                   button's own border while the rewrite is in flight — the same
                   cue the summary panel wears, so "a model is working on this"

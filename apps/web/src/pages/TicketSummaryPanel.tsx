@@ -112,7 +112,7 @@ export function TicketSummaryPanel({
     // shrink-0 for the reason spelled out at the call site: this card sits in a
     // flex column that would otherwise squash it and silently clip the summary.
     // `relative` is what the shine ring below positions against.
-    <Card className="relative shrink-0">
+    <Card data-tutorial-anchor="summary" className="relative shrink-0">
       <AiShine active={summarize.isPending} />
       <CardContent className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
