@@ -22,28 +22,25 @@ Build a ticket management system that uses AI to automatically classify, respond
 
 ## Ticket Statuses
 
+- New
+- Processing
 - Open
 - Resolved
 - Closed
 
 ## Ticket Categories
 
-- General Question
-- Technical Question
-- Refund Request
+- General
+- Technical
+- Refund
+- Other
 
 ## User Roles
 
-- **Admin**: Deployed with the system. Can create and manage agents.
+- **Admin**: Deployed with the system. Can create and manage agents, and additionally manages knowledge articles and automation.
 - **Agent**: Created by admin. Can view and manage tickets.
+- **Assistant**: Not a role — an account nobody can sign in as, which machine-written work (auto-replies) is filed under. See `docs/adr/0002-the-assistant-is-an-account-not-a-role.md`.
 
 ## Tech Stack
 
-- **Frontend**: React + Vite + TypeScript
-- **Backend**: Node.js + Express + TypeScript
-- **Database**: Postgres
-- **Auth**: Database sessions (`express-session` + `connect-pg-simple` + `bcrypt`)
-- **AI**: Anthropic Claude (via official SDK)
-- **Email**: Postmark (inbound + outbound)
-
-See [`tech-stack.md`](./tech-stack.md) for details and rationale.
+See [`tech-stack.md`](./tech-stack.md) for the stack, rationale, and what was deliberately skipped.
