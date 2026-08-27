@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArchiveRestore, History, Pencil, Sparkles } from "lucide-react";
+import { TUTORIAL_PAGE_KEY } from "@ticket/shared";
 import type {
   KnowledgeArticle,
   KnowledgeArticleRevisionsResponse,
@@ -8,6 +9,7 @@ import type {
 } from "@ticket/shared";
 import { CategoryBadge } from "@/components/TicketBadges";
 import { Hint } from "@/components/Hint";
+import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,6 +104,8 @@ export function KnowledgePage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.knowledge} />
+
       <div className="max-w-5xl">
         <PageHeader
           title="Knowledge base"

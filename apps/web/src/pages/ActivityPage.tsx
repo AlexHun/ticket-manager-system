@@ -4,10 +4,12 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
+  TUTORIAL_PAGE_KEY,
   type ActivityEntityType,
   type ActivityEntry,
   type ActivityFeedResponse,
 } from "@ticket/shared";
+import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
@@ -132,6 +134,8 @@ export function ActivityPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.activity} />
+
       <PageHeader
         title="Activity"
         description="Every recorded change across tickets, the knowledge base, accounts and automation — newest first."

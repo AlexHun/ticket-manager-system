@@ -20,10 +20,17 @@ import { TicketDetailPage } from "./TicketDetailPage";
 const mockGet = vi.fn();
 const mockPatch = vi.fn();
 const mockPost = vi.fn();
+// Answers the `<Tutorial>` mounted on this page — not what any test here
+// exercises, so it always resolves to "nothing to show" and never touches
+// `mockGet`'s own call count or `mockResolvedValueOnce` queue.
+const mockTutorialGet = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
-    get: (...args: unknown[]) => mockGet(...args),
+    get: (url: string, ...rest: unknown[]) =>
+      url.startsWith("/api/tutorials/")
+        ? mockTutorialGet(url, ...rest)
+        : mockGet(url, ...rest),
     patch: (...args: unknown[]) => mockPatch(...args),
     post: (...args: unknown[]) => mockPost(...args),
   },
@@ -236,6 +243,10 @@ beforeEach(() => {
   mockGet.mockReset();
   mockPatch.mockReset();
   mockPost.mockReset();
+  mockTutorialGet.mockReset();
+  mockTutorialGet.mockResolvedValue({
+    data: { tutorial: { content: { steps: [] }, shouldShow: false } },
+  });
 });
 
 afterEach(() => {

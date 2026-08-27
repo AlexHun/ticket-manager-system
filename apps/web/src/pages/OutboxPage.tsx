@@ -4,12 +4,14 @@ import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Inbox, Loader2, RotateCw } from "lucide-react";
 import {
   OUTBOUND_EMAIL_STATUS,
+  TUTORIAL_PAGE_KEY,
   type OutboundEmailKind,
   type OutboundEmailRow,
   type OutboundEmailStatus,
   type OutboxListResponse,
 } from "@ticket/shared";
 import { api } from "@/lib/api";
+import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +70,8 @@ export function OutboxPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.outbox} />
+
       <div className="flex max-w-5xl flex-col gap-6">
       <PageHeader
         title="Outbox"

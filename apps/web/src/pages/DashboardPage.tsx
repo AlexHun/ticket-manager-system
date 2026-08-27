@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { TicketEffectivenessQuery, TicketStatsQuery } from "@ticket/core";
 import {
   DASHBOARD_SCOPE,
+  TUTORIAL_PAGE_KEY,
   type AssistantEffectivenessResponse,
   type TicketStatsResponse,
 } from "@ticket/shared";
@@ -23,6 +24,7 @@ import {
 } from "@/components/dashboard/mini-rows";
 import { DASHBOARD_GRID, PANEL_SPAN } from "@/components/dashboard/grid";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Tutorial } from "@/components/Tutorial";
 import { api } from "@/lib/api";
 import {
   parseDashboardParams,
@@ -103,6 +105,8 @@ export function DashboardPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
+
       {/* The controls ride on the heading's line rather than a row of their own,
           which is what stops the heading costing any vertical space here. They
           still sit above everything they scope — so every panel is always

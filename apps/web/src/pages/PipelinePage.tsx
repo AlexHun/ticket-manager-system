@@ -6,6 +6,7 @@ import {
   DASHBOARD_RANGE,
   DEFAULT_DASHBOARD_RANGE,
   PIPELINE_OUTCOME,
+  TUTORIAL_PAGE_KEY,
   type DashboardRange,
   type PipelineConfig,
   type PipelineOverviewResponse,
@@ -15,6 +16,7 @@ import {
 } from "@ticket/shared";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
+import { Tutorial } from "@/components/Tutorial";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -173,6 +175,8 @@ export function PipelinePage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.pipeline} />
+
       <PageHeader
         title="Pipeline"
         description="What happens to a ticket before anyone opens it — and a way to make one arrive."

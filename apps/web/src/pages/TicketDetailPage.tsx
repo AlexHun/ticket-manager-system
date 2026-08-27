@@ -2,12 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
 import {
+  TUTORIAL_PAGE_KEY,
   type AutoReplyDecline,
   type TicketActivityResponse,
   type TicketDetail,
   type TicketDetailResponse,
 } from "@ticket/shared";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
+import { Tutorial } from "@/components/Tutorial";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -106,6 +108,8 @@ export function TicketDetailPage() {
     // element scrolls instead — splitting a short viewport in two would leave a
     // message pane too small to read in.
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6 lg:overflow-hidden">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.ticketDetail} />
+
       {/* Outside the loaded branch: the not-found screen is a dead end
           without it. */}
       <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4 self-start">

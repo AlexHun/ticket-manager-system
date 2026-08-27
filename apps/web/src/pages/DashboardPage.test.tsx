@@ -21,19 +21,24 @@ import { DashboardPage } from "./DashboardPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-// Two independent fakes, dispatched on the URL: the two endpoints have to be
+// Three independent fakes, dispatched on the URL: the endpoints have to be
 // controllable separately (a test that fails one must not silently drag the
 // other's fixture into an incompatible shape) but a single-argument
-// `mockResolvedValue` can't distinguish them.
+// `mockResolvedValue` can't distinguish them. `mockTutorialGet` answers the
+// `<Tutorial>` mounted on this page — it is not what any test here exercises,
+// so it always resolves to "nothing to show".
 const mockStatsGet = vi.fn();
 const mockEffectivenessGet = vi.fn();
+const mockTutorialGet = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
-    get: (url: string, ...rest: unknown[]) =>
-      url === "/api/tickets/effectiveness"
+    get: (url: string, ...rest: unknown[]) => {
+      if (url.startsWith("/api/tutorials/")) return mockTutorialGet(url, ...rest);
+      return url === "/api/tickets/effectiveness"
         ? mockEffectivenessGet(url, ...rest)
-        : mockStatsGet(url, ...rest),
+        : mockStatsGet(url, ...rest);
+    },
   },
 }));
 
@@ -184,8 +189,12 @@ function renderDashboard() {
 beforeEach(() => {
   mockStatsGet.mockReset();
   mockEffectivenessGet.mockReset();
+  mockTutorialGet.mockReset();
   mockStatsGet.mockResolvedValue({ data: stats() });
   mockEffectivenessGet.mockResolvedValue({ data: effectiveness() });
+  mockTutorialGet.mockResolvedValue({
+    data: { tutorial: { content: { steps: [] }, shouldShow: false } },
+  });
 });
 
 // --- Tests ----------------------------------------------------------------
