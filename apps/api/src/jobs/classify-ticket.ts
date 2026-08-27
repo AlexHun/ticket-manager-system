@@ -287,9 +287,8 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
     await assistantActor(),
   );
 
-  // Hand it to the auto-reply, which is the next stage of the pipeline
-  // `implementation-plan.md` Phase 6 describes: classify, then answer if the
-  // knowledge base covers it.
+  // Hand it to the auto-reply, the next stage of the pipeline: classify,
+  // then answer if the knowledge base covers it.
   //
   // Chained here rather than enqueued alongside this job from the webhook,
   // because the category is one of the auto-reply's eligibility gates — a Refund
