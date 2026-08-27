@@ -1,7 +1,10 @@
 import { useNavigate } from "react-router-dom";
+import { HelpCircle } from "lucide-react";
 import { authClient, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Hint } from "@/components/Hint";
+import { useTutorialTrigger } from "@/lib/tutorial-trigger";
 
 /**
  * The shell's top strip: collapse trigger, who you are, out.
@@ -22,6 +25,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 export function AppTopBar() {
   const navigate = useNavigate();
   const { data: session } = useSession();
+  const tutorialTrigger = useTutorialTrigger();
 
   const handleSignOut = async () => {
     await authClient.signOut();
@@ -32,6 +36,21 @@ export function AppTopBar() {
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
       <SidebarTrigger />
       <div className="ml-auto flex items-center gap-2">
+        {/* Only rendered while the current page has a tutorial to show —
+            `reopen` is null on any page without one, and briefly during a
+            route change; see tutorial-trigger.tsx. */}
+        {tutorialTrigger?.reopen && (
+          <Hint content="Show tutorial">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={tutorialTrigger.reopen}
+            >
+              <HelpCircle aria-hidden="true" />
+              <span className="sr-only">Show tutorial</span>
+            </Button>
+          </Hint>
+        )}
         {session?.user.name && (
           <span className="hidden text-sm text-muted-foreground sm:inline">
             {session.user.name}

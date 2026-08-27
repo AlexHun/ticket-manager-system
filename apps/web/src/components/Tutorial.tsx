@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { tutorialKeys } from "@/lib/tutorial-queries";
+import { useTutorialTrigger } from "@/lib/tutorial-trigger";
 
 /**
  * A page's own tutorial: pops up unprompted the first time a page is opened
@@ -66,6 +67,35 @@ export function Tutorial({ pageKey }: { pageKey: TutorialPageKey }) {
       setOpen(true);
     }
   }, [data?.shouldShow]);
+
+  // Lets the header's "?" button (`AppTopBar`) reopen this page's tutorial
+  // on demand, including after it's already been dismissed — that button
+  // and this component are siblings, not ancestor/descendant, so they talk
+  // through the registry in tutorial-trigger.tsx rather than props.
+  //
+  // `registerReopen`/`unregisterReopen` are destructured out of `trigger`
+  // rather than depending on `trigger` itself: the provider hands out a new
+  // object every time `reopen` changes (i.e. every time this effect calls
+  // `register`), so depending on the whole object would re-run this effect
+  // in response to its own last call and register a fresh closure forever.
+  // The two functions themselves are stable regardless.
+  //
+  // Depends on `hasContent`, a boolean, rather than `data` — `data` gets a
+  // new reference on every refetch (e.g. the `markSeen` invalidation below)
+  // even when the content itself hasn't changed, which would unregister and
+  // re-register on every dismiss for no reason.
+  const trigger = useTutorialTrigger();
+  const registerReopen = trigger?.register;
+  const unregisterReopen = trigger?.unregister;
+  const hasContent = !!data && data.content.steps.length > 0;
+  useEffect(() => {
+    if (!registerReopen || !unregisterReopen || !hasContent) return;
+    registerReopen(() => {
+      setStepIndex(0);
+      setOpen(true);
+    });
+    return unregisterReopen;
+  }, [registerReopen, unregisterReopen, hasContent]);
 
   const markSeen = useMutation({
     mutationFn: async () => {
@@ -296,8 +326,11 @@ function computePlacement(target: DOMRect, calloutHeight: number): Placement {
       VIEWPORT_PADDING,
       Math.max(VIEWPORT_PADDING, vw - CALLOUT_WIDTH - VIEWPORT_PADDING),
     );
-    calloutTop =
-      side === "bottom" ? target.bottom + GAP : target.top - GAP - calloutHeight;
+    calloutTop = clamp(
+      side === "bottom" ? target.bottom + GAP : target.top - GAP - calloutHeight,
+      VIEWPORT_PADDING,
+      Math.max(VIEWPORT_PADDING, vh - calloutHeight - VIEWPORT_PADDING),
+    );
     line = {
       x: clamp(dotX, calloutLeft, calloutLeft + CALLOUT_WIDTH),
       y: side === "bottom" ? calloutTop : calloutTop + calloutHeight,
@@ -441,14 +474,35 @@ function AnchoredCallout({
   // point at. Same reason `DialogPortal`/Radix's own `Popover.Portal` exist.
   return createPortal(
     <div className="pointer-events-none fixed inset-0 z-50">
+      {/* The spotlight: a single `box-shadow` rather than a separate dim
+          overlay + cutout. The last layer's 9999px spread covers the whole
+          viewport outside this box, so the target sits in a hole punched
+          through the dimming — and it follows `rounded-md` exactly, which a
+          mask/clip-path on a full-screen sibling would have to duplicate.
+          The two rings ahead of it are what make the punched-through target
+          read as *highlighted* rather than merely undimmed: a background-
+          colored gap first, so the primary ring outside it reads as a ring
+          rather than blending into whatever's under the target, then the
+          glow. */}
       <div
         aria-hidden="true"
-        className="absolute rounded-md ring-2 ring-primary transition-[left,top,width,height] duration-150"
+        className="absolute rounded-md transition-[left,top,width,height] duration-150"
         style={{
           left: placement.ringRect.left,
           top: placement.ringRect.top,
           width: placement.ringRect.width,
           height: placement.ringRect.height,
+          boxShadow: [
+            "0 0 0 3px var(--background)",
+            "0 0 0 5px var(--primary)",
+            "0 0 20px 4px color-mix(in oklab, var(--primary) 55%, transparent)",
+            // Dimming, not theming: this has to darken the page in both light
+            // and dark mode, so it's plain black at low opacity like
+            // `DialogOverlay`'s `bg-black/10` rather than a `--foreground`
+            // mix — `--foreground` is near-white in dark mode and would
+            // wash the page out instead of dimming it.
+            "0 0 0 9999px rgb(0 0 0 / 0.55)",
+          ].join(", "),
         }}
       />
       <svg aria-hidden="true" className="absolute inset-0 size-full overflow-visible">
@@ -460,13 +514,26 @@ function AnchoredCallout({
           className="stroke-primary"
           strokeWidth={2}
         />
-        <circle cx={placement.dot.x} cy={placement.dot.y} r={4} className="fill-primary" />
       </svg>
+      {/* The dot as its own element rather than an SVG `<circle>`: it needs a
+          `ring-background` border for contrast against whatever color the
+          glow above is sitting on, and a halo that expands and fades behind
+          it — `animate-ping` is a plain HTML/CSS utility already in this
+          app's Tailwind build, not something worth reimplementing in SVG. */}
       <div
+        aria-hidden="true"
+        className="absolute size-3 -translate-x-1/2 -translate-y-1/2"
+        style={{ left: placement.dot.x, top: placement.dot.y }}
+      >
+        <span className="absolute inset-0 rounded-full bg-primary/60 animate-ping" />
+        <span className="relative block size-3 rounded-full bg-primary ring-2 ring-background" />
+      </div>
+      <div
+        key={stepIndex}
         ref={calloutRef}
         role="dialog"
         aria-label={title}
-        className="pointer-events-auto absolute flex w-80 flex-col gap-3 rounded-lg bg-popover p-4 text-sm text-popover-foreground ring-1 ring-border shadow-lg"
+        className="pointer-events-auto absolute flex w-80 flex-col gap-3 rounded-lg bg-popover p-4 text-sm text-popover-foreground ring-1 ring-border shadow-xl animate-panel-in"
         style={{ left: placement.calloutLeft, top: placement.calloutTop }}
       >
         <div className="flex items-start justify-between gap-2">

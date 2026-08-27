@@ -202,7 +202,9 @@ describe("Tutorial — anchored callout", () => {
     });
     expect(callout).toHaveTextContent("The stat row");
     expect(callout.parentElement?.querySelector("svg line")).toBeInTheDocument();
-    expect(callout.parentElement?.querySelector("svg circle")).toBeInTheDocument();
+    expect(
+      callout.parentElement?.querySelector(".animate-ping"),
+    ).toBeInTheDocument();
     expect(callout).toHaveTextContent("Step 1 of 2");
   });
 
