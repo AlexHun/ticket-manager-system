@@ -13,6 +13,7 @@ import {
   type ThreadMessage,
 } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
+import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { TicketDetailPage } from "./TicketDetailPage";
 
 // --- Mocks ----------------------------------------------------------------
@@ -121,10 +122,20 @@ function mockApi({
         ? Promise.reject(assigneesError)
         : Promise.resolve({ data: { assignees } });
     }
+    if (url === "/api/tickets/unread") {
+      return Promise.resolve({ data: { tickets: [] } });
+    }
     return detailError
       ? Promise.reject(detailError)
       : Promise.resolve({ data: { ticket: ticket ?? makeTicketDetail() } });
   });
+}
+
+/** Mounts the sidebar's own unread-count observer alongside the page under
+ * test, the same query `AppSidebar` keeps permanently mounted in the app. */
+function UnreadObserver() {
+  useUnreadAssignments();
+  return null;
 }
 
 /** Axios shape, so `isNotFoundError` and `extractErrorMessage` see a real one. */
@@ -229,10 +240,19 @@ function titleBlock(): HTMLElement {
  */
 function renderDetail(
   entry: string | { pathname: string; state?: unknown } = "/tickets/12",
+  { withUnreadObserver = false } = {},
 ) {
   return renderWithQuery(
     <Routes>
-      <Route path="/tickets/:id" element={<TicketDetailPage />} />
+      <Route
+        path="/tickets/:id"
+        element={
+          <>
+            {withUnreadObserver && <UnreadObserver />}
+            <TicketDetailPage />
+          </>
+        }
+      />
       <Route path="/tickets" element={<div>tickets list</div>} />
     </Routes>,
     { initialEntries: [entry] },
@@ -264,6 +284,21 @@ describe("TicketDetailPage", () => {
     const [url, config] = mockGet.mock.calls[0];
     expect(url).toBe("/api/tickets/12");
     expect(config.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("refetches the sidebar's unread count once the ticket loads (ADR-0013)", async () => {
+    mockApi({ ticket: makeTicketDetail({ id: 12 }) });
+    renderDetail("/tickets/12", { withUnreadObserver: true });
+
+    // The GET this page just made marked the assignment seen server-side, but
+    // the response carries no `assignmentSeenAt` to say so — the sidebar badge
+    // only finds out by re-asking. One call for the observer's own mount, a
+    // second once the ticket has landed.
+    await waitFor(() =>
+      expect(
+        mockGet.mock.calls.filter(([url]) => url === "/api/tickets/unread"),
+      ).toHaveLength(2),
+    );
   });
 
   test("shows a skeleton while loading, then the ticket", async () => {

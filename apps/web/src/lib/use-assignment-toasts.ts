@@ -6,7 +6,14 @@ import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
 import { ticketKeys } from "@/lib/ticket-queries";
 
-function useUnreadAssignments() {
+/**
+ * Tickets assigned to the caller that they have not yet opened (ADR-0013).
+ *
+ * Exported because the sidebar's unread badge (`AppSidebar`) needs the same
+ * count this hook already toasts from — one query definition, so the badge
+ * and the toast can never read a different number for the same tab.
+ */
+export function useUnreadAssignments() {
   return useQuery({
     queryKey: ticketKeys.unread,
     queryFn: async ({ signal }) => {

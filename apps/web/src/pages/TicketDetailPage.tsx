@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
 import {
@@ -43,7 +44,8 @@ import { TicketReplyComposer } from "./TicketReplyComposer";
 import { TicketSummaryPanel } from "./TicketSummaryPanel";
 
 function useTicketQuery(id: string | undefined) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     // Shares the "tickets" prefix with the list key so one invalidate can reach
     // both; "detail" keeps it from ever colliding with the list's params object.
     queryKey: ticketKeys.detail(id ?? ""),
@@ -59,6 +61,22 @@ function useTicketQuery(id: string | undefined) {
     // it. Genuine transient failures (network, 5xx) still get the default.
     retry: (failureCount, error) => !isClientError(error) && failureCount < 3,
   });
+
+  // `GET /api/tickets/:id` marks the assignment seen server-side as a side
+  // effect of this same request (ADR-0013), but the wire response carries no
+  // `assignmentSeenAt` to tell this tab whether it just cleared one. The
+  // sidebar's unread badge has a permanently mounted observer, so without this
+  // it would keep showing a ticket the viewer is looking at right now until
+  // something unrelated happened to touch the query. Keyed on the ticket's own
+  // id rather than the query object, so a later mutation that leaves the id
+  // unchanged (status, category, a reply) does not re-fire this.
+  useEffect(() => {
+    if (query.data) {
+      void queryClient.invalidateQueries({ queryKey: ticketKeys.unread });
+    }
+  }, [query.data?.id, queryClient]);
+
+  return query;
 }
 
 /**

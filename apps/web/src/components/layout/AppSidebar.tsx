@@ -9,10 +9,12 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { LogoMark } from "./Logo";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
 import { SidebarViews } from "./SidebarViews";
@@ -21,6 +23,10 @@ export function AppSidebar() {
   const { data: session } = useSession();
   const { pathname } = useLocation();
   const items = navItemsFor(session?.user.role);
+  // Unread count for the "Tickets" row only — see the badge below for why
+  // this is a different question from any of `SidebarViews`'s counts.
+  const { data: unread } = useUnreadAssignments();
+  const unreadCount = unread?.length ?? 0;
 
   return (
     <Sidebar collapsible="icon">
@@ -82,6 +88,20 @@ export function AppSidebar() {
                         <span>{item.label}</span>
                       </NavLink>
                     </SidebarMenuButton>
+
+                    {/* Unread assignments (ADR-0013), on "Tickets" only —
+                        `assignedTo = viewer AND assignmentSeenAt IS NULL`, a
+                        different question from any of `SidebarViews`'s
+                        counts below and not scoped to a status. Hidden at
+                        zero rather than drawn quietly like those: this is a
+                        notification, not a standing workload gauge, so a
+                        permanent "0" here would be exactly the badge nobody
+                        looks at twice. */}
+                    {item.to === "/tickets" && unreadCount > 0 && (
+                      <SidebarMenuBadge className="bg-sidebar-primary text-sidebar-primary-foreground peer-data-[active=true]/menu-button:text-sidebar-primary-foreground">
+                        {unreadCount}
+                      </SidebarMenuBadge>
+                    )}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
