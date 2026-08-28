@@ -26,7 +26,6 @@ import {
   ActivityFilters,
   EMPTY_ACTIVITY_FILTERS,
   hasActiveActivityFilters,
-  hasInvalidActivityRange,
   type ActivityFilterState,
 } from "./ActivityFilters";
 import { TicketsPagination } from "./TicketsPagination";
@@ -85,7 +84,7 @@ function toActivityQueryParams(
   return params;
 }
 
-function useActivityQuery(params: ActivityQueryParams, enabled: boolean) {
+function useActivityQuery(params: ActivityQueryParams) {
   return useQuery({
     queryKey: ["activity", params],
     queryFn: async ({ signal }) => {
@@ -95,7 +94,6 @@ function useActivityQuery(params: ActivityQueryParams, enabled: boolean) {
       });
       return data;
     },
-    enabled,
     // Filtering and paging each swap the whole result set. Hold the current
     // rows on screen while the new ones load instead of flashing the skeleton
     // on every interaction — same reasoning as `TicketsPage`.
@@ -115,15 +113,8 @@ export function ActivityPage() {
   const [page, setPage] = useState(FIRST_PAGE);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
-  // Caught here rather than sent: an inverted range is nonsense to ask for,
-  // and the API's own `superRefine` would only echo it back as a 400 on a
-  // request that already looked wrong on screen.
-  const invalidRange = hasInvalidActivityRange(filters);
   const params = toActivityQueryParams(filters, page, pageSize);
-  const { data, isPending, isFetching, error } = useActivityQuery(
-    params,
-    !invalidRange,
-  );
+  const { data, isPending, isFetching, error } = useActivityQuery(params);
 
   const handleFiltersChange = (next: ActivityFilterState) => {
     setFilters(next);
@@ -145,83 +136,75 @@ export function ActivityPage() {
         <ActivityFilters filters={filters} onChange={handleFiltersChange} />
       </div>
 
-      {invalidRange ? (
-        <p className="text-sm text-muted-foreground">
-          Fix the date range above to see results.
+      {isPending && <ActivitySkeleton />}
+
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {extractErrorMessage(error, "Failed to load the activity feed")}
         </p>
-      ) : (
-        <>
-          {isPending && <ActivitySkeleton />}
+      )}
 
-          {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {extractErrorMessage(error, "Failed to load the activity feed")}
-            </p>
+      {data && (
+        <div
+          aria-busy={isFetching}
+          data-tutorial-anchor="feed"
+          className={cn(
+            "flex min-h-0 flex-1 flex-col transition-opacity",
+            isFetching && "opacity-60",
           )}
-
-          {data && (
-            <div
-              aria-busy={isFetching}
-              data-tutorial-anchor="feed"
-              className={cn(
-                "flex min-h-0 flex-1 flex-col transition-opacity",
-                isFetching && "opacity-60",
-              )}
-            >
-              {data.entries.length === 0 ? (
-                <div className={cn(FRAME, "grid min-h-0 flex-1 place-items-center")}>
-                  <p className="text-sm text-muted-foreground">
-                    {filtered
-                      ? "No activity matches these filters."
-                      : "Nothing recorded yet."}
-                  </p>
-                </div>
-              ) : (
-                <div className={cn(FRAME, "min-h-0 flex-1")}>
-                  <table className="w-full text-sm">
-                    <thead className="text-muted-foreground">
-                      <tr>
-                        <th scope="col" className={HEAD}>
-                          When
-                        </th>
-                        <th scope="col" className={HEAD}>
-                          Actor
-                        </th>
-                        <th scope="col" className={HEAD}>
-                          Entity
-                        </th>
-                        <th scope="col" className={HEAD}>
-                          Action
-                        </th>
-                        <th scope="col" className={HEAD}>
-                          Change
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.entries.map((entry) => (
-                        <ActivityRow key={entry.id} entry={entry} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {data.total > 0 && (
-                <TicketsPagination
-                  page={data.page}
-                  pageSize={data.pageSize}
-                  total={data.total}
-                  onPageChange={setPage}
-                  onPageSizeChange={(next) => {
-                    setPageSize(next);
-                    setPage(FIRST_PAGE);
-                  }}
-                />
-              )}
+        >
+          {data.entries.length === 0 ? (
+            <div className={cn(FRAME, "grid min-h-0 flex-1 place-items-center")}>
+              <p className="text-sm text-muted-foreground">
+                {filtered
+                  ? "No activity matches these filters."
+                  : "Nothing recorded yet."}
+              </p>
+            </div>
+          ) : (
+            <div className={cn(FRAME, "min-h-0 flex-1")}>
+              <table className="w-full text-sm">
+                <thead className="text-muted-foreground">
+                  <tr>
+                    <th scope="col" className={HEAD}>
+                      When
+                    </th>
+                    <th scope="col" className={HEAD}>
+                      Actor
+                    </th>
+                    <th scope="col" className={HEAD}>
+                      Entity
+                    </th>
+                    <th scope="col" className={HEAD}>
+                      Action
+                    </th>
+                    <th scope="col" className={HEAD}>
+                      Change
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.entries.map((entry) => (
+                    <ActivityRow key={entry.id} entry={entry} />
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-        </>
+
+          {data.total > 0 && (
+            <TicketsPagination
+              page={data.page}
+              pageSize={data.pageSize}
+              total={data.total}
+              onPageChange={setPage}
+              onPageSizeChange={(next) => {
+                setPageSize(next);
+                setPage(FIRST_PAGE);
+              }}
+            />
+          )}
+        </div>
       )}
     </div>
   );
