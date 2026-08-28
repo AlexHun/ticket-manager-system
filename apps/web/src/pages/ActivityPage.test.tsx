@@ -326,15 +326,21 @@ describe("ActivityPage filtering", () => {
     return screen.findByRole("dialog");
   }
 
+  /** Scopes a day-number query to the first of the two displayed months —
+   *  with both shown at once, a day number like "1" or "24" appears twice. */
+  function withinFirstMonth(popover: HTMLElement) {
+    return within(within(popover).getAllByRole("grid")[0]);
+  }
+
   test("sends the date range with an exclusive upper bound", async () => {
     vi.setSystemTime(new Date(2026, 7, 15));
     const user = await renderLoaded();
 
     const popover = await openDateRangePopover(user);
-    await user.click(within(popover).getByText("1"));
+    await user.click(withinFirstMonth(popover).getByText("1"));
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    await user.click(within(popover).getByText("24"));
+    await user.click(withinFirstMonth(popover).getByText("24"));
     await waitFor(() => expect(activityCallCount()).toBe(3));
 
     expect(activityParamsOfCall(2)).toMatchObject({
@@ -350,10 +356,10 @@ describe("ActivityPage filtering", () => {
     const user = await renderLoaded();
 
     const popover = await openDateRangePopover(user);
-    await user.click(within(popover).getByText("24"));
+    await user.click(withinFirstMonth(popover).getByText("24"));
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    await user.click(within(popover).getByText("1"));
+    await user.click(withinFirstMonth(popover).getByText("1"));
     await waitFor(() => expect(activityCallCount()).toBe(3));
 
     expect(activityParamsOfCall(2)).toMatchObject({
@@ -385,7 +391,7 @@ describe("ActivityPage filtering", () => {
     // A single click leaves the range incomplete (`min={1}` withholds `to`
     // until a second click), so the popover is still open here — no need
     // to reopen it before reaching for the preset.
-    await user.click(within(popover).getByText("1"));
+    await user.click(withinFirstMonth(popover).getByText("1"));
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
     await user.click(within(popover).getByRole("button", { name: "All time" }));

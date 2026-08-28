@@ -219,6 +219,7 @@ function ActivityDateRangeField({
           </div>
           <Calendar
             mode="range"
+            numberOfMonths={2}
             showOutsideDays={false}
             // Without `min`, react-day-picker completes the range on the
             // first click alone (`{from: date, to: date}`) — a same-day
