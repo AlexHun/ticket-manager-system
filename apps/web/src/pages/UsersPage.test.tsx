@@ -192,9 +192,24 @@ describe("UsersPage", () => {
 
     await screen.findByText("Ada Admin");
 
-    for (const header of ["Name", "Email", "Role", "Created"]) {
+    for (const header of ["Name", "Email", "Role", "Created", "Actions"]) {
       expect(
         screen.getByRole("columnheader", { name: header }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  test("the skeleton declares the same column headers as the table", () => {
+    // Both render through UsersTableHead, so a column added to one can't be
+    // missed on the other — see the comment on UsersTableHead in
+    // UsersTable.tsx.
+    mockGet.mockReturnValue(new Promise(() => {}));
+    renderUsersPage();
+
+    const skeleton = screen.getByLabelText("Loading users");
+    for (const header of ["Name", "Email", "Role", "Created", "Actions"]) {
+      expect(
+        within(skeleton).getByRole("columnheader", { name: header }),
       ).toBeInTheDocument();
     }
   });

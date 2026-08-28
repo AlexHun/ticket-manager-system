@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -275,6 +275,44 @@ const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
 const HEAD = "sticky top-0 z-10 bg-muted text-left font-medium";
 
 /**
+ * One `<th>` implementation for both the interactive header and its loading
+ * skeleton, so `scope`, the header classes, and whether `aria-label` is set
+ * can't drift between the two the way `aria-label` did in `00b7468` — the
+ * skeleton's copy of this cell kept the same visible label but never got the
+ * attribute, so an e2e locator matching by accessible name resolved against
+ * it instead of the loaded header and read widths keyed by `""`.
+ *
+ * `ariaLabel` is left undefined by the skeleton on purpose, not an oversight
+ * this time: it's the one thing that tells the two states apart while both
+ * are briefly mounted during a refetch, and `columnWidths()` in
+ * `tests/e2e/tickets.spec.ts` scopes its wait and its read to `th[aria-label]`
+ * for exactly that reason. Don't add it there without updating that test.
+ */
+function HeaderCell({
+  ariaLabel,
+  ariaSort,
+  children,
+}: {
+  ariaLabel?: string;
+  ariaSort?: "ascending" | "descending" | "none";
+  children: ReactNode;
+}) {
+  return (
+    <th
+      scope="col"
+      aria-label={ariaLabel}
+      aria-sort={ariaSort}
+      // No `relative` here: it would fight `sticky` for the position
+      // property. Sticky is already a containing block for the
+      // absolutely-positioned resize handle.
+      className={cn(HEAD, "px-4 py-2")}
+    >
+      {children}
+    </th>
+  );
+}
+
+/**
  * What a row's density actually changes: the cell padding, and the leading the
  * two-line Customer cell inherits.
  *
@@ -368,19 +406,12 @@ export function TicketsTable({
                 const { label } =
                   COLUMN_META[header.column.id as TicketSortField];
                 return (
-                  <th
+                  <HeaderCell
                     key={header.id}
-                    scope="col"
                     // Explicit, so the resize handle's own label doesn't get
                     // concatenated into the header's accessible name.
-                    aria-label={label}
-                    aria-sort={
-                      direction === false ? "none" : ARIA_SORT[direction]
-                    }
-                    // No `relative` here: it would fight `sticky` for the
-                    // position property. Sticky is already a containing block
-                    // for the absolutely-positioned resize handle.
-                    className={cn(HEAD, "px-4 py-2")}
+                    ariaLabel={label}
+                    ariaSort={direction === false ? "none" : ARIA_SORT[direction]}
                   >
                     <button
                       type="button"
@@ -398,7 +429,7 @@ export function TicketsTable({
                       <SortIcon direction={direction} />
                     </button>
                     <ResizeHandle header={header} />
-                  </th>
+                  </HeaderCell>
                 );
               })}
             </tr>
@@ -550,11 +581,14 @@ export function TicketsTableSkeleton({
         </colgroup>
         <thead className="text-muted-foreground">
           <tr>
-            {columns.map((column) => (
-              <th key={column.id} scope="col" className={cn(HEAD, "px-4 py-2")}>
-                {COLUMN_META[column.id].label}
-              </th>
-            ))}
+            {columns.map((column) => {
+              const { label } = COLUMN_META[column.id];
+              return (
+                <HeaderCell key={column.id}>
+                  <span className="truncate">{label}</span>
+                </HeaderCell>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
