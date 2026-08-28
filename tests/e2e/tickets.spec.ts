@@ -431,9 +431,14 @@ async function filterSubjects(
 
 /** Rendered width of every column header, keyed by label. */
 async function columnWidths(page: Page): Promise<Record<string, number>> {
-  // Wait for the real table: evaluateAll over zero elements silently yields {}.
-  await page.getByRole("columnheader", { name: "Subject" }).waitFor();
-  return page.getByRole("columnheader").evaluateAll((els) =>
+  // Wait for the real table, not just *a* columnheader: the loading skeleton's
+  // <th>s carry the same label as plain text and no aria-label, so a
+  // role/name query matches them too and can resolve while the skeleton is
+  // still up — evaluateAll then reads widths keyed by "" instead of the
+  // column names, and `.Subject` comes back undefined. aria-label is the one
+  // thing only the loaded table sets, so scope both the wait and the read to it.
+  await page.locator('th[aria-label="Subject"]').waitFor();
+  return page.locator("th[aria-label]").evaluateAll((els) =>
     Object.fromEntries(
       els.map((el) => [
         el.getAttribute("aria-label") ?? "",
