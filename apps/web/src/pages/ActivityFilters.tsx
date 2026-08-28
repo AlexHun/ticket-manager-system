@@ -202,11 +202,11 @@ function ActivityDateRangeField({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="flex w-auto max-w-[calc(100vw-2rem)] flex-col gap-2 p-2 sm:flex-row"
+          className="flex w-auto max-w-[calc(100vw-2rem)] flex-row gap-2 p-2"
           align="start"
           collisionPadding={16}
         >
-          <div className="flex flex-row flex-wrap gap-0.5 border-b border-border pb-2 sm:flex-col sm:border-r sm:border-b-0 sm:pr-2 sm:pb-0">
+          <div className="flex flex-col gap-0.5 border-r border-border pr-2">
             {DATE_PRESETS.map((preset) => (
               <Button
                 key={preset.label}
