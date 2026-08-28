@@ -50,6 +50,7 @@ Argument order is `bun run --filter <pkg> <script>` — `bun --filter <pkg> run
 | `prisma migrate deploy`    | **automatic**       | the API's Railway pre-deploy command; you never type it           |
 | `db:seed`                  | **yes, once**       | sign-up is disabled, so this is the only way a first admin exists |
 | `db:seed:kb`               | **yes, once**       | without it the auto-reply half of the app is inert                |
+| `db:seed:tutorials`        | **yes, once**       | without it no page has a walkthrough — empty content just stays silent, not broken |
 | `db:seed:tickets`          | **never**           | 140 fake customers and their email threads                        |
 | `db:migrate`               | **never**           | that is `migrate dev`; it diffs, prompts and can reset            |
 | `db:test:*`                | **never**           | reads `.env.test`, and `db:test:reset` wipes                      |
@@ -59,6 +60,7 @@ Both production seeds run **inside the container**, not locally:
 ```bash
 railway ssh --service api --command 'cd /app/apps/api && bun run db:seed'
 railway ssh --service api --command 'cd /app/apps/api && bun run db:seed:kb'
+railway ssh --service api --command 'cd /app/apps/api && bun run db:seed:tutorials'
 ```
 
 `railway run` would execute on *your* machine with Railway's variables injected —
@@ -76,6 +78,7 @@ unless you pass `--reset`.
 | ------------------- | ------------------------- | ------------------------------------------ | -------------- |
 | `db:seed`           | `seed.ts`                 | admin, AI assistant, demo agent            | dev, test, prod |
 | `db:seed:kb`        | `seed-knowledge-base.ts`  | `knowledge_article` rows                   | dev, prod      |
+| `db:seed:tutorials` | `seed-tutorials.ts`       | `tutorial_content` rows (all 8 pages)      | dev, prod      |
 | `db:seed:tickets`   | `seed-tickets.ts`         | 140 demo tickets + their email threads     | dev only       |
 
 ### 1. `db:seed` — the accounts
@@ -130,7 +133,26 @@ trail. Without at least one article flagged for auto-reply, the lower half of
 `/pipeline` is permanently dead; the page says so (`autoReplyArticleCount`)
 rather than looking like a quiet week.
 
-### 3. `db:seed:tickets` — demo tickets (dev only)
+### 3. `db:seed:tutorials` — the walkthroughs
+
+```bash
+cd apps/api && bun run db:seed:tutorials
+```
+
+Writes starter copy into `TutorialContent` for all eight pages — `dashboard`,
+`tickets`, `ticketDetail`, `pipeline`, `knowledge`, `users`, `activity`,
+`outbox`. A page whose row already exists is skipped whole, same rule as
+`db:seed:kb`: this can never overwrite an admin's edits made through the
+tutorial editor. `updatedByName` is set to `"Seed script"` so the editor shows
+where unedited content came from.
+
+There is no other writer of this table besides the admin editor (`PUT
+/api/tutorials/:pageKey`) — no seed ran automatically before this script
+existed, which is why a freshly deployed environment, production included, had
+no tutorial content at all until someone wrote it by hand against that exact
+database.
+
+### 4. `db:seed:tickets` — demo tickets (dev only)
 
 ```bash
 cd apps/api && bun run db:seed:tickets            # append what's missing
@@ -171,6 +193,7 @@ bun run db:generate        # required — see below
 bun run db:migrate
 bun run db:seed
 bun run db:seed:kb
+bun run db:seed:tutorials
 bun run db:seed:tickets
 cd ../..
 
@@ -197,7 +220,8 @@ Covered in full by `DEPLOYMENT.md` §4–5. In command terms it is only this:
    boot and needs nothing from you.
 2. `railway ssh … 'cd /app/apps/api && bun run db:seed'`
 3. `railway ssh … 'cd /app/apps/api && bun run db:seed:kb'`
-4. Delete the two `SEED_ADMIN_*` variables.
+4. `railway ssh … 'cd /app/apps/api && bun run db:seed:tutorials'`
+5. Delete the two `SEED_ADMIN_*` variables.
 
 Every deploy after the first is step 1 alone.
 
@@ -237,6 +261,7 @@ Every deploy after the first is step 1 alone.
 | `bun run db:seed`          | accounts — see above                                           |
 | `bun run db:seed:tickets`  | demo tickets — see above, dev only                             |
 | `bun run db:seed:kb`       | knowledge base — see above                                     |
+| `bun run db:seed:tutorials`| tutorial walkthroughs — see above                               |
 | `bun run db:test:migrate`  | `dotenv -e .env.test -- prisma migrate deploy`                 |
 | `bun run db:test:seed`     | `bun --env-file=.env.test prisma/seed.ts`                      |
 | `bun run db:test:reset`    | reset + reseed the test database                               |
