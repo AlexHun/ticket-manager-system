@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { format } from "date-fns";
+import { Calendar as CalendarIcon, X } from "lucide-react";
 import { ACTIVITY_ENTITY_TYPES, type ActivityEntityType } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -54,6 +56,27 @@ export function hasInvalidActivityRange(filters: ActivityFilterState): boolean {
   return filters.from !== "" && filters.to !== "" && filters.from > filters.to;
 }
 
+/**
+ * Parsed by splitting rather than `new Date(iso)` — same reasoning as
+ * `formatBucketLabel` in `lib/format.ts`: `new Date("2026-08-03")` is UTC
+ * midnight, which `Calendar` would then render as Aug 2 anywhere west of
+ * Greenwich. Splitting into local year/month/day keeps the date the field
+ * shows in sync with the date actually sent.
+ */
+function parseLocalDate(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 interface ActivityFiltersProps {
   filters: ActivityFilterState;
   onChange: (filters: ActivityFilterState) => void;
@@ -75,31 +98,21 @@ export function ActivityFilters({ filters, onChange }: ActivityFiltersProps) {
         onChange={(actorId) => onChange({ ...filters, actorId })}
       />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="activity-from">From</Label>
-        <Input
-          id="activity-from"
-          type="date"
-          value={filters.from}
-          max={filters.to || undefined}
-          aria-invalid={invalidRange}
-          className="w-40"
-          onChange={(e) => onChange({ ...filters, from: e.target.value })}
-        />
-      </div>
+      <ActivityDateField
+        id="activity-from"
+        label="From"
+        value={filters.from}
+        invalid={invalidRange}
+        onChange={(from) => onChange({ ...filters, from })}
+      />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="activity-to">To</Label>
-        <Input
-          id="activity-to"
-          type="date"
-          value={filters.to}
-          min={filters.from || undefined}
-          aria-invalid={invalidRange}
-          className="w-40"
-          onChange={(e) => onChange({ ...filters, to: e.target.value })}
-        />
-      </div>
+      <ActivityDateField
+        id="activity-to"
+        label="To"
+        value={filters.to}
+        invalid={invalidRange}
+        onChange={(to) => onChange({ ...filters, to })}
+      />
 
       {invalidRange && (
         <p role="alert" className="text-xs text-destructive">
@@ -117,6 +130,60 @@ export function ActivityFilters({ filters, onChange }: ActivityFiltersProps) {
           Clear filters
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * One end of the from/to range. A `Calendar` in a `Popover` rather than
+ * either date bound restricting the other — an inverted range is still
+ * pickable, and `hasInvalidActivityRange` catches it inline next to the
+ * fields, same as before this was shadcn.
+ */
+function ActivityDateField({
+  id,
+  label,
+  value,
+  invalid,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  invalid: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = parseLocalDate(value);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            id={id}
+            variant="outline"
+            aria-invalid={invalid}
+            className="w-40 justify-start font-normal"
+          >
+            <CalendarIcon className="text-muted-foreground" />
+            {selected ? format(selected, "MMM d, yyyy") : "Any date"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            showOutsideDays={false}
+            selected={selected}
+            defaultMonth={selected}
+            onSelect={(date) => {
+              onChange(date ? formatLocalDate(date) : "");
+              setOpen(false);
+            }}
+          />
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
@@ -142,6 +142,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("ActivityPage", () => {
@@ -317,17 +318,28 @@ describe("ActivityPage filtering", () => {
     ).toBeInTheDocument();
   });
 
-  test("sends the date range with an exclusive upper bound", async () => {
-    await renderLoaded();
+  /** Opens the field's popover and clicks the given day-of-month in the
+   *  currently displayed month — pinned by `vi.setSystemTime` in each test
+   *  below so "today" (the Calendar's default month) always lands on the
+   *  month the test means to pick from. */
+  async function pickDate(
+    user: ReturnType<typeof userEvent.setup>,
+    fieldLabel: "From" | "To",
+    dayOfMonth: string,
+  ) {
+    await user.click(screen.getByRole("button", { name: fieldLabel }));
+    const popover = await screen.findByRole("dialog");
+    await user.click(within(popover).getByText(dayOfMonth));
+  }
 
-    fireEvent.change(screen.getByLabelText("From"), {
-      target: { value: "2026-08-01" },
-    });
+  test("sends the date range with an exclusive upper bound", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    await pickDate(user, "From", "1");
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    fireEvent.change(screen.getByLabelText("To"), {
-      target: { value: "2026-08-24" },
-    });
+    await pickDate(user, "To", "24");
     await waitFor(() => expect(activityCallCount()).toBe(3));
 
     expect(activityParamsOfCall(2)).toMatchObject({
@@ -339,16 +351,13 @@ describe("ActivityPage filtering", () => {
   });
 
   test("shows an inline error and skips the request for an inverted range", async () => {
-    await renderLoaded();
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
 
-    fireEvent.change(screen.getByLabelText("From"), {
-      target: { value: "2026-08-24" },
-    });
+    await pickDate(user, "From", "24");
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    fireEvent.change(screen.getByLabelText("To"), {
-      target: { value: "2026-08-01" },
-    });
+    await pickDate(user, "To", "1");
 
     expect(
       await screen.findByText('"From" must be on or before "To".'),
