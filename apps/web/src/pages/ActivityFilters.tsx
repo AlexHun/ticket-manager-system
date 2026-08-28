@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { format } from "date-fns";
+import {
+  addDays,
+  addMonths,
+  endOfMonth,
+  format,
+  startOfMonth,
+  startOfToday,
+} from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { Calendar as CalendarIcon, X } from "lucide-react";
 import { ACTIVITY_ENTITY_TYPES, type ActivityEntityType } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
@@ -47,16 +55,6 @@ export function hasActiveActivityFilters(filters: ActivityFilterState): boolean 
 }
 
 /**
- * The one validation this bar owns: a `from` after `to` is nonsense to send,
- * and the API's own `superRefine` would only echo it back as a 400 on the
- * request that already looks wrong on screen. Caught here instead, next to
- * the two fields, rather than after a round trip.
- */
-export function hasInvalidActivityRange(filters: ActivityFilterState): boolean {
-  return filters.from !== "" && filters.to !== "" && filters.from > filters.to;
-}
-
-/**
  * Parsed by splitting rather than `new Date(iso)` — same reasoning as
  * `formatBucketLabel` in `lib/format.ts`: `new Date("2026-08-03")` is UTC
  * midnight, which `Calendar` would then render as Aug 2 anywhere west of
@@ -77,6 +75,55 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function toValue(date: Date | undefined): string {
+  return date ? formatLocalDate(date) : "";
+}
+
+/** The trigger's label: the start alone while a range is still mid-pick,
+ *  collapsed to one date for a same-day range, both ends otherwise. */
+function rangeLabel(from: Date | undefined, to: Date | undefined): string {
+  if (!from) return "Any date";
+  if (!to || formatLocalDate(from) === formatLocalDate(to)) {
+    return format(from, "MMM d, yyyy");
+  }
+  return `${format(from, "MMM d, yyyy")} – ${format(to, "MMM d, yyyy")}`;
+}
+
+interface DatePreset {
+  label: string;
+  range: () => { from?: Date; to?: Date };
+}
+
+/**
+ * Computed at click time, not module load — "Today" has to mean today
+ * whenever the popover happens to be opened, not whenever the page was
+ * first rendered.
+ */
+const DATE_PRESETS: DatePreset[] = [
+  { label: "Today", range: () => ({ from: startOfToday(), to: startOfToday() }) },
+  {
+    label: "Last 7 days",
+    range: () => ({ from: addDays(startOfToday(), -6), to: startOfToday() }),
+  },
+  {
+    label: "Last 30 days",
+    range: () => ({ from: addDays(startOfToday(), -29), to: startOfToday() }),
+  },
+  {
+    label: "This month",
+    // Through today, not month-end — there's no future activity to bound.
+    range: () => ({ from: startOfMonth(startOfToday()), to: startOfToday() }),
+  },
+  {
+    label: "Last month",
+    range: () => {
+      const end = endOfMonth(addMonths(startOfToday(), -1));
+      return { from: startOfMonth(end), to: end };
+    },
+  },
+  { label: "All time", range: () => ({ from: undefined, to: undefined }) },
+];
+
 interface ActivityFiltersProps {
   filters: ActivityFilterState;
   onChange: (filters: ActivityFilterState) => void;
@@ -84,7 +131,6 @@ interface ActivityFiltersProps {
 
 export function ActivityFilters({ filters, onChange }: ActivityFiltersProps) {
   const active = hasActiveActivityFilters(filters);
-  const invalidRange = hasInvalidActivityRange(filters);
 
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -98,27 +144,10 @@ export function ActivityFilters({ filters, onChange }: ActivityFiltersProps) {
         onChange={(actorId) => onChange({ ...filters, actorId })}
       />
 
-      <ActivityDateField
-        id="activity-from"
-        label="From"
-        value={filters.from}
-        invalid={invalidRange}
-        onChange={(from) => onChange({ ...filters, from })}
+      <ActivityDateRangeField
+        value={{ from: filters.from, to: filters.to }}
+        onChange={({ from, to }) => onChange({ ...filters, from, to })}
       />
-
-      <ActivityDateField
-        id="activity-to"
-        label="To"
-        value={filters.to}
-        invalid={invalidRange}
-        onChange={(to) => onChange({ ...filters, to })}
-      />
-
-      {invalidRange && (
-        <p role="alert" className="text-xs text-destructive">
-          "From" must be on or before "To".
-        </p>
-      )}
 
       {active && (
         <Button
@@ -134,52 +163,75 @@ export function ActivityFilters({ filters, onChange }: ActivityFiltersProps) {
   );
 }
 
+interface ActivityDateRangeValue {
+  from: string;
+  to: string;
+}
+
 /**
- * One end of the from/to range. A `Calendar` in a `Popover` rather than
- * either date bound restricting the other — an inverted range is still
- * pickable, and `hasInvalidActivityRange` catches it inline next to the
- * fields, same as before this was shadcn.
+ * A `Calendar` in `mode="range"` plus a rail of presets, both in one
+ * `Popover`. Range mode makes an inverted pick structurally impossible — the
+ * second click always becomes the later end — so unlike the old pair of
+ * single-date fields, there is no invalid-range state left to guard against.
  */
-function ActivityDateField({
-  id,
-  label,
+function ActivityDateRangeField({
   value,
-  invalid,
   onChange,
 }: {
-  id: string;
-  label: string;
-  value: string;
-  invalid: boolean;
-  onChange: (value: string) => void;
+  value: ActivityDateRangeValue;
+  onChange: (value: ActivityDateRangeValue) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = parseLocalDate(value);
+  const from = parseLocalDate(value.from);
+  const to = parseLocalDate(value.to);
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor="activity-date-range">Date range</Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
-            id={id}
+            id="activity-date-range"
             variant="outline"
-            aria-invalid={invalid}
-            className="w-40 justify-start font-normal"
+            className="w-56 justify-start font-normal"
           >
             <CalendarIcon className="text-muted-foreground" />
-            {selected ? format(selected, "MMM d, yyyy") : "Any date"}
+            {rangeLabel(from, to)}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="flex w-auto flex-row gap-2 p-2" align="start">
+          <div className="flex flex-col gap-0.5 border-r border-border pr-2">
+            {DATE_PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                variant="ghost"
+                size="sm"
+                className="justify-start font-normal"
+                onClick={() => {
+                  const picked = preset.range();
+                  onChange({ from: toValue(picked.from), to: toValue(picked.to) });
+                  setOpen(false);
+                }}
+              >
+                {preset.label}
+              </Button>
+            ))}
+          </div>
           <Calendar
-            mode="single"
+            mode="range"
             showOutsideDays={false}
-            selected={selected}
-            defaultMonth={selected}
-            onSelect={(date) => {
-              onChange(date ? formatLocalDate(date) : "");
-              setOpen(false);
+            // Without `min`, react-day-picker completes the range on the
+            // first click alone (`{from: date, to: date}`) — a same-day
+            // range, immediately closing the popover before a second click
+            // can land. `min={1}` forces the first click to set only
+            // `from`, so a genuine two-click pick still works; a same-day
+            // range still reaches the field via the presets.
+            min={1}
+            selected={{ from, to } satisfies DateRange}
+            defaultMonth={from ?? new Date()}
+            onSelect={(range) => {
+              onChange({ from: toValue(range?.from), to: toValue(range?.to) });
+              if (range?.from && range?.to) setOpen(false);
             }}
           />
         </PopoverContent>

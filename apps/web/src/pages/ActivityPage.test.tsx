@@ -318,28 +318,23 @@ describe("ActivityPage filtering", () => {
     ).toBeInTheDocument();
   });
 
-  /** Opens the field's popover and clicks the given day-of-month in the
-   *  currently displayed month — pinned by `vi.setSystemTime` in each test
-   *  below so "today" (the Calendar's default month) always lands on the
-   *  month the test means to pick from. */
-  async function pickDate(
-    user: ReturnType<typeof userEvent.setup>,
-    fieldLabel: "From" | "To",
-    dayOfMonth: string,
-  ) {
-    await user.click(screen.getByRole("button", { name: fieldLabel }));
-    const popover = await screen.findByRole("dialog");
-    await user.click(within(popover).getByText(dayOfMonth));
+  /** Opens the single date-range popover — pinned by `vi.setSystemTime` in
+   *  each test below so "today" (the Calendar's default month, and the
+   *  presets' anchor) always lands where the test means it to. */
+  async function openDateRangePopover(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Date range" }));
+    return screen.findByRole("dialog");
   }
 
   test("sends the date range with an exclusive upper bound", async () => {
     vi.setSystemTime(new Date(2026, 7, 15));
     const user = await renderLoaded();
 
-    await pickDate(user, "From", "1");
+    const popover = await openDateRangePopover(user);
+    await user.click(within(popover).getByText("1"));
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    await pickDate(user, "To", "24");
+    await user.click(within(popover).getByText("24"));
     await waitFor(() => expect(activityCallCount()).toBe(3));
 
     expect(activityParamsOfCall(2)).toMatchObject({
@@ -350,20 +345,54 @@ describe("ActivityPage filtering", () => {
     });
   });
 
-  test("shows an inline error and skips the request for an inverted range", async () => {
+  test("normalizes an out-of-order pick instead of producing an invalid range", async () => {
     vi.setSystemTime(new Date(2026, 7, 15));
     const user = await renderLoaded();
 
-    await pickDate(user, "From", "24");
+    const popover = await openDateRangePopover(user);
+    await user.click(within(popover).getByText("24"));
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    await pickDate(user, "To", "1");
+    await user.click(within(popover).getByText("1"));
+    await waitFor(() => expect(activityCallCount()).toBe(3));
 
-    expect(
-      await screen.findByText('"From" must be on or before "To".'),
-    ).toBeInTheDocument();
-    // No third request — the invalid range is caught before it reaches the API.
-    expect(activityCallCount()).toBe(2);
+    expect(activityParamsOfCall(2)).toMatchObject({
+      from: "2026-08-01",
+      to: "2026-08-25",
+    });
+  });
+
+  test("applies a preset range and closes the popover", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15, 12));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    await user.click(within(popover).getByRole("button", { name: "Today" }));
+
+    await waitFor(() => expect(activityCallCount()).toBe(2));
+    expect(activityParamsOfCall(1)).toMatchObject({
+      from: "2026-08-15",
+      to: "2026-08-16",
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  test("clears the date range via the All time preset", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    // A single click leaves the range incomplete (`min={1}` withholds `to`
+    // until a second click), so the popover is still open here — no need
+    // to reopen it before reaching for the preset.
+    await user.click(within(popover).getByText("1"));
+    await waitFor(() => expect(activityCallCount()).toBe(2));
+
+    await user.click(within(popover).getByRole("button", { name: "All time" }));
+
+    await waitFor(() => expect(activityCallCount()).toBe(3));
+    expect(activityParamsOfCall(2)).not.toHaveProperty("from");
+    expect(activityParamsOfCall(2)).not.toHaveProperty("to");
   });
 
   test("clears every filter at once", async () => {
