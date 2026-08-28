@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ACTIVITY_ENTITY_LABEL } from "@/lib/activity-feed-labels";
+import { useIsMobile } from "@/lib/use-mobile";
 import { useUsersQuery } from "@/lib/use-users";
 
 /** `""` is "no filter", in our own state — same convention as `TicketsFilters`. */
@@ -182,6 +183,7 @@ function ActivityDateRangeField({
   onChange: (value: ActivityDateRangeValue) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   const from = parseLocalDate(value.from);
   const to = parseLocalDate(value.to);
 
@@ -199,8 +201,12 @@ function ActivityDateRangeField({
             {rangeLabel(from, to)}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="flex w-auto flex-row gap-2 p-2" align="start">
-          <div className="flex flex-col gap-0.5 border-r border-border pr-2">
+        <PopoverContent
+          className="flex w-auto max-w-[calc(100vw-2rem)] flex-col gap-2 p-2 sm:flex-row"
+          align="start"
+          collisionPadding={16}
+        >
+          <div className="flex flex-row flex-wrap gap-0.5 border-b border-border pb-2 sm:flex-col sm:border-r sm:border-b-0 sm:pr-2 sm:pb-0">
             {DATE_PRESETS.map((preset) => (
               <Button
                 key={preset.label}
@@ -219,7 +225,7 @@ function ActivityDateRangeField({
           </div>
           <Calendar
             mode="range"
-            numberOfMonths={2}
+            numberOfMonths={isMobile ? 1 : 2}
             showOutsideDays={false}
             // Without `min`, react-day-picker completes the range on the
             // first click alone (`{from: date, to: date}`) — a same-day
