@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TABLE_FRAME } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
+import { ResendInviteButton } from "./ResendInviteButton";
 
 const SKELETON_ROW_COUNT = 5;
 
@@ -91,12 +92,12 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
               <td className="px-4 py-2">
                 <div className="flex items-center justify-end gap-1">
                   {/* No actions on the assistant, matching the API rather than
-                      duplicating its reasoning: both routes 403 on this row.
-                      Editing it would offer to resend an invitation, and
-                      accepting one creates the credential record it deliberately
-                      has none of; deleting it would clear the assignee on every
-                      ticket it has ever resolved, and only the seed can make
-                      another. */}
+                      duplicating its reasoning: all three routes 403 on this
+                      row. Inviting it mails a link that creates the credential
+                      record it deliberately has none of — which is also why
+                      editing it offers no password box; deleting it would clear
+                      the assignee on every ticket it has ever resolved, and only
+                      the seed can make another. */}
                   {u.automated ? (
                     <span aria-hidden className="size-7" />
                   ) : (
@@ -108,6 +109,21 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
                     >
                       <Pencil />
                     </Button>
+                  )}
+                  {/* Every real account, not just the ones that never signed in.
+                      #84 asked for `emailVerified === false` here, which was
+                      written against a schema that has since been decided
+                      against: `POST /api/users` forces the column true and
+                      nothing reads it, so that test now excludes everybody. The
+                      cases this button exists for — an expired link, a corrected
+                      address, a lockout — are things that happen to established
+                      colleagues, and the API gates it on nothing but
+                      `requireAdmin` and the assistant. See
+                      `docs/adr/0010-no-email-verification.md`. */}
+                  {u.automated ? (
+                    <span aria-hidden className="size-7" />
+                  ) : (
+                    <ResendInviteButton user={u} />
                   )}
                   {!u.automated && u.role !== USER_ROLE.admin ? (
                     <Button
@@ -158,6 +174,8 @@ export function UsersTableSkeleton() {
               </td>
               <td className="px-4 py-2">
                 <div className="flex items-center justify-end gap-1">
+                  {/* Three: edit, resend invite, delete. */}
+                  <Skeleton className="size-7 rounded-md" />
                   <Skeleton className="size-7 rounded-md" />
                   <Skeleton className="size-7 rounded-md" />
                 </div>
