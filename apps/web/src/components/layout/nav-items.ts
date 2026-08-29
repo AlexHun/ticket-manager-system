@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { matchPath } from "react-router-dom";
-import { USER_ROLE, type UserRole } from "@ticket/shared";
+import { NEW_FEATURE_KEY, USER_ROLE, type NewFeatureKey, type UserRole } from "@ticket/shared";
 
 export interface NavItem {
   to: string;
@@ -27,6 +27,13 @@ export interface NavItem {
   end?: boolean;
   /** Absent means everyone sees it. */
   role?: UserRole;
+  /**
+   * The "new" badge (issue #45): present means `AppSidebar` renders a dot on
+   * this item while `NEW_FEATURE_VERSIONS[newFeatureKey]` in `@ticket/shared`
+   * is ahead of what the signed-in user has seen, and marks it seen the first
+   * time they follow the link.
+   */
+  newFeatureKey?: NewFeatureKey;
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -56,6 +63,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Activity",
     icon: HistoryIcon,
     role: USER_ROLE.admin,
+    newFeatureKey: NEW_FEATURE_KEY.activityPage,
   },
   {
     to: "/tutorials",

@@ -20,6 +20,7 @@ import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
 import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
+import { newFeaturesRouter } from "./routes/new-features";
 import { outboxRouter } from "./routes/outbox";
 import { pipelineRouter } from "./routes/pipeline";
 import { ticketsRouter } from "./routes/tickets";
@@ -125,6 +126,10 @@ app.use("/api/ai", aiRouter);
 // Mixed guards inside: both roles read/dismiss a page's tutorial, only an
 // admin edits what it says — see the router's own comment.
 app.use("/api/tutorials", tutorialsRouter);
+// requireAuth throughout — no admin-only half, unlike the tutorial next to it,
+// because there's no admin-editable content: just the code-level
+// NEW_FEATURE_VERSIONS registry a developer bumps by hand.
+app.use("/api/new-features", newFeaturesRouter);
 // Admin-only on every route inside it, which is worth knowing here as well as
 // there: this one edits the prompt of the feature that writes to customers
 // unattended.
