@@ -3,15 +3,10 @@ import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TABLE_FRAME } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 
 const SKELETON_ROW_COUNT = 5;
-
-/**
- * Border, rounding and scrolling, shared by the table and its skeleton — the
- * same frame `TicketsTable` and `ActivityPage` use.
- */
-const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
 
 /**
  * `w-full` fills the frame on a wide screen; `min-w-2xl` is what makes the
@@ -71,7 +66,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   }
 
   return (
-    <div className={FRAME}>
+    <div className={TABLE_FRAME}>
       <table className={TABLE}>
         <UsersTableHead />
         <tbody>
@@ -140,7 +135,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
 export function UsersTableSkeleton() {
   return (
     <div
-      className={FRAME}
+      className={TABLE_FRAME}
       aria-busy="true"
       aria-label="Loading users"
     >

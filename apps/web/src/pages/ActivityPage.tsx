@@ -21,6 +21,7 @@ import {
 } from "@/lib/activity-feed-labels";
 import { extractErrorMessage } from "@/lib/errors";
 import { EMPTY_VALUE } from "@/lib/format";
+import { TABLE_FRAME } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import {
   ActivityFilters,
@@ -42,12 +43,11 @@ import { TicketsPagination } from "./TicketsPagination";
  * desk had no single place to look. This is that place: one table, one set of
  * filters, over everything at once.
  *
- * Same style as `TicketsTable`'s frame, without the sorting or column
- * resizing — the feed is always newest-first (the server's own `ORDER BY`),
- * and there is nothing here worth reordering by.
+ * Wears the shared `TABLE_FRAME`, without the sorting or column resizing —
+ * the feed is always newest-first (the server's own `ORDER BY`), and there is
+ * nothing here worth reordering by.
  */
 
-const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
 const HEAD = "sticky top-0 z-10 bg-muted px-4 py-2 text-left font-medium";
 
 interface ActivityQueryParams {
@@ -154,7 +154,12 @@ export function ActivityPage() {
           )}
         >
           {data.entries.length === 0 ? (
-            <div className={cn(FRAME, "grid min-h-0 flex-1 place-items-center")}>
+            <div
+              className={cn(
+                TABLE_FRAME,
+                "grid min-h-0 flex-1 place-items-center",
+              )}
+            >
               <p className="text-sm text-muted-foreground">
                 {filtered
                   ? "No activity matches these filters."
@@ -162,7 +167,7 @@ export function ActivityPage() {
               </p>
             </div>
           ) : (
-            <div className={cn(FRAME, "min-h-0 flex-1")}>
+            <div className={cn(TABLE_FRAME, "min-h-0 flex-1")}>
               <table className="w-full text-sm">
                 <thead className="text-muted-foreground">
                   <tr>
@@ -246,7 +251,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
 function ActivitySkeleton() {
   return (
     <div
-      className={cn(FRAME, "min-h-0 flex-1 p-4")}
+      className={cn(TABLE_FRAME, "min-h-0 flex-1 p-4")}
       aria-busy="true"
       aria-label="Loading activity"
     >

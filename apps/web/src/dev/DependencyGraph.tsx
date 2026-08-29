@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { EDGE_KIND, type ModuleEdge, type ModuleNode } from "./protocol";
 import { LAYER_VISUAL } from "./layer-visuals";
+import { TABLE_FRAME } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 
 /**
@@ -193,7 +194,9 @@ export function DependencyGraph({
   );
 
   return (
-    <div className="overflow-auto rounded-lg ring-1 ring-border">
+    // Same frame as the sibling `ModuleTable` — two views of the same module
+    // set, and they should read as one pane.
+    <div className={TABLE_FRAME}>
       <svg
         width={layout.width}
         height={layout.height}
