@@ -55,6 +55,19 @@ export async function resetE2eEmails(): Promise<number> {
 }
 
 /**
+ * Delete a user's saved dashboard layout (issue #102), reverting them to
+ * `DEFAULT_DASHBOARD_LAYOUT` the same way `DELETE /api/dashboard-layout`
+ * does. Used to give a test a known-clean starting point regardless of what
+ * an earlier test (or an earlier run that died mid-test) left behind — the
+ * seeded admin/agent are shared across the whole suite, unlike the
+ * `e2e-`-prefixed throwaway users, so their layout rows can't be swept by
+ * `resetE2eUsers`.
+ */
+export async function resetDashboardLayout(email: string): Promise<void> {
+  await testDb.dashboardLayout.deleteMany({ where: { user: { email } } });
+}
+
+/**
  * The link out of the newest invitation written to `email`.
  *
  * With no mail provider bound, the outbox *is* the inbox: `jobs/send-email.ts`

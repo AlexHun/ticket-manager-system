@@ -57,6 +57,7 @@ model User {
   tutorialEdits        TutorialContent[]            @relation("TutorialContentEditor")
   tutorialProgress     TutorialProgress[]
   newFeatureSeen       NewFeatureSeen[]
+  dashboardLayout      DashboardLayout?
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -903,4 +904,35 @@ model NewFeatureSeen {
 
   @@unique([userId, featureKey])
   @@map("new_feature_seen")
+}
+
+/// One signed-in user's customized dashboard panel order and width (issue
+/// #102). One row per user who has customized — a user who never enters
+/// customize mode has no row here at all, which is what lets `GET
+/// /api/dashboard-layout` fall back to `DEFAULT_DASHBOARD_LAYOUT` (in
+/// `@ticket/shared`) for everyone else, and is also how "reset to default"
+/// works: it deletes this row rather than writing the default back into it.
+///
+/// `panels` is `Json` rather than a child table: it is read and written
+/// whole, as an ordered list, and nothing ever queries into it by panel — the
+/// same reasoning `TutorialContent.steps` uses. Validated on write against the
+/// current fixed panel set by `dashboardLayoutSchema` in `@ticket/core`;
+/// nothing here enforces that shape at the database level.
+///
+/// `userId` is the primary key rather than a surrogate id plus a unique
+/// constraint, unlike `TutorialProgress`/`NewFeatureSeen`: those hold one row
+/// per (user, key) pair because a user can have many keys, but a user has
+/// exactly one dashboard layout, so the natural key needs no `@@unique`
+/// beside it.
+///
+/// `onDelete: Cascade`, same reasoning as `TutorialProgress`: this is per-user
+/// UI state that means nothing once the account it belongs to is gone, not a
+/// record of an event that must outlive it.
+model DashboardLayout {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  panels    Json
+  updatedAt DateTime @updatedAt
+
+  @@map("dashboard_layout")
 }
