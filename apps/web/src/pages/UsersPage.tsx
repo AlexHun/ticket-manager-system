@@ -37,7 +37,7 @@ export function UsersPage() {
 
       {/* A measure cap, and the only page that needs one.
 
-          Six columns of short values — a name, an address, a role, two dates —
+          Five columns of short values — a name, an address, a role, a date —
           stretched to whatever width the window happened to be, so on a wide
           screen a two-person team read as five words stranded at the far left
           and a delete button a foot away at the far right. The dashboard's
