@@ -1,5 +1,6 @@
 import { ADMIN_ACTIVITY_ACTION } from "@ticket/shared";
 import type { AdminActivityAction } from "@ticket/shared";
+import { diffToEntries } from "./activity-diff";
 import { prisma } from "./db";
 
 /**
@@ -79,22 +80,8 @@ export function userEditChanges(
   before: AdminUserFields,
   after: AdminUserFields,
 ): AdminActivityEntry[] {
-  const entries: AdminActivityEntry[] = [];
-
-  if (before.name !== after.name) {
-    entries.push({
-      action: ADMIN_ACTIVITY_ACTION.user_edited,
-      fromValue: `Name: ${before.name}`,
-      toValue: `Name: ${after.name}`,
-    });
-  }
-  if (before.email !== after.email) {
-    entries.push({
-      action: ADMIN_ACTIVITY_ACTION.user_edited,
-      fromValue: `Email: ${before.email}`,
-      toValue: `Email: ${after.email}`,
-    });
-  }
-
-  return entries;
+  return diffToEntries<AdminUserFields, AdminActivityAction>(before, after, [
+    { field: "name", action: ADMIN_ACTIVITY_ACTION.user_edited, label: "Name" },
+    { field: "email", action: ADMIN_ACTIVITY_ACTION.user_edited, label: "Email" },
+  ]);
 }

@@ -4,6 +4,7 @@ import {
   type TicketActivityAction,
   type TicketActorKind,
 } from "@ticket/shared";
+import { diffToEntries } from "./activity-diff";
 import { ASSISTANT_NAME, assistantUser } from "./automation";
 import { prisma } from "./db";
 
@@ -172,29 +173,9 @@ export function ticketChanges(
   before: TicketFields,
   after: TicketFields,
 ): ActivityEntry[] {
-  const entries: ActivityEntry[] = [];
-
-  if (before.status !== after.status) {
-    entries.push({
-      action: TICKET_ACTIVITY_ACTION.status_changed,
-      fromValue: before.status,
-      toValue: after.status,
-    });
-  }
-  if (before.category !== after.category) {
-    entries.push({
-      action: TICKET_ACTIVITY_ACTION.category_changed,
-      fromValue: before.category,
-      toValue: after.category,
-    });
-  }
-  if (before.assignee !== after.assignee) {
-    entries.push({
-      action: TICKET_ACTIVITY_ACTION.assignee_changed,
-      fromValue: before.assignee,
-      toValue: after.assignee,
-    });
-  }
-
-  return entries;
+  return diffToEntries<TicketFields, TicketActivityAction>(before, after, [
+    { field: "status", action: TICKET_ACTIVITY_ACTION.status_changed },
+    { field: "category", action: TICKET_ACTIVITY_ACTION.category_changed },
+    { field: "assignee", action: TICKET_ACTIVITY_ACTION.assignee_changed },
+  ]);
 }
