@@ -58,6 +58,7 @@ model User {
   tutorialProgress     TutorialProgress[]
   newFeatureSeen       NewFeatureSeen[]
   dashboardLayout      DashboardLayout?
+  changelogSeen        ChangelogSeen?
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -935,4 +936,26 @@ model DashboardLayout {
   updatedAt DateTime @updatedAt
 
   @@map("dashboard_layout")
+}
+
+/// One user's "seen" mark for the "what's new" changelog (issue #94): the
+/// highest entry version they have opened the popover on. `userId` is the
+/// primary key rather than a composite unique, same reasoning as
+/// `DashboardLayout`: there is exactly one changelog stream, not one per key
+/// the way `NewFeatureSeen` has one row per `NewFeatureKey`.
+///
+/// `seenVersion` is written by the server from `CHANGELOG_LATEST_VERSION` in
+/// `@ticket/shared` — never from the request body — the same way
+/// `NewFeatureSeen.seenVersion` is written from `NEW_FEATURE_VERSIONS`, so a
+/// caller cannot mark a version "seen" that it never actually saw.
+///
+/// `onDelete: Cascade`, same reasoning as `TutorialProgress`/`NewFeatureSeen`:
+/// this is per-user UI state that means nothing once the account is gone.
+model ChangelogSeen {
+  userId      String   @id
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seenVersion String
+  seenAt      DateTime @default(now())
+
+  @@map("changelog_seen")
 }

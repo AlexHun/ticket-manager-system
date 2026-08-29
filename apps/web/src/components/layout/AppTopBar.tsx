@@ -4,6 +4,7 @@ import { authClient, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Hint } from "@/components/Hint";
+import { ChangelogPopover } from "@/components/layout/ChangelogPopover";
 import { useTutorialTrigger } from "@/lib/tutorial-trigger";
 
 /**
@@ -51,6 +52,7 @@ export function AppTopBar() {
             </Button>
           </Hint>
         )}
+        <ChangelogPopover />
         {session?.user.name && (
           <span className="hidden text-sm text-muted-foreground sm:inline">
             {session.user.name}
