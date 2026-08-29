@@ -6,7 +6,7 @@
  * only, which was the actual duplication.
  */
 
-/** One row of a `diffToEntries` field map: which field, what action it writes if changed, and an optional label prefixed onto the value strings. */
+/** One field to diff: which field, what action it writes if changed, and an optional label prefixed onto the value strings. */
 export interface DiffField<T, A> {
   field: keyof T;
   action: A;
@@ -26,11 +26,11 @@ export interface DiffEntry<A> {
 export function diffToEntries<T, A>(
   before: T,
   after: T,
-  fieldMap: DiffField<T, A>[],
+  fields: DiffField<T, A>[],
 ): DiffEntry<A>[] {
   const entries: DiffEntry<A>[] = [];
 
-  for (const { field, action, label } of fieldMap) {
+  for (const { field, action, label } of fields) {
     const fromRaw = before[field];
     const toRaw = after[field];
     if (fromRaw === toRaw) continue;
