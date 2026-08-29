@@ -18,6 +18,7 @@ import { startJobs, stopJobs } from "./jobs";
 import { activityRouter } from "./routes/activity";
 import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
+import { dashboardLayoutRouter } from "./routes/dashboard-layout";
 import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
 import { newFeaturesRouter } from "./routes/new-features";
@@ -130,6 +131,10 @@ app.use("/api/tutorials", tutorialsRouter);
 // because there's no admin-editable content: just the code-level
 // NEW_FEATURE_VERSIONS registry a developer bumps by hand.
 app.use("/api/new-features", newFeaturesRouter);
+// requireAuth throughout, same reasoning as the "new" badge above: a personal
+// preference with no admin-editable half and no account-management audit
+// trail — see the router's own comment.
+app.use("/api/dashboard-layout", dashboardLayoutRouter);
 // Admin-only on every route inside it, which is worth knowing here as well as
 // there: this one edits the prompt of the feature that writes to customers
 // unattended.

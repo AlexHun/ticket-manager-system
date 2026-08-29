@@ -7,6 +7,7 @@ import {
   DASHBOARD_BUCKET,
   DASHBOARD_RANGE,
   DASHBOARD_SCOPE,
+  DEFAULT_DASHBOARD_LAYOUT,
   DEFAULT_DASHBOARD_RANGE,
   LATENCY_BUCKET,
   TICKET_CATEGORY,
@@ -14,6 +15,7 @@ import {
   USER_ROLE,
   type AssistantEffectivenessResponse,
   type AutoReplyDecline,
+  type DashboardLayoutResponse,
   type TicketStatsResponse,
 } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
@@ -21,7 +23,7 @@ import { DashboardPage } from "./DashboardPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-// Three independent fakes, dispatched on the URL: the endpoints have to be
+// Independent fakes, dispatched on the URL: the endpoints have to be
 // controllable separately (a test that fails one must not silently drag the
 // other's fixture into an incompatible shape) but a single-argument
 // `mockResolvedValue` can't distinguish them. `mockTutorialGet` answers the
@@ -30,15 +32,21 @@ import { DashboardPage } from "./DashboardPage";
 const mockStatsGet = vi.fn();
 const mockEffectivenessGet = vi.fn();
 const mockTutorialGet = vi.fn();
+const mockLayoutGet = vi.fn();
+const mockLayoutPut = vi.fn();
+const mockLayoutDelete = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
     get: (url: string, ...rest: unknown[]) => {
       if (url.startsWith("/api/tutorials/")) return mockTutorialGet(url, ...rest);
+      if (url === "/api/dashboard-layout") return mockLayoutGet(url, ...rest);
       return url === "/api/tickets/effectiveness"
         ? mockEffectivenessGet(url, ...rest)
         : mockStatsGet(url, ...rest);
     },
+    put: (url: string, ...rest: unknown[]) => mockLayoutPut(url, ...rest),
+    delete: (url: string, ...rest: unknown[]) => mockLayoutDelete(url, ...rest),
   },
 }));
 
@@ -186,15 +194,33 @@ function renderDashboard() {
   return renderWithQuery(<DashboardPage />, { initialEntries: ["/"] });
 }
 
+function layoutResponse(
+  over: Partial<DashboardLayoutResponse> = {},
+): DashboardLayoutResponse {
+  return { layout: DEFAULT_DASHBOARD_LAYOUT, isDefault: true, ...over };
+}
+
 beforeEach(() => {
   mockStatsGet.mockReset();
   mockEffectivenessGet.mockReset();
   mockTutorialGet.mockReset();
+  mockLayoutGet.mockReset();
+  mockLayoutPut.mockReset();
+  mockLayoutDelete.mockReset();
   mockStatsGet.mockResolvedValue({ data: stats() });
   mockEffectivenessGet.mockResolvedValue({ data: effectiveness() });
   mockTutorialGet.mockResolvedValue({
     data: { tutorial: { content: { steps: [] }, shouldShow: false } },
   });
+  mockLayoutGet.mockResolvedValue({ data: layoutResponse() });
+  // Echoes the saved layout back, same contract as the real route (`PUT`
+  // returns exactly what it just wrote) — a canned response here would
+  // silently overwrite the optimistic reorder/resize once the mutation
+  // "succeeds", masking the very behaviour these tests check.
+  mockLayoutPut.mockImplementation((_url: string, body: { layout: unknown }) =>
+    Promise.resolve({ data: { layout: body.layout, isDefault: false } }),
+  );
+  mockLayoutDelete.mockResolvedValue({ data: layoutResponse() });
 });
 
 // --- Tests ----------------------------------------------------------------
@@ -402,5 +428,131 @@ describe("DashboardPage", () => {
     expect(
       screen.getByText("No tickets were classified in this range."),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * Panel personalization (issue #102): reorder/resize buttons, boundary
+ * disabling, and reset-to-default. Real pointer drag is not exercised here —
+ * jsdom has no layout geometry for `@dnd-kit` to compute drop targets from —
+ * so mouse reordering is covered by the Playwright E2E suite instead; the
+ * button-driven path below is the actual keyboard-operable equivalent and
+ * exercises the same `moveEarlier`/`moveLater`/`resize` handlers a drag ends
+ * up calling.
+ */
+describe("DashboardPage customize mode", () => {
+  test("hides the per-panel controls until customize mode is entered", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    await screen.findByText("Tickets created");
+
+    expect(
+      screen.queryByRole("button", { name: "Move Ticket volume later" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Customize" }));
+
+    expect(
+      screen.getByRole("button", { name: "Move Ticket volume later" }),
+    ).toBeInTheDocument();
+  });
+
+  test("disables move-earlier on the first panel and move-later on the last", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    await screen.findByText("Tickets created");
+    await user.click(screen.getByRole("button", { name: "Customize" }));
+
+    expect(
+      screen.getByRole("button", { name: "Move Ticket volume earlier" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", {
+        name: "Move Assistant effectiveness later",
+      }),
+    ).toBeDisabled();
+  });
+
+  test("disables shrink at the narrowest width and grow at the widest", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    await screen.findByText("Tickets created");
+    await user.click(screen.getByRole("button", { name: "Customize" }));
+
+    // Status mix starts narrow — the minimum of the 4 widths.
+    expect(
+      screen.getByRole("button", { name: "Shrink Status mix" }),
+    ).toBeDisabled();
+    // Top customers starts wide — the maximum.
+    expect(
+      screen.getByRole("button", { name: "Grow Top customers" }),
+    ).toBeDisabled();
+  });
+
+  test("moving a panel later saves the reordered layout", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    await screen.findByText("Tickets created");
+    await user.click(screen.getByRole("button", { name: "Customize" }));
+
+    await user.click(
+      screen.getByRole("button", { name: "Move Ticket volume later" }),
+    );
+
+    await waitFor(() =>
+      expect(mockLayoutPut).toHaveBeenCalledWith("/api/dashboard-layout", {
+        layout: [
+          DEFAULT_DASHBOARD_LAYOUT[1],
+          DEFAULT_DASHBOARD_LAYOUT[0],
+          ...DEFAULT_DASHBOARD_LAYOUT.slice(2),
+        ],
+      }),
+    );
+  });
+
+  test("growing a panel saves it at the next width up", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    await screen.findByText("Tickets created");
+    await user.click(screen.getByRole("button", { name: "Customize" }));
+
+    await user.click(screen.getByRole("button", { name: "Grow Status mix" }));
+
+    await waitFor(() =>
+      expect(mockLayoutPut).toHaveBeenCalledWith("/api/dashboard-layout", {
+        layout: DEFAULT_DASHBOARD_LAYOUT.map((p) =>
+          p.panelId === "statusMix" ? { ...p, width: "half" } : p,
+        ),
+      }),
+    );
+  });
+
+  test("offers reset only once the layout has been customized, and resets it", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    await screen.findByText("Tickets created");
+    await user.click(screen.getByRole("button", { name: "Customize" }));
+
+    expect(
+      screen.queryByRole("button", { name: "Reset to default" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Move Ticket volume later" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Reset to default" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reset to default" }));
+
+    await waitFor(() => expect(mockLayoutDelete).toHaveBeenCalledWith(
+      "/api/dashboard-layout",
+    ));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Reset to default" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 });
