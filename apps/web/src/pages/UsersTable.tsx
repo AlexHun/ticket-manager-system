@@ -7,6 +7,22 @@ import { cn } from "@/lib/utils";
 
 const SKELETON_ROW_COUNT = 5;
 
+/**
+ * Border, rounding and scrolling, shared by the table and its skeleton — the
+ * same frame `TicketsTable` and `ActivityPage` use.
+ */
+const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
+
+/**
+ * `w-full` fills the frame on a wide screen; `min-w-2xl` is what makes the
+ * frame scroll instead of squeezing on a narrow one. Without a floor the five
+ * columns just keep compressing — at 375px the email column wraps to one word
+ * per line and the row grows taller than the viewport. 42rem is roughly where
+ * an address still fits on one line. The page's `max-w-5xl` cap is 64rem, so
+ * this never engages on desktop.
+ */
+const TABLE = "w-full min-w-2xl text-sm";
+
 /** One source for the header row, shared by the table and its skeleton. */
 const USERS_TABLE_COLUMNS: { label: string; className?: string }[] = [
   { label: "Name" },
@@ -54,8 +70,8 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg ring-1 ring-border">
-      <table className="w-full text-sm">
+    <div className={FRAME}>
+      <table className={TABLE}>
         <UsersTableHead />
         <tbody>
           {users.map((u) => (
@@ -123,11 +139,11 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
 export function UsersTableSkeleton() {
   return (
     <div
-      className="overflow-hidden rounded-lg ring-1 ring-border"
+      className={FRAME}
       aria-busy="true"
       aria-label="Loading users"
     >
-      <table className="w-full text-sm">
+      <table className={TABLE}>
         <UsersTableHead />
         <tbody>
           {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
