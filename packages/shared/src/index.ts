@@ -2130,7 +2130,9 @@ export interface DashboardLayoutResponse {
 
 /**
  * The "what's new" changelog (issue #94): a popover off the header button
- * listing what shipped, generated rather than admin-authored.
+ * listing what shipped, generated rather than admin-authored. "An update" is
+ * per deployed version, per the issue's own triage decision — not a calendar
+ * release or a hand-authored batch.
  *
  * `changelog-entries.json` is written by CI's `bump-version` job (`.github/workflows/ci.yml`)
  * on every push to `main` whose merged commit is a `feat`/`fix` — the same
@@ -2142,11 +2144,25 @@ export interface DashboardLayoutResponse {
  * content" for a fresh environment — same as `KnowledgeArticle`/`TutorialContent`,
  * nothing needs seeding for the feature to work, it just stays quiet until
  * the first qualifying commit lands.
+ *
+ * **This is a sparse subsequence of deployed versions, not a second counter.**
+ * Every `ChangelogEntry.version` is a real value `apps/web`'s package.json —
+ * and therefore `VITE_SENTRY_RELEASE`, see `releaseName()` — took on at some
+ * past deploy; a `chore`-only deploy simply never appears here at all. So
+ * `CHANGELOG_LATEST_VERSION` (below) can trail the version actually running
+ * in production, and that gap is not a bug to close: there is nothing to
+ * show for the versions in between, so nothing should light up the badge for
+ * them either. Don't "fix" this by reading `VITE_SENTRY_RELEASE` into the
+ * seen-state comparison — that would make the badge light up on a deploy
+ * with no new content.
  */
 export interface ChangelogEntry {
-  /** `apps/web`'s package.json version at the time this entry was recorded — not
-   * necessarily contiguous with neighbouring entries, since a `chore`-only
-   * deploy bumps the version without adding an entry. */
+  /** `apps/web`'s package.json version at the time this entry was recorded —
+   * the same value `VITE_SENTRY_RELEASE` carried at that deploy (see
+   * `releaseName()` in `apps/web/vite.config.ts`), not a value invented for
+   * this feature. Not necessarily contiguous with neighbouring entries, since
+   * a `chore`-only deploy bumps the version without adding an entry — see
+   * the type doc above. */
   version: string;
   /** ISO date (`YYYY-MM-DD`), the day CI recorded the entry. */
   date: string;
