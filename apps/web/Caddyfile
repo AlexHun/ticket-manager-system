@@ -144,8 +144,28 @@
 
 		encode zstd gzip
 
+		# Vite content-hashes everything under /assets, and each deploy replaces
+		# the container's filesystem outright — an old deploy's chunk is not
+		# somewhere else, it is gone. A tab left open across a deploy (or a
+		# route the visitor hasn't opened yet, since every page is
+		# `lazy(() => import(...))` in App.tsx) asks for that chunk by its old
+		# hash and must 404, not fall through to the `try_files` rule below:
+		# that rule exists for client-side *routes*, and would otherwise answer
+		# a `<script type="module">` fetch with `index.html` — 200,
+		# `Content-Type: text/html` — which is exactly the shape of "TypeError:
+		# 'text/html' is not a valid JavaScript MIME type" surfacing in
+		# `AppErrorBoundary`. The fix there is a hard reload (its "Back to
+		# dashboard" button does one), not a retry; this stops the malformed
+		# response that made a retry look necessary in the first place.
+		@assets path /assets/*
+		handle @assets {
+			file_server
+		}
+
 		# Client-side routing: unknown paths are React Router's, not 404s.
-		try_files {path} /index.html
-		file_server
+		handle {
+			try_files {path} /index.html
+			file_server
+		}
 	}
 }
