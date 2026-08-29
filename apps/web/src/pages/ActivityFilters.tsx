@@ -174,14 +174,30 @@ function ActivityDateRangeField({
   onChange: (value: ActivityDateRangeValue) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // An in-progress two-click pick, held here rather than pushed through
+  // `onChange` — pushing a from-only pick would change `ActivityPage`'s
+  // filters (and therefore its query key) after the *first* click, firing a
+  // request for a range that isn't finished yet (#97). `undefined` means
+  // "no pick in progress"; the calendar falls back to the committed value.
+  const [pending, setPending] = useState<DateRange | undefined>(undefined);
   const isMobile = useIsMobile();
   const from = parseLocalDate(value.from);
   const to = parseLocalDate(value.to);
 
+  /** Commits nothing — just closes and drops any unfinished pick, the same
+   *  way abandoning the popover (Escape, outside click) should. */
+  function closeAndDiscardPending() {
+    setOpen(false);
+    setPending(undefined);
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor="activity-date-range">Date range</Label>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => (next ? setOpen(true) : closeAndDiscardPending())}
+      >
         <PopoverTrigger asChild>
           <Button
             id="activity-date-range"
@@ -207,7 +223,7 @@ function ActivityDateRangeField({
                 onClick={() => {
                   const picked = preset.range();
                   onChange({ from: toValue(picked.from), to: toValue(picked.to) });
-                  setOpen(false);
+                  closeAndDiscardPending();
                 }}
               >
                 {preset.label}
@@ -233,11 +249,16 @@ function ActivityDateRangeField({
             // and close the popover before a real second click lands.
             // `resetOnSelect` makes that click start a fresh range instead.
             resetOnSelect
-            selected={{ from, to } satisfies DateRange}
+            selected={pending ?? ({ from, to } satisfies DateRange)}
             defaultMonth={from ?? new Date()}
             onSelect={(range) => {
-              onChange({ from: toValue(range?.from), to: toValue(range?.to) });
-              if (range?.from && range?.to) setOpen(false);
+              if (range?.from && range?.to) {
+                onChange({ from: toValue(range.from), to: toValue(range.to) });
+                setOpen(false);
+                setPending(undefined);
+              } else {
+                setPending(range);
+              }
             }}
           />
         </PopoverContent>
