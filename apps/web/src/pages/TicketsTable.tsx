@@ -23,6 +23,7 @@ import { Hint } from "@/components/Hint";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatSince } from "@/lib/format";
+import { TABLE_FRAME } from "@/lib/table-frame";
 import type { TicketListLocationState } from "@/lib/ticket-list-params";
 import { ROW_DENSITY, type RowDensity } from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
@@ -270,8 +271,6 @@ function silenceOf(
   return SILENCE_STEPS.find((step) => quiet >= step.after) ?? null;
 }
 
-/** Border, rounding and scrolling, shared by the table and its skeleton. */
-const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
 const HEAD = "sticky top-0 z-10 bg-muted text-left font-medium";
 
 /**
@@ -377,14 +376,14 @@ export function TicketsTable({
 
   if (tickets.length === 0) {
     return (
-      <div className={cn(FRAME, "grid place-items-center", className)}>
+      <div className={cn(TABLE_FRAME, "grid place-items-center", className)}>
         <p className="text-sm text-muted-foreground">{emptyMessage}</p>
       </div>
     );
   }
 
   return (
-    <div className={cn(FRAME, className)}>
+    <div className={cn(TABLE_FRAME, className)}>
       {/* Always fills the frame: `w-full` lets fixed layout hand any leftover
           space to the columns, so there is no dead strip on the right. Once the
           columns are dragged past the frame, `minWidth` takes over and the
@@ -565,7 +564,7 @@ export function TicketsTableSkeleton({
 }) {
   return (
     <div
-      className={cn(FRAME, className)}
+      className={cn(TABLE_FRAME, className)}
       aria-busy="true"
       aria-label="Loading tickets"
     >
