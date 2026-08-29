@@ -180,6 +180,11 @@ function ActivityDateRangeField({
   // request for a range that isn't finished yet (#97). `undefined` means
   // "no pick in progress"; the calendar falls back to the committed value.
   const [pending, setPending] = useState<DateRange | undefined>(undefined);
+  // The day under the pointer while a pick is in progress (`pending.from`
+  // set, `pending.to` not yet) — used only to widen the displayed `selected`
+  // range for a hover-preview trail (#98). Never read outside that gate, so
+  // a stale value left over from a previous hover is harmless.
+  const [hoveredDate, setHoveredDate] = useState<Date | undefined>(undefined);
   const isMobile = useIsMobile();
   const from = parseLocalDate(value.from);
   const to = parseLocalDate(value.to);
@@ -189,7 +194,22 @@ function ActivityDateRangeField({
   function closeAndDiscardPending() {
     setOpen(false);
     setPending(undefined);
+    setHoveredDate(undefined);
   }
+
+  // The anchor-to-hover span for display only — ordered low/high since
+  // react-day-picker's interval matcher (used below) requires `after <
+  // before`, regardless of which side of the anchor the pointer is on.
+  // Deliberately never fed into `pending`/`selected`: react-day-picker's
+  // `resetOnSelect` treats a `selected` with both ends as an already-complete
+  // range, so passing this through `selected` would make the real second
+  // click land as the start of a *new* pick instead of completing this one.
+  const previewRange: { from: Date; to: Date } | undefined =
+    pending?.from && !pending?.to && hoveredDate
+      ? hoveredDate < pending.from
+        ? { from: hoveredDate, to: pending.from }
+        : { from: pending.from, to: hoveredDate }
+      : undefined;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -230,37 +250,53 @@ function ActivityDateRangeField({
               </Button>
             ))}
           </div>
-          <Calendar
-            mode="range"
-            numberOfMonths={isMobile ? 1 : 2}
-            showOutsideDays={false}
-            // Without `min`, react-day-picker completes the range on the
-            // first click alone (`{from: date, to: date}`) — a same-day
-            // range, immediately closing the popover before a second click
-            // can land. `min={1}` forces the first click to set only
-            // `from`, so a genuine two-click pick still works; a same-day
-            // range still reaches the field via the presets.
-            min={1}
-            // Without `resetOnSelect`, react-day-picker's default range
-            // logic treats a click against an *already-complete* range
-            // (the normal case on reopen, since the field keeps its value)
-            // as extending that old range from whichever endpoint is
-            // nearer — so one click alone can produce a new `{from, to}`
-            // and close the popover before a real second click lands.
-            // `resetOnSelect` makes that click start a fresh range instead.
-            resetOnSelect
-            selected={pending ?? ({ from, to } satisfies DateRange)}
-            defaultMonth={from ?? new Date()}
-            onSelect={(range) => {
-              if (range?.from && range?.to) {
-                onChange({ from: toValue(range.from), to: toValue(range.to) });
-                setOpen(false);
-                setPending(undefined);
-              } else {
-                setPending(range);
+          <div onMouseLeave={() => setHoveredDate(undefined)}>
+            <Calendar
+              mode="range"
+              numberOfMonths={isMobile ? 1 : 2}
+              showOutsideDays={false}
+              // Without `min`, react-day-picker completes the range on the
+              // first click alone (`{from: date, to: date}`) — a same-day
+              // range, immediately closing the popover before a second click
+              // can land. `min={1}` forces the first click to set only
+              // `from`, so a genuine two-click pick still works; a same-day
+              // range still reaches the field via the presets.
+              min={1}
+              // Without `resetOnSelect`, react-day-picker's default range
+              // logic treats a click against an *already-complete* range
+              // (the normal case on reopen, since the field keeps its value)
+              // as extending that old range from whichever endpoint is
+              // nearer — so one click alone can produce a new `{from, to}`
+              // and close the popover before a real second click lands.
+              // `resetOnSelect` makes that click start a fresh range instead.
+              resetOnSelect
+              selected={pending ?? ({ from, to } satisfies DateRange)}
+              // Presentational only — `modifiers` doesn't feed into
+              // react-day-picker's range/select state machine (`selected`
+              // does), so this can't disturb the click handling above.
+              modifiers={
+                previewRange && {
+                  range_preview_middle: {
+                    after: previewRange.from,
+                    before: previewRange.to,
+                  },
+                  range_preview_end: hoveredDate,
+                }
               }
-            }}
-          />
+              defaultMonth={from ?? new Date()}
+              onDayMouseEnter={(date) => setHoveredDate(date)}
+              onSelect={(range) => {
+                if (range?.from && range?.to) {
+                  onChange({ from: toValue(range.from), to: toValue(range.to) });
+                  setOpen(false);
+                  setPending(undefined);
+                  setHoveredDate(undefined);
+                } else {
+                  setPending(range);
+                }
+              }}
+            />
+          </div>
         </PopoverContent>
       </Popover>
     </div>

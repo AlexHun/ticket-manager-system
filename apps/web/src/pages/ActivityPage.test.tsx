@@ -428,6 +428,65 @@ describe("ActivityPage filtering", () => {
     );
   });
 
+  /** The rendered day button for a given day number in the first month —
+   *  `getByText` finds the label span, `closest("button")` the element the
+   *  range and preview modifiers (`data-range-*`) actually land on. */
+  function dayButton(popover: HTMLElement, day: string): HTMLElement {
+    const button = withinFirstMonth(popover).getByText(day).closest("button");
+    if (!button) throw new Error(`no button for day ${day}`);
+    return button;
+  }
+
+  test("previews the range between the anchor and a hovered later date", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    await user.click(withinFirstMonth(popover).getByText("1"));
+    expect(activityCallCount()).toBe(1);
+
+    await user.hover(dayButton(popover, "10"));
+
+    // The anchor itself is a plain from-only pick, not a `range_start` —
+    // react-day-picker only marks that once a range has both ends.
+    expect(dayButton(popover, "1")).toHaveAttribute("data-selected-single", "true");
+    expect(dayButton(popover, "5")).toHaveAttribute("data-range-preview-middle", "true");
+    expect(dayButton(popover, "10")).toHaveAttribute("data-range-preview-end", "true");
+    // Cosmetic only — the hovered day never reaches `ActivityPage`'s filters.
+    expect(activityCallCount()).toBe(1);
+  });
+
+  test("previews the range for a hover that lands before the anchor", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    await user.click(withinFirstMonth(popover).getByText("24"));
+
+    await user.hover(dayButton(popover, "10"));
+
+    expect(dayButton(popover, "10")).toHaveAttribute("data-range-preview-end", "true");
+    expect(dayButton(popover, "15")).toHaveAttribute("data-range-preview-middle", "true");
+    expect(dayButton(popover, "24")).toHaveAttribute("data-selected-single", "true");
+  });
+
+  test("drops the preview once the pointer leaves the calendar", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    await user.click(withinFirstMonth(popover).getByText("1"));
+    await user.hover(dayButton(popover, "10"));
+    expect(dayButton(popover, "5")).toHaveAttribute("data-range-preview-middle", "true");
+
+    await user.unhover(dayButton(popover, "10"));
+
+    // No `modifiers` prop at all once there's no pointer-driven preview, so
+    // the attribute is absent rather than `"false"`.
+    expect(dayButton(popover, "5")).not.toHaveAttribute("data-range-preview-middle");
+    expect(dayButton(popover, "1")).toHaveAttribute("data-selected-single", "true");
+  });
+
   test("applies a preset range and closes the popover", async () => {
     vi.setSystemTime(new Date(2026, 7, 15, 12));
     const user = await renderLoaded();
