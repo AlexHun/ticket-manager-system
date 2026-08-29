@@ -18,6 +18,7 @@ import { startJobs, stopJobs } from "./jobs";
 import { activityRouter } from "./routes/activity";
 import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
+import { changelogRouter } from "./routes/changelog";
 import { dashboardLayoutRouter } from "./routes/dashboard-layout";
 import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
@@ -135,6 +136,9 @@ app.use("/api/new-features", newFeaturesRouter);
 // preference with no admin-editable half and no account-management audit
 // trail — see the router's own comment.
 app.use("/api/dashboard-layout", dashboardLayoutRouter);
+// requireAuth throughout, same reasoning as the two routers above: content
+// lives in the code-level CHANGELOG_ENTRIES registry, not admin-editable here.
+app.use("/api/changelog", changelogRouter);
 // Admin-only on every route inside it, which is worth knowing here as well as
 // there: this one edits the prompt of the feature that writes to customers
 // unattended.
