@@ -225,6 +225,14 @@ function ActivityDateRangeField({
             // `from`, so a genuine two-click pick still works; a same-day
             // range still reaches the field via the presets.
             min={1}
+            // Without `resetOnSelect`, react-day-picker's default range
+            // logic treats a click against an *already-complete* range
+            // (the normal case on reopen, since the field keeps its value)
+            // as extending that old range from whichever endpoint is
+            // nearer — so one click alone can produce a new `{from, to}`
+            // and close the popover before a real second click lands.
+            // `resetOnSelect` makes that click start a fresh range instead.
+            resetOnSelect
             selected={{ from, to } satisfies DateRange}
             defaultMonth={from ?? new Date()}
             onSelect={(range) => {

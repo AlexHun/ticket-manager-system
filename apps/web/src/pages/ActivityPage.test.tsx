@@ -368,6 +368,35 @@ describe("ActivityPage filtering", () => {
     });
   });
 
+  test("starting a new pick after an existing range doesn't close after one click", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    await user.click(withinFirstMonth(popover).getByText("1"));
+    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await user.click(withinFirstMonth(popover).getByText("24"));
+    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // Regression for #95: reopening with a full range already selected used
+    // to let react-day-picker's default range logic extend that old range
+    // from a single click, completing and closing the popover before a real
+    // second click could land.
+    const reopened = await openDateRangePopover(user);
+    await user.click(withinFirstMonth(reopened).getByText("10"));
+    await waitFor(() => expect(activityCallCount()).toBe(4));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.click(withinFirstMonth(reopened).getByText("20"));
+    await waitFor(() => expect(activityCallCount()).toBe(5));
+    expect(activityParamsOfCall(4)).toMatchObject({
+      from: "2026-08-10",
+      to: "2026-08-21",
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   test("applies a preset range and closes the popover", async () => {
     vi.setSystemTime(new Date(2026, 7, 15, 12));
     const user = await renderLoaded();
