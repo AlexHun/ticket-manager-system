@@ -332,18 +332,31 @@ describe("ActivityPage filtering", () => {
     return within(within(popover).getAllByRole("grid")[0]);
   }
 
+  test("sends no request for a from-only, in-progress pick", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    await user.click(withinFirstMonth(popover).getByText("1"));
+
+    // Regression for #97: a from-only click used to flow straight into
+    // `ActivityPage`'s filters and refetch on the incomplete range.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(activityCallCount()).toBe(1);
+  });
+
   test("sends the date range with an exclusive upper bound", async () => {
     vi.setSystemTime(new Date(2026, 7, 15));
     const user = await renderLoaded();
 
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("1"));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    expect(activityCallCount()).toBe(1);
 
     await user.click(withinFirstMonth(popover).getByText("24"));
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    expect(activityParamsOfCall(2)).toMatchObject({
+    expect(activityParamsOfCall(1)).toMatchObject({
       from: "2026-08-01",
       // The field reads as the whole day of the 24th; the wire's `to` is
       // exclusive, so the day after is what is actually sent.
@@ -357,12 +370,12 @@ describe("ActivityPage filtering", () => {
 
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("24"));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    expect(activityCallCount()).toBe(1);
 
     await user.click(withinFirstMonth(popover).getByText("1"));
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    expect(activityParamsOfCall(2)).toMatchObject({
+    expect(activityParamsOfCall(1)).toMatchObject({
       from: "2026-08-01",
       to: "2026-08-25",
     });
@@ -374,9 +387,8 @@ describe("ActivityPage filtering", () => {
 
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("1"));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
     await user.click(withinFirstMonth(popover).getByText("24"));
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityCallCount()).toBe(2));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     // Regression for #95: reopening with a full range already selected used
@@ -385,16 +397,35 @@ describe("ActivityPage filtering", () => {
     // second click could land.
     const reopened = await openDateRangePopover(user);
     await user.click(withinFirstMonth(reopened).getByText("10"));
-    await waitFor(() => expect(activityCallCount()).toBe(4));
+    expect(activityCallCount()).toBe(2);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     await user.click(withinFirstMonth(reopened).getByText("20"));
-    await waitFor(() => expect(activityCallCount()).toBe(5));
-    expect(activityParamsOfCall(4)).toMatchObject({
+    await waitFor(() => expect(activityCallCount()).toBe(3));
+    expect(activityParamsOfCall(2)).toMatchObject({
       from: "2026-08-10",
       to: "2026-08-21",
     });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  test("abandoning an in-progress pick by closing the popover doesn't commit it", async () => {
+    vi.setSystemTime(new Date(2026, 7, 15));
+    const user = await renderLoaded();
+
+    const popover = await openDateRangePopover(user);
+    await user.click(withinFirstMonth(popover).getByText("1"));
+    expect(activityCallCount()).toBe(1);
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(activityCallCount()).toBe(1);
+
+    // The trigger still reads "Any date" — the abandoned from-only pick was
+    // never committed to `ActivityPage`'s filters.
+    expect(screen.getByRole("button", { name: "Date range" })).toHaveTextContent(
+      "Any date",
+    );
   });
 
   test("applies a preset range and closes the popover", async () => {
@@ -416,14 +447,22 @@ describe("ActivityPage filtering", () => {
     vi.setSystemTime(new Date(2026, 7, 15));
     const user = await renderLoaded();
 
+    // Commit a real range first — clearing an in-progress, never-committed
+    // pick back to empty is a no-op for `ActivityPage`'s filters and
+    // wouldn't exercise the clear at all.
     const popover = await openDateRangePopover(user);
-    // A single click leaves the range incomplete (`min={1}` withholds `to`
-    // until a second click), so the popover is still open here — no need
-    // to reopen it before reaching for the preset.
-    await user.click(withinFirstMonth(popover).getByText("1"));
+    await user.click(within(popover).getByRole("button", { name: "Today" }));
     await waitFor(() => expect(activityCallCount()).toBe(2));
 
-    await user.click(within(popover).getByRole("button", { name: "All time" }));
+    const reopened = await openDateRangePopover(user);
+    // A single click leaves the range incomplete (`min={1}` withholds `to`
+    // until a second click, and an incomplete pick stays local rather than
+    // firing a request), so the popover is still open here — no need to
+    // reopen it before reaching for the preset.
+    await user.click(withinFirstMonth(reopened).getByText("1"));
+    expect(activityCallCount()).toBe(2);
+
+    await user.click(within(reopened).getByRole("button", { name: "All time" }));
 
     await waitFor(() => expect(activityCallCount()).toBe(3));
     expect(activityParamsOfCall(2)).not.toHaveProperty("from");
