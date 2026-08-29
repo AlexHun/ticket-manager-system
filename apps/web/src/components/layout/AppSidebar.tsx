@@ -95,11 +95,7 @@ export function AppSidebar() {
                         // Tinting the icon gives the active state a second,
                         // stronger cue (3.36:1) that also survives the icon rail,
                         // where the label is clipped away.
-                        //
-                        // Descendant (`[&_svg]`), not direct-child: the "new"
-                        // dot below wraps the icon in a `relative` span, so the
-                        // svg is no longer `SidebarMenuButton`'s direct child.
-                        className="data-[active=true]:[&_svg]:text-sidebar-primary"
+                        className="data-[active=true]:[&>svg]:text-sidebar-primary"
                       >
                         <NavLink
                           to={item.to}
@@ -108,16 +104,7 @@ export function AppSidebar() {
                             if (isNew) markNewFeatureSeen.mutate(item.newFeatureKey!);
                           }}
                         >
-                          <span className="relative inline-flex">
-                            <item.icon aria-hidden="true" />
-                            {isNew && (
-                              <span
-                                aria-hidden="true"
-                                data-testid="new-feature-dot"
-                                className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-sidebar-primary"
-                              />
-                            )}
-                          </span>
+                          <item.icon aria-hidden="true" />
                           <span>{item.label}</span>
                         </NavLink>
                       </SidebarMenuButton>
@@ -133,6 +120,21 @@ export function AppSidebar() {
                       {item.to === "/tickets" && unreadCount > 0 && (
                         <SidebarMenuBadge className="bg-sidebar-primary text-sidebar-primary-foreground peer-data-[active=true]/menu-button:text-sidebar-primary-foreground">
                           {unreadCount}
+                        </SidebarMenuBadge>
+                      )}
+
+                      {/* The "new" badge (issue #45) — a dot read as
+                          decoration in testing, not as "new"; spelling it out
+                          is unambiguous at the same one-word cost. Text, not a
+                          count, so it doesn't collide with the unread slot
+                          above (mutually exclusive today: only Tickets has
+                          unread, only Activity has newFeatureKey). */}
+                      {isNew && (
+                        <SidebarMenuBadge
+                          data-testid="new-feature-badge"
+                          className="bg-sidebar-primary text-sidebar-primary-foreground peer-data-[active=true]/menu-button:text-sidebar-primary-foreground"
+                        >
+                          New
                         </SidebarMenuBadge>
                       )}
                     </SidebarMenuItem>

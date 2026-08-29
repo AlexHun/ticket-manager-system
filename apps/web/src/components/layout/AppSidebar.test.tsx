@@ -107,23 +107,23 @@ describe("AppSidebar unread badge", () => {
 
 // The Activity nav item is the demo/first flagged key — see nav-items.ts.
 describe("AppSidebar new-feature badge", () => {
-  test("dots Activity while its badge is unseen", async () => {
+  test("badges Activity 'New' while its badge is unseen", async () => {
     mockNewFeaturesGet.mockResolvedValueOnce(
       newFeatureStatuses({ [NEW_FEATURE_KEY.activityPage]: true }),
     );
     renderSidebar();
 
-    expect(await screen.findByTestId("new-feature-dot")).toBeInTheDocument();
+    expect(await screen.findByTestId("new-feature-badge")).toHaveTextContent("New");
   });
 
-  test("shows no dot once the badge has been seen", async () => {
+  test("shows no badge once the badge has been seen", async () => {
     mockNewFeaturesGet.mockResolvedValueOnce(
       newFeatureStatuses({ [NEW_FEATURE_KEY.activityPage]: false }),
     );
     renderSidebar();
 
     await waitFor(() => expect(mockNewFeaturesGet).toHaveBeenCalled());
-    expect(screen.queryByTestId("new-feature-dot")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("new-feature-badge")).not.toBeInTheDocument();
   });
 
   test("marks the feature seen when the user follows the link", async () => {
