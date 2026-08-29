@@ -10,26 +10,17 @@ import {
 import type { DateRange } from "react-day-picker";
 import { Calendar as CalendarIcon, X } from "lucide-react";
 import { ACTIVITY_ENTITY_TYPES, type ActivityEntityType } from "@ticket/shared";
+import { FilterSelect } from "@/components/FilterSelect";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ACTIVITY_ENTITY_LABEL } from "@/lib/activity-feed-labels";
 import { useIsMobile } from "@/lib/use-mobile";
 import { useUsersQuery } from "@/lib/use-users";
 
-/** `""` is "no filter", in our own state — same convention as `TicketsFilters`. */
+/** `""` is "no filter", in our own state — same convention `FilterSelect` uses. */
 const ANY = "";
-
-/** Radix reserves the empty string on a `SelectItem` for "cleared". */
-const ANY_VALUE = "any";
 
 export interface ActivityFilterState {
   entityType: ActivityEntityType | typeof ANY;
@@ -255,27 +246,18 @@ function EntityTypeFilter({
   onChange: (value: ActivityFilterState["entityType"]) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor="activity-entity-filter">Entity</Label>
-      <Select
-        value={value === ANY ? ANY_VALUE : value}
-        onValueChange={(next) =>
-          onChange(next === ANY_VALUE ? ANY : (next as ActivityEntityType))
-        }
-      >
-        <SelectTrigger id="activity-entity-filter" className="w-40">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY_VALUE}>Any entity</SelectItem>
-          {ACTIVITY_ENTITY_TYPES.map((entityType) => (
-            <SelectItem key={entityType} value={entityType}>
-              {ACTIVITY_ENTITY_LABEL[entityType]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <FilterSelect
+      id="activity-entity-filter"
+      label="Entity"
+      value={value}
+      anyLabel="Any entity"
+      options={ACTIVITY_ENTITY_TYPES.map((entityType) => ({
+        value: entityType,
+        label: ACTIVITY_ENTITY_LABEL[entityType],
+      }))}
+      onChange={(next) => onChange(next as ActivityFilterState["entityType"])}
+      triggerClassName="w-40"
+    />
   );
 }
 
@@ -307,32 +289,26 @@ function ActorFilter({
     label: user.automated ? `${user.name} (assistant)` : user.name,
   }));
 
-  const valueLabel =
-    value === ANY
-      ? ANY_ACTOR_LABEL
-      : (options.find((option) => option.value === value)?.label ??
-        (isLoading ? "Loading…" : "Unknown user"));
-
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor="activity-actor-filter">Actor</Label>
-      <Select
-        value={value === ANY ? ANY_VALUE : value}
-        onValueChange={(next) => onChange(next === ANY_VALUE ? ANY : next)}
-        onOpenChange={(open) => open && setOpened(true)}
-      >
-        <SelectTrigger id="activity-actor-filter" className="w-48">
-          <SelectValue>{valueLabel}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY_VALUE}>{ANY_ACTOR_LABEL}</SelectItem>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <FilterSelect
+      id="activity-actor-filter"
+      label="Actor"
+      value={value}
+      anyLabel={ANY_ACTOR_LABEL}
+      options={options}
+      onChange={onChange}
+      onOpenChange={(open) => open && setOpened(true)}
+      // Radix draws an empty trigger for a value it has no item for — every
+      // first paint of a filtered link before the roster has loaded. Name it
+      // either way rather than showing a blank control that reads as "no
+      // filter".
+      valueLabel={
+        value === ANY
+          ? ANY_ACTOR_LABEL
+          : (options.find((option) => option.value === value)?.label ??
+            (isLoading ? "Loading…" : "Unknown user"))
+      }
+      triggerClassName="w-48"
+    />
   );
 }

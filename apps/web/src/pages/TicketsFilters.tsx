@@ -10,31 +10,16 @@ import {
   type ClientTicketStatusFilter,
   type TicketCategoryFilter,
 } from "@ticket/shared";
+import { FilterSelect } from "@/components/FilterSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useSession } from "@/lib/auth-client";
 import { useAssigneesQuery } from "@/lib/use-assignees";
 
-/** `""` is the "no filter" choice in our own state. */
+/** `""` is the "no filter" choice in our own state — same convention `FilterSelect` uses. */
 const ANY = "";
-
-/**
- * Radix rejects an empty-string item value (it reserves "" for "cleared"), so
- * the "any" row needs its own token. It never leaves this module — the state
- * and the API still use `ANY`.
- */
-const ANY_VALUE = "any";
 
 export interface TicketFilterState {
   /**
@@ -285,67 +270,5 @@ function AssigneeFilter({
       // "Loading…" is not something anyone should be able to filter by.
       hint={isLoading ? "Loading users…" : undefined}
     />
-  );
-}
-
-interface FilterSelectProps {
-  id: string;
-  label: string;
-  value: string;
-  anyLabel: string;
-  options: { value: string; label: string }[];
-  onChange: (value: string) => void;
-  /**
-   * Trigger text, when the caller can't rely on `value` matching an option —
-   * see `AssigneeFilter`. Omitted, the selected item's own label is shown.
-   */
-  valueLabel?: string;
-  /** Non-selectable line under the options. */
-  hint?: string;
-  onOpenChange?: (open: boolean) => void;
-}
-
-function FilterSelect({
-  id,
-  label,
-  value,
-  anyLabel,
-  options,
-  onChange,
-  valueLabel,
-  hint,
-  onOpenChange,
-}: FilterSelectProps) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <Select
-        value={value === ANY ? ANY_VALUE : value}
-        onValueChange={(next) => onChange(next === ANY_VALUE ? ANY : next)}
-        onOpenChange={onOpenChange}
-      >
-        <SelectTrigger id={id} className="w-44">
-          {/* `undefined` children leave Radix's default in place, which is the
-              selected item's text — what every filter but the assignee wants. */}
-          <SelectValue>{valueLabel}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY_VALUE}>{anyLabel}</SelectItem>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-          {/* SelectGroup is not decoration: SelectLabel reads its id from the
-              group's context and throws without one, which takes the page down
-              with it — there is no error boundary above this. */}
-          {hint && (
-            <SelectGroup>
-              <SelectLabel>{hint}</SelectLabel>
-            </SelectGroup>
-          )}
-        </SelectContent>
-      </Select>
-    </div>
   );
 }
