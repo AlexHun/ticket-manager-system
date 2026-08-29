@@ -56,6 +56,7 @@ model User {
   handoffRevisionsMade AutomationSettingsRevision[] @relation("AutomationRevisionChangedBy")
   tutorialEdits        TutorialContent[]            @relation("TutorialContentEditor")
   tutorialProgress     TutorialProgress[]
+  newFeatureSeen       NewFeatureSeen[]
 
   @@unique([email])
   /// One row matches, and several things ask for it — every handed-back ticket,
@@ -881,4 +882,25 @@ model TutorialProgress {
 
   @@unique([userId, pageKey])
   @@map("tutorial_progress")
+}
+
+/// One user's "seen" mark for one "new" feature badge (issue #45). Same shape
+/// and `onDelete: Cascade` reasoning as `TutorialProgress` — per-user UI state
+/// that means nothing once the account is gone.
+///
+/// `featureKey` is a plain `String`, not a Postgres enum like
+/// `TutorialPageKey`: the set of "new" things churns as features age out,
+/// unlike the tutorial's fixed eight pages, and a `String` (validated against
+/// `NEW_FEATURE_KEYS` in `@ticket/shared`) means adding or retiring a badge is
+/// a code change, not a migration.
+model NewFeatureSeen {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  featureKey  String
+  seenVersion Int
+  seenAt      DateTime @default(now())
+
+  @@unique([userId, featureKey])
+  @@map("new_feature_seen")
 }

@@ -14,6 +14,10 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import {
+  useMarkNewFeatureSeen,
+  useNewFeatureStatus,
+} from "@/lib/new-feature-queries";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { LogoMark } from "./Logo";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
@@ -27,6 +31,9 @@ export function AppSidebar() {
   // this is a different question from any of `SidebarViews`'s counts.
   const { data: unread } = useUnreadAssignments();
   const unreadCount = unread?.length ?? 0;
+  // The "new" badge (issue #45) — one request for every item's dot state.
+  const { data: newFeatureStatuses } = useNewFeatureStatus();
+  const markNewFeatureSeen = useMarkNewFeatureSeen();
 
   return (
     <Sidebar collapsible="icon">
@@ -68,42 +75,69 @@ export function AppSidebar() {
                   straight into its neighbours' hover fills. Small gap, but it
                   is what makes them read as three targets rather than one bar. */}
               <SidebarMenu className="gap-1">
-                {items.map((item) => (
-                  <SidebarMenuItem key={item.to}>
-                    {/* Two mechanisms, two jobs, and neither is redundant:
-                        `isActive` paints the item, `NavLink` emits
-                        aria-current="page". Don't collapse them into one. */}
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isNavItemActive(item, pathname)}
-                      tooltip={item.label}
-                      // The accent fill alone measures 1.13:1 in light mode.
-                      // Tinting the icon gives the active state a second,
-                      // stronger cue (3.36:1) that also survives the icon rail,
-                      // where the label is clipped away.
-                      className="data-[active=true]:[&>svg]:text-sidebar-primary"
-                    >
-                      <NavLink to={item.to} end={item.end}>
-                        <item.icon aria-hidden="true" />
-                        <span>{item.label}</span>
-                      </NavLink>
-                    </SidebarMenuButton>
+                {items.map((item) => {
+                  // The "new" badge (issue #45) — dismissed by following the
+                  // link, once, permanently: see `useMarkNewFeatureSeen`.
+                  const isNew =
+                    !!item.newFeatureKey &&
+                    !!newFeatureStatuses?.[item.newFeatureKey];
 
-                    {/* Unread assignments (ADR-0013), on "Tickets" only —
-                        `assignedTo = viewer AND assignmentSeenAt IS NULL`, a
-                        different question from any of `SidebarViews`'s
-                        counts below and not scoped to a status. Hidden at
-                        zero rather than drawn quietly like those: this is a
-                        notification, not a standing workload gauge, so a
-                        permanent "0" here would be exactly the badge nobody
-                        looks at twice. */}
-                    {item.to === "/tickets" && unreadCount > 0 && (
-                      <SidebarMenuBadge className="bg-sidebar-primary text-sidebar-primary-foreground peer-data-[active=true]/menu-button:text-sidebar-primary-foreground">
-                        {unreadCount}
-                      </SidebarMenuBadge>
-                    )}
-                  </SidebarMenuItem>
-                ))}
+                  return (
+                    <SidebarMenuItem key={item.to}>
+                      {/* Two mechanisms, two jobs, and neither is redundant:
+                          `isActive` paints the item, `NavLink` emits
+                          aria-current="page". Don't collapse them into one. */}
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isNavItemActive(item, pathname)}
+                        tooltip={item.label}
+                        // The accent fill alone measures 1.13:1 in light mode.
+                        // Tinting the icon gives the active state a second,
+                        // stronger cue (3.36:1) that also survives the icon rail,
+                        // where the label is clipped away.
+                        //
+                        // Descendant (`[&_svg]`), not direct-child: the "new"
+                        // dot below wraps the icon in a `relative` span, so the
+                        // svg is no longer `SidebarMenuButton`'s direct child.
+                        className="data-[active=true]:[&_svg]:text-sidebar-primary"
+                      >
+                        <NavLink
+                          to={item.to}
+                          end={item.end}
+                          onClick={() => {
+                            if (isNew) markNewFeatureSeen.mutate(item.newFeatureKey!);
+                          }}
+                        >
+                          <span className="relative inline-flex">
+                            <item.icon aria-hidden="true" />
+                            {isNew && (
+                              <span
+                                aria-hidden="true"
+                                data-testid="new-feature-dot"
+                                className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-sidebar-primary"
+                              />
+                            )}
+                          </span>
+                          <span>{item.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+
+                      {/* Unread assignments (ADR-0013), on "Tickets" only —
+                          `assignedTo = viewer AND assignmentSeenAt IS NULL`, a
+                          different question from any of `SidebarViews`'s
+                          counts below and not scoped to a status. Hidden at
+                          zero rather than drawn quietly like those: this is a
+                          notification, not a standing workload gauge, so a
+                          permanent "0" here would be exactly the badge nobody
+                          looks at twice. */}
+                      {item.to === "/tickets" && unreadCount > 0 && (
+                        <SidebarMenuBadge className="bg-sidebar-primary text-sidebar-primary-foreground peer-data-[active=true]/menu-button:text-sidebar-primary-foreground">
+                          {unreadCount}
+                        </SidebarMenuBadge>
+                      )}
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
