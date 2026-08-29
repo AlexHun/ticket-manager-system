@@ -3,8 +3,42 @@ import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 const SKELETON_ROW_COUNT = 5;
+
+/** One source for the header row, shared by the table and its skeleton. */
+const USERS_TABLE_COLUMNS: { label: string; className?: string }[] = [
+  { label: "Name" },
+  { label: "Email" },
+  { label: "Role" },
+  { label: "Created" },
+  { label: "Actions", className: "text-right" },
+];
+
+/**
+ * One `<thead>` implementation for both the loaded table and its skeleton,
+ * so a header cell's label or classes can't drift between the two the way
+ * TicketsTable's `aria-label` once did (00b7468) — see the comment on
+ * `HeaderCell` there.
+ */
+function UsersTableHead() {
+  return (
+    <thead className="bg-muted text-left text-muted-foreground">
+      <tr>
+        {USERS_TABLE_COLUMNS.map(({ label, className }) => (
+          <th
+            key={label}
+            scope="col"
+            className={cn("px-4 py-2 font-medium", className)}
+          >
+            {label}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
 
 interface UsersTableProps {
   users: User[];
@@ -22,15 +56,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   return (
     <div className="overflow-hidden rounded-lg ring-1 ring-border">
       <table className="w-full text-sm">
-        <thead className="bg-muted text-left text-muted-foreground">
-          <tr>
-            <th scope="col" className="px-4 py-2 font-medium">Name</th>
-            <th scope="col" className="px-4 py-2 font-medium">Email</th>
-            <th scope="col" className="px-4 py-2 font-medium">Role</th>
-            <th scope="col" className="px-4 py-2 font-medium">Created</th>
-            <th scope="col" className="px-4 py-2 font-medium text-right">Actions</th>
-          </tr>
-        </thead>
+        <UsersTableHead />
         <tbody>
           {users.map((u) => (
             <tr
@@ -102,15 +128,7 @@ export function UsersTableSkeleton() {
       aria-label="Loading users"
     >
       <table className="w-full text-sm">
-        <thead className="bg-muted text-left text-muted-foreground">
-          <tr>
-            <th scope="col" className="px-4 py-2 font-medium">Name</th>
-            <th scope="col" className="px-4 py-2 font-medium">Email</th>
-            <th scope="col" className="px-4 py-2 font-medium">Role</th>
-            <th scope="col" className="px-4 py-2 font-medium">Created</th>
-            <th scope="col" className="px-4 py-2 font-medium text-right">Actions</th>
-          </tr>
-        </thead>
+        <UsersTableHead />
         <tbody>
           {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
             <tr key={i} className="border-t border-border">
