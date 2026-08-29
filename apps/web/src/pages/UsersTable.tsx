@@ -18,8 +18,9 @@ const FRAME = "overflow-auto rounded-lg ring-1 ring-border";
  * frame scroll instead of squeezing on a narrow one. Without a floor the five
  * columns just keep compressing — at 375px the email column wraps to one word
  * per line and the row grows taller than the viewport. 42rem is roughly where
- * an address still fits on one line. The page's `max-w-5xl` cap is 64rem, so
- * this never engages on desktop.
+ * an address still fits on one line, and it is under the page's `max-w-5xl`
+ * cap of 64rem — so on a full-width desktop window there is nothing to scroll,
+ * and the floor only engages once the frame itself is narrower than 42rem.
  */
 const TABLE = "w-full min-w-2xl text-sm";
 
