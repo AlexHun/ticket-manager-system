@@ -50,15 +50,18 @@ export const usersRouter = Router();
  *
  * 403 rather than 404 — the row exists and the caller can see it in the list;
  * pretending otherwise would read as a bug in the list.
+ *
+ * Takes the row rather than an id, because every caller is reading that row
+ * anyway: adding `automated` to a `select` that was already happening costs
+ * nothing, where an id would force a lookup of its own beside it. `DELETE`
+ * below has always been shaped this way; this is the rest of the file catching
+ * up. A `null` target is not this function's business — it means no such row,
+ * which the caller answers with its own 404.
  */
-async function rejectAssistant(
-  userId: string,
+function rejectAssistant(
+  target: { automated: boolean } | null,
   res: Response<{ error: string }>,
-): Promise<boolean> {
-  const target = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { automated: true },
-  });
+): boolean {
   if (target?.automated) {
     res.status(403).json({ error: "The assistant's account cannot be changed" });
     return true;
@@ -198,14 +201,18 @@ usersRouter.patch(
     const { name, email, role } = data;
 
     const userId = req.params.id as string;
-    if (await rejectAssistant(userId, res)) return;
 
-    // Read before the write — the audit trail diffs against what the account
-    // had a moment ago, and `adminUpdateUser` below does not hand that back.
+    // One read before the write, serving three readers: the audit trail diffs
+    // against what the account had a moment ago (`adminUpdateUser` below does
+    // not hand that back), the self-role guard compares against the stored
+    // role rather than the submitted one, and `rejectAssistant` wants
+    // `automated` — which is why it takes the row instead of fetching its own.
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { name: true, email: true, role: true },
+      select: { name: true, email: true, role: true, automated: true },
     });
+
+    if (rejectAssistant(before, res)) return;
 
     /**
      * Nobody changes their own role, in either direction.
@@ -261,6 +268,13 @@ usersRouter.patch(
       });
     }
 
+    // The one read here that genuinely has to happen twice: it observes the row
+    // *after* Better Auth wrote to it. Answering with `before` merged into the
+    // validated body would be a query cheaper and sometimes wrong — Better
+    // Auth's `internalAdapter.updateUser` lowercases `email` on the way in
+    // (checked against the pinned 1.6.13), so a body carrying `Aaron@Example.com`
+    // leaves `aaron@example.com` in the row, and the roster would show a value
+    // the next reload disagrees with.
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: {
@@ -308,12 +322,15 @@ usersRouter.post(
   requireAdmin,
   async (req: Request, res: Response<{ error: string } | Record<string, never>>) => {
     const userId = req.params.id as string;
-    if (await rejectAssistant(userId, res)) return;
 
     const target = await prisma.user.findUnique({
       where: { id: userId },
-      select: { name: true, email: true, deletedAt: true },
+      select: { name: true, email: true, deletedAt: true, automated: true },
     });
+
+    // Ahead of the 404 below, which is why `rejectAssistant` tolerates a null
+    // row: the assistant is not missing, and 403 is the more honest answer.
+    if (rejectAssistant(target, res)) return;
 
     if (!target || target.deletedAt !== null) {
       res.status(404).json({ error: "User not found" });

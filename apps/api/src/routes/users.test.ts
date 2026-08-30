@@ -10,6 +10,10 @@
  * with no mocking, alongside the route so a failure in either shows up next
  * to its cause.
  *
+ * The last block is not about the trail: it counts how many times a request
+ * reads the account it is acting on, which is a property `rejectAssistant`'s
+ * shape can silently undo (see #115).
+ *
  * `../db`, `../middleware/auth` and `../auth` are all mocked. `../auth` is
  * mocked nowhere else in this suite, so there is no cross-file registration
  * risk there (see `testing.md`'s note on the shared module registry). The
@@ -588,6 +592,18 @@ describe("POST /api/users/:id/invite — user_invited, resend", () => {
       }),
     ]);
   });
+
+  // The assistant has no credential row and is not getting one; this link is
+  // the door `rejectAssistant` exists to keep shut. Checked *before* the 404,
+  // so the answer is 403 either way.
+  test("refuses the assistant, and mails nothing", async () => {
+    const sent = await post(`/${ASSISTANT.id}/invite`, {});
+
+    expect(sent.status).toBe(403);
+    expect(sent.body.error).toBe("The assistant's account cannot be changed");
+    expect(requestPasswordReset).not.toHaveBeenCalled();
+    expect(adminActivityLog).toEqual([]);
+  });
 });
 
 describe("DELETE /api/users/:id — user_deleted", () => {
@@ -618,5 +634,53 @@ describe("DELETE /api/users/:id — user_deleted", () => {
 
     expect(sent.status).toBe(403);
     expect(adminActivityLog).toEqual([]);
+  });
+});
+
+/* ── How many times one request reads the same row (#115) ────────────────── */
+
+/**
+ * `rejectAssistant` used to take an id and fetch `automated` itself, which left
+ * every caller reading the same row a second time for the fields it actually
+ * needed. It takes the row now, so these counts are the change — assert them,
+ * or the next guard that takes an id puts the extra query back unnoticed.
+ */
+describe("reads per request", () => {
+  test("PATCH reads twice: once before the write, once to observe it", async () => {
+    await patch(`/${AGENT.id}`, {
+      name: "Aaron A. Gent",
+      email: AGENT.email,
+      role: AGENT.role,
+    });
+
+    // The second is unavoidable — Better Auth lowercases `email` on the way
+    // in, so the response has to come off the row rather than off the body.
+    expect(userFindUniqueOrThrow).toHaveBeenCalledTimes(2);
+    expect(userFindUnique).not.toHaveBeenCalled();
+  });
+
+  test("a refused PATCH reads once and stops", async () => {
+    await patch(`/${ASSISTANT.id}`, {
+      name: "Renamed",
+      email: ASSISTANT.email,
+      role: ASSISTANT.role,
+    });
+
+    expect(userFindUniqueOrThrow).toHaveBeenCalledTimes(1);
+    expect(userFindUnique).not.toHaveBeenCalled();
+  });
+
+  test("POST /:id/invite reads once", async () => {
+    await post(`/${AGENT.id}/invite`, {});
+
+    expect(userFindUnique).toHaveBeenCalledTimes(1);
+    expect(userFindUniqueOrThrow).not.toHaveBeenCalled();
+  });
+
+  test("DELETE reads the user once", async () => {
+    await del(`/${AGENT.id}`);
+
+    expect(userFindUnique).toHaveBeenCalledTimes(1);
+    expect(userFindUniqueOrThrow).not.toHaveBeenCalled();
   });
 });
