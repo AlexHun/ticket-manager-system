@@ -4,6 +4,7 @@ import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { countLabel, matchesQuery } from "./module-match";
 import { GUARD, type Guard, type ProjectGraph } from "./protocol";
 
 /**
@@ -16,11 +17,19 @@ import { GUARD, type Guard, type ProjectGraph } from "./protocol";
  * as a string in an axios call and a string in an Express route. Both sides are
  * read out of source and matched by path shape, which is why the "called by"
  * column is evidence rather than documentation: nobody maintains it.
+ *
+ * Every table here matches on **both** sides of the join — a route on its URL and
+ * on its component's file, an endpoint on its URL, its handler and its callers.
+ * That is what makes the search useful on this tab specifically: typing
+ * `TicketsPage` answers "which endpoints does this page hit", and typing
+ * `/api/tickets` answers the same question from the other end.
  */
 
 interface MapWiringProps {
   graph: ProjectGraph;
   onSelect: (id: string) => void;
+  /** Trimmed, lowercased search term; empty means "not searching". */
+  query: string;
 }
 
 const GUARD_VISUAL: Record<Guard, { label: string; icon: ReactNode; className: string }> = {
@@ -48,65 +57,89 @@ const GUARD_VISUAL: Record<Guard, { label: string; icon: ReactNode; className: s
   },
 };
 
-export function MapWiring({ graph, onSelect }: MapWiringProps) {
+export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
+  const routes = graph.routes.filter((route) =>
+    matchesQuery(query, route.path, route.component, route.file, route.redirectTo),
+  );
+  const endpoints = graph.endpoints.filter((endpoint) =>
+    matchesQuery(
+      query,
+      endpoint.path,
+      endpoint.method,
+      endpoint.file,
+      ...endpoint.callers,
+    ),
+  );
+  // Field names are in the haystack too: a Prisma model is not a module, so the
+  // only way the search reaches this card at all is by what it is made of.
+  const models = graph.models.filter((model) =>
+    matchesQuery(query, model.name, model.table, ...model.fields.map((f) => f.name)),
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <Card size="sm">
         <CardHeader>
-          <CardTitle>Client routes ({graph.routes.length})</CardTitle>
+          <CardTitle>
+            Client routes ({countLabel(routes.length, graph.routes.length)})
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-muted-foreground">
-                <tr className="border-b border-border">
-                  <Th>Path</Th>
-                  <Th>Element</Th>
-                  <Th>Behind</Th>
-                  <Th>Chunk</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {graph.routes.map((route) => (
-                  <tr key={`${route.path}|${route.component}`} className="border-b border-border/50 last:border-0">
-                    <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">
-                      {route.path}
-                      {route.redirectTo && (
-                        <span className="ml-1.5 text-muted-foreground">
-                          → {route.redirectTo}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-1.5 pr-3">
-                      {route.file ? (
-                        <ModuleLink id={route.file} label={route.component} onSelect={onSelect} />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          {route.component} — from the router
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-1.5 pr-3">
-                      {route.guards.length === 0 ? (
-                        <span className="text-xs text-muted-foreground">public</span>
-                      ) : (
-                        <span className="flex flex-wrap items-center gap-1">
-                          {route.guards.map((guard) => (
-                            <Badge key={guard} variant="secondary" className="font-normal">
-                              {guard}
-                            </Badge>
-                          ))}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-1.5 text-xs text-muted-foreground whitespace-nowrap">
-                      {route.lazy ? "own chunk" : "entry"}
-                    </td>
+          {routes.length === 0 ? (
+            <NoMatch what="client route" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-muted-foreground">
+                  <tr className="border-b border-border">
+                    <Th>Path</Th>
+                    <Th>Element</Th>
+                    <Th>Behind</Th>
+                    <Th>Chunk</Th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {routes.map((route) => (
+                    <tr key={`${route.path}|${route.component}`} className="border-b border-border/50 last:border-0">
+                      <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">
+                        {route.path}
+                        {route.redirectTo && (
+                          <span className="ml-1.5 text-muted-foreground">
+                            → {route.redirectTo}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        {route.file ? (
+                          <ModuleLink id={route.file} label={route.component} onSelect={onSelect} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {route.component} — from the router
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        {route.guards.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">public</span>
+                        ) : (
+                          <span className="flex flex-wrap items-center gap-1">
+                            {route.guards.map((guard) => (
+                              <Badge key={guard} variant="secondary" className="font-normal">
+                                {guard}
+                              </Badge>
+                            ))}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                        {route.lazy ? "own chunk" : "entry"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             "Behind" is the nesting in <code className="font-mono">App.tsx</code>,
             outermost first — read out of the JSX rather than assumed, so it is the
@@ -118,78 +151,84 @@ export function MapWiring({ graph, onSelect }: MapWiringProps) {
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle>API endpoints ({graph.endpoints.length})</CardTitle>
+          <CardTitle>
+            API endpoints ({countLabel(endpoints.length, graph.endpoints.length)})
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-muted-foreground">
-                <tr className="border-b border-border">
-                  <Th>Method</Th>
-                  <Th>Path</Th>
-                  <Th>Guard</Th>
-                  <Th>Handler</Th>
-                  <Th>Called by</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {graph.endpoints.map((endpoint) => {
-                  const guard = GUARD_VISUAL[endpoint.guard];
-                  return (
-                    <tr
-                      key={`${endpoint.method} ${endpoint.path}`}
-                      className="border-b border-border/50 last:border-0 align-top"
-                    >
-                      <td className="py-1.5 pr-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                        {endpoint.method}
-                      </td>
-                      <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">
-                        {endpoint.path}
-                      </td>
-                      <td className="py-1.5 pr-3">
-                        <span
-                          className={cn(
-                            "flex items-center gap-1 text-xs whitespace-nowrap",
-                            "[&_svg]:size-3.5 [&_svg]:shrink-0",
-                            guard.className,
-                          )}
-                        >
-                          {guard.icon}
-                          {guard.label}
-                        </span>
-                      </td>
-                      <td className="py-1.5 pr-3">
-                        <ModuleLink
-                          id={endpoint.file}
-                          label={endpoint.file.replace("apps/api/src/", "")}
-                          onSelect={onSelect}
-                        />
-                      </td>
-                      <td className="py-1.5">
-                        {endpoint.callers.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">
-                            not from the SPA
+          {endpoints.length === 0 ? (
+            <NoMatch what="endpoint" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-muted-foreground">
+                  <tr className="border-b border-border">
+                    <Th>Method</Th>
+                    <Th>Path</Th>
+                    <Th>Guard</Th>
+                    <Th>Handler</Th>
+                    <Th>Called by</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {endpoints.map((endpoint) => {
+                    const guard = GUARD_VISUAL[endpoint.guard];
+                    return (
+                      <tr
+                        key={`${endpoint.method} ${endpoint.path}`}
+                        className="border-b border-border/50 last:border-0 align-top"
+                      >
+                        <td className="py-1.5 pr-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                          {endpoint.method}
+                        </td>
+                        <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">
+                          {endpoint.path}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <span
+                            className={cn(
+                              "flex items-center gap-1 text-xs whitespace-nowrap",
+                              "[&_svg]:size-3.5 [&_svg]:shrink-0",
+                              guard.className,
+                            )}
+                          >
+                            {guard.icon}
+                            {guard.label}
                           </span>
-                        ) : (
-                          <div className="flex flex-col">
-                            {endpoint.callers.map((caller) => (
-                              <ModuleLink
-                                key={caller}
-                                id={caller}
-                                label={caller.replace("apps/web/src/", "")}
-                                onSelect={onSelect}
-                                icon={<CornerDownRight />}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <ModuleLink
+                            id={endpoint.file}
+                            label={endpoint.file.replace("apps/api/src/", "")}
+                            onSelect={onSelect}
+                          />
+                        </td>
+                        <td className="py-1.5">
+                          {endpoint.callers.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">
+                              not from the SPA
+                            </span>
+                          ) : (
+                            <div className="flex flex-col">
+                              {endpoint.callers.map((caller) => (
+                                <ModuleLink
+                                  key={caller}
+                                  id={caller}
+                                  label={caller.replace("apps/web/src/", "")}
+                                  onSelect={onSelect}
+                                  icon={<CornerDownRight />}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             Guards are read from the middleware in the route registration.
             "Not from the SPA" means no{" "}
@@ -203,10 +242,18 @@ export function MapWiring({ graph, onSelect }: MapWiringProps) {
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle>Data model ({graph.models.length} models)</CardTitle>
+          <CardTitle>
+            Data model ({countLabel(models.length, graph.models.length)} models)
+          </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {graph.models.map((model) => (
+        <CardContent
+          className={cn(
+            models.length > 0 &&
+              "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3",
+          )}
+        >
+          {models.length === 0 && <NoMatch what="model" />}
+          {models.map((model) => (
             <div key={model.name} className="rounded-lg ring-1 ring-border">
               <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-2">
                 <p className="font-medium">{model.name}</p>
@@ -242,6 +289,22 @@ export function MapWiring({ graph, onSelect }: MapWiringProps) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * What a card shows when the search has emptied it.
+ *
+ * Named rather than an inline `<p>` in three places, and it says which *kind* of
+ * thing found nothing: these three cards are stacked on one tab, so "No matches"
+ * repeated down the page tells you less than one line per card saying exactly
+ * what was searched and came up empty.
+ */
+function NoMatch({ what }: { what: string }) {
+  return (
+    <p className="text-sm text-muted-foreground">
+      No {what} matches the search.
+    </p>
   );
 }
 

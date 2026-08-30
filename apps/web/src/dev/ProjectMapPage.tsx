@@ -26,6 +26,7 @@ import { LayerBadge } from "./LayerBadge";
 import { MapOverview } from "./MapOverview";
 import { MapWiring } from "./MapWiring";
 import { ModuleInspector } from "./ModuleInspector";
+import { matchesQuery } from "./module-match";
 import { ModuleTable } from "./ModuleTable";
 import { LAYER, type Layer, type ProjectGraph, type Workspace } from "./protocol";
 
@@ -75,6 +76,15 @@ export function ProjectMapPage() {
     });
   }, [graph, workspace, showIncidental, showVendored]);
 
+  /** `visible` narrowed by the search — what the Modules tab lists, and the
+   *  number the filter bar reports. Kept apart from `visible` because the graph
+   *  needs the unsearched set: it dims non-matches rather than dropping them, so
+   *  the structure around a hit stays on screen. */
+  const matching = useMemo(
+    () => visible.filter((module) => matchesQuery(query, module.id)),
+    [visible, query],
+  );
+
   const selected = graph?.modules.find((m) => m.id === selectedId) ?? null;
 
   if (isPending) return <MapSkeleton />;
@@ -105,8 +115,17 @@ export function ProjectMapPage() {
     );
   }
 
-  /** Selecting from a view that is filtering the module out would otherwise show
-   *  an empty inspector, so a pick always widens the filters enough to include it. */
+  /**
+   * Selecting from a view that is filtering the module out would otherwise show
+   * an empty inspector, so a pick always widens the filters enough to include it.
+   *
+   * The search counts as one of those filters now that it reaches every tab, and
+   * it is the only one cleared rather than widened — there is no "wider" search
+   * than none. It is cleared *only* when the pick does not match, which is the
+   * case that would otherwise strand you: a cycle in Findings comes back whole,
+   * so clicking a module further round the ring is a click on something the term
+   * never matched. A pick that does match leaves your search where it was.
+   */
   const select = (id: string) => {
     const module = graph.modules.find((m) => m.id === id);
     if (module) {
@@ -115,6 +134,10 @@ export function ProjectMapPage() {
       }
       if (INCIDENTAL_LAYERS.includes(module.layer)) setShowIncidental(true);
       if (module.layer === LAYER.ui) setShowVendored(true);
+      // Against the live `search`, not the debounced `query`: a click landing
+      // inside the 150 ms window would otherwise be judged against the previous
+      // term and leave the box holding one that hides the pick.
+      if (!matchesQuery(search.trim().toLowerCase(), module.id)) setSearch("");
     }
     setSelectedId(id);
   };
@@ -183,11 +206,24 @@ export function ProjectMapPage() {
           </Toggle>
         </div>
 
-        {/* Says which views the filters reach, because they deliberately do not
-            reach all of them: Overview and Wiring describe the whole project, and
-            totals that moved when you hid the tests would be worse than useless. */}
-        <p className="ml-auto text-xs text-muted-foreground tabular-nums">
-          {visible.length} of {graph.totals.modules} modules in Graph and Modules
+        {/* Two different reaches, so two different sentences — and the counter
+            has to move when you type, because it is what people read to confirm
+            the search took at all. The workspace and toggle filters still stop at
+            Graph and Modules: Overview and Wiring report whole-project totals, and
+            a project that shrank because you hid the tests would be worse than
+            useless. The search reaches all four. */}
+        <p className="ml-auto text-right text-xs text-muted-foreground tabular-nums">
+          {query ? (
+            <>
+              {matching.length} of {visible.length} modules match — the search
+              narrows every tab
+            </>
+          ) : (
+            <>
+              {visible.length} of {graph.totals.modules} modules in Graph and
+              Modules
+            </>
+          )}
         </p>
       </div>
 
@@ -201,7 +237,7 @@ export function ProjectMapPage() {
           </TabsList>
 
           <TabsContent value={TAB.overview} className="mt-3">
-            <MapOverview graph={graph} onSelect={select} />
+            <MapOverview graph={graph} onSelect={select} query={query} />
           </TabsContent>
 
           <TabsContent value={TAB.graph} className="mt-3 flex flex-col gap-3">
@@ -227,18 +263,14 @@ export function ProjectMapPage() {
 
           <TabsContent value={TAB.modules} className="mt-3">
             <ModuleTable
-              modules={
-                query
-                  ? visible.filter((m) => m.id.toLowerCase().includes(query))
-                  : visible
-              }
+              modules={matching}
               selectedId={selectedId}
               onSelect={select}
             />
           </TabsContent>
 
           <TabsContent value={TAB.wiring} className="mt-3">
-            <MapWiring graph={graph} onSelect={select} />
+            <MapWiring graph={graph} onSelect={select} query={query} />
           </TabsContent>
         </Tabs>
 
