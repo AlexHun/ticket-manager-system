@@ -195,7 +195,7 @@ usersRouter.patch(
     const data = parseBody(updateUserSchema, req, res);
     if (!data) return;
 
-    const { name, email } = data;
+    const { name, email, role } = data;
 
     const userId = req.params.id as string;
     if (await rejectAssistant(userId, res)) return;
@@ -204,25 +204,52 @@ usersRouter.patch(
     // had a moment ago, and `adminUpdateUser` below does not hand that back.
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { name: true, email: true },
+      select: { name: true, email: true, role: true },
     });
+
+    /**
+     * Nobody changes their own role, in either direction.
+     *
+     * This is the whole of the protection against a desk with no admins left,
+     * and it is sufficient on its own: an account can only be demoted by
+     * *another* admin, so the last one standing cannot demote themselves and
+     * there is no admin-count to keep. That is deliberately the same shape as
+     * the flat "admins cannot be deleted" rule in `DELETE` below rather than a
+     * "how many remain" check — a count is a race, a flat refusal is not.
+     *
+     * Checked here rather than trusted to the disabled control in the dialog:
+     * the UI hides the option, this makes it not exist. The comparison is
+     * against `before.role`, so an admin editing their own name and re-sending
+     * their own role is an ordinary edit and still works — only a *move* is
+     * refused. Placed before every write, so a refusal changes nothing.
+     */
+    if (userId === sessionOf(res).user.id && role !== before.role) {
+      res.status(403).json({ error: "You cannot change your own role" });
+      return;
+    }
 
     const headers = fromNodeHeaders(req.headers);
 
-    // Name and email only. Setting a password from here is gone on purpose —
+    // Name, email and role. Setting a password from here is gone on purpose —
     // `POST /:id/invite` below sends the owner a link instead, so a locked-out
     // colleague gets a password nobody else has seen. That also removed the
     // sharpest edge on this handler: `setUserPassword` creates a credential row
     // where none existed, which is how an admin could once have made the
     // assistant signable-in through an ordinary-looking edit.
+    //
+    // `role` goes through the same call rather than the admin plugin's
+    // `setRole`, because two calls would be two writes with no transaction
+    // around them — a rename that lands and a promotion that doesn't. Better
+    // Auth checks the caller's `user:set-role` permission itself when `data`
+    // carries a role, on top of this route's own `requireAdmin`.
     await auth.api.adminUpdateUser({
-      body: { userId, data: { name, email } },
+      body: { userId, data: { name, email, role } },
       headers,
     });
 
     // One row per field that actually moved — a Save that re-sends the same
-    // name and email writes nothing, same guard `ticketChanges` uses.
-    const changes = userEditChanges(before, { name, email });
+    // name, email and role writes nothing, same guard `ticketChanges` uses.
+    const changes = userEditChanges(before, { name, email, role });
     if (changes.length > 0) {
       await prisma.adminActivity.createMany({
         data: changes.map((entry) => ({

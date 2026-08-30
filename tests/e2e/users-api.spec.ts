@@ -12,10 +12,14 @@ const AGENT = CREDENTIALS.agent;
 
 interface ApiUser {
   id: string;
+  name: string;
   email: string;
+  role: string;
 }
 
-async function getUserIds(browser: Browser): Promise<{ adminId: string; agentId: string }> {
+async function getSeededUsers(
+  browser: Browser,
+): Promise<{ admin: ApiUser; agent: ApiUser }> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await signIn(page, "admin");
@@ -30,14 +34,18 @@ async function getUserIds(browser: Browser): Promise<{ adminId: string; agentId:
   }
 
   await context.close();
-  return { adminId: admin.id, agentId: agent.id };
+  return { admin, agent };
 }
 
+let adminUser: ApiUser;
 let adminUserId: string;
 let agentUserId: string;
 
 test.beforeAll(async ({ browser }) => {
-  ({ adminId: adminUserId, agentId: agentUserId } = await getUserIds(browser));
+  const { admin, agent } = await getSeededUsers(browser);
+  adminUser = admin;
+  adminUserId = admin.id;
+  agentUserId = agent.id;
 });
 
 // ---------------------------------------------------------------------------
@@ -129,5 +137,46 @@ test.describe("Users API — admin-delete guard", () => {
     await expect(res.json()).resolves.toEqual({
       error: "Admin users cannot be deleted",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Self role change — the whole of what keeps at least one admin on the desk,
+// so it is enforced here and not only by the disabled picker in the dialog.
+// Straight at the API, which is the case the UI cannot speak for.
+// ---------------------------------------------------------------------------
+
+test.describe("Users API — self role-change guard", () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page, "admin");
+  });
+
+  test("PATCH /api/users/:id demoting yourself -> 403, and no change", async ({
+    page,
+  }) => {
+    const res = await page.request.patch(`${API_URL}/api/users/${adminUserId}`, {
+      data: { name: adminUser.name, email: ADMIN.email, role: "agent" },
+    });
+
+    expect(res.status()).toBe(403);
+    await expect(res.json()).resolves.toEqual({
+      error: "You cannot change your own role",
+    });
+
+    // Still an admin — and still able to ask, which would not be true if the
+    // demotion had landed and taken this session's own access with it.
+    const after = await page.request.get(`${API_URL}/api/users`);
+    const body = (await after.json()) as { users: ApiUser[] };
+    expect(body.users.find((u) => u.id === adminUserId)?.role).toBe("admin");
+  });
+
+  test("PATCH /api/users/:id on yourself with the role unchanged -> 200", async ({
+    page,
+  }) => {
+    const res = await page.request.patch(`${API_URL}/api/users/${adminUserId}`, {
+      data: { name: adminUser.name, email: ADMIN.email, role: "admin" },
+    });
+
+    expect(res.status()).toBe(200);
   });
 });

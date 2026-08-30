@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm, type Resolver } from "react-hook-form";
+import { Controller, useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import {
   createUserSchema,
   updateUserSchema,
-  type CreateUserValues,
+  type UpdateUserValues,
 } from "@ticket/core";
+import { USER_ROLE } from "@ticket/shared";
 import type {
   CreateUserResponse,
   UpdateUserResponse,
@@ -23,9 +24,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
 import { activityKeys } from "@/lib/activity-queries";
+import { useSession } from "@/lib/auth-client";
 import { extractErrorMessage } from "@/lib/errors";
 import { ticketAssigneesKey, ticketKeys } from "@/lib/ticket-queries";
 
@@ -35,33 +44,71 @@ interface UserDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const EMPTY_VALUES: CreateUserValues = { name: "", email: "" };
+/**
+ * The create form has no role control — a new account is always an `agent`, and
+ * `createUserSchema` strips this field back off on the way out, so the POST body
+ * is still name and email alone. It is in the defaults rather than left
+ * undefined because one `useForm` serves both modes and react-hook-form wants a
+ * value for every field it renders.
+ */
+const EMPTY_VALUES: UpdateUserValues = {
+  name: "",
+  email: "",
+  role: USER_ROLE.agent,
+};
+
+/** How each role reads in the picker. The values are the roles themselves. */
+const ROLE_LABEL: Record<(typeof USER_ROLE)[keyof typeof USER_ROLE], string> = {
+  [USER_ROLE.admin]: "Admin",
+  [USER_ROLE.agent]: "Agent",
+};
 
 export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
   const isEdit = user !== null;
   const [serverError, setServerError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  /**
+   * Editing your own account. The role picker is disabled here rather than
+   * removed, so the row still says what you are — and the API refuses a
+   * self role change whatever this control does (`PATCH /api/users/:id`).
+   * That refusal is the only thing standing between this desk and having no
+   * admins left, so it lives on the server; this is the courtesy half.
+   */
+  const isSelf = isEdit && user.id === session?.user?.id;
 
   const {
+    control,
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<CreateUserValues>({
+  } = useForm<UpdateUserValues>({
+    // One form, two schemas. The cast goes through `unknown` because the create
+    // schema is now a strict subset — it has no `role` at all — so the two
+    // resolver types no longer overlap enough for a direct assertion. That
+    // narrowness is the point: on the create path zod strips `role` back off,
+    // which is what keeps the POST body name-and-email even though the form
+    // state carries a third field.
     resolver: zodResolver(
       isEdit ? updateUserSchema : createUserSchema,
-    ) as Resolver<CreateUserValues>,
+    ) as unknown as Resolver<UpdateUserValues>,
     defaultValues: EMPTY_VALUES,
   });
 
   useEffect(() => {
     if (!open) return;
-    reset(user ? { name: user.name, email: user.email } : EMPTY_VALUES);
+    reset(
+      user
+        ? { name: user.name, email: user.email, role: user.role }
+        : EMPTY_VALUES,
+    );
     setServerError(null);
   }, [open, user, reset]);
 
   const mutation = useMutation({
-    mutationFn: async (values: CreateUserValues) => {
+    mutationFn: async (values: UpdateUserValues) => {
       if (user) {
         const { data } = await api.patch<UpdateUserResponse>(
           `/api/users/${user.id}`,
@@ -107,7 +154,7 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
     },
   });
 
-  const onSubmit = (values: CreateUserValues) => {
+  const onSubmit = (values: UpdateUserValues) => {
     setServerError(null);
     mutation.mutate(values);
   };
@@ -174,6 +221,43 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
               </p>
             )}
           </div>
+          {/* Edit only. Every account starts as an agent and is promoted, if
+              ever, from here — offering the choice at creation would make the
+              role a thing you decide before you know the person. */}
+          {isEdit && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${idPrefix}-role`}>Role</Label>
+              <Controller
+                control={control}
+                name="role"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={isSubmitting || isSelf}
+                  >
+                    <SelectTrigger id={`${idPrefix}-role`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.values(USER_ROLE).map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {ROLE_LABEL[role]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {isSelf && (
+                <p className="text-xs text-muted-foreground">
+                  You cannot change your own role — ask another admin. This is
+                  what stops the desk being left with nobody who can administer
+                  it.
+                </p>
+              )}
+            </div>
+          )}
           {serverError && (
             <p className="text-sm text-destructive" role="alert">
               {serverError}

@@ -16,6 +16,22 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
+/**
+ * Who is signed in, mutable per test — the dialog asks so it can tell your own
+ * account apart from a colleague's, which is the one case the role picker is
+ * closed for. `vi.hoisted` because the `vi.mock` factory below is hoisted above
+ * every ordinary `const`.
+ */
+const { session } = vi.hoisted(() => ({ session: { userId: "u_admin" } }));
+
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({
+    data: { user: { id: session.userId, role: "admin" } },
+    isPending: false,
+  }),
+  authClient: { signOut: vi.fn() },
+}));
+
 const baseUser: User = {
   id: "u_42",
   name: "Aaron Agent",
@@ -101,6 +117,7 @@ async function openEdit(name: string) {
 beforeEach(() => {
   mockPost.mockReset();
   mockPatch.mockReset();
+  session.userId = "u_admin";
 });
 
 afterEach(() => {
@@ -118,6 +135,16 @@ describe("UserDialog — create mode", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("");
     expect(within(dialog).getByLabelText("Email")).toHaveValue("");
+  });
+
+  // Every account starts as an agent; promotion is an edit, never a decision
+  // made on the way in.
+  test("has no role control", async () => {
+    renderHarness();
+    await openCreate();
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByLabelText("Role")).not.toBeInTheDocument();
   });
 
   test("submits POST /api/users and closes on success", async () => {
@@ -163,9 +190,11 @@ describe("UserDialog — edit mode", () => {
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Aaron Agent");
     expect(within(dialog).getByLabelText("Email")).toHaveValue("agent@example.com");
+    // Not a native select, so the current value is read off the trigger.
+    expect(within(dialog).getByLabelText("Role")).toHaveTextContent("Agent");
   });
 
-  test("PATCH sends name and email only, closes on success", async () => {
+  test("PATCH sends name, email and role, closes on success", async () => {
     mockPatch.mockResolvedValue({ data: { user: baseUser } });
 
     renderHarness();
@@ -187,15 +216,73 @@ describe("UserDialog — edit mode", () => {
       Record<string, string>,
     ];
     expect(url).toBe("/api/users/u_42");
+    // The unchanged role rides along — one PATCH is one reading of the whole
+    // account, and the route diffs it rather than treating an absent field as
+    // "leave alone". It writes no `role_changed` row for a role that stayed put.
     expect(body).toEqual({
       name: "Aaron Updated",
       email: "agent@example.com",
+      role: USER_ROLE.agent,
     });
     expect(body).not.toHaveProperty("password");
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("promoting a colleague sends the new role", async () => {
+    mockPatch.mockResolvedValue({
+      data: { user: { ...baseUser, role: USER_ROLE.admin } },
+    });
+
+    renderHarness();
+    const user = await openEdit("Aaron Agent");
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByLabelText("Role"));
+    await user.click(await screen.findByRole("option", { name: "Admin" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
+
+    await waitFor(() => {
+      expect(mockPatch).toHaveBeenCalledTimes(1);
+    });
+    const [, body] = mockPatch.mock.calls[0] as [string, Record<string, string>];
+    expect(body).toEqual({
+      name: "Aaron Agent",
+      email: "agent@example.com",
+      role: USER_ROLE.admin,
+    });
+  });
+
+  test("the role picker is closed on your own account, and says why", async () => {
+    session.userId = baseUser.id;
+
+    renderHarness();
+    await openEdit("Aaron Agent");
+    const dialog = screen.getByRole("dialog");
+
+    expect(within(dialog).getByLabelText("Role")).toBeDisabled();
+    expect(
+      within(dialog).getByText(/cannot change your own role/i),
+    ).toBeInTheDocument();
+    // The rest of the form is untouched — this blocks one field, not the edit.
+    expect(within(dialog).getByLabelText("Name")).toBeEnabled();
+  });
+
+  test("another admin's account keeps an open role picker", async () => {
+    renderHarness();
+    await openEdit("Beth Beta");
+    const dialog = screen.getByRole("dialog");
+
+    const role = within(dialog).getByLabelText("Role");
+    expect(role).toBeEnabled();
+    expect(role).toHaveTextContent("Admin");
+    expect(
+      within(dialog).queryByText(/cannot change your own role/i),
+    ).not.toBeInTheDocument();
   });
 
   test("switching to a different user repopulates the form", async () => {

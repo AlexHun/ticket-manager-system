@@ -97,6 +97,59 @@ test.describe.serial("User management (admin)", () => {
     await expect(updatedRow.getByText(RENAMED_USER_NAME)).toBeVisible();
   });
 
+  // Promote and demote in one test, deliberately: the delete test after this
+  // one needs the account back on `agent`, because an admin row draws no
+  // delete button at all.
+  test("promotes the created user, then demotes them again", async ({
+    page,
+  }) => {
+    const row = page.getByRole("row", { name: NEW_USER_EMAIL });
+    await row.getByRole("button", { name: `Edit ${RENAMED_USER_NAME}` }).click();
+
+    const dialog = page.getByRole("dialog");
+    // Not a native select — click the trigger, then the option.
+    await expect(dialog.getByLabel("Role")).toHaveText("Agent");
+    await dialog.getByLabel("Role").click();
+    await page.getByRole("option", { name: "Admin" }).click();
+    await dialog.getByRole("button", { name: "Save changes" }).click();
+    await expect(dialog).toBeHidden();
+
+    const promoted = page.getByRole("row", { name: NEW_USER_EMAIL });
+    await expect(promoted.getByText("admin", { exact: true })).toBeVisible();
+    // An admin cannot be deleted, so the row's third slot is now a spacer.
+    await expect(promoted.getByRole("button", { name: /Delete/ })).toHaveCount(0);
+
+    await promoted
+      .getByRole("button", { name: `Edit ${RENAMED_USER_NAME}` })
+      .click();
+    await expect(dialog.getByLabel("Role")).toHaveText("Admin");
+    await dialog.getByLabel("Role").click();
+    await page.getByRole("option", { name: "Agent" }).click();
+    await dialog.getByRole("button", { name: "Save changes" }).click();
+    await expect(dialog).toBeHidden();
+
+    const demoted = page.getByRole("row", { name: NEW_USER_EMAIL });
+    await expect(demoted.getByText("agent", { exact: true })).toBeVisible();
+  });
+
+  // The UI half of the rule that keeps at least one admin on the desk. The
+  // server half — a 403 on a self role change however the request is made —
+  // is covered in `users-api.spec.ts`.
+  test("cannot change your own role from your own edit dialog", async ({
+    page,
+  }) => {
+    const adminRow = page.getByRole("row", { name: ADMIN.email });
+    await adminRow.getByRole("button", { name: /Edit/ }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("Role")).toBeDisabled();
+    await expect(
+      dialog.getByText(/cannot change your own role/i),
+    ).toBeVisible();
+    // Only the role is closed; the account is still editable.
+    await expect(dialog.getByLabel("Name")).toBeEnabled();
+  });
+
   test("deletes the created user", async ({ page }) => {
     const row = page.getByRole("row", { name: NEW_USER_EMAIL });
     await row
