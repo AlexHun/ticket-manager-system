@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { EDGE_KIND, type ModuleEdge, type ModuleNode } from "./protocol";
 import { LAYER_VISUAL } from "./layer-visuals";
+import { matchesQuery } from "./module-match";
 import { TABLE_FRAME } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 
@@ -141,6 +142,28 @@ function edgePath(from: Placed, to: Placed): string {
   return `M${x1},${y1} C${c1},${y1} ${c2},${y2} ${x2},${y2}`;
 }
 
+/**
+ * Whether a node recedes into the background.
+ *
+ * The two reasons **compose**, and that is the whole point rather than a tidy-up.
+ * This was once `neighbours ? !neighbours.has(id) : !matches`, which reads as
+ * "focus wins over search" but behaves far worse than that sounds: `neighbours`
+ * is non-null whenever anything is hovered *or selected*, the selection is set by
+ * clicking a row in any of the four views, and it survives until the inspector's
+ * X is pressed. So one click anywhere on the page turned `matches` into dead code
+ * and the graph stopped responding to the search box for the rest of the session.
+ *
+ * A node now has to clear both gates to stay lit: it matches what you typed, and
+ * it is within one hop of what you are pointing at.
+ */
+export function isDimmed(
+  id: string,
+  matches: boolean,
+  neighbours: ReadonlySet<string> | null,
+): boolean {
+  return !matches || (neighbours !== null && !neighbours.has(id));
+}
+
 const DASH: Record<string, string | undefined> = {
   [EDGE_KIND.static]: undefined,
   // Erased by `verbatimModuleSyntax`, so it costs nothing at runtime — drawn as
@@ -272,8 +295,11 @@ export function DependencyGraph({
 
         {layout.placed.map(({ node, x, y }) => {
           const visual = LAYER_VISUAL[node.layer];
-          const matches = query.length === 0 || node.id.toLowerCase().includes(query);
-          const dimmed = neighbours ? !neighbours.has(node.id) : !matches;
+          const dimmed = isDimmed(
+            node.id,
+            matchesQuery(query, node.id),
+            neighbours,
+          );
           const isFocus = node.id === focusId;
 
           return (
