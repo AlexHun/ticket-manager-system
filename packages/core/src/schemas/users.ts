@@ -2,6 +2,31 @@ import { z } from "zod";
 import { USER_ROLE } from "@ticket/shared";
 
 /**
+ * An address as this app stores it: lowercased.
+ *
+ * Not a preference — it is what Better Auth does, at every door and without
+ * being asked. `internalAdapter.createUser` and `updateUser` both write
+ * `email.toLowerCase()`, and `findUserByEmail` lowercases the value it looks
+ * up, so a colleague typed in as `Aaron@Example.com` is `aaron@example.com` in
+ * the row and signs in either way. The app used to leave the submitted case
+ * alone, which meant only Better Auth knew what an email really was.
+ *
+ * That gap had one visible consequence, in the audit trail: `PATCH
+ * /api/users/:id` diffs the **stored** address against the **submitted** one,
+ * and `diffToEntries` compares with `===`. Re-saving an account with only the
+ * capitals changed wrote a `user_edited` row for an address the database never
+ * held (#118). Normalising here rather than in the route fixes it for the form
+ * as well — the two now send what they mean.
+ *
+ * Applied to `create` too, where nothing is broken today: an account created
+ * with capitals is already stored lowercase by `createUser`, and the 201 is
+ * read back off that row. It is here so that "what an email is" is one rule in
+ * one place, rather than an agreement this app and Better Auth happen to reach
+ * separately at each of three doors.
+ */
+const email = z.email("Enter a valid email").toLowerCase();
+
+/**
  * Making a colleague an account.
  *
  * **No password field, deliberately.** An admin used to type one here and tell
@@ -18,7 +43,7 @@ import { USER_ROLE } from "@ticket/shared";
  */
 export const createUserSchema = z.object({
   name: z.string().trim().min(3, "Name must be at least 3 characters"),
-  email: z.email("Enter a valid email"),
+  email,
 });
 
 export type CreateUserValues = z.infer<typeof createUserSchema>;
@@ -45,7 +70,7 @@ export type CreateUserValues = z.infer<typeof createUserSchema>;
  */
 export const updateUserSchema = z.object({
   name: z.string().trim().min(3, "Name must be at least 3 characters"),
-  email: z.email("Enter a valid email"),
+  email,
   role: z.enum(USER_ROLE, { error: "Choose a role" }),
 });
 

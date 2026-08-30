@@ -245,12 +245,19 @@ mock.module("../middleware/auth", () => ({
 /** Only `routes/users.ts` imports `../auth` among tested modules — no other
  * file registers a mock for this specifier, so there is nothing to collide
  * with. See the file header. */
+/**
+ * Both fakes lowercase `email`, because the real thing does and the difference
+ * is load-bearing here: Better Auth's `internalAdapter` writes
+ * `email.toLowerCase()` on create *and* update, which is what made a case-only
+ * edit look like a change to the audit trail (#118). A fake that stored the
+ * submitted casing would keep passing with the normalisation removed.
+ */
 const createUser = mock((args: { body: { name: string; email: string } }) => {
   const id = `u_new_${++nextNewUserId}`;
   const created: FakeUser = {
     id,
     name: args.body.name,
-    email: args.body.email,
+    email: args.body.email.toLowerCase(),
     role: "agent",
     emailVerified: true,
     automated: false,
@@ -268,8 +275,11 @@ const adminUpdateUser = mock(
       data: { name: string; email: string; role: string };
     };
   }) => {
+    const { email, ...rest } = args.body.data;
     users = users.map((u) =>
-      u.id === args.body.userId ? { ...u, ...args.body.data } : u,
+      u.id === args.body.userId
+        ? { ...u, ...rest, email: email.toLowerCase() }
+        : u,
     );
     return Promise.resolve({});
   },
@@ -369,7 +379,7 @@ const AS_ADMIN = {
 
 interface Sent {
   status: number;
-  body: { error?: string; user?: { id: string } };
+  body: { error?: string; user?: { id: string; email: string } };
 }
 
 async function post(path: string, body: unknown): Promise<Sent> {
@@ -421,6 +431,23 @@ describe("POST /api/users — user_created and the initial user_invited", () => 
         targetUserName: "Nadia New",
       }),
     ]);
+  });
+
+  // Nothing was broken here before #118 — Better Auth lowercases what it
+  // stores, and the 201 is read back off what it returned. `createUserSchema`
+  // normalises anyway so that both forms send the same thing, and so that the
+  // address in the invitation is the one that will be in the row.
+  test("an address typed with capitals is created lowercase", async () => {
+    const sent = await post("/", {
+      name: "Nadia New",
+      email: "Nadia.New@Example.com",
+    });
+
+    expect(sent.status).toBe(201);
+    expect(createUser.mock.calls[0]?.[0].body.email).toBe(
+      "nadia.new@example.com",
+    );
+    expect(sent.body.user?.email).toBe("nadia.new@example.com");
   });
 });
 
@@ -478,6 +505,45 @@ describe("PATCH /api/users/:id — user_edited", () => {
 
     expect(sent.status).toBe(403);
     expect(adminActivityLog).toEqual([]);
+  });
+
+  /**
+   * #118. Better Auth lowercases the address on the way in, so re-sending
+   * `Aaron@Example.com` over a stored `aaron@example.com` changes nothing —
+   * and used to write a `user_edited` row saying it had. `updateUserSchema`
+   * normalises now, so the route diffs like against like.
+   */
+  test("no row when only the capitals of the email changed", async () => {
+    const sent = await patch(`/${AGENT.id}`, {
+      name: AGENT.name,
+      email: AGENT.email.toUpperCase(),
+      role: AGENT.role,
+    });
+
+    expect(sent.status).toBe(200);
+    expect(adminActivityLog).toEqual([]);
+    // And the row was not quietly rewritten either — what reaches Better Auth
+    // is the address the account already had.
+    expect(adminUpdateUser.mock.calls[0]?.[0].body.data.email).toBe(AGENT.email);
+    expect(sent.body.user?.email).toBe(AGENT.email);
+  });
+
+  // The other half of the same bug: a real edit, typed with capitals. The row
+  // it writes has to say what the database will hold, not what was typed.
+  test("a genuine email change is recorded as it is stored", async () => {
+    await patch(`/${AGENT.id}`, {
+      name: AGENT.name,
+      email: "Aaron.New@Example.com",
+      role: AGENT.role,
+    });
+
+    expect(adminActivityLog).toEqual([
+      expect.objectContaining({
+        action: "user_edited",
+        fromValue: `Email: ${AGENT.email}`,
+        toValue: "Email: aaron.new@example.com",
+      }),
+    ]);
   });
 
   test("rejects a body with no role at all — this is not a partial update", async () => {

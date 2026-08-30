@@ -231,6 +231,48 @@ describe("UserDialog — edit mode", () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
 
+  /**
+   * #118. The schema lowercases, so the request carries the address the
+   * database will actually hold — otherwise the API diffs a typed
+   * `AARON@EXAMPLE.COM` against the stored `aaron@example.com` and logs an
+   * edit that never happened.
+   *
+   * The field itself is left showing what was typed: react-hook-form hands the
+   * resolver's output to the submit handler without writing it back into the
+   * input, so nothing rewrites itself under the cursor. This asserts it over a
+   * *failed* save, which is the only path where the dialog is still on screen
+   * afterwards to be looked at — a successful one closes and repopulates from
+   * the server.
+   */
+  test("an address typed with capitals is sent lowercase, and the field keeps what was typed", async () => {
+    mockPatch.mockRejectedValue(
+      Object.assign(new Error("Request failed"), {
+        isAxiosError: true,
+        response: { status: 409, data: { error: "Email already in use" } },
+      }),
+    );
+
+    renderHarness();
+    const user = await openEdit("Aaron Agent");
+    const dialog = screen.getByRole("dialog");
+
+    const emailInput = within(dialog).getByLabelText("Email");
+    await user.clear(emailInput);
+    await user.type(emailInput, "Aaron.Agent@Example.com");
+    expect(emailInput).toHaveValue("Aaron.Agent@Example.com");
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
+
+    await waitFor(() => {
+      expect(mockPatch).toHaveBeenCalledTimes(1);
+    });
+    const [, body] = mockPatch.mock.calls[0] as [string, Record<string, string>];
+    expect(body.email).toBe("aaron.agent@example.com");
+    expect(emailInput).toHaveValue("Aaron.Agent@Example.com");
+  });
+
   test("promoting a colleague sends the new role", async () => {
     mockPatch.mockResolvedValue({
       data: { user: { ...baseUser, role: USER_ROLE.admin } },
