@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { USER_ROLE } from "@ticket/shared";
 
 /**
  * Making a colleague an account.
@@ -29,10 +30,23 @@ export type CreateUserValues = z.infer<typeof createUserSchema>;
  * different field on this form: it is the invitation link being sent again. A
  * locked-out colleague gets a link to choose their own password rather than an
  * admin choosing one for them.
+ *
+ * **`role` is required, and only here.** It rides along with name and email
+ * rather than getting a partial-update path of its own, so one PATCH is one
+ * reading of the whole account and the route can diff every field the same way
+ * — which is what keeps the audit trail's "only log what actually moved" rule
+ * a single rule (see `userEditChanges`). `createUserSchema` deliberately has no
+ * counterpart: a new account is always an `agent` and is promoted, if ever, by
+ * a later edit.
+ *
+ * Who may set it to what is *not* decided here — an admin cannot change their
+ * own role, and that is enforced in `PATCH /api/users/:id`, which is the only
+ * place that knows who is asking.
  */
 export const updateUserSchema = z.object({
   name: z.string().trim().min(3, "Name must be at least 3 characters"),
   email: z.email("Enter a valid email"),
+  role: z.enum(USER_ROLE, { error: "Choose a role" }),
 });
 
 export type UpdateUserValues = z.infer<typeof updateUserSchema>;

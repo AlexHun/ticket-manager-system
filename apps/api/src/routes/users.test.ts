@@ -1,10 +1,10 @@
 /**
  * Unit tests for the admin-activity audit trail wired into `./users` — the
  * account-management analogue of `TicketActivity`. Covers every action
- * `routes/users.ts` can write today: `user_created`, `user_invited` (both the
- * initial invite and a resend), `user_edited`, and `user_deleted`.
- * `role_changed` is untested because nothing writes it — see the schema
- * comment on `AdminActivityAction`.
+ * `routes/users.ts` can write: `user_created`, `user_invited` (both the
+ * initial invite and a resend), `user_edited`, `role_changed`, and
+ * `user_deleted` — plus the one thing `PATCH` refuses outright, an admin
+ * moving their own role.
  *
  * `./admin-activity`'s pure helper (`userEditChanges`) is exercised directly,
  * with no mocking, alongside the route so a failure in either shows up next
@@ -32,25 +32,27 @@ import {
   test,
 } from "bun:test";
 import express from "express";
+import { USER_ROLE } from "@ticket/shared";
 import { userEditChanges } from "../admin-activity";
 
 /* ── userEditChanges — no mocking needed, it touches nothing ────────────── */
 
 describe("userEditChanges", () => {
-  test("writes nothing when neither field moved", () => {
-    expect(
-      userEditChanges(
-        { name: "Aaron Agent", email: "aaron@example.com" },
-        { name: "Aaron Agent", email: "aaron@example.com" },
-      ),
-    ).toEqual([]);
+  const BEFORE = {
+    name: "Aaron Agent",
+    email: "aaron@example.com",
+    role: USER_ROLE.agent,
+  };
+
+  test("writes nothing when no field moved", () => {
+    expect(userEditChanges(BEFORE, { ...BEFORE })).toEqual([]);
   });
 
   test("one row for a name change alone", () => {
-    const entries = userEditChanges(
-      { name: "Aaron Agent", email: "aaron@example.com" },
-      { name: "Aaron A. Gent", email: "aaron@example.com" },
-    );
+    const entries = userEditChanges(BEFORE, {
+      ...BEFORE,
+      name: "Aaron A. Gent",
+    });
 
     expect(entries).toEqual([
       {
@@ -62,10 +64,10 @@ describe("userEditChanges", () => {
   });
 
   test("one row for an email change alone", () => {
-    const entries = userEditChanges(
-      { name: "Aaron Agent", email: "aaron@example.com" },
-      { name: "Aaron Agent", email: "aaron@new-example.com" },
-    );
+    const entries = userEditChanges(BEFORE, {
+      ...BEFORE,
+      email: "aaron@new-example.com",
+    });
 
     expect(entries).toEqual([
       {
@@ -76,15 +78,33 @@ describe("userEditChanges", () => {
     ]);
   });
 
-  test("two rows when both moved in one PATCH", () => {
-    const entries = userEditChanges(
-      { name: "Aaron Agent", email: "aaron@example.com" },
-      { name: "Aaron A. Gent", email: "aaron@new-example.com" },
-    );
+  // Its own action, and the values are bare — no `"Role: "` prefix. The label
+  // exists on the other two only because they share `user_edited` and
+  // something has to say which of them moved.
+  test("one unprefixed row for a promotion", () => {
+    const entries = userEditChanges(BEFORE, {
+      ...BEFORE,
+      role: USER_ROLE.admin,
+    });
 
-    expect(entries).toHaveLength(2);
-    expect(entries[0]?.toValue).toBe("Name: Aaron A. Gent");
-    expect(entries[1]?.toValue).toBe("Email: aaron@new-example.com");
+    expect(entries).toEqual([
+      { action: "role_changed", fromValue: "agent", toValue: "admin" },
+    ]);
+  });
+
+  test("three rows when everything moved in one PATCH", () => {
+    const entries = userEditChanges(BEFORE, {
+      name: "Aaron A. Gent",
+      email: "aaron@new-example.com",
+      role: USER_ROLE.admin,
+    });
+
+    expect(entries).toHaveLength(3);
+    expect(entries.map((e) => e.toValue)).toEqual([
+      "Name: Aaron A. Gent",
+      "Email: aaron@new-example.com",
+      "admin",
+    ]);
   });
 });
 
@@ -238,7 +258,12 @@ const createUser = mock((args: { body: { name: string; email: string } }) => {
 });
 
 const adminUpdateUser = mock(
-  (args: { body: { userId: string; data: { name: string; email: string } } }) => {
+  (args: {
+    body: {
+      userId: string;
+      data: { name: string; email: string; role: string };
+    };
+  }) => {
     users = users.map((u) =>
       u.id === args.body.userId ? { ...u, ...args.body.data } : u,
     );
@@ -400,6 +425,7 @@ describe("PATCH /api/users/:id — user_edited", () => {
     const sent = await patch(`/${AGENT.id}`, {
       name: AGENT.name,
       email: AGENT.email,
+      role: AGENT.role,
     });
 
     expect(sent.status).toBe(200);
@@ -407,7 +433,11 @@ describe("PATCH /api/users/:id — user_edited", () => {
   });
 
   test("one row, labelled, for a name-only change", async () => {
-    await patch(`/${AGENT.id}`, { name: "Aaron A. Gent", email: AGENT.email });
+    await patch(`/${AGENT.id}`, {
+      name: "Aaron A. Gent",
+      email: AGENT.email,
+      role: AGENT.role,
+    });
 
     expect(adminActivityLog).toEqual([
       expect.objectContaining({
@@ -425,6 +455,7 @@ describe("PATCH /api/users/:id — user_edited", () => {
     await patch(`/${AGENT.id}`, {
       name: "Aaron A. Gent",
       email: "aaron.new@example.com",
+      role: AGENT.role,
     });
 
     expect(adminActivityLog).toHaveLength(2);
@@ -438,10 +469,107 @@ describe("PATCH /api/users/:id — user_edited", () => {
     const sent = await patch(`/${ASSISTANT.id}`, {
       name: "Renamed",
       email: ASSISTANT.email,
+      role: ASSISTANT.role,
     });
 
     expect(sent.status).toBe(403);
     expect(adminActivityLog).toEqual([]);
+  });
+
+  test("rejects a body with no role at all — this is not a partial update", async () => {
+    const sent = await patch(`/${AGENT.id}`, {
+      name: AGENT.name,
+      email: AGENT.email,
+    });
+
+    expect(sent.status).toBe(400);
+    expect(adminUpdateUser).not.toHaveBeenCalled();
+    expect(adminActivityLog).toEqual([]);
+  });
+
+  test("rejects a role the app does not have", async () => {
+    const sent = await patch(`/${AGENT.id}`, {
+      name: AGENT.name,
+      email: AGENT.email,
+      role: "superadmin",
+    });
+
+    expect(sent.status).toBe(400);
+    expect(adminUpdateUser).not.toHaveBeenCalled();
+    expect(adminActivityLog).toEqual([]);
+  });
+});
+
+describe("PATCH /api/users/:id — role_changed", () => {
+  test("one row for a promotion, and the role reaches Better Auth", async () => {
+    const sent = await patch(`/${AGENT.id}`, {
+      name: AGENT.name,
+      email: AGENT.email,
+      role: USER_ROLE.admin,
+    });
+
+    expect(sent.status).toBe(200);
+    expect(adminUpdateUser.mock.calls[0]?.[0].body.data.role).toBe(
+      USER_ROLE.admin,
+    );
+    expect(adminActivityLog).toEqual([
+      expect.objectContaining({
+        action: "role_changed",
+        fromValue: USER_ROLE.agent,
+        toValue: USER_ROLE.admin,
+        actorId: ADMIN.id,
+        targetUserId: AGENT.id,
+        targetUserName: AGENT.name,
+      }),
+    ]);
+  });
+
+  test("one row for a demotion of another admin", async () => {
+    const sent = await patch(`/${OTHER_ADMIN.id}`, {
+      name: OTHER_ADMIN.name,
+      email: OTHER_ADMIN.email,
+      role: USER_ROLE.agent,
+    });
+
+    expect(sent.status).toBe(200);
+    expect(adminActivityLog).toEqual([
+      expect.objectContaining({
+        action: "role_changed",
+        fromValue: USER_ROLE.admin,
+        toValue: USER_ROLE.agent,
+      }),
+    ]);
+  });
+
+  // The only rule keeping at least one admin on the desk: a sole admin cannot
+  // demote themselves, so there is no count to keep anywhere.
+  test("refuses an admin demoting themselves, before any write", async () => {
+    const sent = await patch(`/${ADMIN.id}`, {
+      name: ADMIN.name,
+      email: ADMIN.email,
+      role: USER_ROLE.agent,
+    });
+
+    expect(sent.status).toBe(403);
+    expect(sent.body.error).toBe("You cannot change your own role");
+    expect(adminUpdateUser).not.toHaveBeenCalled();
+    expect(adminActivityLog).toEqual([]);
+  });
+
+  test("an admin editing their own name, role unchanged, still works", async () => {
+    const sent = await patch(`/${ADMIN.id}`, {
+      name: "Ada Administrator",
+      email: ADMIN.email,
+      role: ADMIN.role,
+    });
+
+    expect(sent.status).toBe(200);
+    expect(adminActivityLog).toEqual([
+      expect.objectContaining({
+        action: "user_edited",
+        toValue: "Name: Ada Administrator",
+      }),
+    ]);
   });
 });
 

@@ -714,7 +714,7 @@ export const ADMIN_ACTIVITY_ACTION = {
   /** Covers both the initial invite and a resend; `toValue` says which. */
   user_invited: "user_invited",
   user_edited: "user_edited",
-  /** Reserved — nothing writes this yet. See the schema comment. */
+  /** A promotion or demotion; `fromValue`/`toValue` are the bare roles. */
   role_changed: "role_changed",
   user_deleted: "user_deleted",
 } as const;

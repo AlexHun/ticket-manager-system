@@ -1,5 +1,5 @@
 import { ADMIN_ACTIVITY_ACTION } from "@ticket/shared";
-import type { AdminActivityAction } from "@ticket/shared";
+import type { AdminActivityAction, UserRole } from "@ticket/shared";
 import { diffToEntries } from "./activity-diff";
 import { prisma } from "./db";
 
@@ -60,21 +60,27 @@ export async function writeAdminActivity(
   });
 }
 
-/** The two mutable fields `user_edited` covers, as the trail stores them. */
+/** The three mutable fields one edit can move, as the trail stores them. */
 export interface AdminUserFields {
   name: string;
   email: string;
+  role: UserRole;
 }
 
 /**
  * What changed between two readings of a colleague's account, as entries.
  *
  * One row per changed field, same reasoning as `ticketChanges`: a PATCH that
- * re-sends the name and email a user already has changes nothing, and should
- * write nothing. `fromValue`/`toValue` carry the field label inline (`"Name:
- * …"` / `"Email: …"`) because both fields share the one `user_edited` action —
- * unlike `TicketActivity`, which gives status/category/assignee their own
- * action each and lets the value stand alone.
+ * re-sends the name, email and role a user already has changes nothing, and
+ * should write nothing.
+ *
+ * Two of the three fields share the one `user_edited` action, so their
+ * `fromValue`/`toValue` carry the field label inline (`"Name: …"` / `"Email:
+ * …"`) to say which one moved. `role` has an action of its own,
+ * `role_changed`, so there is nothing left for a label to disambiguate and the
+ * bare role reads better in the feed (`agent → admin`) — the same split
+ * `TicketActivity` makes, where status/category/assignee each get an action
+ * and let the value stand alone.
  */
 export function userEditChanges(
   before: AdminUserFields,
@@ -83,5 +89,6 @@ export function userEditChanges(
   return diffToEntries<AdminUserFields, AdminActivityAction>(before, after, [
     { field: "name", action: ADMIN_ACTIVITY_ACTION.user_edited, label: "Name" },
     { field: "email", action: ADMIN_ACTIVITY_ACTION.user_edited, label: "Email" },
+    { field: "role", action: ADMIN_ACTIVITY_ACTION.role_changed },
   ]);
 }

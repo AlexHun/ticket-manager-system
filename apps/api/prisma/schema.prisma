@@ -529,11 +529,11 @@ model AdminActivity {
   id             Int                 @id @default(autoincrement())
   action         AdminActivityAction
   /// The move, as it will be read — currently only meaningful for `user_edited`
-  /// (`"Name: Old"` / `"Name: New"`, one row per changed field) and
-  /// `user_invited` (`"initial"` / `"resend"`, `toValue` only). Null on both
-  /// sides for `user_created` and `user_deleted`, where the action says
-  /// everything there is to say. `role_changed` would use the two roles the
-  /// same way once something writes it — see the enum note below.
+  /// (`"Name: Old"` / `"Name: New"`, one row per changed field), `role_changed`
+  /// (`"agent"` / `"admin"`, unprefixed because that action names the field by
+  /// itself) and `user_invited` (`"initial"` / `"resend"`, `toValue` only).
+  /// Null on both sides for `user_created` and `user_deleted`, where the action
+  /// says everything there is to say.
   fromValue      String?
   toValue        String?
   /// The admin who acted. Always present at write time — every route here sits
@@ -567,9 +567,11 @@ enum AdminActivityAction {
   /// (`POST /:id/invite`) — `toValue` says which.
   user_invited
   user_edited
-  /// No route sets a colleague's role today — `role` is fixed at creation
-  /// (`Role.agent` by default) and there is no admin-facing way to change it.
-  /// Reserved so the enum does not need a migration the day one is added.
+  /// Written by `PATCH /api/users/:id` when the role field actually moves, and
+  /// only then. An account is still always created as `Role.agent`; promotion
+  /// and demotion are edits. Never written for the editing admin's own account
+  /// — that route refuses a self role change outright, which is the whole of
+  /// what stops a desk ending up with no admins.
   role_changed
   user_deleted
 }
