@@ -181,7 +181,17 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Full history, unlike every other checkout here: the changelog step below
+      # walks the merged branch (`HEAD^2 --not HEAD^1`), and checkout's default
+      # shallow clone has neither parent. HEAD^2 then fails to resolve, the
+      # fallback reads HEAD's own "Merge pull request #N from ..." subject, and
+      # since that is never feat/fix *no merge ever recorded an entry* — the
+      # changelog was empty for that reason, not the tip-commit one (issue #113;
+      # measured in run 33297190858, which logged "Not a feat/fix commit" for a
+      # branch that carried one).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Bump apps/web patch version
         id: bump
@@ -199,17 +209,19 @@ jobs:
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
 
       # The "what's new" changelog (issue #94): one entry per feat/fix commit,
-      # generated rather than admin-authored. `HEAD^2` is the tip of the
-      # merged branch on an ordinary merge commit — the descriptive message,
-      # as opposed to HEAD's own "Merge pull request #N from ..." — and the
-      # fallback covers a direct push to main with no merge parent.
-      - name: Record a changelog entry
+      # generated rather than admin-authored. `HEAD^2 --not HEAD^1` is every
+      # commit the merged branch added, oldest first — not just its tip, which
+      # is routinely a `refactor`/`docs` review fix-up sitting on top of the
+      # `feat` that is the actual point of the branch (issue #113). The
+      # fallback covers a direct push to main and a squash merge, neither of
+      # which has a second parent; an empty result records nothing.
+      - name: Record changelog entries
         env:
           NEXT_VERSION: ${{ steps.bump.outputs.next }}
         run: |
           set -euo pipefail
-          COMMIT_SUBJECT=$(git log -1 --format=%s HEAD^2 2>/dev/null || git log -1 --format=%s HEAD)
-          COMMIT_SUBJECT="$COMMIT_SUBJECT" node scripts/ci/record-changelog-entry.mjs
+          COMMIT_SUBJECTS=$(git log --reverse --format=%s HEAD^2 --not HEAD^1 2>/dev/null || git log -1 --format=%s HEAD)
+          COMMIT_SUBJECTS="$COMMIT_SUBJECTS" node scripts/ci/record-changelog-entry.mjs
 
       - name: Commit and push
         run: |

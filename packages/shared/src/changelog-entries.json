@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "version": "0.1.25",
+    "date": "2026-08-29",
+    "title": "Add a \"what's new\" changelog popover"
+  },
+  {
+    "version": "0.1.26",
+    "date": "2026-08-29",
+    "title": "404 a missing hashed asset instead of serving the SPA shell"
+  },
+  {
+    "version": "0.1.27",
+    "date": "2026-08-29",
+    "title": "Make the users table scroll on narrow viewports"
+  },
+  {
+    "version": "0.1.29",
+    "date": "2026-08-30",
+    "title": "Resend a user's invitation from the roster"
+  }
+]
