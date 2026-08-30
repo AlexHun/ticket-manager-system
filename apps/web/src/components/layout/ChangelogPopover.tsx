@@ -12,6 +12,9 @@ import {
   useMarkChangelogSeen,
 } from "@/lib/changelog-queries";
 
+// Newest version first. A version can carry more than one entry — CI records
+// one per feat/fix commit on the merged branch (issue #113) — and `sort` is
+// stable, so those keep the order they were recorded in, oldest commit first.
 const SORTED_ENTRIES = [...CHANGELOG_ENTRIES].sort((a, b) =>
   compareVersions(b.version, a.version),
 );
@@ -59,7 +62,10 @@ export function ChangelogPopover() {
         ) : (
           <ul className="flex max-h-80 flex-col gap-3 overflow-y-auto">
             {SORTED_ENTRIES.map((entry) => (
-              <li key={entry.version} className="flex flex-col gap-0.5">
+              <li
+                key={`${entry.version}-${entry.title}`}
+                className="flex flex-col gap-0.5"
+              >
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-xs font-medium text-muted-foreground">
                     v{entry.version}

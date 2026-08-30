@@ -2135,15 +2135,17 @@ export interface DashboardLayoutResponse {
  * release or a hand-authored batch.
  *
  * `changelog-entries.json` is written by CI's `bump-version` job (`.github/workflows/ci.yml`)
- * on every push to `main` whose merged commit is a `feat`/`fix` — the same
- * conventional-commit prefix this repo's own commits already use, stripped
- * for display. A `chore`/`refactor`/`docs`/etc. commit still bumps the
- * version (see `releaseName()` in `apps/web/vite.config.ts`) but adds no
- * entry here, because not every deploy is something a user should be told
- * about. This file is the one thing standing between "empty" and "has
+ * on every push to `main`, one entry per `feat`/`fix` commit on the merged
+ * branch — the same conventional-commit prefix this repo's own commits
+ * already use, stripped for display. A `chore`/`refactor`/`docs`/etc. commit
+ * still bumps the version (see `releaseName()` in `apps/web/vite.config.ts`)
+ * but adds no entry here, because not every deploy is something a user should
+ * be told about. The whole branch is scanned rather than its tip, which is
+ * routinely a review fix-up on top of the `feat` that was the branch's point
+ * (issue #113) — so a deploy can contribute two entries, and they share a
+ * version. This file is the one thing standing between "empty" and "has
  * content" for a fresh environment — same as `KnowledgeArticle`/`TutorialContent`,
- * nothing needs seeding for the feature to work, it just stays quiet until
- * the first qualifying commit lands.
+ * nothing needs seeding for the feature to work.
  *
  * **This is a sparse subsequence of deployed versions, not a second counter.**
  * Every `ChangelogEntry.version` is a real value `apps/web`'s package.json —
@@ -2161,8 +2163,9 @@ export interface ChangelogEntry {
    * the same value `VITE_SENTRY_RELEASE` carried at that deploy (see
    * `releaseName()` in `apps/web/vite.config.ts`), not a value invented for
    * this feature. Not necessarily contiguous with neighbouring entries, since
-   * a `chore`-only deploy bumps the version without adding an entry — see
-   * the type doc above. */
+   * a `chore`-only deploy bumps the version without adding an entry, and not
+   * unique either, since a branch carrying two `feat`/`fix` commits records
+   * two entries at the same version — see the type doc above. */
   version: string;
   /** ISO date (`YYYY-MM-DD`), the day CI recorded the entry. */
   date: string;
