@@ -13,6 +13,7 @@ import type {
   CreateUserResponse,
   UpdateUserResponse,
   User,
+  UserRole,
 } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,8 +58,15 @@ const EMPTY_VALUES: UpdateUserValues = {
   role: USER_ROLE.agent,
 };
 
-/** How each role reads in the picker. The values are the roles themselves. */
-const ROLE_LABEL: Record<(typeof USER_ROLE)[keyof typeof USER_ROLE], string> = {
+/**
+ * How each role reads in the picker; the values are the roles themselves.
+ *
+ * A full `Record` over `UserRole` rather than a lookup with a fallback — the
+ * same forcing function `ACTIVITY_ACTION_LABEL` uses: a third role would be a
+ * compile error here until somebody decides how it reads, rather than a raw
+ * enum key reaching the dropdown.
+ */
+const ROLE_LABEL: Record<UserRole, string> = {
   [USER_ROLE.admin]: "Admin",
   [USER_ROLE.agent]: "Agent",
 };
