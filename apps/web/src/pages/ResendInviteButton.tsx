@@ -4,6 +4,7 @@ import type { User } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
+import { activityKeys } from "@/lib/activity-queries";
 import { extractErrorMessage } from "@/lib/errors";
 
 /**
@@ -36,8 +37,12 @@ export function ResendInviteButton({ user }: { user: User }) {
       // The route writes a `user_invited` row, so an activity feed already on
       // screen is one entry behind. Nothing on the roster itself moves — the
       // 204 carries no user, and no field of one changed.
-      void queryClient.invalidateQueries({ queryKey: ["activity"] });
-      toast.success(`Invitation resent to ${user.email}`);
+      void queryClient.invalidateQueries({ queryKey: activityKeys.all });
+      // Named the way the dialogs name a user, and for the same reason the
+      // delete dialog spells out both: the address is the whole point of the
+      // confirmation — it is where the link actually went, and a mistyped one
+      // is the case this button most often answers.
+      toast.success(`Invitation resent to "${user.name}" (${user.email})`);
     },
     onError: (err) => {
       toast.error(extractErrorMessage(err, "Failed to resend invitation"));

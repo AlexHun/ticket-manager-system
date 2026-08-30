@@ -537,7 +537,7 @@ describe("UsersPage — resend invite", () => {
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
-        "Invitation resent to agent@example.com",
+        'Invitation resent to "Aaron Agent" (agent@example.com)',
       );
     });
     // Nothing on the roster changed, so nothing refetches it.

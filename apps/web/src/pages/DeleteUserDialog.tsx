@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
+import { activityKeys } from "@/lib/activity-queries";
 import { extractErrorMessage } from "@/lib/errors";
 import { ticketAssigneesKey, ticketKeys } from "@/lib/ticket-queries";
 
@@ -49,6 +50,9 @@ export function DeleteUserDialog({
       // route in `apps/api/src/routes/users.ts`), so any cached list, detail or
       // dashboard entry is now naming an assignee the server has cleared.
       void queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+      // And the delete logs a `user_deleted` row, which a feed already on
+      // screen would not show until something else refetched it.
+      void queryClient.invalidateQueries({ queryKey: activityKeys.all });
       setServerError(null);
       onOpenChange(false);
       if (user) toast.success(`User "${user.name}" deleted`);

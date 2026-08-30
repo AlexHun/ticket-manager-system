@@ -1,4 +1,5 @@
-﻿import { Bot, Pencil, Trash2 } from "lucide-react";
+﻿import type { ReactNode } from "react";
+import { Bot, Pencil, Trash2 } from "lucide-react";
 import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,25 @@ function UsersTableHead() {
   );
 }
 
+/**
+ * One slot in the actions column: the control, or a gap the same size holding
+ * its place.
+ *
+ * Every row draws all three slots whether or not it can use them, so the
+ * buttons stay in one vertical line down the column — the assistant can use
+ * none of them, and an admin cannot be deleted. Without the placeholder those
+ * rows pull their remaining buttons rightwards and nothing lines up.
+ *
+ * `size-7` is `icon-sm`, and it lives here rather than at each call site
+ * because it was copied four times before this existed: a fourth action should
+ * cost one more slot, not one more copy of a magic number that has to agree
+ * with the button variant three files away.
+ */
+function RowAction({ show, children }: { show: boolean; children: ReactNode }) {
+  if (!show) return <span aria-hidden className="size-7" />;
+  return <>{children}</>;
+}
+
 interface UsersTableProps {
   users: User[];
   onEdit: (user: User) => void;
@@ -93,14 +113,12 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
                 <div className="flex items-center justify-end gap-1">
                   {/* No actions on the assistant, matching the API rather than
                       duplicating its reasoning: all three routes 403 on this
-                      row. Inviting it mails a link that creates the credential
-                      record it deliberately has none of — which is also why
-                      editing it offers no password box; deleting it would clear
-                      the assignee on every ticket it has ever resolved, and only
-                      the seed can make another. */}
-                  {u.automated ? (
-                    <span aria-hidden className="size-7" />
-                  ) : (
+                      row. Editing it would offer to resend an invitation, and
+                      accepting one creates the credential record it deliberately
+                      has none of; deleting it would clear the assignee on every
+                      ticket it has ever resolved, and only the seed can make
+                      another. */}
+                  <RowAction show={!u.automated}>
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -109,7 +127,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
                     >
                       <Pencil />
                     </Button>
-                  )}
+                  </RowAction>
                   {/* Every real account, not just the ones that never signed in.
                       #84 asked for `emailVerified === false` here, which was
                       written against a schema that has since been decided
@@ -120,12 +138,10 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
                       colleagues, and the API gates it on nothing but
                       `requireAdmin` and the assistant. See
                       `docs/adr/0010-no-email-verification.md`. */}
-                  {u.automated ? (
-                    <span aria-hidden className="size-7" />
-                  ) : (
+                  <RowAction show={!u.automated}>
                     <ResendInviteButton user={u} />
-                  )}
-                  {!u.automated && u.role !== USER_ROLE.admin ? (
+                  </RowAction>
+                  <RowAction show={!u.automated && u.role !== USER_ROLE.admin}>
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -135,9 +151,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
                     >
                       <Trash2 />
                     </Button>
-                  ) : (
-                    <span aria-hidden className="size-7" />
-                  )}
+                  </RowAction>
                 </div>
               </td>
             </tr>
