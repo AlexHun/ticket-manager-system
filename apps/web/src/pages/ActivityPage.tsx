@@ -13,6 +13,7 @@ import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
+import { activityKeys } from "@/lib/activity-queries";
 import {
   ACTIVITY_ACTION_LABEL,
   ACTIVITY_ENTITY_LABEL,
@@ -86,7 +87,7 @@ function toActivityQueryParams(
 
 function useActivityQuery(params: ActivityQueryParams) {
   return useQuery({
-    queryKey: ["activity", params],
+    queryKey: activityKeys.list(params),
     queryFn: async ({ signal }) => {
       const { data } = await api.get<ActivityFeedResponse>("/api/activity", {
         params,

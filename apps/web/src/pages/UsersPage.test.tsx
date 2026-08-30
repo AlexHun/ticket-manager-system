@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { USER_ROLE, type User } from "@ticket/shared";
+import { toast } from "@/components/ui/sonner";
 import { renderWithQuery } from "@/test/render";
 import { UsersPage } from "./UsersPage";
 
@@ -64,6 +65,20 @@ const newAgentUser: User = {
   emailVerified: false,
   automated: false,
   createdAt: "2025-03-10T12:00:00.000Z",
+};
+
+/**
+ * The assistant. On the roster so an admin can see what tickets are filed
+ * under, and read-only there because every route that writes to it 403s.
+ */
+const automatedUser: User = {
+  id: "u_bot",
+  name: "Assistant",
+  email: "assistant@example.com",
+  role: USER_ROLE.agent,
+  emailVerified: true,
+  automated: true,
+  createdAt: "2025-01-01T12:00:00.000Z",
 };
 
 function renderUsersPage() {
@@ -463,5 +478,117 @@ describe("UsersPage — delete user", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     // No refetch on failure
     expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("UsersPage — resend invite", () => {
+  test("renders a resend button on every real row, admins included", async () => {
+    // Not gated on `emailVerified`: `adminUser` has it true and still gets the
+    // button. An admin locked out of their own account is exactly who needs it,
+    // and the column means nothing here — see ADR 0010 and the comment in
+    // UsersTable.tsx.
+    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    renderUsersPage();
+    await screen.findByText("Ada Admin");
+
+    expect(
+      screen.getByRole("button", { name: "Resend invitation to Ada Admin" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Resend invitation to Aaron Agent" }),
+    ).toBeInTheDocument();
+  });
+
+  test("hides the resend button on the assistant's row", async () => {
+    mockGet.mockResolvedValue({ data: { users: [agentUser, automatedUser] } });
+    renderUsersPage();
+    // Anchored on the address, not the name: the row carries "Assistant" twice
+    // — once as the name and once as the badge that replaces its role.
+    await screen.findByText("assistant@example.com");
+
+    expect(
+      screen.queryByRole("button", { name: /Resend invitation to Assistant/ }),
+    ).not.toBeInTheDocument();
+    // The other row actions stay hidden on it too — one rule, not three.
+    expect(
+      screen.queryByRole("button", { name: /^Edit Assistant/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Delete Assistant/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("clicking it POSTs to /api/users/:id/invite and toasts success", async () => {
+    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
+    mockPost.mockResolvedValue({ data: {} });
+
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Resend invitation to Aaron Agent" }),
+    );
+
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledTimes(1);
+    });
+    expect(mockPost.mock.calls[0]?.[0]).toBe("/api/users/u_2/invite");
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        'Invitation resent to "Aaron Agent" (agent@example.com)',
+      );
+    });
+    // Nothing on the roster changed, so nothing refetches it.
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  test("toasts the server's message when the invite fails", async () => {
+    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
+    mockPost.mockRejectedValue(
+      Object.assign(new Error("Request failed"), {
+        isAxiosError: true,
+        response: { status: 404, data: { error: "User not found" } },
+      }),
+    );
+
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Resend invitation to Aaron Agent" }),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("User not found");
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  test("only the clicked row's button goes pending", async () => {
+    // The reason the mutation sits in ResendInviteButton rather than on the
+    // page: one shared `isPending` would disable every row at once.
+    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    mockPost.mockReturnValue(new Promise(() => {}));
+
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const clicked = screen.getByRole("button", {
+      name: "Resend invitation to Aaron Agent",
+    });
+    const other = screen.getByRole("button", {
+      name: "Resend invitation to Ada Admin",
+    });
+
+    const user = userEvent.setup();
+    await user.click(clicked);
+
+    await waitFor(() => {
+      expect(clicked).toBeDisabled();
+    });
+    expect(other).toBeEnabled();
   });
 });

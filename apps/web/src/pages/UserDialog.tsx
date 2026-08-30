@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
+import { activityKeys } from "@/lib/activity-queries";
 import { extractErrorMessage } from "@/lib/errors";
 import { ticketAssigneesKey, ticketKeys } from "@/lib/ticket-queries";
 
@@ -84,6 +85,10 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
       if (isEdit) {
         void queryClient.invalidateQueries({ queryKey: ticketKeys.all });
       }
+      // Both branches write to the audit trail — a create logs `user_created`
+      // and the invitation beside it, an edit logs one row per field that
+      // moved — so a feed left open in another tab is now behind.
+      void queryClient.invalidateQueries({ queryKey: activityKeys.all });
       setServerError(null);
       onOpenChange(false);
       toast.success(
