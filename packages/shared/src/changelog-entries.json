@@ -18,5 +18,10 @@
     "version": "0.1.29",
     "date": "2026-08-30",
     "title": "Resend a user's invitation from the roster"
+  },
+  {
+    "version": "0.1.30",
+    "date": "2026-08-30",
+    "title": "Record a changelog entry for every feat/fix commit on a branch"
   }
 ]
