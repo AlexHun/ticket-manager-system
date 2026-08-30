@@ -28,5 +28,10 @@
     "version": "0.1.31",
     "date": "2026-08-30",
     "title": "Change a colleague's role from the edit dialog"
+  },
+  {
+    "version": "0.1.33",
+    "date": "2026-08-30",
+    "title": "Make the project map's search reach every tab"
   }
 ]
