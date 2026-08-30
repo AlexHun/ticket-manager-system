@@ -23,5 +23,10 @@
     "version": "0.1.30",
     "date": "2026-08-30",
     "title": "Record a changelog entry for every feat/fix commit on a branch"
+  },
+  {
+    "version": "0.1.31",
+    "date": "2026-08-30",
+    "title": "Change a colleague's role from the edit dialog"
   }
 ]
