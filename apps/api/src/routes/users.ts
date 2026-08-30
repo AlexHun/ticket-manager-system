@@ -256,6 +256,12 @@ usersRouter.patch(
 
     // One row per field that actually moved — a Save that re-sends the same
     // name, email and role writes nothing, same guard `ticketChanges` uses.
+    //
+    // This compares a value off the row against one off the body, so the two
+    // have to agree about what an address *is*. `email` arrives lowercased by
+    // `updateUserSchema`, matching what Better Auth stores; before that, a Save
+    // that changed only the capitals wrote a row for an edit the database
+    // never made (#118).
     const changes = userEditChanges(before, { name, email, role });
     if (changes.length > 0) {
       await prisma.adminActivity.createMany({
@@ -269,12 +275,12 @@ usersRouter.patch(
     }
 
     // The one read here that genuinely has to happen twice: it observes the row
-    // *after* Better Auth wrote to it. Answering with `before` merged into the
-    // validated body would be a query cheaper and sometimes wrong — Better
-    // Auth's `internalAdapter.updateUser` lowercases `email` on the way in
-    // (checked against the pinned 1.6.13), so a body carrying `Aaron@Example.com`
-    // leaves `aaron@example.com` in the row, and the roster would show a value
-    // the next reload disagrees with.
+    // *after* Better Auth wrote to it, which is the only authority on what was
+    // written. Answering with `before` merged into the validated body would be
+    // a query cheaper and would tie this response to Better Auth normalising
+    // exactly the way `updateUserSchema` does — two implementations that agree
+    // today (both lowercase `email`; see `internalAdapter.updateUser` in the
+    // pinned 1.6.13) and have no way of telling each other when they stop.
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: {
