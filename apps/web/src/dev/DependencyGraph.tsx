@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { EDGE_KIND, type ModuleEdge, type ModuleNode } from "./protocol";
 import { LAYER_VISUAL } from "./layer-visuals";
 import { matchesQuery } from "./module-match";
-import { TABLE_FRAME } from "@/lib/table-frame";
+import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 
 /**
@@ -218,8 +218,9 @@ export function DependencyGraph({
 
   return (
     // Same frame as the sibling `ModuleTable` — two views of the same module
-    // set, and they should read as one pane.
-    <div className={TABLE_FRAME}>
+    // set, and they should read as one pane. The name is the region's; the
+    // `<svg>` keeps its own, because the two are separate stops.
+    <TableFrame label="Module dependency graph">
       <svg
         width={layout.width}
         height={layout.height}
@@ -364,6 +365,6 @@ export function DependencyGraph({
           );
         })}
       </svg>
-    </div>
+    </TableFrame>
   );
 }
