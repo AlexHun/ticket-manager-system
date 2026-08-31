@@ -24,7 +24,14 @@ import { cn } from "@/lib/utils";
 const FRAME =
   "overflow-auto rounded-lg ring-1 ring-border outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 
-interface TableFrameProps extends Omit<ComponentProps<"div">, "role"> {
+/**
+ * All three of `role`, `aria-label` and `tabIndex` are omitted, not just
+ * `role`: they are applied after `{...rest}`, so a call site that passed one
+ * would have it silently dropped. Better a type error than a prop that looks
+ * accepted and isn't.
+ */
+interface TableFrameProps
+  extends Omit<ComponentProps<"div">, "role" | "aria-label" | "tabIndex"> {
   /**
    * The region's accessible name. Required, and that is the whole point of
    * the prop: `tabIndex={0}` on its own turns the frame into a tab stop that
@@ -52,6 +59,15 @@ interface TableFrameProps extends Omit<ComponentProps<"div">, "role"> {
  *   as a landmark at all, so an unnamed one buys the tab stop and none of the
  *   benefit.
  *
+ * **The focus ring is part of the fix, not decoration.** A new tab stop that
+ * shows nothing when it holds focus fails WCAG 2.4.7, and Tailwind's preflight
+ * would otherwise leave the frame on the browser default outline — square,
+ * ignoring the `rounded-lg`. `outline-none focus-visible:ring-3
+ * focus-visible:ring-ring/50` is the same pair `button.tsx` wears, so a
+ * focused frame reads like every other focused control here. It *replaces* the
+ * resting `ring-1 ring-border` rather than stacking with it: one `ring`
+ * property, and the border is the thing the thicker ring is drawn over.
+ *
  * **Focusable whether or not it currently overflows.** Measuring overflow and
  * toggling `tabIndex` would avoid a dead tab stop on a wide window, but it
  * makes a control's presence depend on the viewport — it appears and vanishes
@@ -59,6 +75,14 @@ interface TableFrameProps extends Omit<ComponentProps<"div">, "role"> {
  * nothing here could test it. The empty states pay for this with one tab stop
  * that reads "Tickets, region — No tickets found."; that is a fair answer to
  * "what is in this table", not noise.
+ *
+ * **The skeletons keep their own "Loading …" names** rather than borrowing the
+ * loaded table's, so the landmark is briefly called "Loading tickets" and then
+ * "Tickets". A stable name plus `aria-busy` would read better in a landmark
+ * list, but those names are the suite's handle on the loading state — a dozen
+ * `getByLabelText("Loading tickets")` assertions across three test files
+ * distinguish pending from settled by exactly this string, and collapsing the
+ * two names would leave them unable to tell the states apart at all.
  *
  * Extra props are spread through for the per-call-site layout classes and for
  * `aria-busy` / `data-tutorial-anchor`; `role` is not overridable.

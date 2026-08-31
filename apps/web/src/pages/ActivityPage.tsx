@@ -44,7 +44,7 @@ import { TicketsPagination } from "./TicketsPagination";
  * desk had no single place to look. This is that place: one table, one set of
  * filters, over everything at once.
  *
- * Wears the shared `TABLE_FRAME`, without the sorting or column resizing —
+ * Wears the shared `TableFrame`, without the sorting or column resizing —
  * the feed is always newest-first (the server's own `ORDER BY`), and there is
  * nothing here worth reordering by.
  */

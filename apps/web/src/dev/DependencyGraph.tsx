@@ -218,8 +218,9 @@ export function DependencyGraph({
 
   return (
     // Same frame as the sibling `ModuleTable` — two views of the same module
-    // set, and they should read as one pane. The name is the region's; the
-    // `<svg>` keeps its own, because the two are separate stops.
+    // set, and they should read as one pane. The name lives on the frame now:
+    // the `<svg>` carried the identical string until #111, and a wrapper and
+    // its only child with one name between them announce it twice.
     <TableFrame label="Module dependency graph">
       <svg
         width={layout.width}
@@ -227,8 +228,9 @@ export function DependencyGraph({
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         // Not `role="img"`: the nodes are focusable controls, and an img would
         // hide them from assistive tech. The modules table below is the
-        // non-visual path through the same data.
-        aria-label="Module dependency graph"
+        // non-visual path through the same data. The name it used to carry now
+        // lives on the frame — every node here is a labelled button of its
+        // own, so nothing is left unnamed by moving it up one level.
         className="block max-w-none"
       >
         <defs>
