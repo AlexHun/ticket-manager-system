@@ -6,10 +6,11 @@
 
 ```
 web (<page or component>)
-  → api (<route>)
-    → core (<module>)
-      → db (<model>)
-        → <queue / outbox / provider, if async>
+  → api (<route> + guard)
+    → @ticket/core (<schema>)
+      → apps/api/src (<domain module>)
+        → db (<Prisma model>)
+          → <queue / outbox / provider, if async>
 ```
 
 Name the actual files or modules where they already exist. If a layer doesn't

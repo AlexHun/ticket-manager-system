@@ -26,6 +26,14 @@ ls docs/adr/                      # read any ADR touching this area
 Then grep the code for the feature's nouns. **Whatever already exists is not a
 requirement** — the PRD covers the gap, not the whole surface.
 
+Where a requirement's feasibility rests on what a library or provider actually
+supports (can Postmark do this? does Better Auth expose that?), check the
+**`context7` MCP** — `resolve-library-id` → `query-docs`, preferred over web
+search, per `conventions.md`. A PRD is not the place to specify *how*, but
+writing a `Must` the platform cannot do is how a plan dies at slice 1. If
+`context7` is unreachable or the answer is genuinely unclear, that goes in
+**Open questions** rather than being assumed either way.
+
 ### 2. Interview — at most two rounds
 
 Use `AskUserQuestion`, ≤4 questions a round, ≤2 rounds. Never open-ended
@@ -35,8 +43,10 @@ what you could not answer from step 1.
 Cover, in priority order:
 
 1. **Problem** — who hurts today, and what does the pain cost?
-2. **Users** — which role (see `docs/agents/triage-labels.md`), and what are they
-   trying to finish?
+2. **Users** — which role, and what are they trying to finish? This desk has
+   exactly two (`admin`, `agent` — `USER_ROLE` in `@ticket/shared`, see
+   `docs/standards/domain.md`); the automated assistant is a `User` row, not a
+   role, so "the assistant does X" is a requirement about the pipeline.
 3. **Success** — the one metric that moves. Push for a number.
 4. **Boundaries** — what is explicitly *not* in this pass?
 
