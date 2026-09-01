@@ -20,6 +20,22 @@ frontend-only change to *when* an existing fetch is triggered, not what it
 fetches. `packages/shared`'s `USER_ROLE`, `ticketKeys`, and the response
 types are read, never edited.
 
+**Confirmed via context7** (`/remix-run/react-router`, matches installed
+`7.18.2`'s data-router API — see `decisions/0002-lazy-route-modules.md` and
+`docs/start/data/route-object.md`): a route's `lazy` property only fills in
+properties the route object doesn't already define statically, and React
+Router explicitly runs a **statically-defined `loader` in parallel with a
+`lazy`-loaded `Component`** — this is documented as the intended way to hit
+an API early without paying for the component's bundle first. So each
+in-scope route keeps `lazy: () => import("./XPage").then(m => ({ Component:
+m.XPage }))` for the component (same code-splitting boundary as today's
+`React.lazy`) and gains a small, statically-imported `loader` module
+alongside it — e.g. `apps/web/src/pages/TicketDetailPage.loader.ts` —
+containing only the `ensureQueryData` call, no heavy imports. That loader
+module needs the `QueryClient` instance created in `main.tsx`; extracting
+it to its own module (e.g. `apps/web/src/lib/query-client.ts`) so both
+`main.tsx` and the per-page loader modules can import it is part of slice 1.
+
 ## Slice 1 — Data router, zero behavior change
 
 **Retires:** whether `react-router-dom@7.18.2`'s data router
@@ -37,15 +53,22 @@ change, before any loader exists to complicate it)
 `<RouterProvider router={router} />`; `App.tsx`'s JSX route tree becomes an
 equivalent route-object tree passed to `createBrowserRouter`, preserving
 the same nesting (`ProtectedRoute` and `AdminRoute` as parentless layout
-routes with `children`, `AppShell` nested under `ProtectedRoute`).
+routes with `children`, `AppShell` nested under `ProtectedRoute`). Every
+page keeps its current code-splitting boundary via `lazy: () =>
+import("./XPage").then(m => ({ Component: m.XPage }))` — the direct
+route-object equivalent of today's `React.lazy(...)`. The shared
+`QueryClient` moves out of `main.tsx` into its own module so later slices'
+loader files can import it without importing the whole app.
 
 - A user can sign in, visit every existing route (including `/users`,
   `/knowledge` as admin and as agent, `/__dev/*` in dev), sign out, and hit
   an unknown URL — every outcome (render, redirect, 404) is identical to
   today. Only the router implementation underneath changed.
 
-**Hardcoded for now:** no route defines a `loader`; every page still fetches
-its data from `useQuery` on mount, exactly as today.
+**Hardcoded for now:** no route defines a static `loader`; every page still
+fetches its data from `useQuery` on mount, exactly as today. (A route with
+no static `loader` has nothing to parallelize against yet — that arrives in
+slice 2.)
 
 **E2E:** the existing suite is the regression gate for this slice —
 `auth.spec.ts`'s sign-in/sign-out and redirect assertions, `tickets.spec.ts`,
@@ -56,19 +79,23 @@ working, not by a new assertion.
 
 ## Slice 2 — TicketDetailPage loader
 
-**Retires:** whether a route `loader` calling
+**Retires:** whether a small, statically-defined `loader` — living outside
+the `lazy`-loaded page module, so React Router runs it in parallel with the
+component chunk rather than after it resolves — calling
 `queryClient.ensureQueryData({ queryKey: ticketKeys.detail(id), queryFn })`
 lets the mounted `useTicketQuery` (same key) read an already-primed cache
-with no second fetch and no second loading state — and that
+with no second fetch and no second loading state. Also confirms
 `ProtectedRoute`'s session check still runs and still wins before the
 loader's data reaches the screen. The narrowest real case: one query, one
 route param, no filters.
 **Covers:** R1, R2, R3 (first real instance) · re-verifies R4 on this route
-**Un-hardcodes:** slice 1's "no route has a loader yet" for `/tickets/:id`
+**Un-hardcodes:** slice 1's "no route has a static loader yet" for
+`/tickets/:id`
 
 - Clicking a ticket row starts `GET /api/tickets/:id` the moment navigation
-  begins — the same tick `TicketDetailPage`'s code chunk starts downloading
-  — not after the component mounts. The user sees exactly one loading
+  begins, running alongside — not after — `TicketDetailPage`'s code chunk
+  download (the parallelization React Router documents for a static
+  `loader` beside a `lazy` `Component`). The user sees exactly one loading
   state (`RouteFallback`, or the chunk's own suspense fallback) and then the
   populated ticket — never fallback-then-spinner.
 - `useTicketActivityQuery` and the unread-invalidation `useEffect`
@@ -89,25 +116,37 @@ activity trail, reply composer) must stay green unmodified.
 **Retires:** whether a loader can read the same filter/sort/page params
 from the route's URL (via the loader's `request.url`) that the mounted
 component derives from `useSearchParams`, produce the identical
-`ticketKeys.list(params)` key, and not race or double-fetch against the
-component's own `setSearchParams`-driven refetching on every filter change.
-Harder than slice 2: the query is parameterized and the *component*, not
-just the route, can change it in place.
+`ticketKeys.list(params)` key, and coexist with the component's own
+`setSearchParams`-driven refetching on every filter change without a
+duplicate network call. Harder than slice 2: the query is parameterized and
+the *component*, not just the route, can change it in place.
+
+Confirmed via context7: a search-string change makes React Router's default
+`shouldRevalidate` return `true` (`currentUrl.search !== nextUrl.search`),
+so **the loader re-runs on every `setSearchParams` navigation**, not just on
+first entry to `/tickets` — this is the opposite of what the PRD's plan
+draft assumed. That's fine, not a bug to work around: `ensureQueryData` and
+the component's `useQuery` for the same key share react-query's per-hash
+in-flight request, so the loader firing alongside the component's own
+refetch costs one network call, not two. What this slice actually proves is
+that de-dupe, not that the loader stays quiet after the first load.
 **Covers:** R1, R2, R3
 **Un-hardcodes:** `/tickets` now also prefetches; only `/` is left
 mount-fetching after this slice.
 
-- Landing on `/tickets` — with or without an existing query string —
-  starts the list fetch at navigation time. Changing a filter, sort, or
-  page afterwards still goes through the existing `setSearchParams` →
-  `useQuery` refetch path unchanged; the loader only owns the *first* load
-  of a given URL.
+- Landing on `/tickets` — with or without an existing query string — and
+  changing a filter, sort, or page afterwards all start the list fetch at
+  navigation time via the loader; the component's `useQuery` for the same
+  key attaches to that same in-flight request rather than issuing a second
+  one.
 
 **E2E:** extend `tickets.spec.ts` with the same single-loading-state
-assertion as slice 2, applied to landing on `/tickets` (plain and with a
-filter already in the URL, e.g. via a bookmarked link). Every existing
-sort/filter/pagination test must stay green unmodified — that's what proves
-the loader isn't fighting the component's own re-fetching.
+assertion as slice 2, applied both to landing on `/tickets` (plain and with
+a filter already in the URL, e.g. a bookmarked link) and to changing a
+filter after landing — the latter asserts exactly one `/api/tickets`
+request fires per filter change, proving the loader and the component's
+refetch de-duped rather than doubled up. Every existing sort/filter/
+pagination test must stay green unmodified.
 
 ## Slice 4 — DashboardPage loader
 
@@ -116,7 +155,10 @@ the loader isn't fighting the component's own re-fetching.
 layout) and have all three consuming hooks read primed cache at once,
 matching the parallelism the three `useQuery` calls already have on mount
 today — i.e., that moving the trigger point doesn't accidentally serialize
-what's currently concurrent.
+what's currently concurrent. `DashboardPage` reads its range/scope from
+`useSearchParams` the same way `TicketsPage` reads filters, so slice 3's
+de-dupe finding applies here too: a range change re-runs the loader, and
+the component's own `useQuery` calls share that in-flight request.
 **Covers:** R1, R2, R3
 **Un-hardcodes:** the last of the three in-scope routes now prefetches.
 
@@ -161,23 +203,6 @@ step outside CI, not an assertion against a target — no target exists yet.
 
 Every `Must` (R1-R4) has a slice. R5 (`Should`) has one too, thinner by
 design since its output is a number, not user-facing behavior.
-
-## Spikes
-
-- **Verify the React Router 7.18 data-router API surface via context7**
-  before slice 1 starts: `createBrowserRouter`'s route-object shape for
-  parentless layout routes (matching today's `<Route element={...}>`
-  groups with no `path`), a `loader`'s exact signature and how it receives
-  `params`/`request`, and how `RouterProvider` composes with the existing
-  per-page `React.lazy()` + `Suspense` setup. **Unverified this session** —
-  the `context7` MCP server failed to connect (`CONNECT_TIMEOUT`) while
-  writing this plan. Timebox 1h once reachable; blocks slice 1.
-- **Confirm whether `setSearchParams` re-runs a route's loader** in React
-  Router 7's data router, or only a real `<Link>`/`navigate()` entry does.
-  This determines whether slices 3 and 4's loaders fire redundantly on
-  every filter/range change (harmless but wasteful) or only once per fresh
-  navigation (the intended behavior) — also via context7, unverified this
-  session. Timebox 30min; blocks slice 3.
 
 ## Deferred
 
