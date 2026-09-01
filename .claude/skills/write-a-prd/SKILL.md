@@ -35,8 +35,10 @@ what you could not answer from step 1.
 Cover, in priority order:
 
 1. **Problem** — who hurts today, and what does the pain cost?
-2. **Users** — which role (see `docs/agents/triage-labels.md`), and what are they
-   trying to finish?
+2. **Users** — which role, and what are they trying to finish? This desk has
+   exactly two (`admin`, `agent` — `USER_ROLE` in `@ticket/shared`, see
+   `docs/standards/domain.md`); the automated assistant is a `User` row, not a
+   role, so "the assistant does X" is a requirement about the pipeline.
 3. **Success** — the one metric that moves. Push for a number.
 4. **Boundaries** — what is explicitly *not* in this pass?
 

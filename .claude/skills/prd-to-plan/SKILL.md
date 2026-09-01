@@ -16,13 +16,14 @@ Output is one file: `docs/plans/<slug>.md`, from [TEMPLATE.md](TEMPLATE.md).
 
 - **Not a prototype.** A prototype is thrown away; you keep tracer code and
   thicken it. So it ships with the repo's real standards — types, error
-  handling, tests. Invoke `coding-standards` before proposing any of it.
+  handling, tests. Invoke `coding-standards` before proposing any of it, and if
+  a slice needs a UI control shadcn doesn't have, **ask** rather than planning a
+  hand-rolled one.
 - **Not a horizontal layer.** "Schema, then API, then UI" is the failure mode
   this exists to prevent: nothing works until the last step, and every
   integration assumption is discovered at the worst moment.
 - **Not a spike.** It answers "do these pieces connect?", not "is this library
-  any good?" If a slice's real risk is an unknown, that's a spike — call it one
-  and time-box it.
+  any good?" A slice whose real risk is an unknown is a spike — time-box it.
 
 **Slices narrow by breadth, never by depth.** One ticket type, one hardcoded
 rule, one seeded user — but a real database, a real endpoint, a real rendered
@@ -37,23 +38,31 @@ ls docs/prd/                       # find it
 cat docs/prd/<slug>.md
 ```
 
-**No PRD? Stop.** Say so and offer `write-a-prd`. Planning against an
-unwritten spec invents requirements, which is the expensive kind of wrong.
-
-Then read `CONTEXT.md`, any ADR in the area, and `docs/standards/` for the
-layers involved.
+**No PRD? Stop.** Say so and offer `write-a-prd` — planning against an unwritten
+spec invents requirements. Then read `CONTEXT.md`, any ADR in the area, and
+`docs/standards/` for the layers involved.
 
 ### 2. Map the layers this feature crosses
 
 Only the ones it actually touches. In this repo that's typically:
 
 ```
-web (React page + react-query)
-  → api route (auth / validation)
-    → packages/core (domain logic)
-      → Prisma / Postgres
-        → pg-boss job, outbox, or AI provider  ← if the feature is async
+web page (react-query + shadcn controls)
+  → Express route (requireAuth / requireAdmin)
+    → @ticket/core schema (one zod definition, both sides validate with it)
+      → apps/api/src domain module (ingest.ts, automation.ts, …)
+        → Prisma / Postgres
+          → pg-boss job, outbox, or AI provider  ← if the feature is async
 ```
+
+`packages/core` holds **zod schemas only** — domain logic lives in
+`apps/api/src`. A slice that puts logic in `core` is in the wrong package.
+
+Two invariants a slice cannot slice around, both from `backend.md`:
+
+- **`ingest.ts` is the only path into the ticket table.** A tracer that creates
+  a ticket goes through it; a second write path is a bug, not a thin slice.
+- **Every email goes through the outbox**, never straight to a provider.
 
 An async feature's tracer must reach the far side of the queue, not stop at
 enqueue. That hop is exactly where integration assumptions break.
@@ -71,21 +80,18 @@ Each slice must be independently mergeable and leave `main` shippable.
 
 ### 5. Check coverage, then write
 
-Every `Must` requirement in the PRD maps to at least one slice, cited by `R<n>`.
-A requirement with no slice is a gap; a slice with no `R<n>` is scope creep —
-resolve both before writing the file.
-
-Land it on a branch: `git checkout -b docs/plan-<slug>`, then open a PR.
+Every `Must` in the PRD maps to a slice, cited by `R<n>`. A requirement with no
+slice is a gap; a slice with no `R<n>` is scope creep — resolve both first, then
+land it on a branch (`git checkout -b docs/plan-<slug>`) and open a PR.
 
 ## The done bar for every slice
 
-**A passing Playwright E2E spec in `tests/e2e/` that drives the whole path.**
-Not a unit test, not a manual check — the tracer's value is that the thin path
-stays provably alive as later slices thicken it. See the
-`playwright-e2e-author` agent for the setup.
+**A passing Playwright E2E spec in `tests/e2e/` that drives the whole path.** Not
+a unit test, not a manual check — the tracer's value is that the thin path stays
+provably alive as later slices thicken it (setup: `playwright-e2e-author`).
 
-A slice you cannot write an E2E test for is not a tracer bullet. It is either
-too thin to observe or it doesn't reach the UI — reshape it.
+A slice you cannot write an E2E test for is not a tracer bullet: it is too thin
+to observe, or it never reaches the UI. Reshape it.
 
 ## After it merges
 
