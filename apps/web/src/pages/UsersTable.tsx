@@ -4,7 +4,7 @@ import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TABLE_FRAME } from "@/lib/table-frame";
+import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { ResendInviteButton } from "./ResendInviteButton";
 
@@ -87,7 +87,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   }
 
   return (
-    <div className={TABLE_FRAME}>
+    <TableFrame label="Users">
       <table className={TABLE}>
         <UsersTableHead />
         <tbody>
@@ -158,17 +158,13 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableFrame>
   );
 }
 
 export function UsersTableSkeleton() {
   return (
-    <div
-      className={TABLE_FRAME}
-      aria-busy="true"
-      aria-label="Loading users"
-    >
+    <TableFrame label="Loading users" aria-busy="true">
       <table className={TABLE}>
         <UsersTableHead />
         <tbody>
@@ -198,7 +194,7 @@ export function UsersTableSkeleton() {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableFrame>
   );
 }
 

@@ -137,6 +137,18 @@ describe("UsersPage", () => {
     expect(screen.queryByLabelText("Loading users")).not.toBeInTheDocument();
   });
 
+  // #111: the mechanism is covered in table-frame.test.tsx; this holds the name
+  // this page gives it, which is the half that can drift per call site.
+  test("puts the roster in a keyboard-reachable region named Users", async () => {
+    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    renderUsersPage();
+
+    expect(await screen.findByText("Ada Admin")).toBeInTheDocument();
+    const frame = screen.getByRole("region", { name: "Users" });
+    expect(frame).toHaveAttribute("tabindex", "0");
+    expect(frame).toContainElement(screen.getByRole("table"));
+  });
+
   test("calls GET /api/users with a cancellation signal", async () => {
     mockGet.mockResolvedValue({ data: { users: [adminUser] } });
     renderUsersPage();

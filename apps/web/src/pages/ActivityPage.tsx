@@ -22,7 +22,7 @@ import {
 } from "@/lib/activity-feed-labels";
 import { extractErrorMessage } from "@/lib/errors";
 import { EMPTY_VALUE } from "@/lib/format";
-import { TABLE_FRAME } from "@/lib/table-frame";
+import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import {
   ActivityFilters,
@@ -44,7 +44,7 @@ import { TicketsPagination } from "./TicketsPagination";
  * desk had no single place to look. This is that place: one table, one set of
  * filters, over everything at once.
  *
- * Wears the shared `TABLE_FRAME`, without the sorting or column resizing —
+ * Wears the shared `TableFrame`, without the sorting or column resizing —
  * the feed is always newest-first (the server's own `ORDER BY`), and there is
  * nothing here worth reordering by.
  */
@@ -155,20 +155,18 @@ export function ActivityPage() {
           )}
         >
           {data.entries.length === 0 ? (
-            <div
-              className={cn(
-                TABLE_FRAME,
-                "grid min-h-0 flex-1 place-items-center",
-              )}
+            <TableFrame
+              label="Activity"
+              className="grid min-h-0 flex-1 place-items-center"
             >
               <p className="text-sm text-muted-foreground">
                 {filtered
                   ? "No activity matches these filters."
                   : "Nothing recorded yet."}
               </p>
-            </div>
+            </TableFrame>
           ) : (
-            <div className={cn(TABLE_FRAME, "min-h-0 flex-1")}>
+            <TableFrame label="Activity" className="min-h-0 flex-1">
               <table className="w-full text-sm">
                 <thead className="text-muted-foreground">
                   <tr>
@@ -195,7 +193,7 @@ export function ActivityPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableFrame>
           )}
 
           {data.total > 0 && (
@@ -251,16 +249,16 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
 
 function ActivitySkeleton() {
   return (
-    <div
-      className={cn(TABLE_FRAME, "min-h-0 flex-1 p-4")}
+    <TableFrame
+      label="Loading activity"
+      className="min-h-0 flex-1 p-4"
       aria-busy="true"
-      aria-label="Loading activity"
     >
       <div className="flex flex-col gap-2">
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-8 w-full" />
         ))}
       </div>
-    </div>
+    </TableFrame>
   );
 }

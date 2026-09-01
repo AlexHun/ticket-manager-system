@@ -155,6 +155,18 @@ describe("ActivityPage", () => {
     expect(skeleton).toHaveAttribute("aria-busy", "true");
   });
 
+  // #111: the mechanism is covered in table-frame.test.tsx; this holds the name
+  // this page gives it, which is the half that can drift per call site.
+  test("puts the feed in a keyboard-reachable region named Activity", async () => {
+    mockApiRoutes({ activity: activityResponse([ticketEntry]) });
+    renderWithQuery(<ActivityPage />);
+
+    await screen.findByText("Status changed");
+    const frame = screen.getByRole("region", { name: "Activity" });
+    expect(frame).toHaveAttribute("tabindex", "0");
+    expect(frame).toContainElement(screen.getByRole("table"));
+  });
+
   test("calls GET /api/activity with a cancellation signal on mount", async () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
     renderWithQuery(<ActivityPage />);

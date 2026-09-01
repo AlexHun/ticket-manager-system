@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { Hint } from "@/components/Hint";
-import { TABLE_FRAME } from "@/lib/table-frame";
+import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { LayerBadge } from "./LayerBadge";
 import type { ModuleNode } from "./protocol";
@@ -94,7 +94,7 @@ export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps)
   }
 
   return (
-    <div className={TABLE_FRAME}>
+    <TableFrame label="Modules">
       <table className="w-full text-sm">
         <thead className="text-muted-foreground">
           <tr>
@@ -208,6 +208,6 @@ export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps)
           })}
         </tbody>
       </table>
-    </div>
+    </TableFrame>
   );
 }

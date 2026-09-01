@@ -304,6 +304,18 @@ describe("TicketsPage", () => {
     expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
   });
 
+  // #111: the mechanism is covered in table-frame.test.tsx; this holds the name
+  // this page gives it, which is the half that can drift per call site.
+  test("puts the table in a keyboard-reachable region named Tickets", async () => {
+    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage();
+
+    await screen.findByText("Newest ticket");
+    const frame = screen.getByRole("region", { name: "Tickets" });
+    expect(frame).toHaveAttribute("tabindex", "0");
+    expect(frame).toContainElement(screen.getByRole("table"));
+  });
+
   test("preserves the server's newest-first order", async () => {
     mockGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
     renderTicketsPage();

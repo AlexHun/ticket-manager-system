@@ -2188,6 +2188,39 @@ test.describe("Tickets page", () => {
     expect(after?.y).toBeCloseTo(before.y, 0);
   });
 
+  /**
+   * The sibling above scrolls the frame by assignment, which proves the sticky
+   * header but says nothing about whether anyone *without a mouse* can cause
+   * that scroll. That was the whole of #111: the frame was `overflow-auto` and
+   * unfocusable, so the rows below the fold had no keyboard path at all. jsdom
+   * reports every scroll dimension as 0, so this is the only place the claim
+   * can be held.
+   */
+  test("scrolls the rows from the keyboard, header still held", async ({ page }) => {
+    await seedNumberedTickets(30);
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+
+    const header = page.getByRole("columnheader", { name: "Subject" });
+    await expect(header).toBeVisible();
+    const before = await header.boundingBox();
+    if (!before) throw new Error("no header box");
+
+    // Named, so it is a landmark rather than an anonymous tab stop.
+    const frame = page.getByRole("region", { name: "Tickets" });
+    await frame.focus();
+    await expect(frame).toBeFocused();
+
+    await page.keyboard.press("PageDown");
+
+    expect(await frame.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    await expect(header).toBeInViewport();
+    const after = await header.boundingBox();
+    expect(after?.y).toBeCloseTo(before.y, 0);
+  });
+
   test("moves the aria-sort marker to the clicked column", async ({ page }) => {
     await seedTickets();
     await signIn(page, "agent");

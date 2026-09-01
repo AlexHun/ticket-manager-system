@@ -23,7 +23,7 @@ import { Hint } from "@/components/Hint";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatSince } from "@/lib/format";
-import { TABLE_FRAME } from "@/lib/table-frame";
+import { TableFrame } from "@/lib/table-frame";
 import type { TicketListLocationState } from "@/lib/ticket-list-params";
 import { ROW_DENSITY, type RowDensity } from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
@@ -376,14 +376,17 @@ export function TicketsTable({
 
   if (tickets.length === 0) {
     return (
-      <div className={cn(TABLE_FRAME, "grid place-items-center", className)}>
+      <TableFrame
+        label="Tickets"
+        className={cn("grid place-items-center", className)}
+      >
         <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-      </div>
+      </TableFrame>
     );
   }
 
   return (
-    <div className={cn(TABLE_FRAME, className)}>
+    <TableFrame label="Tickets" className={className}>
       {/* Always fills the frame: `w-full` lets fixed layout hand any leftover
           space to the columns, so there is no dead strip on the right. Once the
           columns are dragged past the frame, `minWidth` takes over and the
@@ -470,7 +473,7 @@ export function TicketsTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableFrame>
   );
 }
 
@@ -563,11 +566,7 @@ export function TicketsTableSkeleton({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(TABLE_FRAME, className)}
-      aria-busy="true"
-      aria-label="Loading tickets"
-    >
+    <TableFrame label="Loading tickets" className={className} aria-busy="true">
       {/* Only ever rendered before a resize, so the defaults are correct. */}
       <table
         className="w-full table-fixed text-sm"
@@ -605,7 +604,7 @@ export function TicketsTableSkeleton({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableFrame>
   );
 }
 
