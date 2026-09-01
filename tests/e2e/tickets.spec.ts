@@ -2211,16 +2211,18 @@ test.describe("Tickets page", () => {
     await frame.focus();
     await expect(frame).toBeFocused();
 
-    // `frame.press` re-focuses the region immediately before dispatching the
-    // key, in one actionability-checked step. `page.keyboard.press` sends to
-    // whatever currently holds focus with no such guarantee, and the gap
-    // after the `.focus()` above was enough for the key to occasionally land
-    // on `document.body` instead — the region never scrolled and this
-    // assertion read a `scrollTop` of 0 (flaked in CI, not reproducible
-    // against a locally-run dev server).
     await frame.press("PageDown");
 
-    expect(await frame.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    // Polled, not a bare read: CI's failure snapshot showed the region
+    // correctly focused (`[active]`) at the moment `scrollTop` still read 0,
+    // which rules out a focus race — the browser's native PageDown-scroll
+    // response simply hadn't landed yet on a slower runner. `press()`
+    // resolves as soon as the key events are dispatched, not once the
+    // resulting scroll has been applied, so the read right after it is a
+    // race against the browser's own scroll handling, not against this test.
+    await expect
+      .poll(() => frame.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
     await expect(header).toBeInViewport();
