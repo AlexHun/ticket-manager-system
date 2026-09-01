@@ -15,15 +15,19 @@ Output is one file: `docs/plans/<slug>.md`, from [TEMPLATE.md](TEMPLATE.md).
 ## What a tracer bullet is not
 
 - **Not a prototype.** A prototype is thrown away; you keep tracer code and
-  thicken it. So it ships with the repo's real standards — types, error
-  handling, tests. Invoke `coding-standards` before proposing any of it, and if
-  a slice needs a UI control shadcn doesn't have, **ask** rather than planning a
-  hand-rolled one.
+  thicken it, so it ships with the repo's real standards. Invoke
+  `coding-standards` first, and if a slice needs a UI control shadcn lacks,
+  **ask** rather than planning a hand-rolled one.
 - **Not a horizontal layer.** "Schema, then API, then UI" is the failure mode
   this exists to prevent: nothing works until the last step, and every
   integration assumption is discovered at the worst moment.
 - **Not a spike.** It answers "do these pieces connect?", not "is this library
-  any good?" A slice whose real risk is an unknown is a spike — time-box it.
+  any good?" A slice whose real risk is an unknown is a spike — time-box it, but
+  first check the unknown is real: **every claim a slice makes about what a
+  library or SDK supports goes through the `context7` MCP** (`resolve-library-id`
+  → `query-docs`), not memory and not web search, per `conventions.md`. If it is
+  unreachable, mark the claim unverified — a remembered API is how a plan
+  commits to a method that doesn't exist.
 
 **Slices narrow by breadth, never by depth.** One ticket type, one hardcoded
 rule, one seeded user — but a real database, a real endpoint, a real rendered
@@ -58,20 +62,18 @@ web page (react-query + shadcn controls)
 `packages/core` holds **zod schemas only** — domain logic lives in
 `apps/api/src`. A slice that puts logic in `core` is in the wrong package.
 
-Two invariants a slice cannot slice around, both from `backend.md`:
-
-- **`ingest.ts` is the only path into the ticket table.** A tracer that creates
-  a ticket goes through it; a second write path is a bug, not a thin slice.
-- **Every email goes through the outbox**, never straight to a provider.
+Two invariants a slice cannot slice around (`backend.md`): **`ingest.ts` is the
+only path into the ticket table** — a tracer that creates one goes through it,
+and a second write path is a bug, not a thin slice — and **every email goes
+through the outbox**, never straight to a provider.
 
 An async feature's tracer must reach the far side of the queue, not stop at
 enqueue. That hop is exactly where integration assumptions break.
 
 ### 3. Design slice 1 — the skeleton
 
-The thinnest observable path through every layer in that map. Ask: *what is the
-smallest thing a user could see work end to end?* Hardcode everything else, and
-list what you hardcoded — that list becomes slices 2..n.
+The thinnest observable path through that map: *the smallest thing a user could
+see work end to end.* Hardcode the rest; that list becomes slices 2..n.
 
 ### 4. Order the rest by risk retired
 
@@ -86,15 +88,14 @@ land it on a branch (`git checkout -b docs/plan-<slug>`) and open a PR.
 
 ## The done bar for every slice
 
-**A passing Playwright E2E spec in `tests/e2e/` that drives the whole path.** Not
-a unit test, not a manual check — the tracer's value is that the thin path stays
-provably alive as later slices thicken it (setup: `playwright-e2e-author`).
-
-A slice you cannot write an E2E test for is not a tracer bullet: it is too thin
-to observe, or it never reaches the UI. Reshape it.
+**A passing Playwright E2E spec in `tests/e2e/` driving the whole path** — not a
+unit test, not a manual check. The tracer's value is that the thin path stays
+provably alive as later slices thicken it (setup: `playwright-e2e-author`). A
+slice you cannot E2E-test is too thin to observe or never reaches the UI:
+reshape it.
 
 ## After it merges
 
-Offer to create an epic issue plus one child per slice, wired with native
-dependencies so `one-ticket` can pick the frontier (see
-`docs/agents/issue-tracker.md`). Don't create them unasked.
+Offer an epic issue plus one child per slice, wired with native dependencies so
+`one-ticket` can pick the frontier (`docs/agents/issue-tracker.md`). Never
+create them unasked.
