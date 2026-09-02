@@ -10,7 +10,7 @@ works**. You fire it early to see where it lands, then keep firing — each shot
 wider than the last, all of them in real code you keep.
 
 Output is one file: `docs/plans/<slug>.md`, from [TEMPLATE.md](TEMPLATE.md).
-**Plan only** — building happens in a fresh conversation via `one-ticket`.
+**Plan only** — building happens in a separate, fresh conversation.
 
 ## What a tracer bullet is not
 
@@ -97,5 +97,5 @@ reshape it.
 ## After it merges
 
 Offer an epic issue plus one child per slice, wired with native dependencies so
-`one-ticket` can pick the frontier (`docs/agents/issue-tracker.md`). Never
+the unblocked ones are easy to find (`docs/agents/issue-tracker.md`). Never
 create them unasked.
