@@ -223,6 +223,15 @@ jobs:
           COMMIT_SUBJECTS=$(git log --reverse --format=%s HEAD^2 --not HEAD^1 2>/dev/null || git log -1 --format=%s HEAD)
           COMMIT_SUBJECTS="$COMMIT_SUBJECTS" node scripts/ci/record-changelog-entry.mjs
 
+      # Two merges landing within the same few minutes each trigger their own
+      # run of this job, both starting from a checkout pinned to their own
+      # trigger commit. Whichever reaches this step second finds `main` has
+      # already moved — the other job's bump commit is already there — and a
+      # bare `git push` is rejected outright (observed in run 33602886760,
+      # from PR #126's merge landing 20s before PR #135's). The commit this
+      # job makes only ever touches these two files, so replaying it on top
+      # of a newer `main` with a rebase is safe; nothing else in this repo
+      # writes to either of them.
       - name: Commit and push
         run: |
           set -euo pipefail
@@ -230,4 +239,15 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/web/package.json packages/shared/src/changelog-entries.json
           git commit -m "chore(web): bump version to ${{ steps.bump.outputs.next }} [skip ci]"
-          git push
+
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt/5) — fetching and rebasing onto the new main."
+            git fetch origin main
+            git rebase origin/main
+          done
+
+          echo "::error::Failed to push the version bump after 5 attempts."
+          exit 1
