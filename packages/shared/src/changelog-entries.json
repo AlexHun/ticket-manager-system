@@ -48,5 +48,15 @@
     "version": "0.1.35",
     "date": "2026-09-01",
     "title": "Close the review findings on the table frame"
+  },
+  {
+    "version": "0.1.38",
+    "date": "2026-09-02",
+    "title": "Use locator.press to fix keyboard-scroll test flake"
+  },
+  {
+    "version": "0.1.38",
+    "date": "2026-09-02",
+    "title": "Poll for scrollTop instead of reading it synchronously"
   }
 ]
