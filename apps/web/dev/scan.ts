@@ -539,76 +539,80 @@ function linkCallers(endpoints: Endpoint[], calls: ApiCall[]): void {
   }
 }
 
+/** A route object's own `lazy: () => import("spec").then((m) => ({ Component:
+ *  m.Name }))` — the shape every code-split leaf in `App.tsx` uses since the
+ *  data-router migration (#129). Captures the import spec and the member
+ *  pulled off the resolved module. */
+const LAZY_COMPONENT_RE =
+  /lazy:\s*\(\)\s*=>\s*import\(\s*["']([^"']+)["']\s*\)\s*\.then\(\s*\(?\s*\w+\s*\)?\s*=>\s*\(\{\s*Component:\s*\w+\.(\w+)/;
+
+/** A route object's own `Component: Name` — a statically imported page or a
+ *  wrapper (`ProtectedRoute`, `AdminRoute`, `AppShell`). */
+const STATIC_COMPONENT_RE = /(?:^|[{,\s])Component:\s*(\w+)/;
+
+const PATH_RE = /path:\s*["']([^"']+)["']/;
+
 /**
- * `const X = … lazy(() => import("spec"))`.
- *
- * `[^;]*?` between the `=` and the `lazy(` rather than nothing, because not every
- * lazy route is a bare assignment — the dev routes read
- * `import.meta.env.DEV ? lazy(…) : null`, and requiring `= lazy(` left them
- * reported as "from the router" with no module behind them. Excluding `;` is what
- * keeps the search inside one statement.
+ * `const NAME: RouteObject[] = COND ? [ … ] : []` — a route array assembled
+ * outside the `createBrowserRouter` call (today, just the
+ * `import.meta.env.DEV`-gated dev routes) and spread back into the tree with
+ * `...NAME`.
  */
-const LAZY_RE =
-  /const\s+(\w+)\s*=[^;]*?\blazy\(\s*\(\)\s*=>\s*import\(\s*["']([^"']+)["']/g;
-
-/** `attrs: null` is a `</Route>`. */
-interface RouteToken {
-  attrs: string | null;
-  selfClosing: boolean;
-}
+const ROUTE_ARRAY_CONST_RE = /const\s+(\w+)\s*:\s*RouteObject\[\]\s*=/g;
 
 /**
- * `<Route>` open/close tags in source order.
+ * The source between `source[openIndex]` — an opening `[` or `{` — and its
+ * match, tracking nesting depth of that one bracket type.
  *
  * Hand-scanned rather than matched with a regex, because the obvious
- * `<Route\b([^>]*?)\/?>` is wrong in a way that looks right: an attribute value
- * like `element={<ProtectedRoute />}` contains a `>`, so the class closes the tag
- * inside the attribute and *every* wrapper route reads as self-closing — which
- * silently emptied the guard stack. Tracking `{}` depth is what fixes it.
+ * `\[[\s\S]*?\]` is wrong in a way that looks right: it stops at the first
+ * `]`, which is correct only as long as nothing between the brackets ever
+ * contains one of its own. Depth tracking is what the old `<Route>` tag
+ * scanner here used for the equivalent `{}` problem in JSX attributes; the
+ * data-router route tree replaced JSX with object literals, so the bracket
+ * type changed but the underlying bug shape didn't.
  */
-function routeTokens(source: string): RouteToken[] {
-  const OPEN = "<Route";
-  const CLOSE = "</Route>";
-  const tokens: RouteToken[] = [];
-  let at = 0;
-
-  while (at < source.length) {
-    const open = source.indexOf(OPEN, at);
-    const close = source.indexOf(CLOSE, at);
-    if (open === -1 && close === -1) break;
-
-    if (close !== -1 && (open === -1 || close < open)) {
-      tokens.push({ attrs: null, selfClosing: false });
-      at = close + CLOSE.length;
-      continue;
+function bracketSpan(
+  source: string,
+  openIndex: number,
+): { start: number; end: number } | null {
+  const open = source[openIndex];
+  const close = open === "[" ? "]" : open === "{" ? "}" : null;
+  if (!close) return null;
+  let depth = 0;
+  for (let i = openIndex; i < source.length; i += 1) {
+    if (source[i] === open) depth += 1;
+    else if (source[i] === close) {
+      depth -= 1;
+      if (depth === 0) return { start: openIndex + 1, end: i };
     }
-
-    // `<Routes>` starts with `<Route` too — the tag name has to end here.
-    const after = source[open + OPEN.length];
-    if (after !== undefined && !/[\s/>]/.test(after)) {
-      at = open + OPEN.length;
-      continue;
-    }
-
-    let depth = 0;
-    let end = open + OPEN.length;
-    for (; end < source.length; end += 1) {
-      const ch = source[end];
-      if (ch === "{") depth += 1;
-      else if (ch === "}") depth -= 1;
-      else if (ch === ">" && depth === 0) break;
-    }
-
-    const attrs = source.slice(open + OPEN.length, end);
-    tokens.push({ attrs, selfClosing: attrs.trimEnd().endsWith("/") });
-    at = end + 1;
   }
+  return null;
+}
 
-  return tokens;
+/** Top-level comma-separated elements of an array's inner text, respecting
+ *  `{}`/`[]`/`()` nesting so a comma inside a nested route object doesn't
+ *  split one element into two. */
+function splitTopLevel(inner: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i];
+    if (ch === "{" || ch === "[" || ch === "(") depth += 1;
+    else if (ch === "}" || ch === "]" || ch === ")") depth -= 1;
+    else if (ch === "," && depth === 0) {
+      parts.push(inner.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(inner.slice(start));
+  return parts.map((p) => p.trim()).filter((p) => p.length > 0);
 }
 
 /**
- * The router tree, read out of `App.tsx`.
+ * The router tree, read out of `App.tsx`'s `createBrowserRouter([…])` call —
+ * a nested `RouteObject[]` literal rather than JSX since #129.
  *
  * Nesting is tracked with a stack rather than matched by regex, which is what
  * lets a leaf route report the wrappers above it — the difference between
@@ -626,12 +630,6 @@ function extractRoutes(
     return [];
   }
 
-  const lazyFiles = new Map<string, string>();
-  for (const m of source.matchAll(LAZY_RE)) {
-    const file = resolve(m[2]!, appFile);
-    if (file) lazyFiles.set(m[1]!, file);
-  }
-
   const staticFiles = new Map<string, string>();
   for (const m of source.matchAll(FROM_RE)) {
     const file = resolve(m[2]!, appFile);
@@ -641,35 +639,92 @@ function extractRoutes(
     }
   }
 
+  const routeArrayConsts = new Map<string, string>();
+  for (const m of source.matchAll(ROUTE_ARRAY_CONST_RE)) {
+    const bracket = source.indexOf("[", m.index + m[0].length);
+    const span = bracket === -1 ? null : bracketSpan(source, bracket);
+    if (span) routeArrayConsts.set(m[1]!, source.slice(span.start, span.end));
+  }
+
+  const callIndex = source.indexOf("createBrowserRouter(");
+  const arrayStart = callIndex === -1 ? -1 : source.indexOf("[", callIndex);
+  const topSpan = arrayStart === -1 ? null : bracketSpan(source, arrayStart);
+  if (!topSpan) {
+    warnings.push(
+      `Could not find createBrowserRouter([...]) in ${appFile} — client routes could not be read.`,
+    );
+    return [];
+  }
+
   const routes: RouteEntry[] = [];
   const stack: string[] = [];
 
-  for (const token of routeTokens(source)) {
-    if (token.attrs === null) {
-      stack.pop();
-      continue;
-    }
-    const { attrs } = token;
-    const routePath = /path=["']([^"']+)["']/.exec(attrs)?.[1] ?? null;
-    const component = /element=\{\s*<(\w+)/.exec(attrs)?.[1] ?? null;
+  function parseArray(inner: string): void {
+    for (const element of splitTopLevel(inner)) {
+      if (element.startsWith("...")) {
+        const name = element.slice(3).trim();
+        const arrayText = routeArrayConsts.get(name);
+        if (arrayText === undefined) {
+          warnings.push(
+            `App.tsx spreads \`...${name}\` into the route tree, but no \`const ${name}: RouteObject[]\` was found — client routes may be incomplete.`,
+          );
+          continue;
+        }
+        parseArray(arrayText);
+        continue;
+      }
 
-    if (routePath && component) {
-      routes.push({
-        path: routePath,
-        component,
-        file: lazyFiles.get(component) ?? staticFiles.get(component) ?? null,
-        lazy: lazyFiles.has(component),
-        guards: [...stack],
-        redirectTo: /<Navigate[^}]*?\bto=["']([^"']+)["']/.exec(attrs)?.[1] ?? null,
-      });
-      if (!token.selfClosing) stack.push(component);
-      continue;
-    }
+      if (!element.startsWith("{")) {
+        warnings.push(`Unrecognized entry in App.tsx's route tree: ${element.slice(0, 60)}`);
+        continue;
+      }
+      const span = bracketSpan(element, 0);
+      if (!span) {
+        warnings.push(`Unbalanced route object in App.tsx: ${element.slice(0, 60)}`);
+        continue;
+      }
+      const body = element.slice(span.start, span.end);
+      const childrenIdx = body.indexOf("children:");
+      const ownText = childrenIdx === -1 ? body : body.slice(0, childrenIdx);
 
-    // A pathless `<Route element={<AdminRoute />}>` — a wrapper, not a page.
-    if (!token.selfClosing) stack.push(component ?? "layout");
+      let childrenInner: string | null = null;
+      if (childrenIdx !== -1) {
+        const bracket = body.indexOf("[", childrenIdx);
+        const childSpan = bracket === -1 ? null : bracketSpan(body, bracket);
+        if (childSpan) childrenInner = body.slice(childSpan.start, childSpan.end);
+      }
+
+      const routePath = PATH_RE.exec(ownText)?.[1] ?? null;
+      const lazyMatch = LAZY_COMPONENT_RE.exec(ownText);
+      const component = lazyMatch ? lazyMatch[2]! : (STATIC_COMPONENT_RE.exec(ownText)?.[1] ?? null);
+      const isLazy = lazyMatch !== null;
+
+      if (routePath && component) {
+        routes.push({
+          path: routePath,
+          component,
+          file: isLazy ? resolve(lazyMatch![1]!, appFile) : (staticFiles.get(component) ?? null),
+          lazy: isLazy,
+          guards: [...stack],
+          redirectTo: null,
+        });
+        if (childrenInner !== null) parseArray(childrenInner);
+        continue;
+      }
+
+      // A pathless wrapper (`ProtectedRoute`, `AdminRoute`, `AppShell`) — or,
+      // at the root, a plain pass-through with no `Component` of its own.
+      if (component) stack.push(component);
+      if (childrenInner !== null) parseArray(childrenInner);
+      if (component) stack.pop();
+
+      if (!routePath && !component && childrenInner === null) {
+        warnings.push(`Unrecognized route object in App.tsx: ${body.slice(0, 60)}`);
+      }
+    }
   }
 
+  parseArray(source.slice(topSpan.start, topSpan.end));
   return routes;
 }
 

@@ -2169,6 +2169,10 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
+    // The header renders with the skeleton, before the 30 rows have arrived —
+    // wait for the real rows or there is nothing yet to overflow the frame.
+    await expect(page.getByText("1–25 of 30")).toBeVisible();
+
     const header = page.getByRole("columnheader", { name: "Subject" });
     await expect(header).toBeVisible();
     const before = await header.boundingBox();
@@ -2200,6 +2204,10 @@ test.describe("Tickets page", () => {
     await seedNumberedTickets(30);
     await signIn(page, "agent");
     await page.goto("/tickets");
+
+    // The header renders with the skeleton, before the 30 rows have arrived —
+    // wait for the real rows or there is nothing yet to overflow the frame.
+    await expect(page.getByText("1–25 of 30")).toBeVisible();
 
     const header = page.getByRole("columnheader", { name: "Subject" });
     await expect(header).toBeVisible();
@@ -2446,6 +2454,12 @@ test.describe("Ticket detail page", () => {
     await expect(
       page.getByRole("heading", { level: 1 }).first(),
     ).toBeVisible();
+
+    // The router doesn't push the ticket-detail URL until its lazy chunk has
+    // resolved, which lands slightly after the heading is already on screen.
+    // Going back before that push lands would pop the list's own `page=2`
+    // entry instead of the ticket-detail one.
+    await page.waitForURL(/\/tickets\/\d+$/);
 
     await page.goBack();
 
