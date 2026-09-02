@@ -25,11 +25,20 @@ import { useTutorialTrigger } from "@/lib/tutorial-trigger";
  */
 export function AppTopBar() {
   const navigate = useNavigate();
-  const { data: session } = useSession();
+  const { data: session, refetch: refetchSession } = useSession();
   const tutorialTrigger = useTutorialTrigger();
 
   const handleSignOut = async () => {
     await authClient.signOut();
+    // `signOut` resolving means the *server* has dropped the session; the
+    // client's session store still holds the old one until its own refetch
+    // lands, and that refetch does not begin until after this navigation.
+    // Navigating on that gap sends LoginPage a session that still reads as
+    // signed in, so it bounces to `/` — and `/` bounces straight back once
+    // the store catches up, remounting LoginPage and wiping whatever had
+    // been typed into it. Awaiting the refetch here closes the gap, so
+    // LoginPage only ever mounts against a settled, signed-out store.
+    await refetchSession();
     navigate("/login", { replace: true });
   };
 
