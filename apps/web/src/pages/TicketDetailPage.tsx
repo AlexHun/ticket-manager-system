@@ -7,7 +7,6 @@ import {
   type AutoReplyDecline,
   type TicketActivityResponse,
   type TicketDetail,
-  type TicketDetailResponse,
 } from "@ticket/shared";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Tutorial } from "@/components/Tutorial";
@@ -25,6 +24,7 @@ import {
   isNotFoundError,
 } from "@/lib/errors";
 import { DECLINE_LABEL } from "@/lib/pipeline-labels";
+import { ticketDetailQueryOptions } from "@/lib/ticket-detail-query";
 import { listPathFrom } from "@/lib/ticket-list-params";
 import { ticketKeys } from "@/lib/ticket-queries";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -45,22 +45,13 @@ import { TicketSummaryPanel } from "./TicketSummaryPanel";
 
 function useTicketQuery(id: string | undefined) {
   const queryClient = useQueryClient();
-  const query = useQuery({
-    // Shares the "tickets" prefix with the list key so one invalidate can reach
-    // both; "detail" keeps it from ever colliding with the list's params object.
-    queryKey: ticketKeys.detail(id ?? ""),
-    queryFn: async ({ signal }) => {
-      const { data } = await api.get<TicketDetailResponse>(
-        `/api/tickets/${id}`,
-        { signal },
-      );
-      return data.ticket;
-    },
-    // A rejected request is an answer, not a flake: a bad id will still be bad
-    // three retries later, and the backoff only delays the screen that explains
-    // it. Genuine transient failures (network, 5xx) still get the default.
-    retry: (failureCount, error) => !isClientError(error) && failureCount < 3,
-  });
+  // The same options object the route's loader primed the cache with
+  // (`TicketDetailPage.loader.ts`). Shared rather than repeated: the two only
+  // collapse into one request if the key and the query function are identical,
+  // and this hook usually finds the entry already filled — the loader is
+  // awaited before this page mounts, so `isPending` is normally false on the
+  // very first render and the skeleton below never appears.
+  const query = useQuery(ticketDetailQueryOptions(id ?? ""));
 
   // `GET /api/tickets/:id` marks the assignment seen server-side as a side
   // effect of this same request (ADR-0013), but the wire response carries no
