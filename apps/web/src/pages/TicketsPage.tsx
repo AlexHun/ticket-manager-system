@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Rows3 } from "lucide-react";
 import type { OnChangeFn, SortingState } from "@tanstack/react-table";
 import {
@@ -10,10 +10,8 @@ import {
   TUTORIAL_PAGE_KEY,
   type SortOrder,
   type TicketSortField,
-  type TicketsListResponse,
 } from "@ticket/shared";
 import { Tutorial } from "@/components/Tutorial";
-import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import {
   LIST_PARAM,
@@ -21,7 +19,10 @@ import {
   writeTicketListParams,
   type TicketListPatch,
 } from "@/lib/ticket-list-params";
-import { ticketKeys } from "@/lib/ticket-queries";
+import {
+  ticketListQueryOptions,
+  ticketListQueryParams,
+} from "@/lib/ticket-list-query";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { ROW_DENSITY, useRowDensity, type RowDensity } from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
@@ -97,50 +98,6 @@ function toSortParams(sorting: SortingState): {
   };
 }
 
-interface TicketsQueryParams {
-  sort: TicketSortField;
-  order: SortOrder;
-  page: number;
-  pageSize: number;
-  status?: string;
-  category?: string;
-  assignedTo?: string;
-  q?: string;
-}
-
-/** Empty filters are dropped rather than sent as blanks the API must ignore. */
-function toQueryParams(
-  sorting: SortingState,
-  filters: TicketFilterState,
-  page: number,
-  pageSize: number,
-): TicketsQueryParams {
-  const params: TicketsQueryParams = { ...toSortParams(sorting), page, pageSize };
-  if (filters.status) params.status = filters.status;
-  if (filters.category) params.category = filters.category;
-  if (filters.assignedTo) params.assignedTo = filters.assignedTo;
-  const search = filters.search.trim();
-  if (search) params.q = search;
-  return params;
-}
-
-function useTicketsQuery(params: TicketsQueryParams) {
-  return useQuery({
-    queryKey: ticketKeys.list(params),
-    queryFn: async ({ signal }) => {
-      const { data } = await api.get<TicketsListResponse>("/api/tickets", {
-        params,
-        signal,
-      });
-      return data;
-    },
-    // Sorting, filtering and paging each swap the whole result set. Hold the
-    // current rows on screen while the new ones load instead of flashing the
-    // skeleton on every interaction.
-    placeholderData: keepPreviousData,
-  });
-}
-
 export function TicketsPage() {
   // The URL is the state: it makes a filtered view shareable, and it is what
   // browser Back restores when returning from a ticket.
@@ -167,13 +124,23 @@ export function TicketsPage() {
   // input wins a fight it should lose — see the effect.
   const settledSearch = useRef(urlSearch);
 
+  // The `q` this effect last *saw* in the URL, which is a different question
+  // from the one above: it says whether the URL has moved at all since the last
+  // pass. Compared against the previous value rather than tracked with a
+  // first-run boolean, so StrictMode's double-invoked mount effect reaches the
+  // same answer twice.
+  const seenUrlSearch = useRef(urlSearch);
+
   // Input and URL, kept in step. One effect rather than two, because the whole
   // question is *which of them changed*, and that cannot be answered by two
   // effects that each see only their own dependency.
   useEffect(() => {
-    // The URL moved on its own: Back/Forward, or a saved view in the sidebar.
-    // Whatever is in the box belongs to the view being left, so it is adopted
-    // and nothing is written back.
+    const urlMoved = seenUrlSearch.current !== urlSearch;
+    seenUrlSearch.current = urlSearch;
+
+    // The URL moved somewhere this component did not ask for: Back/Forward, or
+    // a saved view in the sidebar. Whatever is in the box belongs to the view
+    // being left, so it is adopted and nothing is written back.
     //
     // This branch has to come first and has to exist. Without it the write
     // below fires on the same pass — its guards are satisfied, since a settled
@@ -181,11 +148,23 @@ export function TicketsPage() {
     // puts the old search straight back into the URL. Clicking "Mine" with
     // `race` still in the box then landed on Mine *and* race: one row where the
     // sidebar badge said seven, with the filters showing no sign of why.
-    if (settledSearch.current !== urlSearch) {
+    if (urlMoved && urlSearch !== settledSearch.current) {
       settledSearch.current = urlSearch;
       setSearchInput(urlSearch);
       return;
     }
+
+    // A write of ours has been asked for but has not landed yet, so the URL
+    // still reads the old `q`. `urlMoved` is what tells this apart from the
+    // branch above, and the distinction only became reachable when `/tickets`
+    // grew a loader: the router now holds the navigation until the rows are
+    // fetched, which is a window wide enough to type in. Without this guard the
+    // next keystroke inside it looks like the URL moving on its own, and the
+    // branch above answers by replacing what was just typed with the `q` the
+    // URL has not finished leaving. The pending value is not lost — the write
+    // below runs once the URL catches up, since `debouncedSearch` will still
+    // disagree with it.
+    if (settledSearch.current !== urlSearch) return;
 
     if (debouncedSearch !== searchInput) return; // still settling
     if (debouncedSearch === urlSearch) return; // URL already agrees
@@ -213,14 +192,16 @@ export function TicketsPage() {
     search: searchInput,
   };
 
-  const params = toQueryParams(
-    sorting,
-    { ...filters, search: debouncedSearch },
-    listState.page,
-    listState.pageSize,
-  );
+  // The URL's state with `q` swapped for the debounced input — the one value
+  // that leads the URL rather than following it, since the write above lands
+  // 300ms after the last keystroke. Built by the same function the route's
+  // loader uses (`TicketsPage.loader.ts`), so the key it primed and the key
+  // this reads are the same one.
+  const params = ticketListQueryParams({ ...listState, q: debouncedSearch });
 
-  const { data, isPending, isFetching, error } = useTicketsQuery(params);
+  const { data, isPending, isFetching, error } = useQuery(
+    ticketListQueryOptions(params),
+  );
 
   const [density, setDensity] = useRowDensity();
 

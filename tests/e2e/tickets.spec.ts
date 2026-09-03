@@ -485,6 +485,44 @@ async function dragHandle(
   await page.mouse.up();
 }
 
+/**
+ * The list endpoint itself — not `/api/tickets/views`, `/assignees`, `/unread`
+ * or a detail route, all of which the page loads alongside it. Matched on the
+ * pathname rather than by glob so those neighbours can't be caught by accident:
+ * holding the sidebar's counts open would be a different test.
+ */
+function isListEndpoint(url: URL): boolean {
+  return url.pathname === "/api/tickets";
+}
+
+/** As above, narrowed to one search term. */
+function isListEndpointFor(url: URL, q: string): boolean {
+  return isListEndpoint(url) && url.searchParams.get("q") === q;
+}
+
+/**
+ * Record the tickets skeleton if it is ever mounted, however briefly.
+ *
+ * Polling for its absence afterwards could only ever miss a flash of it; an
+ * observer cannot. `document` rather than `document.body` because this also
+ * runs as an init script, before the body exists.
+ */
+const WATCH_FOR_SKELETON = () => {
+  const w = window as Window & { __loadingTicketsSeen?: boolean };
+  w.__loadingTicketsSeen = false;
+  new MutationObserver(() => {
+    if (document.querySelector('[aria-label="Loading tickets"]')) {
+      w.__loadingTicketsSeen = true;
+    }
+  }).observe(document, { childList: true, subtree: true });
+};
+
+function skeletonWasSeen(page: Page): Promise<boolean | undefined> {
+  return page.evaluate(
+    () => (window as Window & { __loadingTicketsSeen?: boolean }).__loadingTicketsSeen,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // API — access control
 // ---------------------------------------------------------------------------
@@ -2169,8 +2207,9 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
-    // The header renders with the skeleton, before the 30 rows have arrived —
-    // wait for the real rows or there is nothing yet to overflow the frame.
+    // Wait for the real rows, or there is nothing yet to overflow the frame.
+    // The header alone is not that signal: it renders with the skeleton too,
+    // which the route's loader now normally skips past — but only normally.
     await expect(page.getByText("1–25 of 30")).toBeVisible();
 
     const header = page.getByRole("columnheader", { name: "Subject" });
@@ -2205,8 +2244,9 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
-    // The header renders with the skeleton, before the 30 rows have arrived —
-    // wait for the real rows or there is nothing yet to overflow the frame.
+    // Wait for the real rows, or there is nothing yet to overflow the frame.
+    // The header alone is not that signal: it renders with the skeleton too,
+    // which the route's loader now normally skips past — but only normally.
     await expect(page.getByText("1–25 of 30")).toBeVisible();
 
     const header = page.getByRole("columnheader", { name: "Subject" });
@@ -2257,6 +2297,137 @@ test.describe("Tickets page", () => {
     await expect(subject).toHaveAttribute("aria-sort", "ascending");
     await expect(activity).toHaveAttribute("aria-sort", "none");
     await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
+  });
+
+  test("fetches the list at navigation time, not on mount", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    // Hold the list response open, which widens the gap between "navigation
+    // started" and "data arrived" to something observable. Everything down to
+    // the release happens inside that gap.
+    let releaseList = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseList = resolve;
+    });
+    await page.route(isListEndpoint, async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.evaluate(WATCH_FOR_SKELETON);
+
+    const listRequest = page.waitForRequest((request) =>
+      isListEndpoint(new URL(request.url())),
+    );
+    await page.getByRole("link", { name: "Tickets" }).click();
+    await listRequest;
+
+    // The rows are already being fetched while the dashboard is still the page
+    // on screen — the route's loader started the request, and the router is
+    // holding the navigation until it answers. The component that used to
+    // start it has not mounted, so there is no skeleton anywhere.
+    await expect(page).toHaveURL("/");
+    await expect(page.getByLabel("Loading tickets")).toHaveCount(0);
+
+    releaseList();
+
+    // And the page it hands over to is the populated one — one transition, not
+    // a skeleton in between.
+    await expect(page).toHaveURL("/tickets");
+    await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
+    expect(await skeletonWasSeen(page)).toBe(false);
+  });
+
+  test("a bookmarked filtered list arrives already populated", async ({
+    page,
+  }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+
+    // The cold-entry half of the claim above, and the one that exercises the
+    // loader's own reading of the URL: `?category=…` reaches it through
+    // `request.url`, not through the `useSearchParams` the page reads. An
+    // init script rather than an `evaluate`, because the document this watches
+    // does not exist yet.
+    await page.addInitScript(WATCH_FOR_SKELETON);
+    await page.goto(`/tickets?category=${TICKET_CATEGORY.Technical}`);
+
+    await expect(page.getByRole("row")).toHaveCount(2);
+    await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
+    expect(await skeletonWasSeen(page)).toBe(false);
+  });
+
+  test("a filter change costs exactly one list request", async ({ page }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    await expect(page.getByRole("row")).toHaveCount(4);
+
+    // Counted from here, so the initial load is not in the total.
+    let listRequests = 0;
+    await page.route(isListEndpoint, async (route) => {
+      listRequests += 1;
+      await route.continue();
+    });
+
+    await chooseFilter(page, "Category", TICKET_CATEGORY.Technical);
+    await expect(page.getByRole("row")).toHaveCount(2);
+
+    // The filter change re-runs the loader *and* re-renders the page onto a new
+    // query key: react-query de-duping the two by query hash is the whole claim
+    // of this slice, and a second request here would mean it hadn't. The wait
+    // is for a duplicate that would already have been issued — a refetch on the
+    // new observer starts with the render that put these rows on screen — so it
+    // is a margin, not a race.
+    await page.waitForTimeout(300);
+    expect(listRequests).toBe(1);
+  });
+
+  test("keeps what was typed while the search is still in flight", async ({
+    page,
+  }) => {
+    await seedTickets();
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    await expect(page.getByRole("row")).toHaveCount(4);
+
+    // Hold only the first settled search. The URL write that carries it is now
+    // a navigation the loader holds open, and that window — previously a
+    // microtask — is long enough to keep typing into.
+    let releaseSearch = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseSearch = resolve;
+    });
+    await page.route(
+      (url) => isListEndpointFor(url, "Old"),
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+
+    const search = page.getByLabel("Search");
+    const heldRequest = page.waitForRequest((request) =>
+      isListEndpointFor(new URL(request.url()), "Old"),
+    );
+    await search.fill("Old");
+    await heldRequest;
+
+    // Typed inside the gap: the URL still says no search at all, which is the
+    // state a naive "did the URL move?" check reads as the URL moving on its
+    // own — and answers by putting its own `q` back into the box, eating this.
+    await search.fill("Oldest");
+    await expect(search).toHaveValue("Oldest");
+
+    releaseSearch();
+
+    // The pending value is not just kept on screen, it lands: once the first
+    // write catches up, the second one goes out behind it.
+    await expect(search).toHaveValue("Oldest");
+    await expect(page).toHaveURL("/tickets?q=Oldest");
+    await expect(page.getByRole("row")).toHaveCount(2);
+    await expect(page.getByRole("row").nth(1)).toContainText("Oldest ticket");
   });
 });
 

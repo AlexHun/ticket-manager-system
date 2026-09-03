@@ -148,6 +148,24 @@ request fires per filter change, proving the loader and the component's
 refetch de-duped rather than doubled up. Every existing sort/filter/
 pagination test must stay green unmodified.
 
+**Measured while building it** (carries into slice 4, which reads
+`useSearchParams` the same way):
+
+- The two paths de-dupe for *different* reasons. A select, sort or page
+  change is written to the URL first, so the awaited loader gets there
+  first and the component's later observer finds a fresh entry (the
+  client's `staleTime: 30_000` is what stops it refetching on mount) — one
+  request, no overlap. Only the debounced search leads the URL, and that is
+  the path where the component's fetch and the loader's `ensureQueryData`
+  genuinely share one in-flight request.
+- An awaited loader means `setSearchParams` no longer lands in a microtask:
+  the router holds the navigation for the whole fetch, and the URL keeps
+  reading the *old* params until it resolves. Any state derived from
+  "did the URL change?" has to tell that pending window apart from a real
+  URL move — `TicketsPage`'s search box did not, and reverted what was
+  typed inside it. Fixed there with a second ref (the last URL value
+  actually seen) and locked in by an E2E case.
+
 ## Slice 4 — DashboardPage loader
 
 **Retires:** whether a loader can kick off several independent
