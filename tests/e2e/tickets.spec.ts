@@ -2298,6 +2298,67 @@ test.describe("Ticket detail page", () => {
     ).toContainText("Unassigned");
   });
 
+  test("fetches the ticket at navigation time, not on mount", async ({
+    page,
+  }) => {
+    const id = await seedTicketWithThread({ subject: "Prefetched subject" });
+    await signIn(page, "agent");
+    await page.goto("/tickets");
+    const row = page.getByRole("link", { name: "Prefetched subject" });
+    await expect(row).toBeVisible();
+
+    // Hold the detail response open, which widens the gap between "navigation
+    // started" and "data arrived" to something observable. Everything below
+    // happens inside that gap.
+    let releaseDetail = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseDetail = resolve;
+    });
+    await page.route(`**/api/tickets/${id}`, async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    // Records the loading skeleton if it is ever mounted, however briefly.
+    // Polling for its absence afterwards could only ever miss a flash of it;
+    // an observer cannot.
+    await page.evaluate(() => {
+      const w = window as Window & { __loadingTicketSeen?: boolean };
+      w.__loadingTicketSeen = false;
+      new MutationObserver(() => {
+        if (document.querySelector('[aria-label="Loading ticket"]')) {
+          w.__loadingTicketSeen = true;
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+
+    const detailRequest = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === `/api/tickets/${id}`,
+    );
+    await row.click();
+    await detailRequest;
+
+    // The request is already in flight while the list is still the page on
+    // screen: the route's loader started it, because the detail component that
+    // used to start it has not mounted — there is no skeleton anywhere.
+    await expect(row).toBeVisible();
+    await expect(page.getByLabel("Loading ticket")).toHaveCount(0);
+
+    releaseDetail();
+
+    // And the page it hands over to is the populated one — one transition, not
+    // a skeleton in between.
+    await expect(
+      page.getByRole("heading", { name: "Prefetched subject", level: 1 }),
+    ).toBeVisible();
+    await expect(page.getByText("Messages (3)")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => (window as Window & { __loadingTicketSeen?: boolean }).__loadingTicketSeen,
+      ),
+    ).toBe(false);
+  });
+
   test("renders the whole thread oldest first", async ({ page }) => {
     const id = await seedTicketWithThread();
     await signIn(page, "agent");

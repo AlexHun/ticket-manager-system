@@ -7,11 +7,13 @@ import { LoginPage } from "@/pages/LoginPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { ticketDetailLoader } from "@/pages/TicketDetailPage.loader";
 
 /**
  * Every page but the login screen is loaded on demand, via `lazy` rather than
  * `React.lazy` — the route-object equivalent, and the one a static `loader`
- * (from slice 2 on) can run alongside instead of after.
+ * can run alongside instead of after. `/tickets/:id` is the first route to
+ * pair the two; the rest still fetch on mount.
  *
  * Eagerly imported, the pages below pull Recharts and TanStack Table into the
  * entry chunk, so a signed-out visitor downloads the whole charting library
@@ -97,6 +99,13 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/tickets/:id",
+                // Statically imported, unlike the component beside it, and
+                // that is what makes it worth having: React Router runs a
+                // static `loader` in parallel with the route's `lazy`
+                // `Component`, so the ticket is already being fetched while
+                // this page's chunk downloads. `lazy` fills in only what the
+                // route object leaves undefined, so it never overwrites this.
+                loader: ticketDetailLoader,
                 lazy: () =>
                   import("@/pages/TicketDetailPage").then((m) => ({
                     Component: m.TicketDetailPage,
