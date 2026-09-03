@@ -188,6 +188,37 @@ the component's own `useQuery` calls share that in-flight request.
 (or add alongside it) with the same single-loading-state assertion.
 Reorder/resize/reset tests must stay green unmodified.
 
+**Measured while building it:**
+
+- The parallelism claim needed its own assertion, and `Promise.allSettled` is
+  what carries it: hold all three endpoints open, click through to `/`, and
+  wait for all three to be in flight at once. A loader that `await`s them one
+  after another satisfies every *other* assertion in this slice — the fetch
+  still starts at navigation time, there is still one loading state — and only
+  this one fails it (measured: `waitForRequest` times out with the serialized
+  version, since the second request never leaves).
+- `allSettled` rather than `all` for the same reason the other two loaders
+  swallow: one failed prefetch must not cancel the wait on the two beside it,
+  and the page owns every error screen this route has.
+- The third query is the layout, which takes no params, so a range change
+  re-runs its `ensureQueryData` against an entry that is still fresh and it
+  asks for nothing. Asserted as `undefined` in the request counter, not as
+  `1` — a saved panel order cannot change because the range did.
+- The key that had to be got right is `effectiveness`: the endpoint takes no
+  `scope`, so both sides pass `{ range }` alone. Priming it with the whole
+  param object instead is a silent duplicate — every assertion still passes
+  except the request count, which goes to 2 (measured).
+- Entry chunk 328.60 kB → 330.72 kB, with most of that coming back out of the
+  `DashboardPage` chunk (433.09 → 431.26 kB). Costlier than slices 2 and 3
+  because the loader statically pulls in `dashboard-params` and the
+  `@ticket/core` schema behind it, where `ticket-list-params` was already
+  there.
+- Sign-in now waits on this loader: `/login` redirects to `/`, and the router
+  holds that navigation until all three land. It is the same cost slices 2 and
+  3 named — the previous screen stays up with no cue — arriving on the one
+  route every user passes through, which is the strongest argument yet for the
+  shared `useNavigation()` pending indicator those slices deferred.
+
 ## Slice 5 — Baseline timing instrumentation
 
 **Retires:** the PRD's third Risk — no baseline measurement exists yet, so
@@ -232,8 +263,11 @@ design since its output is a number, not user-facing behavior.
   client-side fetch starts.
 - Writing the ADR the PRD's open questions raise ("routing uses a data
   router with react-query-backed loaders") — left to a follow-up via
-  `/domain-modeling` once slice 4 has proven the pattern, per the PRD's
-  open question.
+  `/domain-modeling` now that slice 4 has proven the pattern on all three
+  routes, per the PRD's open question.
+- A shared pending indicator driven by `useNavigation()`. Deferred by every
+  slice that awaits a loader, and named by each of them as the cost of doing
+  so; slice 4 puts it on the sign-in path, which is where it will be felt.
 - Recording slice 5's actual before/after numbers into the PRD's
   success-metrics table — a manual step once slice 5 lands, not itself a
   coded slice.

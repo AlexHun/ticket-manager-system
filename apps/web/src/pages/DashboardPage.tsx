@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import {
   DndContext,
@@ -14,7 +14,6 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { LayoutGrid } from "lucide-react";
-import type { TicketEffectivenessQuery, TicketStatsQuery } from "@ticket/core";
 import {
   DASHBOARD_SCOPE,
   TUTORIAL_PAGE_KEY,
@@ -43,7 +42,6 @@ import { DASHBOARD_GRID } from "@/components/dashboard/grid";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Tutorial } from "@/components/Tutorial";
-import { api } from "@/lib/api";
 import {
   useDashboardLayoutQuery,
   useResetDashboardLayout,
@@ -55,39 +53,12 @@ import {
   type DashboardPatch,
 } from "@/lib/dashboard-params";
 import { DASHBOARD_PANEL_WIDTH_ORDER } from "@/lib/dashboard-panels";
+import {
+  assistantEffectivenessQueryOptions,
+  ticketStatsQueryOptions,
+} from "@/lib/dashboard-queries";
 import { extractErrorMessage } from "@/lib/errors";
-import { ticketKeys } from "@/lib/ticket-queries";
 import { cn } from "@/lib/utils";
-
-function useTicketStatsQuery(params: TicketStatsQuery) {
-  return useQuery({
-    queryKey: ticketKeys.stats(params),
-    queryFn: async ({ signal }) => {
-      const { data } = await api.get<TicketStatsResponse>(
-        "/api/tickets/stats",
-        { params, signal },
-      );
-      return data;
-    },
-    // Changing the range holds the rendered dashboard rather than replacing it
-    // with a skeleton, so the layout never collapses and rebuilds under you.
-    placeholderData: keepPreviousData,
-  });
-}
-
-function useAssistantEffectivenessQuery(params: TicketEffectivenessQuery) {
-  return useQuery({
-    queryKey: ticketKeys.effectiveness(params),
-    queryFn: async ({ signal }) => {
-      const { data } = await api.get<AssistantEffectivenessResponse>(
-        "/api/tickets/effectiveness",
-        { params, signal },
-      );
-      return data;
-    },
-    placeholderData: keepPreviousData,
-  });
-}
 
 /**
  * The dashboard, at `/` — where every user already lands after signing in.
@@ -111,18 +82,22 @@ export function DashboardPage() {
     });
   };
 
+  // All three built from the same options the route's loader primes them with
+  // (`DashboardPage.loader.ts`), so the entries it wrote are the ones these
+  // read — and on a normal visit they are already there, so nothing below ever
+  // renders `DashboardSkeleton`.
   const {
     data,
     isPending: statsPending,
     isFetching: statsFetching,
     error: statsError,
-  } = useTicketStatsQuery(params);
+  } = useQuery(ticketStatsQueryOptions(params));
   const {
     data: effectiveness,
     isPending: effectivenessPending,
     isFetching: effectivenessFetching,
     error: effectivenessError,
-  } = useAssistantEffectivenessQuery({ range: params.range });
+  } = useQuery(assistantEffectivenessQueryOptions({ range: params.range }));
   const { data: layoutData, isPending: layoutPending } =
     useDashboardLayoutQuery();
   const saveLayout = useSaveDashboardLayout();

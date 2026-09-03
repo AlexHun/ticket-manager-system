@@ -7,14 +7,15 @@ import { LoginPage } from "@/pages/LoginPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { dashboardLoader } from "@/pages/DashboardPage.loader";
 import { ticketDetailLoader } from "@/pages/TicketDetailPage.loader";
 import { ticketsLoader } from "@/pages/TicketsPage.loader";
 
 /**
  * Every page but the login screen is loaded on demand, via `lazy` rather than
  * `React.lazy` — the route-object equivalent, and the one a static `loader`
- * can run alongside instead of after. `/tickets` and `/tickets/:id` pair the
- * two; `/` is the last in-scope route still fetching on mount.
+ * can run alongside instead of after. All three in-scope routes — `/`,
+ * `/tickets` and `/tickets/:id` — now pair the two.
  *
  * Eagerly imported, the pages below pull Recharts and TanStack Table into the
  * entry chunk, so a signed-out visitor downloads the whole charting library
@@ -86,6 +87,12 @@ export const router = createBrowserRouter([
             children: [
               {
                 path: "/",
+                // Three requests, started together and awaited together — the
+                // page's three `useQuery` calls are concurrent on mount, and a
+                // loader that serialized them would move the fetch earlier
+                // while making it slower. Re-runs on every range and scope
+                // change, like `/tickets`, for the same reason.
+                loader: dashboardLoader,
                 lazy: () =>
                   import("@/pages/DashboardPage").then((m) => ({
                     Component: m.DashboardPage,

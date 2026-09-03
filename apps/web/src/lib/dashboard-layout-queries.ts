@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   type DashboardLayoutResponse,
   type DashboardPanelPlacement,
@@ -11,10 +16,21 @@ export const dashboardLayoutKeys = {
   all: ["dashboard-layout"] as const,
 };
 
-/** The signed-in user's saved panel layout, defaulted where they have never
- * customized — see `GET /api/dashboard-layout`. */
-export function useDashboardLayoutQuery() {
-  return useQuery({
+/**
+ * The signed-in user's saved panel layout, defaulted where they have never
+ * customized — see `GET /api/dashboard-layout`.
+ *
+ * Split out of the hook so the dashboard's loader (`DashboardPage.loader.ts`)
+ * can prime the same entry the hook then reads. It stays in this module rather
+ * than moving to `dashboard-queries.ts` with the other two: `dashboardLayoutKeys`
+ * and the three mutations below all name this one entry, and separating the read
+ * from the writes that patch it optimistically would put the key in two files.
+ * The loader importing this module costs nothing extra — `toast` and
+ * `extractErrorMessage` are already in the entry chunk, via the `<Toaster />`
+ * `main.tsx` mounts.
+ */
+export function dashboardLayoutQueryOptions() {
+  return queryOptions({
     queryKey: dashboardLayoutKeys.all,
     queryFn: async ({ signal }) => {
       const { data } = await api.get<DashboardLayoutResponse>(
@@ -24,6 +40,10 @@ export function useDashboardLayoutQuery() {
       return data;
     },
   });
+}
+
+export function useDashboardLayoutQuery() {
+  return useQuery(dashboardLayoutQueryOptions());
 }
 
 /**
