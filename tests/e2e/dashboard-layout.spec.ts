@@ -94,6 +94,52 @@ async function expectWidth(
   );
 }
 
+/**
+ * The three endpoints the dashboard's route loader primes, and nothing else.
+ *
+ * Matched on the pathname rather than by glob so the sidebar's own queries
+ * (`/api/tickets/views`, `/api/tickets/unread`) and the tutorial's
+ * `/api/tutorials/dashboard` can't be caught by accident — every one of them
+ * loads alongside this page, and holding them open would be a different test.
+ */
+const STATS = "/api/tickets/stats";
+const EFFECTIVENESS = "/api/tickets/effectiveness";
+const LAYOUT = "/api/dashboard-layout";
+const LOADER_ENDPOINTS = [STATS, EFFECTIVENESS, LAYOUT] as const;
+
+function isLoaderEndpoint(url: URL): boolean {
+  return (LOADER_ENDPOINTS as readonly string[]).includes(url.pathname);
+}
+
+/**
+ * Record the dashboard skeleton if it is ever mounted, however briefly.
+ *
+ * Polling for its absence afterwards could only ever miss a flash of it; an
+ * observer cannot. `document` rather than `document.body` because this also
+ * runs as an init script, before the body exists.
+ */
+const WATCH_FOR_SKELETON = () => {
+  const w = window as Window & { __loadingDashboardSeen?: boolean };
+  w.__loadingDashboardSeen = false;
+  new MutationObserver(() => {
+    if (document.querySelector('[aria-label="Loading dashboard"]')) {
+      w.__loadingDashboardSeen = true;
+    }
+  }).observe(document, { childList: true, subtree: true });
+};
+
+function skeletonWasSeen(page: Page): Promise<boolean | undefined> {
+  return page.evaluate(
+    () =>
+      (window as Window & { __loadingDashboardSeen?: boolean })
+        .__loadingDashboardSeen,
+  );
+}
+
+/** The first KPI tile's label — the cheapest proof the real panels, and not the
+ * skeleton, are on screen. */
+const POPULATED = "Tickets created";
+
 /** Click within a customize-mode control and wait for the save it triggers
  * to round-trip, so a reload immediately afterward can't race the write. */
 async function clickAndWaitForSave(
@@ -396,5 +442,124 @@ test.describe("Dashboard panel customization", () => {
       page.keyboard.press("Enter"),
     ]);
     await expectWidth(page, NARROWEST_PANEL, "half");
+  });
+});
+
+/**
+ * Slice 4 of `docs/plans/route-level-data-prefetching.md` — the dashboard's
+ * three queries move from mount to navigation time.
+ *
+ * The claim that is specific to this route, and that the first test exists for,
+ * is *parallelism*: the page's three `useQuery` calls are concurrent on mount,
+ * so a loader that awaited them one at a time would move the fetch earlier and
+ * make it slower. Holding all three open and waiting for all three to be in
+ * flight is what a serialized loader could not satisfy.
+ */
+test.describe("Dashboard prefetching", () => {
+  test("starts all three requests at navigation time, in parallel", async ({
+    page,
+  }) => {
+    await signIn(page, "agent");
+
+    // A full document load, which is what makes this test about the loader:
+    // signing in already primed these three entries, and a `staleTime` of 30s
+    // would have the loader resolve them from cache with no request at all. A
+    // new document is a new QueryClient.
+    await page.goto("/tickets");
+    await expect(page.getByRole("heading", { name: "Tickets" })).toBeVisible();
+
+    // Hold all three responses, which widens the gap between "navigation
+    // started" and "data arrived" into something observable. Everything down to
+    // the release happens inside that gap.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(isLoaderEndpoint, async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.evaluate(WATCH_FOR_SKELETON);
+
+    const allThreeInFlight = Promise.all(
+      LOADER_ENDPOINTS.map((pathname) =>
+        page.waitForRequest((req) => new URL(req.url()).pathname === pathname),
+      ),
+    );
+
+    await page.getByRole("link", { name: "Dashboard" }).click();
+
+    // All three are on the wire before any of them has answered. Awaited one
+    // after another, only the first would exist here and this would time out.
+    await allThreeInFlight;
+
+    // And they are on the wire while the tickets list is still the page on
+    // screen — the router is holding the navigation until they answer, so the
+    // component that used to start them has not mounted and there is no
+    // skeleton anywhere.
+    await expect(page).toHaveURL("/tickets");
+    await expect(page.getByLabel("Loading dashboard")).toHaveCount(0);
+
+    release();
+
+    // The page it hands over to is the populated one — one transition, not a
+    // skeleton in between.
+    await expect(page).toHaveURL("/");
+    await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
+    expect(await skeletonWasSeen(page)).toBe(false);
+  });
+
+  test("a bookmarked range arrives already populated", async ({ page }) => {
+    await signIn(page, "agent");
+
+    // The cold-entry half of the claim above, and the one that exercises the
+    // loader's own reading of the URL: `?range=7d` reaches it through
+    // `request.url`, not through the `useSearchParams` the page reads. An init
+    // script rather than an `evaluate`, because the document this watches does
+    // not exist yet.
+    await page.addInitScript(WATCH_FOR_SKELETON);
+    await page.goto("/?range=7d");
+
+    await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
+    // The loader and the page agreed on the range, not just on the endpoint:
+    // 7d is not the default (90d), so a loader that ignored the query string
+    // would have primed the wrong entry and the page would have fetched again.
+    await expect(page.getByLabel("Last 7d")).toBeChecked();
+    expect(await skeletonWasSeen(page)).toBe(false);
+  });
+
+  test("a range change costs one request per endpoint, not two", async ({
+    page,
+  }) => {
+    await signIn(page, "agent");
+    await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
+
+    // Counted from here, so the initial load is not in the total.
+    const requests = new Map<string, number>();
+    await page.route(isLoaderEndpoint, async (route) => {
+      const { pathname } = new URL(route.request().url());
+      requests.set(pathname, (requests.get(pathname) ?? 0) + 1);
+      await route.continue();
+    });
+
+    await page.getByLabel("Last 7d").click();
+    await expect(page).toHaveURL("/?range=7d");
+    await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
+
+    // The range change re-runs the loader *and* re-renders the page onto two
+    // new query keys: react-query de-duping the two by query hash is the claim
+    // this slice inherits from slice 3, and a second request would mean it
+    // hadn't. The wait is for a duplicate that would already have been issued —
+    // a refetch on a new observer starts with the render that put these panels
+    // on screen — so it is a margin, not a race.
+    await page.waitForTimeout(300);
+    expect(requests.get(STATS)).toBe(1);
+    expect(requests.get(EFFECTIVENESS)).toBe(1);
+
+    // The layout query has no params at all, so the same re-run finds an entry
+    // that is still fresh (`staleTime: 30_000`) and asks for nothing. Changing
+    // the range must not re-fetch a saved panel order that cannot have changed.
+    expect(requests.get(LAYOUT)).toBeUndefined();
   });
 });
