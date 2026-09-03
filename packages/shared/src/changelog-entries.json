@@ -78,5 +78,10 @@
     "version": "0.1.43",
     "date": "2026-09-03",
     "title": "Prefetch the ticket list from a route loader (#131)"
+  },
+  {
+    "version": "0.1.44",
+    "date": "2026-09-03",
+    "title": "Prefetch the dashboard from a route loader (#132)"
   }
 ]
