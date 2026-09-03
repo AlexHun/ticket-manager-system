@@ -8,12 +8,13 @@ import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ticketDetailLoader } from "@/pages/TicketDetailPage.loader";
+import { ticketsLoader } from "@/pages/TicketsPage.loader";
 
 /**
  * Every page but the login screen is loaded on demand, via `lazy` rather than
  * `React.lazy` — the route-object equivalent, and the one a static `loader`
- * can run alongside instead of after. `/tickets/:id` is the first route to
- * pair the two; the rest still fetch on mount.
+ * can run alongside instead of after. `/tickets` and `/tickets/:id` pair the
+ * two; `/` is the last in-scope route still fetching on mount.
  *
  * Eagerly imported, the pages below pull Recharts and TanStack Table into the
  * entry chunk, so a signed-out visitor downloads the whole charting library
@@ -92,6 +93,12 @@ export const router = createBrowserRouter([
               },
               {
                 path: "/tickets",
+                // Re-runs on every filter, sort and page change, not just on
+                // entry: they all move the search string, and React Router
+                // revalidates when it does. That is the intended shape — see
+                // the note in the loader on why one interaction still costs
+                // one request.
+                loader: ticketsLoader,
                 lazy: () =>
                   import("@/pages/TicketsPage").then((m) => ({
                     Component: m.TicketsPage,
