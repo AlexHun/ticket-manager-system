@@ -58,5 +58,15 @@
     "version": "0.1.38",
     "date": "2026-09-02",
     "title": "Poll for scrollTop instead of reading it synchronously"
+  },
+  {
+    "version": "0.1.41",
+    "date": "2026-09-03",
+    "title": "Migrate to React Router's data router (#129)"
+  },
+  {
+    "version": "0.1.41",
+    "date": "2026-09-03",
+    "title": "Settle the session store before leaving for /login on sign-out"
   }
 ]
