@@ -68,5 +68,10 @@
     "version": "0.1.41",
     "date": "2026-09-03",
     "title": "Settle the session store before leaving for /login on sign-out"
+  },
+  {
+    "version": "0.1.42",
+    "date": "2026-09-03",
+    "title": "Give every `db` mock factory a `Prisma` export"
   }
 ]
