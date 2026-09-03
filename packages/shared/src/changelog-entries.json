@@ -73,5 +73,10 @@
     "version": "0.1.42",
     "date": "2026-09-03",
     "title": "Give every `db` mock factory a `Prisma` export"
+  },
+  {
+    "version": "0.1.43",
+    "date": "2026-09-03",
+    "title": "Prefetch the ticket list from a route loader (#131)"
   }
 ]
