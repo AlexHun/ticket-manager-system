@@ -80,7 +80,18 @@ const seenUpsert = mock(
   },
 );
 
+// `Prisma` is included even though nothing in this file calls `Prisma.sql` —
+// see the note above `users.test.ts`'s own `mock.module("../db", …)`. Every
+// factory for this specifier has to carry it: `routes/activity.ts`,
+// `ticket-stats.ts` and `ticket-effectiveness.ts` import it as a *value*, and
+// a factory that leaves it out can be the one in force when one of those is
+// linked, which fails the run with `SyntaxError: Export named 'Prisma' not
+// found in module .../src/db.ts` — intermittently, since it depends on the
+// order `bun test` reaches the files in.
+const { Prisma } = await import("../generated/prisma/client");
+
 mock.module("../db", () => ({
+  Prisma,
   prisma: {
     newFeatureSeen: {
       findMany: seenFindMany,
