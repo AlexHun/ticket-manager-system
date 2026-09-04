@@ -36,8 +36,10 @@ import {
  * since only a filter combination nobody has visited yet actually waits: a
  * cached key resolves in a microtask, and the rows keep their `aria-busy` fade
  * for every refetch the page still starts itself. The shared pending indicator
- * (`useNavigation()`) that would cover the rest needs the component-test render
- * helper on a data router first, and is still not this slice's job.
+ * (`useNavigation()`) that would cover the rest is still unbuilt, but it is no
+ * longer blocked: `renderRoutes` in `@/test/render` mounts routes on a data
+ * router, so `useNavigation()` and this loader are both reachable from a
+ * component test now (#148).
  */
 export async function ticketsLoader({ request }: LoaderFunctionArgs) {
   const { searchParams } = new URL(request.url);

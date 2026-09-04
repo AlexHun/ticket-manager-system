@@ -10,25 +10,20 @@ import {
   type ActivityFeedResponse,
   type User,
 } from "@ticket/shared";
-import { renderWithQuery } from "@/test/render";
+import { apiStub } from "@/test/api-stub";
+import { renderRoutes } from "@/test/render";
 import { ActivityPage } from "./ActivityPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-const mockGet = vi.fn();
-// Answers the `<Tutorial>` mounted on this page — not what any test here
-// exercises, so it always resolves to "nothing to show" and never touches
-// `mockGet`'s own call count or `mockResolvedValueOnce` queue.
-const mockTutorialGet = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (url: string, ...rest: unknown[]) =>
-      url.startsWith("/api/tutorials/")
-        ? mockTutorialGet(url, ...rest)
-        : mockGet(url, ...rest),
-  },
-}));
+// The feed, and the actor roster the Actor dropdown fetches lazily on open.
+// They have to be controllable separately, and their calls have to stay out of
+// each other's indices — which the stub gives for free, one `vi.fn` per path.
+// The `<Tutorial>` this page mounts is answered by the stub's own default.
+const activityGet = apiStub.get("/api/activity");
+const usersGet = apiStub.get("/api/users");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -98,7 +93,7 @@ const automationEntry = makeEntry({
   toValue: "admin",
 });
 
-/** Routes `api.get` by URL, the way the real axios instance would dispatch. */
+/** What the two endpoints this page reads answer with. */
 function mockApiRoutes({
   activity,
   users = [],
@@ -106,38 +101,29 @@ function mockApiRoutes({
   activity: ReturnType<typeof activityResponse> | Promise<never>;
   users?: User[];
 }) {
-  mockGet.mockImplementation((url: string) => {
-    if (url === "/api/activity") return activity;
-    if (url === "/api/users") return Promise.resolve({ data: { users } });
-    throw new Error(`Unexpected GET ${url}`);
-  });
-}
-
-/** Only the calls to `/api/activity` — `/api/users` calls (the actor roster,
- *  fetched lazily on open) share the same mock and must not shift indices. */
-function activityCalls() {
-  return mockGet.mock.calls.filter(
-    ([url]) => url === "/api/activity",
-  ) as [string, { params: Record<string, unknown> }][];
+  activityGet.mockReturnValue(activity);
+  usersGet.mockResolvedValue({ data: { users } });
 }
 
 /** `page`/`pageSize` are always sent, so `params` is never actually absent. */
 function activityParamsOfCall(index: number): Record<string, unknown> {
-  return activityCalls()[index][1].params;
+  const [, options] = activityGet.mock.calls[index] as [
+    string,
+    { params: Record<string, unknown> },
+  ];
+  return options.params;
 }
 
-function activityCallCount(): number {
-  return activityCalls().length;
+function renderActivityPage() {
+  return renderRoutes([{ path: "/activity", Component: ActivityPage }], {
+    initialEntries: ["/activity"],
+  });
 }
 
 // --- Tests ------------------------------------------------------------------
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockTutorialGet.mockReset();
-  mockTutorialGet.mockResolvedValue({
-    data: { tutorial: { content: { steps: [] }, shouldShow: false } },
-  });
+  apiStub.reset();
 });
 
 afterEach(() => {
@@ -148,7 +134,7 @@ afterEach(() => {
 describe("ActivityPage", () => {
   test("renders the skeleton while the request is pending", () => {
     mockApiRoutes({ activity: new Promise(() => {}) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     const skeleton = screen.getByLabelText("Loading activity");
     expect(skeleton).toBeInTheDocument();
@@ -159,7 +145,7 @@ describe("ActivityPage", () => {
   // this page gives it, which is the half that can drift per call site.
   test("puts the feed in a keyboard-reachable region named Activity", async () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     await screen.findByText("Status changed");
     const frame = screen.getByRole("region", { name: "Activity" });
@@ -169,11 +155,11 @@ describe("ActivityPage", () => {
 
   test("calls GET /api/activity with a cancellation signal on mount", async () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     await screen.findByText("Status changed");
 
-    const [url, options] = mockGet.mock.calls.find(([u]) => u === "/api/activity") as [
+    const [url, options] = activityGet.mock.calls[0] as [
       string,
       { signal: AbortSignal },
     ];
@@ -183,7 +169,7 @@ describe("ActivityPage", () => {
 
   test("requests the first page at the default size on mount", async () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     await screen.findByText("Status changed");
 
@@ -195,7 +181,7 @@ describe("ActivityPage", () => {
 
   test("renders the column headers", async () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     await screen.findByText("Status changed");
 
@@ -206,7 +192,7 @@ describe("ActivityPage", () => {
 
   test("renders the actor name, action label and change", async () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     await screen.findByText("Status changed");
     expect(screen.getByText("Priya Raman")).toBeInTheDocument();
@@ -215,7 +201,7 @@ describe("ActivityPage", () => {
 
   test("renders a dash when an entry has no from/to value", async () => {
     mockApiRoutes({ activity: activityResponse([knowledgeEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     const row = (await screen.findByText("Edited")).closest("tr");
     if (!row) throw new Error("row not found");
@@ -224,7 +210,7 @@ describe("ActivityPage", () => {
 
   test("links a ticket entry to its detail page", async () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     expect(await screen.findByRole("link", { name: "Ticket #42" })).toHaveAttribute(
       "href",
@@ -234,7 +220,7 @@ describe("ActivityPage", () => {
 
   test("links a knowledge entry to the knowledge base", async () => {
     mockApiRoutes({ activity: activityResponse([knowledgeEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     expect(
       await screen.findByRole("link", { name: "Knowledge KB-004" }),
@@ -243,7 +229,7 @@ describe("ActivityPage", () => {
 
   test("renders an automation entry with no link", async () => {
     mockApiRoutes({ activity: activityResponse([automationEntry]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     await screen.findByText("Handoff changed");
     expect(screen.getByText("Automation")).toBeInTheDocument();
@@ -252,7 +238,7 @@ describe("ActivityPage", () => {
 
   test("renders an empty-state message when nothing is returned", async () => {
     mockApiRoutes({ activity: activityResponse([]) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     expect(await screen.findByText("Nothing recorded yet.")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -260,7 +246,7 @@ describe("ActivityPage", () => {
 
   test("renders an alert when the request fails", async () => {
     mockApiRoutes({ activity: Promise.reject(new Error("boom")) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("boom");
@@ -277,7 +263,7 @@ describe("ActivityPage filtering", () => {
       users: [makeUser({ id: "user-1", name: "Priya Raman" })],
     });
     const user = userEvent.setup();
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
     await screen.findByText("Status changed");
     return user;
   }
@@ -297,7 +283,7 @@ describe("ActivityPage filtering", () => {
     await user.click(screen.getByRole("combobox", { name: "Entity" }));
     await user.click(await screen.findByRole("option", { name: "Knowledge" }));
 
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
     expect(activityParamsOfCall(1)).toMatchObject({
       entityType: ACTIVITY_ENTITY_TYPE.knowledge,
     });
@@ -307,11 +293,11 @@ describe("ActivityPage filtering", () => {
     const user = await renderLoaded();
 
     await user.click(screen.getByRole("combobox", { name: "Actor" }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledWith("/api/users", expect.anything()));
+    await waitFor(() => expect(usersGet).toHaveBeenCalled());
 
     await user.click(await screen.findByRole("option", { name: "Priya Raman" }));
 
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
     expect(activityParamsOfCall(1)).toMatchObject({ actorId: "user-1" });
   });
 
@@ -321,7 +307,7 @@ describe("ActivityPage filtering", () => {
       users: [makeUser({ id: "assistant-1", name: "AI Assistant", automated: true })],
     });
     const user = userEvent.setup();
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
     await screen.findByText("Status changed");
 
     await user.click(screen.getByRole("combobox", { name: "Actor" }));
@@ -354,7 +340,7 @@ describe("ActivityPage filtering", () => {
     // Regression for #97: a from-only click used to flow straight into
     // `ActivityPage`'s filters and refetch on the incomplete range.
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(activityCallCount()).toBe(1);
+    expect(activityGet).toHaveBeenCalledTimes(1);
   });
 
   test("sends the date range with an exclusive upper bound", async () => {
@@ -363,10 +349,10 @@ describe("ActivityPage filtering", () => {
 
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("1"));
-    expect(activityCallCount()).toBe(1);
+    expect(activityGet).toHaveBeenCalledTimes(1);
 
     await user.click(withinFirstMonth(popover).getByText("24"));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
 
     expect(activityParamsOfCall(1)).toMatchObject({
       from: "2026-08-01",
@@ -382,10 +368,10 @@ describe("ActivityPage filtering", () => {
 
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("24"));
-    expect(activityCallCount()).toBe(1);
+    expect(activityGet).toHaveBeenCalledTimes(1);
 
     await user.click(withinFirstMonth(popover).getByText("1"));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
 
     expect(activityParamsOfCall(1)).toMatchObject({
       from: "2026-08-01",
@@ -400,7 +386,7 @@ describe("ActivityPage filtering", () => {
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("1"));
     await user.click(withinFirstMonth(popover).getByText("24"));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     // Regression for #95: reopening with a full range already selected used
@@ -409,11 +395,11 @@ describe("ActivityPage filtering", () => {
     // second click could land.
     const reopened = await openDateRangePopover(user);
     await user.click(withinFirstMonth(reopened).getByText("10"));
-    expect(activityCallCount()).toBe(2);
+    expect(activityGet).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     await user.click(withinFirstMonth(reopened).getByText("20"));
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(3));
     expect(activityParamsOfCall(2)).toMatchObject({
       from: "2026-08-10",
       to: "2026-08-21",
@@ -427,11 +413,11 @@ describe("ActivityPage filtering", () => {
 
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("1"));
-    expect(activityCallCount()).toBe(1);
+    expect(activityGet).toHaveBeenCalledTimes(1);
 
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(activityCallCount()).toBe(1);
+    expect(activityGet).toHaveBeenCalledTimes(1);
 
     // The trigger still reads "Any date" — the abandoned from-only pick was
     // never committed to `ActivityPage`'s filters.
@@ -455,7 +441,7 @@ describe("ActivityPage filtering", () => {
 
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("1"));
-    expect(activityCallCount()).toBe(1);
+    expect(activityGet).toHaveBeenCalledTimes(1);
 
     await user.hover(dayButton(popover, "10"));
 
@@ -465,7 +451,7 @@ describe("ActivityPage filtering", () => {
     expect(dayButton(popover, "5")).toHaveAttribute("data-range-preview-middle", "true");
     expect(dayButton(popover, "10")).toHaveAttribute("data-range-preview-end", "true");
     // Cosmetic only — the hovered day never reaches `ActivityPage`'s filters.
-    expect(activityCallCount()).toBe(1);
+    expect(activityGet).toHaveBeenCalledTimes(1);
   });
 
   test("previews the range for a hover that lands before the anchor", async () => {
@@ -506,7 +492,7 @@ describe("ActivityPage filtering", () => {
     const popover = await openDateRangePopover(user);
     await user.click(within(popover).getByRole("button", { name: "Today" }));
 
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
     expect(activityParamsOfCall(1)).toMatchObject({
       from: "2026-08-15",
       to: "2026-08-16",
@@ -523,7 +509,7 @@ describe("ActivityPage filtering", () => {
     // wouldn't exercise the clear at all.
     const popover = await openDateRangePopover(user);
     await user.click(within(popover).getByRole("button", { name: "Today" }));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
 
     const reopened = await openDateRangePopover(user);
     // A single click leaves the range incomplete (`min={1}` withholds `to`
@@ -531,11 +517,11 @@ describe("ActivityPage filtering", () => {
     // firing a request), so the popover is still open here — no need to
     // reopen it before reaching for the preset.
     await user.click(withinFirstMonth(reopened).getByText("1"));
-    expect(activityCallCount()).toBe(2);
+    expect(activityGet).toHaveBeenCalledTimes(2);
 
     await user.click(within(reopened).getByRole("button", { name: "All time" }));
 
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(3));
     expect(activityParamsOfCall(2)).not.toHaveProperty("from");
     expect(activityParamsOfCall(2)).not.toHaveProperty("to");
   });
@@ -545,22 +531,18 @@ describe("ActivityPage filtering", () => {
 
     await user.click(screen.getByRole("combobox", { name: "Entity" }));
     await user.click(await screen.findByRole("option", { name: "Knowledge" }));
-    await waitFor(() => expect(activityCallCount()).toBe(2));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
 
     await user.click(screen.getByRole("button", { name: /clear filters/i }));
 
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(3));
     expect(activityParamsOfCall(2)).not.toHaveProperty("entityType");
   });
 
   test("explains an empty result differently when filters are active", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockImplementation((url: string) => {
-      if (url === "/api/activity") return Promise.resolve(activityResponse([]));
-      if (url === "/api/users") return Promise.resolve({ data: { users: [] } });
-      throw new Error(`Unexpected GET ${url}`);
-    });
+    mockApiRoutes({ activity: activityResponse([]) });
     await user.click(screen.getByRole("combobox", { name: "Entity" }));
     await user.click(await screen.findByRole("option", { name: "Admin" }));
 
@@ -574,7 +556,7 @@ describe("ActivityPage filtering", () => {
       activity: activityResponse(allEntries, { total: 60 }),
     });
     const user = userEvent.setup();
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
     await screen.findByText("Status changed");
 
     mockApiRoutes({ activity: activityResponse(allEntries, { total: 60, page: 2 }) });
@@ -585,7 +567,7 @@ describe("ActivityPage filtering", () => {
     await user.click(screen.getByRole("combobox", { name: "Entity" }));
     await user.click(await screen.findByRole("option", { name: "Ticket" }));
 
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(3));
     expect(activityParamsOfCall(2)).toMatchObject({ page: FIRST_PAGE });
   });
 });
@@ -600,7 +582,7 @@ describe("ActivityPage pagination", () => {
   async function renderLoaded() {
     mockApiRoutes({ activity: manyPages() });
     const user = userEvent.setup();
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
     await screen.findByText("Status changed");
     return user;
   }
@@ -633,13 +615,13 @@ describe("ActivityPage pagination", () => {
     await user.click(screen.getByRole("combobox", { name: "Per page" }));
     await user.click(await screen.findByRole("option", { name: "50" }));
 
-    await waitFor(() => expect(activityCallCount()).toBe(3));
+    await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(3));
     expect(activityParamsOfCall(2)).toMatchObject({ pageSize: 50, page: FIRST_PAGE });
   });
 
   test("hides the pagination bar when nothing matches", async () => {
     mockApiRoutes({ activity: activityResponse([], { total: 0 }) });
-    renderWithQuery(<ActivityPage />);
+    renderActivityPage();
 
     await screen.findByText("Nothing recorded yet.");
     expect(
