@@ -88,5 +88,10 @@
     "version": "0.1.45",
     "date": "2026-09-04",
     "title": "Bracket navigation-to-data-render with user timing (#133)"
+  },
+  {
+    "version": "0.1.46",
+    "date": "2026-09-04",
+    "title": "Reconcile the scheduled queues' settings on boot (#144)"
   }
 ]
