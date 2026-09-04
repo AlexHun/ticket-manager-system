@@ -93,5 +93,10 @@
     "version": "0.1.46",
     "date": "2026-09-04",
     "title": "Reconcile the scheduled queues' settings on boot (#144)"
+  },
+  {
+    "version": "0.1.50",
+    "date": "2026-09-04",
+    "title": "Render on the real data router, and stub HTTP once (#148)"
   }
 ]
