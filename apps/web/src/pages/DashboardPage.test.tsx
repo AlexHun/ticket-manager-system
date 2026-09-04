@@ -432,13 +432,19 @@ describe("DashboardPage", () => {
 });
 
 /**
- * Panel personalization (issue #102): reorder/resize buttons, boundary
- * disabling, and reset-to-default. Real pointer drag is not exercised here —
- * jsdom has no layout geometry for `@dnd-kit` to compute drop targets from —
- * so mouse reordering is covered by the Playwright E2E suite instead; the
- * button-driven path below is the actual keyboard-operable equivalent and
- * exercises the same `moveEarlier`/`moveLater`/`resize` handlers a drag ends
- * up calling.
+ * Panel personalization (issue #102), as wiring only.
+ *
+ * What a command does to the placement array — the swap, the width step, and
+ * every boundary that makes one a no-op — is decided by pure functions and
+ * asserted directly in `@/lib/dashboard-panels.test.ts`, which renders
+ * nothing. What is left for this file is that the page hands those functions
+ * the layout it is showing and sends what they return to the server, and that
+ * `panelCapabilities` is what reaches each button's `disabled`.
+ *
+ * Real pointer drag is still not exercised here — jsdom has no layout geometry
+ * for `@dnd-kit` to compute drop targets from — so mouse reordering is covered
+ * by the Playwright E2E suite instead; the button path below is the actual
+ * keyboard-operable equivalent and ends in the same `save`.
  */
 describe("DashboardPage customize mode", () => {
   test("hides the per-panel controls until customize mode is entered", async () => {
@@ -457,39 +463,42 @@ describe("DashboardPage customize mode", () => {
     ).toBeInTheDocument();
   });
 
-  test("disables move-earlier on the first panel and move-later on the last", async () => {
+  /**
+   * One panel at each boundary, one control each — enough to prove the flags
+   * arrive per-panel and per-command rather than as a page-wide state. Which
+   * positions and widths count as a boundary is the unit tests' business.
+   */
+  test("disables the commands the panel's capabilities refuse", async () => {
     const user = userEvent.setup();
     renderDashboard();
     await screen.findByText("Tickets created");
     await user.click(screen.getByRole("button", { name: "Customize" }));
 
+    // First panel in the default layout; Status mix starts narrow and Top
+    // customers starts wide.
     expect(
       screen.getByRole("button", { name: "Move Ticket volume earlier" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", {
-        name: "Move Assistant effectiveness later",
-      }),
-    ).toBeDisabled();
-  });
-
-  test("disables shrink at the narrowest width and grow at the widest", async () => {
-    const user = userEvent.setup();
-    renderDashboard();
-    await screen.findByText("Tickets created");
-    await user.click(screen.getByRole("button", { name: "Customize" }));
-
-    // Status mix starts narrow — the minimum of the 4 widths.
-    expect(
       screen.getByRole("button", { name: "Shrink Status mix" }),
     ).toBeDisabled();
-    // Top customers starts wide — the maximum.
     expect(
       screen.getByRole("button", { name: "Grow Top customers" }),
     ).toBeDisabled();
+
+    expect(
+      screen.getByRole("button", { name: "Move Ticket volume later" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Grow Status mix" }),
+    ).toBeEnabled();
   });
 
-  test("moving a panel later saves the reordered layout", async () => {
+  /** Spelled out rather than computed with `applyPanelCommand`: the claim is
+   * that the page passed the layout it is showing to the right command and
+   * saved the result, which an expectation built from that same function could
+   * not fail to satisfy. */
+  test("sends the layout a command produces to the server", async () => {
     const user = userEvent.setup();
     renderDashboard();
     await screen.findByText("Tickets created");
@@ -506,23 +515,6 @@ describe("DashboardPage customize mode", () => {
           DEFAULT_DASHBOARD_LAYOUT[0],
           ...DEFAULT_DASHBOARD_LAYOUT.slice(2),
         ],
-      }),
-    );
-  });
-
-  test("growing a panel saves it at the next width up", async () => {
-    const user = userEvent.setup();
-    renderDashboard();
-    await screen.findByText("Tickets created");
-    await user.click(screen.getByRole("button", { name: "Customize" }));
-
-    await user.click(screen.getByRole("button", { name: "Grow Status mix" }));
-
-    await waitFor(() =>
-      expect(mockLayoutPut).toHaveBeenCalledWith("/api/dashboard-layout", {
-        layout: DEFAULT_DASHBOARD_LAYOUT.map((p) =>
-          p.panelId === "statusMix" ? { ...p, width: "half" } : p,
-        ),
       }),
     );
   });
