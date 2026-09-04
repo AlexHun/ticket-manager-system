@@ -1,11 +1,10 @@
-import type { LoaderFunctionArgs } from "react-router-dom";
 import { dashboardLayoutQueryOptions } from "@/lib/dashboard-layout-queries";
 import { parseDashboardParams } from "@/lib/dashboard-params";
 import {
   assistantEffectivenessQueryOptions,
   ticketStatsQueryOptions,
 } from "@/lib/dashboard-queries";
-import { queryClient } from "@/lib/query-client";
+import { prefetchLoader, prefetchQuery } from "@/lib/route-prefetch";
 
 /**
  * Starts the dashboard's three requests the moment navigation to `/` begins —
@@ -16,22 +15,12 @@ import { queryClient } from "@/lib/query-client";
  * `lazy` `Component`, so all three responses are on the wire while the page's
  * chunk — Recharts and dnd-kit, by far the heaviest on the site — downloads.
  *
- * The three are started together and awaited together, which is the thing this
- * slice had to get right. The page's three `useQuery` calls are concurrent on
- * mount today, so a loader that awaited them one after another would move the
+ * This is the route that made `prefetchLoader`'s `allSettled` the shared shape
+ * rather than a special case: the page's three `useQuery` calls are concurrent
+ * on mount, so a loader that awaited them one after another would move the
  * fetch earlier and make it slower — the range-scoped stats endpoint runs eight
  * queries of its own, and putting the layout round trip in front of it would
- * add its latency to every visit. `allSettled` keeps them parallel *and* keeps
- * one failure from cancelling the wait on the other two.
- *
- * Rejections are dropped rather than rethrown, as on the other two routes: a
- * failed prefetch is not a failed navigation. The page owns this route's error
- * screen — `extractErrorMessage(error, "Failed to load dashboard")` in a
- * `role="alert"` above filters that still work — and throwing here would replace
- * it with the router's error boundary, which offers neither. Nothing is returned
- * to the route: `ensureQueryData` writes into the shared `QueryClient` and the
- * page's hooks read it back through the same keys, so react-query stays the
- * cache layer and only the *trigger point* moved (R2).
+ * add its latency to every visit.
  *
  * `request.url` is read through the very function the page reads
  * `useSearchParams` with, so a hand-edited `?range=nonsense` falls back to the
@@ -45,21 +34,16 @@ import { queryClient } from "@/lib/query-client";
  * change re-runs its `ensureQueryData` against an entry that is already fresh
  * (`staleTime: 30_000`) and it resolves without a request.
  */
-export async function dashboardLoader({ request }: LoaderFunctionArgs) {
-  const { searchParams } = new URL(request.url);
-  const params = parseDashboardParams(searchParams);
+export const dashboardLoader = prefetchLoader(({ request }) => {
+  const params = parseDashboardParams(new URL(request.url).searchParams);
 
-  await Promise.allSettled([
-    queryClient.ensureQueryData(ticketStatsQueryOptions(params)),
+  return [
+    prefetchQuery(ticketStatsQueryOptions(params)),
     // `{ range }` alone, mirroring the page: the endpoint takes no `scope`, and
     // a key that carried one would be a second entry the page never reads — and
     // a second `/api/tickets/effectiveness` on every range change, since the
     // page's observer would find nothing primed under the key it does read.
-    queryClient.ensureQueryData(
-      assistantEffectivenessQueryOptions({ range: params.range }),
-    ),
-    queryClient.ensureQueryData(dashboardLayoutQueryOptions()),
-  ]);
-
-  return null;
-}
+    prefetchQuery(assistantEffectivenessQueryOptions({ range: params.range })),
+    prefetchQuery(dashboardLayoutQueryOptions()),
+  ];
+});

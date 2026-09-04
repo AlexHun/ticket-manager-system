@@ -9,6 +9,7 @@ import {
 } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { setPrefetchQueryClient } from "@/lib/route-prefetch";
 
 type RenderWithQueryOptions = Omit<RenderOptions, "wrapper"> & {
   /**
@@ -23,7 +24,13 @@ type RenderWithQueryOptions = Omit<RenderOptions, "wrapper"> & {
   queryClient?: QueryClient;
 };
 
-function createTestQueryClient() {
+/**
+ * The client both helpers below mount, and the one `runLoader` primes when a
+ * test calls a route's loader without rendering it — same settings either way,
+ * so what a loader put in the cache and what a page reads out of it are the
+ * same question.
+ */
+export function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0, staleTime: 0 },
@@ -125,12 +132,19 @@ export interface RenderRoutesResult extends RenderWithQueryResult {
  * Returns synchronously, mid-initialization if the routes have loaders — that
  * is deliberate, because the first paint is exactly what a pending-state test
  * is about. Await something (`findBy…`, `waitFor`) to see past it.
+ *
+ * A route's real `loader` may be mounted here as-is: the app's prefetching
+ * loaders are pointed at the client below for the duration of the test
+ * (`setPrefetchQueryClient`, restored by the suite-wide `afterEach` in
+ * `@/test/setup.ts`), so what a loader primes is what the page then reads —
+ * rather than landing in the app-wide singleton no test can see (#157).
  */
 export function renderRoutes(
   routes: RouteObject[],
   { initialEntries = ["/"], queryClient, ...options }: RenderWithQueryOptions = {},
 ): RenderRoutesResult {
   const client = queryClient ?? createTestQueryClient();
+  setPrefetchQueryClient(client);
   const router = createMemoryRouter(routes, { initialEntries });
 
   const result = render(

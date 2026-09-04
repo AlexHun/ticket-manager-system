@@ -235,8 +235,10 @@ function titleBlock(): HTMLElement {
  * On the real router, at the entry URL — the page reads `:id` from the route,
  * so it has to be matched under a path rather than rendered bare. The sibling
  * /tickets route gives the back link somewhere real to point at. Without
- * `ticketDetailLoader`: that loader reaches the module-level query client
- * directly, which is #157's problem to solve, and this file is about the page.
+ * `ticketDetailLoader`: mounting it would double every call count here, since
+ * the test client's `staleTime: 0` makes the page refetch what the loader just
+ * primed. What it prefetches has its own test
+ * (`TicketDetailPage.loader.test.ts`); this file is about the page.
  */
 function renderDetail(
   entry: string | { pathname: string; state?: unknown } = "/tickets/12",

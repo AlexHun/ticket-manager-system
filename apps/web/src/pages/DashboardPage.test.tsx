@@ -178,8 +178,10 @@ function effectiveness(
 
 /**
  * On the real router, at the page's own path — as a navigation would match it.
- * Without `dashboardLoader`: that loader reaches the module-level query client
- * directly, which is #157's problem to solve, and this file is about the page.
+ * Without `dashboardLoader`: mounting it would double every call count here,
+ * since the test client's `staleTime: 0` makes the page refetch what the loader
+ * just primed. What it prefetches has its own test
+ * (`DashboardPage.loader.test.ts`); this file is about the page.
  */
 function renderDashboard() {
   return renderRoutes([{ path: "/", Component: DashboardPage }], {
