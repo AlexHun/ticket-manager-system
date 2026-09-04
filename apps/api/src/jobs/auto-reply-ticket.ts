@@ -1,5 +1,4 @@
-import * as Sentry from "@sentry/bun";
-import type { PgBoss, Queue } from "pg-boss";
+import type { PgBoss } from "pg-boss";
 import {
   AUTO_REPLY_DECLINE,
   MESSAGE_DIRECTION,
@@ -22,7 +21,7 @@ import {
 import { REPLY_ORIGIN, SEND_OUTCOME, sendReply } from "../outbound";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
-import { ensureQueue, getBoss } from "./boss";
+import { ensureQueue, getBoss, registerWorker, type WorkerSpec } from "./boss";
 
 /**
  * Answering a ticket from the knowledge base, and resolving it.
@@ -53,15 +52,6 @@ import { ensureQueue, getBoss } from "./boss";
 
 /** The queue a classified ticket is offered on. */
 export const AUTO_REPLY_QUEUE = "auto-reply-ticket";
-
-/**
- * Where a job goes after it has exhausted its retries.
- *
- * Has a worker, like the classifier's: its duty is to release the ticket from
- * `Processing` back to `Open`, because a ticket left claimed by a worker that
- * has given up is a ticket no agent can see and nothing will ever answer.
- */
-const AUTO_REPLY_DEAD_QUEUE = "auto-reply-ticket-dead";
 
 /** The cron queue that unsticks tickets a crashed worker left claimed. */
 const RECOVER_QUEUE = "auto-reply-ticket-recover";
@@ -99,21 +89,6 @@ const RECOVER_BATCH = 50;
  */
 const LOCAL_CONCURRENCY = 2;
 
-/** The retry ladder: 30s, then roughly 60, 120 and 240, with jitter. */
-const RETRY_LIMIT = 4;
-const RETRY_DELAY_SECONDS = 30;
-
-/**
- * How often a worker polls while LISTEN/NOTIFY is up.
- *
- * Five, not pg-boss's default of thirty, for the reason documented on the
- * classifier: **NOTIFY fires on insert, not when a retry becomes due**. A job
- * waiting out its backoff is not re-inserted, so nothing wakes a worker and every
- * rung picks up an extra delay of up to the backstop interval. Measured on the
- * default, a one-second retry delay took 58 seconds.
- */
-const NOTIFY_POLL_SECONDS = 5;
-
 /**
  * How long a job may be active before pg-boss offers it to someone else.
  *
@@ -140,9 +115,11 @@ const ANSWERABLE_CATEGORIES = [
   TICKET_CATEGORY.Other,
 ] as const;
 
-export interface AutoReplyJob {
+/** A `type` rather than an `interface`, so it satisfies `WorkerSpec`'s payload
+ *  constraint — see the note there. */
+export type AutoReplyJob = {
   ticketId: number;
-}
+};
 
 /**
  * Whether this deployment answers tickets by itself at all.
@@ -566,70 +543,41 @@ async function recoverStuck(): Promise<void> {
   }
 }
 
-/** Queue settings shared by the live queue and its dead-letter twin. */
-const QUEUE_DEFAULTS: Omit<Queue, "name"> = {
-  retryLimit: RETRY_LIMIT,
-  retryDelay: RETRY_DELAY_SECONDS,
-  retryBackoff: true,
+/**
+ * Hand the ticket to an agent, after the retries ran out.
+ *
+ * Release rather than record. The classifier's terminal path stamps a column so
+ * its sweep stops offering the ticket back; this one has to undo a claim,
+ * because a ticket left in `Processing` by a worker that has given up is a
+ * ticket no agent can see and nothing will ever answer.
+ *
+ * `unavailable`, not a judgement about the ticket: the retries ran out, so
+ * nothing was ever decided about whether the knowledge base covers this. An
+ * agent reading "the assistant could not be reached" knows to answer it
+ * themselves; "not covered by the knowledge base" would be a claim nobody made.
+ *
+ * Note what does *not* arrive here — a decline. `declined` and `ungrounded` are
+ * this feature working, the six checks refusing to send something they cannot
+ * stand behind, and routing them onto the dead-letter queue would turn the
+ * safety design into a stream of alerts until someone silenced it.
+ */
+async function onExhausted({ ticketId }: AutoReplyJob): Promise<void> {
+  await release(ticketId, TICKET_STATUS.Open, AUTO_REPLY_DECLINE.unavailable);
+}
+
+/** What `./boss` needs to run this queue. Exported for the same reason the
+ *  classifier's is: it is how either half is called without a queue backend. */
+export const AUTO_REPLY_WORKER: WorkerSpec<AutoReplyJob> = {
+  name: AUTO_REPLY_QUEUE,
+  concurrency: LOCAL_CONCURRENCY,
   expireInSeconds: EXPIRE_IN_SECONDS,
+  handle,
+  onExhausted,
 };
 
 /** Create the queues and start the workers. Called once, from `./index`. */
 export async function registerAutoReplyTicket(boss: PgBoss): Promise<void> {
-  // The dead-letter queue first: naming it below requires it to exist.
-  await ensureQueue(boss, AUTO_REPLY_DEAD_QUEUE, { retryLimit: 0 });
-
-  await ensureQueue(boss, AUTO_REPLY_QUEUE, {
-    ...QUEUE_DEFAULTS,
-    deadLetter: AUTO_REPLY_DEAD_QUEUE,
-    notify: true,
-  });
-
-  await boss.work<AutoReplyJob>(
-    AUTO_REPLY_QUEUE,
-    {
-      batchSize: 1,
-      localConcurrency: LOCAL_CONCURRENCY,
-      notifyPollingIntervalSeconds: NOTIFY_POLL_SECONDS,
-    },
-    async ([job]) => {
-      await handle(job!.data);
-    },
-  );
-
-  // Release rather than record. The classifier's dead-letter worker stamps a
-  // column so its sweep stops offering the ticket back; this one has to undo a
-  // claim, because the ticket is hidden until it does.
-  await boss.work<AutoReplyJob>(
-    AUTO_REPLY_DEAD_QUEUE,
-    { batchSize: 1 },
-    async ([job]) => {
-      const { ticketId } = job!.data;
-      console.error(
-        `[auto-reply] ticket ${ticketId} exhausted its retries; handing it to an agent`,
-      );
-      // Same rule as the classifier's: the retry ladder is expected to be used,
-      // so only running out of it is worth an alert. Note what is *not*
-      // reported — a decline. `declined` and `ungrounded` are this feature
-      // working, the six checks refusing to send something they cannot stand
-      // behind, and routing them here would turn the safety design into a
-      // stream of alerts until someone silenced it.
-      Sentry.withScope((scope) => {
-        scope.setTag("queue", AUTO_REPLY_DEAD_QUEUE);
-        scope.setContext("job", { ticketId });
-        Sentry.captureMessage(
-          "auto-reply-ticket exhausted its retries",
-          "error",
-        );
-      });
-      // `unavailable`, not a judgement about the ticket: the retries ran out, so
-      // nothing was ever decided about whether the knowledge base covers this.
-      // An agent reading "the assistant could not be reached" knows to answer it
-      // themselves; "not covered by the knowledge base" would be a claim nobody
-      // made.
-      await release(ticketId, TICKET_STATUS.Open, AUTO_REPLY_DECLINE.unavailable);
-    },
-  );
+  await registerWorker(boss, AUTO_REPLY_WORKER);
 
   await ensureQueue(boss, RECOVER_QUEUE, {
     // One sweep at a time, and no retries: a failed sweep sees the same tickets
