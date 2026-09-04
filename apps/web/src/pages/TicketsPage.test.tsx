@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CATEGORY_NONE,
@@ -15,25 +14,19 @@ import {
   type TicketsListResponse,
   type TicketWithAssignee,
 } from "@ticket/shared";
-import { renderWithQuery } from "@/test/render";
+import { apiStub } from "@/test/api-stub";
+import { renderRoutes, type TestRouter } from "@/test/render";
 import { TicketsPage } from "./TicketsPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-const mockGet = vi.fn();
-// Answers the `<Tutorial>` mounted on this page — not what any test here
-// exercises, so it always resolves to "nothing to show" and never touches
-// `mockGet`'s own call count or `mockResolvedValueOnce` queue.
-const mockTutorialGet = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (url: string, ...rest: unknown[]) =>
-      url.startsWith("/api/tutorials/")
-        ? mockTutorialGet(url, ...rest)
-        : mockGet(url, ...rest),
-  },
-}));
+// The one endpoint this page is about. The `<Tutorial>` mounted on it is
+// answered by the stub's own default — there is nothing to declare here for a
+// callout no test in this file exercises, and its request cannot reach these
+// call counts or this `mockResolvedValueOnce` queue.
+const ticketsGet = apiStub.get("/api/tickets");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -104,33 +97,25 @@ const oldestTicket = makeTicket({
   createdAt: "2025-05-01T12:00:00.000Z",
 });
 
+/**
+ * On the real router, at the given entry URL — the page's own route object,
+ * matched the way a navigation to it would match. Without `ticketsLoader`:
+ * that loader reaches the module-level query client directly, which is #157's
+ * problem to solve, and this file is about the page.
+ */
 function renderTicketsPage(entry = "/tickets") {
-  return renderWithQuery(<TicketsPage />, { initialEntries: [entry] });
+  return renderRoutes([{ path: "/tickets", Component: TicketsPage }], {
+    initialEntries: [entry],
+  });
 }
 
-/** Exposes the router's current query string so a test can assert on it. */
-function LocationProbe() {
-  const { search } = useLocation();
-  return <output data-testid="location-search">{search}</output>;
-}
-
-function renderTicketsPageWithLocation(entry = "/tickets") {
-  return renderWithQuery(
-    <>
-      <TicketsPage />
-      <LocationProbe />
-    </>,
-    { initialEntries: [entry] },
-  );
-}
-
-function locationSearch(): string {
-  return screen.getByTestId("location-search").textContent ?? "";
-}
-
-/** The current URL's params, order-insensitively. */
-function urlParams(): Record<string, string> {
-  return Object.fromEntries(new URLSearchParams(locationSearch()));
+/**
+ * The current URL's params, order-insensitively — read off the router itself
+ * rather than a probe component rendered beside the page, which is what this
+ * file used to need.
+ */
+function urlParams(router: TestRouter): Record<string, string> {
+  return Object.fromEntries(new URLSearchParams(router.state.location.search));
 }
 
 function rowSubjects(): string[] {
@@ -153,7 +138,7 @@ type TicketsRequestOptions = {
 
 /** Query params sent on the nth (0-indexed) GET /api/tickets call. */
 function sortParamsOfCall(index: number) {
-  const [, options] = mockGet.mock.calls[index] as [
+  const [, options] = ticketsGet.mock.calls[index] as [
     string,
     TicketsRequestOptions,
   ];
@@ -196,11 +181,7 @@ function filterValue(filterLabel: string): string {
 // --- Tests ----------------------------------------------------------------
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockTutorialGet.mockReset();
-  mockTutorialGet.mockResolvedValue({
-    data: { tutorial: { content: { steps: [] }, shouldShow: false } },
-  });
+  apiStub.reset();
 });
 
 afterEach(() => {
@@ -209,7 +190,7 @@ afterEach(() => {
 
 describe("TicketsPage subject link", () => {
   test("links each subject to that ticket's detail page", async () => {
-    mockGet.mockResolvedValue(
+    ticketsGet.mockResolvedValue(
       ticketsResponse([newestTicket, middleTicket, oldestTicket]),
     );
     renderTicketsPage();
@@ -224,7 +205,7 @@ describe("TicketsPage subject link", () => {
   });
 
   test("keeps the subject truncating inside the fixed-width cell", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     const link = await screen.findByRole("link", { name: "Newest ticket" });
@@ -240,7 +221,7 @@ describe("TicketsPage subject link", () => {
   });
 
   test("does not turn the other cells into links", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([oldestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([oldestTicket]));
     renderTicketsPage();
 
     await screen.findByRole("link", { name: "Oldest ticket" });
@@ -255,7 +236,7 @@ describe("TicketsPage", () => {
   // this page no longer renders. tickets.spec.ts covers it end to end.
 
   test("renders the skeleton table while the request is pending", () => {
-    mockGet.mockReturnValue(new Promise(() => {}));
+    ticketsGet.mockReturnValue(new Promise(() => {}));
     renderTicketsPage();
 
     const skeleton = screen.getByLabelText("Loading tickets");
@@ -265,13 +246,13 @@ describe("TicketsPage", () => {
   });
 
   test("calls GET /api/tickets with a cancellation signal", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
 
-    expect(mockGet).toHaveBeenCalledTimes(1);
-    const [url, options] = mockGet.mock.calls[0] as [
+    expect(ticketsGet).toHaveBeenCalledTimes(1);
+    const [url, options] = ticketsGet.mock.calls[0] as [
       string,
       TicketsRequestOptions,
     ];
@@ -280,7 +261,7 @@ describe("TicketsPage", () => {
   });
 
   test("requests the default most-recent-activity sort on mount", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -294,7 +275,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders a row per ticket once the query resolves", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
     renderTicketsPage();
 
     expect(await screen.findByText("Newest ticket")).toBeInTheDocument();
@@ -307,7 +288,7 @@ describe("TicketsPage", () => {
   // #111: the mechanism is covered in table-frame.test.tsx; this holds the name
   // this page gives it, which is the half that can drift per call site.
   test("puts the table in a keyboard-reachable region named Tickets", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -317,7 +298,7 @@ describe("TicketsPage", () => {
   });
 
   test("preserves the server's newest-first order", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -330,7 +311,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the customer name and email in the same row", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([oldestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([oldestTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Oldest ticket")).closest("tr");
@@ -341,7 +322,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders a distinct badge variant per status", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
     renderTicketsPage();
 
     // Scoped to the table so the status filter can never shadow these.
@@ -366,7 +347,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders a dash when the ticket has no category", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Newest ticket")).closest("tr");
@@ -376,7 +357,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the category when the ticket has one", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([middleTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([middleTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Middle ticket")).closest("tr");
@@ -388,7 +369,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the createdAt as a localised date", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     const row = (await screen.findByText("Newest ticket")).closest("tr");
@@ -399,7 +380,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders the column headers", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -419,7 +400,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders an empty-state message when no tickets are returned", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([]));
+    ticketsGet.mockResolvedValue(ticketsResponse([]));
     renderTicketsPage();
 
     expect(await screen.findByText("No tickets found.")).toBeInTheDocument();
@@ -427,7 +408,7 @@ describe("TicketsPage", () => {
   });
 
   test("renders an alert when the request fails", async () => {
-    mockGet.mockRejectedValue(new Error("boom"));
+    ticketsGet.mockRejectedValue(new Error("boom"));
     renderTicketsPage();
 
     const alert = await screen.findByRole("alert");
@@ -436,7 +417,7 @@ describe("TicketsPage", () => {
   });
 
   test("surfaces the API error message from an axios error", async () => {
-    mockGet.mockRejectedValue(
+    ticketsGet.mockRejectedValue(
       Object.assign(new Error("Request failed"), {
         isAxiosError: true,
         response: { status: 401, data: { error: "Unauthenticated" } },
@@ -449,7 +430,7 @@ describe("TicketsPage", () => {
   });
 
   test("does not flash the skeleton after data arrives", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await waitFor(() => {
@@ -463,7 +444,7 @@ describe("TicketsPage sorting", () => {
   const allTickets = [newestTicket, middleTicket, oldestTicket];
 
   async function renderLoaded() {
-    mockGet.mockResolvedValue(ticketsResponse(allTickets));
+    ticketsGet.mockResolvedValue(ticketsResponse(allTickets));
     const user = userEvent.setup();
     renderTicketsPage();
     await screen.findByText("Newest ticket");
@@ -475,7 +456,7 @@ describe("TicketsPage sorting", () => {
 
     await user.click(screen.getByRole("button", { name: "Status" }));
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1)).toEqual({
       sort: TICKET_SORT_FIELD.status,
       order: SORT_ORDER.asc,
@@ -491,7 +472,7 @@ describe("TicketsPage sorting", () => {
     // flips it to ascending — which is "longest silence first".
     await user.click(screen.getByRole("button", { name: "Activity" }));
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1)).toEqual({
       sort: TICKET_SORT_FIELD.lastMessageAt,
       order: SORT_ORDER.asc,
@@ -505,11 +486,11 @@ describe("TicketsPage sorting", () => {
     const subject = screen.getByRole("button", { name: "Subject" });
 
     await user.click(subject);
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     await user.click(subject);
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
     await user.click(subject);
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(4));
 
     // asc -> desc -> back to asc, never an unsorted request
     expect(sortParamsOfCall(1).order).toBe(SORT_ORDER.asc);
@@ -541,7 +522,7 @@ describe("TicketsPage sorting", () => {
     // The mock ignores the params and always answers in this order, which is
     // NOT alphabetical by subject (that would be Middle, Newest, Oldest).
     await user.click(screen.getByRole("button", { name: "Subject" }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
 
     expect(sortParamsOfCall(1).sort).toBe(TICKET_SORT_FIELD.subject);
     expect(rowSubjects()).toEqual([
@@ -555,10 +536,10 @@ describe("TicketsPage sorting", () => {
     const user = await renderLoaded();
 
     await chooseOption(user, "Status", TICKET_STATUS.Open);
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
 
     await user.click(screen.getByRole("button", { name: "Subject" }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
 
     expect(sortParamsOfCall(2)).toEqual({
       sort: TICKET_SORT_FIELD.subject,
@@ -570,16 +551,16 @@ describe("TicketsPage sorting", () => {
   });
 
   test("keeps the current rows on screen while the re-sorted set loads", async () => {
-    mockGet.mockResolvedValueOnce(ticketsResponse(allTickets));
+    ticketsGet.mockResolvedValueOnce(ticketsResponse(allTickets));
     const user = userEvent.setup();
     renderTicketsPage();
     await screen.findByText("Newest ticket");
 
     // Second request never settles — the table must not fall back to a skeleton.
-    mockGet.mockReturnValueOnce(new Promise(() => {}));
+    ticketsGet.mockReturnValueOnce(new Promise(() => {}));
     await user.click(screen.getByRole("button", { name: "Subject" }));
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
     expect(screen.getByText("Newest ticket")).toBeInTheDocument();
   });
@@ -589,7 +570,7 @@ describe("TicketsPage filtering", () => {
   const allTickets = [newestTicket, middleTicket, oldestTicket];
 
   async function renderLoaded() {
-    mockGet.mockResolvedValue(ticketsResponse(allTickets));
+    ticketsGet.mockResolvedValue(ticketsResponse(allTickets));
     const user = userEvent.setup();
     renderTicketsPage();
     await screen.findByText("Newest ticket");
@@ -609,7 +590,7 @@ describe("TicketsPage filtering", () => {
 
     await chooseOption(user, "Status", TICKET_STATUS.Resolved);
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1).status).toBe(TICKET_STATUS.Resolved);
   });
 
@@ -618,7 +599,7 @@ describe("TicketsPage filtering", () => {
 
     await chooseOption(user, "Category", TICKET_CATEGORY.Refund);
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1).category).toBe(TICKET_CATEGORY.Refund);
   });
 
@@ -627,7 +608,7 @@ describe("TicketsPage filtering", () => {
 
     await chooseOption(user, "Category", "Uncategorised");
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1).category).toBe(CATEGORY_NONE);
   });
 
@@ -636,10 +617,10 @@ describe("TicketsPage filtering", () => {
 
     await user.type(screen.getByLabelText("Search"), "refund");
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1).q).toBe("refund");
     // Six keystrokes, one request — the input is not firing per character.
-    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(ticketsGet).toHaveBeenCalledTimes(2);
   });
 
   test("ignores a whitespace-only search", async () => {
@@ -648,7 +629,7 @@ describe("TicketsPage filtering", () => {
     await user.type(screen.getByLabelText("Search"), "   ");
 
     await waitFor(() => expect(sortParamsOfCall(0)).not.toHaveProperty("q"));
-    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(ticketsGet).toHaveBeenCalledTimes(1);
   });
 
   test("clears every filter at once", async () => {
@@ -656,11 +637,11 @@ describe("TicketsPage filtering", () => {
 
     await chooseOption(user, "Status", TICKET_STATUS.Open);
     await chooseOption(user, "Category", TICKET_CATEGORY.Technical);
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
 
     await user.click(screen.getByRole("button", { name: /clear filters/i }));
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(4));
     const params = sortParamsOfCall(3);
     expect(params).not.toHaveProperty("status");
     expect(params).not.toHaveProperty("category");
@@ -685,7 +666,7 @@ describe("TicketsPage filtering", () => {
   test("explains an empty result differently when filters are active", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue(ticketsResponse([]));
+    ticketsGet.mockResolvedValue(ticketsResponse([]));
     await chooseOption(user, "Status", TICKET_STATUS.Closed);
 
     expect(
@@ -697,7 +678,7 @@ describe("TicketsPage filtering", () => {
   test("keeps the filter controls usable when nothing matches", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue(ticketsResponse([]));
+    ticketsGet.mockResolvedValue(ticketsResponse([]));
     await chooseOption(user, "Status", TICKET_STATUS.Closed);
     await screen.findByText("No tickets match these filters.");
 
@@ -718,7 +699,7 @@ describe("TicketsPage pagination", () => {
   }
 
   async function renderLoaded() {
-    mockGet.mockResolvedValue(manyPages());
+    ticketsGet.mockResolvedValue(manyPages());
     const user = userEvent.setup();
     renderTicketsPage();
     await screen.findByText("Newest ticket");
@@ -742,10 +723,10 @@ describe("TicketsPage pagination", () => {
   test("advances to the next page", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    ticketsGet.mockResolvedValue(manyPages({ page: 2 }));
     await user.click(screen.getByRole("button", { name: "Next page" }));
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(sortParamsOfCall(1).page).toBe(2);
     expect(await screen.findByText("26–50 of 231")).toBeInTheDocument();
   });
@@ -756,7 +737,7 @@ describe("TicketsPage pagination", () => {
     expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
 
-    mockGet.mockResolvedValue(manyPages({ page: 10 }));
+    ticketsGet.mockResolvedValue(manyPages({ page: 10 }));
     await user.click(screen.getByRole("button", { name: "Next page" }));
 
     await waitFor(() =>
@@ -766,7 +747,7 @@ describe("TicketsPage pagination", () => {
   });
 
   test("clamps the range label on a partial last page", async () => {
-    mockGet.mockResolvedValue(ticketsResponse(allTickets, { total: 53, page: 3 }));
+    ticketsGet.mockResolvedValue(ticketsResponse(allTickets, { total: 53, page: 3 }));
     renderTicketsPage();
 
     // 53 items, 25 per page: the third page holds only 3.
@@ -777,14 +758,14 @@ describe("TicketsPage pagination", () => {
   test("changing the page size returns to the first page", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    ticketsGet.mockResolvedValue(manyPages({ page: 2 }));
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
 
-    mockGet.mockResolvedValue(manyPages({ pageSize: 50 }));
+    ticketsGet.mockResolvedValue(manyPages({ pageSize: 50 }));
     await chooseOption(user, "Per page", "50");
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
     expect(sortParamsOfCall(2).pageSize).toBe(50);
     expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
   });
@@ -792,14 +773,14 @@ describe("TicketsPage pagination", () => {
   test("re-sorting returns to the first page", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    ticketsGet.mockResolvedValue(manyPages({ page: 2 }));
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
 
-    mockGet.mockResolvedValue(manyPages());
+    ticketsGet.mockResolvedValue(manyPages());
     await user.click(screen.getByRole("button", { name: "Subject" }));
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
     // Page 2 of the old ordering is meaningless in the new one.
     expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
     expect(sortParamsOfCall(2).sort).toBe(TICKET_SORT_FIELD.subject);
@@ -808,20 +789,20 @@ describe("TicketsPage pagination", () => {
   test("filtering returns to the first page", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockResolvedValue(manyPages({ page: 2 }));
+    ticketsGet.mockResolvedValue(manyPages({ page: 2 }));
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
 
-    mockGet.mockResolvedValue(manyPages({ total: 12 }));
+    ticketsGet.mockResolvedValue(manyPages({ total: 12 }));
     await chooseOption(user, "Status", TICKET_STATUS.Open);
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
     expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
     expect(sortParamsOfCall(2).status).toBe(TICKET_STATUS.Open);
   });
 
   test("hides the pagination bar when nothing matches", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([], { total: 0 }));
+    ticketsGet.mockResolvedValue(ticketsResponse([], { total: 0 }));
     renderTicketsPage();
 
     await screen.findByText("No tickets found.");
@@ -833,10 +814,10 @@ describe("TicketsPage pagination", () => {
   test("keeps the current page on screen while the next one loads", async () => {
     const user = await renderLoaded();
 
-    mockGet.mockReturnValueOnce(new Promise(() => {}));
+    ticketsGet.mockReturnValueOnce(new Promise(() => {}));
     await user.click(screen.getByRole("button", { name: "Next page" }));
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
     expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
     expect(screen.getByText("Newest ticket")).toBeInTheDocument();
   });
@@ -854,7 +835,7 @@ describe("TicketsTable column widths", () => {
   }
 
   test("declares a width for every column", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -862,7 +843,7 @@ describe("TicketsTable column widths", () => {
   });
 
   test("the skeleton declares the same columns as the table", () => {
-    mockGet.mockReturnValue(new Promise(() => {}));
+    ticketsGet.mockReturnValue(new Promise(() => {}));
     renderTicketsPage();
 
     // Both read one shared map, so a new column can't reach only one of them.
@@ -871,7 +852,7 @@ describe("TicketsTable column widths", () => {
   });
 
   test("gives every column a resize handle", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -884,7 +865,7 @@ describe("TicketsTable column widths", () => {
 
 describe("TicketsPage URL state", () => {
   test("reads sort, filters and pagination from the URL on mount", async () => {
-    mockGet.mockResolvedValue(
+    ticketsGet.mockResolvedValue(
       ticketsResponse([middleTicket], { page: 2, pageSize: 10, total: 30 }),
     );
     renderTicketsPage(
@@ -903,11 +884,11 @@ describe("TicketsPage URL state", () => {
       pageSize: 10,
     });
     // One request, not a default-params round trip followed by a corrected one.
-    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(ticketsGet).toHaveBeenCalledTimes(1);
   });
 
   test("shows the URL's filters in the controls", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([middleTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([middleTicket]));
     renderTicketsPage("/tickets?status=Resolved&category=Technical&q=login");
 
     await screen.findByText("Middle ticket");
@@ -919,7 +900,7 @@ describe("TicketsPage URL state", () => {
   });
 
   test("reflects a URL sort in the column header", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage("/tickets?sort=subject&order=asc");
 
     await screen.findByText("Newest ticket");
@@ -927,7 +908,7 @@ describe("TicketsPage URL state", () => {
   });
 
   test("falls back per-field on garbage params, keeping the valid ones", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage("/tickets?sort=bogus&page=abc&status=Nope&pageSize=10");
 
     await screen.findByText("Newest ticket");
@@ -943,24 +924,24 @@ describe("TicketsPage URL state", () => {
   });
 
   test("leaves the URL untouched on mount when nothing was chosen", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
-    renderTicketsPageWithLocation();
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    const { router } = renderTicketsPage();
 
     await screen.findByText("Newest ticket");
     // Defaults are never written, so the resting URL stays shareable-clean.
-    expect(locationSearch()).toBe("");
+    expect(router.state.location.search).toBe("");
   });
 
   test("writes a sort change to the URL", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
-    renderTicketsPageWithLocation();
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    const { router } = renderTicketsPage();
     const user = userEvent.setup();
 
     await screen.findByText("Newest ticket");
     await user.click(screen.getByRole("button", { name: "Subject" }));
 
     await waitFor(() =>
-      expect(urlParams()).toMatchObject({
+      expect(urlParams(router)).toMatchObject({
         sort: TICKET_SORT_FIELD.subject,
         order: SORT_ORDER.asc,
       }),
@@ -968,21 +949,21 @@ describe("TicketsPage URL state", () => {
   });
 
   test("writes a filter change to the URL", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
-    renderTicketsPageWithLocation();
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    const { router } = renderTicketsPage();
     const user = userEvent.setup();
 
     await screen.findByText("Newest ticket");
     await chooseOption(user, "Status", TICKET_STATUS.Resolved);
 
     await waitFor(() =>
-      expect(urlParams().status).toBe(TICKET_STATUS.Resolved),
+      expect(urlParams(router).status).toBe(TICKET_STATUS.Resolved),
     );
   });
 
   test("writes the settled search to the URL", async () => {
-    mockGet.mockResolvedValue(ticketsResponse([newestTicket]));
-    renderTicketsPageWithLocation();
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    const { router } = renderTicketsPage();
     const user = userEvent.setup();
 
     await screen.findByText("Newest ticket");
@@ -996,38 +977,38 @@ describe("TicketsPage URL state", () => {
     // it went whenever the whole suite ran in parallel on a loaded machine. It
     // passes alone every time, which is what made it look like a real failure
     // rather than a short clock.
-    await waitFor(() => expect(urlParams().q).toBe("refund"), {
+    await waitFor(() => expect(urlParams(router).q).toBe("refund"), {
       timeout: 5_000,
     });
   });
 
   test("drops the page when a filter changes", async () => {
-    mockGet.mockResolvedValue(
+    ticketsGet.mockResolvedValue(
       ticketsResponse([newestTicket], { page: 2, total: 60 }),
     );
-    renderTicketsPageWithLocation("/tickets?page=2");
+    const { router } = renderTicketsPage("/tickets?page=2");
     const user = userEvent.setup();
 
     await screen.findByText("Newest ticket");
-    expect(urlParams().page).toBe("2");
+    expect(urlParams(router).page).toBe("2");
 
     await chooseOption(user, "Status", TICKET_STATUS.Open);
 
     // Page 2 of the old result set means nothing in the new one.
-    await waitFor(() => expect(urlParams()).not.toHaveProperty("page"));
-    expect(urlParams().status).toBe(TICKET_STATUS.Open);
+    await waitFor(() => expect(urlParams(router)).not.toHaveProperty("page"));
+    expect(urlParams(router).status).toBe(TICKET_STATUS.Open);
   });
 
   test("keeps the page when only the page changes", async () => {
-    mockGet.mockResolvedValue(
+    ticketsGet.mockResolvedValue(
       ticketsResponse([newestTicket], { page: 1, total: 60 }),
     );
-    renderTicketsPageWithLocation();
+    const { router } = renderTicketsPage();
     const user = userEvent.setup();
 
     await screen.findByText("Newest ticket");
     await user.click(screen.getByRole("button", { name: "Next page" }));
 
-    await waitFor(() => expect(urlParams().page).toBe("2"));
+    await waitFor(() => expect(urlParams(router).page).toBe("2"));
   });
 });
