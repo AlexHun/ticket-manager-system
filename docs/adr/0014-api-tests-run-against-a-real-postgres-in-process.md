@@ -22,8 +22,10 @@ one specifier.
 
 Answered from a working spike ([#152](https://github.com/AlexHun/ticket-manager-system/issues/152)),
 not from documentation. `apps/api/src/routes/tickets.test.ts` is converted end
-to end and green; everything below was measured on this machine (Windows,
-Bun 1.3.13, Prisma 7.9.1) against this repo's 28 migrations.
+to end and green; everything below was measured against this repo's 28
+migrations on Bun 1.3.13 and Prisma 7.9.1, on a Windows development machine
+**and** on CI — which turned out to matter more than expected, see the cost
+section.
 
 ## Considered Options
 
@@ -51,13 +53,17 @@ on:
 
 | | PGLite (in process) | local Postgres |
 | --- | --- | --- |
-| schema ready | 3.4s (cached) / ~10s cold | 1.4s |
+| schema ready | 3.4s (cached) / ~10s cold — but see the platform note below | 1.4s |
 | `SELECT 1` | 4.0ms | 1.5ms |
 | `findUnique` | 9.2ms | 3.1ms |
 | `findMany`, 50 rows + relation | 15.4ms | 5.3ms |
 | conditional `updateMany` | 6.9ms | 3.0ms |
 | interactive `$transaction` | 6.6ms | 3.8ms |
 | `resetDb()` | 22ms | 40ms |
+
+Both columns are the Windows machine, which is where PGLite is at its worst —
+on the Linux runner its per-test cost is ~4x lower, so the real gap is
+narrower than this table makes it look.
 
 Rejected anyway, on the dev loop. `bun run --filter @ticket/api test` currently
 needs *nothing* — no key, no server, no container — and that is a property
@@ -86,23 +92,37 @@ rollback, `Prisma.sql` raw queries, and a `P2002` on a unique violation all
 behave. This is the single largest risk in the decision and the reason the
 previous paragraph names its exit.
 
-**The suite gets slower, by roughly an order of magnitude.** Measured, three
-runs each: 4.07s before, 10.0s with one file converted. Of that, ~3.4s is a
-fixed cost paid once per run and ~150ms is the marginal cost of a converted
-route test (a light test that resets, writes one row and reads it back costs
-~40ms). The eleven files still to convert hold 175 tests, which projects the
-finished suite at **30–40s**. That is the price, stated plainly; it buys a
-suite that cannot go red on Tuesday and green on Wednesday for the same commit.
+**The suite gets slower, and how much depends on the platform far more than
+expected.** Both numbers are real and both are worth having:
+
+| | Windows dev machine | CI (ubuntu-latest) |
+| --- | --- | --- |
+| suite before | 4.07s | 0.85s |
+| suite, one file converted | 10.0s | 4.09s |
+| fixed cost per run | ~3.4s (cached) | ~2.65s (**cold**, no cache) |
+| per converted route test | ~150ms | ~26–39ms |
+| projected, all 190 tests converted | 30–40s | **~10s** |
+
+PGLite on the Windows machine is roughly four times slower than on the Linux
+runner at everything, and its cold boot is twenty times slower than PGLite's
+own published figures — a local pathology, not a property of the library. CI
+is the number that governs the decision, because CI is where the
+order-dependent failures this ADR exists to remove actually happen: a suite
+going from 0.85s to about 10s buys a suite that cannot go red on Tuesday and
+green on Wednesday for the same commit. The Windows figures are kept because
+they are what the dev loop feels, and because they are what any future
+comparison run on that machine has to be measured against.
 
 **The schema is replayed, and the result is cached.** `src/test/pg.ts` reads
-every `prisma/migrations/*/migration.sql` in name order and `exec`s it. That
-costs ~10s, so the finished data directory is dumped to
+every `prisma/migrations/*/migration.sql` in name order and `exec`s it, then
+dumps the finished data directory to
 `node_modules/.cache/pglite/schema-<hash>.tar` (39.7MB, gitignored via
-`node_modules`) keyed by a hash of the SQL — later runs restore it in ~1.5s and
-a new migration invalidates it automatically. Gzip was measured and rejected:
-4.6MB instead of 39.7MB, but ~300ms slower to restore, and the file is never
-committed or transferred. CI has no cache for it today and will pay the ~10s
-bake per run until one is added; that is a follow-up, not a blocker.
+`node_modules`) keyed by a hash of the SQL — a new migration invalidates it
+automatically. The cache is worth ~8s a run on Windows (~10s replay against a
+~1.5s restore) and about ~2s on Linux, which is why CI without one is already
+acceptable and a cache step there is a nicety rather than a blocker. Gzip was
+measured and rejected: 4.6MB instead of 39.7MB, but ~300ms slower to restore,
+and the file is never committed or transferred.
 
 **One database for the whole run, reset per test.** `bun test` loads every file
 into a single process — the same property that makes the mock registry
