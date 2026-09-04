@@ -2,20 +2,19 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TUTORIAL_PAGE_KEY, type TutorialContent } from "@ticket/shared";
-import { renderWithQuery } from "@/test/render";
+import { apiStub } from "@/test/api-stub";
+import { renderRoutes } from "@/test/render";
 import { TutorialsPage } from "./TutorialsPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-const mockGet = vi.fn();
-const mockPut = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (...args: unknown[]) => mockGet(...args),
-    put: (...args: unknown[]) => mockPut(...args),
-  },
-}));
+// The admin roster of tutorials, and the save behind the editor dialog. This
+// is the one page in the app that does *not* mount a `<Tutorial>` of its own,
+// so `/api/tutorials/:pageKey` here is only ever the PUT.
+const tutorialsGet = apiStub.get("/api/tutorials");
+const tutorialPut = apiStub.put("/api/tutorials/:pageKey");
 
 // --- Fixtures ---------------------------------------------------------------
 
@@ -38,8 +37,11 @@ const written: TutorialContent = {
   updatedByName: "Ada Admin",
 };
 
+/** On the real router, at the page's own path — as a navigation would match it. */
 function renderTutorialsPage() {
-  return renderWithQuery(<TutorialsPage />, { initialEntries: ["/tutorials"] });
+  return renderRoutes([{ path: "/tutorials", Component: TutorialsPage }], {
+    initialEntries: ["/tutorials"],
+  });
 }
 
 async function openEditDialog(name: string) {
@@ -51,8 +53,7 @@ async function openEditDialog(name: string) {
 // --- Tests ------------------------------------------------------------------
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockPut.mockReset();
+  apiStub.reset();
 });
 
 afterEach(() => {
@@ -61,7 +62,7 @@ afterEach(() => {
 
 describe("TutorialsPage", () => {
   test("renders the loading skeleton while the request is pending", () => {
-    mockGet.mockReturnValue(new Promise(() => {}));
+    tutorialsGet.mockReturnValue(new Promise(() => {}));
     renderTutorialsPage();
 
     expect(screen.getByLabelText("Loading tutorials")).toBeInTheDocument();
@@ -72,7 +73,7 @@ describe("TutorialsPage", () => {
   });
 
   test("renders a row per tutorial once the query resolves", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [written, unwritten] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written, unwritten] } });
     renderTutorialsPage();
 
     expect(await screen.findByText("Dashboard")).toBeInTheDocument();
@@ -81,7 +82,7 @@ describe("TutorialsPage", () => {
   });
 
   test("shows the title and step count for a written tutorial", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [written] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     renderTutorialsPage();
 
     expect(await screen.findByText("Reading the dashboard")).toBeInTheDocument();
@@ -90,7 +91,7 @@ describe("TutorialsPage", () => {
   });
 
   test("shows 'Not written yet' for a page with no content", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
     renderTutorialsPage();
 
     expect(await screen.findByText("Not written yet")).toBeInTheDocument();
@@ -102,19 +103,19 @@ describe("TutorialsPage", () => {
   });
 
   test("calls GET /api/tutorials with a cancellation signal", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [written] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     renderTutorialsPage();
 
     await screen.findByText("Dashboard");
 
-    expect(mockGet).toHaveBeenCalledTimes(1);
-    const [url, options] = mockGet.mock.calls[0] as [string, { signal: AbortSignal }];
+    expect(tutorialsGet).toHaveBeenCalledTimes(1);
+    const [url, options] = tutorialsGet.mock.calls[0] as [string, { signal: AbortSignal }];
     expect(url).toBe("/api/tutorials");
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
   test("renders an alert when the request fails", async () => {
-    mockGet.mockRejectedValue(new Error("boom"));
+    tutorialsGet.mockRejectedValue(new Error("boom"));
     renderTutorialsPage();
 
     const alert = await screen.findByRole("alert");
@@ -124,7 +125,7 @@ describe("TutorialsPage", () => {
 
 describe("TutorialsPage — editing", () => {
   test("opens the editor pre-filled with the page's existing content", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [written] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     renderTutorialsPage();
     await screen.findByText("Dashboard");
 
@@ -146,7 +147,7 @@ describe("TutorialsPage — editing", () => {
   });
 
   test("opens the editor with one blank step for an unwritten page", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
     renderTutorialsPage();
     await screen.findByText("Outbox");
 
@@ -158,7 +159,7 @@ describe("TutorialsPage — editing", () => {
   });
 
   test("Add step appends a blank step, up to the max", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
     renderTutorialsPage();
     await screen.findByText("Outbox");
 
@@ -171,7 +172,7 @@ describe("TutorialsPage — editing", () => {
   });
 
   test("Remove is disabled with only one step, and removes otherwise", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [written] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     renderTutorialsPage();
     await screen.findByText("Dashboard");
 
@@ -191,7 +192,7 @@ describe("TutorialsPage — editing", () => {
   });
 
   test("shows a validation error when the title is empty", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
     renderTutorialsPage();
     await screen.findByText("Outbox");
 
@@ -205,14 +206,14 @@ describe("TutorialsPage — editing", () => {
     expect(
       await within(dialog).findByText("Give the tutorial a title"),
     ).toBeInTheDocument();
-    expect(mockPut).not.toHaveBeenCalled();
+    expect(tutorialPut).not.toHaveBeenCalled();
   });
 
   test("submits PUT /api/tutorials/:pageKey, closes the dialog, and refetches on success", async () => {
-    mockGet
+    tutorialsGet
       .mockResolvedValueOnce({ data: { tutorials: [unwritten] } })
       .mockResolvedValueOnce({ data: { tutorials: [written] } });
-    mockPut.mockResolvedValue({ data: { tutorial: written } });
+    tutorialPut.mockResolvedValue({ data: { tutorial: written } });
 
     renderTutorialsPage();
     await screen.findByText("Outbox");
@@ -229,9 +230,9 @@ describe("TutorialsPage — editing", () => {
     await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
-      expect(mockPut).toHaveBeenCalledTimes(1);
+      expect(tutorialPut).toHaveBeenCalledTimes(1);
     });
-    const [url, body] = mockPut.mock.calls[0] as [
+    const [url, body] = tutorialPut.mock.calls[0] as [
       string,
       { title: string; steps: { title: string; body: string }[] },
     ];
@@ -246,16 +247,16 @@ describe("TutorialsPage — editing", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(tutorialsGet).toHaveBeenCalledTimes(2);
   });
 
   test("keeps the dialog open and shows the server error when the save fails", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [written] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     const axiosError = Object.assign(new Error("Request failed"), {
       isAxiosError: true,
       response: { status: 400, data: { error: "Give the tutorial a title" } },
     });
-    mockPut.mockRejectedValue(axiosError);
+    tutorialPut.mockRejectedValue(axiosError);
 
     renderTutorialsPage();
     await screen.findByText("Dashboard");
@@ -268,13 +269,13 @@ describe("TutorialsPage — editing", () => {
       await within(dialog).findByText("Give the tutorial a title"),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(tutorialsGet).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("TutorialsPage — step anchors", () => {
   test("a step's anchor picker defaults to centered, with that page's own options", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
     renderTutorialsPage();
     await screen.findByText("Outbox");
 
@@ -294,8 +295,8 @@ describe("TutorialsPage — step anchors", () => {
   });
 
   test("picking an anchor saves it on that step", async () => {
-    mockGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
-    mockPut.mockResolvedValue({ data: { tutorial: unwritten } });
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
+    tutorialPut.mockResolvedValue({ data: { tutorial: unwritten } });
 
     renderTutorialsPage();
     await screen.findByText("Outbox");
@@ -316,8 +317,8 @@ describe("TutorialsPage — step anchors", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
 
-    await waitFor(() => expect(mockPut).toHaveBeenCalledTimes(1));
-    const [, body] = mockPut.mock.calls[0] as [
+    await waitFor(() => expect(tutorialPut).toHaveBeenCalledTimes(1));
+    const [, body] = tutorialPut.mock.calls[0] as [
       string,
       { steps: { anchor?: string }[] },
     ];

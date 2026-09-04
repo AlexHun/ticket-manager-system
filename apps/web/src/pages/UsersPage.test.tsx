@@ -3,29 +3,22 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { USER_ROLE, type User } from "@ticket/shared";
 import { toast } from "@/components/ui/sonner";
-import { renderWithQuery } from "@/test/render";
+import { apiStub } from "@/test/api-stub";
+import { renderRoutes } from "@/test/render";
 import { UsersPage } from "./UsersPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-const mockGet = vi.fn();
-const mockPost = vi.fn();
-const mockDelete = vi.fn();
-// Answers the `<Tutorial>` mounted on this page — not what any test here
-// exercises, so it always resolves to "nothing to show" and never touches
-// `mockGet`'s own call count or `mockResolvedValueOnce` queue.
-const mockTutorialGet = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (url: string, ...rest: unknown[]) =>
-      url.startsWith("/api/tutorials/")
-        ? mockTutorialGet(url, ...rest)
-        : mockGet(url, ...rest),
-    post: (...args: unknown[]) => mockPost(...args),
-    delete: (...args: unknown[]) => mockDelete(...args),
-  },
-}));
+// The roster and the three writes against it. The invite POST gets its own
+// path rather than sharing `usersPost`'s counter, so "only the initial users
+// fetch" and "POST /api/users was never called" each mean what they say. The
+// `<Tutorial>` mounted on this page is answered by the stub's own default.
+const usersGet = apiStub.get("/api/users");
+const usersPost = apiStub.post("/api/users");
+const invitePost = apiStub.post("/api/users/:id/invite");
+const userDelete = apiStub.delete("/api/users/:id");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -81,8 +74,11 @@ const automatedUser: User = {
   createdAt: "2025-01-01T12:00:00.000Z",
 };
 
+/** On the real router, at the page's own path — as a navigation would match it. */
 function renderUsersPage() {
-  return renderWithQuery(<UsersPage />, { initialEntries: ["/users"] });
+  return renderRoutes([{ path: "/users", Component: UsersPage }], {
+    initialEntries: ["/users"],
+  });
 }
 
 async function openNewUserDialog() {
@@ -94,13 +90,7 @@ async function openNewUserDialog() {
 // --- Tests ----------------------------------------------------------------
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockPost.mockReset();
-  mockDelete.mockReset();
-  mockTutorialGet.mockReset();
-  mockTutorialGet.mockResolvedValue({
-    data: { tutorial: { content: { steps: [] }, shouldShow: false } },
-  });
+  apiStub.reset();
 });
 
 afterEach(() => {
@@ -112,7 +102,7 @@ describe("UsersPage", () => {
   // this page no longer renders. user-management.spec.ts covers it end to end.
 
   test("renders the skeleton table while the request is pending", () => {
-    mockGet.mockReturnValue(new Promise(() => {}));
+    usersGet.mockReturnValue(new Promise(() => {}));
     renderUsersPage();
 
     expect(screen.getByLabelText("Loading users")).toBeInTheDocument();
@@ -125,7 +115,7 @@ describe("UsersPage", () => {
   });
 
   test("renders a row per user once the query resolves", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
 
     expect(await screen.findByText("Ada Admin")).toBeInTheDocument();
@@ -140,7 +130,7 @@ describe("UsersPage", () => {
   // #111: the mechanism is covered in table-frame.test.tsx; this holds the name
   // this page gives it, which is the half that can drift per call site.
   test("puts the roster in a keyboard-reachable region named Users", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
 
     expect(await screen.findByText("Ada Admin")).toBeInTheDocument();
@@ -150,19 +140,19 @@ describe("UsersPage", () => {
   });
 
   test("calls GET /api/users with a cancellation signal", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser] } });
     renderUsersPage();
 
     await screen.findByText("Ada Admin");
 
-    expect(mockGet).toHaveBeenCalledTimes(1);
-    const [url, options] = mockGet.mock.calls[0] as [string, { signal: AbortSignal }];
+    expect(usersGet).toHaveBeenCalledTimes(1);
+    const [url, options] = usersGet.mock.calls[0] as [string, { signal: AbortSignal }];
     expect(url).toBe("/api/users");
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
   test("renders admin and agent role badges with distinct variants", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
 
     const adminBadge = await screen.findByText(USER_ROLE.admin);
@@ -175,7 +165,7 @@ describe("UsersPage", () => {
   });
 
   test("shows no verification badge — the app has no verification flow", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
 
     await screen.findByText("Ada Admin");
@@ -185,7 +175,7 @@ describe("UsersPage", () => {
   });
 
   test("renders the createdAt as a localised date", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser] } });
     renderUsersPage();
 
     const row = (await screen.findByText("Ada Admin")).closest("tr");
@@ -196,7 +186,7 @@ describe("UsersPage", () => {
   });
 
   test("renders an empty-state message when no users are returned", async () => {
-    mockGet.mockResolvedValue({ data: { users: [] } });
+    usersGet.mockResolvedValue({ data: { users: [] } });
     renderUsersPage();
 
     expect(await screen.findByText("No users found.")).toBeInTheDocument();
@@ -204,7 +194,7 @@ describe("UsersPage", () => {
   });
 
   test("renders an alert when the request fails", async () => {
-    mockGet.mockRejectedValue(new Error("boom"));
+    usersGet.mockRejectedValue(new Error("boom"));
     renderUsersPage();
 
     const alert = await screen.findByRole("alert");
@@ -214,7 +204,7 @@ describe("UsersPage", () => {
   });
 
   test("renders the column headers", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser] } });
     renderUsersPage();
 
     await screen.findByText("Ada Admin");
@@ -230,7 +220,7 @@ describe("UsersPage", () => {
     // Both render through UsersTableHead, so a column added to one can't be
     // missed on the other — see the comment on UsersTableHead in
     // UsersTable.tsx.
-    mockGet.mockReturnValue(new Promise(() => {}));
+    usersGet.mockReturnValue(new Promise(() => {}));
     renderUsersPage();
 
     const skeleton = screen.getByLabelText("Loading users");
@@ -242,7 +232,7 @@ describe("UsersPage", () => {
   });
 
   test("does not flash the skeleton after data arrives", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser] } });
     renderUsersPage();
 
     await waitFor(() => {
@@ -254,7 +244,7 @@ describe("UsersPage", () => {
 
 describe("UsersPage — create user", () => {
   test("renders the New user button above the table", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser] } });
     renderUsersPage();
 
     await screen.findByText("Ada Admin");
@@ -262,7 +252,7 @@ describe("UsersPage — create user", () => {
   });
 
   test("opens the dialog with name and email fields", async () => {
-    mockGet.mockResolvedValue({ data: { users: [] } });
+    usersGet.mockResolvedValue({ data: { users: [] } });
     renderUsersPage();
 
     await openNewUserDialog();
@@ -279,7 +269,7 @@ describe("UsersPage — create user", () => {
   });
 
   test("shows a validation error when name is shorter than 3 characters", async () => {
-    mockGet.mockResolvedValue({ data: { users: [] } });
+    usersGet.mockResolvedValue({ data: { users: [] } });
     renderUsersPage();
 
     const user = await openNewUserDialog();
@@ -292,11 +282,11 @@ describe("UsersPage — create user", () => {
     expect(
       await within(dialog).findByText("Name must be at least 3 characters"),
     ).toBeInTheDocument();
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(usersPost).not.toHaveBeenCalled();
   });
 
   test("shows a validation error when email is invalid", async () => {
-    mockGet.mockResolvedValue({ data: { users: [] } });
+    usersGet.mockResolvedValue({ data: { users: [] } });
     renderUsersPage();
 
     const user = await openNewUserDialog();
@@ -309,14 +299,14 @@ describe("UsersPage — create user", () => {
     expect(
       await within(dialog).findByText("Enter a valid email"),
     ).toBeInTheDocument();
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(usersPost).not.toHaveBeenCalled();
   });
 
   test("submits POST /api/users, closes the dialog, and refetches the list on success", async () => {
-    mockGet
+    usersGet
       .mockResolvedValueOnce({ data: { users: [adminUser] } })
       .mockResolvedValueOnce({ data: { users: [adminUser, newAgentUser] } });
-    mockPost.mockResolvedValue({ data: { user: newAgentUser } });
+    usersPost.mockResolvedValue({ data: { user: newAgentUser } });
 
     renderUsersPage();
     await screen.findByText("Ada Admin");
@@ -329,9 +319,9 @@ describe("UsersPage — create user", () => {
     await user.click(within(dialog).getByRole("button", { name: "Create user" }));
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledTimes(1);
+      expect(usersPost).toHaveBeenCalledTimes(1);
     });
-    const [postUrl, postBody] = mockPost.mock.calls[0] as [
+    const [postUrl, postBody] = usersPost.mock.calls[0] as [
       string,
       { name: string; email: string },
     ];
@@ -348,16 +338,16 @@ describe("UsersPage — create user", () => {
 
     // List refetched and shows the new row
     expect(await screen.findByText("Nora New")).toBeInTheDocument();
-    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(usersGet).toHaveBeenCalledTimes(2);
   });
 
   test("keeps the dialog open and shows the server error when POST fails", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser] } });
     const axiosError = Object.assign(new Error("Request failed"), {
       isAxiosError: true,
       response: { status: 409, data: { error: "Email already in use" } },
     });
-    mockPost.mockRejectedValue(axiosError);
+    usersPost.mockRejectedValue(axiosError);
 
     renderUsersPage();
     await screen.findByText("Ada Admin");
@@ -374,13 +364,13 @@ describe("UsersPage — create user", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     // Only the initial users fetch
-    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(usersGet).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("UsersPage — delete user", () => {
   test("renders a Delete button for each agent row and hides it for admins", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
     await screen.findByText("Ada Admin");
 
@@ -393,7 +383,7 @@ describe("UsersPage — delete user", () => {
   });
 
   test("opens a confirmation dialog with the user's name and email", async () => {
-    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [agentUser] } });
     renderUsersPage();
     await screen.findByText("Aaron Agent");
 
@@ -415,7 +405,7 @@ describe("UsersPage — delete user", () => {
   });
 
   test("Cancel closes the dialog without calling DELETE", async () => {
-    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [agentUser] } });
     renderUsersPage();
     await screen.findByText("Aaron Agent");
 
@@ -429,14 +419,14 @@ describe("UsersPage — delete user", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockDelete).not.toHaveBeenCalled();
+    expect(userDelete).not.toHaveBeenCalled();
   });
 
   test("confirming calls DELETE /api/users/:id, closes the dialog, and refetches", async () => {
-    mockGet
+    usersGet
       .mockResolvedValueOnce({ data: { users: [adminUser, agentUser] } })
       .mockResolvedValueOnce({ data: { users: [adminUser] } });
-    mockDelete.mockResolvedValue({ data: {} });
+    userDelete.mockResolvedValue({ data: {} });
 
     renderUsersPage();
     await screen.findByText("Aaron Agent");
@@ -451,9 +441,9 @@ describe("UsersPage — delete user", () => {
     );
 
     await waitFor(() => {
-      expect(mockDelete).toHaveBeenCalledTimes(1);
+      expect(userDelete).toHaveBeenCalledTimes(1);
     });
-    expect(mockDelete.mock.calls[0]?.[0]).toBe("/api/users/u_2");
+    expect(userDelete.mock.calls[0]?.[0]).toBe("/api/users/u_2");
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -461,16 +451,16 @@ describe("UsersPage — delete user", () => {
     await waitFor(() => {
       expect(screen.queryByText("Aaron Agent")).not.toBeInTheDocument();
     });
-    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(usersGet).toHaveBeenCalledTimes(2);
   });
 
   test("keeps the dialog open and shows the server error when DELETE fails", async () => {
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     const axiosError = Object.assign(new Error("Request failed"), {
       isAxiosError: true,
       response: { status: 403, data: { error: "Admin users cannot be deleted" } },
     });
-    mockDelete.mockRejectedValue(axiosError);
+    userDelete.mockRejectedValue(axiosError);
 
     renderUsersPage();
     await screen.findByText("Aaron Agent");
@@ -489,7 +479,7 @@ describe("UsersPage — delete user", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     // No refetch on failure
-    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(usersGet).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -499,7 +489,7 @@ describe("UsersPage — resend invite", () => {
     // button. An admin locked out of their own account is exactly who needs it,
     // and the column means nothing here — see ADR 0010 and the comment in
     // UsersTable.tsx.
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
     await screen.findByText("Ada Admin");
 
@@ -512,7 +502,7 @@ describe("UsersPage — resend invite", () => {
   });
 
   test("hides the resend button on the assistant's row", async () => {
-    mockGet.mockResolvedValue({ data: { users: [agentUser, automatedUser] } });
+    usersGet.mockResolvedValue({ data: { users: [agentUser, automatedUser] } });
     renderUsersPage();
     // Anchored on the address, not the name: the row carries "Assistant" twice
     // — once as the name and once as the badge that replaces its role.
@@ -531,8 +521,8 @@ describe("UsersPage — resend invite", () => {
   });
 
   test("clicking it POSTs to /api/users/:id/invite and toasts success", async () => {
-    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
-    mockPost.mockResolvedValue({ data: {} });
+    usersGet.mockResolvedValue({ data: { users: [agentUser] } });
+    invitePost.mockResolvedValue({ data: {} });
 
     renderUsersPage();
     await screen.findByText("Aaron Agent");
@@ -543,9 +533,9 @@ describe("UsersPage — resend invite", () => {
     );
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledTimes(1);
+      expect(invitePost).toHaveBeenCalledTimes(1);
     });
-    expect(mockPost.mock.calls[0]?.[0]).toBe("/api/users/u_2/invite");
+    expect(invitePost.mock.calls[0]?.[0]).toBe("/api/users/u_2/invite");
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
@@ -553,12 +543,12 @@ describe("UsersPage — resend invite", () => {
       );
     });
     // Nothing on the roster changed, so nothing refetches it.
-    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(usersGet).toHaveBeenCalledTimes(1);
   });
 
   test("toasts the server's message when the invite fails", async () => {
-    mockGet.mockResolvedValue({ data: { users: [agentUser] } });
-    mockPost.mockRejectedValue(
+    usersGet.mockResolvedValue({ data: { users: [agentUser] } });
+    invitePost.mockRejectedValue(
       Object.assign(new Error("Request failed"), {
         isAxiosError: true,
         response: { status: 404, data: { error: "User not found" } },
@@ -582,8 +572,8 @@ describe("UsersPage — resend invite", () => {
   test("only the clicked row's button goes pending", async () => {
     // The reason the mutation sits in ResendInviteButton rather than on the
     // page: one shared `isPending` would disable every row at once.
-    mockGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
-    mockPost.mockReturnValue(new Promise(() => {}));
+    usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
+    invitePost.mockReturnValue(new Promise(() => {}));
 
     renderUsersPage();
     await screen.findByText("Aaron Agent");
