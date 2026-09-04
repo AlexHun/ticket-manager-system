@@ -8,11 +8,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-} from "@dnd-kit/sortable";
+import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { LayoutGrid } from "lucide-react";
 import {
   DASHBOARD_SCOPE,
@@ -52,7 +48,11 @@ import {
   writeDashboardParams,
   type DashboardPatch,
 } from "@/lib/dashboard-params";
-import { DASHBOARD_PANEL_WIDTH_ORDER } from "@/lib/dashboard-panels";
+import {
+  applyPanelCommand,
+  panelCapabilities,
+  reorderPanels,
+} from "@/lib/dashboard-panels";
 import {
   assistantEffectivenessQueryOptions,
   ticketStatsQueryOptions,
@@ -123,39 +123,16 @@ export function DashboardPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
 
-  function moveEarlier(layout: DashboardPanelPlacement[], panelId: DashboardPanelId) {
-    const index = layout.findIndex((p) => p.panelId === panelId);
-    if (index <= 0) return;
-    saveLayout.mutate(arrayMove(layout, index, index - 1));
-  }
-
-  function moveLater(layout: DashboardPanelPlacement[], panelId: DashboardPanelId) {
-    const index = layout.findIndex((p) => p.panelId === panelId);
-    if (index === -1 || index >= layout.length - 1) return;
-    saveLayout.mutate(arrayMove(layout, index, index + 1));
-  }
-
-  function resize(
-    layout: DashboardPanelPlacement[],
-    panelId: DashboardPanelId,
-    direction: 1 | -1,
-  ) {
-    const index = layout.findIndex((p) => p.panelId === panelId);
-    if (index === -1) return;
-    const widthIndex = DASHBOARD_PANEL_WIDTH_ORDER.indexOf(
-      layout[index]!.width,
-    );
-    const nextWidthIndex = widthIndex + direction;
-    if (nextWidthIndex < 0 || nextWidthIndex >= DASHBOARD_PANEL_WIDTH_ORDER.length) {
-      return;
-    }
-    const next = [...layout];
-    next[index] = {
-      ...next[index]!,
-      width: DASHBOARD_PANEL_WIDTH_ORDER[nextWidthIndex]!,
-    };
-    saveLayout.mutate(next);
-  }
+  /**
+   * Where every layout change lands — the four toolbar commands and a pointer
+   * drag alike. The arrangement itself is decided by the pure functions in
+   * `@/lib/dashboard-panels`, which hand back `null` for a move that would
+   * change nothing; this page's whole share of it is knowing that `null` means
+   * there is nothing to persist.
+   */
+  const save = (next: DashboardPanelPlacement[] | null) => {
+    if (next) saveLayout.mutate(next);
+  };
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -258,18 +235,17 @@ export function DashboardPage() {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
-            onDragEnd={(event) => {
-              const { active, over } = event;
-              if (!over || active.id === over.id) return;
-              const oldIndex = layoutData.layout.findIndex(
-                (p) => p.panelId === active.id,
-              );
-              const newIndex = layoutData.layout.findIndex(
-                (p) => p.panelId === over.id,
-              );
-              if (oldIndex === -1 || newIndex === -1) return;
-              saveLayout.mutate(
-                arrayMove(layoutData.layout, oldIndex, newIndex),
+            // dnd-kit reports the ids it was handed, typed as its own
+            // `UniqueIdentifier` — `reorderPanels` looks both up in the array
+            // and declines the drag if either is a stranger.
+            onDragEnd={({ active, over }) => {
+              if (!over) return;
+              save(
+                reorderPanels(
+                  layoutData.layout,
+                  active.id as DashboardPanelId,
+                  over.id as DashboardPanelId,
+                ),
               );
             }}
           >
@@ -278,39 +254,31 @@ export function DashboardPage() {
               strategy={rectSortingStrategy}
             >
               <div className={cn(DASHBOARD_GRID, "*:animate-panel-in")}>
-                {layoutData.layout.map((placement, index) => {
-                  const widthIndex = DASHBOARD_PANEL_WIDTH_ORDER.indexOf(
-                    placement.width,
-                  );
-                  return (
-                    <DashboardPanelSlot
-                      key={placement.panelId}
-                      placement={placement}
-                      customizing={customizing}
-                      isFirst={index === 0}
-                      isLast={index === layoutData.layout.length - 1}
-                      canShrink={widthIndex > 0}
-                      canGrow={widthIndex < DASHBOARD_PANEL_WIDTH_ORDER.length - 1}
-                      onMoveEarlier={() =>
-                        moveEarlier(layoutData.layout, placement.panelId)
-                      }
-                      onMoveLater={() =>
-                        moveLater(layoutData.layout, placement.panelId)
-                      }
-                      onShrink={() =>
-                        resize(layoutData.layout, placement.panelId, -1)
-                      }
-                      onGrow={() =>
-                        resize(layoutData.layout, placement.panelId, 1)
-                      }
-                    >
-                      {renderDashboardPanel(placement.panelId, {
-                        data,
-                        effectiveness,
-                      })}
-                    </DashboardPanelSlot>
-                  );
-                })}
+                {layoutData.layout.map((placement) => (
+                  <DashboardPanelSlot
+                    key={placement.panelId}
+                    placement={placement}
+                    capabilities={panelCapabilities(
+                      layoutData.layout,
+                      placement.panelId,
+                    )}
+                    customizing={customizing}
+                    onCommand={(command) =>
+                      save(
+                        applyPanelCommand(
+                          layoutData.layout,
+                          placement.panelId,
+                          command,
+                        ),
+                      )
+                    }
+                  >
+                    {renderDashboardPanel(placement.panelId, {
+                      data,
+                      effectiveness,
+                    })}
+                  </DashboardPanelSlot>
+                ))}
               </div>
             </SortableContext>
           </DndContext>
@@ -323,8 +291,8 @@ export function DashboardPage() {
 /** One panel's content, by durable id — see `DASHBOARD_PANEL_ID` in
  * `@ticket/shared` for why the id exists at all. Kept as one function rather
  * than inlined per-case in `DashboardPage`, so `DashboardPanelSlot`'s props
- * (position, width, customize handlers) stay visually separate from what
- * each panel actually renders. */
+ * (the placement and its commands) stay visually separate from what each panel
+ * actually renders. */
 function renderDashboardPanel(
   panelId: DashboardPanelId,
   {

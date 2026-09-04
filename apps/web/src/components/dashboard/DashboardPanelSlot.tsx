@@ -1,15 +1,64 @@
 import type { ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowLeft, ArrowRight, GripVertical, Minimize2, Maximize2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  GripVertical,
+  Minimize2,
+  Maximize2,
+  type LucideIcon,
+} from "lucide-react";
 import type { DashboardPanelPlacement } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
-import { DASHBOARD_PANEL_LABEL } from "@/lib/dashboard-panels";
+import {
+  DASHBOARD_PANEL_COMMAND,
+  DASHBOARD_PANEL_LABEL,
+  type DashboardPanelCapabilities,
+  type DashboardPanelCommand,
+} from "@/lib/dashboard-panels";
 import { cn } from "@/lib/utils";
 import { PANEL_SPAN } from "./grid";
 
+/** The toolbar, as data: one row per command, in the order they appear. The
+ * `aria-label`s are the only handle anything has on these buttons — both the
+ * component tests and `tests/e2e/dashboard-layout.spec.ts` name them — so the
+ * label builder lives here rather than being spelled out per button. */
+const PANEL_COMMAND_BUTTONS: {
+  command: DashboardPanelCommand;
+  icon: LucideIcon;
+  label: (panel: string) => string;
+}[] = [
+  {
+    command: DASHBOARD_PANEL_COMMAND.moveEarlier,
+    icon: ArrowLeft,
+    label: (panel) => `Move ${panel} earlier`,
+  },
+  {
+    command: DASHBOARD_PANEL_COMMAND.moveLater,
+    icon: ArrowRight,
+    label: (panel) => `Move ${panel} later`,
+  },
+  {
+    command: DASHBOARD_PANEL_COMMAND.shrink,
+    icon: Minimize2,
+    label: (panel) => `Shrink ${panel}`,
+  },
+  {
+    command: DASHBOARD_PANEL_COMMAND.grow,
+    icon: Maximize2,
+    label: (panel) => `Grow ${panel}`,
+  },
+];
+
 /**
  * One panel's grid slot, in and out of customize mode.
+ *
+ * It knows where the panel sits (`placement`), what moving it from there could
+ * achieve (`capabilities`, from `panelCapabilities`), and how to ask for one —
+ * and nothing about the array the answers came from. Deciding which command a
+ * button sends is the whole of its involvement in the layout; what a command
+ * does to the layout is `applyPanelCommand`, in `@/lib/dashboard-panels`.
  *
  * `useSortable` is what moves the whole slot as an array reorder — pointer
  * drag only, on the grip handle below. There is deliberately no `attributes`
@@ -19,32 +68,19 @@ import { PANEL_SPAN } from "./grid";
  * adjacent controls (the tutorial callout, `AiShine`) don't ask a screen
  * reader user to learn a drag gesture at all. The four labelled buttons next
  * to the grip are the actual keyboard-operable equivalent the ticket asks
- * for — full Tab/Enter support, no drag simulation required — see
- * `DashboardPage` for the handlers they call.
+ * for — full Tab/Enter support, no drag simulation required.
  */
 export function DashboardPanelSlot({
   placement,
+  capabilities,
   customizing,
-  isFirst,
-  isLast,
-  canGrow,
-  canShrink,
-  onMoveEarlier,
-  onMoveLater,
-  onGrow,
-  onShrink,
+  onCommand,
   children,
 }: {
   placement: DashboardPanelPlacement;
+  capabilities: DashboardPanelCapabilities;
   customizing: boolean;
-  isFirst: boolean;
-  isLast: boolean;
-  canGrow: boolean;
-  canShrink: boolean;
-  onMoveEarlier: () => void;
-  onMoveLater: () => void;
-  onGrow: () => void;
-  onShrink: () => void;
+  onCommand: (command: DashboardPanelCommand) => void;
   children: ReactNode;
 }) {
   const { setNodeRef, listeners, transform, transition, isDragging } =
@@ -66,46 +102,19 @@ export function DashboardPanelSlot({
     >
       {customizing && (
         <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 rounded-md border bg-popover p-1 shadow-sm">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Move ${label} earlier`}
-            disabled={isFirst}
-            onClick={onMoveEarlier}
-          >
-            <ArrowLeft aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Move ${label} later`}
-            disabled={isLast}
-            onClick={onMoveLater}
-          >
-            <ArrowRight aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Shrink ${label}`}
-            disabled={!canShrink}
-            onClick={onShrink}
-          >
-            <Minimize2 aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Grow ${label}`}
-            disabled={!canGrow}
-            onClick={onGrow}
-          >
-            <Maximize2 aria-hidden="true" />
-          </Button>
+          {PANEL_COMMAND_BUTTONS.map(({ command, icon: Icon, label: name }) => (
+            <Button
+              key={command}
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={name(label)}
+              disabled={!capabilities[command]}
+              onClick={() => onCommand(command)}
+            >
+              <Icon aria-hidden="true" />
+            </Button>
+          ))}
           <Button
             type="button"
             variant="ghost"
