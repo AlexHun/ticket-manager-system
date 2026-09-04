@@ -9,6 +9,7 @@ import {
   type TicketStatsSummary,
 } from "@ticket/shared";
 import { formatHours, formatPercent } from "@/lib/format";
+import { ROUTE } from "@/lib/routes";
 import { StatTile } from "./StatTile";
 import {
   firstReplyVerdict,
@@ -71,7 +72,7 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
             // 4.65:1 in light mode and, worse, left "this is a link" carried by
             // nothing but a hover state that a touch device never shows.
             <Link
-              to={`/tickets?status=${STATUS_BACKLOG}&assignedTo=${ASSIGNEE_NONE}`}
+              to={`${ROUTE.tickets.path}?status=${STATUS_BACKLOG}&assignedTo=${ASSIGNEE_NONE}`}
               className="text-foreground underline underline-offset-2"
             >
               {summary.openUnassigned} unassigned
@@ -104,7 +105,7 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
             : untriaged > 0
               ? (
                   <Link
-                    to={`/tickets?category=${CATEGORY_NONE}`}
+                    to={`${ROUTE.tickets.path}?category=${CATEGORY_NONE}`}
                     className="text-foreground underline underline-offset-2"
                   >
                     {untriaged} untriaged

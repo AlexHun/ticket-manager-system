@@ -4,6 +4,7 @@ import {
   type ActivityEntityType,
   type ActivityEntry,
 } from "@ticket/shared";
+import { ROUTE, ticketDetailPath } from "./routes";
 
 /**
  * How one entry in the unified feed (`GET /api/activity`) reads on the
@@ -61,9 +62,9 @@ export const ACTIVITY_ENTITY_LABEL: Record<ActivityEntityType, string> = {
 export function activityEntryHref(entry: ActivityEntry): string | null {
   switch (entry.entityType) {
     case ACTIVITY_ENTITY_TYPE.ticket:
-      return entry.entityId ? `/tickets/${entry.entityId}` : null;
+      return entry.entityId ? ticketDetailPath(entry.entityId) : null;
     case ACTIVITY_ENTITY_TYPE.knowledge:
-      return "/knowledge";
+      return ROUTE.knowledge.path;
     case ACTIVITY_ENTITY_TYPE.admin:
     case ACTIVITY_ENTITY_TYPE.automation:
       return null;

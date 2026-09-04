@@ -13,9 +13,14 @@ import {
 } from "lucide-react";
 import { matchPath } from "react-router-dom";
 import { NEW_FEATURE_KEY, USER_ROLE, type NewFeatureKey, type UserRole } from "@ticket/shared";
+import { ROUTE, type RoutePath } from "@/lib/routes";
 
 export interface NavItem {
-  to: string;
+  /**
+   * Read from `ROUTE`, never retyped — the union is what makes a stale path a
+   * type error rather than a nav row that quietly links nowhere (issue #151).
+   */
+  to: RoutePath;
   label: string;
   icon: LucideIcon;
   /**
@@ -37,36 +42,36 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboardIcon, end: true },
-  { to: "/tickets", label: "Tickets", icon: TicketIcon },
-  { to: "/users", label: "Users", icon: UsersIcon, role: USER_ROLE.admin },
+  { to: ROUTE.dashboard.path, label: "Dashboard", icon: LayoutDashboardIcon, end: true },
+  { to: ROUTE.tickets.path, label: "Tickets", icon: TicketIcon },
+  { to: ROUTE.users.path, label: "Users", icon: UsersIcon, role: USER_ROLE.admin },
   {
-    to: "/knowledge",
+    to: ROUTE.knowledge.path,
     label: "Knowledge base",
     icon: BookTextIcon,
     role: USER_ROLE.admin,
   },
   {
-    to: "/outbox",
+    to: ROUTE.outbox.path,
     label: "Outbox",
     icon: SendIcon,
     role: USER_ROLE.admin,
   },
   {
-    to: "/pipeline",
+    to: ROUTE.pipeline.path,
     label: "Pipeline",
     icon: WorkflowIcon,
     role: USER_ROLE.admin,
   },
   {
-    to: "/activity",
+    to: ROUTE.activity.path,
     label: "Activity",
     icon: HistoryIcon,
     role: USER_ROLE.admin,
     newFeatureKey: NEW_FEATURE_KEY.activityPage,
   },
   {
-    to: "/tutorials",
+    to: ROUTE.tutorials.path,
     label: "Tutorials",
     icon: GraduationCapIcon,
     role: USER_ROLE.admin,
@@ -89,8 +94,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
  */
 export const DEV_NAV_ITEMS: readonly NavItem[] = import.meta.env.DEV
   ? ([
-      { to: "/__dev/map", label: "Project map", icon: NetworkIcon, end: true },
-      { to: "/__dev/tests", label: "Tests", icon: FlaskConicalIcon, end: true },
+      { to: ROUTE.devMap.path, label: "Project map", icon: NetworkIcon, end: true },
+      { to: ROUTE.devTests.path, label: "Tests", icon: FlaskConicalIcon, end: true },
     ] as const)
   : [];
 

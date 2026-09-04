@@ -23,6 +23,7 @@ import { Hint } from "@/components/Hint";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatSince } from "@/lib/format";
+import { ticketDetailPath } from "@/lib/routes";
 import { TableFrame } from "@/lib/table-frame";
 import type { TicketListLocationState } from "@/lib/ticket-list-params";
 import { ROW_DENSITY, type RowDensity } from "@/lib/use-row-density";
@@ -210,7 +211,7 @@ function SubjectCell({ ticket }: { ticket: Ticket }) {
   return (
     <Hint content={ticket.subject}>
       <Link
-        to={`/tickets/${ticket.id}`}
+        to={ticketDetailPath(ticket.id)}
         state={{ listSearch: location.search } satisfies TicketListLocationState}
         // `block` is what makes `truncate` work: an inline <a> isn't constrained
         // by the fixed-layout cell, so the ellipsis would never appear.

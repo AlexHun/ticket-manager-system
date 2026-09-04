@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { resetPasswordSchema, type ResetPasswordValues } from "@ticket/core";
 import { authClient } from "@/lib/auth-client";
+import { ROUTE } from "@/lib/routes";
 import { LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,7 +71,7 @@ export function ResetPasswordPage() {
     }
 
     toast.success("Password set — you can sign in now");
-    navigate("/login", { replace: true });
+    navigate(ROUTE.login.path, { replace: true });
   };
 
   const unusable = !token || linkError !== null;
@@ -106,10 +107,10 @@ export function ResetPasswordPage() {
             {unusable ? (
               <div className="flex flex-col gap-2">
                 <Button asChild>
-                  <Link to="/forgot-password">Request a new link</Link>
+                  <Link to={ROUTE.forgotPassword.path}>Request a new link</Link>
                 </Button>
                 <Button asChild variant="ghost" size="sm">
-                  <Link to="/login">Back to sign in</Link>
+                  <Link to={ROUTE.login.path}>Back to sign in</Link>
                 </Button>
               </div>
             ) : (

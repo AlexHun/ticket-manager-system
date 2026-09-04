@@ -58,7 +58,8 @@ import {
   ticketStatsQueryOptions,
 } from "@/lib/dashboard-queries";
 import { extractErrorMessage } from "@/lib/errors";
-import { ROUTE_TIMING, useRouteRenderedMark } from "@/lib/route-timing";
+import { useRouteRenderedMark } from "@/lib/route-timing-layout";
+import { ROUTE } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 /**
@@ -113,7 +114,7 @@ export function DashboardPage() {
   // three would be measuring the wrong thing — the panels below render only
   // once every one of them is in hand.
   useRouteRenderedMark(
-    ROUTE_TIMING.dashboard,
+    ROUTE.dashboard.timingKey,
     Boolean(data && effectiveness && layoutData),
   );
 

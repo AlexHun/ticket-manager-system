@@ -14,6 +14,7 @@ import {
   type PipelineRun,
   type PipelineRunResponse,
 } from "@ticket/shared";
+import { ticketDetailPath } from "@/lib/routes";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Tutorial } from "@/components/Tutorial";
@@ -527,7 +528,7 @@ function RunVerdict({
       )}
 
       <Link
-        to={`/tickets/${run.ticketId}`}
+        to={ticketDetailPath(run.ticketId)}
         className="inline-block text-xs underline underline-offset-2 hover:text-foreground"
       >
         Open the ticket

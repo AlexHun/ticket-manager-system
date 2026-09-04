@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { TicketUnreadResponse } from "@ticket/shared";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
+import { ticketDetailPath } from "@/lib/routes";
 import { ticketKeys } from "@/lib/ticket-queries";
 
 /**
@@ -59,7 +60,7 @@ export function useAssignmentToasts(): void {
         toast.message(`Assigned to you: ${ticket.subject}`, {
           action: {
             label: "Open",
-            onClick: () => navigate(`/tickets/${ticket.id}`),
+            onClick: () => navigate(ticketDetailPath(ticket.id)),
           },
         });
       }

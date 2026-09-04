@@ -5,6 +5,7 @@ import {
   DEFAULT_TICKET_SORT,
   FIRST_PAGE,
 } from "@ticket/shared";
+import { ROUTE } from "./routes";
 
 /**
  * Router state carried from the tickets list to a ticket detail page.
@@ -26,7 +27,7 @@ export interface TicketListLocationState {
  */
 export function listPathFrom(state: unknown): string {
   const listSearch = (state as TicketListLocationState | null)?.listSearch;
-  return `/tickets${listSearch ?? ""}`;
+  return `${ROUTE.tickets.path}${listSearch ?? ""}`;
 }
 
 /**

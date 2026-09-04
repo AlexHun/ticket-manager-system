@@ -18,6 +18,7 @@ import {
   useMarkNewFeatureSeen,
   useNewFeatureStatus,
 } from "@/lib/new-feature-queries";
+import { ROUTE } from "@/lib/routes";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { LogoMark } from "./Logo";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
@@ -117,7 +118,7 @@ export function AppSidebar() {
                           notification, not a standing workload gauge, so a
                           permanent "0" here would be exactly the badge nobody
                           looks at twice. */}
-                      {item.to === "/tickets" && unreadCount > 0 && (
+                      {item.to === ROUTE.tickets.path && unreadCount > 0 && (
                         <SidebarMenuBadge className="bg-sidebar-primary text-sidebar-primary-foreground peer-data-[active=true]/menu-button:text-sidebar-primary-foreground">
                           {unreadCount}
                         </SidebarMenuBadge>

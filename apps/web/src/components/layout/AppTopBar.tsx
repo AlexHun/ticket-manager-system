@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Hint } from "@/components/Hint";
 import { ChangelogPopover } from "@/components/layout/ChangelogPopover";
+import { ROUTE } from "@/lib/routes";
 import { useTutorialTrigger } from "@/lib/tutorial-trigger";
 
 /**
@@ -39,7 +40,7 @@ export function AppTopBar() {
     // been typed into it. Awaiting the refetch here closes the gap, so
     // LoginPage only ever mounts against a settled, signed-out store.
     await refetchSession();
-    navigate("/login", { replace: true });
+    navigate(ROUTE.login.path, { replace: true });
   };
 
   return (

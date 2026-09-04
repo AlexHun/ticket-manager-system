@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { loginSchema, type LoginValues } from "@ticket/core";
 import { signIn, useSession } from "@/lib/auth-client";
+import { ROUTE } from "@/lib/routes";
 import { LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -150,7 +151,7 @@ export function LoginPage() {
                   password any more, so this link is not a convenience — for
                   anyone locked out, it is the whole recovery path. */}
               <Link
-                to="/forgot-password"
+                to={ROUTE.forgotPassword.path}
                 className="text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
                 Forgot your password?

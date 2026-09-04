@@ -7,7 +7,8 @@ import { LoginPage } from "@/pages/LoginPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { RouteTimingLayout } from "@/lib/route-timing";
+import { RouteTimingLayout } from "@/lib/route-timing-layout";
+import { ROUTE } from "@/lib/routes";
 import { dashboardLoader } from "@/pages/DashboardPage.loader";
 import { ticketDetailLoader } from "@/pages/TicketDetailPage.loader";
 import { ticketsLoader } from "@/pages/TicketsPage.loader";
@@ -48,7 +49,7 @@ import { ticketsLoader } from "@/pages/TicketsPage.loader";
 const devRoutes: RouteObject[] = import.meta.env.DEV
   ? [
       {
-        path: "/__dev/*",
+        path: ROUTE.dev.path,
         lazy: () =>
           import("@/dev/DevRoutes").then((m) => ({ Component: m.DevRoutes })),
       },
@@ -75,17 +76,17 @@ export const router = createBrowserRouter([
      * watch navigations start, and this is the only route in the tree that is
      * mounted before every one of them — including `/login` → `/`, where the
      * outgoing screen is the login form and nothing under `ProtectedRoute`
-     * exists yet. See `@/lib/route-timing`.
+     * exists yet. See `@/lib/route-timing-layout`.
      */
     Component: RouteTimingLayout,
     children: [
-      { path: "/login", Component: LoginPage },
+      { path: ROUTE.login.path, Component: LoginPage },
       // Signed-out, like /login: somebody following an invitation has no
       // session yet, and a colleague resetting a forgotten password cannot
       // get one. Both must sit outside ProtectedRoute or the link bounces
       // straight back to sign-in.
-      { path: "/forgot-password", Component: ForgotPasswordPage },
-      { path: "/reset-password", Component: ResetPasswordPage },
+      { path: ROUTE.forgotPassword.path, Component: ForgotPasswordPage },
+      { path: ROUTE.resetPassword.path, Component: ResetPasswordPage },
       {
         Component: ProtectedRoute,
         children: [
@@ -95,7 +96,7 @@ export const router = createBrowserRouter([
             Component: AppShell,
             children: [
               {
-                path: "/",
+                path: ROUTE.dashboard.path,
                 // Three requests, started together and awaited together — the
                 // page's three `useQuery` calls are concurrent on mount, and a
                 // loader that serialized them would move the fetch earlier
@@ -108,7 +109,7 @@ export const router = createBrowserRouter([
                   })),
               },
               {
-                path: "/tickets",
+                path: ROUTE.tickets.path,
                 // Re-runs on every filter, sort and page change, not just on
                 // entry: they all move the search string, and React Router
                 // revalidates when it does. That is the intended shape — see
@@ -121,7 +122,7 @@ export const router = createBrowserRouter([
                   })),
               },
               {
-                path: "/tickets/:id",
+                path: ROUTE.ticketDetail.path,
                 // Statically imported, unlike the component beside it, and
                 // that is what makes it worth having: React Router runs a
                 // static `loader` in parallel with the route's `lazy`
@@ -142,7 +143,7 @@ export const router = createBrowserRouter([
                 Component: AdminRoute,
                 children: [
                   {
-                    path: "/users",
+                    path: ROUTE.users.path,
                     lazy: () =>
                       import("@/pages/UsersPage").then((m) => ({
                         Component: m.UsersPage,
@@ -155,14 +156,14 @@ export const router = createBrowserRouter([
                   // route in `apps/api/src/routes/knowledge.ts` is the
                   // control.
                   {
-                    path: "/knowledge",
+                    path: ROUTE.knowledge.path,
                     lazy: () =>
                       import("@/pages/KnowledgePage").then((m) => ({
                         Component: m.KnowledgePage,
                       })),
                   },
                   {
-                    path: "/outbox",
+                    path: ROUTE.outbox.path,
                     lazy: () =>
                       import("@/pages/OutboxPage").then((m) => ({
                         Component: m.OutboxPage,
@@ -173,7 +174,7 @@ export const router = createBrowserRouter([
                   // into it. `requireAdmin` on every route in
                   // `apps/api/src/routes/pipeline.ts` is the control.
                   {
-                    path: "/pipeline",
+                    path: ROUTE.pipeline.path,
                     lazy: () =>
                       import("@/pages/PipelinePage").then((m) => ({
                         Component: m.PipelinePage,
@@ -185,7 +186,7 @@ export const router = createBrowserRouter([
                   // route in `apps/api/src/routes/activity.ts` is the
                   // control; this guard is UX.
                   {
-                    path: "/activity",
+                    path: ROUTE.activity.path,
                     lazy: () =>
                       import("@/pages/ActivityPage").then((m) => ({
                         Component: m.ActivityPage,
@@ -197,7 +198,7 @@ export const router = createBrowserRouter([
                   // on `GET /api/tutorials` and `PUT /api/tutorials/:pageKey`
                   // — see `apps/api/src/routes/tutorials.ts`.
                   {
-                    path: "/tutorials",
+                    path: ROUTE.tutorials.path,
                     lazy: () =>
                       import("@/pages/TutorialsPage").then((m) => ({
                         Component: m.TutorialsPage,
@@ -210,7 +211,7 @@ export const router = createBrowserRouter([
               // pretending the link worked. Route matching scores by
               // specificity rather than order, so the `/__dev/*` route below
               // still wins over this splat for its own paths.
-              { path: "*", Component: NotFoundPage },
+              { path: ROUTE.notFound.path, Component: NotFoundPage },
             ],
           },
         ],
