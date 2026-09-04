@@ -2,12 +2,17 @@ import { expect, spyOn, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { PgBoss, Queue, WorkOptions } from "pg-boss";
-import { ensureQueue, registerWorker, type WorkerSpec } from "./boss";
+import {
+  registerSweep,
+  registerWorker,
+  type SweepSpec,
+  type WorkerSpec,
+} from "./boss";
 
 /**
  * What `./boss` promises every consumer, tested against a fake backend.
  *
- * Two things live here. The first is the rule this directory cannot enforce by
+ * Three things live here. The first is the rule this directory cannot enforce by
  * types: **a queue's settings must be reconciled on boot, not merely created
  * once.** `boss.createQueue` is a no-op when the queue already exists, so a
  * consumer that calls it directly gets settings frozen at whatever the constants
@@ -19,6 +24,16 @@ import { ensureQueue, registerWorker, type WorkerSpec } from "./boss";
  * and the exhaustion path. Those used to be re-typed per consumer, where nothing
  * could assert them at all — a fake `PgBoss` is enough to assert all of them
  * here, because the recipe is entirely a matter of what gets *asked* of pg-boss.
+ *
+ * The third is `registerSweep`'s, which #158 took over from the same four
+ * scheduled queues: the singleton policy, the deliberate absence of a ladder,
+ * and the schedule that is re-asserted on every boot. Its last two tests are the
+ * ones with teeth — they read the directory and fail on any job module that
+ * reaches for pg-boss's own registration calls, which is the only way the
+ * settings above can drift back out of this module. `ensureQueue` is no longer
+ * exported and no longer has a test of its own: both registrars go through it,
+ * so a create-then-update it skipped would fail here anyway, and testing the
+ * contract beats testing the plumbing.
  */
 
 /** Everything a `PgBoss` was asked to do, and nothing that needs a database. */
@@ -26,6 +41,7 @@ function fakeBoss() {
   const calls: string[] = [];
   const created = new Map<string, Omit<Queue, "name">>();
   const updated = new Map<string, Partial<Queue>>();
+  const scheduled = new Map<string, string>();
   const workers = new Map<
     string,
     {
@@ -52,9 +68,13 @@ function fakeBoss() {
       workers.set(name, { options, handler });
       return name;
     },
+    schedule: async (name: string, cron: string) => {
+      calls.push(`schedule:${name}`);
+      scheduled.set(name, cron);
+    },
   } as unknown as PgBoss;
 
-  return { boss, calls, created, updated, workers };
+  return { boss, calls, created, updated, scheduled, workers };
 }
 
 /** A worker that records what it was handed and needs nothing to run. */
@@ -77,30 +97,21 @@ function fakeSpec() {
   return { spec, handled, exhausted };
 }
 
-test("ensureQueue creates the queue and then reapplies its settings", async () => {
-  const { boss, calls } = fakeBoss();
+/** A sweep that records every tick and needs nothing to run. */
+function fakeSweep() {
+  const ticks: number[] = [];
 
-  await ensureQueue(boss, "some-queue", { retryLimit: 0, expireInSeconds: 300 });
-
-  // Order matters: `updateQueue` is what makes the source authoritative, and it
-  // only reaches an existing queue if the create ran first.
-  expect(calls).toEqual(["create:some-queue", "update:some-queue"]);
-});
-
-test("ensureQueue keeps policy out of the update", async () => {
-  const { boss, updated } = fakeBoss();
-
-  await ensureQueue(boss, "sweep", {
-    policy: "singleton",
-    retryLimit: 0,
+  const spec: SweepSpec = {
+    name: "sweep",
+    cron: "23 * * * *",
     expireInSeconds: 300,
-  });
+    run: async () => {
+      ticks.push(ticks.length + 1);
+    },
+  };
 
-  // pg-boss refuses to change `policy` or `partition` on a live queue, so they
-  // are create-only. Passing them to `updateQueue` would fail the boot for
-  // every scheduled sweep, all four of which are singletons.
-  expect(updated.get("sweep")).toEqual({ retryLimit: 0, expireInSeconds: 300 });
-});
+  return { spec, ticks };
+}
 
 test("registerWorker creates and reconciles both queues in the pair", async () => {
   const { boss, calls } = fakeBoss();
@@ -203,42 +214,124 @@ test("an exhausted job reaches onExhausted", async () => {
   expect(lines).toBe(1);
 });
 
-test("no job module calls createQueue directly", async () => {
+test("registerSweep creates the queue, works it, and puts it on the clock", async () => {
+  const { boss, calls, scheduled } = fakeBoss();
+  const { spec } = fakeSweep();
+
+  await registerSweep(boss, spec);
+
+  // Create then update, for #144's reason, then the worker, then the schedule.
+  // `schedule` last is not cosmetic: pg-boss will happily put a cron on a queue
+  // nothing is working, which is a tick that fires into an empty room.
+  expect(calls).toEqual([
+    "create:sweep",
+    "update:sweep",
+    "work:sweep",
+    "schedule:sweep",
+  ]);
+  // Re-asserted on every boot, which is what makes an edited cron expression
+  // take effect on deploy rather than never. pg-boss upserts rather than stacks.
+  expect(scheduled.get("sweep")).toBe("23 * * * *");
+});
+
+test("registerSweep gives a sweep the singleton policy and no ladder", async () => {
+  const { boss, created, updated } = fakeBoss();
+  const { spec } = fakeSweep();
+
+  await registerSweep(boss, spec);
+
+  // The recipe the four scheduled queues used to write out by hand. `singleton`
+  // is the reason a sweep needs no concurrency of its own; `retryLimit: 0` is
+  // not a shorter ladder but the absence of one — the next tick sees the same
+  // rows, so a retry would buy a duplicate rather than a recovery.
+  expect(created.get("sweep")).toEqual({
+    policy: "singleton",
+    retryLimit: 0,
+    expireInSeconds: 300,
+  });
+
+  // pg-boss refuses to change `policy` or `partition` on a live queue, so they
+  // are create-only. Passing `policy` to `updateQueue` would fail the boot for
+  // every scheduled sweep, all four of which are singletons — everything else
+  // is reapplied.
+  expect(updated.get("sweep")).toEqual({ retryLimit: 0, expireInSeconds: 300 });
+});
+
+test("registerSweep asks for one sweep at a time, and no dead-letter twin", async () => {
+  const { boss, created, workers } = fakeBoss();
+  const { spec } = fakeSweep();
+
+  await registerSweep(boss, spec);
+
+  expect(workers.get("sweep")?.options).toEqual({ batchSize: 1 });
+  // No `-dead` queue anywhere: a dead-letter twin is where a ladder ends, and
+  // this queue has no ladder. One would only collect jobs nothing would read.
+  expect([...created.keys()]).toEqual(["sweep"]);
+});
+
+test("a tick reaches the sweep", async () => {
+  const { boss, workers } = fakeBoss();
+  const { spec, ticks } = fakeSweep();
+
+  await registerSweep(boss, spec);
+  // A cron tick carries no payload, which is the whole difference in the
+  // handler: pg-boss still delivers a job, and `run` is called with nothing.
+  await workers.get("sweep")!.handler([{ data: {} }]);
+
+  expect(ticks).toEqual([1]);
+});
+
+test("no job module calls pg-boss's own registration functions", async () => {
   const dir = import.meta.dir;
   const files = (await readdir(dir)).filter(
     (file) =>
       file.endsWith(".ts") &&
       !file.endsWith(".test.ts") &&
-      // The one legitimate caller: `ensureQueue` itself.
+      // The one legitimate caller: this module is the registration surface.
       file !== "boss.ts",
   );
 
   // Guard against the check silently passing because the directory moved.
   expect(files.length).toBeGreaterThan(0);
 
+  // The four that make a queue what it is. `createQueue`/`updateQueue` are
+  // #144's pair, and `work`/`schedule` joined them in #158 — a consumer that
+  // calls either of those has taken back the settings that come with them, which
+  // is exactly how the four scheduled queues ended up with a hand-typed
+  // singleton policy each. `send` is deliberately absent: enqueueing is what a
+  // consumer is *for*.
+  const REGISTRATION = /\.(createQueue|updateQueue|work|schedule)\s*\(/;
+
   const offenders: string[] = [];
   for (const file of files) {
     const source = await Bun.file(join(dir, file)).text();
     // The call form, not the word — `boss.ts` discusses `createQueue` in prose
     // and a consumer may reasonably do the same.
-    if (/\.createQueue\s*\(/.test(source)) offenders.push(file);
+    if (REGISTRATION.test(source)) offenders.push(file);
   }
 
   expect(offenders).toEqual([]);
 });
 
-test("no worker declares the shared recipe for itself", async () => {
+test("no consumer declares a shared queue setting for itself", async () => {
   const dir = import.meta.dir;
   const files = (await readdir(dir)).filter(
     (file) =>
       file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "boss.ts",
   );
 
-  // The three settings #154 moved. A consumer that re-declares one has taken a
-  // queue invariant back out of the module named for it — which is how they
+  // The settings #154 and #158 moved. A consumer that re-declares one has taken
+  // a queue invariant back out of the module named for it — which is how they
   // drifted in the first place: three copies of a poll interval, each with its
-  // own copy of the note explaining why it is not thirty.
-  const RECIPE = /retryLimit:\s*[1-9]|retryDelay|notifyPollingIntervalSeconds/;
+  // own copy of the note explaining why it is not thirty, and four copies of a
+  // singleton policy.
+  //
+  // `retryLimit` is now banned outright rather than only above zero. The `0` a
+  // sweep used to set was the honest exception while sweeps wired their own
+  // queues; now that `registerSweep` sets it, a consumer typing it again is a
+  // consumer that has stopped going through the registrar.
+  const RECIPE =
+    /retryLimit|retryDelay|notifyPollingIntervalSeconds|policy:|deadLetter/;
 
   const offenders: string[] = [];
   for (const file of files) {
@@ -246,7 +339,5 @@ test("no worker declares the shared recipe for itself", async () => {
     if (RECIPE.test(source)) offenders.push(file);
   }
 
-  // `retryLimit: 0` is deliberately allowed: the cron sweeps set it, and a sweep
-  // that does not retry is not a queue with a ladder of its own.
   expect(offenders).toEqual([]);
 });

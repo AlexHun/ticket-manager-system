@@ -21,7 +21,13 @@ import {
 import { REPLY_ORIGIN, SEND_OUTCOME, sendReply } from "../outbound";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
-import { ensureQueue, getBoss, registerWorker, type WorkerSpec } from "./boss";
+import {
+  getBoss,
+  registerSweep,
+  registerWorker,
+  type SweepSpec,
+  type WorkerSpec,
+} from "./boss";
 
 /**
  * Answering a ticket from the knowledge base, and resolving it.
@@ -586,19 +592,28 @@ export const AUTO_REPLY_WORKER: WorkerSpec<AutoReplyJob> = {
   onExhausted,
 };
 
+/**
+ * What `./boss` needs to run the sweep, and how `recoverStuck` is reached
+ * without a queue backend.
+ *
+ * That matters more here than anywhere else in this directory: this sweep is the
+ * only thing that undoes a claim a dead process left behind, so the day it is
+ * wrong is a day tickets are invisible and nobody is looking. It cannot be
+ * observed in production without arranging a crash. As a value it is a function
+ * call, and the tickets it should and should not release are a table of rows.
+ *
+ * The expiry is the worker's, for the same reason the classifier's sweep borrows
+ * its own: this releases at most `RECOVER_BATCH` tickets and calls no model.
+ */
+export const AUTO_REPLY_RECOVER_SWEEP: SweepSpec = {
+  name: RECOVER_QUEUE,
+  cron: RECOVER_CRON,
+  expireInSeconds: EXPIRE_IN_SECONDS,
+  run: recoverStuck,
+};
+
 /** Create the queues and start the workers. Called once, from `./index`. */
 export async function registerAutoReplyTicket(boss: PgBoss): Promise<void> {
   await registerWorker(boss, AUTO_REPLY_WORKER);
-
-  await ensureQueue(boss, RECOVER_QUEUE, {
-    // One sweep at a time, and no retries: a failed sweep sees the same tickets
-    // five minutes later.
-    policy: "singleton",
-    retryLimit: 0,
-    expireInSeconds: EXPIRE_IN_SECONDS,
-  });
-  await boss.work(RECOVER_QUEUE, { batchSize: 1 }, async () => {
-    await recoverStuck();
-  });
-  await boss.schedule(RECOVER_QUEUE, RECOVER_CRON);
+  await registerSweep(boss, AUTO_REPLY_RECOVER_SWEEP);
 }

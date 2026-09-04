@@ -109,7 +109,21 @@ export const prisma = new PrismaClient({
  * happened to leave behind.
  *
  * Built once, from the live catalogue, so a new model in the schema is covered
- * without anyone remembering to add it here.
+ * without anyone remembering to add it here — and in whatever order the
+ * catalogue lists them, which is where `session_replication_role` comes in.
+ *
+ * **The deletes run with referential triggers off.** `pg_tables` has no idea
+ * which table points at which, so this list is in no particular order, and one
+ * foreign key in this schema cares: `KnowledgeArticleRevision.article` is
+ * `onDelete: Restrict` (ADR-0006, which is what makes an article undeletable
+ * through the ORM). Delete the articles before their revisions and Postgres
+ * refuses the statement — so a single test that leaves a revision behind
+ * poisons `resetDb` for every file that runs after it, and the failures land
+ * anywhere but the test that caused them. Setting the role to `replica` for the
+ * duration is the standard way to say "this is a wipe, not an edit"; it is
+ * restored immediately, so nothing a test does is exempt from a constraint.
+ * Sorting the tables topologically would work too, and would have to be
+ * re-derived every time somebody added a relation.
  */
 const RESET_SQL = await (async () => {
   const tables = (
@@ -122,7 +136,12 @@ const RESET_SQL = await (async () => {
       `SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'`,
     )
   ).rows.map((row) => `ALTER SEQUENCE "${row.sequencename}" RESTART WITH 1`);
-  return [...tables, ...sequences].join("; ");
+  return [
+    `SET session_replication_role = 'replica'`,
+    ...tables,
+    `SET session_replication_role = 'origin'`,
+    ...sequences,
+  ].join("; ");
 })();
 
 export async function resetDb(): Promise<void> {

@@ -7,7 +7,7 @@ import {
 } from "@ticket/shared";
 import { RESET_TOKEN_TTL_SECONDS } from "../auth";
 import { prisma } from "../db";
-import { ensureQueue } from "./boss";
+import { registerSweep, type SweepSpec } from "./boss";
 
 /**
  * Throwing away outbox rows that have stopped being worth keeping.
@@ -125,6 +125,17 @@ const PRUNE_CRON = "23 * * * *";
 const BATCH_SIZE = 500;
 const MAX_BATCHES = 20;
 
+/**
+ * How long one sweep may run before pg-boss assumes the process died.
+ *
+ * Five minutes, against a worst case of three kinds × twenty batches of five
+ * hundred — the first sweep on a deployment that has never had one. Longer than
+ * the workers' expiry rather than shorter, which is the opposite of what the
+ * cadence suggests: a worker is waiting on one provider call, this is waiting on
+ * up to sixty indexed statements.
+ */
+const EXPIRE_IN_SECONDS = 300;
+
 /** Delete the expired rows of one kind. Returns how many went. */
 async function pruneKind(
   kind: OutboundEmailKind,
@@ -191,18 +202,21 @@ export async function pruneOutbox(): Promise<void> {
   }
 }
 
+/**
+ * What `./boss` needs to run this sweep, and how `pruneOutbox` is reached
+ * without a queue backend — which is the half worth having a handle on: what
+ * this deletes is irreversible, and the row it must never touch (`queued`, with
+ * a job already on its way to fetch it) is invisible in production until the
+ * day an email silently does not arrive.
+ */
+export const PRUNE_OUTBOX_SWEEP: SweepSpec = {
+  name: PRUNE_QUEUE,
+  cron: PRUNE_CRON,
+  expireInSeconds: EXPIRE_IN_SECONDS,
+  run: pruneOutbox,
+};
+
 /** Create the queue and start the sweep. Called once, from `./index`. */
 export async function registerPruneOutbox(boss: PgBoss): Promise<void> {
-  await ensureQueue(boss, PRUNE_QUEUE, {
-    // One sweep at a time, and no retries: a failed sweep sees the same rows an
-    // hour later, and nothing downstream is waiting on it. Same shape as the
-    // auto-reply recovery sweep.
-    policy: "singleton",
-    retryLimit: 0,
-    expireInSeconds: 300,
-  });
-  await boss.work(PRUNE_QUEUE, { batchSize: 1 }, async () => {
-    await pruneOutbox();
-  });
-  await boss.schedule(PRUNE_QUEUE, PRUNE_CRON);
+  await registerSweep(boss, PRUNE_OUTBOX_SWEEP);
 }

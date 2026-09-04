@@ -30,6 +30,20 @@ import { PgBoss, type Queue } from "pg-boss";
  * block down to the tags — which meant the invariants that define a queue in
  * this app lived in the consumers rather than in the module named for them
  * (#154). `registerWorker` below is where they live now.
+ *
+ * There are **two kinds of queue here and only two**, so there are two
+ * registrars: `registerWorker` for work somebody asked for, and `registerSweep`
+ * for work a clock asks for. They differ in every setting that matters — a
+ * worker retries a ladder into a dead-letter twin, a sweep is a singleton that
+ * never retries because the next tick sees the same rows — which is why one
+ * function with a flag would be two functions wearing a coat. What they share is
+ * the property #144 bought: settings are reapplied on every boot, for every
+ * queue, without a consumer having to know that `createQueue` alone would not.
+ *
+ * Between them they are the *whole* surface. A consumer names a queue, declares
+ * what it needs, and hands it over; nothing outside this module calls pg-boss's
+ * own `createQueue`, `work` or `schedule` any more (#158), and `boss.test.ts`
+ * reads the directory to keep it that way.
  */
 
 /**
@@ -190,8 +204,15 @@ export async function startBoss(): Promise<PgBoss> {
  *
  * Generic enough to live here: it takes the name as an argument, so this module
  * still knows no queue by name.
+ *
+ * **Not exported.** It was, until every consumer had a registrar to use instead
+ * (#158) — and while it was, "make a queue" and "make *this app's* kind of
+ * queue" were two things a caller had to choose between, with only the second
+ * one carrying the pair, the ladder, the poll interval and the singleton policy.
+ * Four scheduled queues chose the first. The two registrars below are now the
+ * only callers and the only way in.
  */
-export async function ensureQueue(
+async function ensureQueue(
   boss: PgBoss,
   name: string,
   options: Omit<Queue, "name">,
@@ -319,6 +340,85 @@ export async function registerWorker<T extends Record<string, unknown>>(
     });
     await spec.onExhausted(data);
   });
+}
+
+/**
+ * Everything a scheduled sweep knows that this module cannot.
+ *
+ * Three fields where a worker needs five, and the two that are missing are the
+ * argument for a second registrar rather than a flag on the first. There is no
+ * `concurrency`, because `policy: "singleton"` below decides that for every
+ * sweep and no sweep has ever wanted otherwise; and there is no `onExhausted`,
+ * because nothing here retries, so there is no ladder to run out of.
+ *
+ * `expireInSeconds` stays per-sweep for the same reason it is per-worker: it is
+ * how long *this* sweep may legitimately take, and the four of them disagree
+ * (the two that re-enqueue tickets are sized like the workers they feed; the two
+ * that delete in batches are given longer). A shared value would be a number
+ * that fits neither pair.
+ */
+export interface SweepSpec {
+  /** The queue's name. No dead-letter twin: nothing here is retried. */
+  name: string;
+  /** When it runs, as pg-boss's cron. */
+  cron: string;
+  /**
+   * How long one sweep may be active before pg-boss assumes the process died.
+   * Set it over the sweep's own ceiling — every sweep here bounds its work by
+   * batch count, so that ceiling is a number the consumer can actually argue.
+   */
+  expireInSeconds: number;
+  /**
+   * Do the sweep. Takes no payload: a cron tick carries nothing, and everything
+   * one of these needs to know is in the rows it reads.
+   *
+   * Never throws to ask for a retry — see the queue settings below. A sweep that
+   * fails has already lost nothing, because the next tick reads the same rows.
+   */
+  run: () => Promise<void>;
+}
+
+/**
+ * Create a sweep's queue, work it, and put it on the clock.
+ *
+ * The recipe the four scheduled queues had each written out by hand:
+ *
+ * **`policy: "singleton"`**, so a tick that arrives while the last one is still
+ * running does not start a second. Every sweep here reads a batch and writes to
+ * the rows it read; two at once would do the same work twice and race on it.
+ *
+ * **`retryLimit: 0`**, which is the one place a consumer is allowed to differ
+ * from the ladder in `registerWorker` — and the reason it is allowed is that
+ * this is not a shorter ladder, it is the absence of one. A failed sweep sees
+ * exactly the same rows on the next tick, minutes away, with nothing downstream
+ * waiting; retrying it sooner would buy a duplicate rather than a recovery.
+ *
+ * **Through `ensureQueue`, like everything else**, so a change to the constants
+ * above or to a sweep's expiry reaches a queue that already exists. That was the
+ * bug #144 fixed and these four queues are the ones it was found on — created
+ * once, then frozen at whatever the constants said that day, silently, for the
+ * life of the deployment.
+ *
+ * **`boss.schedule` on every boot.** pg-boss upserts a schedule rather than
+ * stacking them, so this is idempotent, and it is what makes a changed cron
+ * expression take effect on deploy rather than never. Only one node in a cluster
+ * runs the cron, which is what keeps a scaled-out API from sweeping N times.
+ */
+export async function registerSweep(
+  boss: PgBoss,
+  spec: SweepSpec,
+): Promise<void> {
+  await ensureQueue(boss, spec.name, {
+    policy: "singleton",
+    retryLimit: 0,
+    expireInSeconds: spec.expireInSeconds,
+  });
+
+  await boss.work(spec.name, { batchSize: 1 }, async () => {
+    await spec.run();
+  });
+
+  await boss.schedule(spec.name, spec.cron);
 }
 
 /** Stop polling, let in-flight work finish, and release the pool. */

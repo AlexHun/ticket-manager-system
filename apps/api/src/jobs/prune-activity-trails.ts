@@ -1,6 +1,6 @@
 import type { PgBoss } from "pg-boss";
 import { prisma } from "../db";
-import { ensureQueue } from "./boss";
+import { registerSweep, type SweepSpec } from "./boss";
 
 /**
  * Throwing away audit-trail rows old enough that nothing needs them any more.
@@ -41,6 +41,13 @@ const PRUNE_CRON = "41 3 * * *";
  */
 const BATCH_SIZE = 500;
 const MAX_BATCHES = 20;
+
+/**
+ * How long one sweep may run. Five minutes, same as `prune-outbox.ts` and for
+ * the same arithmetic — four tables × twenty batches of five hundred on the
+ * first sweep of a year-old deployment.
+ */
+const EXPIRE_IN_SECONDS = 300;
 
 /**
  * Select-then-delete in batches, generalized over a model's `findMany` /
@@ -194,18 +201,21 @@ export async function pruneActivityTrails(): Promise<void> {
   }
 }
 
+/**
+ * What `./boss` needs to run this sweep, and how `pruneActivityTrails` is
+ * reached without a queue backend. The property that most needs reaching is the
+ * one in `latestRevisionIdPerArticle`: an article's last revision must survive
+ * its own age, or `docs/adr/0006`'s undeletable-by-construction guarantee quietly
+ * reopens on the first article nobody has edited in a year.
+ */
+export const PRUNE_ACTIVITY_TRAILS_SWEEP: SweepSpec = {
+  name: PRUNE_QUEUE,
+  cron: PRUNE_CRON,
+  expireInSeconds: EXPIRE_IN_SECONDS,
+  run: pruneActivityTrails,
+};
+
 /** Create the queue and start the sweep. Called once, from `./index`. */
 export async function registerPruneActivityTrails(boss: PgBoss): Promise<void> {
-  await ensureQueue(boss, PRUNE_QUEUE, {
-    // One sweep at a time, no retries — a failed sweep sees the same rows
-    // tomorrow and nothing downstream is waiting on it. Same shape as
-    // `prune-outbox.ts`.
-    policy: "singleton",
-    retryLimit: 0,
-    expireInSeconds: 300,
-  });
-  await boss.work(PRUNE_QUEUE, { batchSize: 1 }, async () => {
-    await pruneActivityTrails();
-  });
-  await boss.schedule(PRUNE_QUEUE, PRUNE_CRON);
+  await registerSweep(boss, PRUNE_ACTIVITY_TRAILS_SWEEP);
 }
