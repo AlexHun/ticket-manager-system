@@ -15,7 +15,11 @@ import type {
   UserRole,
   UsersListResponse,
 } from "@ticket/shared";
-import { adminActor, userEditChanges } from "../admin-activity";
+import {
+  adminActor,
+  userEditChanges,
+  writeAdminActivity,
+} from "../admin-activity";
 import { appOrigin, auth } from "../auth";
 import { prisma } from "../db";
 import { requireAdmin, sessionOf } from "../middleware/auth";
@@ -140,23 +144,13 @@ usersRouter.post(
       headers,
     });
 
-    await prisma.adminActivity.createMany({
-      data: [
-        {
-          action: ADMIN_ACTIVITY_ACTION.user_created,
-          ...adminActor(sessionOf(res).user),
-          targetUserId: user.id,
-          targetUserName: user.name,
-        },
-        {
-          action: ADMIN_ACTIVITY_ACTION.user_invited,
-          toValue: "initial",
-          ...adminActor(sessionOf(res).user),
-          targetUserId: user.id,
-          targetUserName: user.name,
-        },
-      ],
-    });
+    // Two rows for one action, and the only place the target is read off
+    // something the mutation just produced rather than off a row that predates
+    // it — there was no account to capture beforehand.
+    await writeAdminActivity(prisma, adminActor(sessionOf(res).user), user, [
+      { action: ADMIN_ACTIVITY_ACTION.user_created },
+      { action: ADMIN_ACTIVITY_ACTION.user_invited, toValue: "initial" },
+    ]);
 
     /**
      * The invitation, which is the password-reset flow wearing different words.
@@ -206,14 +200,15 @@ usersRouter.patch(
 
     const userId = req.params.id as string;
 
-    // One read before the write, serving three readers: the audit trail diffs
+    // One read before the write, serving four readers: the audit trail diffs
     // against what the account had a moment ago (`adminUpdateUser` below does
-    // not hand that back), the self-role guard compares against the stored
-    // role rather than the submitted one, and `rejectAssistant` wants
-    // `automated` — which is why it takes the row instead of fetching its own.
+    // not hand that back) *and* names this row as its target, the self-role
+    // guard compares against the stored role rather than the submitted one, and
+    // `rejectAssistant` wants `automated` — which is why it takes the row
+    // instead of fetching its own.
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { name: true, email: true, role: true, automated: true },
+      select: { id: true, name: true, email: true, role: true, automated: true },
     });
 
     if (rejectAssistant(before, res)) return;
@@ -266,16 +261,20 @@ usersRouter.patch(
     // `updateUserSchema`, matching what Better Auth stores; before that, a Save
     // that changed only the capitals wrote a row for an edit the database
     // never made (#118).
+    //
+    // The target is `before`, so a rename is filed under the name the account
+    // had when the admin acted on it — the same reading of the account the
+    // entries themselves were diffed from. It used to be the submitted `name`,
+    // which made the one row that says a name changed the one row that has
+    // already forgotten it.
     const changes = userEditChanges(before, { name, email, role });
     if (changes.length > 0) {
-      await prisma.adminActivity.createMany({
-        data: changes.map((entry) => ({
-          ...entry,
-          ...adminActor(sessionOf(res).user),
-          targetUserId: userId,
-          targetUserName: name,
-        })),
-      });
+      await writeAdminActivity(
+        prisma,
+        adminActor(sessionOf(res).user),
+        before,
+        changes,
+      );
     }
 
     // The one read here that genuinely has to happen twice: it observes the row
@@ -335,7 +334,13 @@ usersRouter.post(
 
     const target = await prisma.user.findUnique({
       where: { id: userId },
-      select: { name: true, email: true, deletedAt: true, automated: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        deletedAt: true,
+        automated: true,
+      },
     });
 
     // Ahead of the 404 below, which is why `rejectAssistant` tolerates a null
@@ -355,15 +360,9 @@ usersRouter.post(
       headers: fromNodeHeaders(req.headers),
     });
 
-    await prisma.adminActivity.create({
-      data: {
-        action: ADMIN_ACTIVITY_ACTION.user_invited,
-        toValue: "resend",
-        ...adminActor(sessionOf(res).user),
-        targetUserId: userId,
-        targetUserName: target.name,
-      },
-    });
+    await writeAdminActivity(prisma, adminActor(sessionOf(res).user), target, [
+      { action: ADMIN_ACTIVITY_ACTION.user_invited, toValue: "resend" },
+    ]);
 
     res.status(204).json({});
   },
@@ -463,14 +462,12 @@ usersRouter.delete(
           ...agentActor(sessionOf(res).user),
         })),
       }),
-      prisma.adminActivity.create({
-        data: {
-          action: ADMIN_ACTIVITY_ACTION.user_deleted,
-          ...adminActor(sessionOf(res).user),
-          targetUserId: userId,
-          targetUserName: target.name,
-        },
-      }),
+      // In the transaction with the soft delete, which is what `writeAdminActivity`
+      // returning its write rather than awaiting it is for: the row that says the
+      // account was deleted lands with the deletion or not at all.
+      writeAdminActivity(prisma, adminActor(sessionOf(res).user), target, [
+        { action: ADMIN_ACTIVITY_ACTION.user_deleted },
+      ]),
     ]);
 
     res.status(204).end();

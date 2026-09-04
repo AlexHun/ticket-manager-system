@@ -8,7 +8,8 @@
  *
  * `./admin-activity`'s pure helper (`userEditChanges`) is exercised directly,
  * with no mocking, alongside the route so a failure in either shows up next
- * to its cause.
+ * to its cause. Its writer is exercised through the route only, and through one
+ * `adminActivity.createMany` fake — there is one writer, so there is one mock.
  *
  * The last block is not about the trail: it counts how many times a request
  * reads the account it is acting on, which is a property `rejectAssistant`'s
@@ -182,11 +183,11 @@ const ticketActivityCreateMany = mock(
     Promise.resolve({ count: args.data.length }),
 );
 
-const adminActivityCreate = mock((args: { data: Record<string, unknown> }) => {
-  adminActivityLog.push(args.data);
-  return Promise.resolve(args.data);
-});
-
+// One mock, because there is one writer: every action `routes/users.ts` records
+// goes through `writeAdminActivity`, which writes them all with `createMany`.
+// There used to be a `create` fake beside this one, and a route that reached for
+// the wrong one would have gone unnoticed — the log they both fed is what these
+// tests assert on.
 const adminActivityCreateMany = mock(
   (args: { data: Record<string, unknown>[] }) => {
     adminActivityLog.push(...args.data);
@@ -213,7 +214,7 @@ mock.module("../db", () => ({
     session: { deleteMany: sessionDeleteMany },
     ticket: { findMany: ticketFindMany, updateMany: ticketUpdateMany },
     ticketActivity: { createMany: ticketActivityCreateMany },
-    adminActivity: { create: adminActivityCreate, createMany: adminActivityCreateMany },
+    adminActivity: { createMany: adminActivityCreateMany },
     // The array form: each element is already a settled promise by the time
     // it reaches here under this fake, so this only has to wait on them.
     $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
@@ -340,7 +341,6 @@ beforeEach(() => {
   ticketFindMany.mockClear();
   ticketUpdateMany.mockClear();
   ticketActivityCreateMany.mockClear();
-  adminActivityCreate.mockClear();
   adminActivityCreateMany.mockClear();
   createUser.mockClear();
   adminUpdateUser.mockClear();
@@ -463,7 +463,16 @@ describe("PATCH /api/users/:id — user_edited", () => {
     expect(adminActivityLog).toEqual([]);
   });
 
-  test("one row, labelled, for a name-only change", async () => {
+  /**
+   * The target name is the one the account *had*, not the one it was given —
+   * every row goes through `writeAdminActivity`, which takes the account read
+   * before the mutation rather than two columns a call site assembled from the
+   * request body. This route is the only one where the two differ, which is why
+   * it is the one that used to get it wrong: a rename was filed under the new
+   * name, so the feed said "Ada Admin edited Aaron A. Gent" about the moment
+   * there was no Aaron A. Gent yet.
+   */
+  test("one row, labelled, for a name-only change, filed under the old name", async () => {
     await patch(`/${AGENT.id}`, {
       name: "Aaron A. Gent",
       email: AGENT.email,
@@ -477,7 +486,7 @@ describe("PATCH /api/users/:id — user_edited", () => {
         toValue: "Name: Aaron A. Gent",
         actorId: ADMIN.id,
         targetUserId: AGENT.id,
-        targetUserName: "Aaron A. Gent",
+        targetUserName: AGENT.name,
       }),
     ]);
   });
