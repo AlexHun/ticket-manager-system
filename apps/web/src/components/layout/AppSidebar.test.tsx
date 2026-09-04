@@ -12,30 +12,22 @@ import {
   type TicketView,
   type TicketViewCountsResponse,
 } from "@ticket/shared";
+import { apiStub } from "@/test/api-stub";
 import { renderWithQuery } from "@/test/render";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 
 // --- Mocks ------------------------------------------------------------------
 
-const mockUnreadGet = vi.fn();
-const mockViewsGet = vi.fn();
+const unreadGet = apiStub.get("/api/tickets/unread");
+const viewsGet = apiStub.get("/api/tickets/views");
 // `useNewFeatureStatus` mounts alongside this and needs an answer too, even
 // in tests that don't care about it — an unresolved query here would leave
 // it pending forever and could log an act() warning.
-const mockNewFeaturesGet = vi.fn();
-const mockNewFeaturesPost = vi.fn();
+const newFeaturesGet = apiStub.get("/api/new-features/status");
+const newFeatureSeenPost = apiStub.post("/api/new-features/:featureKey/seen");
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (url: string, ...rest: unknown[]) => {
-      if (url === "/api/tickets/unread") return mockUnreadGet(url, ...rest);
-      if (url === "/api/new-features/status") return mockNewFeaturesGet(url, ...rest);
-      return mockViewsGet(url, ...rest);
-    },
-    post: (url: string, ...rest: unknown[]) => mockNewFeaturesPost(url, ...rest),
-  },
-}));
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
 // Admin, not agent: the "new" badge tests below target the Activity nav item,
 // which is admin-only — the unread-badge tests above don't care about role
@@ -73,27 +65,30 @@ function renderSidebar() {
   );
 }
 
+// Every endpoint the sidebar reaches gets a resting answer, and each test then
+// overrides the one it is about. The stub refuses an unregistered request
+// rather than resolving `undefined`, so a query left unanswered here would now
+// fail loudly in a test that has no opinion about it — which is the point, but
+// only once the quiet ones are declared.
 beforeEach(() => {
-  mockUnreadGet.mockReset();
-  mockViewsGet.mockReset();
-  mockNewFeaturesGet.mockReset();
-  mockNewFeaturesPost.mockReset();
-  mockViewsGet.mockResolvedValue(zeroViewCounts());
-  mockNewFeaturesGet.mockResolvedValue(newFeatureStatuses());
-  mockNewFeaturesPost.mockResolvedValue({ data: { ok: true } });
+  apiStub.reset();
+  unreadGet.mockResolvedValue(unread([]));
+  viewsGet.mockResolvedValue(zeroViewCounts());
+  newFeaturesGet.mockResolvedValue(newFeatureStatuses());
+  newFeatureSeenPost.mockResolvedValue({ data: { ok: true } });
 });
 
 describe("AppSidebar unread badge", () => {
   test("shows nothing on Tickets while there are no unread assignments", async () => {
-    mockUnreadGet.mockResolvedValueOnce(unread([]));
+    unreadGet.mockResolvedValueOnce(unread([]));
     renderSidebar();
 
-    await waitFor(() => expect(mockUnreadGet).toHaveBeenCalled());
+    await waitFor(() => expect(unreadGet).toHaveBeenCalled());
     expect(screen.queryByText("0", { selector: '[data-slot="sidebar-menu-badge"]' })).not.toBeInTheDocument();
   });
 
   test("badges Tickets with the unread count", async () => {
-    mockUnreadGet.mockResolvedValueOnce(
+    unreadGet.mockResolvedValueOnce(
       unread([
         { id: 1, subject: "Cannot log in" },
         { id: 2, subject: "Refund request" },
@@ -108,7 +103,7 @@ describe("AppSidebar unread badge", () => {
 // The Activity nav item is the demo/first flagged key — see nav-items.ts.
 describe("AppSidebar new-feature badge", () => {
   test("badges Activity 'New' while its badge is unseen", async () => {
-    mockNewFeaturesGet.mockResolvedValueOnce(
+    newFeaturesGet.mockResolvedValueOnce(
       newFeatureStatuses({ [NEW_FEATURE_KEY.activityPage]: true }),
     );
     renderSidebar();
@@ -117,17 +112,17 @@ describe("AppSidebar new-feature badge", () => {
   });
 
   test("shows no badge once the badge has been seen", async () => {
-    mockNewFeaturesGet.mockResolvedValueOnce(
+    newFeaturesGet.mockResolvedValueOnce(
       newFeatureStatuses({ [NEW_FEATURE_KEY.activityPage]: false }),
     );
     renderSidebar();
 
-    await waitFor(() => expect(mockNewFeaturesGet).toHaveBeenCalled());
+    await waitFor(() => expect(newFeaturesGet).toHaveBeenCalled());
     expect(screen.queryByTestId("new-feature-badge")).not.toBeInTheDocument();
   });
 
   test("marks the feature seen when the user follows the link", async () => {
-    mockNewFeaturesGet.mockResolvedValueOnce(
+    newFeaturesGet.mockResolvedValueOnce(
       newFeatureStatuses({ [NEW_FEATURE_KEY.activityPage]: true }),
     );
     const user = userEvent.setup();
@@ -137,23 +132,23 @@ describe("AppSidebar new-feature badge", () => {
     await user.click(link);
 
     await waitFor(() =>
-      expect(mockNewFeaturesPost).toHaveBeenCalledWith(
+      expect(newFeatureSeenPost).toHaveBeenCalledWith(
         `/api/new-features/${NEW_FEATURE_KEY.activityPage}/seen`,
       ),
     );
   });
 
   test("does not post seen for a link with no badge showing", async () => {
-    mockNewFeaturesGet.mockResolvedValueOnce(
+    newFeaturesGet.mockResolvedValueOnce(
       newFeatureStatuses({ [NEW_FEATURE_KEY.activityPage]: false }),
     );
     const user = userEvent.setup();
     renderSidebar();
 
-    await waitFor(() => expect(mockNewFeaturesGet).toHaveBeenCalled());
+    await waitFor(() => expect(newFeaturesGet).toHaveBeenCalled());
     const link = await screen.findByRole("link", { name: "Activity" });
     await user.click(link);
 
-    expect(mockNewFeaturesPost).not.toHaveBeenCalled();
+    expect(newFeatureSeenPost).not.toHaveBeenCalled();
   });
 });

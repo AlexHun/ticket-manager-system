@@ -1,20 +1,18 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { apiStub } from "@/test/api-stub";
 import { renderWithQuery } from "@/test/render";
 import { ChangelogPopover } from "./ChangelogPopover";
 
 // --- Mocks ------------------------------------------------------------------
 
-const mockGet = vi.fn();
-const mockPost = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (...args: unknown[]) => mockGet(...args),
-    post: (...args: unknown[]) => mockPost(...args),
-  },
-}));
+// The per-user seen flag is the only server state here — the entries themselves
+// come straight out of `@ticket/shared`, which is why only two paths appear.
+const statusGet = apiStub.get("/api/changelog/status");
+const seenPost = apiStub.post("/api/changelog/seen");
 
 // Real `compareVersions` and everything else, only `CHANGELOG_ENTRIES` swapped
 // for a small fixture — see `changelog.test.ts` on the API side for the same
@@ -34,9 +32,8 @@ vi.mock("@ticket/shared", async (importOriginal) => {
 });
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockPost.mockReset();
-  mockPost.mockResolvedValue({ data: { ok: true } });
+  apiStub.reset();
+  seenPost.mockResolvedValue({ data: { ok: true } });
 });
 
 afterEach(() => {
@@ -45,7 +42,7 @@ afterEach(() => {
 
 describe("ChangelogPopover", () => {
   test("shows a dot when the caller has unseen entries", async () => {
-    mockGet.mockResolvedValue({ data: { shouldShow: true } });
+    statusGet.mockResolvedValue({ data: { shouldShow: true } });
     renderWithQuery(<ChangelogPopover />);
 
     await waitFor(() =>
@@ -54,17 +51,17 @@ describe("ChangelogPopover", () => {
   });
 
   test("shows no dot once everything has been seen", async () => {
-    mockGet.mockResolvedValue({ data: { shouldShow: false } });
+    statusGet.mockResolvedValue({ data: { shouldShow: false } });
     renderWithQuery(<ChangelogPopover />);
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(statusGet).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId("changelog-dot")).not.toBeInTheDocument();
   });
 
   // Two entries at 0.5.10: a deploy's branch can carry two feat/fix commits,
   // and both are listed, in the order CI recorded them (issue #113).
   test("opening the popover lists entries newest-first", async () => {
-    mockGet.mockResolvedValue({ data: { shouldShow: false } });
+    statusGet.mockResolvedValue({ data: { shouldShow: false } });
     const user = userEvent.setup();
     renderWithQuery(<ChangelogPopover />);
 
@@ -78,7 +75,7 @@ describe("ChangelogPopover", () => {
   });
 
   test("opening while unseen marks the changelog seen", async () => {
-    mockGet.mockResolvedValue({ data: { shouldShow: true } });
+    statusGet.mockResolvedValue({ data: { shouldShow: true } });
     const user = userEvent.setup();
     renderWithQuery(<ChangelogPopover />);
 
@@ -87,17 +84,17 @@ describe("ChangelogPopover", () => {
     );
     await user.click(screen.getByRole("button", { name: "What's new" }));
 
-    await waitFor(() => expect(mockPost).toHaveBeenCalledWith("/api/changelog/seen"));
+    await waitFor(() => expect(seenPost).toHaveBeenCalledWith("/api/changelog/seen"));
   });
 
   test("opening while already seen does not write again", async () => {
-    mockGet.mockResolvedValue({ data: { shouldShow: false } });
+    statusGet.mockResolvedValue({ data: { shouldShow: false } });
     const user = userEvent.setup();
     renderWithQuery(<ChangelogPopover />);
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(statusGet).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole("button", { name: "What's new" }));
 
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(seenPost).not.toHaveBeenCalled();
   });
 });

@@ -8,18 +8,22 @@ import {
   type KnowledgeArticle,
   type KnowledgeArticleRevision,
 } from "@ticket/shared";
+import { apiStub } from "@/test/api-stub";
 import { renderWithQuery } from "@/test/render";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 
-const mockGet = vi.fn();
-const mockPost = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (...args: unknown[]) => mockGet(...args),
-    post: (...args: unknown[]) => mockPost(...args),
-  },
-}));
+// Approve and reject are separate paths rather than one `post` counter, so
+// "the author may reject their own proposal" cannot be satisfied by an approve
+// that should never have been possible.
+const revisionsGet = apiStub.get("/api/knowledge-articles/:id/revisions");
+const approvePost = apiStub.post(
+  "/api/knowledge-articles/:id/revisions/:revisionId/approve",
+);
+const rejectPost = apiStub.post(
+  "/api/knowledge-articles/:id/revisions/:revisionId/reject",
+);
 
 const mockUseSession = vi.fn();
 vi.mock("@/lib/auth-client", () => ({
@@ -63,8 +67,7 @@ function renderDialog(article: KnowledgeArticle | null = ARTICLE) {
 }
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockPost.mockReset();
+  apiStub.reset();
   mockUseSession.mockReturnValue({
     data: { user: { email: "bo@example.com" } },
   });
@@ -76,7 +79,7 @@ afterEach(() => {
 
 describe("KnowledgeRevisionsDialog — a pending revision", () => {
   test("shows it as awaiting approval, diffing only the fields that changed", async () => {
-    mockGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
+    revisionsGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
 
     renderDialog();
 
@@ -100,7 +103,7 @@ describe("KnowledgeRevisionsDialog — a pending revision", () => {
     mockUseSession.mockReturnValue({
       data: { user: { email: "ada@example.com" } },
     });
-    mockGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
+    revisionsGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
 
     renderDialog();
     const dialog = await screen.findByRole("dialog");
@@ -124,8 +127,8 @@ describe("KnowledgeRevisionsDialog — a pending revision", () => {
   });
 
   test("a different admin can approve, which posts to the approve route", async () => {
-    mockGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
-    mockPost.mockResolvedValue({
+    revisionsGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
+    approvePost.mockResolvedValue({
       data: { article: ARTICLE, revision: PENDING_REVISION },
     });
 
@@ -138,7 +141,7 @@ describe("KnowledgeRevisionsDialog — a pending revision", () => {
     );
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith(
+      expect(approvePost).toHaveBeenCalledWith(
         "/api/knowledge-articles/KB-002/revisions/7/approve",
       );
     });
@@ -148,8 +151,8 @@ describe("KnowledgeRevisionsDialog — a pending revision", () => {
     mockUseSession.mockReturnValue({
       data: { user: { email: "ada@example.com" } },
     });
-    mockGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
-    mockPost.mockResolvedValue({ data: { revision: PENDING_REVISION } });
+    revisionsGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
+    rejectPost.mockResolvedValue({ data: { revision: PENDING_REVISION } });
 
     renderDialog();
     const dialog = await screen.findByRole("dialog");
@@ -160,7 +163,7 @@ describe("KnowledgeRevisionsDialog — a pending revision", () => {
     );
 
     await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith(
+      expect(rejectPost).toHaveBeenCalledWith(
         "/api/knowledge-articles/KB-002/revisions/7/reject",
       );
     });
