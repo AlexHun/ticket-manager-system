@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { resetPrefetchQueryClient } from "@/lib/route-prefetch";
 
 /**
  * jsdom implements neither the Pointer Capture API, `scrollIntoView`, nor
@@ -63,4 +64,11 @@ vi.mock("sonner", () => ({
 
 afterEach(() => {
   cleanup();
+  /**
+   * Route loaders prime whichever client `renderRoutes` last created, or one a
+   * test set by hand; put the app's back so the next test starts from the same
+   * state as the first. Harmless in a file that mounts no route — it is an
+   * assignment, and nothing here imports a loader unless it uses one.
+   */
+  resetPrefetchQueryClient();
 });

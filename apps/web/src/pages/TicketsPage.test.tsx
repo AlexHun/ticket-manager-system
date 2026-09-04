@@ -100,8 +100,10 @@ const oldestTicket = makeTicket({
 /**
  * On the real router, at the given entry URL — the page's own route object,
  * matched the way a navigation to it would match. Without `ticketsLoader`:
- * that loader reaches the module-level query client directly, which is #157's
- * problem to solve, and this file is about the page.
+ * mounting it would double every call count here, since the test client's
+ * `staleTime: 0` makes the page refetch what the loader just primed. What it
+ * prefetches, and that the page reads the entry it primed, has its own test
+ * (`TicketsPage.loader.test.tsx`); this file is about the page.
  */
 function renderTicketsPage(entry = "/tickets") {
   return renderRoutes([{ path: "/tickets", Component: TicketsPage }], {
