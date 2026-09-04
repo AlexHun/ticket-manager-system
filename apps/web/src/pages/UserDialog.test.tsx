@@ -26,7 +26,7 @@ const { session } = vi.hoisted(() => ({ session: { userId: "u_admin" } }));
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
-    data: { user: { id: session.userId, role: "admin" } },
+    data: { user: { id: session.userId, role: USER_ROLE.admin } },
     isPending: false,
   }),
   authClient: { signOut: vi.fn() },

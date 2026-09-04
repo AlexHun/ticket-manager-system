@@ -258,7 +258,7 @@ const createUser = mock((args: { body: { name: string; email: string } }) => {
     id,
     name: args.body.name,
     email: args.body.email.toLowerCase(),
-    role: "agent",
+    role: USER_ROLE.agent,
     emailVerified: true,
     automated: false,
     deletedAt: null,
@@ -300,7 +300,7 @@ function user(overrides: Partial<FakeUser> & { id: string }): FakeUser {
   return {
     name: overrides.id,
     email: `${overrides.id}@example.com`,
-    role: "agent",
+    role: USER_ROLE.agent,
     emailVerified: true,
     automated: false,
     deletedAt: null,
@@ -313,7 +313,7 @@ const ADMIN = user({
   id: "u_admin",
   name: "Ada Admin",
   email: "admin@example.com",
-  role: "admin",
+  role: USER_ROLE.admin,
 });
 
 const AGENT = user({ id: "u_agent", name: "Aaron Agent", email: "aaron@example.com" });
@@ -322,7 +322,7 @@ const OTHER_ADMIN = user({
   id: "u_other_admin",
   name: "Bo Admin",
   email: "bo@example.com",
-  role: "admin",
+  role: USER_ROLE.admin,
 });
 
 const ASSISTANT = user({
