@@ -706,12 +706,9 @@ describe("TicketsPage pagination", () => {
     return user;
   }
 
-  test("requests the first page at the default size on mount", async () => {
-    await renderLoaded();
-
-    expect(sortParamsOfCall(0).page).toBe(FIRST_PAGE);
-    expect(sortParamsOfCall(0).pageSize).toBe(DEFAULT_PAGE_SIZE);
-  });
+  // The first-page-at-the-default-size mount request is already the `page` and
+  // `pageSize` half of "requests the default most-recent-activity sort on
+  // mount", which asserts the whole params object at once.
 
   test("reports the visible range and page count", async () => {
     await renderLoaded();
@@ -755,51 +752,21 @@ describe("TicketsPage pagination", () => {
     expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
   });
 
-  test("changing the page size returns to the first page", async () => {
+  test("sends the chosen page size", async () => {
     const user = await renderLoaded();
-
-    ticketsGet.mockResolvedValue(manyPages({ page: 2 }));
-    await user.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
 
     ticketsGet.mockResolvedValue(manyPages({ pageSize: 50 }));
     await chooseOption(user, "Per page", "50");
 
-    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
-    expect(sortParamsOfCall(2).pageSize).toBe(50);
-    expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
+    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(2));
+    expect(sortParamsOfCall(1).pageSize).toBe(50);
   });
 
-  test("re-sorting returns to the first page", async () => {
-    const user = await renderLoaded();
-
-    ticketsGet.mockResolvedValue(manyPages({ page: 2 }));
-    await user.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
-
-    ticketsGet.mockResolvedValue(manyPages());
-    await user.click(screen.getByRole("button", { name: "Subject" }));
-
-    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
-    // Page 2 of the old ordering is meaningless in the new one.
-    expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
-    expect(sortParamsOfCall(2).sort).toBe(TICKET_SORT_FIELD.subject);
-  });
-
-  test("filtering returns to the first page", async () => {
-    const user = await renderLoaded();
-
-    ticketsGet.mockResolvedValue(manyPages({ page: 2 }));
-    await user.click(screen.getByRole("button", { name: "Next page" }));
-    await waitFor(() => expect(sortParamsOfCall(1).page).toBe(2));
-
-    ticketsGet.mockResolvedValue(manyPages({ total: 12 }));
-    await chooseOption(user, "Status", TICKET_STATUS.Open);
-
-    await waitFor(() => expect(ticketsGet).toHaveBeenCalledTimes(3));
-    expect(sortParamsOfCall(2).page).toBe(FIRST_PAGE);
-    expect(sortParamsOfCall(2).status).toBe(TICKET_STATUS.Open);
-  });
+  // "…returns to the first page" — after a re-sort, a filter change or a page
+  // size change — is one rule in `writeTicketListParams`, not three behaviours
+  // of this page, and it is asserted directly in ticket-list-params.test.ts.
+  // Reaching it from here cost a mount, a fetch and two interactions per case
+  // to read the same `page` back out of a request body.
 
   test("hides the pagination bar when nothing matches", async () => {
     ticketsGet.mockResolvedValue(ticketsResponse([], { total: 0 }));
@@ -907,21 +874,11 @@ describe("TicketsPage URL state", () => {
     expect(sortIndicator("Subject")).toBe("ascending");
   });
 
-  test("falls back per-field on garbage params, keeping the valid ones", async () => {
-    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
-    renderTicketsPage("/tickets?sort=bogus&page=abc&status=Nope&pageSize=10");
-
-    await screen.findByText("Newest ticket");
-
-    // A stale or hand-edited link must not throw away the params beside the
-    // bad ones — pageSize survives while the three invalid values default.
-    expect(sortParamsOfCall(0)).toEqual({
-      sort: TICKET_SORT_FIELD.lastMessageAt,
-      order: SORT_ORDER.desc,
-      page: FIRST_PAGE,
-      pageSize: 10,
-    });
-  });
+  // Per-field fallback on a stale or hand-edited link belongs to
+  // `parseTicketListParams` and is asserted field by field in
+  // ticket-list-params.test.ts — every invalid shape of every param, without a
+  // table render each. What this block still proves is that the page hands it
+  // the entry URL and sends what comes back: the two tests above.
 
   test("leaves the URL untouched on mount when nothing was chosen", async () => {
     ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
@@ -948,18 +905,9 @@ describe("TicketsPage URL state", () => {
     );
   });
 
-  test("writes a filter change to the URL", async () => {
-    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
-    const { router } = renderTicketsPage();
-    const user = userEvent.setup();
-
-    await screen.findByText("Newest ticket");
-    await chooseOption(user, "Status", TICKET_STATUS.Resolved);
-
-    await waitFor(() =>
-      expect(urlParams(router).status).toBe(TICKET_STATUS.Resolved),
-    );
-  });
+  // No separate "writes a filter change to the URL": the filtering block's
+  // request assertions already require it, since the params this page sends are
+  // derived from the URL and nowhere else.
 
   test("writes the settled search to the URL", async () => {
     ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
@@ -982,33 +930,9 @@ describe("TicketsPage URL state", () => {
     });
   });
 
-  test("drops the page when a filter changes", async () => {
-    ticketsGet.mockResolvedValue(
-      ticketsResponse([newestTicket], { page: 2, total: 60 }),
-    );
-    const { router } = renderTicketsPage("/tickets?page=2");
-    const user = userEvent.setup();
-
-    await screen.findByText("Newest ticket");
-    expect(urlParams(router).page).toBe("2");
-
-    await chooseOption(user, "Status", TICKET_STATUS.Open);
-
-    // Page 2 of the old result set means nothing in the new one.
-    await waitFor(() => expect(urlParams(router)).not.toHaveProperty("page"));
-    expect(urlParams(router).status).toBe(TICKET_STATUS.Open);
-  });
-
-  test("keeps the page when only the page changes", async () => {
-    ticketsGet.mockResolvedValue(
-      ticketsResponse([newestTicket], { page: 1, total: 60 }),
-    );
-    const { router } = renderTicketsPage();
-    const user = userEvent.setup();
-
-    await screen.findByText("Newest ticket");
-    await user.click(screen.getByRole("button", { name: "Next page" }));
-
-    await waitFor(() => expect(urlParams(router).page).toBe("2"));
-  });
+  // When `page` survives a change and when it is dropped is the same one rule
+  // as above, and it is asserted patch by patch in ticket-list-params.test.ts.
+  // The wiring half — that a page move reaches the URL at all — is the
+  // pagination block's "advances to the next page", which reads `page: 2` back
+  // off the request the URL produced.
 });
