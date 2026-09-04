@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ROUTE } from "@/lib/routes";
 
 /**
  * The catch-all, and deliberately a page rather than a redirect.
@@ -51,7 +52,7 @@ export function NotFoundPage() {
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Button asChild>
-            <Link to="/tickets">Go to tickets</Link>
+            <Link to={ROUTE.tickets.path}>Go to tickets</Link>
           </Button>
           <Button asChild variant="outline">
             <Link to="/">Go to dashboard</Link>

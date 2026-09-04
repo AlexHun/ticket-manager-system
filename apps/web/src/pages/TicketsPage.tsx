@@ -13,7 +13,8 @@ import {
 } from "@ticket/shared";
 import { Tutorial } from "@/components/Tutorial";
 import { extractErrorMessage } from "@/lib/errors";
-import { ROUTE_TIMING, useRouteRenderedMark } from "@/lib/route-timing";
+import { useRouteRenderedMark } from "@/lib/route-timing-layout";
+import { ROUTE } from "@/lib/routes";
 import {
   LIST_PARAM,
   parseTicketListParams,
@@ -207,7 +208,7 @@ export function TicketsPage() {
   // Closes `tickets:navigate` — including on the filter, sort and page changes
   // that re-run this route's loader, since `data` never goes back to undefined
   // between them. See the hook for why it has no dependency array.
-  useRouteRenderedMark(ROUTE_TIMING.tickets, Boolean(data));
+  useRouteRenderedMark(ROUTE.tickets.timingKey, Boolean(data));
 
   const [density, setDensity] = useRowDensity();
 

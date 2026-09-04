@@ -24,7 +24,8 @@ import {
   isNotFoundError,
 } from "@/lib/errors";
 import { DECLINE_LABEL } from "@/lib/pipeline-labels";
-import { ROUTE_TIMING, useRouteRenderedMark } from "@/lib/route-timing";
+import { useRouteRenderedMark } from "@/lib/route-timing-layout";
+import { ROUTE } from "@/lib/routes";
 import { ticketDetailQueryOptions } from "@/lib/ticket-detail-query";
 import { listPathFrom } from "@/lib/ticket-list-params";
 import { ticketKeys } from "@/lib/ticket-queries";
@@ -108,7 +109,7 @@ export function TicketDetailPage() {
   // Closes `ticket-detail:navigate`. The ticket alone, not the activity trail
   // beside it: the trail is fetched on mount by design and has no loader to
   // bracket, and this route's loader only ever moved the ticket's own fetch.
-  useRouteRenderedMark(ROUTE_TIMING.ticketDetail, Boolean(ticket));
+  useRouteRenderedMark(ROUTE.ticketDetail.timingKey, Boolean(ticket));
 
   // Overrides the section name `AppShell` sets, once there is a subject to use.
   // This is the route where it matters most: three tickets open in three tabs

@@ -14,6 +14,7 @@ import {
   type TicketView,
   type TicketViewCountsResponse,
 } from "@ticket/shared";
+import { ROUTE } from "@/lib/routes";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -109,7 +110,7 @@ export function SidebarViews() {
   // `ProtectedRoute` blocks on the session before this renders, so the fallback
   // is for the type rather than for a state anyone sees.
   const viewerId = session?.user.id ?? "";
-  const onList = pathname === "/tickets";
+  const onList = pathname === ROUTE.tickets.path;
 
   return (
     <SidebarGroup>
@@ -136,7 +137,7 @@ export function SidebarViews() {
                       on the list. The search params are what tell them apart, so
                       the state is computed here and written by hand. */}
                   <Link
-                    to={{ pathname: "/tickets", search: `?${new URLSearchParams(params)}` }}
+                    to={{ pathname: ROUTE.tickets.path, search: `?${new URLSearchParams(params)}` }}
                     aria-current={active ? "page" : undefined}
                   >
                     <Icon aria-hidden="true" />

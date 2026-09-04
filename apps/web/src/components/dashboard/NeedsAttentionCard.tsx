@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatSince } from "@/lib/format";
+import { ticketDetailPath } from "@/lib/routes";
 
 /**
  * The open tickets that have gone quietest, oldest silence first.
@@ -69,7 +70,7 @@ export function NeedsAttentionCard({
                 >
                   <td className="py-2 pr-3">
                     <Link
-                      to={`/tickets/${ticket.id}`}
+                      to={ticketDetailPath(ticket.id)}
                       className="font-medium underline-offset-2 hover:underline"
                     >
                       {ticket.subject}

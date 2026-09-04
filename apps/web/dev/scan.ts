@@ -550,7 +550,61 @@ const LAZY_COMPONENT_RE =
  *  wrapper (`ProtectedRoute`, `AdminRoute`, `AppShell`). */
 const STATIC_COMPONENT_RE = /(?:^|[{,\s])Component:\s*(\w+)/;
 
-const PATH_RE = /path:\s*["']([^"']+)["']/;
+/**
+ * A route's path, in the two shapes `App.tsx` can write it.
+ *
+ * `ROUTE.<name>.path` is the one it uses today — every path is declared once in
+ * `apps/web/src/lib/routes.ts` and read from there (issue #151), so the literal
+ * form survives only for a route that has not been moved into the record. Both
+ * are accepted rather than one replacing the other: this scanner reporting
+ * "route missing from the map" for a perfectly ordinary route object is a
+ * worse failure than carrying a second regex.
+ */
+const PATH_LITERAL_RE = /path:\s*["']([^"']+)["']/;
+const PATH_RECORD_RE = /path:\s*ROUTE\.(\w+)\.path/;
+
+/** One `name: { path: "…" }` entry of that record. */
+const ROUTE_RECORD_ENTRY_RE = /(\w+):\s*\{\s*path:\s*["']([^"']+)["']/g;
+
+const ROUTES_FILE = "apps/web/src/lib/routes.ts";
+
+/** Route name → path, read out of the record `App.tsx` points at. */
+function readRouteRecord(
+  sources: Map<string, string>,
+  warnings: string[],
+): Map<string, string> {
+  const source = sources.get(ROUTES_FILE);
+  if (!source) {
+    warnings.push(
+      `No ${ROUTES_FILE} — paths written as \`ROUTE.<name>.path\` could not be resolved, so client routes may be incomplete.`,
+    );
+    return new Map();
+  }
+  return new Map(
+    [...source.matchAll(ROUTE_RECORD_ENTRY_RE)].map((m) => [m[1]!, m[2]!]),
+  );
+}
+
+function routePathIn(
+  ownText: string,
+  routePaths: Map<string, string>,
+  warnings: string[],
+): string | null {
+  const literal = PATH_LITERAL_RE.exec(ownText);
+  if (literal) return literal[1]!;
+
+  const reference = PATH_RECORD_RE.exec(ownText);
+  if (!reference) return null;
+
+  const resolved = routePaths.get(reference[1]!);
+  if (resolved === undefined) {
+    warnings.push(
+      `App.tsx routes \`ROUTE.${reference[1]}.path\`, which ${ROUTES_FILE} does not declare — that route is missing from this map.`,
+    );
+    return null;
+  }
+  return resolved;
+}
 
 /**
  * Layout routes that render nothing but an `<Outlet>` and wrap the whole tree,
@@ -655,6 +709,8 @@ function extractRoutes(
     }
   }
 
+  const routePaths = readRouteRecord(sources, warnings);
+
   const routeArrayConsts = new Map<string, string>();
   for (const m of source.matchAll(ROUTE_ARRAY_CONST_RE)) {
     const bracket = source.indexOf("[", m.index + m[0].length);
@@ -710,7 +766,7 @@ function extractRoutes(
         if (childSpan) childrenInner = body.slice(childSpan.start, childSpan.end);
       }
 
-      const routePath = PATH_RE.exec(ownText)?.[1] ?? null;
+      const routePath = routePathIn(ownText, routePaths, warnings);
       const lazyMatch = LAZY_COMPONENT_RE.exec(ownText);
       const component = lazyMatch ? lazyMatch[2]! : (STATIC_COMPONENT_RE.exec(ownText)?.[1] ?? null);
       const isLazy = lazyMatch !== null;

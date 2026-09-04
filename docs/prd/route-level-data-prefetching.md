@@ -32,7 +32,7 @@ sequence.
 
 The metric is now measurable: each of the three routes writes a
 `<route>:navigate` / `<route>:rendered` mark pair and the
-`<route>:time-to-data` measure between them (`apps/web/src/lib/route-timing.tsx`,
+`<route>:time-to-data` measure between them (`apps/web/src/lib/route-timing.ts`,
 read with `performance.getEntriesByName`). Not Sentry, as this row originally
 guessed — the span wanted is one this app defines, and a user-timing pair is
 both cheaper to read and available on a local revision, which the before number

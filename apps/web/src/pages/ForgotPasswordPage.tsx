@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, MailCheck } from "lucide-react";
 import { forgotPasswordSchema, type ForgotPasswordValues } from "@ticket/core";
 import { authClient } from "@/lib/auth-client";
+import { ROUTE } from "@/lib/routes";
 import { LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +81,7 @@ export function ForgotPasswordPage() {
                   You can close this page.
                 </p>
                 <Button asChild variant="outline">
-                  <Link to="/login">Back to sign in</Link>
+                  <Link to={ROUTE.login.path}>Back to sign in</Link>
                 </Button>
               </div>
             ) : (
@@ -110,7 +111,7 @@ export function ForgotPasswordPage() {
                   {isSubmitting ? "Sending…" : "Send reset link"}
                 </Button>
                 <Button asChild variant="ghost" size="sm">
-                  <Link to="/login">Back to sign in</Link>
+                  <Link to={ROUTE.login.path}>Back to sign in</Link>
                 </Button>
               </form>
             )}

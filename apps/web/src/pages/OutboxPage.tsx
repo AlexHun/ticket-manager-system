@@ -11,6 +11,7 @@ import {
   type OutboxListResponse,
 } from "@ticket/shared";
 import { api } from "@/lib/api";
+import { ROUTE, ticketDetailPath } from "@/lib/routes";
 import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -144,7 +145,7 @@ export function OutboxPage() {
           <p className="text-xs text-muted-foreground">
             Invitation and password-reset links work for 24 hours, and their
             emails are cleared once they expire — resend from{" "}
-            <Link to="/users" className="underline underline-offset-2">
+            <Link to={ROUTE.users.path} className="underline underline-offset-2">
               Users
             </Link>{" "}
             if one has gone. Ticket replies are kept for 90 days.
@@ -227,7 +228,7 @@ function OutboxRow({
           <Badge variant="outline">{KIND_LABEL[email.kind]}</Badge>
           {email.ticketId !== null && (
             <Button asChild variant="link" size="sm" className="h-auto p-0">
-              <Link to={`/tickets/${email.ticketId}`}>
+              <Link to={ticketDetailPath(email.ticketId)}>
                 Ticket #{email.ticketId}
               </Link>
             </Button>

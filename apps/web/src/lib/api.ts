@@ -1,5 +1,6 @@
 import axios from "axios";
 import type { AxiosError } from "axios";
+import { ROUTE } from "./routes";
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? "",
@@ -31,9 +32,9 @@ api.interceptors.response.use(
   (error: AxiosError) => {
     if (
       error.response?.status === 401 &&
-      window.location.pathname !== "/login"
+      window.location.pathname !== ROUTE.login.path
     ) {
-      window.location.assign("/login");
+      window.location.assign(ROUTE.login.path);
     }
     return Promise.reject(error);
   },
