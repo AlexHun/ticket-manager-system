@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { fromNodeHeaders } from "better-auth/node";
+import { USER_ROLE } from "@ticket/shared";
 import { auth } from "../auth";
 
 export type Session = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
@@ -40,7 +41,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     return;
   }
 
-  if (session.user.role !== "admin") {
+  if (session.user.role !== USER_ROLE.admin) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }

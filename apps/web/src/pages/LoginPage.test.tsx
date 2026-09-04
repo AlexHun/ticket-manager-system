@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Route, Routes } from "react-router-dom";
+import { USER_ROLE } from "@ticket/shared";
 import { renderWithQuery } from "@/test/render";
 import { LoginPage } from "./LoginPage";
 
@@ -56,7 +57,7 @@ describe("LoginPage — rendering", () => {
 
   test("redirects to / when an authenticated session already exists", async () => {
     mockUseSession.mockReturnValue({
-      data: { user: { id: "u_1", name: "Admin", role: "admin" } },
+      data: { user: { id: "u_1", name: "Admin", role: USER_ROLE.admin } },
       isPending: false,
     });
     renderLogin();

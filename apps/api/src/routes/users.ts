@@ -4,7 +4,11 @@ import type { Request, Response } from "express";
 import { fromNodeHeaders } from "better-auth/node";
 import type { z, ZodType } from "zod";
 import { createUserSchema, updateUserSchema } from "@ticket/core";
-import { ADMIN_ACTIVITY_ACTION, TICKET_ACTIVITY_ACTION } from "@ticket/shared";
+import {
+  ADMIN_ACTIVITY_ACTION,
+  TICKET_ACTIVITY_ACTION,
+  USER_ROLE,
+} from "@ticket/shared";
 import type {
   CreateUserResponse,
   UpdateUserResponse,
@@ -389,7 +393,7 @@ usersRouter.delete(
       return;
     }
 
-    if (target.role === "admin") {
+    if (target.role === USER_ROLE.admin) {
       res.status(403).json({ error: "Admin users cannot be deleted" });
       return;
     }
