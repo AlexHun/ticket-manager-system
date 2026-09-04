@@ -18,37 +18,23 @@ import {
   type DashboardLayoutResponse,
   type TicketStatsResponse,
 } from "@ticket/shared";
-import { renderWithQuery } from "@/test/render";
+import { apiStub } from "@/test/api-stub";
+import { renderRoutes } from "@/test/render";
 import { DashboardPage } from "./DashboardPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-// Independent fakes, dispatched on the URL: the endpoints have to be
-// controllable separately (a test that fails one must not silently drag the
-// other's fixture into an incompatible shape) but a single-argument
-// `mockResolvedValue` can't distinguish them. `mockTutorialGet` answers the
-// `<Tutorial>` mounted on this page — it is not what any test here exercises,
-// so it always resolves to "nothing to show".
-const mockStatsGet = vi.fn();
-const mockEffectivenessGet = vi.fn();
-const mockTutorialGet = vi.fn();
-const mockLayoutGet = vi.fn();
-const mockLayoutPut = vi.fn();
-const mockLayoutDelete = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (url: string, ...rest: unknown[]) => {
-      if (url.startsWith("/api/tutorials/")) return mockTutorialGet(url, ...rest);
-      if (url === "/api/dashboard-layout") return mockLayoutGet(url, ...rest);
-      return url === "/api/tickets/effectiveness"
-        ? mockEffectivenessGet(url, ...rest)
-        : mockStatsGet(url, ...rest);
-    },
-    put: (url: string, ...rest: unknown[]) => mockLayoutPut(url, ...rest),
-    delete: (url: string, ...rest: unknown[]) => mockLayoutDelete(url, ...rest),
-  },
-}));
+// One handle per endpoint, which is what the page needs: the three GETs have
+// to be controllable separately, or a test that fails one silently drags the
+// others' fixtures into an incompatible shape. The `<Tutorial>` mounted on
+// this page is answered by the stub's own default.
+const statsGet = apiStub.get("/api/tickets/stats");
+const effectivenessGet = apiStub.get("/api/tickets/effectiveness");
+const layoutGet = apiStub.get("/api/dashboard-layout");
+const layoutPut = apiStub.put("/api/dashboard-layout");
+const layoutDelete = apiStub.delete("/api/dashboard-layout");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -190,8 +176,15 @@ function effectiveness(
   };
 }
 
+/**
+ * On the real router, at the page's own path — as a navigation would match it.
+ * Without `dashboardLoader`: that loader reaches the module-level query client
+ * directly, which is #157's problem to solve, and this file is about the page.
+ */
 function renderDashboard() {
-  return renderWithQuery(<DashboardPage />, { initialEntries: ["/"] });
+  return renderRoutes([{ path: "/", Component: DashboardPage }], {
+    initialEntries: ["/"],
+  });
 }
 
 function layoutResponse(
@@ -201,26 +194,19 @@ function layoutResponse(
 }
 
 beforeEach(() => {
-  mockStatsGet.mockReset();
-  mockEffectivenessGet.mockReset();
-  mockTutorialGet.mockReset();
-  mockLayoutGet.mockReset();
-  mockLayoutPut.mockReset();
-  mockLayoutDelete.mockReset();
-  mockStatsGet.mockResolvedValue({ data: stats() });
-  mockEffectivenessGet.mockResolvedValue({ data: effectiveness() });
-  mockTutorialGet.mockResolvedValue({
-    data: { tutorial: { content: { steps: [] }, shouldShow: false } },
-  });
-  mockLayoutGet.mockResolvedValue({ data: layoutResponse() });
+  apiStub.reset();
+  statsGet.mockResolvedValue({ data: stats() });
+  effectivenessGet.mockResolvedValue({ data: effectiveness() });
+  layoutGet.mockResolvedValue({ data: layoutResponse() });
   // Echoes the saved layout back, same contract as the real route (`PUT`
   // returns exactly what it just wrote) — a canned response here would
   // silently overwrite the optimistic reorder/resize once the mutation
   // "succeeds", masking the very behaviour these tests check.
-  mockLayoutPut.mockImplementation((_url: string, body: { layout: unknown }) =>
-    Promise.resolve({ data: { layout: body.layout, isDefault: false } }),
-  );
-  mockLayoutDelete.mockResolvedValue({ data: layoutResponse() });
+  layoutPut.mockImplementation((_url, body) => {
+    const { layout } = body as { layout: unknown };
+    return Promise.resolve({ data: { layout, isDefault: false } });
+  });
+  layoutDelete.mockResolvedValue({ data: layoutResponse() });
 });
 
 // --- Tests ----------------------------------------------------------------
@@ -268,7 +254,7 @@ describe("DashboardPage", () => {
   });
 
   test("congratulates a healthy slice instead", async () => {
-    mockStatsGet.mockResolvedValue({
+    statsGet.mockResolvedValue({
       data: stats({
         summary: {
           total: 100,
@@ -327,7 +313,7 @@ describe("DashboardPage", () => {
     // A bare "/" carries no range param, so the resting request is the default
     // rather than whatever the fixture happens to echo back.
     await waitFor(() =>
-      expect(mockStatsGet).toHaveBeenCalledWith(
+      expect(statsGet).toHaveBeenCalledWith(
         "/api/tickets/stats",
         expect.objectContaining({
           params: expect.objectContaining({ range: DEFAULT_DASHBOARD_RANGE }),
@@ -335,7 +321,7 @@ describe("DashboardPage", () => {
       ),
     );
     await waitFor(() =>
-      expect(mockEffectivenessGet).toHaveBeenCalledWith(
+      expect(effectivenessGet).toHaveBeenCalledWith(
         "/api/tickets/effectiveness",
         expect.objectContaining({
           params: expect.objectContaining({ range: DEFAULT_DASHBOARD_RANGE }),
@@ -349,7 +335,7 @@ describe("DashboardPage", () => {
     await user.click(screen.getByLabelText("Last 7d"));
 
     await waitFor(() =>
-      expect(mockStatsGet).toHaveBeenCalledWith(
+      expect(statsGet).toHaveBeenCalledWith(
         "/api/tickets/stats",
         expect.objectContaining({
           params: expect.objectContaining({ range: DASHBOARD_RANGE.d7 }),
@@ -357,7 +343,7 @@ describe("DashboardPage", () => {
       ),
     );
     await waitFor(() =>
-      expect(mockEffectivenessGet).toHaveBeenCalledWith(
+      expect(effectivenessGet).toHaveBeenCalledWith(
         "/api/tickets/effectiveness",
         expect.objectContaining({
           params: expect.objectContaining({ range: DASHBOARD_RANGE.d7 }),
@@ -367,14 +353,14 @@ describe("DashboardPage", () => {
   });
 
   test("shows an error instead of panels when the request fails", async () => {
-    mockStatsGet.mockRejectedValue(new Error("boom"));
+    statsGet.mockRejectedValue(new Error("boom"));
     renderDashboard();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("Tickets created")).not.toBeInTheDocument();
   });
 
   test("renders an empty slice without crashing", async () => {
-    mockStatsGet.mockResolvedValue({
+    statsGet.mockResolvedValue({
       data: stats({
         summary: {
           total: 0,
@@ -408,7 +394,7 @@ describe("DashboardPage", () => {
         needsAttention: [],
       }),
     });
-    mockEffectivenessGet.mockResolvedValue({
+    effectivenessGet.mockResolvedValue({
       data: effectiveness({
         classified: 0,
         autoReply: { resolved: 0, rate: null },
@@ -509,7 +495,7 @@ describe("DashboardPage customize mode", () => {
     );
 
     await waitFor(() =>
-      expect(mockLayoutPut).toHaveBeenCalledWith("/api/dashboard-layout", {
+      expect(layoutPut).toHaveBeenCalledWith("/api/dashboard-layout", {
         layout: [
           DEFAULT_DASHBOARD_LAYOUT[1],
           DEFAULT_DASHBOARD_LAYOUT[0],
@@ -538,7 +524,7 @@ describe("DashboardPage customize mode", () => {
 
     await user.click(screen.getByRole("button", { name: "Reset to default" }));
 
-    await waitFor(() => expect(mockLayoutDelete).toHaveBeenCalledWith(
+    await waitFor(() => expect(layoutDelete).toHaveBeenCalledWith(
       "/api/dashboard-layout",
     ));
     await waitFor(() =>

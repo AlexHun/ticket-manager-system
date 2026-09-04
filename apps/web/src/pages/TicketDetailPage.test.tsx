@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   MESSAGE_DIRECTION,
@@ -12,30 +11,30 @@ import {
   type TicketWithAssignee,
   type ThreadMessage,
 } from "@ticket/shared";
-import { renderWithQuery } from "@/test/render";
+import { apiStub } from "@/test/api-stub";
+import { renderRoutes } from "@/test/render";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { TicketDetailPage } from "./TicketDetailPage";
 
 // --- Mocks ----------------------------------------------------------------
 
-const mockGet = vi.fn();
-const mockPatch = vi.fn();
-const mockPost = vi.fn();
-// Answers the `<Tutorial>` mounted on this page — not what any test here
-// exercises, so it always resolves to "nothing to show" and never touches
-// `mockGet`'s own call count or `mockResolvedValueOnce` queue.
-const mockTutorialGet = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (url: string, ...rest: unknown[]) =>
-      url.startsWith("/api/tutorials/")
-        ? mockTutorialGet(url, ...rest)
-        : mockGet(url, ...rest),
-    patch: (...args: unknown[]) => mockPatch(...args),
-    post: (...args: unknown[]) => mockPost(...args),
-  },
-}));
+// Six endpoints reach this page, and every one of them now has its own `vi.fn`
+// rather than a branch in a hand-written router. The two literal paths are
+// matched ahead of the `/api/tickets/:id` pattern, so the roster and the unread
+// count keep their own call counts — which is what the `calls.filter(([url]) =>
+// …)` dance in this file used to buy by hand. The `<Tutorial>` mounted on this
+// page is answered by the stub's own default.
+const ticketGet = apiStub.get("/api/tickets/:id");
+const assigneesGet = apiStub.get("/api/tickets/assignees");
+const unreadGet = apiStub.get("/api/tickets/unread");
+// The trail beside the thread. It used to be answered by the catch-all with a
+// ticket, which `data.activity` then read as `undefined` — the stub refuses an
+// unregistered request outright, so it is declared here and answers honestly.
+const activityGet = apiStub.get("/api/tickets/:id/activity");
+const assigneePatch = apiStub.patch("/api/tickets/:id/assignee");
+const replyPost = apiStub.post("/api/tickets/:id/messages");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -104,7 +103,7 @@ interface ApiFixture {
 }
 
 /**
- * Route the two GETs the page makes.
+ * What each of the page's GETs answers with, for one test.
  *
  * They resolve independently, so a test can fail the roster without failing the
  * ticket — and a single blanket `mockResolvedValue` would answer the roster
@@ -116,19 +115,18 @@ function mockApi({
   assignees = [],
   assigneesError,
 }: ApiFixture = {}) {
-  mockGet.mockImplementation((url: string) => {
-    if (url === ASSIGNEES_URL) {
-      return assigneesError
-        ? Promise.reject(assigneesError)
-        : Promise.resolve({ data: { assignees } });
-    }
-    if (url === "/api/tickets/unread") {
-      return Promise.resolve({ data: { tickets: [] } });
-    }
-    return detailError
+  ticketGet.mockImplementation(() =>
+    detailError
       ? Promise.reject(detailError)
-      : Promise.resolve({ data: { ticket: ticket ?? makeTicketDetail() } });
-  });
+      : Promise.resolve({ data: { ticket: ticket ?? makeTicketDetail() } }),
+  );
+  assigneesGet.mockImplementation(() =>
+    assigneesError
+      ? Promise.reject(assigneesError)
+      : Promise.resolve({ data: { assignees } }),
+  );
+  unreadGet.mockResolvedValue({ data: { tickets: [] } });
+  activityGet.mockResolvedValue({ data: { activity: [] } });
 }
 
 /** Mounts the sidebar's own unread-count observer alongside the page under
@@ -234,39 +232,35 @@ function titleBlock(): HTMLElement {
 }
 
 /**
- * The page reads `:id` from the route, so it has to be mounted under a matching
- * path rather than rendered bare. The sibling /tickets route gives the back
- * link somewhere real to point at.
+ * On the real router, at the entry URL — the page reads `:id` from the route,
+ * so it has to be matched under a path rather than rendered bare. The sibling
+ * /tickets route gives the back link somewhere real to point at. Without
+ * `ticketDetailLoader`: that loader reaches the module-level query client
+ * directly, which is #157's problem to solve, and this file is about the page.
  */
 function renderDetail(
   entry: string | { pathname: string; state?: unknown } = "/tickets/12",
   { withUnreadObserver = false } = {},
 ) {
-  return renderWithQuery(
-    <Routes>
-      <Route
-        path="/tickets/:id"
-        element={
+  return renderRoutes(
+    [
+      {
+        path: "/tickets/:id",
+        element: (
           <>
             {withUnreadObserver && <UnreadObserver />}
             <TicketDetailPage />
           </>
-        }
-      />
-      <Route path="/tickets" element={<div>tickets list</div>} />
-    </Routes>,
+        ),
+      },
+      { path: "/tickets", element: <div>tickets list</div> },
+    ],
     { initialEntries: [entry] },
   );
 }
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockPatch.mockReset();
-  mockPost.mockReset();
-  mockTutorialGet.mockReset();
-  mockTutorialGet.mockResolvedValue({
-    data: { tutorial: { content: { steps: [] }, shouldShow: false } },
-  });
+  apiStub.reset();
 });
 
 afterEach(() => {
@@ -280,8 +274,11 @@ describe("TicketDetailPage", () => {
     mockApi();
     renderDetail("/tickets/12");
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalled());
-    const [url, config] = mockGet.mock.calls[0];
+    await waitFor(() => expect(ticketGet).toHaveBeenCalled());
+    const [url, config] = ticketGet.mock.calls[0] as [
+      string,
+      { signal: AbortSignal },
+    ];
     expect(url).toBe("/api/tickets/12");
     expect(config.signal).toBeInstanceOf(AbortSignal);
   });
@@ -294,11 +291,7 @@ describe("TicketDetailPage", () => {
     // the response carries no `assignmentSeenAt` to say so — the sidebar badge
     // only finds out by re-asking. One call for the observer's own mount, a
     // second once the ticket has landed.
-    await waitFor(() =>
-      expect(
-        mockGet.mock.calls.filter(([url]) => url === "/api/tickets/unread"),
-      ).toHaveLength(2),
-    );
+    await waitFor(() => expect(unreadGet).toHaveBeenCalledTimes(2));
   });
 
   test("shows a skeleton while loading, then the ticket", async () => {
@@ -386,7 +379,7 @@ describe("TicketDetailPage assignment", () => {
     renderDetail();
 
     await waitFor(() =>
-      expect(mockGet).toHaveBeenCalledWith(
+      expect(assigneesGet).toHaveBeenCalledWith(
         ASSIGNEES_URL,
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
@@ -412,16 +405,15 @@ describe("TicketDetailPage assignment", () => {
 
   test("assigns the ticket to the chosen agent", async () => {
     mockApi({ assignees: AGENTS });
-    mockPatch.mockResolvedValue(assignResponse(AGENTS[1]));
+    assigneePatch.mockResolvedValue(assignResponse(AGENTS[1]));
     renderDetail();
     const user = await readyToAssign();
-    const detailFetches = () =>
-      mockGet.mock.calls.filter(([url]) => url === "/api/tickets/12").length;
+    const detailFetches = () => ticketGet.mock.calls.length;
     const before = detailFetches();
 
     await chooseAssignee(user, "Sam Support");
 
-    expect(mockPatch).toHaveBeenCalledWith("/api/tickets/12/assignee", {
+    expect(assigneePatch).toHaveBeenCalledWith("/api/tickets/12/assignee", {
       assignedToId: "agent-2",
     });
     expect(await screen.findByText("sam@example.com")).toBeInTheDocument();
@@ -439,13 +431,13 @@ describe("TicketDetailPage assignment", () => {
       }),
       assignees: AGENTS,
     });
-    mockPatch.mockResolvedValue(assignResponse(null));
+    assigneePatch.mockResolvedValue(assignResponse(null));
     renderDetail();
     const user = await readyToAssign();
 
     await chooseAssignee(user, "Unassigned");
 
-    expect(mockPatch).toHaveBeenCalledWith("/api/tickets/12/assignee", {
+    expect(assigneePatch).toHaveBeenCalledWith("/api/tickets/12/assignee", {
       assignedToId: null,
     });
     await waitFor(() =>
@@ -462,7 +454,7 @@ describe("TicketDetailPage assignment", () => {
       }),
       assignees: AGENTS,
     });
-    mockPatch.mockRejectedValue(makeAxiosError(400, "Assignee not found"));
+    assigneePatch.mockRejectedValue(makeAxiosError(400, "Assignee not found"));
     renderDetail();
     const user = await readyToAssign();
 
@@ -614,7 +606,7 @@ describe("TicketDetailPage reply composer", () => {
 
   test("posts the typed reply to the ticket's own messages endpoint", async () => {
     mockApi();
-    mockPost.mockResolvedValue(replyResponse());
+    replyPost.mockResolvedValue(replyResponse());
     renderDetail();
     const user = await readyToReply();
 
@@ -622,7 +614,7 @@ describe("TicketDetailPage reply composer", () => {
     await user.click(sendButton());
 
     await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith("/api/tickets/12/messages", {
+      expect(replyPost).toHaveBeenCalledWith("/api/tickets/12/messages", {
         textBody: "Try the reset link again.",
       }),
     );
@@ -634,11 +626,10 @@ describe("TicketDetailPage reply composer", () => {
         messages: [makeMessage({ id: 1, textBody: "First message" })],
       }),
     });
-    mockPost.mockResolvedValue(replyResponse());
+    replyPost.mockResolvedValue(replyResponse());
     renderDetail();
     const user = await readyToReply();
-    const detailFetches = () =>
-      mockGet.mock.calls.filter(([url]) => url === "/api/tickets/12").length;
+    const detailFetches = () => ticketGet.mock.calls.length;
     const before = detailFetches();
 
     await user.type(replyBox(), "Try the reset link again.");
@@ -659,7 +650,7 @@ describe("TicketDetailPage reply composer", () => {
         messages: [makeMessage({ id: 1, textBody: "First message" })],
       }),
     });
-    mockPost.mockResolvedValue(replyResponse());
+    replyPost.mockResolvedValue(replyResponse());
     renderDetail();
     const user = await readyToReply();
 
@@ -677,7 +668,7 @@ describe("TicketDetailPage reply composer", () => {
 
   test("moves Last message to the reply's own timestamp", async () => {
     mockApi();
-    mockPost.mockResolvedValue(replyResponse());
+    replyPost.mockResolvedValue(replyResponse());
     renderDetail();
     const user = await readyToReply();
     expect(lastMessageAt()).toBe("2025-05-03T12:00:00.000Z");
@@ -694,7 +685,7 @@ describe("TicketDetailPage reply composer", () => {
 
   test("clears the box once the reply is away", async () => {
     mockApi();
-    mockPost.mockResolvedValue(replyResponse());
+    replyPost.mockResolvedValue(replyResponse());
     renderDetail();
     const user = await readyToReply();
 
@@ -706,7 +697,7 @@ describe("TicketDetailPage reply composer", () => {
 
   test("keeps the draft and explains a rejected reply", async () => {
     mockApi();
-    mockPost.mockRejectedValue(
+    replyPost.mockRejectedValue(
       makeAxiosError(400, "A reply is limited to 10000 characters"),
     );
     renderDetail();
@@ -740,7 +731,7 @@ describe("TicketDetailPage reply composer", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Write a reply before sending",
     );
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(replyPost).not.toHaveBeenCalled();
   });
 
   test("refuses a whitespace-only reply", async () => {
@@ -759,12 +750,12 @@ describe("TicketDetailPage reply composer", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Write a reply before sending",
     );
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(replyPost).not.toHaveBeenCalled();
   });
 
   test("sends on Ctrl+Enter, and takes a plain Enter as a newline", async () => {
     mockApi();
-    mockPost.mockResolvedValue(replyResponse());
+    replyPost.mockResolvedValue(replyResponse());
     renderDetail();
     const user = await readyToReply();
 
@@ -772,13 +763,13 @@ describe("TicketDetailPage reply composer", () => {
     await user.keyboard("First line{Enter}second line");
 
     // An email reply has paragraphs; Enter is not a send.
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(replyPost).not.toHaveBeenCalled();
     expect(replyBox()).toHaveValue("First line\nsecond line");
 
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith("/api/tickets/12/messages", {
+      expect(replyPost).toHaveBeenCalledWith("/api/tickets/12/messages", {
         textBody: "First line\nsecond line",
       }),
     );
@@ -787,7 +778,7 @@ describe("TicketDetailPage reply composer", () => {
   test("locks the box and the button while the reply is in flight", async () => {
     mockApi();
     let settle!: (value: unknown) => void;
-    mockPost.mockReturnValue(
+    replyPost.mockReturnValue(
       new Promise((resolve) => {
         settle = resolve;
       }),
@@ -815,7 +806,7 @@ describe("TicketDetailPage reply composer", () => {
 
   test("offers the composer on a ticket with no messages yet", async () => {
     mockApi();
-    mockPost.mockResolvedValue(replyResponse());
+    replyPost.mockResolvedValue(replyResponse());
     renderDetail();
     const user = await readyToReply();
 
