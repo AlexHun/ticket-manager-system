@@ -5,7 +5,7 @@ import {
   MAX_MESSAGE_BODY_LENGTH,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import { autoReplyArticles, type KbArticle } from "./knowledge-base";
+import type { KbArticle } from "./knowledge-base";
 import {
   AI_FAILURE,
   classify as classifyFailure,
@@ -85,6 +85,22 @@ import {
  *
  * The scheduling, the claim and the write live in `../jobs/auto-reply-ticket`.
  * This module decides what to say and whether it may be said at all.
+ *
+ * **The corpus arrives as an argument, and nothing here reads a database.** That
+ * is a testability decision with a safety consequence, in that order. This module
+ * used to call `autoReplyArticles()` itself, which meant every test of the six
+ * checks above — the two that were *measured* beating the prompt 7-of-9 and
+ * 10-of-10 — needed a Prisma mock before it could assert on a string comparison.
+ * They therefore did not exist. With the read moved up to the caller that already
+ * queries the knowledge base, this is pure logic plus one model call, and each
+ * check is provable the way `polish.ts`'s are.
+ *
+ * Nothing about the checks changes, which is the point: ADR-0004 forbids
+ * weakening them, and a check nobody can test is not a strong one. The one
+ * property this makes *stronger* is check 4's — the article array the citations
+ * resolve against is now, visibly, the same value that went into the prompt,
+ * because there is no longer a query in this file that could return a different
+ * one.
  */
 
 /**
@@ -283,11 +299,17 @@ const autoReplySchema = z.object({
 /**
  * The corpus, as the prompt carries it.
  *
- * Built once per call from `autoReplyArticles()`, which has already withheld the
- * `Auto-reply: no` articles and never selected the internal notes at all. The id
- * is on its own line in front of each body so the model has something concrete
- * to cite, and the categories travel because "which article is this" is easier
- * when the piles are named.
+ * Built from the articles the caller supplies, which `autoReplyArticles()` has
+ * already stripped down to what a prompt may see — the `Auto-reply: no` ones
+ * withheld in the `where`, the internal notes never selected at all. The id is on
+ * its own line in front of each body so the model has something concrete to cite,
+ * and the categories travel because "which article is this" is easier when the
+ * piles are named.
+ *
+ * Only the four fields of `KbArticle` are written out, one at a time. Nothing
+ * here spreads an article, so a column that appears on the row later cannot
+ * arrive in a prompt by accident — the second half of the guarantee whose first
+ * half is `CORPUS_SELECT` not naming `internalNote`.
  */
 function corpusBlock(articles: KbArticle[]): string {
   return articles
@@ -375,12 +397,15 @@ function userPrompt(context: AutoReplyContext): string {
  * A first name we are willing to put in a greeting, or null.
  *
  * Takes the first whitespace-separated token of the display name and nothing
- * else, so "Marta Vogel" greets Marta and "Marta, urgent: visit https://…"
- * greets nobody — the payload is in tokens we never look at, and the first token
- * carries punctuation that fails `NAME_TOKEN` anyway.
+ * else, so "Marta Vogel" greets Marta and "Marta, urgent: visit https://…" also
+ * greets Marta: the payload is in tokens we never look at. "https://evil.example
+ * is down" greets nobody, because its first token is not a name.
  *
  * Surrounding punctuation is trimmed before the test rather than after, so the
- * "Vogel, Marta" form some clients send is not thrown away over its comma.
+ * "Vogel, Marta" form some clients send is not thrown away over its comma. That
+ * trimming is why the first example keeps its name rather than losing it to the
+ * comma — the outcome that matters is the same either way, which is that nothing
+ * but one plausible name token can reach the greeting line.
  *
  * The case is left exactly as it arrived. Title-casing would be presumptuous:
  * plenty of people write their own name in lower case on purpose, and "hi marta"
@@ -578,12 +603,17 @@ function unbackedReferences(reply: string, source: string): string[] {
  * allows the other three, and for the classifier's reason: the caller is a
  * background worker with no response to write, so an escaping rejection would be
  * an unhandled promise rejection rather than a 500.
+ *
+ * `articles` is the corpus, read by the caller from `autoReplyArticles()` and
+ * passed in whole. It is the prompt's knowledge base *and* the only authority
+ * checks 4-6 will accept, and those are the same array on purpose — see the note
+ * on check 4 below.
  */
 export async function autoReply(
+  articles: KbArticle[],
   context: AutoReplyContext,
   signal?: AbortSignal,
 ): Promise<AutoReplyResult> {
-  const articles = await autoReplyArticles();
   if (articles.length === 0) {
     // Nothing to answer from. Config rather than a provider fault: someone
     // deleted the knowledge base, or every article in it is withheld.
@@ -679,15 +709,17 @@ export async function autoReply(
   // given, so an id that exists in the table but was withheld does not count —
   // that is not a citation, it is a guess that happened to land on a real id.
   //
-  // Resolved against the local `articles` array, and that is now load-bearing
-  // rather than a convenience. This used to call `autoReplyArticleById`, which
+  // Resolved against the `articles` argument, and that is load-bearing rather
+  // than a convenience. This used to call `autoReplyArticleById`, which
   // re-derived the corpus; against a file cached for the life of the process
   // that returned the identical list, so the distinction cost nothing. Against a
   // live table it does not: an admin saving an edit while this call is in flight
   // would have the citation checked against a corpus the model never saw, and
   // checks 5 and 6 below would then measure the reply against the *new* article
-  // text. `articles` is the exact set that went into the prompt. Do not
-  // reintroduce a lookup that queries again.
+  // text. `articles` is the exact set that went into the prompt — the same value,
+  // not a second reading of the same query, which is now true by construction
+  // because this module cannot reach the database at all. Do not reintroduce a
+  // lookup that queries again.
   const byId = new Map(articles.map((article) => [article.id, article]));
   const cited = output.articleIds
     .map((id) => byId.get(id.trim().toUpperCase()))

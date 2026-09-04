@@ -10,7 +10,7 @@ import {
   type AutoReplyDecline,
 } from "@ticket/shared";
 import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
-import { autoReplyArticleCount } from "../ai/knowledge-base";
+import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
 import { assistantUser, resolveHandoff } from "../automation";
 import { prisma } from "../db";
@@ -374,7 +374,18 @@ async function handle(job: AutoReplyJob): Promise<void> {
     return;
   }
 
-  const result = await autoReply({
+  // The corpus, read here rather than inside `autoReply`, which now takes it as
+  // a value and touches no database at all. Two things follow. The one that was
+  // wanted: the six checks that make this feature defensible became unit-testable
+  // without a Prisma mock, and now have tests. The one to preserve: this read
+  // stays *here*, after the gates above, so a ticket the machine may not answer
+  // still costs no query — and it stays a single read, because `autoReply`
+  // resolves its citations against the exact array it was handed. A second call
+  // to `autoReplyArticles()` anywhere in this path would reintroduce the race
+  // check 4 exists to close.
+  const articles = await autoReplyArticles();
+
+  const result = await autoReply(articles, {
     subject: ticket.subject,
     // Null when the first email was HTML-only. The prompt has a branch for it,
     // and that branch declines: there is nothing to answer.
