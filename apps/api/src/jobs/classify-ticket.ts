@@ -223,6 +223,32 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
   if (written.count === 0) return;
   console.log(`[classify] ticket ${ticketId} filed as ${result.category}`);
 
+  // Below the guard, so the trail records what the classifier *wrote* rather
+  // than what it decided. A ticket an agent filed during the call took the
+  // branch above, and an entry there would tell whoever reads this ticket that a
+  // machine overruled them — on precisely the tickets where it did not.
+  //
+  // `fromValue` is null by construction: the `where` above only matched because
+  // the column was empty.
+  //
+  // **Above the publishes, not below them, and that ordering is the fix for a
+  // real defect (#176).** `ticket_updated` invalidates `ticketKeys.activity` on
+  // the client, so a detail pane open on this ticket refetches the trail the
+  // moment the event lands. Published first, that refetch races an entry that
+  // has not been written yet — and the window is not an instant: this awaits
+  // `assistantActor()`, an uncached `findFirst` on the user table, before the
+  // insert. Two round trips. The pane can cache a trail missing the entry and
+  // never be told again, because the only event that would have corrected it has
+  // already fired. Write the fact, then announce it.
+  await recordActivity(
+    ticketId,
+    {
+      action: TICKET_ACTIVITY_ACTION.category_changed,
+      toValue: result.category,
+    },
+    await assistantActor(),
+  );
+
   // Below the same guard the activity row is, and for the same reason: this
   // announces what the classifier *wrote*. A ticket an agent filed during the
   // call took the branch above and has nothing to announce.
@@ -232,22 +258,6 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
   // just stopped being right about.
   publishPipelineChanged(ticketId);
   publishTicketUpdated(ticketId, [TICKET_EVENT_FIELD.category]);
-
-  // Below the guard, so the trail records what the classifier *wrote* rather
-  // than what it decided. A ticket an agent filed during the call took the
-  // branch above, and an entry there would tell whoever reads this ticket that a
-  // machine overruled them — on precisely the tickets where it did not.
-  //
-  // `fromValue` is null by construction: the `where` above only matched because
-  // the column was empty.
-  await recordActivity(
-    ticketId,
-    {
-      action: TICKET_ACTIVITY_ACTION.category_changed,
-      toValue: result.category,
-    },
-    await assistantActor(),
-  );
 
   // Hand it to the auto-reply, the next stage of the pipeline: classify,
   // then answer if the knowledge base covers it.

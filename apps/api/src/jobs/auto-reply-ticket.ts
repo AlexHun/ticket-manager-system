@@ -231,16 +231,6 @@ async function release(
   if (to === TICKET_STATUS.Open && released.count > 0) {
     await assignIfUnowned(ticketId, await resolveHandoff());
 
-    // Only this exit, and only because of what agents can see. `Processing` is
-    // never published to them, so their lists still show this ticket as `New` —
-    // the exit to `Open` is the first thing that is genuinely different from
-    // what they have cached. A release back to `New` returns it to the state
-    // they were already showing, so there is nothing to tell them.
-    publishTicketUpdated(ticketId, [
-      TICKET_EVENT_FIELD.status,
-      TICKET_EVENT_FIELD.assignee,
-    ]);
-
     // One entry for the whole handing-back, not three. The claim and this
     // release are a matched pair that a person never sees — `Processing` lasts
     // seconds and the tickets list refuses to return it — so logging both would
@@ -252,6 +242,17 @@ async function release(
     // Guarded on `decline` as well as on `count`, because a release to `New` is
     // a retry in progress and has no verdict to record yet — the same reason
     // `autoReplyDecline` is only stamped on this exit.
+    //
+    // **Before the publish below, and that ordering is the fix for a real
+    // defect (#176).** `ticket_updated` invalidates `ticketKeys.activity` on the
+    // client, so a detail pane open on this ticket refetches the trail the
+    // moment the event lands. Published first, that refetch races an entry that
+    // has not been written yet — and the window is not an instant: this awaits
+    // `assistantActor()`, an uncached `findFirst` on the user table, before the
+    // insert. Two round trips. The pane can cache a trail missing the decline
+    // reason and never be told again, because the only event that would have
+    // corrected it has already fired. The resolve path below already writes
+    // before it publishes; this is the same order, for the same reason.
     if (decline) {
       await recordActivity(
         ticketId,
@@ -262,6 +263,16 @@ async function release(
         await assistantActor(),
       );
     }
+
+    // Only this exit, and only because of what agents can see. `Processing` is
+    // never published to them, so their lists still show this ticket as `New` —
+    // the exit to `Open` is the first thing that is genuinely different from
+    // what they have cached. A release back to `New` returns it to the state
+    // they were already showing, so there is nothing to tell them.
+    publishTicketUpdated(ticketId, [
+      TICKET_EVENT_FIELD.status,
+      TICKET_EVENT_FIELD.assignee,
+    ]);
   }
 }
 
