@@ -3,18 +3,17 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { USER_ROLE, type User } from "@ticket/shared";
+import { apiStub } from "@/test/api-stub";
 import { renderWithQuery } from "@/test/render";
 import { UserDialog } from "./UserDialog";
 
-const mockPost = vi.fn();
-const mockPatch = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    post: (...args: unknown[]) => mockPost(...args),
-    patch: (...args: unknown[]) => mockPatch(...args),
-  },
-}));
+// Create and edit are the same dialog and two different routes, so they get
+// two handles: "the create path was not taken" is an assertion this file makes
+// in both directions.
+const usersPost = apiStub.post("/api/users");
+const userPatch = apiStub.patch("/api/users/:id");
 
 /**
  * Who is signed in, mutable per test — the dialog asks so it can tell your own
@@ -115,8 +114,7 @@ async function openEdit(name: string) {
 }
 
 beforeEach(() => {
-  mockPost.mockReset();
-  mockPatch.mockReset();
+  apiStub.reset();
   session.userId = "u_admin";
 });
 
@@ -148,7 +146,7 @@ describe("UserDialog — create mode", () => {
   });
 
   test("submits POST /api/users and closes on success", async () => {
-    mockPost.mockResolvedValue({ data: { user: newAgent } });
+    usersPost.mockResolvedValue({ data: { user: newAgent } });
 
     renderHarness();
     const user = await openCreate();
@@ -161,8 +159,8 @@ describe("UserDialog — create mode", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockPost).toHaveBeenCalledTimes(1);
-    const [url, body] = mockPost.mock.calls[0] as [
+    expect(usersPost).toHaveBeenCalledTimes(1);
+    const [url, body] = usersPost.mock.calls[0] as [
       string,
       { name: string; email: string },
     ];
@@ -175,7 +173,7 @@ describe("UserDialog — create mode", () => {
     // the invitation link. A password reaching this endpoint would mean the
     // form had grown a field back.
     expect(body).not.toHaveProperty("password");
-    expect(mockPatch).not.toHaveBeenCalled();
+    expect(userPatch).not.toHaveBeenCalled();
   });
 });
 
@@ -195,7 +193,7 @@ describe("UserDialog — edit mode", () => {
   });
 
   test("PATCH sends name, email and role, closes on success", async () => {
-    mockPatch.mockResolvedValue({ data: { user: baseUser } });
+    userPatch.mockResolvedValue({ data: { user: baseUser } });
 
     renderHarness();
     const user = await openEdit("Aaron Agent");
@@ -209,9 +207,9 @@ describe("UserDialog — edit mode", () => {
     );
 
     await waitFor(() => {
-      expect(mockPatch).toHaveBeenCalledTimes(1);
+      expect(userPatch).toHaveBeenCalledTimes(1);
     });
-    const [url, body] = mockPatch.mock.calls[0] as [
+    const [url, body] = userPatch.mock.calls[0] as [
       string,
       Record<string, string>,
     ];
@@ -228,7 +226,7 @@ describe("UserDialog — edit mode", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(usersPost).not.toHaveBeenCalled();
   });
 
   /**
@@ -245,7 +243,7 @@ describe("UserDialog — edit mode", () => {
    * the server.
    */
   test("an address typed with capitals is sent lowercase, and the field keeps what was typed", async () => {
-    mockPatch.mockRejectedValue(
+    userPatch.mockRejectedValue(
       Object.assign(new Error("Request failed"), {
         isAxiosError: true,
         response: { status: 409, data: { error: "Email already in use" } },
@@ -266,15 +264,15 @@ describe("UserDialog — edit mode", () => {
     );
 
     await waitFor(() => {
-      expect(mockPatch).toHaveBeenCalledTimes(1);
+      expect(userPatch).toHaveBeenCalledTimes(1);
     });
-    const [, body] = mockPatch.mock.calls[0] as [string, Record<string, string>];
+    const [, body] = userPatch.mock.calls[0] as [string, Record<string, string>];
     expect(body.email).toBe("aaron.agent@example.com");
     expect(emailInput).toHaveValue("Aaron.Agent@Example.com");
   });
 
   test("promoting a colleague sends the new role", async () => {
-    mockPatch.mockResolvedValue({
+    userPatch.mockResolvedValue({
       data: { user: { ...baseUser, role: USER_ROLE.admin } },
     });
 
@@ -289,9 +287,9 @@ describe("UserDialog — edit mode", () => {
     );
 
     await waitFor(() => {
-      expect(mockPatch).toHaveBeenCalledTimes(1);
+      expect(userPatch).toHaveBeenCalledTimes(1);
     });
-    const [, body] = mockPatch.mock.calls[0] as [string, Record<string, string>];
+    const [, body] = userPatch.mock.calls[0] as [string, Record<string, string>];
     expect(body).toEqual({
       name: "Aaron Agent",
       email: "agent@example.com",
@@ -411,7 +409,7 @@ describe("UserDialog — open/close & errors", () => {
       isAxiosError: true,
       response: { status: 409, data: { error: "Email already in use" } },
     });
-    mockPatch.mockRejectedValue(axiosError);
+    userPatch.mockRejectedValue(axiosError);
 
     renderHarness();
     const user = await openEdit("Aaron Agent");
@@ -432,7 +430,7 @@ describe("UserDialog — open/close & errors", () => {
       isAxiosError: true,
       response: { status: 500, data: { error: "Database unavailable" } },
     });
-    mockPatch.mockRejectedValue(axiosError);
+    userPatch.mockRejectedValue(axiosError);
 
     renderHarness();
     const user = await openEdit("Aaron Agent");

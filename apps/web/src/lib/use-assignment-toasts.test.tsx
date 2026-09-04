@@ -4,17 +4,17 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { QueryClient } from "@tanstack/react-query";
 import type { TicketUnreadResponse } from "@ticket/shared";
 import { toast } from "@/components/ui/sonner";
+import { apiStub } from "@/test/api-stub";
 import { renderWithQuery } from "@/test/render";
 import { ticketKeys } from "@/lib/ticket-queries";
 import { useAssignmentToasts } from "./use-assignment-toasts";
 
 // --- Mocks ------------------------------------------------------------------
 
-const mockGet = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: { get: (...args: unknown[]) => mockGet(...args) },
-}));
+/** The one endpoint the hook reads. */
+const unreadGet = apiStub.get("/api/tickets/unread");
 
 function unread(tickets: TicketUnreadResponse["tickets"]) {
   return { data: { tickets } satisfies TicketUnreadResponse };
@@ -36,7 +36,7 @@ function renderHost() {
 }
 
 /**
- * The query having *started* (`mockGet` called) is not the query having
+ * The query having *started* (`unreadGet` called) is not the query having
  * *landed* — `queryFn` calls `api.get` synchronously before awaiting it, so a
  * `waitFor` keyed on the mock alone can resolve before react-query has
  * applied the result and re-rendered. Wait for the settled state instead.
@@ -50,7 +50,7 @@ function waitForSettled(queryClient: QueryClient) {
 }
 
 beforeEach(() => {
-  mockGet.mockReset();
+  apiStub.reset();
 });
 
 afterEach(() => {
@@ -59,7 +59,7 @@ afterEach(() => {
 
 describe("useAssignmentToasts", () => {
   test("the first read establishes a baseline and toasts nothing", async () => {
-    mockGet.mockResolvedValueOnce(
+    unreadGet.mockResolvedValueOnce(
       unread([{ id: 1, subject: "Already unread before this tab opened" }]),
     );
 
@@ -70,11 +70,11 @@ describe("useAssignmentToasts", () => {
   });
 
   test("a ticket that joins the set after the baseline is toasted", async () => {
-    mockGet.mockResolvedValueOnce(unread([]));
+    unreadGet.mockResolvedValueOnce(unread([]));
     const { queryClient } = renderHost();
     await waitForSettled(queryClient);
 
-    mockGet.mockResolvedValueOnce(
+    unreadGet.mockResolvedValueOnce(
       unread([{ id: 7, subject: "Cannot log in" }]),
     );
     await act(async () => {
@@ -91,26 +91,26 @@ describe("useAssignmentToasts", () => {
   });
 
   test("a ticket already in the baseline is not re-toasted on a later refetch", async () => {
-    mockGet.mockResolvedValueOnce(unread([{ id: 1, subject: "Old news" }]));
+    unreadGet.mockResolvedValueOnce(unread([{ id: 1, subject: "Old news" }]));
     const { queryClient } = renderHost();
     await waitForSettled(queryClient);
 
     // Same set again — nothing new, nothing to say.
-    mockGet.mockResolvedValueOnce(unread([{ id: 1, subject: "Old news" }]));
+    unreadGet.mockResolvedValueOnce(unread([{ id: 1, subject: "Old news" }]));
     await act(async () => {
       await queryClient.refetchQueries({ queryKey: ticketKeys.unread });
     });
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(unreadGet).toHaveBeenCalledTimes(2));
 
     expect(toast.message).not.toHaveBeenCalled();
   });
 
   test("clicking the toast's action opens the ticket", async () => {
-    mockGet.mockResolvedValueOnce(unread([]));
+    unreadGet.mockResolvedValueOnce(unread([]));
     const { queryClient } = renderHost();
     await waitForSettled(queryClient);
 
-    mockGet.mockResolvedValueOnce(
+    unreadGet.mockResolvedValueOnce(
       unread([{ id: 7, subject: "Cannot log in" }]),
     );
     await act(async () => {

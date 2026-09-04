@@ -2,20 +2,21 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TUTORIAL_PAGE_KEY, type TutorialStatus } from "@ticket/shared";
+import { apiStub } from "@/test/api-stub";
 import { renderWithQuery } from "@/test/render";
 import { Tutorial } from "./Tutorial";
 
 // --- Mocks ----------------------------------------------------------------
 
-const mockGet = vi.fn();
-const mockPost = vi.fn();
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: (...args: unknown[]) => mockGet(...args),
-    post: (...args: unknown[]) => mockPost(...args),
-  },
-}));
+// The two paths the stub answers by default for every *other* test in the
+// suite — this is the file that is actually about them, so it takes the same
+// two handles and overrides the status per test. `apiStub.reset()` puts the
+// "nothing to show" default back afterwards, which is what keeps this file
+// from deciding what a page test sees.
+const statusGet = apiStub.get("/api/tutorials/:pageKey");
+const seenPost = apiStub.post("/api/tutorials/:pageKey/seen");
 
 // --- Fixtures ---------------------------------------------------------------
 
@@ -60,9 +61,7 @@ function renderTutorial() {
 }
 
 beforeEach(() => {
-  mockGet.mockReset();
-  mockPost.mockReset();
-  mockPost.mockResolvedValue({ data: { ok: true } });
+  apiStub.reset();
 });
 
 afterEach(() => {
@@ -71,35 +70,35 @@ afterEach(() => {
 
 describe("Tutorial", () => {
   test("renders nothing for a page with no written content", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: unwritten } });
+    statusGet.mockResolvedValue({ data: { tutorial: unwritten } });
     renderTutorial();
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(statusGet).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   test("stays closed when the user has already seen the current version", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: alreadySeen } });
+    statusGet.mockResolvedValue({ data: { tutorial: alreadySeen } });
     renderTutorial();
 
-    await waitFor(() => expect(mockGet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(statusGet).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(seenPost).not.toHaveBeenCalled();
   });
 
   test("requests the page's own status with a cancellation signal", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: dueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: dueToShow } });
     renderTutorial();
 
     await screen.findByRole("dialog");
 
-    const [url, options] = mockGet.mock.calls[0] as [string, { signal: AbortSignal }];
+    const [url, options] = statusGet.mock.calls[0] as [string, { signal: AbortSignal }];
     expect(url).toBe(`/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}`);
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
   test("opens unprompted on the first step when shouldShow is true", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: dueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: dueToShow } });
     renderTutorial();
 
     const dialog = await screen.findByRole("dialog");
@@ -110,7 +109,7 @@ describe("Tutorial", () => {
   });
 
   test("Next advances the step and reveals Back; Got it finishes on the last step", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: dueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: dueToShow } });
     const user = userEvent.setup();
     renderTutorial();
 
@@ -127,14 +126,14 @@ describe("Tutorial", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockPost).toHaveBeenCalledTimes(1);
-    expect(mockPost).toHaveBeenCalledWith(
+    expect(seenPost).toHaveBeenCalledTimes(1);
+    expect(seenPost).toHaveBeenCalledWith(
       `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}/seen`,
     );
   });
 
   test("Back returns to the previous step", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: dueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: dueToShow } });
     const user = userEvent.setup();
     renderTutorial();
 
@@ -147,7 +146,7 @@ describe("Tutorial", () => {
   });
 
   test("dismissing via the close button also marks the tutorial seen", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: dueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: dueToShow } });
     const user = userEvent.setup();
     renderTutorial();
 
@@ -157,7 +156,7 @@ describe("Tutorial", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockPost).toHaveBeenCalledWith(
+    expect(seenPost).toHaveBeenCalledWith(
       `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}/seen`,
     );
   });
@@ -189,7 +188,7 @@ const anchoredDueToShow: TutorialStatus = {
 
 describe("Tutorial — anchored callout", () => {
   test("positions a callout against the tagged element instead of a centered dialog", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     renderWithQuery(
       <>
         <div data-tutorial-anchor="kpis">KPI row</div>
@@ -209,7 +208,7 @@ describe("Tutorial — anchored callout", () => {
   });
 
   test("Next re-resolves the callout against the following step's own anchor", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const user = userEvent.setup();
     renderWithQuery(
       <>
@@ -228,7 +227,7 @@ describe("Tutorial — anchored callout", () => {
   });
 
   test("the callout's close button marks the tutorial seen", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const user = userEvent.setup();
     renderWithQuery(
       <>
@@ -243,13 +242,13 @@ describe("Tutorial — anchored callout", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockPost).toHaveBeenCalledWith(
+    expect(seenPost).toHaveBeenCalledWith(
       `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}/seen`,
     );
   });
 
   test("Escape closes the callout and marks the tutorial seen", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const user = userEvent.setup();
     renderWithQuery(
       <>
@@ -264,7 +263,7 @@ describe("Tutorial — anchored callout", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(mockPost).toHaveBeenCalledWith(
+    expect(seenPost).toHaveBeenCalledWith(
       `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}/seen`,
     );
   });
@@ -276,7 +275,7 @@ describe("Tutorial — anchored callout", () => {
     // box, so `getBoundingClientRect()` on the wrapper itself would be
     // degenerate; this pins down that positioning measures the real child
     // underneath instead.
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect");
 
     const { container } = renderWithQuery(
@@ -300,7 +299,7 @@ describe("Tutorial — anchored callout", () => {
   });
 
   test("scrolls the target into view when it resolves off-screen", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({
@@ -335,7 +334,7 @@ describe("Tutorial — anchored callout", () => {
   });
 
   test("does not scroll when the target is already fully visible", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
 
     renderWithQuery(
@@ -352,7 +351,7 @@ describe("Tutorial — anchored callout", () => {
   });
 
   test("falls back to the centered dialog when the tagged element never appears", async () => {
-    mockGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
+    statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     renderWithQuery(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);
 
     const dialog = await screen.findByRole("dialog", undefined, {

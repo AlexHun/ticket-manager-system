@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MAX_MESSAGE_BODY_LENGTH } from "@ticket/shared";
+import { apiStub } from "@/test/api-stub";
 import { renderWithQuery } from "@/test/render";
 import { TicketReplyComposer } from "./TicketReplyComposer";
 
@@ -13,18 +14,16 @@ import { TicketReplyComposer } from "./TicketReplyComposer";
  * for a component that doesn't read them.
  */
 
-const mockPost = vi.fn();
-
-vi.mock("@/lib/api", () => ({
-  api: {
-    get: vi.fn(),
-    patch: vi.fn(),
-    post: (...args: unknown[]) => mockPost(...args),
-  },
-}));
+vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
 const POLISH_URL = "/api/ai/polish-reply";
 const MESSAGES_URL = "/api/tickets/12/messages";
+
+// Polishing and sending are both POSTs, and they must not share a counter: a
+// blanket one would let a send be answered with a polish response, which is a
+// state the real API can't produce.
+const polishPost = apiStub.post(POLISH_URL);
+const sendPost = apiStub.post("/api/tickets/:id/messages");
 
 const DRAFT = "shipped fri, ur parcel is on the way";
 const POLISHED = "Hi Marta,\n\nYour parcel shipped on Friday.\n\nThanks,\nAaron";
@@ -49,12 +48,7 @@ function makeAxiosError(status: number, message?: string) {
   });
 }
 
-/**
- * Answer each endpoint separately.
- *
- * A blanket `mockResolvedValue` would answer a send with a polish response,
- * which is a state the real API can't produce.
- */
+/** What each endpoint answers with, for one test. */
 function mockApi({
   polished,
   polishError,
@@ -64,16 +58,16 @@ function mockApi({
   polishError?: unknown;
   sendError?: unknown;
 } = {}) {
-  mockPost.mockImplementation((url: string) => {
-    if (url === POLISH_URL) {
-      return polishError
-        ? Promise.reject(polishError)
-        : Promise.resolve({ data: { polished: polished ?? POLISHED } });
-    }
-    return sendError
+  polishPost.mockImplementation(() =>
+    polishError
+      ? Promise.reject(polishError)
+      : Promise.resolve({ data: { polished: polished ?? POLISHED } }),
+  );
+  sendPost.mockImplementation(() =>
+    sendError
       ? Promise.reject(sendError)
-      : Promise.resolve({ data: { message: { id: 99, ticketId: 12 } } });
-  });
+      : Promise.resolve({ data: { message: { id: 99, ticketId: 12 } } }),
+  );
 }
 
 function renderComposer() {
@@ -88,7 +82,7 @@ function fillDraft(value: string): void {
 }
 
 beforeEach(() => {
-  mockPost.mockReset();
+  apiStub.reset();
 });
 
 describe("TicketReplyComposer polish — when it can run", () => {
@@ -160,7 +154,7 @@ describe("TicketReplyComposer polish — the round trip", () => {
     // server reads it out of the thread, so no caller can choose what the model
     // is told the customer said.
     await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(POLISH_URL, {
+      expect(polishPost).toHaveBeenCalledWith(POLISH_URL, {
         draft: DRAFT,
         ticketId: 12,
       }),
@@ -179,7 +173,7 @@ describe("TicketReplyComposer polish — the round trip", () => {
 
   test("locks the box while the rewrite is in flight", async () => {
     let settle!: (value: unknown) => void;
-    mockPost.mockReturnValue(
+    polishPost.mockReturnValue(
       new Promise((resolve) => {
         settle = resolve;
       }),
@@ -270,7 +264,7 @@ describe("TicketReplyComposer polish — undo", () => {
     expect(screen.queryByRole("button", { name: "Undo polish" })).toBeNull();
     // Sent unedited, so the draft it came from is the same text that went out
     // — still worth recording, since #20 wants the pair even when the two agree.
-    expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, {
+    expect(sendPost).toHaveBeenCalledWith(MESSAGES_URL, {
       textBody: POLISHED,
       polishedDraft: POLISHED,
     });
@@ -286,7 +280,7 @@ describe("TicketReplyComposer polish — the draft a send is compared against", 
     await user.click(sendButton());
 
     await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, { textBody: DRAFT }),
+      expect(sendPost).toHaveBeenCalledWith(MESSAGES_URL, { textBody: DRAFT }),
     );
   });
 
@@ -302,7 +296,7 @@ describe("TicketReplyComposer polish — the draft a send is compared against", 
     await user.click(sendButton());
 
     await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, {
+      expect(sendPost).toHaveBeenCalledWith(MESSAGES_URL, {
         textBody: edited,
         polishedDraft: POLISHED,
       }),
@@ -319,7 +313,7 @@ describe("TicketReplyComposer polish — the draft a send is compared against", 
     await user.click(sendButton());
 
     await waitFor(() =>
-      expect(mockPost).toHaveBeenCalledWith(MESSAGES_URL, { textBody: DRAFT }),
+      expect(sendPost).toHaveBeenCalledWith(MESSAGES_URL, { textBody: DRAFT }),
     );
   });
 });
