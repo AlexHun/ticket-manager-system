@@ -407,7 +407,7 @@ export async function registerClassifyTicket(boss: PgBoss): Promise<void> {
     },
   );
 
-  await boss.createQueue(RECONCILE_QUEUE, {
+  await ensureQueue(boss, RECONCILE_QUEUE, {
     // One sweep at a time, and no retries: if a sweep fails, the next one is
     // fifteen minutes away and will see exactly the same tickets.
     policy: "singleton",

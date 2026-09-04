@@ -620,7 +620,7 @@ export async function registerAutoReplyTicket(boss: PgBoss): Promise<void> {
     },
   );
 
-  await boss.createQueue(RECOVER_QUEUE, {
+  await ensureQueue(boss, RECOVER_QUEUE, {
     // One sweep at a time, and no retries: a failed sweep sees the same tickets
     // five minutes later.
     policy: "singleton",
