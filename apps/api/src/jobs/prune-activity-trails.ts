@@ -1,5 +1,6 @@
 import type { PgBoss } from "pg-boss";
 import { prisma } from "../db";
+import { ensureQueue } from "./boss";
 
 /**
  * Throwing away audit-trail rows old enough that nothing needs them any more.
@@ -195,7 +196,7 @@ export async function pruneActivityTrails(): Promise<void> {
 
 /** Create the queue and start the sweep. Called once, from `./index`. */
 export async function registerPruneActivityTrails(boss: PgBoss): Promise<void> {
-  await boss.createQueue(PRUNE_QUEUE, {
+  await ensureQueue(boss, PRUNE_QUEUE, {
     // One sweep at a time, no retries — a failed sweep sees the same rows
     // tomorrow and nothing downstream is waiting on it. Same shape as
     // `prune-outbox.ts`.

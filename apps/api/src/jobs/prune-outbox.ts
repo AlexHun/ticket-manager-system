@@ -7,6 +7,7 @@ import {
 } from "@ticket/shared";
 import { RESET_TOKEN_TTL_SECONDS } from "../auth";
 import { prisma } from "../db";
+import { ensureQueue } from "./boss";
 
 /**
  * Throwing away outbox rows that have stopped being worth keeping.
@@ -192,7 +193,7 @@ export async function pruneOutbox(): Promise<void> {
 
 /** Create the queue and start the sweep. Called once, from `./index`. */
 export async function registerPruneOutbox(boss: PgBoss): Promise<void> {
-  await boss.createQueue(PRUNE_QUEUE, {
+  await ensureQueue(boss, PRUNE_QUEUE, {
     // One sweep at a time, and no retries: a failed sweep sees the same rows an
     // hour later, and nothing downstream is waiting on it. Same shape as the
     // auto-reply recovery sweep.
