@@ -240,6 +240,48 @@ navigating to each of the three routes
 instrumentation is wired; the actual before/after numbers are a recording
 step outside CI, not an assertion against a target — no target exists yet.
 
+**Measured while building it:**
+
+- The loader is the obvious home for the `navigate` mark and the wrong one. It
+  is where a navigation to all three routes starts *today*, and marking there
+  needs no router plumbing at all — but the number is only worth having beside a
+  *before* number, and "before" is slice 1, which has no loaders. The mark has
+  to come from the router for the same module to drop onto that revision
+  unchanged; otherwise the two runs measure two spans that merely share a name.
+- The probe has to sit **above `ProtectedRoute`**, on the root pathless route,
+  not inside `AppShell` where all three instrumented pages live. React Router
+  keeps the *outgoing* screen rendered for the whole of a navigation, so during
+  `/login` → `/` nothing under the shell exists yet — a probe there would miss
+  the one navigation every user makes on every sign-in, which is the one slice 4
+  singled out.
+- The initial document load is not a navigation the router announces:
+  `state.navigation` stays idle through it (confirmed in react-router's own
+  hydration path, which keys off exactly that). It needs its own mark, seeded at
+  `startTime: 0` — `timeOrigin`, so a cold visit's entry-chunk download lands
+  inside the span rather than in front of it. Seeded from the layout's render
+  body rather than an effect, because a child's effects run before its parent's
+  and the page would otherwise close a bracket that was never opened. Asserted
+  on its own in the spec (`startTime` is exactly `0`), since every other case
+  goes through the client-navigation path and would pass without it.
+- The `rendered` effect must have **no dependency array**. A range or filter
+  change re-runs the loader without the page's `data` ever going back to
+  undefined, so `[ready]` would measure the first visit to a route and silently
+  nothing after it. A module-level set of routes awaiting a render is the guard
+  instead, and it doubles as the StrictMode one — consuming an entry is what
+  makes a second invocation a no-op rather than a second measure.
+- Entry chunk 330.71 kB → 331.71 kB (gzip 102.44 → 102.83), and none of it comes
+  back out of a page chunk the way slice 4's did — the timing module is imported
+  statically by the router and by all three pages, so it can only live in the
+  entry. A kilobyte on the critical path to measure the critical path; if that
+  ever stops being worth it, `import.meta.env.DEV` folds the whole thing out the
+  way `/__dev` is folded out today.
+- `router.subscribe` is the precise instrument and is typed
+  `@private PRIVATE - DO NOT USE`, so `useNavigation()` in a layout is what this
+  uses. The cost is real and worth naming: a navigation React never renders a
+  pending state for leaves no mark and so no measure. Those are the visits with
+  a warm cache and a downloaded chunk — the ones whose duration says nothing
+  about where the fetch starts.
+
 ## Requirement coverage
 
 | Req | Slice | Note |

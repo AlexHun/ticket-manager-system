@@ -7,6 +7,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { RouteTimingLayout } from "@/lib/route-timing";
 import { dashboardLoader } from "@/pages/DashboardPage.loader";
 import { ticketDetailLoader } from "@/pages/TicketDetailPage.loader";
 import { ticketsLoader } from "@/pages/TicketsPage.loader";
@@ -69,6 +70,14 @@ export const router = createBrowserRouter([
      * `AppShell`'s own inner `Suspense` boundary below.
      */
     HydrateFallback: RouteFallback,
+    /**
+     * A pass-through that renders nothing but an `<Outlet>`: it is here to
+     * watch navigations start, and this is the only route in the tree that is
+     * mounted before every one of them — including `/login` → `/`, where the
+     * outgoing screen is the login form and nothing under `ProtectedRoute`
+     * exists yet. See `@/lib/route-timing`.
+     */
+    Component: RouteTimingLayout,
     children: [
       { path: "/login", Component: LoginPage },
       // Signed-out, like /login: somebody following an invitation has no

@@ -553,6 +553,22 @@ const STATIC_COMPONENT_RE = /(?:^|[{,\s])Component:\s*(\w+)/;
 const PATH_RE = /path:\s*["']([^"']+)["']/;
 
 /**
+ * Layout routes that render nothing but an `<Outlet>` and wrap the whole tree,
+ * kept out of a route's "Behind" chain.
+ *
+ * Not a cosmetic filter. That column earns its keep by saying which routes are
+ * gated, and it says `public` only when the chain is empty — so a wrapper that
+ * sits above *every* route adds the same badge to every row while turning off
+ * the one signal that distinguishes `/login` from `/users`. `ProtectedRoute`,
+ * `AdminRoute` and `AppShell` all wrap a real subset of the tree and stay.
+ *
+ * A name list because nothing in the route object itself distinguishes a gate
+ * from a pass-through — this is regex over source, not a running router. Keep
+ * it to wrappers that genuinely decide nothing.
+ */
+const PASS_THROUGH_WRAPPERS = new Set(["RouteTimingLayout"]);
+
+/**
  * `const NAME: RouteObject[] = COND ? [ … ] : []` — a route array assembled
  * outside the `createBrowserRouter` call (today, just the
  * `import.meta.env.DEV`-gated dev routes) and spread back into the tree with
@@ -712,11 +728,14 @@ function extractRoutes(
         continue;
       }
 
-      // A pathless wrapper (`ProtectedRoute`, `AdminRoute`, `AppShell`) — or,
-      // at the root, a plain pass-through with no `Component` of its own.
-      if (component) stack.push(component);
+      // A pathless wrapper (`ProtectedRoute`, `AdminRoute`, `AppShell`) — or a
+      // pass-through, which is a wrapper the "Behind" column is better off not
+      // naming (see PASS_THROUGH_WRAPPERS).
+      const wrapper =
+        component && !PASS_THROUGH_WRAPPERS.has(component) ? component : null;
+      if (wrapper) stack.push(wrapper);
       if (childrenInner !== null) parseArray(childrenInner);
-      if (component) stack.pop();
+      if (wrapper) stack.pop();
 
       if (!routePath && !component && childrenInner === null) {
         warnings.push(`Unrecognized route object in App.tsx: ${body.slice(0, 60)}`);

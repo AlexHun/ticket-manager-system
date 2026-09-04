@@ -58,6 +58,7 @@ import {
   ticketStatsQueryOptions,
 } from "@/lib/dashboard-queries";
 import { extractErrorMessage } from "@/lib/errors";
+import { ROUTE_TIMING, useRouteRenderedMark } from "@/lib/route-timing";
 import { cn } from "@/lib/utils";
 
 /**
@@ -106,6 +107,15 @@ export function DashboardPage() {
   const isPending = statsPending || effectivenessPending || layoutPending;
   const isFetching = statsFetching || effectivenessFetching;
   const error = statsError ?? effectivenessError;
+
+  // Closes `dashboard:navigate`. All three, not the first to arrive: this route
+  // is the one that fans out, and a bracket that stopped at the fastest of the
+  // three would be measuring the wrong thing — the panels below render only
+  // once every one of them is in hand.
+  useRouteRenderedMark(
+    ROUTE_TIMING.dashboard,
+    Boolean(data && effectiveness && layoutData),
+  );
 
   // Pointer only, on the grip handle inside `DashboardPanelSlot` — see that
   // file's header comment for why there is no `KeyboardSensor` here.

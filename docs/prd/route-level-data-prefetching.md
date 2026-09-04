@@ -28,7 +28,16 @@ sequence.
 
 | Metric | Today | Target |
 | ------ | ----- | ------ |
-| Time from route navigation to data-populated render, on Dashboard/Tickets/TicketDetail | unknown — no baseline captured | TBD — needs a baseline measurement (Sentry performance, already wired via `@/lib/sentry`) before a number can be set |
+| Time from route navigation to data-populated render, on Dashboard/Tickets/TicketDetail | unknown — instrumented but not yet recorded | TBD — needs a baseline measurement before a number can be set |
+
+The metric is now measurable: each of the three routes writes a
+`<route>:navigate` / `<route>:rendered` mark pair and the
+`<route>:time-to-data` measure between them (`apps/web/src/lib/route-timing.tsx`,
+read with `performance.getEntriesByName`). Not Sentry, as this row originally
+guessed — the span wanted is one this app defines, and a user-timing pair is
+both cheaper to read and available on a local revision, which the before number
+has to come from. Filling the two cells in is a recording pass over the
+pre-loader and post-loader states, not a code change.
 
 Guardrail: number of distinct loading states shown per navigation must not
 increase on any route touched by this change.
