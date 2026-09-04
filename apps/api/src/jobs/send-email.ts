@@ -1,5 +1,4 @@
-import * as Sentry from "@sentry/bun";
-import { fromPrisma, type PgBoss, type Queue } from "pg-boss";
+import { fromPrisma, type PgBoss } from "pg-boss";
 import { prisma, type Prisma } from "../db";
 import {
   MAIL_OUTCOME,
@@ -7,7 +6,7 @@ import {
   deliver,
   isMailConfigured,
 } from "../mail/transport";
-import { ensureQueue, getBoss } from "./boss";
+import { getBoss, registerWorker, type WorkerSpec } from "./boss";
 
 /**
  * Handing an outbox row to a mail provider, off whatever transaction wrote it.
@@ -33,7 +32,6 @@ import { ensureQueue, getBoss } from "./boss";
  */
 
 const SEND_EMAIL_QUEUE = "send-email";
-const SEND_EMAIL_DEAD_QUEUE = "send-email-dead";
 
 /**
  * One at a time, per process.
@@ -44,24 +42,6 @@ const SEND_EMAIL_DEAD_QUEUE = "send-email-dead";
  * buys nothing that latency elsewhere would not buy more of.
  */
 const LOCAL_CONCURRENCY = 1;
-
-/**
- * The retry ladder: 30s, then roughly 60, 120 and 240, with jitter.
- *
- * Deliberately the same numbers as the classifier, because it is waiting for the
- * same kind of thing — somebody else's API having a bad minute. Five attempts
- * across about seven and a half minutes, then the dead-letter queue settles the
- * row as failed and stops.
- */
-const RETRY_LIMIT = 4;
-const RETRY_DELAY_SECONDS = 30;
-
-/**
- * See the long note in `classify-ticket.ts`: NOTIFY fires on insert, not when a
- * retry becomes due, so on the 30s default every rung of the ladder above picks
- * up an extra delay of up to a full poll. Five seconds keeps retries honest.
- */
-const NOTIFY_POLL_SECONDS = 5;
 
 /**
  * How long a job may be active before pg-boss assumes the worker died.
@@ -82,9 +62,11 @@ const NOTIFY_POLL_SECONDS = 5;
  */
 const EXPIRE_IN_SECONDS = 180;
 
-export interface SendEmailJob {
+/** A `type` rather than an `interface`, so it satisfies `WorkerSpec`'s payload
+ *  constraint — see the note there. */
+export type SendEmailJob = {
   outboundEmailId: number;
-}
+};
 
 /** Everything needed to address one email, before it has a row. */
 export interface EnqueueEmailInput {
@@ -274,64 +256,33 @@ async function handle({ outboundEmailId }: SendEmailJob): Promise<void> {
   }
 }
 
-/** Queue settings shared by the live queue and its dead-letter twin. */
-const QUEUE_DEFAULTS: Omit<Queue, "name"> = {
-  retryLimit: RETRY_LIMIT,
-  retryDelay: RETRY_DELAY_SECONDS,
-  retryBackoff: true,
+/**
+ * Settle the row, after the retries ran out.
+ *
+ * The terminal path, and the reason it exists: nothing may be left sitting in
+ * `queued` with no job coming for it — which is exactly what an admin looking at
+ * the outbox would read as "going out any moment now". `failed` is one of the
+ * two terminal states, and the way out of it is a person pressing Retry
+ * (`POST /api/outbox/:id/retry`), never a schedule.
+ */
+async function onExhausted({ outboundEmailId }: SendEmailJob): Promise<void> {
+  await prisma.outboundEmail.updateMany({
+    where: { id: outboundEmailId, status: "queued" },
+    data: { status: "failed" },
+  });
+}
+
+/** What `./boss` needs to run this queue. Exported so both halves are callable
+ *  in a test without a queue backend, as the AI workers' specs are. */
+export const SEND_EMAIL_WORKER: WorkerSpec<SendEmailJob> = {
+  name: SEND_EMAIL_QUEUE,
+  concurrency: LOCAL_CONCURRENCY,
   expireInSeconds: EXPIRE_IN_SECONDS,
+  handle,
+  onExhausted,
 };
 
 /** Create the queues and start the workers. Called once, from `./index`. */
 export async function registerSendEmail(boss: PgBoss): Promise<void> {
-  // First: naming it on the live queue below requires it to exist. No retries of
-  // its own — a job arrives here precisely because retrying stopped helping.
-  await ensureQueue(boss, SEND_EMAIL_DEAD_QUEUE, { retryLimit: 0 });
-
-  await ensureQueue(boss, SEND_EMAIL_QUEUE, {
-    ...QUEUE_DEFAULTS,
-    deadLetter: SEND_EMAIL_DEAD_QUEUE,
-    notify: true,
-  });
-
-  await boss.work<SendEmailJob>(
-    SEND_EMAIL_QUEUE,
-    {
-      batchSize: 1,
-      localConcurrency: LOCAL_CONCURRENCY,
-      notifyPollingIntervalSeconds: NOTIFY_POLL_SECONDS,
-    },
-    async ([job]) => {
-      await handle(job!.data);
-    },
-  );
-
-  // The dead-letter worker. Its whole job is to settle the row, so nothing is
-  // left sitting in queued with no job coming for it — which is what an admin
-  // looking at the outbox would read as "going out any moment now".
-  await boss.work<SendEmailJob>(
-    SEND_EMAIL_DEAD_QUEUE,
-    { batchSize: 1 },
-    async ([job]) => {
-      const { outboundEmailId } = job!.data;
-      console.error(
-        `[send-email] outbound email ${outboundEmailId} exhausted its retries`,
-      );
-      // Reported here and at no earlier attempt. The ladder above exists because
-      // a deferred outcome is expected to fail and expected to succeed on a
-      // later rung; an alert per attempt would train everyone to ignore the
-      // channel. Getting here means the ladder ran out and a customer or
-      // colleague did not get their email. The id is a tag so every occurrence
-      // groups into one issue.
-      Sentry.withScope((scope) => {
-        scope.setTag("queue", SEND_EMAIL_DEAD_QUEUE);
-        scope.setContext("job", { outboundEmailId });
-        Sentry.captureMessage("send-email exhausted its retries", "error");
-      });
-      await prisma.outboundEmail.updateMany({
-        where: { id: outboundEmailId, status: "queued" },
-        data: { status: "failed" },
-      });
-    },
-  );
+  await registerWorker(boss, SEND_EMAIL_WORKER);
 }

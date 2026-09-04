@@ -1,5 +1,4 @@
-import * as Sentry from "@sentry/bun";
-import type { PgBoss, Db, Queue } from "pg-boss";
+import type { PgBoss, Db } from "pg-boss";
 import {
   MESSAGE_DIRECTION,
   TICKET_ACTIVITY_ACTION,
@@ -15,7 +14,7 @@ import {
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import { enqueueAutoReply } from "./auto-reply-ticket";
-import { ensureQueue, getBoss } from "./boss";
+import { ensureQueue, getBoss, registerWorker, type WorkerSpec } from "./boss";
 
 /**
  * Classifying a ticket, off the request that created it.
@@ -50,16 +49,6 @@ import { ensureQueue, getBoss } from "./boss";
 /** The queue a new ticket is announced on. */
 export const CLASSIFY_QUEUE = "classify-ticket";
 
-/**
- * Where a job goes after it has exhausted its retries.
- *
- * Not a graveyard: it has a worker (`registerClassifyTicket` below) whose only
- * duty is to stamp `classifiedAt` so the reconciliation sweep stops offering the
- * ticket back. The failed job row stays in `pgboss` with its error attached,
- * which is the only place the reason survives.
- */
-const CLASSIFY_DEAD_QUEUE = "classify-ticket-dead";
-
 /** The cron queue that looks for tickets nothing ever got to. */
 const RECONCILE_QUEUE = "classify-ticket-reconcile";
 
@@ -80,8 +69,8 @@ const RECONCILE_CRON = "*/15 * * * *";
  *
  * The floor is ten minutes, and it is what keeps the sweep from fighting the
  * normal path. A freshly ingested ticket is already queued; one that is failing
- * transiently is already retrying, and the full backoff ladder below runs a
- * little over seven minutes. Anything inside that window is in hand, so
+ * transiently is already retrying, and the full backoff ladder in `./boss` runs
+ * a little over seven minutes. Anything inside that window is in hand, so
  * considering it would only produce a duplicate job. Duplicates are *harmless*
  * here — the handler is idempotent, which is the property that makes all of this
  * safe — but harmless is not free, and each one is a model call.
@@ -107,35 +96,6 @@ const RECONCILE_BATCH = 50;
 const LOCAL_CONCURRENCY = 2;
 
 /**
- * The retry ladder: 30s, then roughly 60, 120 and 240, with jitter.
- *
- * Sized against what it is waiting for. A rate limit clears in seconds and a
- * provider incident in minutes, so the early rungs are close together and the
- * last one is far enough out to sit through a short outage. Five attempts in
- * about seven and a half minutes, then the dead-letter queue.
- */
-const RETRY_LIMIT = 4;
-const RETRY_DELAY_SECONDS = 30;
-
-/**
- * How often a worker polls while LISTEN/NOTIFY is up.
- *
- * pg-boss defaults this to 30s on the reasoning that NOTIFY already wakes a
- * worker the moment a job is inserted, so polling is only a backstop. That
- * reasoning has a hole, and it cost an afternoon to find: **NOTIFY fires on
- * insert, not when a retry becomes due.** A job that failed and is waiting out
- * its backoff is not inserted again — it changes state in place — so nothing
- * wakes anyone, and every rung of the ladder below picks up an extra delay of up
- * to the backstop interval. Measured on the default: a one-second retry delay
- * took 58 seconds to run.
- *
- * Five seconds keeps retries roughly honest without turning the backstop back
- * into the primary mechanism. First delivery is still immediate via NOTIFY; this
- * only governs how late a *retry* can be.
- */
-const NOTIFY_POLL_SECONDS = 5;
-
-/**
  * How long a job may be active before pg-boss assumes the worker died and
  * offers it to someone else.
  *
@@ -145,9 +105,11 @@ const NOTIFY_POLL_SECONDS = 5;
  */
 const EXPIRE_IN_SECONDS = 120;
 
-export interface ClassifyTicketJob {
+/** A `type` rather than an `interface`, so it satisfies `WorkerSpec`'s payload
+ *  constraint — see the note there. */
+export type ClassifyTicketJob = {
   ticketId: number;
-}
+};
 
 /**
  * Ask for this ticket to be classified.
@@ -179,8 +141,8 @@ export async function enqueueClassification(
  * Classify one ticket and file the answer, if it is still wanted.
  *
  * Throws to ask for a retry, returns to say the matter is closed. That is the
- * whole contract with pg-boss, and it is why `RETRYABLE` above is the interesting
- * part of this module.
+ * whole contract with pg-boss, and it is why the transient/terminal split in
+ * `./ai-retry` is the interesting part of this path.
  */
 async function handle(job: ClassifyTicketJob): Promise<void> {
   const { ticketId } = job;
@@ -338,74 +300,48 @@ async function reconcile(): Promise<void> {
   }
 }
 
-/** Queue settings shared by the live queue and its dead-letter twin. */
-const QUEUE_DEFAULTS: Omit<Queue, "name"> = {
-  retryLimit: RETRY_LIMIT,
-  retryDelay: RETRY_DELAY_SECONDS,
-  retryBackoff: true,
+/**
+ * Give up on a ticket, without leaving the sweep to offer it back forever.
+ *
+ * The dead-letter side of this queue, and it is not a graveyard: stamping
+ * `classifiedAt` is what moves the ticket from "still to be classified" to
+ * "abandoned", so `reconcile` above stops picking it up every fifteen minutes
+ * for a day. The failed job row stays in `pgboss` with its error attached, which
+ * is the only place the reason survives.
+ *
+ * The log line and the Sentry alert are made by `registerWorker` before this
+ * runs; what is left is the repair.
+ */
+async function onExhausted({ ticketId }: ClassifyTicketJob): Promise<void> {
+  // `updateMany`, not `update`: the ticket may have been deleted between the
+  // last attempt and this one, and a missing row must not fail the job and send
+  // it round again.
+  await prisma.ticket.updateMany({
+    where: { id: ticketId, classifiedAt: null },
+    data: { classifiedAt: new Date() },
+  });
+  publishPipelineChanged(ticketId);
+}
+
+/**
+ * What `./boss` needs to run this queue, and nothing it can work out itself.
+ *
+ * Exported because it is also how the two halves are reached without a queue
+ * backend: `CLASSIFY_WORKER.handle({ ticketId })` is a function call, and a test
+ * that wants to prove the terminal path stamps the ticket does not have to
+ * stand up pg-boss to reach it.
+ */
+export const CLASSIFY_WORKER: WorkerSpec<ClassifyTicketJob> = {
+  name: CLASSIFY_QUEUE,
+  concurrency: LOCAL_CONCURRENCY,
   expireInSeconds: EXPIRE_IN_SECONDS,
+  handle,
+  onExhausted,
 };
 
 /** Create the queues and start the workers. Called once, from `./index`. */
 export async function registerClassifyTicket(boss: PgBoss): Promise<void> {
-  // The dead-letter queue first: naming it on the queue below requires it to
-  // exist. It takes no retries of its own — a job arrives here precisely
-  // because retrying stopped being the answer.
-  await ensureQueue(boss, CLASSIFY_DEAD_QUEUE, { retryLimit: 0 });
-
-  await ensureQueue(boss, CLASSIFY_QUEUE, {
-    ...QUEUE_DEFAULTS,
-    deadLetter: CLASSIFY_DEAD_QUEUE,
-    // Wake workers on insert instead of waiting out a poll, which keeps the
-    // near-instant pickup the in-memory queue had. It degrades rather than
-    // breaks behind a transaction-mode pooler, where a session-scoped LISTEN
-    // cannot survive: pg-boss falls back to polling on its own.
-    notify: true,
-  });
-
-  await boss.work<ClassifyTicketJob>(
-    CLASSIFY_QUEUE,
-    {
-      batchSize: 1,
-      localConcurrency: LOCAL_CONCURRENCY,
-      notifyPollingIntervalSeconds: NOTIFY_POLL_SECONDS,
-    },
-    async ([job]) => {
-      await handle(job!.data);
-    },
-  );
-
-  // The dead-letter worker. Its whole job is to record that we gave up, so the
-  // sweep does not offer the same ticket back every fifteen minutes for a day.
-  await boss.work<ClassifyTicketJob>(
-    CLASSIFY_DEAD_QUEUE,
-    { batchSize: 1 },
-    async ([job]) => {
-      const { ticketId } = job!.data;
-      console.error(
-        `[classify] ticket ${ticketId} exhausted its retries; leaving it uncategorised`,
-      );
-      // Reported here and nowhere earlier. A failing attempt is not news — the
-      // retry ladder in this file exists because `provider`/`busy`/`empty` are
-      // expected to fail and expected to succeed on the next rung, and an alert
-      // per attempt would train everyone to ignore the channel. Arriving here
-      // means the ladder ran out. The ticket id is a tag rather than part of the
-      // message so every occurrence groups into one issue.
-      Sentry.withScope((scope) => {
-        scope.setTag("queue", CLASSIFY_DEAD_QUEUE);
-        scope.setContext("job", { ticketId });
-        Sentry.captureMessage("classify-ticket exhausted its retries", "error");
-      });
-      // `updateMany`, not `update`: the ticket may have been deleted between the
-      // last attempt and this one, and a missing row must not fail the job and
-      // send it round again.
-      await prisma.ticket.updateMany({
-        where: { id: ticketId, classifiedAt: null },
-        data: { classifiedAt: new Date() },
-      });
-      publishPipelineChanged(ticketId);
-    },
-  );
+  await registerWorker(boss, CLASSIFY_WORKER);
 
   await ensureQueue(boss, RECONCILE_QUEUE, {
     // One sweep at a time, and no retries: if a sweep fails, the next one is
