@@ -83,5 +83,10 @@
     "version": "0.1.44",
     "date": "2026-09-03",
     "title": "Prefetch the dashboard from a route loader (#132)"
+  },
+  {
+    "version": "0.1.45",
+    "date": "2026-09-04",
+    "title": "Bracket navigation-to-data-render with user timing (#133)"
   }
 ]
