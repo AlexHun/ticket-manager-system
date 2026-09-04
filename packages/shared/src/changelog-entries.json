@@ -98,5 +98,10 @@
     "version": "0.1.50",
     "date": "2026-09-04",
     "title": "Render on the real data router, and stub HTTP once (#148)"
+  },
+  {
+    "version": "0.1.57",
+    "date": "2026-09-04",
+    "title": "Write the Activity row before publishing ticket_updated (#176)"
   }
 ]
