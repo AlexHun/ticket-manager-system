@@ -1,20 +1,23 @@
 /**
  * Unit tests for `apps/api/src/routes/changelog.ts`.
  *
- * Same shape as `new-features.test.ts` next to it — the router only, on a
- * real Express app, with the database replaced by a small in-memory table.
- * The `../middleware/auth` stub is deliberately identical to theirs, for the
- * reason explained there: `mock.module` registrations are process-wide.
+ * The router only, on a real Express app over a real socket — and, since #169,
+ * over a real database: `../db` is still replaced, but what it is replaced
+ * *with* is a genuine Prisma client on a genuine Postgres running inside this
+ * process (`../test/pg`, ADR-0014). The hand-written `changelogSeen` fake that
+ * used to live here is gone, so "marking seen stops it showing again" is now
+ * the route's own `upsert` against the table's primary key rather than a
+ * `findIndex` written twenty lines above the assertion.
  *
- * `@ticket/shared` is also mocked, but only to pin `CHANGELOG_LATEST_VERSION`
- * to a known value for the test run — everything else is spread from the real
- * module (`...actual`) so no other test file sharing this process sees
- * anything different from the genuine package.
+ * `@ticket/shared` is still mocked, and deliberately: pinning
+ * `CHANGELOG_LATEST_VERSION` to a known value is not a database concern, and
+ * the version comparison is the whole subject of half this file. Everything
+ * else is spread from the real module (`...actual`) so no other test file
+ * sharing this process sees anything different from the genuine package.
  *
- * What's worth pinning down without a real database: no row reads as "should
- * show", the version comparison, that marking seen actually stops it from
- * showing again, that it's per user, and that the version written is always
- * the server's own constant, never something a caller could supply.
+ * The `../middleware/auth` stub is deliberately identical to
+ * `new-features.test.ts`'s, for the reason explained there: `mock.module`
+ * registrations are process-wide.
  */
 
 import type { AddressInfo } from "node:net";
@@ -31,68 +34,16 @@ import {
 } from "bun:test";
 import express from "express";
 import type { ChangelogStatusResponse } from "@ticket/shared";
+import { Prisma, prisma, resetDb } from "../test/pg";
+import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
 const LATEST_VERSION = "0.5.10";
 
-interface SeenRow {
-  userId: string;
-  seenVersion: string;
-  seenAt: Date;
-}
-
-let seen: SeenRow[];
-
 const NOW = new Date("2026-08-29T12:00:00.000Z");
 
-const seenFindUnique = mock((args: { where: { userId: string } }) =>
-  Promise.resolve(seen.find((row) => row.userId === args.where.userId) ?? null),
-);
-
-const seenUpsert = mock(
-  (args: {
-    where: { userId: string };
-    create: Record<string, unknown>;
-    update: Record<string, unknown>;
-  }) => {
-    const { userId } = args.where;
-    const idx = seen.findIndex((row) => row.userId === userId);
-    if (idx === -1) {
-      const row: SeenRow = {
-        userId,
-        seenVersion: args.create.seenVersion as string,
-        seenAt: NOW,
-      };
-      seen.push(row);
-      return Promise.resolve(row);
-    }
-    const updated: SeenRow = { ...seen[idx]!, ...args.update } as SeenRow;
-    seen[idx] = updated;
-    return Promise.resolve(updated);
-  },
-);
-
-// `Prisma` is included even though nothing in this file calls `Prisma.sql` —
-// see the note above `users.test.ts`'s own `mock.module("../db", …)`. Every
-// factory for this specifier has to carry it, because `routes/activity.ts`,
-// `ticket-stats.ts` and `ticket-effectiveness.ts` import it as a *value*, and
-// any factory that leaves it out can be the one in force when one of those is
-// linked. Left out here, this file was one of the two that turned CI red with
-// `SyntaxError: Export named 'Prisma' not found in module .../src/db.ts` —
-// intermittently, since it depends on the order `bun test` reaches the files
-// in, which is why the same commit passed on the run before.
-const { Prisma } = await import("../generated/prisma/client");
-
-mock.module("../db", () => ({
-  Prisma,
-  prisma: {
-    changelogSeen: {
-      findUnique: seenFindUnique,
-      upsert: seenUpsert,
-    },
-  },
-}));
+mock.module("../db", () => ({ Prisma, prisma }));
 
 const actualShared = await import("@ticket/shared");
 mock.module("@ticket/shared", () => ({
@@ -124,22 +75,38 @@ const { changelogRouter } = await import("./changelog");
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
 const AGENT = {
-  "x-test-user": "u_agent",
-  "x-test-agent-name": "Aaron Agent",
-  "x-test-user-email": "agent@example.com",
+  "x-test-user": COLLEAGUE.agent.id,
+  "x-test-agent-name": COLLEAGUE.agent.name,
+  "x-test-user-email": COLLEAGUE.agent.email,
 };
 
 const ADMIN = {
-  "x-test-user": "u_admin",
-  "x-test-agent-name": "Ada Admin",
-  "x-test-user-email": "ada@example.com",
+  "x-test-user": COLLEAGUE.admin.id,
+  "x-test-agent-name": COLLEAGUE.admin.name,
+  "x-test-user-email": COLLEAGUE.admin.email,
 };
 
-beforeEach(() => {
-  seen = [];
-  seenFindUnique.mockClear();
-  seenUpsert.mockClear();
+/** `ChangelogSeen.userId` is a foreign key, so the caller has to be a real
+ *  colleague — itself something the old fake could not have told us. */
+beforeEach(async () => {
+  await resetDb();
+  await seedColleagues("agent", "admin");
 });
+
+/** Insert a seen mark directly, for the "already behind" cases. */
+function seedSeenRow(userId: string, seenVersion: string) {
+  return prisma.changelogSeen.create({
+    data: { userId, seenVersion, seenAt: NOW },
+  });
+}
+
+/** Read the marks back out of the table, one row per user. */
+function seenRows() {
+  return prisma.changelogSeen.findMany({
+    select: { userId: true, seenVersion: true },
+    orderBy: { userId: "asc" },
+  });
+}
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
@@ -203,7 +170,7 @@ describe("GET /api/changelog/status", () => {
   });
 
   test("shows again for a seen row behind the latest version", async () => {
-    seen.push({ userId: "u_agent", seenVersion: "0.4.9", seenAt: NOW });
+    await seedSeenRow("u_agent", "0.4.9");
 
     const sent = await get<ChangelogStatusResponse>("/status");
 
@@ -213,7 +180,7 @@ describe("GET /api/changelog/status", () => {
   test("compares numerically, not lexically: 0.5.9 is behind 0.5.10", async () => {
     // A lexical compare gets this backwards ("0.5.9" > "0.5.10" as strings),
     // which would wrongly hide an entry the user hasn't actually seen yet.
-    seen.push({ userId: "u_agent", seenVersion: "0.5.9", seenAt: NOW });
+    await seedSeenRow("u_agent", "0.5.9");
 
     const sent = await get<ChangelogStatusResponse>("/status");
 
@@ -226,6 +193,9 @@ describe("GET /api/changelog/status", () => {
     const sent = await get<ChangelogStatusResponse>("/status", ADMIN);
 
     expect(sent.body.shouldShow).toBe(true);
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", seenVersion: LATEST_VERSION },
+    ]);
   });
 });
 
@@ -236,15 +206,33 @@ describe("POST /api/changelog/seen", () => {
     const sent = await post("/seen");
 
     expect(sent.status).toBe(200);
-    expect(seen).toContainEqual(
-      expect.objectContaining({ userId: "u_agent", seenVersion: LATEST_VERSION }),
-    );
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", seenVersion: LATEST_VERSION },
+    ]);
   });
 
   test("updates rather than duplicates on a second call", async () => {
+    // `userId` is the table's primary key, so this is now Postgres refusing a
+    // second row rather than a `findIndex` in this file choosing not to push
+    // one.
     await post("/seen");
     await post("/seen");
 
-    expect(seen.filter((row) => row.userId === "u_agent")).toHaveLength(1);
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", seenVersion: LATEST_VERSION },
+    ]);
+  });
+
+  test("moves a stale row forward rather than leaving it behind", async () => {
+    // The upsert's *update* branch, which the first call above never reaches.
+    // A row already at the latest version cannot tell the two branches apart;
+    // one behind it can.
+    await seedSeenRow("u_agent", "0.4.9");
+
+    await post("/seen");
+
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", seenVersion: LATEST_VERSION },
+    ]);
   });
 });
