@@ -103,5 +103,10 @@
     "version": "0.1.57",
     "date": "2026-09-04",
     "title": "Write the Activity row before publishing ticket_updated (#176)"
+  },
+  {
+    "version": "0.1.61",
+    "date": "2026-09-05",
+    "title": "Move RESET_TOKEN_TTL_SECONDS out of auth.ts so a test can load it"
   }
 ]
