@@ -3,6 +3,10 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { admin } from "better-auth/plugins";
 import { USER_ROLE } from "@ticket/shared";
+// A leaf module rather than a constant declared here, and the note on it says
+// why: this file cannot be loaded by a unit test, so anything else that needs
+// the number cannot reach it through this file.
+import { RESET_TOKEN_TTL_SECONDS } from "./auth-tokens";
 import { prisma } from "./db";
 import { enqueueEmail } from "./jobs/send-email";
 
@@ -136,29 +140,6 @@ if (cookieDomain) {
     );
   }
 }
-
-/**
- * How long a password-reset or invitation link works for.
- *
- * Twenty-four hours, and the number is a compromise between two flows that
- * share one setting. Better Auth has a single `resetPasswordTokenExpiresIn`,
- * and this app puts two things through it — a password reset and an invitation
- * (see `sendResetPassword` below, which is both). An hour is the sensible
- * default for a reset and plainly wrong for an invitation: a new colleague who
- * reads their mail the next morning would find their first contact with this
- * system is a dead link. A day is unremarkable for a single-use token mailed to
- * the account's own address, and it keeps the two flows on one mechanism rather
- * than growing a second token table to hold a different number.
- *
- * **Exported because the outbox retention sweep is measured against it.** The
- * body of an invitation row is that link and nothing else, so the row stops
- * being useful at exactly the moment the token dies — see
- * `AUTH_MAIL_RETENTION_MS` in `jobs/prune-outbox.ts`, which reads this rather
- * than restating it. Raising the number here lengthens how long those rows are
- * kept, automatically, which is the correct coupling: a link that still works
- * must still be readable.
- */
-export const RESET_TOKEN_TTL_SECONDS = 60 * 60 * 24;
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),

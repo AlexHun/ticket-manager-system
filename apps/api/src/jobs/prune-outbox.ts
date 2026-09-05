@@ -5,7 +5,7 @@ import {
   type OutboundEmailKind,
   type OutboundEmailStatus,
 } from "@ticket/shared";
-import { RESET_TOKEN_TTL_SECONDS } from "../auth";
+import { RESET_TOKEN_TTL_SECONDS } from "../auth-tokens";
 import { prisma } from "../db";
 import { registerSweep, type SweepSpec } from "./boss";
 
@@ -58,10 +58,12 @@ const PRUNABLE_STATUS: readonly OutboundEmailStatus[] = [
  * How long an invitation or reset row is kept: exactly as long as the link in
  * it works.
  *
- * Read from `auth.ts` rather than restated, so raising the token's life raises
- * this with it. The coupling is the argument: the entire body of one of these
- * rows is a link, so the moment the token expires the row holds nothing anyone
- * can use and everything an attacker would like.
+ * Read from `auth-tokens.ts` rather than restated, so raising the token's life
+ * raises this with it. The coupling is the argument: the entire body of one of
+ * these rows is a link, so the moment the token expires the row holds nothing
+ * anyone can use and everything an attacker would like. (It is imported from
+ * that leaf rather than from `auth.ts`, which sets Better Auth's own expiry
+ * from the same constant — see the note there.)
  *
  * **Nothing is lost by deleting these, because the recovery path already
  * exists.** With no mail provider bound this screen is how an invitation

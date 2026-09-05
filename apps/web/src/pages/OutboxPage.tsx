@@ -138,7 +138,7 @@ export function OutboxPage() {
               remedy is a button they already have.
 
               The two numbers are spelled out here and decided on the server
-              (`RESET_TOKEN_TTL_SECONDS` in `auth.ts`, `REPLY_RETENTION_MS` in
+              (`RESET_TOKEN_TTL_SECONDS` in `auth-tokens.ts`, `REPLY_RETENTION_MS` in
               the sweep). Changing either there without changing this sentence
               leaves the screen lying; if a third number ever joins them, send
               them down with `mailConfigured` instead of adding another copy. */}

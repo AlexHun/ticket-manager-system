@@ -57,8 +57,10 @@ duplicate of `Message.textBody`, which is the copy an agent reads and is never
 pruned, so what expires at ninety days is the delivery record rather than the
 correspondence. An `invitation` or `passwordReset` row is a working single-use
 credential and nothing besides, so it lives exactly as long as the token in it —
-the retention imports `RESET_TOKEN_TTL_SECONDS` from `auth.ts` instead of
-restating it, which makes the two impossible to drift apart. The consequence
+the retention imports `RESET_TOKEN_TTL_SECONDS` instead of restating it, which
+makes the two impossible to drift apart. (That constant lived in `auth.ts` when
+this was written and now lives in `auth-tokens.ts`, a leaf both it and the sweep
+can load; the decision here is the import, not the address.) The consequence
 worth stating: an invitation that goes unread for a day disappears from the
 screen that was delivering it. Nothing is lost, because the link had already
 stopped working and the remedy was always to resend from the roster, but an
