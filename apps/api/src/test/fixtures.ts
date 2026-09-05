@@ -1,11 +1,12 @@
 /**
- * The colleagues a converted API test acts as (#169).
+ * The colleagues a converted API test acts as (#169, extended in #170).
  *
- * Every table these route tests touch — `changelog_seen`, `new_feature_seen`,
- * `dashboard_layout`, `tutorial_progress`, `tutorial_content.updatedById` —
- * hangs off a foreign key onto `user`, so a converted file cannot write a row
- * until the caller exists. That made the same `createMany` block appear in
- * five files at once, which is what this module is for.
+ * Every table these tests touch — `changelog_seen`, `new_feature_seen`,
+ * `dashboard_layout`, `tutorial_progress`, `tutorial_content.updatedById`, and
+ * `knowledge_article_revision`'s `editorId` and `approvedById` — hangs off a
+ * foreign key onto `user`, so a converted file cannot write a row until the
+ * caller exists. That made the same `createMany` block appear in five files at
+ * once, which is what this module is for.
  *
  * **It owns the rows, not the request headers.** The `../middleware/auth`
  * stub that turns a header into a session is deliberately re-typed in every
@@ -37,6 +38,21 @@ export const COLLEAGUE = {
     id: "u_admin",
     name: "Ada Admin",
     email: "ada@example.com",
+    emailVerified: true,
+    role: USER_ROLE.admin,
+  },
+  /**
+   * A *second* admin, for the one rule in this codebase that needs two of them:
+   * nobody may approve their own knowledge-base revision (`routes/knowledge.ts`,
+   * #23). Approving as `admin` and then as `other` would pass — that router
+   * reads the session, never the stored role — and would quietly demonstrate
+   * the gate with an agent standing in for the second admin, which leaves the
+   * reader with the wrong idea of what the rule is.
+   */
+  otherAdmin: {
+    id: "u_admin_2",
+    name: "Bo Admin",
+    email: "bo@example.com",
     emailVerified: true,
     role: USER_ROLE.admin,
   },

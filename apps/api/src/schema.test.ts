@@ -21,6 +21,7 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
+import { KNOWLEDGE_REVISION_ACTION, TICKET_CATEGORY } from "@ticket/shared";
 import { prisma, resetDb } from "./test/pg";
 import { COLLEAGUE, seedColleagues } from "./test/fixtures";
 
@@ -54,5 +55,69 @@ describe("TutorialContent.updatedBy", () => {
         select: { updatedById: true, updatedByName: true },
       }),
     ).toEqual({ updatedById: null, updatedByName: COLLEAGUE.admin.name });
+  });
+});
+
+describe("KnowledgeArticleRevision.article", () => {
+  /** An article and the `created` revision that `routes/knowledge.ts` writes
+   *  in the same transaction — the shape every article in this system has. */
+  async function seedArticleWithRevision() {
+    await prisma.knowledgeArticle.create({
+      data: {
+        id: "KB-001",
+        title: "How do I reset my password?",
+        category: TICKET_CATEGORY.Technical,
+        body: "Use the 'forgot password' link on the sign-in page.",
+      },
+    });
+    await prisma.knowledgeArticleRevision.create({
+      data: {
+        articleId: "KB-001",
+        action: KNOWLEDGE_REVISION_ACTION.created,
+        title: "How do I reset my password?",
+        category: TICKET_CATEGORY.Technical,
+        body: "Use the 'forgot password' link on the sign-in page.",
+        autoReply: false,
+        archived: false,
+        editorId: COLLEAGUE.admin.id,
+        editorName: COLLEAGUE.admin.name,
+        editorEmail: COLLEAGUE.admin.email,
+      },
+    });
+  }
+
+  test("Restrict is what makes an article undeletable, not the router declining to offer it", async () => {
+    // `message.citedArticleIds` points at these ids from replies already
+    // sitting in customers' threads, so an article is archived and never
+    // deleted. `routes/knowledge.ts` has no delete route, but that is a
+    // router being careful; this is the guarantee. Every article carries a
+    // `created` revision from the transaction that inserted it, so the
+    // constraint applies to all of them by construction.
+    await seedArticleWithRevision();
+
+    await expect(async () => {
+      await prisma.knowledgeArticle.delete({ where: { id: "KB-001" } });
+    }).toThrow(/violates RESTRICT setting/);
+    expect(await prisma.knowledgeArticle.count()).toBe(1);
+  });
+
+  test("SetNull keeps the audit trail readable after the editor's account is deleted", async () => {
+    // The same denormalisation as the tutorial byline above, for a stronger
+    // reason: "why did we tell them that?" is asked weeks later, and an audit
+    // log that forgets who acted the moment they leave is not an audit log.
+    // Without `SetNull` the account delete would fail outright instead.
+    await seedArticleWithRevision();
+
+    await prisma.user.delete({ where: { id: COLLEAGUE.admin.id } });
+
+    expect(
+      await prisma.knowledgeArticleRevision.findFirstOrThrow({
+        select: { editorId: true, editorName: true, editorEmail: true },
+      }),
+    ).toEqual({
+      editorId: null,
+      editorName: COLLEAGUE.admin.name,
+      editorEmail: COLLEAGUE.admin.email,
+    });
   });
 });
