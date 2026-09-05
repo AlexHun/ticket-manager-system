@@ -1,11 +1,10 @@
 import { act, screen, waitFor } from "@testing-library/react";
-import { Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { QueryClient } from "@tanstack/react-query";
 import type { TicketUnreadResponse } from "@ticket/shared";
 import { toast } from "@/components/ui/sonner";
 import { apiStub } from "@/test/api-stub";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { ticketKeys } from "@/lib/ticket-queries";
 import { useAssignmentToasts } from "./use-assignment-toasts";
 
@@ -27,12 +26,10 @@ function Host() {
 }
 
 function renderHost() {
-  return renderWithQuery(
-    <Routes>
-      <Route path="/" element={<Host />} />
-      <Route path="/tickets/:id" element={<div>ticket detail page</div>} />
-    </Routes>,
-  );
+  return renderRoutes([
+    { path: "/", element: <Host /> },
+    { path: "/tickets/:id", element: <div>ticket detail page</div> },
+  ]);
 }
 
 /**
@@ -123,7 +120,13 @@ describe("useAssignmentToasts", () => {
     const onClick = action?.onClick;
     if (!onClick) throw new Error("toast was not given an action");
 
-    act(() => onClick());
+    // A data router navigation settles in a microtask — it is allowed to run
+    // loaders — so the click needs an *async* act to flush the state update
+    // React then renders from. Under the memory router this file mounted
+    // before #159 the update was synchronous and a bare `act()` saw it.
+    await act(async () => {
+      onClick();
+    });
 
     expect(await screen.findByText("ticket detail page")).toBeInTheDocument();
   });

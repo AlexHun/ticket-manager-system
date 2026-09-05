@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { apiStub } from "@/test/api-stub";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { ChangelogPopover } from "./ChangelogPopover";
 
 // --- Mocks ------------------------------------------------------------------
@@ -43,7 +43,7 @@ afterEach(() => {
 describe("ChangelogPopover", () => {
   test("shows a dot when the caller has unseen entries", async () => {
     statusGet.mockResolvedValue({ data: { shouldShow: true } });
-    renderWithQuery(<ChangelogPopover />);
+    renderRoutes([{ path: "/", element: <ChangelogPopover /> }]);
 
     await waitFor(() =>
       expect(screen.getByTestId("changelog-dot")).toBeInTheDocument(),
@@ -52,7 +52,7 @@ describe("ChangelogPopover", () => {
 
   test("shows no dot once everything has been seen", async () => {
     statusGet.mockResolvedValue({ data: { shouldShow: false } });
-    renderWithQuery(<ChangelogPopover />);
+    renderRoutes([{ path: "/", element: <ChangelogPopover /> }]);
 
     await waitFor(() => expect(statusGet).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId("changelog-dot")).not.toBeInTheDocument();
@@ -63,7 +63,7 @@ describe("ChangelogPopover", () => {
   test("opening the popover lists entries newest-first", async () => {
     statusGet.mockResolvedValue({ data: { shouldShow: false } });
     const user = userEvent.setup();
-    renderWithQuery(<ChangelogPopover />);
+    renderRoutes([{ path: "/", element: <ChangelogPopover /> }]);
 
     await user.click(screen.getByRole("button", { name: "What's new" }));
 
@@ -77,7 +77,7 @@ describe("ChangelogPopover", () => {
   test("opening while unseen marks the changelog seen", async () => {
     statusGet.mockResolvedValue({ data: { shouldShow: true } });
     const user = userEvent.setup();
-    renderWithQuery(<ChangelogPopover />);
+    renderRoutes([{ path: "/", element: <ChangelogPopover /> }]);
 
     await waitFor(() =>
       expect(screen.getByTestId("changelog-dot")).toBeInTheDocument(),
@@ -90,7 +90,7 @@ describe("ChangelogPopover", () => {
   test("opening while already seen does not write again", async () => {
     statusGet.mockResolvedValue({ data: { shouldShow: false } });
     const user = userEvent.setup();
-    renderWithQuery(<ChangelogPopover />);
+    renderRoutes([{ path: "/", element: <ChangelogPopover /> }]);
 
     await waitFor(() => expect(statusGet).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole("button", { name: "What's new" }));

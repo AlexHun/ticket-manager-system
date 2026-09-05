@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MAX_MESSAGE_BODY_LENGTH } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { TicketReplyComposer } from "./TicketReplyComposer";
 
 /**
@@ -71,7 +71,7 @@ function mockApi({
 }
 
 function renderComposer() {
-  renderWithQuery(<TicketReplyComposer ticketId={12} />);
+  renderRoutes([{ path: "/", element: <TicketReplyComposer ticketId={12} /> }]);
   return userEvent.setup();
 }
 

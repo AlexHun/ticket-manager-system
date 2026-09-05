@@ -1,8 +1,14 @@
+import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { TableFrame } from "@/lib/table-frame";
+
+/** Mounts `ui` as the one route the default entry URL matches. */
+function renderAtRoot(ui: ReactNode) {
+  return renderRoutes([{ path: "/", element: ui }]);
+}
 
 /**
  * The convention issue #111 settled: a scroll container a keyboard can reach,
@@ -11,7 +17,7 @@ import { TableFrame } from "@/lib/table-frame";
  */
 describe("TableFrame", () => {
   it("is a named region", () => {
-    renderWithQuery(
+    renderAtRoot(
       <TableFrame label="Users">
         <p>body</p>
       </TableFrame>,
@@ -22,7 +28,7 @@ describe("TableFrame", () => {
 
   it("takes keyboard focus, so the scroller can be operated without a mouse", async () => {
     const user = userEvent.setup();
-    renderWithQuery(
+    renderAtRoot(
       <TableFrame label="Users">
         <p>body</p>
       </TableFrame>,
@@ -36,7 +42,7 @@ describe("TableFrame", () => {
   });
 
   it("merges the call site's layout classes onto the frame's own", () => {
-    renderWithQuery(
+    renderAtRoot(
       <TableFrame label="Activity" className="min-h-0 flex-1">
         <p>body</p>
       </TableFrame>,
@@ -47,7 +53,7 @@ describe("TableFrame", () => {
   });
 
   it("passes the remaining props through, which is how the skeletons stay busy", () => {
-    renderWithQuery(
+    renderAtRoot(
       <TableFrame label="Loading users" aria-busy="true" data-tutorial-anchor="feed">
         <p>body</p>
       </TableFrame>,

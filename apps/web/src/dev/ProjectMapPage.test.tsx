@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { ProjectMapPage } from "./ProjectMapPage";
 import {
   EDGE_KIND,
@@ -159,7 +159,7 @@ function renderMap(graph: ProjectGraph = makeGraph()) {
     refetch: vi.fn(),
     isFetching: false,
   });
-  return renderWithQuery(<ProjectMapPage />);
+  return renderRoutes([{ path: "/", element: <ProjectMapPage /> }]);
 }
 
 /** Types into the search box and waits out the 150 ms debounce. */
@@ -200,15 +200,23 @@ describe("the search reaches every tab", () => {
     // element, so its text is "axios1" rather than "axios".
     const pkg = (name: string) => screen.queryByText(name, { exact: false });
 
+    // Both packages are asserted inside the same `waitFor` because only the two
+    // together describe a *settled* search: `search()` clears the box before it
+    // types, so the 150 ms debounce can fire on "" or on a prefix on the way,
+    // and either of those transient renders satisfies one half on its own.
     await search("recharts");
-    await waitFor(() => expect(pkg("axios")).not.toBeInTheDocument());
-    expect(pkg("recharts")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(pkg("recharts")).toBeInTheDocument();
+      expect(pkg("axios")).not.toBeInTheDocument();
+    });
 
     // Searching a *module* keeps the packages that module imports — the point of
     // matching on `users` as well as on the name.
     await search("TicketsPage");
-    await waitFor(() => expect(pkg("axios")).toBeInTheDocument());
-    expect(pkg("recharts")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(pkg("axios")).toBeInTheDocument();
+      expect(pkg("recharts")).not.toBeInTheDocument();
+    });
   });
 
   test("Wiring narrows routes, endpoints and models", async () => {
