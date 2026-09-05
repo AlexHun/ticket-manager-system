@@ -75,8 +75,8 @@ export interface RenderRoutesResult extends RenderResult {
 
 /**
  * Render routes on a data router, the kind the app actually runs on. This is
- * the web suite's only render helper — a `MemoryRouter` one lived beside it
- * until #159, and every test that used it now mounts a single route here.
+ * the web suite's only shared render helper — a `MemoryRouter` one lived
+ * beside it until #159, and its ten callers mount their routes here now.
  *
  * `App.tsx` builds a `createBrowserRouter` whose routes carry `loader`s,
  * `lazy` components and a `HydrateFallback`; the component router supports none
