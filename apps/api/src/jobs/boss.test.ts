@@ -326,12 +326,18 @@ test("no consumer declares a shared queue setting for itself", async () => {
   // own copy of the note explaining why it is not thirty, and four copies of a
   // singleton policy.
   //
-  // `retryLimit` is now banned outright rather than only above zero. The `0` a
+  // `retryLimit` is banned outright rather than only above zero. The `0` a
   // sweep used to set was the honest exception while sweeps wired their own
   // queues; now that `registerSweep` sets it, a consumer typing it again is a
   // consumer that has stopped going through the registrar.
+  //
+  // **The property form, not the word**, exactly as the check above matches the
+  // call form and for the same reason: every one of these is a key in an options
+  // object, and this repo's files explain themselves at length. A consumer must
+  // be free to write a comment saying *why* it has no `retryLimit` — banning the
+  // bare word would make the honest explanation the thing that fails the build.
   const RECIPE =
-    /retryLimit|retryDelay|notifyPollingIntervalSeconds|policy:|deadLetter/;
+    /(retryLimit|retryDelay|notifyPollingIntervalSeconds|policy|deadLetter)\s*:/;
 
   const offenders: string[] = [];
   for (const file of files) {

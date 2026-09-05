@@ -8,6 +8,11 @@ import {
 import { RESET_TOKEN_TTL_SECONDS } from "../auth-tokens";
 import { prisma } from "../db";
 import { registerSweep, type SweepSpec } from "./boss";
+import {
+  BATCH_SIZE,
+  MAX_BATCHES,
+  PRUNE_EXPIRE_IN_SECONDS,
+} from "./prune-batching";
 
 /**
  * Throwing away outbox rows that have stopped being worth keeping.
@@ -114,30 +119,6 @@ const PRUNE_QUEUE = "prune-outbox";
  */
 const PRUNE_CRON = "23 * * * *";
 
-/**
- * Rows deleted per statement, and how many statements one sweep may run.
- *
- * Batched because the first sweep on a long-running deployment is the big one —
- * everything ever written that is past its window goes at once — and a single
- * unbounded `DELETE` there would hold locks for as long as it took. Capping the
- * sweep rather than looping until empty is the same trade `recoverStuck` makes:
- * whatever is left is still there in an hour, and a job that cannot run long is
- * a job that cannot block a deploy.
- */
-const BATCH_SIZE = 500;
-const MAX_BATCHES = 20;
-
-/**
- * How long one sweep may run before pg-boss assumes the process died.
- *
- * Five minutes, against a worst case of three kinds × twenty batches of five
- * hundred — the first sweep on a deployment that has never had one. Longer than
- * the workers' expiry rather than shorter, which is the opposite of what the
- * cadence suggests: a worker is waiting on one provider call, this is waiting on
- * up to sixty indexed statements.
- */
-const EXPIRE_IN_SECONDS = 300;
-
 /** Delete the expired rows of one kind. Returns how many went. */
 async function pruneKind(
   kind: OutboundEmailKind,
@@ -214,7 +195,7 @@ export async function pruneOutbox(): Promise<void> {
 export const PRUNE_OUTBOX_SWEEP: SweepSpec = {
   name: PRUNE_QUEUE,
   cron: PRUNE_CRON,
-  expireInSeconds: EXPIRE_IN_SECONDS,
+  expireInSeconds: PRUNE_EXPIRE_IN_SECONDS,
   run: pruneOutbox,
 };
 

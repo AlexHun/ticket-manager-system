@@ -38,18 +38,35 @@ import { Prisma, prisma, resetDb } from "../test/pg";
  * the `notIn`, and the status filter — the three things most worth getting
  * right, and the three a fake would be free to get wrong in the same way twice.
  *
- * ## The two mocks
+ * ## The two mocks, and why both default to the truth
  *
  * `../ai/provider` and `./boss` are both replaced with the real module spread
  * into a plain object first, so every other export stays genuine — see the
  * registry note in `docs/standards/testing.md`.
  *
- * `isAiConfigured` starts `false`, which is what the real one returns in this
- * suite (no `OPENAI_API_KEY` anywhere in `.env.test`, deliberately). So a file
- * loaded after this one sees exactly what it would have seen; only the
- * reconcile tests flip it, and they put it back. It has to be reachable at all
- * because `enqueueClassification` short-circuits on it — without the flip, the
- * sweep's whole output is a no-op and there is nothing to assert.
+ * **Each replaced export behaves exactly like the real one until a test opts
+ * out, and that is the load-bearing part.** `mock.module`'s registry is one
+ * process wide and nothing resets it between files, so these two fakes are in
+ * force for every file that links `../ai/provider` or `./boss` after this one —
+ * and which files those are depends on the order `bun test` reaches them in,
+ * which differs between a Windows dev machine and CI. A fake whose default is
+ * indistinguishable from the real module cannot make that ordering matter.
+ *
+ * So `isAiConfigured` starts `false`, which is what the real one returns in
+ * this suite (no `OPENAI_API_KEY` anywhere in `.env.test`, deliberately); only
+ * the reconcile tests flip it, and `beforeEach` puts it back. It has to be
+ * reachable at all because `enqueueClassification` short-circuits on it —
+ * without the flip, the sweep's whole output is a no-op and there is nothing to
+ * assert.
+ *
+ * And `getBoss` delegates to the real one — which throws, the queue never
+ * having been started — unless a test has installed a queue to watch. That
+ * matters to a specific neighbour: `classify-ticket.test.ts` imports the same
+ * `./classify-ticket` and says in its own header that "`getBoss()` would throw,
+ * and nothing below reaches it". A fake that unconditionally returned a working
+ * queue would quietly make that sentence false in one of the two load orders,
+ * which is the shape `testing.md` warns about — a file that passes alone and
+ * fails in the suite.
  */
 
 mock.module("../db", () => ({ Prisma, prisma }));
@@ -67,19 +84,31 @@ mock.module("../ai/provider", () => ({
 /** Everything a sweep asked to be enqueued, in order. */
 let enqueued: { queue: string; ticketId: number }[] = [];
 
+/**
+ * The queue a test is watching, or `undefined` for "behave like the real
+ * module". Set by `watchQueue()` and cleared in `beforeEach`.
+ */
+let watchedQueue: { send: (queue: string, data: unknown) => Promise<string> } | undefined;
+
 const bossModule = { ...(await import("./boss")) };
 mock.module("./boss", () => ({
   ...bossModule,
   // The only export replaced. `registerWorker`, `registerSweep` and the rest
   // stay real, which is what keeps `boss.test.ts` honest whichever order the
-  // two files load in.
-  getBoss: () => ({
-    send: async (queue: string, data: { ticketId: number }) => {
-      enqueued.push({ queue, ticketId: data.ticketId });
+  // two files load in — and `getBoss` falls through to the real one, which
+  // throws, unless this file's own test asked to watch a queue. See the header.
+  getBoss: () => watchedQueue ?? bossModule.getBoss(),
+}));
+
+/** Record what the sweep enqueues, instead of letting `getBoss()` throw. */
+function watchQueue(): void {
+  watchedQueue = {
+    send: async (queue: string, data: unknown) => {
+      enqueued.push({ queue, ticketId: (data as { ticketId: number }).ticketId });
       return "fake-job-id";
     },
-  }),
-}));
+  };
+}
 
 const { CLASSIFY_QUEUE, CLASSIFY_RECONCILE_SWEEP } = await import(
   "./classify-ticket"
@@ -173,6 +202,7 @@ beforeEach(async () => {
   await resetDb();
   enqueued = [];
   aiConfigured = false;
+  watchedQueue = undefined;
   quiet = [
     spyOn(console, "log").mockImplementation(() => {}),
     spyOn(console, "warn").mockImplementation(() => {}),
@@ -181,6 +211,11 @@ beforeEach(async () => {
 
 afterEach(() => {
   for (const spy of quiet) spy.mockRestore();
+  // Cleared here as well as in `beforeEach`, so the fake is guaranteed to be
+  // back to real behaviour once this file's last test finishes rather than only
+  // because of which test happens to be last. Nothing else in the process
+  // should ever see a working queue from `getBoss()`.
+  watchedQueue = undefined;
 });
 
 /* ── The classifier's reconcile ──────────────────────────────────────────── */
@@ -188,6 +223,7 @@ afterEach(() => {
 describe("CLASSIFY_RECONCILE_SWEEP", () => {
   test("offers back a ticket that never reached a verdict", async () => {
     aiConfigured = true;
+    watchQueue();
     const id = await newTicket({ createdAt: ago(30 * MINUTE) });
 
     await CLASSIFY_RECONCILE_SWEEP.run();
@@ -197,6 +233,7 @@ describe("CLASSIFY_RECONCILE_SWEEP", () => {
 
   test("leaves alone everything outside the band", async () => {
     aiConfigured = true;
+    watchQueue();
 
     // Inside the ten-minute floor: already queued, or already retrying — the
     // ladder runs a little over seven minutes, so anything this fresh is in
@@ -221,10 +258,12 @@ describe("CLASSIFY_RECONCILE_SWEEP", () => {
   });
 
   test("enqueues nothing on a deployment with no key", async () => {
-    // `aiConfigured` stays false. The sweep still runs and still reads the
+    // `aiConfigured` stays false and no queue is watched, so `getBoss()` is the
+    // real one and would throw. The sweep still runs and still reads the
     // tickets; `enqueueClassification` is the no-op, and that is deliberate —
     // a keyless deployment must not build a backlog for the day somebody adds
-    // a key. This is the state the E2E suite runs in.
+    // a key. This is the state the E2E suite runs in, and the throw is what
+    // makes the assertion below mean "never asked" rather than "asked nothing".
     await newTicket({ createdAt: ago(30 * MINUTE) });
 
     await CLASSIFY_RECONCILE_SWEEP.run();

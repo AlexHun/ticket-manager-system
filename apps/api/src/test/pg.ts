@@ -120,10 +120,22 @@ export const prisma = new PrismaClient({
  * refuses the statement — so a single test that leaves a revision behind
  * poisons `resetDb` for every file that runs after it, and the failures land
  * anywhere but the test that caused them. Setting the role to `replica` for the
- * duration is the standard way to say "this is a wipe, not an edit"; it is
- * restored immediately, so nothing a test does is exempt from a constraint.
- * Sorting the tables topologically would work too, and would have to be
- * re-derived every time somebody added a relation.
+ * duration is the standard way to say "this is a wipe, not an edit". Sorting the
+ * tables topologically would work too, and would have to be re-derived every
+ * time somebody added a relation.
+ *
+ * Two things to be exact about, because "restored immediately" would be doing a
+ * lot of unexamined work. The flag is off for the **deletes only** — the
+ * `origin` statement is inside the same `db.exec` batch, before the sequence
+ * resets — so no test ever runs against a database with its constraints
+ * disabled. But `session_replication_role` suppresses *every* referential and
+ * user trigger, not only the `Restrict` that motivated it; that is the price of
+ * not maintaining a topological order by hand, and it is why this is scoped to
+ * the wipe and nothing else. And the restore is a statement rather than a
+ * `finally`: `db.exec` runs the batch in one implicit transaction, so a failed
+ * `DELETE` rolls the `SET` back with everything else rather than leaking it into
+ * the next test. A `resetDb` that throws is a broken suite either way — what
+ * matters is that it cannot leave the session quietly permissive.
  */
 const RESET_SQL = await (async () => {
   const tables = (

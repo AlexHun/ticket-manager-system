@@ -1,6 +1,11 @@
 import type { PgBoss } from "pg-boss";
 import { prisma } from "../db";
 import { registerSweep, type SweepSpec } from "./boss";
+import {
+  BATCH_SIZE,
+  MAX_BATCHES,
+  PRUNE_EXPIRE_IN_SECONDS,
+} from "./prune-batching";
 
 /**
  * Throwing away audit-trail rows old enough that nothing needs them any more.
@@ -32,22 +37,6 @@ const PRUNE_QUEUE = "prune-activity-trails";
  * `src/jobs/` so cron logs stay easy to tell apart.
  */
 const PRUNE_CRON = "41 3 * * *";
-
-/**
- * Rows deleted per statement, and how many statements one sweep may run. Same
- * numbers and same reasoning as `prune-outbox.ts`: the first sweep on a
- * year-old deployment is the big one, and an unbounded `DELETE` would hold
- * locks for as long as it took.
- */
-const BATCH_SIZE = 500;
-const MAX_BATCHES = 20;
-
-/**
- * How long one sweep may run. Five minutes, same as `prune-outbox.ts` and for
- * the same arithmetic — four tables × twenty batches of five hundred on the
- * first sweep of a year-old deployment.
- */
-const EXPIRE_IN_SECONDS = 300;
 
 /**
  * Select-then-delete in batches, generalized over a model's `findMany` /
@@ -211,7 +200,7 @@ export async function pruneActivityTrails(): Promise<void> {
 export const PRUNE_ACTIVITY_TRAILS_SWEEP: SweepSpec = {
   name: PRUNE_QUEUE,
   cron: PRUNE_CRON,
-  expireInSeconds: EXPIRE_IN_SECONDS,
+  expireInSeconds: PRUNE_EXPIRE_IN_SECONDS,
   run: pruneActivityTrails,
 };
 
