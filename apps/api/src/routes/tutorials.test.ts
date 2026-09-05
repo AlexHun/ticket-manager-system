@@ -1,18 +1,19 @@
 /**
  * Unit tests for `apps/api/src/routes/tutorials.ts`.
  *
- * The router only, on a real Express app over a real socket, with the
- * database replaced by a small in-memory table — same shape as
- * `knowledge.test.ts` and `automation.test.ts` (see `testing.md`). The
- * `../middleware/auth` stub is deliberately identical to theirs, for the
- * reason explained in their headers: `mock.module` registrations are
- * process-wide, and a stub that disagreed about where the identity comes
- * from would make one file's tests pass alone and fail in the suite.
+ * The router only, on a real Express app over a real socket — and, since #169,
+ * over a real database: `../db` is still replaced, but what it is replaced
+ * *with* is a genuine Prisma client on a genuine Postgres running inside this
+ * process (`../test/pg`, ADR-0014). The two hand-written tables that used to
+ * live here — `tutorialContent` and `tutorialProgress` — are gone, so the
+ * `@@unique([userId, pageKey])` behind `/seen`, the `pageKey` enum, and the
+ * `updatedById` foreign key onto the editor are all Postgres' own answers now.
  *
- * What's worth pinning down without a real database: the "missing row reads
- * as no content" default, `shouldShow`'s version comparison, that marking a
- * page seen actually stops it from showing again, and that an admin edit
- * neither needs nor creates a `TutorialProgress` row for anyone.
+ * The `../middleware/auth` stub is deliberately identical to
+ * `knowledge.test.ts`'s and `automation.test.ts`'s, for the reason explained
+ * in their headers: `mock.module` registrations are process-wide, and a stub
+ * that disagreed about where the identity comes from would make one file's
+ * tests pass alone and fail in the suite.
  */
 
 import type { AddressInfo } from "node:net";
@@ -30,132 +31,19 @@ import {
 import express from "express";
 import {
   TUTORIAL_PAGE_KEYS,
+  TUTORIAL_PAGE_VERSIONS,
   type TutorialContentResponse,
   type TutorialContentsResponse,
+  type TutorialPageKey,
   type TutorialStatusResponse,
 } from "@ticket/shared";
+import { Prisma, prisma, resetDb } from "../test/pg";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
-interface ContentRow {
-  pageKey: string;
-  title: string;
-  steps: unknown;
-  updatedAt: Date;
-  updatedById: string | null;
-  updatedByName: string | null;
-}
-
-interface ProgressRow {
-  userId: string;
-  pageKey: string;
-  seenVersion: number;
-  seenAt: Date;
-}
-
-let contents: ContentRow[];
-let progress: ProgressRow[];
-
 const NOW = new Date("2026-08-24T12:00:00.000Z");
 
-const contentFindMany = mock(() => Promise.resolve(contents));
-
-const contentFindUnique = mock((args: { where: { pageKey: string } }) =>
-  Promise.resolve(contents.find((c) => c.pageKey === args.where.pageKey) ?? null),
-);
-
-const contentUpsert = mock(
-  (args: {
-    where: { pageKey: string };
-    create: Record<string, unknown>;
-    update: Record<string, unknown>;
-  }) => {
-    const idx = contents.findIndex((c) => c.pageKey === args.where.pageKey);
-    if (idx === -1) {
-      const row: ContentRow = {
-        pageKey: args.create.pageKey as string,
-        title: args.create.title as string,
-        steps: args.create.steps,
-        updatedAt: NOW,
-        updatedById: (args.create.updatedById as string | null) ?? null,
-        updatedByName: (args.create.updatedByName as string | null) ?? null,
-      };
-      contents.push(row);
-      return Promise.resolve(row);
-    }
-    const updated: ContentRow = {
-      ...contents[idx]!,
-      ...args.update,
-      updatedAt: NOW,
-    } as ContentRow;
-    contents[idx] = updated;
-    return Promise.resolve(updated);
-  },
-);
-
-const progressFindUnique = mock(
-  (args: { where: { userId_pageKey: { userId: string; pageKey: string } } }) => {
-    const { userId, pageKey } = args.where.userId_pageKey;
-    return Promise.resolve(
-      progress.find((p) => p.userId === userId && p.pageKey === pageKey) ??
-        null,
-    );
-  },
-);
-
-const progressUpsert = mock(
-  (args: {
-    where: { userId_pageKey: { userId: string; pageKey: string } };
-    create: Record<string, unknown>;
-    update: Record<string, unknown>;
-  }) => {
-    const { userId, pageKey } = args.where.userId_pageKey;
-    const idx = progress.findIndex(
-      (p) => p.userId === userId && p.pageKey === pageKey,
-    );
-    if (idx === -1) {
-      const row: ProgressRow = {
-        userId,
-        pageKey,
-        seenVersion: args.create.seenVersion as number,
-        seenAt: NOW,
-      };
-      progress.push(row);
-      return Promise.resolve(row);
-    }
-    const updated: ProgressRow = {
-      ...progress[idx]!,
-      ...args.update,
-    } as ProgressRow;
-    progress[idx] = updated;
-    return Promise.resolve(updated);
-  },
-);
-
-// `Prisma` is included even though nothing in this file calls `Prisma.sql` —
-// see the note above `users.test.ts`'s own `mock.module("../db", …)`. Every
-// factory for this specifier has to carry it: `routes/activity.ts`,
-// `ticket-stats.ts` and `ticket-effectiveness.ts` import it as a *value*, and
-// a factory that leaves it out can be the one in force when one of those is
-// linked, which fails the run with `SyntaxError: Export named 'Prisma' not
-// found in module .../src/db.ts` — intermittently, since it depends on the
-// order `bun test` reaches the files in.
-const { Prisma } = await import("../generated/prisma/client");
-
-mock.module("../db", () => ({
-  Prisma,
-  prisma: {
-    tutorialContent: {
-      findMany: contentFindMany,
-      findUnique: contentFindUnique,
-      upsert: contentUpsert,
-    },
-    tutorialProgress: {
-      findUnique: progressFindUnique,
-      upsert: progressUpsert,
-    },
-  },
-}));
+mock.module("../db", () => ({ Prisma, prisma }));
 
 /** Deliberately identical to `knowledge.test.ts` / `automation.test.ts` — see
  *  this file's header comment. */
@@ -198,15 +86,46 @@ const CONTENT_BODY = {
   steps: [{ title: "Filters", body: "Use the range picker up top." }],
 };
 
-beforeEach(() => {
-  contents = [];
-  progress = [];
-  contentFindMany.mockClear();
-  contentFindUnique.mockClear();
-  contentUpsert.mockClear();
-  progressFindUnique.mockClear();
-  progressUpsert.mockClear();
+const DASHBOARD: TutorialPageKey = "dashboard";
+
+/** `TutorialProgress.userId` and `TutorialContent.updatedById` are both
+ *  foreign keys, so both callers have to be real colleagues — which is itself
+ *  something the old fakes could not have told us. */
+beforeEach(async () => {
+  await resetDb();
+  await prisma.user.createMany({
+    data: [
+      {
+        id: "u_agent",
+        name: "Aaron Agent",
+        email: "agent@example.com",
+        emailVerified: true,
+      },
+      {
+        id: "u_admin",
+        name: "Ada Admin",
+        email: "ada@example.com",
+        emailVerified: true,
+        role: "admin",
+      },
+    ],
+  });
 });
+
+/** Insert a progress row directly, for the "already behind" case. */
+function markSeenAt(userId: string, pageKey: TutorialPageKey, seenVersion: number) {
+  return prisma.tutorialProgress.create({
+    data: { userId, pageKey, seenVersion, seenAt: NOW },
+  });
+}
+
+/** Read the progress rows back, ignoring the autoincrement id. */
+function progressRows() {
+  return prisma.tutorialProgress.findMany({
+    select: { userId: true, pageKey: true, seenVersion: true },
+    orderBy: [{ userId: "asc" }, { pageKey: "asc" }],
+  });
+}
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
@@ -298,12 +217,7 @@ describe("GET /api/tutorials/:pageKey", () => {
 
   test("shows again for a progress row behind the current version", async () => {
     await put("/dashboard", CONTENT_BODY);
-    progress.push({
-      userId: "u_agent",
-      pageKey: "dashboard",
-      seenVersion: 0,
-      seenAt: NOW,
-    });
+    await markSeenAt("u_agent", DASHBOARD, 0);
 
     const sent = await get<TutorialStatusResponse>("/dashboard");
 
@@ -319,6 +233,17 @@ describe("GET /api/tutorials/:pageKey", () => {
     expect(sent.body.tutorial.shouldShow).toBe(true);
   });
 
+  test("one page's content is not another page's", async () => {
+    // The old fake matched `pageKey` with `===` on a string it had stored
+    // itself; this is Postgres matching the enum column the route selects on.
+    await put("/dashboard", CONTENT_BODY);
+
+    const sent = await get<TutorialStatusResponse>("/tickets");
+
+    expect(sent.body.tutorial.content.steps).toEqual([]);
+    expect(sent.body.tutorial.shouldShow).toBe(false);
+  });
+
   test("404s an unknown page key", async () => {
     const sent = await get("/not-a-real-page");
     expect(sent.status).toBe(404);
@@ -332,14 +257,35 @@ describe("POST /api/tutorials/:pageKey/seen", () => {
     const sent = await post("/dashboard/seen");
 
     expect(sent.status).toBe(200);
-    expect(progress).toContainEqual(
-      expect.objectContaining({ userId: "u_agent", pageKey: "dashboard" }),
-    );
+    expect(await progressRows()).toEqual([
+      {
+        userId: "u_agent",
+        pageKey: DASHBOARD,
+        seenVersion: TUTORIAL_PAGE_VERSIONS[DASHBOARD],
+      },
+    ]);
+  });
+
+  test("updates rather than duplicates on a second dismissal", async () => {
+    // `@@unique([userId, pageKey])` is what makes this an update, and it is
+    // now the constraint deciding rather than a `findIndex` in this file.
+    await markSeenAt("u_agent", DASHBOARD, 0);
+
+    await post("/dashboard/seen");
+
+    expect(await progressRows()).toEqual([
+      {
+        userId: "u_agent",
+        pageKey: DASHBOARD,
+        seenVersion: TUTORIAL_PAGE_VERSIONS[DASHBOARD],
+      },
+    ]);
   });
 
   test("404s an unknown page key", async () => {
     const sent = await post("/not-a-real-page/seen");
     expect(sent.status).toBe(404);
+    expect(await progressRows()).toEqual([]);
   });
 });
 
@@ -374,23 +320,53 @@ describe("PUT /api/tutorials/:pageKey", () => {
       steps: CONTENT_BODY.steps,
       updatedByName: "Ada Admin",
     });
+    expect(
+      await prisma.tutorialContent.findUniqueOrThrow({
+        where: { pageKey: DASHBOARD },
+        select: { title: true, steps: true, updatedById: true, updatedByName: true },
+      }),
+    ).toEqual({
+      title: CONTENT_BODY.title,
+      steps: CONTENT_BODY.steps,
+      updatedById: "u_admin",
+      updatedByName: "Ada Admin",
+    });
+  });
+
+  test("the byline survives the editor's account being deleted", async () => {
+    // `updatedBy` is `onDelete: SetNull` beside a denormalised `updatedByName`
+    // for exactly this reason (see the schema). Neither half of that was
+    // expressible against a fake that held no foreign key at all.
+    await put("/dashboard", CONTENT_BODY);
+
+    await prisma.user.delete({ where: { id: "u_admin" } });
+
+    const row = await prisma.tutorialContent.findUniqueOrThrow({
+      where: { pageKey: DASHBOARD },
+      select: { updatedById: true, updatedByName: true },
+    });
+    expect(row).toEqual({ updatedById: null, updatedByName: "Ada Admin" });
   });
 
   test("editing content does not touch anyone's progress", async () => {
     await put("/dashboard", CONTENT_BODY);
     await post("/dashboard/seen");
-    expect(progress).toHaveLength(1);
 
     await put("/dashboard", { ...CONTENT_BODY, title: "Welcome (updated)" });
 
-    expect(progress).toHaveLength(1);
-    expect(progress[0]?.seenVersion).toBe(1);
+    expect(await progressRows()).toEqual([
+      {
+        userId: "u_agent",
+        pageKey: DASHBOARD,
+        seenVersion: TUTORIAL_PAGE_VERSIONS[DASHBOARD],
+      },
+    ]);
   });
 
   test("rejects a tutorial with no steps", async () => {
     const sent = await put("/dashboard", { ...CONTENT_BODY, steps: [] });
     expect(sent.status).toBe(400);
-    expect(contents).toHaveLength(0);
+    expect(await prisma.tutorialContent.count()).toBe(0);
   });
 
   test("404s an unknown page key", async () => {

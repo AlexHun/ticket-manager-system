@@ -1,18 +1,19 @@
 /**
  * Unit tests for `apps/api/src/routes/new-features.ts`.
  *
- * The router only, on a real Express app over a real socket, with the
- * database replaced by a small in-memory table — same shape as
- * `tutorials.test.ts` (see `testing.md`). The `../middleware/auth` stub is
- * deliberately identical to theirs, for the reason explained in that file's
- * header: `mock.module` registrations are process-wide, and a stub that
- * disagreed about where the identity comes from would make one file's tests
- * pass alone and fail in the suite.
+ * The router only, on a real Express app over a real socket — and, since #169,
+ * over a real database: `../db` is still replaced, but what it is replaced
+ * *with* is a genuine Prisma client on a genuine Postgres running inside this
+ * process (`../test/pg`, ADR-0014). The hand-written `newFeatureSeen` fake
+ * that used to live here is gone, so the `featureKey: { in: … }` filter and
+ * the `@@unique([userId, featureKey])` behind the upsert are Postgres' own
+ * answers rather than a `filter`/`findIndex` written above the assertions.
  *
- * What's worth pinning down without a real database: no row reads as "should
- * show", the version comparison, that marking a key seen actually stops it
- * from showing again, that it's per user, and that an unknown key 404s
- * instead of silently upserting garbage.
+ * The `../middleware/auth` stub is deliberately identical to
+ * `tutorials.test.ts`'s, for the reason explained in that file's header:
+ * `mock.module` registrations are process-wide, and a stub that disagreed
+ * about where the identity comes from would make one file's tests pass alone
+ * and fail in the suite.
  */
 
 import type { AddressInfo } from "node:net";
@@ -28,77 +29,18 @@ import {
   test,
 } from "bun:test";
 import express from "express";
-import { NEW_FEATURE_KEYS, type NewFeatureStatusResponse } from "@ticket/shared";
+import {
+  NEW_FEATURE_KEYS,
+  NEW_FEATURE_VERSIONS,
+  type NewFeatureStatusResponse,
+} from "@ticket/shared";
+import { Prisma, prisma, resetDb } from "../test/pg";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
-interface SeenRow {
-  userId: string;
-  featureKey: string;
-  seenVersion: number;
-  seenAt: Date;
-}
-
-let seen: SeenRow[];
-
 const NOW = new Date("2026-08-29T12:00:00.000Z");
 
-const seenFindMany = mock(
-  (args: { where: { userId: string; featureKey: { in: string[] } } }) =>
-    Promise.resolve(
-      seen.filter(
-        (row) =>
-          row.userId === args.where.userId &&
-          args.where.featureKey.in.includes(row.featureKey),
-      ),
-    ),
-);
-
-const seenUpsert = mock(
-  (args: {
-    where: { userId_featureKey: { userId: string; featureKey: string } };
-    create: Record<string, unknown>;
-    update: Record<string, unknown>;
-  }) => {
-    const { userId, featureKey } = args.where.userId_featureKey;
-    const idx = seen.findIndex(
-      (row) => row.userId === userId && row.featureKey === featureKey,
-    );
-    if (idx === -1) {
-      const row: SeenRow = {
-        userId,
-        featureKey,
-        seenVersion: args.create.seenVersion as number,
-        seenAt: NOW,
-      };
-      seen.push(row);
-      return Promise.resolve(row);
-    }
-    const updated: SeenRow = { ...seen[idx]!, ...args.update } as SeenRow;
-    seen[idx] = updated;
-    return Promise.resolve(updated);
-  },
-);
-
-// `Prisma` is included even though nothing in this file calls `Prisma.sql` —
-// see the note above `users.test.ts`'s own `mock.module("../db", …)`. Every
-// factory for this specifier has to carry it: `routes/activity.ts`,
-// `ticket-stats.ts` and `ticket-effectiveness.ts` import it as a *value*, and
-// a factory that leaves it out can be the one in force when one of those is
-// linked, which fails the run with `SyntaxError: Export named 'Prisma' not
-// found in module .../src/db.ts` — intermittently, since it depends on the
-// order `bun test` reaches the files in.
-const { Prisma } = await import("../generated/prisma/client");
-
-mock.module("../db", () => ({
-  Prisma,
-  prisma: {
-    newFeatureSeen: {
-      findMany: seenFindMany,
-      upsert: seenUpsert,
-    },
-  },
-}));
+mock.module("../db", () => ({ Prisma, prisma }));
 
 /** Deliberately identical to `tutorials.test.ts` — see this file's header. */
 const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
@@ -136,12 +78,44 @@ const ADMIN = {
 };
 
 const KEY = NEW_FEATURE_KEYS[0];
+const CURRENT_VERSION = NEW_FEATURE_VERSIONS[KEY];
 
-beforeEach(() => {
-  seen = [];
-  seenFindMany.mockClear();
-  seenUpsert.mockClear();
+/** `NewFeatureSeen.userId` is a foreign key, so the caller has to be a real
+ *  colleague — which is itself something the old fake could not have told us. */
+beforeEach(async () => {
+  await resetDb();
+  await prisma.user.createMany({
+    data: [
+      {
+        id: "u_agent",
+        name: "Aaron Agent",
+        email: "agent@example.com",
+        emailVerified: true,
+      },
+      {
+        id: "u_admin",
+        name: "Ada Admin",
+        email: "ada@example.com",
+        emailVerified: true,
+      },
+    ],
+  });
 });
+
+/** Insert a seen mark directly, for the "already behind" cases. */
+function markSeenAt(userId: string, featureKey: string, seenVersion: number) {
+  return prisma.newFeatureSeen.create({
+    data: { userId, featureKey, seenVersion, seenAt: NOW },
+  });
+}
+
+/** Read the marks back out of the table, ignoring the autoincrement id. */
+function seenRows() {
+  return prisma.newFeatureSeen.findMany({
+    select: { userId: true, featureKey: true, seenVersion: true },
+    orderBy: [{ userId: "asc" }, { featureKey: "asc" }],
+  });
+}
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
@@ -205,7 +179,7 @@ describe("GET /api/new-features/status", () => {
   });
 
   test("shows again for a seen row behind the current version", async () => {
-    seen.push({ userId: "u_agent", featureKey: KEY, seenVersion: 0, seenAt: NOW });
+    await markSeenAt("u_agent", KEY, 0);
 
     const sent = await get<NewFeatureStatusResponse>("/status");
 
@@ -217,6 +191,19 @@ describe("GET /api/new-features/status", () => {
 
     const sent = await get<NewFeatureStatusResponse>("/status", ADMIN);
 
+    expect(sent.body.statuses[KEY]).toBe(true);
+  });
+
+  test("a row for a key that has aged out of the registry is inert", async () => {
+    // `featureKey` is a plain String, not a Postgres enum, precisely so that
+    // retiring a key leaves its rows behind harmlessly. The route's
+    // `featureKey: { in: NEW_FEATURE_KEYS }` is what keeps them out of the
+    // answer, and that is now Postgres applying the filter, not this file.
+    await markSeenAt("u_agent", "aRetiredKey", 99);
+
+    const sent = await get<NewFeatureStatusResponse>("/status");
+
+    expect(Object.keys(sent.body.statuses)).not.toContain("aRetiredKey");
     expect(sent.body.statuses[KEY]).toBe(true);
   });
 
@@ -236,14 +223,26 @@ describe("POST /api/new-features/:featureKey/seen", () => {
     const sent = await post(`/${KEY}/seen`);
 
     expect(sent.status).toBe(200);
-    expect(seen).toContainEqual(
-      expect.objectContaining({ userId: "u_agent", featureKey: KEY }),
-    );
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", featureKey: KEY, seenVersion: CURRENT_VERSION },
+    ]);
+  });
+
+  test("updates rather than duplicates on a second interaction", async () => {
+    // `@@unique([userId, featureKey])` is what makes this an update, and it is
+    // now the constraint deciding rather than a `findIndex` in this file.
+    await markSeenAt("u_agent", KEY, 0);
+
+    await post(`/${KEY}/seen`);
+
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", featureKey: KEY, seenVersion: CURRENT_VERSION },
+    ]);
   });
 
   test("404s an unknown feature key", async () => {
     const sent = await post("/not-a-real-key/seen");
     expect(sent.status).toBe(404);
-    expect(seen).toHaveLength(0);
+    expect(await seenRows()).toEqual([]);
   });
 });

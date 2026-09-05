@@ -1,13 +1,18 @@
 /**
  * Unit tests for `apps/api/src/routes/dashboard-layout.ts`.
  *
- * The router only, on a real Express app over a real socket, with the
- * database replaced by a small in-memory table — same shape as
- * `tutorials.test.ts` and `new-features.test.ts` (see `testing.md`). What's
- * worth pinning down without a real database: the "missing row reads as
- * default" fallback, that a write is revalidated against the current panel
- * set, that two users' layouts never collide, and that reset deletes rather
- * than overwrites.
+ * The router only, on a real Express app over a real socket — and, since #169,
+ * over a real database: `../db` is still replaced, but what it is replaced
+ * *with* is a genuine Prisma client on a genuine Postgres running inside this
+ * process (`../test/pg`, ADR-0014). The hand-written `dashboardLayout` fake
+ * that used to live here is gone, so "reset deletes rather than overwrites"
+ * and "two users never collide" are now answered by the table's primary key
+ * and by `deleteMany`'s own `where`, not by a `filter` in this file.
+ *
+ * `panels` is a `Json` column, which is the part the old fake was least able
+ * to speak for: it stored whatever object it was handed and gave it straight
+ * back. What a `PUT` writes now makes a round trip through Postgres' `jsonb`
+ * before a `GET` reads it, so the response really is the stored layout.
  */
 
 import type { AddressInfo } from "node:net";
@@ -26,78 +31,13 @@ import express from "express";
 import {
   DEFAULT_DASHBOARD_LAYOUT,
   type DashboardLayoutResponse,
+  type DashboardPanelPlacement,
 } from "@ticket/shared";
+import { Prisma, prisma, resetDb } from "../test/pg";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
-interface LayoutRow {
-  userId: string;
-  panels: unknown;
-  updatedAt: Date;
-}
-
-let layouts: LayoutRow[];
-
-const NOW = new Date("2026-08-29T12:00:00.000Z");
-
-const layoutFindUnique = mock((args: { where: { userId: string } }) =>
-  Promise.resolve(
-    layouts.find((l) => l.userId === args.where.userId) ?? null,
-  ),
-);
-
-const layoutUpsert = mock(
-  (args: {
-    where: { userId: string };
-    create: { userId: string; panels: unknown };
-    update: { panels: unknown };
-  }) => {
-    const idx = layouts.findIndex((l) => l.userId === args.where.userId);
-    if (idx === -1) {
-      const row: LayoutRow = {
-        userId: args.create.userId,
-        panels: args.create.panels,
-        updatedAt: NOW,
-      };
-      layouts.push(row);
-      return Promise.resolve(row);
-    }
-    const updated: LayoutRow = {
-      ...layouts[idx]!,
-      panels: args.update.panels,
-      updatedAt: NOW,
-    };
-    layouts[idx] = updated;
-    return Promise.resolve(updated);
-  },
-);
-
-const layoutDeleteMany = mock((args: { where: { userId: string } }) => {
-  const before = layouts.length;
-  layouts = layouts.filter((l) => l.userId !== args.where.userId);
-  return Promise.resolve({ count: before - layouts.length });
-});
-
-// `Prisma` is included even though nothing in this file calls `Prisma.sql` —
-// see the note above `users.test.ts`'s own `mock.module("../db", …)`. Every
-// factory for this specifier has to carry it: `routes/activity.ts`,
-// `ticket-stats.ts` and `ticket-effectiveness.ts` import it as a *value*, and
-// a factory that leaves it out can be the one in force when one of those is
-// linked, which fails the run with `SyntaxError: Export named 'Prisma' not
-// found in module .../src/db.ts` — intermittently, since it depends on the
-// order `bun test` reaches the files in.
-const { Prisma } = await import("../generated/prisma/client");
-
-mock.module("../db", () => ({
-  Prisma,
-  prisma: {
-    dashboardLayout: {
-      findUnique: layoutFindUnique,
-      upsert: layoutUpsert,
-      deleteMany: layoutDeleteMany,
-    },
-  },
-}));
+mock.module("../db", () => ({ Prisma, prisma }));
 
 const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
   res.locals.session = {
@@ -126,12 +66,47 @@ const OTHER_AGENT = { "x-test-user": "u_other" };
 
 const REVERSED_LAYOUT = [...DEFAULT_DASHBOARD_LAYOUT].reverse();
 
-beforeEach(() => {
-  layouts = [];
-  layoutFindUnique.mockClear();
-  layoutUpsert.mockClear();
-  layoutDeleteMany.mockClear();
+/** `DashboardLayout.userId` is a foreign key, so the caller has to be a real
+ *  colleague — which is itself something the old fake could not have told us. */
+beforeEach(async () => {
+  await resetDb();
+  await prisma.user.createMany({
+    data: [
+      {
+        id: "u_agent",
+        name: "Aaron Agent",
+        email: "agent@example.com",
+        emailVerified: true,
+      },
+      {
+        id: "u_other",
+        name: "Olivia Other",
+        email: "olivia@example.com",
+        emailVerified: true,
+      },
+    ],
+  });
 });
+
+/**
+ * Read the saved rows back, one per user who has customized.
+ *
+ * `panels` comes off a `Json` column as `Prisma.JsonValue`; narrowing it here
+ * is the same cast the route itself makes on the way out, and it is what lets
+ * a test compare against a `DashboardPanelPlacement[]` rather than an `any`.
+ */
+async function savedLayouts(): Promise<
+  { userId: string; panels: DashboardPanelPlacement[] }[]
+> {
+  const rows = await prisma.dashboardLayout.findMany({
+    select: { userId: true, panels: true },
+    orderBy: { userId: "asc" },
+  });
+  return rows.map((row) => ({
+    userId: row.userId,
+    panels: row.panels as unknown as DashboardPanelPlacement[],
+  }));
+}
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
@@ -206,6 +181,17 @@ describe("GET /api/dashboard-layout", () => {
     expect(sent.body.isDefault).toBe(false);
   });
 
+  test("the layout survives the jsonb round trip, order included", async () => {
+    // Not assertable against the old fake, which handed back the very object
+    // it had been given. `panels` is a `Json` column, so what a `GET` reads is
+    // what Postgres stored — array order and every field of every panel.
+    await put({ layout: REVERSED_LAYOUT });
+
+    expect(await savedLayouts()).toEqual([
+      { userId: "u_agent", panels: REVERSED_LAYOUT },
+    ]);
+  });
+
   test("two users hold independent layouts", async () => {
     await put({ layout: REVERSED_LAYOUT }, AGENT);
 
@@ -237,7 +223,7 @@ describe("PUT /api/dashboard-layout", () => {
     });
 
     expect(sent.status).toBe(400);
-    expect(layouts).toHaveLength(0);
+    expect(await savedLayouts()).toEqual([]);
   });
 
   test("rejects a layout with a duplicated panel", async () => {
@@ -272,11 +258,14 @@ describe("PUT /api/dashboard-layout", () => {
   });
 
   test("overwrites a previous save for the same user", async () => {
+    // `userId` is the table's primary key, so a second save cannot land beside
+    // the first one — that is now the constraint, not this file, refusing it.
     await put({ layout: REVERSED_LAYOUT });
     await put({ layout: DEFAULT_DASHBOARD_LAYOUT });
 
-    expect(layouts).toHaveLength(1);
-    expect(layouts[0]?.panels).toEqual(DEFAULT_DASHBOARD_LAYOUT);
+    expect(await savedLayouts()).toEqual([
+      { userId: "u_agent", panels: DEFAULT_DASHBOARD_LAYOUT },
+    ]);
   });
 });
 
@@ -291,7 +280,7 @@ describe("DELETE /api/dashboard-layout", () => {
     expect(sent.status).toBe(200);
     expect(sent.body.layout).toEqual(DEFAULT_DASHBOARD_LAYOUT);
     expect(sent.body.isDefault).toBe(true);
-    expect(layouts).toHaveLength(0);
+    expect(await savedLayouts()).toEqual([]);
   });
 
   test("is a no-op for a user who never customized", async () => {
@@ -309,5 +298,6 @@ describe("DELETE /api/dashboard-layout", () => {
 
     const other = await get<DashboardLayoutResponse>(OTHER_AGENT);
     expect(other.body.isDefault).toBe(false);
+    expect((await savedLayouts()).map((row) => row.userId)).toEqual(["u_other"]);
   });
 });
