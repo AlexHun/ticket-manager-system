@@ -327,20 +327,8 @@ describe("PUT /api/tutorials/:pageKey", () => {
     });
   });
 
-  test("the byline survives the editor's account being deleted", async () => {
-    // `updatedBy` is `onDelete: SetNull` beside a denormalised `updatedByName`
-    // for exactly this reason (see the schema). Neither half of that was
-    // expressible against a fake that held no foreign key at all.
-    await put("/dashboard", CONTENT_BODY);
-
-    await prisma.user.delete({ where: { id: "u_admin" } });
-
-    const row = await prisma.tutorialContent.findUniqueOrThrow({
-      where: { pageKey: DASHBOARD },
-      select: { updatedById: true, updatedByName: true },
-    });
-    expect(row).toEqual({ updatedById: null, updatedByName: "Ada Admin" });
-  });
+  // What happens to `updatedById` once that editor's account is deleted is
+  // the schema's rule, not this route's — it lives in `../schema.test.ts`.
 
   test("editing content does not touch anyone's progress", async () => {
     await put("/dashboard", CONTENT_BODY);
