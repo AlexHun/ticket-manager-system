@@ -35,6 +35,7 @@ import {
 import express from "express";
 import type { ChangelogStatusResponse } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
+import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -74,41 +75,26 @@ const { changelogRouter } = await import("./changelog");
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
 const AGENT = {
-  "x-test-user": "u_agent",
-  "x-test-agent-name": "Aaron Agent",
-  "x-test-user-email": "agent@example.com",
+  "x-test-user": COLLEAGUE.agent.id,
+  "x-test-agent-name": COLLEAGUE.agent.name,
+  "x-test-user-email": COLLEAGUE.agent.email,
 };
 
 const ADMIN = {
-  "x-test-user": "u_admin",
-  "x-test-agent-name": "Ada Admin",
-  "x-test-user-email": "ada@example.com",
+  "x-test-user": COLLEAGUE.admin.id,
+  "x-test-agent-name": COLLEAGUE.admin.name,
+  "x-test-user-email": COLLEAGUE.admin.email,
 };
 
 /** `ChangelogSeen.userId` is a foreign key, so the caller has to be a real
- *  colleague — which is itself something the old fake could not have told us. */
+ *  colleague — itself something the old fake could not have told us. */
 beforeEach(async () => {
   await resetDb();
-  await prisma.user.createMany({
-    data: [
-      {
-        id: "u_agent",
-        name: "Aaron Agent",
-        email: "agent@example.com",
-        emailVerified: true,
-      },
-      {
-        id: "u_admin",
-        name: "Ada Admin",
-        email: "ada@example.com",
-        emailVerified: true,
-      },
-    ],
-  });
+  await seedColleagues("agent", "admin");
 });
 
 /** Insert a seen mark directly, for the "already behind" cases. */
-function markSeenAt(userId: string, seenVersion: string) {
+function seedSeenRow(userId: string, seenVersion: string) {
   return prisma.changelogSeen.create({
     data: { userId, seenVersion, seenAt: NOW },
   });
@@ -184,7 +170,7 @@ describe("GET /api/changelog/status", () => {
   });
 
   test("shows again for a seen row behind the latest version", async () => {
-    await markSeenAt("u_agent", "0.4.9");
+    await seedSeenRow("u_agent", "0.4.9");
 
     const sent = await get<ChangelogStatusResponse>("/status");
 
@@ -194,7 +180,7 @@ describe("GET /api/changelog/status", () => {
   test("compares numerically, not lexically: 0.5.9 is behind 0.5.10", async () => {
     // A lexical compare gets this backwards ("0.5.9" > "0.5.10" as strings),
     // which would wrongly hide an entry the user hasn't actually seen yet.
-    await markSeenAt("u_agent", "0.5.9");
+    await seedSeenRow("u_agent", "0.5.9");
 
     const sent = await get<ChangelogStatusResponse>("/status");
 
@@ -228,15 +214,25 @@ describe("POST /api/changelog/seen", () => {
   test("updates rather than duplicates on a second call", async () => {
     // `userId` is the table's primary key, so this is now Postgres refusing a
     // second row rather than a `findIndex` in this file choosing not to push
-    // one — and the refreshed `seenAt` is what proves the upsert took its
-    // update branch instead of quietly doing nothing.
-    await markSeenAt("u_agent", "0.4.9");
+    // one.
+    await post("/seen");
+    await post("/seen");
+
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", seenVersion: LATEST_VERSION },
+    ]);
+  });
+
+  test("moves a stale row forward rather than leaving it behind", async () => {
+    // The upsert's *update* branch, which the first call above never reaches.
+    // A row already at the latest version cannot tell the two branches apart;
+    // one behind it can.
+    await seedSeenRow("u_agent", "0.4.9");
 
     await post("/seen");
 
-    const rows = await prisma.changelogSeen.findMany();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.seenVersion).toBe(LATEST_VERSION);
-    expect(rows[0]!.seenAt.getTime()).toBeGreaterThan(NOW.getTime());
+    expect(await seenRows()).toEqual([
+      { userId: "u_agent", seenVersion: LATEST_VERSION },
+    ]);
   });
 });

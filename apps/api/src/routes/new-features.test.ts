@@ -35,6 +35,7 @@ import {
   type NewFeatureStatusResponse,
 } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
+import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -66,44 +67,29 @@ const { newFeaturesRouter } = await import("./new-features");
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
 const AGENT = {
-  "x-test-user": "u_agent",
-  "x-test-agent-name": "Aaron Agent",
-  "x-test-user-email": "agent@example.com",
+  "x-test-user": COLLEAGUE.agent.id,
+  "x-test-agent-name": COLLEAGUE.agent.name,
+  "x-test-user-email": COLLEAGUE.agent.email,
 };
 
 const ADMIN = {
-  "x-test-user": "u_admin",
-  "x-test-agent-name": "Ada Admin",
-  "x-test-user-email": "ada@example.com",
+  "x-test-user": COLLEAGUE.admin.id,
+  "x-test-agent-name": COLLEAGUE.admin.name,
+  "x-test-user-email": COLLEAGUE.admin.email,
 };
 
 const KEY = NEW_FEATURE_KEYS[0];
 const CURRENT_VERSION = NEW_FEATURE_VERSIONS[KEY];
 
 /** `NewFeatureSeen.userId` is a foreign key, so the caller has to be a real
- *  colleague — which is itself something the old fake could not have told us. */
+ *  colleague — itself something the old fake could not have told us. */
 beforeEach(async () => {
   await resetDb();
-  await prisma.user.createMany({
-    data: [
-      {
-        id: "u_agent",
-        name: "Aaron Agent",
-        email: "agent@example.com",
-        emailVerified: true,
-      },
-      {
-        id: "u_admin",
-        name: "Ada Admin",
-        email: "ada@example.com",
-        emailVerified: true,
-      },
-    ],
-  });
+  await seedColleagues("agent", "admin");
 });
 
 /** Insert a seen mark directly, for the "already behind" cases. */
-function markSeenAt(userId: string, featureKey: string, seenVersion: number) {
+function seedSeenRow(userId: string, featureKey: string, seenVersion: number) {
   return prisma.newFeatureSeen.create({
     data: { userId, featureKey, seenVersion, seenAt: NOW },
   });
@@ -179,7 +165,7 @@ describe("GET /api/new-features/status", () => {
   });
 
   test("shows again for a seen row behind the current version", async () => {
-    await markSeenAt("u_agent", KEY, 0);
+    await seedSeenRow("u_agent", KEY, 0);
 
     const sent = await get<NewFeatureStatusResponse>("/status");
 
@@ -199,7 +185,7 @@ describe("GET /api/new-features/status", () => {
     // retiring a key leaves its rows behind harmlessly. The route's
     // `featureKey: { in: NEW_FEATURE_KEYS }` is what keeps them out of the
     // answer, and that is now Postgres applying the filter, not this file.
-    await markSeenAt("u_agent", "aRetiredKey", 99);
+    await seedSeenRow("u_agent", "aRetiredKey", 99);
 
     const sent = await get<NewFeatureStatusResponse>("/status");
 
@@ -231,7 +217,7 @@ describe("POST /api/new-features/:featureKey/seen", () => {
   test("updates rather than duplicates on a second interaction", async () => {
     // `@@unique([userId, featureKey])` is what makes this an update, and it is
     // now the constraint deciding rather than a `findIndex` in this file.
-    await markSeenAt("u_agent", KEY, 0);
+    await seedSeenRow("u_agent", KEY, 0);
 
     await post(`/${KEY}/seen`);
 

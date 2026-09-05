@@ -34,6 +34,7 @@ import {
   type DashboardPanelPlacement,
 } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
+import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -61,31 +62,16 @@ const { dashboardLayoutRouter } = await import("./dashboard-layout");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-const AGENT = { "x-test-user": "u_agent" };
-const OTHER_AGENT = { "x-test-user": "u_other" };
+const AGENT = { "x-test-user": COLLEAGUE.agent.id };
+const OTHER_AGENT = { "x-test-user": COLLEAGUE.other.id };
 
 const REVERSED_LAYOUT = [...DEFAULT_DASHBOARD_LAYOUT].reverse();
 
 /** `DashboardLayout.userId` is a foreign key, so the caller has to be a real
- *  colleague — which is itself something the old fake could not have told us. */
+ *  colleague — itself something the old fake could not have told us. */
 beforeEach(async () => {
   await resetDb();
-  await prisma.user.createMany({
-    data: [
-      {
-        id: "u_agent",
-        name: "Aaron Agent",
-        email: "agent@example.com",
-        emailVerified: true,
-      },
-      {
-        id: "u_other",
-        name: "Olivia Other",
-        email: "olivia@example.com",
-        emailVerified: true,
-      },
-    ],
-  });
+  await seedColleagues("agent", "other");
 });
 
 /**
@@ -298,6 +284,7 @@ describe("DELETE /api/dashboard-layout", () => {
 
     const other = await get<DashboardLayoutResponse>(OTHER_AGENT);
     expect(other.body.isDefault).toBe(false);
-    expect((await savedLayouts()).map((row) => row.userId)).toEqual(["u_other"]);
+    const left = (await savedLayouts()).map((row) => row.userId);
+    expect(left).toEqual([COLLEAGUE.other.id]);
   });
 });

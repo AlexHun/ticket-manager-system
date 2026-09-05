@@ -38,6 +38,7 @@ import {
   type TutorialStatusResponse,
 } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
+import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -70,15 +71,15 @@ const { tutorialsRouter } = await import("./tutorials");
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
 const AGENT = {
-  "x-test-user": "u_agent",
-  "x-test-agent-name": "Aaron Agent",
-  "x-test-user-email": "agent@example.com",
+  "x-test-user": COLLEAGUE.agent.id,
+  "x-test-agent-name": COLLEAGUE.agent.name,
+  "x-test-user-email": COLLEAGUE.agent.email,
 };
 
 const ADMIN = {
-  "x-test-user": "u_admin",
-  "x-test-agent-name": "Ada Admin",
-  "x-test-user-email": "ada@example.com",
+  "x-test-user": COLLEAGUE.admin.id,
+  "x-test-agent-name": COLLEAGUE.admin.name,
+  "x-test-user-email": COLLEAGUE.admin.email,
 };
 
 const CONTENT_BODY = {
@@ -93,27 +94,15 @@ const DASHBOARD: TutorialPageKey = "dashboard";
  *  something the old fakes could not have told us. */
 beforeEach(async () => {
   await resetDb();
-  await prisma.user.createMany({
-    data: [
-      {
-        id: "u_agent",
-        name: "Aaron Agent",
-        email: "agent@example.com",
-        emailVerified: true,
-      },
-      {
-        id: "u_admin",
-        name: "Ada Admin",
-        email: "ada@example.com",
-        emailVerified: true,
-        role: "admin",
-      },
-    ],
-  });
+  await seedColleagues("agent", "admin");
 });
 
 /** Insert a progress row directly, for the "already behind" case. */
-function markSeenAt(userId: string, pageKey: TutorialPageKey, seenVersion: number) {
+function seedProgressRow(
+  userId: string,
+  pageKey: TutorialPageKey,
+  seenVersion: number,
+) {
   return prisma.tutorialProgress.create({
     data: { userId, pageKey, seenVersion, seenAt: NOW },
   });
@@ -217,7 +206,7 @@ describe("GET /api/tutorials/:pageKey", () => {
 
   test("shows again for a progress row behind the current version", async () => {
     await put("/dashboard", CONTENT_BODY);
-    await markSeenAt("u_agent", DASHBOARD, 0);
+    await seedProgressRow("u_agent", DASHBOARD, 0);
 
     const sent = await get<TutorialStatusResponse>("/dashboard");
 
@@ -269,7 +258,7 @@ describe("POST /api/tutorials/:pageKey/seen", () => {
   test("updates rather than duplicates on a second dismissal", async () => {
     // `@@unique([userId, pageKey])` is what makes this an update, and it is
     // now the constraint deciding rather than a `findIndex` in this file.
-    await markSeenAt("u_agent", DASHBOARD, 0);
+    await seedProgressRow("u_agent", DASHBOARD, 0);
 
     await post("/dashboard/seen");
 
@@ -323,7 +312,12 @@ describe("PUT /api/tutorials/:pageKey", () => {
     expect(
       await prisma.tutorialContent.findUniqueOrThrow({
         where: { pageKey: DASHBOARD },
-        select: { title: true, steps: true, updatedById: true, updatedByName: true },
+        select: {
+          title: true,
+          steps: true,
+          updatedById: true,
+          updatedByName: true,
+        },
       }),
     ).toEqual({
       title: CONTENT_BODY.title,
