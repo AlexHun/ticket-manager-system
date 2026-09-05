@@ -57,7 +57,7 @@ import {
   type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
-import { COLLEAGUE, seedColleagues } from "../test/fixtures";
+import { COLLEAGUE, seedColleagues, type ColleagueKey } from "../test/fixtures";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -90,21 +90,25 @@ const { knowledgeRouter } = await import("./knowledge");
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
 /**
- * The two admins the gate needs. Headers are read off the seeded rows rather
- * than written out again: `editorId` and `approvedById` are foreign keys, so a
- * header and a row that drifted apart would fail as a constraint violation in
- * whichever test wrote first, not as the identity mix-up it actually is.
+ * The two admins the gate needs, named by the colleague each one is.
+ *
+ * Taking a `ColleagueKey` rather than the three fields: `editorId` and
+ * `approvedById` are foreign keys, so headers that drifted from the seeded row
+ * would surface as a constraint violation in whichever test wrote first rather
+ * than as the identity mix-up it actually is. Going through the key means the
+ * only way to name an identity here is to name one `seedColleagues` can seed.
  */
-function headersFor(who: { id: string; name: string; email: string }) {
+function headersFor(who: ColleagueKey) {
+  const { id, name, email } = COLLEAGUE[who];
   return {
-    "x-test-user": who.id,
-    "x-test-agent-name": who.name,
-    "x-test-user-email": who.email,
+    "x-test-user": id,
+    "x-test-agent-name": name,
+    "x-test-user-email": email,
   };
 }
 
-const SUBMITTER = headersFor(COLLEAGUE.admin);
-const REVIEWER = headersFor(COLLEAGUE.otherAdmin);
+const SUBMITTER = headersFor("admin");
+const REVIEWER = headersFor("otherAdmin");
 
 function seedArticle(
   id: string,
