@@ -103,8 +103,8 @@ function headersFor(who: { id: string; name: string; email: string }) {
   };
 }
 
-const ADMIN_A = headersFor(COLLEAGUE.admin);
-const ADMIN_B = headersFor(COLLEAGUE.otherAdmin);
+const SUBMITTER = headersFor(COLLEAGUE.admin);
+const REVIEWER = headersFor(COLLEAGUE.otherAdmin);
 
 function seedArticle(
   id: string,
@@ -182,7 +182,7 @@ interface Sent<T> {
 function sendPatch(
   id: string,
   body: unknown,
-  headers: Record<string, string> = ADMIN_A,
+  headers: Record<string, string> = SUBMITTER,
 ) {
   return fetch(`${origin}/api/knowledge-articles/${id}`, {
     method: "PATCH",
@@ -194,7 +194,7 @@ function sendPatch(
 async function patch<T>(
   id: string,
   body: unknown,
-  headers: Record<string, string> = ADMIN_A,
+  headers: Record<string, string> = SUBMITTER,
 ): Promise<Sent<T>> {
   const res = await sendPatch(id, body, headers);
   return { status: res.status, body: (await res.json()) as Sent<T>["body"] };
@@ -202,13 +202,31 @@ async function patch<T>(
 
 async function post<T>(
   path: string,
-  headers: Record<string, string> = ADMIN_A,
+  headers: Record<string, string> = SUBMITTER,
 ): Promise<Sent<T>> {
   const res = await fetch(`${origin}/api/knowledge-articles${path}`, {
     method: "POST",
     headers,
   });
   return { status: res.status, body: (await res.json()) as Sent<T>["body"] };
+}
+
+/**
+ * Put a revision on KB-002 in front of a reviewer, as the submitter, and
+ * return its id — the starting position for every approve and reject test.
+ *
+ * Through the route rather than a direct insert: what makes a revision
+ * `pending` is the router's `needsApproval` rule, and a test that seeded the
+ * row itself would go on passing after that rule stopped holding anything
+ * back.
+ */
+async function submitPending(): Promise<number> {
+  const sent = await patch<KnowledgeArticleEditResponse>(
+    "KB-002",
+    { ...EDIT_BODY, autoReply: true },
+    SUBMITTER,
+  );
+  return (sent.body.pendingRevision as KnowledgeArticleRevision).id;
 }
 
 /* ── PATCH /:id — the approval gate ─────────────────────────────────────── */
@@ -321,21 +339,12 @@ describe("PATCH /api/knowledge-articles/:id", () => {
 /* ── POST /:id/revisions/:revisionId/approve ────────────────────────────── */
 
 describe("POST /api/knowledge-articles/:id/revisions/:revisionId/approve", () => {
-  async function submitPending(): Promise<number> {
-    const sent = await patch<KnowledgeArticleEditResponse>(
-      "KB-002",
-      { ...EDIT_BODY, autoReply: true },
-      ADMIN_A,
-    );
-    return (sent.body.pendingRevision as KnowledgeArticleRevision).id;
-  }
-
   test("an admin cannot approve their own pending revision", async () => {
     const revisionId = await submitPending();
 
     const sent = await post(
       `/KB-002/revisions/${revisionId}/approve`,
-      ADMIN_A,
+      SUBMITTER,
     );
 
     expect(sent.status).toBe(403);
@@ -354,7 +363,7 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/approve", () =>
 
     const sent = await post<KnowledgeRevisionApprovalResponse>(
       `/KB-002/revisions/${revisionId}/approve`,
-      ADMIN_B,
+      REVIEWER,
     );
 
     expect(sent.status).toBe(200);
@@ -387,7 +396,7 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/approve", () =>
 
   test("approving an already-resolved revision 409s instead of double-applying", async () => {
     const revisionId = await submitPending();
-    await post(`/KB-002/revisions/${revisionId}/approve`, ADMIN_B);
+    await post(`/KB-002/revisions/${revisionId}/approve`, REVIEWER);
     await prisma.knowledgeArticle.update({
       where: { id: "KB-002" },
       data: { title: "Edited after approval" },
@@ -395,7 +404,7 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/approve", () =>
 
     const second = await post(
       `/KB-002/revisions/${revisionId}/approve`,
-      ADMIN_B,
+      REVIEWER,
     );
 
     expect(second.status).toBe(409);
@@ -412,7 +421,7 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/approve", () =>
 
     const sent = await post(
       `/KB-001/revisions/${revisionId}/approve`,
-      ADMIN_B,
+      REVIEWER,
     );
 
     expect(sent.status).toBe(404);
@@ -422,21 +431,12 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/approve", () =>
 /* ── POST /:id/revisions/:revisionId/reject ─────────────────────────────── */
 
 describe("POST /api/knowledge-articles/:id/revisions/:revisionId/reject", () => {
-  async function submitPending(): Promise<number> {
-    const sent = await patch<KnowledgeArticleEditResponse>(
-      "KB-002",
-      { ...EDIT_BODY, autoReply: true },
-      ADMIN_A,
-    );
-    return (sent.body.pendingRevision as KnowledgeArticleRevision).id;
-  }
-
   test("a second admin rejecting leaves the live article untouched", async () => {
     const revisionId = await submitPending();
 
     const sent = await post<KnowledgeRevisionRejectionResponse>(
       `/KB-002/revisions/${revisionId}/reject`,
-      ADMIN_B,
+      REVIEWER,
     );
 
     expect(sent.status).toBe(200);
@@ -454,7 +454,7 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/reject", () => 
 
     const sent = await post(
       `/KB-002/revisions/${revisionId}/reject`,
-      ADMIN_A,
+      SUBMITTER,
     );
 
     expect(sent.status).toBe(200);
@@ -462,11 +462,11 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/reject", () => 
 
   test("rejecting an already-resolved revision 409s", async () => {
     const revisionId = await submitPending();
-    await post(`/KB-002/revisions/${revisionId}/reject`, ADMIN_B);
+    await post(`/KB-002/revisions/${revisionId}/reject`, REVIEWER);
 
     const second = await post(
       `/KB-002/revisions/${revisionId}/reject`,
-      ADMIN_B,
+      REVIEWER,
     );
 
     expect(second.status).toBe(409);
@@ -476,7 +476,7 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/reject", () => 
 /* ── GET /pending-revisions — the review queue ──────────────────────────── */
 
 describe("GET /api/knowledge-articles/pending-revisions", () => {
-  function pendingRevisions(headers: Record<string, string> = ADMIN_A) {
+  function pendingRevisions(headers: Record<string, string> = SUBMITTER) {
     return fetch(`${origin}/api/knowledge-articles/pending-revisions`, {
       headers,
     });
@@ -503,7 +503,7 @@ describe("GET /api/knowledge-articles/pending-revisions", () => {
         createdAt: new Date("2026-08-23T12:00:00.000Z"),
       },
     });
-    await patch("KB-002", { ...EDIT_BODY, autoReply: true }, ADMIN_A);
+    await patch("KB-002", { ...EDIT_BODY, autoReply: true }, SUBMITTER);
 
     const res = await pendingRevisions();
     const body = (await res.json()) as {
@@ -522,15 +522,8 @@ describe("GET /api/knowledge-articles/pending-revisions", () => {
   });
 
   test("drops a revision from the queue once it is resolved", async () => {
-    const submitted = await patch<KnowledgeArticleEditResponse>(
-      "KB-002",
-      { ...EDIT_BODY, autoReply: true },
-      ADMIN_A,
-    );
-    const revisionId = (
-      submitted.body.pendingRevision as KnowledgeArticleRevision
-    ).id;
-    await post(`/KB-002/revisions/${revisionId}/reject`, ADMIN_B);
+    const revisionId = await submitPending();
+    await post(`/KB-002/revisions/${revisionId}/reject`, REVIEWER);
 
     const body = (await (await pendingRevisions()).json()) as {
       revisions: KnowledgeArticleRevision[];

@@ -1,11 +1,12 @@
 /**
- * The colleagues a converted API test acts as (#169).
+ * The colleagues a converted API test acts as (#169, extended in #170).
  *
- * Every table these route tests touch — `changelog_seen`, `new_feature_seen`,
- * `dashboard_layout`, `tutorial_progress`, `tutorial_content.updatedById` —
- * hangs off a foreign key onto `user`, so a converted file cannot write a row
- * until the caller exists. That made the same `createMany` block appear in
- * five files at once, which is what this module is for.
+ * Every table these tests touch — `changelog_seen`, `new_feature_seen`,
+ * `dashboard_layout`, `tutorial_progress`, `tutorial_content.updatedById`, and
+ * `knowledge_article_revision`'s `editorId` and `approvedById` — hangs off a
+ * foreign key onto `user`, so a converted file cannot write a row until the
+ * caller exists. That made the same `createMany` block appear in five files at
+ * once, which is what this module is for.
  *
  * **It owns the rows, not the request headers.** The `../middleware/auth`
  * stub that turns a header into a session is deliberately re-typed in every

@@ -30,6 +30,34 @@ beforeEach(async () => {
   await seedColleagues("admin");
 });
 
+describe("TutorialContent.updatedBy", () => {
+  test("SetNull keeps the byline after the editor's account is deleted", async () => {
+    // The relation is `onDelete: SetNull` beside a *denormalised*
+    // `updatedByName`, and the schema says why: the byline has to survive the
+    // editor's account being deleted. Without the denormalised copy the admin
+    // editor would show "last edited by —" for every tutorial an ex-colleague
+    // wrote; without `SetNull` the delete would fail outright.
+    await prisma.tutorialContent.create({
+      data: {
+        pageKey: "dashboard",
+        title: "Welcome to the dashboard",
+        steps: [{ title: "Filters", body: "Use the range picker up top." }],
+        updatedById: COLLEAGUE.admin.id,
+        updatedByName: COLLEAGUE.admin.name,
+      },
+    });
+
+    await prisma.user.delete({ where: { id: COLLEAGUE.admin.id } });
+
+    expect(
+      await prisma.tutorialContent.findUniqueOrThrow({
+        where: { pageKey: "dashboard" },
+        select: { updatedById: true, updatedByName: true },
+      }),
+    ).toEqual({ updatedById: null, updatedByName: COLLEAGUE.admin.name });
+  });
+});
+
 describe("KnowledgeArticleRevision.article", () => {
   /** An article and the `created` revision that `routes/knowledge.ts` writes
    *  in the same transaction — the shape every article in this system has. */
@@ -91,33 +119,5 @@ describe("KnowledgeArticleRevision.article", () => {
       editorName: COLLEAGUE.admin.name,
       editorEmail: COLLEAGUE.admin.email,
     });
-  });
-});
-
-describe("TutorialContent.updatedBy", () => {
-  test("SetNull keeps the byline after the editor's account is deleted", async () => {
-    // The relation is `onDelete: SetNull` beside a *denormalised*
-    // `updatedByName`, and the schema says why: the byline has to survive the
-    // editor's account being deleted. Without the denormalised copy the admin
-    // editor would show "last edited by —" for every tutorial an ex-colleague
-    // wrote; without `SetNull` the delete would fail outright.
-    await prisma.tutorialContent.create({
-      data: {
-        pageKey: "dashboard",
-        title: "Welcome to the dashboard",
-        steps: [{ title: "Filters", body: "Use the range picker up top." }],
-        updatedById: COLLEAGUE.admin.id,
-        updatedByName: COLLEAGUE.admin.name,
-      },
-    });
-
-    await prisma.user.delete({ where: { id: COLLEAGUE.admin.id } });
-
-    expect(
-      await prisma.tutorialContent.findUniqueOrThrow({
-        where: { pageKey: "dashboard" },
-        select: { updatedById: true, updatedByName: true },
-      }),
-    ).toEqual({ updatedById: null, updatedByName: COLLEAGUE.admin.name });
   });
 });
