@@ -13,7 +13,7 @@ import {
   type TicketViewCountsResponse,
 } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 
@@ -58,11 +58,16 @@ function newFeatureStatuses(overrides: Partial<Record<NewFeatureKey, boolean>> =
 }
 
 function renderSidebar() {
-  return renderWithQuery(
-    <SidebarProvider>
-      <AppSidebar />
-    </SidebarProvider>,
-  );
+  return renderRoutes([
+    {
+      path: "/",
+      element: (
+        <SidebarProvider>
+          <AppSidebar />
+        </SidebarProvider>
+      ),
+    },
+  ]);
 }
 
 // Every endpoint the sidebar reaches gets a resting answer, and each test then

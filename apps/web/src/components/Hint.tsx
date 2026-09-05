@@ -24,7 +24,7 @@ import {
  * conditional at the call site.
  *
  * Needs a `TooltipProvider` above it or Radix throws — `AppShell` and
- * `DevRoutes` each mount one, and so does `renderWithQuery` for tests.
+ * `DevRoutes` each mount one, and so does `renderRoutes` for tests.
  */
 export function Hint({
   content,

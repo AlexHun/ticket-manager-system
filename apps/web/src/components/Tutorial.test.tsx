@@ -1,9 +1,10 @@
+import type { ReactNode } from "react";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TUTORIAL_PAGE_KEY, type TutorialStatus } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { Tutorial } from "./Tutorial";
 
 // --- Mocks ----------------------------------------------------------------
@@ -56,8 +57,17 @@ const dueToShow: TutorialStatus = {
   shouldShow: true,
 };
 
+/**
+ * Mounts `ui` as the one route the default entry URL matches. The anchored
+ * tests below need the callout's target rendered beside the `Tutorial`, so
+ * what a test hands over is a fragment rather than the component alone.
+ */
+function renderUnderRouter(ui: ReactNode) {
+  return renderRoutes([{ path: "/", element: ui }]);
+}
+
 function renderTutorial() {
-  return renderWithQuery(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);
+  return renderUnderRouter(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);
 }
 
 beforeEach(() => {
@@ -189,7 +199,7 @@ const anchoredDueToShow: TutorialStatus = {
 describe("Tutorial — anchored callout", () => {
   test("positions a callout against the tagged element instead of a centered dialog", async () => {
     statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
-    renderWithQuery(
+    renderUnderRouter(
       <>
         <div data-tutorial-anchor="kpis">KPI row</div>
         <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
@@ -210,7 +220,7 @@ describe("Tutorial — anchored callout", () => {
   test("Next re-resolves the callout against the following step's own anchor", async () => {
     statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const user = userEvent.setup();
-    renderWithQuery(
+    renderUnderRouter(
       <>
         <div data-tutorial-anchor="kpis">KPI row</div>
         <div data-tutorial-anchor="range">Range controls</div>
@@ -229,7 +239,7 @@ describe("Tutorial — anchored callout", () => {
   test("the callout's close button marks the tutorial seen", async () => {
     statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const user = userEvent.setup();
-    renderWithQuery(
+    renderUnderRouter(
       <>
         <div data-tutorial-anchor="kpis">KPI row</div>
         <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
@@ -250,7 +260,7 @@ describe("Tutorial — anchored callout", () => {
   test("Escape closes the callout and marks the tutorial seen", async () => {
     statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const user = userEvent.setup();
-    renderWithQuery(
+    renderUnderRouter(
       <>
         <div data-tutorial-anchor="kpis">KPI row</div>
         <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
@@ -278,7 +288,7 @@ describe("Tutorial — anchored callout", () => {
     statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect");
 
-    const { container } = renderWithQuery(
+    const { container } = renderUnderRouter(
       <>
         <div data-tutorial-anchor="kpis" style={{ display: "contents" }}>
           <button type="button">Actual target</button>
@@ -315,7 +325,7 @@ describe("Tutorial — anchored callout", () => {
       } as DOMRect);
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
 
-    renderWithQuery(
+    renderUnderRouter(
       <>
         <div data-tutorial-anchor="kpis">KPI row</div>
         <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
@@ -337,7 +347,7 @@ describe("Tutorial — anchored callout", () => {
     statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView");
 
-    renderWithQuery(
+    renderUnderRouter(
       <>
         <div data-tutorial-anchor="kpis">KPI row</div>
         <Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />
@@ -352,7 +362,7 @@ describe("Tutorial — anchored callout", () => {
 
   test("falls back to the centered dialog when the tagged element never appears", async () => {
     statusGet.mockResolvedValue({ data: { tutorial: anchoredDueToShow } });
-    renderWithQuery(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);
+    renderUnderRouter(<Tutorial pageKey={TUTORIAL_PAGE_KEY.dashboard} />);
 
     const dialog = await screen.findByRole("dialog", undefined, {
       timeout: 6000,

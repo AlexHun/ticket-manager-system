@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { MiniBarList } from "./MiniBarList";
 
 /**
- * These render without `renderWithQuery` on purpose: MiniBarList takes plain
+ * These render without `renderRoutes` on purpose: MiniBarList takes plain
  * props and touches neither the router nor the query client, and wrapping it in
  * providers it does not use would hide that.
  *

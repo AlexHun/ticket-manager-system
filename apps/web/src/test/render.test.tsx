@@ -11,10 +11,11 @@ import {
 import { renderRoutes } from "./render";
 
 /**
- * What `renderRoutes` buys over the `MemoryRouter` in `renderWithQuery`: the
- * three data-router features the app's own `createBrowserRouter` provides and
- * the component router does not. Each of them is something the prefetch work
- * added and nothing below E2E could reach until #148.
+ * What `renderRoutes` buys over the plain `MemoryRouter` the suite's second
+ * helper used to mount (deleted in #159): the three data-router features the
+ * app's own `createBrowserRouter` provides and the component router does not.
+ * Each of them is something the prefetch work added and nothing below E2E could
+ * reach until #148.
  */
 
 function TicketDetail() {

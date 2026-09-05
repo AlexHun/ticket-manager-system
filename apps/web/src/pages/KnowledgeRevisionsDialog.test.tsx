@@ -9,7 +9,7 @@ import {
   type KnowledgeArticleRevision,
 } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
@@ -61,9 +61,12 @@ const PENDING_REVISION: KnowledgeArticleRevision = {
 };
 
 function renderDialog(article: KnowledgeArticle | null = ARTICLE) {
-  return renderWithQuery(
-    <KnowledgeRevisionsDialog article={article} onOpenChange={() => {}} />,
-  );
+  return renderRoutes([
+    {
+      path: "/",
+      element: <KnowledgeRevisionsDialog article={article} onOpenChange={() => {}} />,
+    },
+  ]);
 }
 
 beforeEach(() => {

@@ -1,9 +1,8 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { Route, Routes } from "react-router-dom";
 import { USER_ROLE } from "@ticket/shared";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { LoginPage } from "./LoginPage";
 
 const mockSignInEmail = vi.fn();
@@ -17,11 +16,11 @@ vi.mock("@/lib/auth-client", () => ({
 }));
 
 function renderLogin() {
-  return renderWithQuery(
-    <Routes>
-      <Route path="/" element={<div>HOME</div>} />
-      <Route path="/login" element={<LoginPage />} />
-    </Routes>,
+  return renderRoutes(
+    [
+      { path: "/", element: <div>HOME</div> },
+      { path: "/login", element: <LoginPage /> },
+    ],
     { initialEntries: ["/login"] },
   );
 }

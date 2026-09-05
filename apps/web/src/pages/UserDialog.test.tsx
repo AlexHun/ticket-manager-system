@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { USER_ROLE, type User } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
-import { renderWithQuery } from "@/test/render";
+import { renderRoutes } from "@/test/render";
 import { UserDialog } from "./UserDialog";
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
@@ -93,7 +93,7 @@ function Harness({ users }: { users: User[] }) {
 }
 
 function renderHarness(users: User[] = [baseUser, otherUser]) {
-  return renderWithQuery(<Harness users={users} />);
+  return renderRoutes([{ path: "/", element: <Harness users={users} /> }]);
 }
 
 async function openCreate() {
