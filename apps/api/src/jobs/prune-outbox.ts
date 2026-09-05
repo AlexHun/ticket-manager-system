@@ -5,9 +5,14 @@ import {
   type OutboundEmailKind,
   type OutboundEmailStatus,
 } from "@ticket/shared";
-import { RESET_TOKEN_TTL_SECONDS } from "../auth";
+import { RESET_TOKEN_TTL_SECONDS } from "../auth-tokens";
 import { prisma } from "../db";
-import { ensureQueue } from "./boss";
+import { registerSweep, type SweepSpec } from "./boss";
+import {
+  BATCH_SIZE,
+  MAX_BATCHES,
+  PRUNE_EXPIRE_IN_SECONDS,
+} from "./prune-batching";
 
 /**
  * Throwing away outbox rows that have stopped being worth keeping.
@@ -58,10 +63,12 @@ const PRUNABLE_STATUS: readonly OutboundEmailStatus[] = [
  * How long an invitation or reset row is kept: exactly as long as the link in
  * it works.
  *
- * Read from `auth.ts` rather than restated, so raising the token's life raises
- * this with it. The coupling is the argument: the entire body of one of these
- * rows is a link, so the moment the token expires the row holds nothing anyone
- * can use and everything an attacker would like.
+ * Read from `auth-tokens.ts` rather than restated, so raising the token's life
+ * raises this with it. The coupling is the argument: the entire body of one of
+ * these rows is a link, so the moment the token expires the row holds nothing
+ * anyone can use and everything an attacker would like. (It is imported from
+ * that leaf rather than from `auth.ts`, which sets Better Auth's own expiry
+ * from the same constant — see the note there.)
  *
  * **Nothing is lost by deleting these, because the recovery path already
  * exists.** With no mail provider bound this screen is how an invitation
@@ -111,19 +118,6 @@ const PRUNE_QUEUE = "prune-outbox";
  * hour, which is nothing, and bounds the overshoot to an hour.
  */
 const PRUNE_CRON = "23 * * * *";
-
-/**
- * Rows deleted per statement, and how many statements one sweep may run.
- *
- * Batched because the first sweep on a long-running deployment is the big one —
- * everything ever written that is past its window goes at once — and a single
- * unbounded `DELETE` there would hold locks for as long as it took. Capping the
- * sweep rather than looping until empty is the same trade `recoverStuck` makes:
- * whatever is left is still there in an hour, and a job that cannot run long is
- * a job that cannot block a deploy.
- */
-const BATCH_SIZE = 500;
-const MAX_BATCHES = 20;
 
 /** Delete the expired rows of one kind. Returns how many went. */
 async function pruneKind(
@@ -191,18 +185,21 @@ export async function pruneOutbox(): Promise<void> {
   }
 }
 
+/**
+ * What `./boss` needs to run this sweep, and how `pruneOutbox` is reached
+ * without a queue backend — which is the half worth having a handle on: what
+ * this deletes is irreversible, and the row it must never touch (`queued`, with
+ * a job already on its way to fetch it) is invisible in production until the
+ * day an email silently does not arrive.
+ */
+export const PRUNE_OUTBOX_SWEEP: SweepSpec = {
+  name: PRUNE_QUEUE,
+  cron: PRUNE_CRON,
+  expireInSeconds: PRUNE_EXPIRE_IN_SECONDS,
+  run: pruneOutbox,
+};
+
 /** Create the queue and start the sweep. Called once, from `./index`. */
 export async function registerPruneOutbox(boss: PgBoss): Promise<void> {
-  await ensureQueue(boss, PRUNE_QUEUE, {
-    // One sweep at a time, and no retries: a failed sweep sees the same rows an
-    // hour later, and nothing downstream is waiting on it. Same shape as the
-    // auto-reply recovery sweep.
-    policy: "singleton",
-    retryLimit: 0,
-    expireInSeconds: 300,
-  });
-  await boss.work(PRUNE_QUEUE, { batchSize: 1 }, async () => {
-    await pruneOutbox();
-  });
-  await boss.schedule(PRUNE_QUEUE, PRUNE_CRON);
+  await registerSweep(boss, PRUNE_OUTBOX_SWEEP);
 }

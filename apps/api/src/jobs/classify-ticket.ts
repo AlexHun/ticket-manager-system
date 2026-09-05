@@ -14,7 +14,13 @@ import {
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import { enqueueAutoReply } from "./auto-reply-ticket";
-import { ensureQueue, getBoss, registerWorker, type WorkerSpec } from "./boss";
+import {
+  getBoss,
+  registerSweep,
+  registerWorker,
+  type SweepSpec,
+  type WorkerSpec,
+} from "./boss";
 
 /**
  * Classifying a ticket, off the request that created it.
@@ -349,21 +355,25 @@ export const CLASSIFY_WORKER: WorkerSpec<ClassifyTicketJob> = {
   onExhausted,
 };
 
+/**
+ * What `./boss` needs to run the sweep, and — like `CLASSIFY_WORKER` above — how
+ * `reconcile` is reached without a queue backend. It offers tickets back onto
+ * the queue this file's worker serves, which is exactly the sort of thing worth
+ * a test and exactly the sort of thing that used to need pg-boss to reach.
+ *
+ * The expiry is the worker's, not a number of its own: a sweep enqueues at most
+ * `RECONCILE_BATCH` jobs and does no model work, so anything that outlives one
+ * classification here is a stuck process rather than a slow sweep.
+ */
+export const CLASSIFY_RECONCILE_SWEEP: SweepSpec = {
+  name: RECONCILE_QUEUE,
+  cron: RECONCILE_CRON,
+  expireInSeconds: EXPIRE_IN_SECONDS,
+  run: reconcile,
+};
+
 /** Create the queues and start the workers. Called once, from `./index`. */
 export async function registerClassifyTicket(boss: PgBoss): Promise<void> {
   await registerWorker(boss, CLASSIFY_WORKER);
-
-  await ensureQueue(boss, RECONCILE_QUEUE, {
-    // One sweep at a time, and no retries: if a sweep fails, the next one is
-    // fifteen minutes away and will see exactly the same tickets.
-    policy: "singleton",
-    retryLimit: 0,
-    expireInSeconds: EXPIRE_IN_SECONDS,
-  });
-  await boss.work(RECONCILE_QUEUE, { batchSize: 1 }, async () => {
-    await reconcile();
-  });
-  // Registered on every boot; pg-boss upserts the schedule rather than stacking
-  // them, and only one node in a cluster runs the cron.
-  await boss.schedule(RECONCILE_QUEUE, RECONCILE_CRON);
+  await registerSweep(boss, CLASSIFY_RECONCILE_SWEEP);
 }

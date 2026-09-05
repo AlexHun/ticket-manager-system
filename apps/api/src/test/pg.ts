@@ -109,7 +109,33 @@ export const prisma = new PrismaClient({
  * happened to leave behind.
  *
  * Built once, from the live catalogue, so a new model in the schema is covered
- * without anyone remembering to add it here.
+ * without anyone remembering to add it here — and in whatever order the
+ * catalogue lists them, which is where `session_replication_role` comes in.
+ *
+ * **The deletes run with referential triggers off.** `pg_tables` has no idea
+ * which table points at which, so this list is in no particular order, and one
+ * foreign key in this schema cares: `KnowledgeArticleRevision.article` is
+ * `onDelete: Restrict` (ADR-0006, which is what makes an article undeletable
+ * through the ORM). Delete the articles before their revisions and Postgres
+ * refuses the statement — so a single test that leaves a revision behind
+ * poisons `resetDb` for every file that runs after it, and the failures land
+ * anywhere but the test that caused them. Setting the role to `replica` for the
+ * duration is the standard way to say "this is a wipe, not an edit". Sorting the
+ * tables topologically would work too, and would have to be re-derived every
+ * time somebody added a relation.
+ *
+ * Two things to be exact about, because "restored immediately" would be doing a
+ * lot of unexamined work. The flag is off for the **deletes only** — the
+ * `origin` statement is inside the same `db.exec` batch, before the sequence
+ * resets — so no test ever runs against a database with its constraints
+ * disabled. But `session_replication_role` suppresses *every* referential and
+ * user trigger, not only the `Restrict` that motivated it; that is the price of
+ * not maintaining a topological order by hand, and it is why this is scoped to
+ * the wipe and nothing else. And the restore is a statement rather than a
+ * `finally`: `db.exec` runs the batch in one implicit transaction, so a failed
+ * `DELETE` rolls the `SET` back with everything else rather than leaking it into
+ * the next test. A `resetDb` that throws is a broken suite either way — what
+ * matters is that it cannot leave the session quietly permissive.
  */
 const RESET_SQL = await (async () => {
   const tables = (
@@ -122,7 +148,12 @@ const RESET_SQL = await (async () => {
       `SELECT sequencename FROM pg_sequences WHERE schemaname = 'public'`,
     )
   ).rows.map((row) => `ALTER SEQUENCE "${row.sequencename}" RESTART WITH 1`);
-  return [...tables, ...sequences].join("; ");
+  return [
+    `SET session_replication_role = 'replica'`,
+    ...tables,
+    `SET session_replication_role = 'origin'`,
+    ...sequences,
+  ].join("; ");
 })();
 
 export async function resetDb(): Promise<void> {
