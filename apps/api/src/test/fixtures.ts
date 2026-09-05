@@ -40,6 +40,21 @@ export const COLLEAGUE = {
     emailVerified: true,
     role: USER_ROLE.admin,
   },
+  /**
+   * A *second* admin, for the one rule in this codebase that needs two of them:
+   * nobody may approve their own knowledge-base revision (`routes/knowledge.ts`,
+   * #23). Approving as `admin` and then as `other` would pass — that router
+   * reads the session, never the stored role — and would quietly demonstrate
+   * the gate with an agent standing in for the second admin, which leaves the
+   * reader with the wrong idea of what the rule is.
+   */
+  otherAdmin: {
+    id: "u_admin_2",
+    name: "Bo Admin",
+    email: "bo@example.com",
+    emailVerified: true,
+    role: USER_ROLE.admin,
+  },
 } as const;
 
 export type ColleagueKey = keyof typeof COLLEAGUE;
