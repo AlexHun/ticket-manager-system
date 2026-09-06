@@ -1,12 +1,17 @@
 /**
- * The colleagues a converted API test acts as (#169, extended in #170).
+ * The colleagues a converted API test acts as (#169; the second admin below
+ * came with #170).
  *
  * Every table these tests touch — `changelog_seen`, `new_feature_seen`,
- * `dashboard_layout`, `tutorial_progress`, `tutorial_content.updatedById`, and
- * `knowledge_article_revision`'s `editorId` and `approvedById` — hangs off a
- * foreign key onto `user`, so a converted file cannot write a row until the
- * caller exists. That made the same `createMany` block appear in five files at
- * once, which is what this module is for.
+ * `dashboard_layout`, `tutorial_progress`, `tutorial_content.updatedById`,
+ * `knowledge_article_revision`'s `editorId` and `approvedById`, the four
+ * further columns the activity feed reads an actor out of
+ * (`ticket_activity.actorId`, `message.authorId`, `admin_activity.actorId` and
+ * `automation_settings_revision.changedById`), and `admin_activity`'s
+ * `targetUserId`, which names the account acted *on* rather than an actor —
+ * hangs off a foreign key onto `user`, so a converted file cannot write a row
+ * until the caller exists. That made the same `createMany` block appear in file
+ * after file, which is what this module is for.
  *
  * **It owns the rows, not the request headers.** The `../middleware/auth`
  * stub that turns a header into a session is deliberately re-typed in every
