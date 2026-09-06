@@ -59,6 +59,7 @@ const {
   readHandoffSettings,
   resolveHandoff,
   resolveHandoffUser,
+  ASSISTANT_EMAIL,
   SETTINGS_ID,
 } = await import("./automation");
 
@@ -206,7 +207,19 @@ describe("resolveHandoffUser — the admin target", () => {
   test("never falls back to the assistant", async () => {
     // The one wrong answer that would look right: it is a user row, it is on
     // the roster, and a ticket filed under it is work nothing will ever do.
+    //
+    // The row left standing is an automated **admin**, which the seeded
+    // assistant is not — it is an agent, so `longestServingAdmin`'s
+    // `role: admin` filter would exclude it on its own and the `automated:
+    // false` clause beside it would never carry any weight. Deleting that
+    // clause from the source has to fail this test, and against an automated
+    // agent it would not. (The old fake had the same hole, and the assistant
+    // being an agent is exactly why it went unnoticed.)
     await prisma.user.deleteMany({ where: { automated: false } });
+    await prisma.user.update({
+      where: { id: ASSISTANT.id },
+      data: { role: USER_ROLE.admin },
+    });
 
     expect(await resolveHandoffUser()).toBeNull();
   });
@@ -300,9 +313,12 @@ describe("resolveHandoff", () => {
 
 describe("assistantUser", () => {
   test("finds the automated row", async () => {
+    // Against `ASSISTANT_EMAIL` rather than the literal: the fixture's address
+    // and the one `prisma/seed.ts` writes are the same string in two places,
+    // and this is the assertion that notices if they stop being.
     expect(await assistantUser()).toMatchObject({
       id: ASSISTANT.id,
-      email: "assistant@automation.invalid",
+      email: ASSISTANT_EMAIL,
     });
   });
 

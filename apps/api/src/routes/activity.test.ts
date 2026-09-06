@@ -29,10 +29,10 @@
  * included" is a fact about the feed rather than about the query string.
  *
  * `../middleware/auth` is still stubbed, and the stub is deliberately identical
- * to the ones in `./automation.test.ts`, `./ai.test.ts` and
- * `./knowledge.test.ts` — see `docs/standards/testing.md`. None of those
- * factories spreads the real module and the registry is process-wide, so the
- * four have to agree on every header and default.
+ * to the ones in `./automation.test.ts`, `./ai.test.ts`, `./knowledge.test.ts`,
+ * `./tutorials.test.ts` and `./users.test.ts` — see `docs/standards/testing.md`.
+ * None of those factories spreads the real module and the registry is
+ * process-wide, so all six have to agree on every header and default.
  */
 
 import { randomUUID } from "node:crypto";

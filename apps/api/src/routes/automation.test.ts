@@ -52,8 +52,9 @@ mock.module("../db", () => ({ Prisma, prisma }));
  *
  * The real `requireAdmin` pulls in `../auth`, which throws at import without
  * `BETTER_AUTH_SECRET`. **Deliberately identical to the stubs in
- * `./ai.test.ts`, `./knowledge.test.ts`, `./activity.test.ts` and
- * `./users.test.ts`, headers and defaults and all** — `mock.module`
+ * `./ai.test.ts`, `./knowledge.test.ts`, `./activity.test.ts`,
+ * `./tutorials.test.ts` and `./users.test.ts`, headers and defaults and all**
+ * — `mock.module`
  * registrations are process-global and none of those factories spreads the real
  * module, so whichever file `bun test` loads last owns `../middleware/auth` for
  * every router imported after it. Two stubs that disagreed about where the

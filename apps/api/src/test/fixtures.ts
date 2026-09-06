@@ -107,6 +107,15 @@ export const COLLEAGUE = {
    * Never an actor. Nothing signs in as it: it has no `Account` row, which is
    * the whole of why `sendResetPassword` and `rejectAssistant` both refuse to
    * mint one for it.
+   *
+   * The address and the name are re-typed here rather than imported from
+   * `../automation`'s `ASSISTANT_EMAIL`/`ASSISTANT_NAME`, which is what
+   * `prisma/seed.ts` writes — and that is a constraint, not a preference. This
+   * module is a *static* import in every test file, so importing `../automation`
+   * would link `../db` before any of them reaches its `mock.module` call, and
+   * the real `../db` opens a connection at import. `automation.test.ts` closes
+   * the gap from the other side: it asserts the seeded row's email against
+   * `ASSISTANT_EMAIL`, so the two drifting apart is a test failure.
    */
   assistant: {
     id: "u_assistant",
