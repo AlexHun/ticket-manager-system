@@ -16,19 +16,8 @@
  * tests pass alone and fail in the suite.
  */
 
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   TUTORIAL_PAGE_KEYS,
   TUTORIAL_PAGE_VERSIONS,
@@ -39,6 +28,7 @@ import {
 } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
+import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -118,22 +108,7 @@ function progressRows() {
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/tutorials", tutorialsRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/tutorials", tutorialsRouter);
 
 interface Sent<T> {
   status: number;
@@ -144,7 +119,7 @@ async function get<T>(
   path: string,
   headers: Record<string, string> = AGENT,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/tutorials${path}`, { headers });
+  const res = await fetch(url(path), { headers });
   return { status: res.status, body: (await res.json()) as Sent<T>["body"] };
 }
 
@@ -152,7 +127,7 @@ async function post<T>(
   path: string,
   headers: Record<string, string> = AGENT,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/tutorials${path}`, {
+  const res = await fetch(url(path), {
     method: "POST",
     headers,
   });
@@ -164,7 +139,7 @@ async function put<T>(
   body: unknown,
   headers: Record<string, string> = ADMIN,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/tutorials${path}`, {
+  const res = await fetch(url(path), {
     method: "PUT",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),

@@ -34,19 +34,8 @@
  * enforces those, not this router, so they live in `../schema.test.ts`.
  */
 
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   KNOWLEDGE_REVISION_ACTION,
   KNOWLEDGE_REVISION_STATUS,
@@ -58,6 +47,7 @@ import {
 } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues, type ColleagueKey } from "../test/fixtures";
+import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -161,22 +151,7 @@ beforeEach(async () => {
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/knowledge-articles", knowledgeRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/knowledge-articles", knowledgeRouter);
 
 interface Sent<T> {
   status: number;
@@ -188,7 +163,7 @@ function sendPatch(
   body: unknown,
   headers: Record<string, string> = SUBMITTER,
 ) {
-  return fetch(`${origin}/api/knowledge-articles/${id}`, {
+  return fetch(url(`/${id}`), {
     method: "PATCH",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
@@ -208,7 +183,7 @@ async function post<T>(
   path: string,
   headers: Record<string, string> = SUBMITTER,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/knowledge-articles${path}`, {
+  const res = await fetch(url(path), {
     method: "POST",
     headers,
   });
@@ -481,7 +456,7 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/reject", () => 
 
 describe("GET /api/knowledge-articles/pending-revisions", () => {
   function pendingRevisions(headers: Record<string, string> = SUBMITTER) {
-    return fetch(`${origin}/api/knowledge-articles/pending-revisions`, {
+    return fetch(url("/pending-revisions"), {
       headers,
     });
   }
