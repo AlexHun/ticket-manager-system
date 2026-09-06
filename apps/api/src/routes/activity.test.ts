@@ -60,6 +60,7 @@ import {
   TICKET_ACTIVITY_ACTION,
   TICKET_ACTOR_KIND,
   TICKET_CATEGORY,
+  USER_ROLE,
   type ActivityEntry,
   type AdminActivityAction,
   type HandoffTarget,
@@ -255,7 +256,7 @@ function seedArticle() {
  * default for all three, which is a fixture silently seeding something other
  * than what the test asked for.
  */
-function given<T>(value: T | undefined, fallback: T): T {
+function orDefault<T>(value: T | undefined, fallback: T): T {
   return value === undefined ? fallback : value;
 }
 
@@ -273,10 +274,10 @@ function seedTicketActivity(
     data: {
       ticketId: TICKET_ID,
       action: over.action ?? TICKET_ACTIVITY_ACTION.status_changed,
-      fromValue: given(over.fromValue, "Open"),
-      toValue: given(over.toValue, "Resolved"),
+      fromValue: orDefault(over.fromValue, "Open"),
+      toValue: orDefault(over.toValue, "Resolved"),
       actorKind: TICKET_ACTOR_KIND.agent,
-      actorId: given(over.actorId, COLLEAGUE.agent.id),
+      actorId: orDefault(over.actorId, COLLEAGUE.agent.id),
       actorName: over.actorName ?? COLLEAGUE.agent.name,
       createdAt: over.createdAt ?? AT.ticketActivity,
     },
@@ -303,7 +304,7 @@ function seedMessage(
       senderName: over.senderName ?? COLLEAGUE.agent.name,
       textBody: "Try the reset link at the bottom of the sign-in page.",
       direction: over.direction ?? MESSAGE_DIRECTION.outbound,
-      authorId: given(over.authorId, COLLEAGUE.agent.id),
+      authorId: orDefault(over.authorId, COLLEAGUE.agent.id),
       createdAt: over.createdAt ?? AT.reply,
     },
   });
@@ -326,7 +327,7 @@ function seedKnowledgeRevision(
       body: "Use the 'forgot password' link on the sign-in page.",
       autoReply: false,
       archived: false,
-      editorId: given(over.editorId, COLLEAGUE.admin.id),
+      editorId: orDefault(over.editorId, COLLEAGUE.admin.id),
       editorName: over.editorName ?? COLLEAGUE.admin.name,
       editorEmail: COLLEAGUE.admin.email,
       createdAt: over.createdAt ?? AT.knowledge,
@@ -346,12 +347,15 @@ function seedAdminActivity(
   return prisma.adminActivity.create({
     data: {
       action: over.action ?? ADMIN_ACTIVITY_ACTION.role_changed,
-      fromValue: "agent",
-      toValue: "admin",
-      actorId: given(over.actorId, COLLEAGUE.admin.id),
+      // A `role_changed` row's two sides are bare roles, so they come from
+      // `USER_ROLE` rather than from a literal — `conventions.md`, and the
+      // same way `routes/users.test.ts` writes the rows this reads back.
+      fromValue: USER_ROLE.agent,
+      toValue: USER_ROLE.admin,
+      actorId: orDefault(over.actorId, COLLEAGUE.admin.id),
       actorName: over.actorName ?? COLLEAGUE.admin.name,
       actorEmail: COLLEAGUE.admin.email,
-      targetUserId: given(over.targetUserId, COLLEAGUE.other.id),
+      targetUserId: orDefault(over.targetUserId, COLLEAGUE.other.id),
       targetUserName: COLLEAGUE.other.name,
       createdAt: over.createdAt ?? AT.admin,
     },
@@ -374,12 +378,12 @@ function seedAutomationRevision(
   return prisma.automationSettingsRevision.create({
     data: {
       fromTarget: over.fromTarget ?? HANDOFF_TARGET.admin,
-      fromUserId: given(over.fromUserId, null),
-      fromUserName: given(over.fromUserName, null),
+      fromUserId: orDefault(over.fromUserId, null),
+      fromUserName: orDefault(over.fromUserName, null),
       toTarget: over.toTarget ?? HANDOFF_TARGET.user,
-      toUserId: given(over.toUserId, COLLEAGUE.agent.id),
-      toUserName: given(over.toUserName, COLLEAGUE.agent.name),
-      changedById: given(over.changedById, COLLEAGUE.admin.id),
+      toUserId: orDefault(over.toUserId, COLLEAGUE.agent.id),
+      toUserName: orDefault(over.toUserName, COLLEAGUE.agent.name),
+      changedById: orDefault(over.changedById, COLLEAGUE.admin.id),
       changedByName: over.changedByName ?? COLLEAGUE.admin.name,
       createdAt: over.createdAt ?? AT.automation,
     },
@@ -518,6 +522,28 @@ describe("the UNION ALL", () => {
     expect(sent.body.entries).toEqual([]);
     expect(sent.body.total).toBe(5);
   });
+
+  test("the total and the pages it describes are the same set of rows", async () => {
+    await seedOnePerSource();
+
+    // The page and the count go through one `prisma.$transaction` so they
+    // cannot describe different sets — the same reasoning `GET /api/tickets`
+    // gives. The transaction itself is not observable from out here now that
+    // the client is real; the drift it prevents is, so this walks every page
+    // and checks the pieces add up to the number the first one reported.
+    // (Before #171 this was `expect(transaction).toHaveBeenCalledTimes(1)`,
+    // which was a fact about the stub rather than about the feed.)
+    const total = (await get("pageSize=2")).body.total ?? 0;
+    const seen: string[] = [];
+    for (let page = 1; page <= total; page += 1) {
+      const ids = await feedIds(`page=${page}&pageSize=2`);
+      if (ids.length === 0) break;
+      seen.push(...ids);
+    }
+
+    expect(seen).toHaveLength(total);
+    expect(new Set(seen).size).toBe(total);
+  });
 });
 
 /* ── What each branch makes of its own table ─────────────────────────────── */
@@ -610,8 +636,8 @@ describe("each source is shaped onto the wire", () => {
         action: ADMIN_ACTIVITY_ACTION.role_changed,
         actorId: COLLEAGUE.admin.id,
         actorName: COLLEAGUE.admin.name,
-        fromValue: "agent",
-        toValue: "admin",
+        fromValue: USER_ROLE.agent,
+        toValue: USER_ROLE.admin,
         createdAt: AT.admin.toISOString(),
       },
     ]);
@@ -769,6 +795,23 @@ describe("actorId asks each source for its own actor column", () => {
     expect(await feed()).toMatchObject([
       { id: "message:1", actorId: null, actorName: "Support (automated)" },
     ]);
+  });
+
+  test("an actor id carrying a quote is a value, not query text", async () => {
+    await seedOnePerSource();
+
+    // `actorId` is the one filter that reaches five hand-written `WHERE`
+    // clauses, so it is the one worth proving is bound rather than
+    // concatenated. Spliced in, this closes the string literal and re-opens a
+    // predicate that is true of every row — so the tell is not an error, it is
+    // the whole feed coming back. Nobody has this id, so the only right answer
+    // is nothing at all.
+    //
+    // Replaces the old `expect(text).not.toContain("u_someone")`, which read
+    // the query string the stub was handed. Postgres is the one being asked
+    // now, which is the only place the answer was ever decided.
+    const injected = encodeURIComponent(`${COLLEAGUE.agent.id}' OR '1'='1`);
+    expect(await feedIds(`actorId=${injected}`)).toEqual([]);
   });
 });
 

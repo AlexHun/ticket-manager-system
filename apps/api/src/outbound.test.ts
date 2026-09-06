@@ -26,6 +26,19 @@
  * thread and the email was queued" either both happened or neither did, and
  * Postgres is what decides which.
  *
+ * **Be exact about what that row proves, though.** The rollback half is the
+ * strong one: nothing below passes unless `sendReply` hands its transaction
+ * client down, and it is Postgres that discards both writes. The half that says
+ * both rows *land* is weaker than it reads, because the row it reads back was
+ * inserted by the copy of `enqueueEmail`'s `data` block a few lines down rather
+ * than by shipped code. What it pins is that `sendReply` called `enqueueEmail`
+ * with the right input inside the right transaction — the subject, the
+ * `emailMessageId`, the parent and the `References` are all this module's
+ * answers — not that `jobs/send-email.ts` writes the column it says it does. A
+ * column added to the real insert would leave this file asserting last month's
+ * row shape, green. `jobs/send-email.ts` has no test of its own; that is the
+ * gap to close, and it is that module's to close.
+ *
  * **The seam is deliberately this module rather than `./jobs/boss`**, which
  * would have let the real `enqueueEmail` run end to end. `jobs/sweeps.test.ts`
  * already registers a `./boss` factory whose `getBoss` falls through to the
@@ -119,11 +132,11 @@ const AGENT = {
   email: COLLEAGUE.agent.email,
 };
 
-function seedTicket(subject = "Cannot log in") {
+function seedTicket() {
   return prisma.ticket.create({
     data: {
       id: TICKET_ID,
-      subject,
+      subject: "Cannot log in",
       customerEmail: "customer@example.com",
       customerName: "Marta",
       lastMessageAt: OPENED_AT,
@@ -329,9 +342,12 @@ describe("the addressed email", () => {
   });
 
   test("a subject that is already a reply is left alone", async () => {
-    await resetDb();
-    await seedColleagues("agent");
-    await seedTicket("RE: Cannot log in");
+    // Renamed rather than re-seeded: repeating `beforeEach`'s body to vary one
+    // column is a copy that drifts the first time `beforeEach` grows a line.
+    await prisma.ticket.update({
+      where: { id: TICKET_ID },
+      data: { subject: "RE: Cannot log in" },
+    });
 
     // Case-insensitive and only at the front — a thread that has been round a
     // few times reads `Re: Cannot log in`, not `Re: Re: Re: Cannot log in`.

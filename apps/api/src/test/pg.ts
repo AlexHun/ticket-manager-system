@@ -1,10 +1,13 @@
 /**
  * An in-process Postgres for `bun test`, spiked for #152.
  *
- * The API suite's test seam is the Prisma *client*: eleven files replace `../db`
- * with an object of `mock()`s, so what the tests exercise is a hand-written
- * re-implementation of whichever slice of Prisma the route happened to call.
- * This module offers the other seam — a real Prisma client on a real Postgres
+ * The API suite's test seam was the Prisma *client*: eleven files replaced
+ * `../db` with an object of `mock()`s, so what the tests exercised was a
+ * hand-written re-implementation of whichever slice of Prisma the route
+ * happened to call. Three are left (`automation`, `routes/{ai,users}`) and
+ * `docs/standards/testing.md` tracks them.
+ *
+ * This module is the other seam — a real Prisma client on a real Postgres
  * (PGLite, compiled to WASM and run inside this process), so `where`, `select`,
  * `orderBy`, transactions, unique constraints and a conditional `updateMany`
  * all mean what Postgres means by them.
