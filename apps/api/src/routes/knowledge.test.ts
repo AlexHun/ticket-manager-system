@@ -25,7 +25,7 @@
  *
  * `../middleware/auth` is still stubbed, and the `fakeGuard` here is
  * **deliberately identical** to the one in `./ai.test.ts` and
- * `../automation.test.ts` — `mock.module` registrations are process-global, so
+ * `./automation.test.ts` — `mock.module` registrations are process-global, so
  * a stub that disagreed about where the identity comes from would make one
  * file's tests pass alone and fail in the suite.
  *
@@ -54,7 +54,7 @@ import { serveRouter } from "../test/route-app";
 mock.module("../db", () => ({ Prisma, prisma }));
 
 /**
- * Deliberately identical to `./ai.test.ts` and `../automation.test.ts` — see
+ * Deliberately identical to `./ai.test.ts` and `./automation.test.ts` — see
  * the file header.
  */
 const fakeGuard = (req: Request, res: Response, next: NextFunction) => {

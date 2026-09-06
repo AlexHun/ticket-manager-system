@@ -29,7 +29,7 @@
  * included" is a fact about the feed rather than about the query string.
  *
  * `../middleware/auth` is still stubbed, and the stub is deliberately identical
- * to the ones in `../automation.test.ts`, `./ai.test.ts` and
+ * to the ones in `./automation.test.ts`, `./ai.test.ts` and
  * `./knowledge.test.ts` — see `docs/standards/testing.md`. None of those
  * factories spreads the real module and the registry is process-wide, so the
  * four have to agree on every header and default.
@@ -65,7 +65,7 @@ import { serveRouter } from "../test/route-app";
 
 mock.module("../db", () => ({ Prisma, prisma }));
 
-/** Deliberately identical to `automation.test.ts`, `routes/ai.test.ts` and
+/** Deliberately identical to `./automation.test.ts`, `./ai.test.ts` and
  *  `routes/knowledge.test.ts` — see this file's header comment. */
 const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
   res.locals.session = {

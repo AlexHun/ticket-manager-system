@@ -26,6 +26,19 @@
  * imports from here is the identity those headers name, which is what stops a
  * header and a seeded row drifting apart into a foreign-key failure.
  *
+ * **Every colleague carries a pinned `createdAt`, and the order of them is
+ * load-bearing** (#173). `now()` in Postgres is transaction time, so the
+ * `createMany` below used to stamp *every* row with the same instant — and two
+ * things then read that column as though it meant something. `GET /api/users`
+ * lists the roster `orderBy: { createdAt: "asc" }`, so "lists everyone, oldest
+ * first" was passing on whatever order the planner returned tied rows in; and
+ * `automation.ts`'s `longestServingAdmin` — the fallback every handed-back
+ * ticket lands on — is `createdAt` then `id`, which against a five-way tie
+ * would silently be an `id` sort. Pinned dates make both a fact about the
+ * rows. The order is `admin` (2025, the founder), then `agent`, `other`,
+ * `otherAdmin`, and the assistant last; changing it changes what those two
+ * assertions mean.
+ *
  * ## The customer, and the ticket they opened
  *
  * A different reason: no foreign key forces this one. `CUSTOMER` and
@@ -45,6 +58,7 @@ export const COLLEAGUE = {
     email: "agent@example.com",
     emailVerified: true,
     role: USER_ROLE.agent,
+    createdAt: new Date("2026-02-01T00:00:00.000Z"),
   },
   other: {
     id: "u_other",
@@ -52,13 +66,16 @@ export const COLLEAGUE = {
     email: "olivia@example.com",
     emailVerified: true,
     role: USER_ROLE.agent,
+    createdAt: new Date("2026-03-01T00:00:00.000Z"),
   },
+  /** The founding admin: the earliest `createdAt` here, and deliberately so. */
   admin: {
     id: "u_admin",
     name: "Ada Admin",
     email: "ada@example.com",
     emailVerified: true,
     role: USER_ROLE.admin,
+    createdAt: new Date("2025-01-01T00:00:00.000Z"),
   },
   /**
    * A *second* admin, for the one rule in this codebase that needs two of them:
@@ -74,6 +91,7 @@ export const COLLEAGUE = {
     email: "bo@example.com",
     emailVerified: true,
     role: USER_ROLE.admin,
+    createdAt: new Date("2026-04-01T00:00:00.000Z"),
   },
   /**
    * The assistant's account — not a colleague, and here anyway (#172).
@@ -97,6 +115,7 @@ export const COLLEAGUE = {
     emailVerified: true,
     role: USER_ROLE.agent,
     automated: true,
+    createdAt: new Date("2026-05-01T00:00:00.000Z"),
   },
 } as const;
 

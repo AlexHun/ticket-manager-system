@@ -1,7 +1,6 @@
 /**
- * Unit tests for the handoff — who ends up with a ticket the assistant could not
- * finish. Both halves: the resolution rules in `./automation`, and the route in
- * `./routes/automation` that writes the setting they read.
+ * Unit tests for `./automation` — who ends up with a ticket the assistant could
+ * not finish, and the diff that records that choice changing.
  *
  * The rules are worth pinning down because every branch in them is a *fallback*.
  * Each fires on a day nobody planned for — an admin leaves, a chosen colleague
@@ -9,213 +8,50 @@
  * and getting one wrong means tickets pile up silently under somebody who is
  * gone. There is no visible failure to notice.
  *
- * **One file for both on purpose.** `bun test` runs every file in one process
- * and `mock.module` registrations are global, so two files mocking `./db` and
- * both importing `./automation` would fight over which fake the cached module
- * bound against — and the loser's tests would pass alone and fail in the suite.
- * Sharing one fake removes the question. `./routes/ai.test.ts` is unaffected: it
- * mocks the same paths but nothing it imports is imported here.
+ * **This file used to hold two suites, and does not any more** (#173). It
+ * covered `./routes/automation` as well, for a reason `docs/standards/testing.md`
+ * stated outright: `mock.module`'s registry is one process wide, so two files
+ * that both replaced `./db` with a hand-written fake would bind the module to
+ * whichever factory was registered first, and the loser's tests would pass
+ * alone and fail in the suite. ADR-0014 removed the reason rather than the
+ * workaround — every converted file binds `./db` to the *same* client from
+ * `./test/pg`, so two files sharing it is a no-op instead of a stranger's stub.
+ * The router's tests are now in `./routes/automation.test.ts`, next to the
+ * router, and each file covers the module it is named after.
  *
- * The database is a small in-memory table rather than a switch over expected
- * arguments. That is a deliberate trade: a stub hand-wired to return "the admin"
- * would pass whatever `longestServingAdmin` ordered by, so the two assertions
- * that matter most — oldest admin wins, id breaks a tie — would be tautologies.
- * The fake implements only what the modules actually ask for: equality on `id`,
- * `role`, `automated` and `deletedAt`, and the two-key `orderBy`. Anything else
- * throws rather than quietly matching, so a query this file does not model shows
- * up as a failure instead of as a pass.
+ * **The database is real** (`./test/pg`, ADR-0014), and here that is not a
+ * detail. What this file used to assert against was a small in-memory user
+ * table with a hand-written `matches()` and a hand-written two-key sort, which
+ * left the two claims that matter most as claims about the test file:
  *
- * What is *not* covered, and cannot be: `requireAdmin` is stubbed out, so
- * nothing below says anything about who may reach these routes. That guard is
- * one line on each route in the source, and a stubbed copy of it would only
- * assert that the stub runs.
+ *   - **"the oldest admin wins" and "id breaks a tie"** are
+ *     `longestServingAdmin`'s `orderBy: [{ createdAt: "asc" }, { id: "asc" }]`,
+ *     executed by Postgres. Against the fake they were a `.sort()` twenty lines
+ *     above the assertion, and would have passed with the `orderBy` deleted
+ *     from the source.
+ *   - **`readHandoffSettings` loads the chosen person through the relation**, so
+ *     "a soft-deleted target still comes back" is a real join across a real
+ *     foreign key — the case the settings screen exists to report.
+ *
+ * The fake did have one virtue worth naming, since it is gone: it threw on any
+ * `where` key it did not model, so a query it did not understand failed rather
+ * than quietly matching. A schema does that better, and for every column.
+ *
+ * `./middleware/auth` is deliberately *not* stubbed here — nothing in
+ * `./automation` imports it, and a stub registered by a file that does not need
+ * one is a stub every file loaded afterwards gets anyway, the registry being
+ * process-wide. `./routes/automation.test.ts` registers it, identically to the
+ * other route tests.
  */
 
-import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { HANDOFF_TARGET, USER_ROLE, type HandoffTarget } from "@ticket/shared";
-import { serveRouter } from "./test/route-app";
+import { COLLEAGUE, seedColleagues } from "./test/fixtures";
+import { Prisma, dbCalls, prisma, resetDb } from "./test/pg";
 
-// Pure query-string builders with no connection behind them — safe to pull
-// off the generated client directly rather than through `./db`, which is the
-// module being mocked below.
-const { Prisma } = await import("./generated/prisma/client");
+/* ── The world behind the module ─────────────────────────────────────────── */
 
-/* ── The world behind the modules ────────────────────────────────────────── */
-
-interface FakeUser {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  automated: boolean;
-  deletedAt: Date | null;
-  createdAt: Date;
-}
-
-interface UserWhere {
-  id?: string;
-  role?: string;
-  automated?: boolean;
-  deletedAt?: null;
-}
-
-/** The user table, rewritten per test. */
-let users: FakeUser[];
-
-/**
- * What `automationSettings.findUnique` answers with. `null` is the case that
- * matters most — a deployment nobody has configured, which has no row at all.
- */
-interface SettingsRow {
-  target: HandoffTarget;
-  handoffUser: { id: string; name: string; email: string } | null;
-  updatedAt: Date;
-  updatedByName: string | null;
-}
-
-let settingsRow: SettingsRow | null;
-
-const KNOWN_KEYS = ["id", "role", "automated", "deletedAt"] as const;
-
-function matches(user: FakeUser, where: UserWhere): boolean {
-  for (const key of Object.keys(where)) {
-    if (!KNOWN_KEYS.some((k) => k === key)) {
-      throw new Error(
-        `the fake user table does not model \`${key}\` — add it, or the test is asserting nothing`,
-      );
-    }
-  }
-  if (where.id !== undefined && user.id !== where.id) return false;
-  if (where.role !== undefined && user.role !== where.role) return false;
-  if (where.automated !== undefined && user.automated !== where.automated) {
-    return false;
-  }
-  // The only form used, and the only one worth modelling: `deletedAt: null`
-  // means "still on the roster".
-  if (where.deletedAt === null && user.deletedAt !== null) return false;
-  return true;
-}
-
-const findFirst = mock((args: { where: UserWhere }) => {
-  const found = users
-    .filter((u) => matches(u, args.where))
-    .sort(
-      (a, b) =>
-        a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
-    );
-  return Promise.resolve(found[0] ?? null);
-});
-
-const settingsFindUnique = mock(() => Promise.resolve(settingsRow));
-
-interface UpsertArgs {
-  where: { id: number };
-  create: Record<string, unknown>;
-  update: Record<string, unknown>;
-}
-
-/**
- * Writes the row the way the real upsert would, so the response the route
- * assembles afterwards describes what was actually stored rather than what was
- * asked for. Without that, "PATCH answers with the new settings" would pass on a
- * route that saved nothing.
- */
-const upsert = mock((args: UpsertArgs) => {
-  const data = args.update;
-  const handoffUserId = data.handoffUserId as string | null;
-  const named = users.find((u) => u.id === handoffUserId) ?? null;
-  settingsRow = {
-    target: data.target as HandoffTarget,
-    handoffUser: named
-      ? { id: named.id, name: named.name, email: named.email }
-      : null,
-    updatedAt: new Date("2026-08-15T10:00:00.000Z"),
-    updatedByName: data.updatedByName as string | null,
-  };
-  return Promise.resolve(settingsRow);
-});
-
-interface RevisionRow {
-  id: number;
-  fromTarget: HandoffTarget;
-  toTarget: HandoffTarget;
-  fromUserId: string | null;
-  fromUserName: string | null;
-  toUserId: string | null;
-  toUserName: string | null;
-  changedById: string | null;
-  changedByName: string;
-  createdAt: Date;
-}
-
-/** Every revision ever written, oldest first — what the trail would read. */
-let revisions: RevisionRow[];
-
-const revisionCreate = mock((args: { data: Omit<RevisionRow, "id" | "createdAt"> }) => {
-  const row: RevisionRow = {
-    id: revisions.length + 1,
-    createdAt: new Date("2026-08-24T09:00:00.000Z"),
-    ...args.data,
-  };
-  revisions.push(row);
-  return Promise.resolve(row);
-});
-
-/**
- * `$transaction`'s array form: every element is already a called mock (a
- * pending promise) by the time this runs, exactly like the real client — this
- * only has to await them together.
- */
-const transaction = mock((ops: Promise<unknown>[]) => Promise.all(ops));
-
-mock.module("./db", () => ({
-  // A real, connection-free namespace — not because this file's route calls
-  // `Prisma.sql`, but because `mock.module("./db"/"../db", …)` shares one
-  // process-wide registry across every file that mocks this specifier (see
-  // the note above), and the *first* factory registered fixes which export
-  // names exist at all. `./routes/activity.test.ts` needs `Prisma` on this
-  // same module; omitting it here would make that file's collision depend on
-  // load order — passing alone, failing in the suite — for a key this file
-  // never reads. See the `mock.module("../db", …)` comment there.
-  Prisma,
-  prisma: {
-    user: { findFirst },
-    automationSettings: { findUnique: settingsFindUnique, upsert },
-    automationSettingsRevision: { create: revisionCreate },
-    $transaction: transaction,
-  },
-}));
-
-/**
- * The session the audit columns are written from.
- *
- * The real `requireAdmin` pulls in `./auth`, which throws at import without
- * `BETTER_AUTH_SECRET`. **Deliberately identical to the stub in
- * `./routes/ai.test.ts`, headers and defaults and all** — `mock.module`
- * registrations are process-global and neither factory spreads the real module,
- * so whichever file `bun test` loads last owns `./middleware/auth` for every
- * router imported after it. Two stubs that disagreed about where the identity
- * comes from would make one file's tests pass alone and fail in the suite. If
- * one changes, change both.
- */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("./middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
+mock.module("./db", () => ({ Prisma, prisma }));
 
 const {
   assistantUser,
@@ -223,84 +59,51 @@ const {
   readHandoffSettings,
   resolveHandoff,
   resolveHandoffUser,
+  SETTINGS_ID,
 } = await import("./automation");
-
-const { automationRouter } = await import("./routes/automation");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-function user(overrides: Partial<FakeUser> & { id: string }): FakeUser {
-  return {
-    name: overrides.id,
-    email: `${overrides.id}@example.com`,
-    role: USER_ROLE.agent,
-    automated: false,
-    deletedAt: null,
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    ...overrides,
-  };
-}
-
-/** The founding admin: earliest `createdAt`, so "longest-serving" means them. */
-const FOUNDER = user({
-  id: "u_founder",
-  name: "Ada Admin",
-  email: "admin@example.com",
-  role: USER_ROLE.admin,
-  createdAt: new Date("2025-01-01T00:00:00.000Z"),
-});
-
+/** The founding admin — earliest `createdAt`, so "longest-serving" means them. */
+const FOUNDER = COLLEAGUE.admin;
 /** A second admin, hired later. Never the answer while the founder is here. */
-const SECOND_ADMIN = user({
-  id: "u_second",
-  name: "Bo Admin",
-  role: USER_ROLE.admin,
-  createdAt: new Date("2026-06-01T00:00:00.000Z"),
-});
-
-const AGENT = user({
-  id: "u_agent",
-  name: "Aaron Agent",
-  createdAt: new Date("2026-02-01T00:00:00.000Z"),
-});
-
+const SECOND_ADMIN = COLLEAGUE.otherAdmin;
+const AGENT = COLLEAGUE.agent;
 /** On the roster once, and gone since — the case a soft delete leaves behind. */
-const GONE = user({
-  id: "u_gone",
-  name: "Gwen Gone",
-  deletedAt: new Date("2026-07-01T00:00:00.000Z"),
-});
+const GONE = COLLEAGUE.other;
+const ASSISTANT = COLLEAGUE.assistant;
 
-const ASSISTANT = user({
-  id: "u_assistant",
-  name: "AI Assistant",
-  email: "assistant@automation.invalid",
-  automated: true,
-  createdAt: new Date("2026-03-01T00:00:00.000Z"),
-});
-
-function pointAt(target: HandoffTarget, at: FakeUser | null = null) {
-  settingsRow = {
-    target,
-    handoffUser: at ? { id: at.id, name: at.name, email: at.email } : null,
-    updatedAt: new Date("2026-08-01T09:00:00.000Z"),
-    updatedByName: "Ada Admin",
-  };
-}
+const DEPARTED_AT = new Date("2026-07-01T00:00:00.000Z");
 
 function softDelete(id: string) {
-  users = users.map((u) => (u.id === id ? { ...u, deletedAt: new Date() } : u));
+  return prisma.user.update({ where: { id }, data: { deletedAt: DEPARTED_AT } });
 }
 
-beforeEach(() => {
-  findFirst.mockClear();
-  settingsFindUnique.mockClear();
-  upsert.mockClear();
-  revisionCreate.mockClear();
-  transaction.mockClear();
-  users = [FOUNDER, SECOND_ADMIN, AGENT, GONE, ASSISTANT].map((u) => ({ ...u }));
-  settingsRow = null;
-  revisions = [];
+/**
+ * Point the setting at a target, as a stored row.
+ *
+ * `updatedById` is a foreign key, so the audit columns name a seeded colleague
+ * rather than a string invented beside them — which is the point of going
+ * through `COLLEAGUE` at all.
+ */
+function pointAt(target: HandoffTarget, at: { id: string } | null = null) {
+  return prisma.automationSettings.create({
+    data: {
+      id: SETTINGS_ID,
+      target,
+      handoffUserId: at?.id ?? null,
+      updatedById: FOUNDER.id,
+      updatedByName: FOUNDER.name,
+    },
+  });
+}
+
+beforeEach(async () => {
+  await resetDb();
+  await seedColleagues("admin", "otherAdmin", "agent", "other", "assistant");
+  // Olivia is this file's departed colleague, and departed from the start: the
+  // fallbacks below are about a setting that still names her.
+  await softDelete(GONE.id);
 });
 
 /* ── Reading the setting ─────────────────────────────────────────────────── */
@@ -318,20 +121,20 @@ describe("readHandoffSettings", () => {
   });
 
   test("carries the audit trail back when a row exists", async () => {
-    pointAt(HANDOFF_TARGET.user, AGENT);
+    await pointAt(HANDOFF_TARGET.user, AGENT);
 
     const settings = await readHandoffSettings();
 
     expect(settings.target).toBe(HANDOFF_TARGET.user);
     expect(settings.user?.id).toBe(AGENT.id);
-    expect(settings.updatedByName).toBe("Ada Admin");
+    expect(settings.updatedByName).toBe(FOUNDER.name);
   });
 
   test("returns a soft-deleted target rather than pretending nobody was chosen", async () => {
     // The read deliberately does not filter. `resolveHandoffUser` is where the
     // fallback happens, because the settings screen has to be able to say "the
     // person you picked has left" — which it cannot do if the read hides them.
-    pointAt(HANDOFF_TARGET.user, GONE);
+    await pointAt(HANDOFF_TARGET.user, GONE);
 
     expect((await readHandoffSettings()).user?.id).toBe(GONE.id);
   });
@@ -345,7 +148,7 @@ describe("resolveHandoffUser — the admin target", () => {
   });
 
   test("picks the oldest admin, not the newest and not an agent", async () => {
-    pointAt(HANDOFF_TARGET.admin);
+    await pointAt(HANDOFF_TARGET.admin);
 
     const resolved = await resolveHandoffUser();
 
@@ -354,17 +157,35 @@ describe("resolveHandoffUser — the admin target", () => {
   });
 
   test("skips an admin who has been soft-deleted", async () => {
-    softDelete(FOUNDER.id);
+    await softDelete(FOUNDER.id);
 
     expect(await resolveHandoffUser()).toMatchObject({ id: SECOND_ADMIN.id });
   });
 
   test("breaks a same-instant tie on id, so two tickets cannot disagree", async () => {
-    const same = new Date("2025-01-01T00:00:00.000Z");
-    users = [
-      user({ id: "u_bbb", role: USER_ROLE.admin, createdAt: same }),
-      user({ id: "u_aaa", role: USER_ROLE.admin, createdAt: same }),
-    ];
+    // `u_bbb` is inserted first, so a lookup that had lost its `orderBy` and
+    // fell back on the order Postgres happened to return rows in would answer
+    // with the wrong one.
+    await prisma.user.deleteMany({ where: { role: USER_ROLE.admin } });
+    const sameInstant = new Date("2025-06-01T00:00:00.000Z");
+    await prisma.user.createMany({
+      data: [
+        {
+          id: "u_bbb",
+          name: "Bea Both",
+          email: "bea@example.com",
+          role: USER_ROLE.admin,
+          createdAt: sameInstant,
+        },
+        {
+          id: "u_aaa",
+          name: "Ann Both",
+          email: "ann@example.com",
+          role: USER_ROLE.admin,
+          createdAt: sameInstant,
+        },
+      ],
+    });
 
     expect(await resolveHandoffUser()).toMatchObject({ id: "u_aaa" });
     expect(await resolveHandoffUser()).toMatchObject({ id: "u_aaa" });
@@ -374,7 +195,10 @@ describe("resolveHandoffUser — the admin target", () => {
     // Unreachable through the API — `DELETE /api/users/:id` refuses admins —
     // but reachable in a database, and an unowned ticket somebody eventually
     // notices beats a ticket filed under a stranger.
-    users = users.filter((u) => u.role !== USER_ROLE.admin);
+    await prisma.user.updateMany({
+      where: { role: USER_ROLE.admin },
+      data: { deletedAt: DEPARTED_AT },
+    });
 
     expect(await resolveHandoffUser()).toBeNull();
   });
@@ -382,7 +206,7 @@ describe("resolveHandoffUser — the admin target", () => {
   test("never falls back to the assistant", async () => {
     // The one wrong answer that would look right: it is a user row, it is on
     // the roster, and a ticket filed under it is work nothing will ever do.
-    users = [ASSISTANT];
+    await prisma.user.deleteMany({ where: { automated: false } });
 
     expect(await resolveHandoffUser()).toBeNull();
   });
@@ -390,11 +214,11 @@ describe("resolveHandoffUser — the admin target", () => {
 
 describe("resolveHandoffUser — a named person", () => {
   test("resolves to them", async () => {
-    pointAt(HANDOFF_TARGET.user, AGENT);
+    await pointAt(HANDOFF_TARGET.user, AGENT);
 
     expect(await resolveHandoffUser()).toMatchObject({
       id: AGENT.id,
-      name: "Aaron Agent",
+      name: AGENT.name,
     });
   });
 
@@ -402,14 +226,14 @@ describe("resolveHandoffUser — a named person", () => {
     // The FK's `SetNull` never fires on a soft delete, so the id stays
     // valid-looking forever. Without this check the setting would look
     // configured while every ticket landed on somebody who had left.
-    pointAt(HANDOFF_TARGET.user, GONE);
+    await pointAt(HANDOFF_TARGET.user, GONE);
 
     expect(await resolveHandoffUser()).toMatchObject({ id: FOUNDER.id });
   });
 
   test("degrades to an admin when the row is gone entirely", async () => {
     // A hard delete does fire `SetNull`, leaving `target: user` with no user.
-    pointAt(HANDOFF_TARGET.user, null);
+    await pointAt(HANDOFF_TARGET.user, null);
 
     expect(await resolveHandoffUser()).toMatchObject({ id: FOUNDER.id });
   });
@@ -417,7 +241,7 @@ describe("resolveHandoffUser — a named person", () => {
   test("degrades to an admin rather than honouring the assistant", async () => {
     // The route rejects this at write time; this is the same rule at read time,
     // for a row written before that check existed or edited around it.
-    pointAt(HANDOFF_TARGET.user, ASSISTANT);
+    await pointAt(HANDOFF_TARGET.user, ASSISTANT);
 
     expect(await resolveHandoffUser()).toMatchObject({ id: FOUNDER.id });
   });
@@ -425,23 +249,25 @@ describe("resolveHandoffUser — a named person", () => {
 
 describe("resolveHandoffUser — unassigned", () => {
   test("is honoured exactly, with no fallback", async () => {
-    pointAt(HANDOFF_TARGET.unassigned);
+    await pointAt(HANDOFF_TARGET.unassigned);
 
     expect(await resolveHandoffUser()).toBeNull();
   });
 
   test("does not go looking for an admin", async () => {
-    pointAt(HANDOFF_TARGET.unassigned);
+    await pointAt(HANDOFF_TARGET.unassigned);
 
     await resolveHandoffUser();
 
     // The whole point of the target: the admin chose the old behaviour, so
-    // nothing should be searching for somebody to overrule it with.
-    expect(findFirst).not.toHaveBeenCalled();
+    // nothing should be searching for somebody to overrule it with. `dbCalls`
+    // counts since `resetDb()`, and the seeding above goes through `createMany`
+    // and `update` — so a count here could only be this call's.
+    expect(dbCalls("user.findFirst")).toBe(0);
   });
 
   test("still means nobody when a stale user id is attached", async () => {
-    pointAt(HANDOFF_TARGET.unassigned, AGENT);
+    await pointAt(HANDOFF_TARGET.unassigned, AGENT);
 
     expect(await resolveHandoffUser()).toBeNull();
   });
@@ -449,13 +275,13 @@ describe("resolveHandoffUser — unassigned", () => {
 
 describe("resolveHandoff", () => {
   test("is the id of whoever resolveHandoffUser named", async () => {
-    pointAt(HANDOFF_TARGET.user, AGENT);
+    await pointAt(HANDOFF_TARGET.user, AGENT);
 
     expect(await resolveHandoff()).toBe(AGENT.id);
   });
 
   test("is null when that is nobody", async () => {
-    pointAt(HANDOFF_TARGET.unassigned);
+    await pointAt(HANDOFF_TARGET.unassigned);
 
     expect(await resolveHandoff()).toBeNull();
   });
@@ -464,7 +290,7 @@ describe("resolveHandoff", () => {
     // The two must walk the same branches — the job writes one and the settings
     // screen shows the other, and a disagreement is a page that reports a name
     // no ticket ever lands on.
-    pointAt(HANDOFF_TARGET.user, GONE);
+    await pointAt(HANDOFF_TARGET.user, GONE);
 
     expect(await resolveHandoff()).toBe(
       (await resolveHandoffUser())?.id ?? null,
@@ -483,13 +309,13 @@ describe("assistantUser", () => {
   test("is null on a database seeded before the flag existed", async () => {
     // A survivable answer, not an error: the auto-reply still resolves the
     // ticket, it just has nobody to file it under.
-    users = users.filter((u) => !u.automated);
+    await prisma.user.deleteMany({ where: { automated: true } });
 
     expect(await assistantUser()).toBeNull();
   });
 
   test("ignores a soft-deleted assistant", async () => {
-    softDelete(ASSISTANT.id);
+    await softDelete(ASSISTANT.id);
 
     expect(await assistantUser()).toBeNull();
   });
@@ -498,16 +324,21 @@ describe("assistantUser", () => {
     // The invariant is held by the seed being the only writer, not by a
     // constraint — so the lookup is ordered, and which account tickets have
     // been filed under cannot change under a planner's whim.
-    users = [
-      user({ id: "u_zz", automated: true, createdAt: new Date("2026-07-01") }),
-      ASSISTANT,
-    ];
+    await prisma.user.create({
+      data: {
+        id: "u_zz",
+        name: "Second Assistant",
+        email: "second@automation.invalid",
+        automated: true,
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      },
+    });
 
     expect(await assistantUser()).toMatchObject({ id: ASSISTANT.id });
   });
 });
 
-/* ── The revision diff — no mocking needed, it touches nothing ─────────────── */
+/* ── The revision diff — touches nothing, needs nothing ──────────────────── */
 
 describe("handoffChange", () => {
   test("is null when nothing moved", () => {
@@ -522,8 +353,14 @@ describe("handoffChange", () => {
   test("is null when the same person is re-sent under `user`", () => {
     expect(
       handoffChange(
-        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
-        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
+        {
+          target: HANDOFF_TARGET.user,
+          user: { id: AGENT.id, name: AGENT.name },
+        },
+        {
+          target: HANDOFF_TARGET.user,
+          user: { id: AGENT.id, name: AGENT.name },
+        },
       ),
     ).toBeNull();
   });
@@ -547,317 +384,39 @@ describe("handoffChange", () => {
   test("records swapping the named person, target unchanged", () => {
     expect(
       handoffChange(
-        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
-        { target: HANDOFF_TARGET.user, user: { id: SECOND_ADMIN.id, name: "Bo Admin" } },
+        {
+          target: HANDOFF_TARGET.user,
+          user: { id: AGENT.id, name: AGENT.name },
+        },
+        {
+          target: HANDOFF_TARGET.user,
+          user: { id: SECOND_ADMIN.id, name: SECOND_ADMIN.name },
+        },
       ),
     ).toEqual({
       fromTarget: HANDOFF_TARGET.user,
       toTarget: HANDOFF_TARGET.user,
       fromUserId: AGENT.id,
-      fromUserName: "Aaron Agent",
+      fromUserName: AGENT.name,
       toUserId: SECOND_ADMIN.id,
-      toUserName: "Bo Admin",
+      toUserName: SECOND_ADMIN.name,
     });
   });
 
   test("records leaving `user`, keeping who it used to name", () => {
     expect(
       handoffChange(
-        { target: HANDOFF_TARGET.user, user: { id: AGENT.id, name: "Aaron Agent" } },
+        {
+          target: HANDOFF_TARGET.user,
+          user: { id: AGENT.id, name: AGENT.name },
+        },
         { target: HANDOFF_TARGET.admin, user: null },
       ),
     ).toMatchObject({
       fromUserId: AGENT.id,
-      fromUserName: "Aaron Agent",
+      fromUserName: AGENT.name,
       toUserId: null,
       toUserName: null,
     });
-  });
-});
-
-/* ── The route ───────────────────────────────────────────────────────────── */
-
-const url = serveRouter("/api/automation", automationRouter);
-
-interface Sent {
-  status: number;
-  body: {
-    settings?: {
-      target: HandoffTarget;
-      user: { id: string; name: string } | null;
-      resolvedTo: { id: string; name: string } | null;
-      assistant: { id: string; name: string } | null;
-      updatedAt: string | null;
-      updatedByName: string | null;
-    };
-    error?: string;
-  };
-}
-
-/**
- * The signed-in admin, sent as headers rather than baked into the guard — see
- * the note on `fakeGuard`. These have to be explicit: if `./routes/ai.test.ts`
- * won the registration, the defaults are its agent and not ours.
- */
-const AS_ADMIN = {
-  "x-test-user": FOUNDER.id,
-  "x-test-agent-name": FOUNDER.name,
-  "x-test-user-email": FOUNDER.email,
-};
-
-async function get(): Promise<Sent> {
-  const res = await fetch(url(), { headers: AS_ADMIN });
-  return { status: res.status, body: (await res.json()) as Sent["body"] };
-}
-
-async function patch(body: unknown): Promise<Sent> {
-  const res = await fetch(url("/handoff"), {
-    method: "PATCH",
-    headers: { "content-type": "application/json", ...AS_ADMIN },
-    body: JSON.stringify(body),
-  });
-  return { status: res.status, body: (await res.json()) as Sent["body"] };
-}
-
-/** What the most recent accepted write stored. */
-function lastWrite(): Record<string, unknown> {
-  const call = upsert.mock.calls.at(-1);
-  if (!call) throw new Error("upsert was never called");
-  return call[0].update;
-}
-
-describe("GET /api/automation", () => {
-  test("a deployment with no row reports the admin default and who it means", async () => {
-    const sent = await get();
-
-    expect(sent.status).toBe(200);
-    expect(sent.body.settings).toMatchObject({
-      target: HANDOFF_TARGET.admin,
-      user: null,
-      resolvedTo: { id: FOUNDER.id, name: "Ada Admin" },
-      updatedAt: null,
-      updatedByName: null,
-    });
-  });
-
-  test("carries the assistant, so the page can say when there isn't one", async () => {
-    expect((await get()).body.settings?.assistant).toMatchObject({
-      id: ASSISTANT.id,
-    });
-  });
-
-  test("reports a missing assistant rather than omitting it", async () => {
-    users = users.filter((u) => !u.automated);
-
-    expect((await get()).body.settings?.assistant).toBeNull();
-  });
-
-  test("resolvedTo answers the question the target only implies", async () => {
-    // `target: user` pointing at somebody deleted still reads as configured in
-    // the picker. This is the field that tells the truth about where the next
-    // ticket lands, and it has to be the server's answer rather than the
-    // client's guess.
-    pointAt(HANDOFF_TARGET.user, GONE);
-
-    const settings = (await get()).body.settings;
-
-    expect(settings?.user).toMatchObject({ id: GONE.id });
-    expect(settings?.resolvedTo).toMatchObject({ id: FOUNDER.id });
-  });
-});
-
-describe("PATCH /api/automation/handoff — the pair", () => {
-  test("stores a named person", async () => {
-    const sent = await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
-
-    expect(sent.status).toBe(200);
-    expect(sent.body.settings).toMatchObject({
-      target: HANDOFF_TARGET.user,
-      user: { id: AGENT.id },
-      resolvedTo: { id: AGENT.id },
-    });
-    expect(lastWrite()).toMatchObject({
-      target: HANDOFF_TARGET.user,
-      handoffUserId: AGENT.id,
-    });
-  });
-
-  test("clears the stored id on any target but `user`", async () => {
-    // Otherwise a switch to `admin` leaves the old person behind in the row,
-    // looking like a decision that is no longer in force.
-    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
-    await patch({ target: HANDOFF_TARGET.admin, userId: null });
-
-    expect(lastWrite()).toMatchObject({
-      target: HANDOFF_TARGET.admin,
-      handoffUserId: null,
-    });
-  });
-
-  test("`unassigned` resolves to nobody", async () => {
-    const sent = await patch({
-      target: HANDOFF_TARGET.unassigned,
-      userId: null,
-    });
-
-    expect(sent.status).toBe(200);
-    expect(sent.body.settings?.resolvedTo).toBeNull();
-  });
-
-  test("refuses `user` with nobody named", async () => {
-    const sent = await patch({ target: HANDOFF_TARGET.user, userId: null });
-
-    expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Choose a person");
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  test("refuses a person attached to an automatic target", async () => {
-    // An id under `admin` would sit in the database looking like a decision
-    // while nothing read it.
-    const sent = await patch({ target: HANDOFF_TARGET.admin, userId: AGENT.id });
-
-    expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe(
-      "Only the 'a specific person' target takes a user",
-    );
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  test("refuses a target that is not one of the three", async () => {
-    const sent = await patch({ target: "everyone", userId: null });
-
-    expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Choose who picks these up");
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  test("refuses an empty body rather than writing a default", async () => {
-    const sent = await patch({});
-
-    expect(sent.status).toBe(400);
-    expect(upsert).not.toHaveBeenCalled();
-  });
-});
-
-describe("PATCH /api/automation/handoff — who may be named", () => {
-  test("refuses somebody who is not on the roster", async () => {
-    const sent = await patch({
-      target: HANDOFF_TARGET.user,
-      userId: "u_nobody",
-    });
-
-    expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Assignee not found");
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  test("refuses somebody soft-deleted since the page was drawn", async () => {
-    // Same predicate `PATCH /api/tickets/:id/assignee` uses. Storing an id the
-    // assignment route would refuse is how a setting comes to look configured
-    // while silently falling back on every ticket.
-    const sent = await patch({ target: HANDOFF_TARGET.user, userId: GONE.id });
-
-    expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Assignee not found");
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  test("refuses the assistant", async () => {
-    // Routing handed-back tickets to the thing that handed them back is the one
-    // choice here that would quietly stop the queue moving.
-    const sent = await patch({
-      target: HANDOFF_TARGET.user,
-      userId: ASSISTANT.id,
-    });
-
-    expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Assignee not found");
-    expect(upsert).not.toHaveBeenCalled();
-  });
-});
-
-describe("PATCH /api/automation/handoff — the audit trail", () => {
-  test("records the session's user, not anything from the body", async () => {
-    await patch({
-      target: HANDOFF_TARGET.admin,
-      userId: null,
-      updatedById: "u_someone_else",
-      updatedByName: "Somebody Else",
-    });
-
-    expect(lastWrite()).toMatchObject({
-      updatedById: FOUNDER.id,
-      updatedByName: "Ada Admin",
-    });
-  });
-
-  test("denormalises the name so it survives the account", async () => {
-    await patch({ target: HANDOFF_TARGET.admin, userId: null });
-
-    expect((await get()).body.settings?.updatedByName).toBe("Ada Admin");
-  });
-});
-
-describe("PATCH /api/automation/handoff — the revision trail", () => {
-  test("writes nothing on the first PATCH when it only restates the default", async () => {
-    // No row exists yet, so `readHandoffSettings` reads as `{ admin, null }` —
-    // the same thing this PATCH asks for. Nothing changed, so nothing should
-    // be written to the trail even though this is the very first write.
-    await patch({ target: HANDOFF_TARGET.admin, userId: null });
-
-    expect(revisionCreate).not.toHaveBeenCalled();
-    expect(revisions).toHaveLength(0);
-  });
-
-  test("records the target changing, and who made the change", async () => {
-    const sent = await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
-
-    expect(sent.status).toBe(200);
-    expect(revisions).toHaveLength(1);
-    expect(revisions[0]).toMatchObject({
-      fromTarget: HANDOFF_TARGET.admin,
-      toTarget: HANDOFF_TARGET.user,
-      fromUserId: null,
-      toUserId: AGENT.id,
-      toUserName: "Aaron Agent",
-      changedById: FOUNDER.id,
-      changedByName: "Ada Admin",
-    });
-  });
-
-  test("records only the named person changing, target held at `user`", async () => {
-    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
-    await patch({ target: HANDOFF_TARGET.user, userId: SECOND_ADMIN.id });
-
-    expect(revisions).toHaveLength(2);
-    expect(revisions[1]).toMatchObject({
-      fromTarget: HANDOFF_TARGET.user,
-      toTarget: HANDOFF_TARGET.user,
-      fromUserId: AGENT.id,
-      fromUserName: "Aaron Agent",
-      toUserId: SECOND_ADMIN.id,
-      toUserName: "Bo Admin",
-    });
-  });
-
-  test("writes no second row when a PATCH re-sends the setting already in force", async () => {
-    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
-    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
-
-    expect(revisions).toHaveLength(1);
-  });
-
-  test("commits the setting and the revision in one transaction", async () => {
-    await patch({ target: HANDOFF_TARGET.user, userId: AGENT.id });
-
-    expect(transaction).toHaveBeenCalledTimes(1);
-  });
-
-  test("writes nothing to the trail when the request is refused", async () => {
-    await patch({ target: HANDOFF_TARGET.user, userId: "u_nobody" });
-
-    expect(transaction).not.toHaveBeenCalled();
-    expect(revisionCreate).not.toHaveBeenCalled();
   });
 });
