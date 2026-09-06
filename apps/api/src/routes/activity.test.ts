@@ -36,19 +36,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   ACTIVITY_ENTITY_TYPE,
   ADMIN_ACTIVITY_ACTION,
@@ -68,8 +57,9 @@ import {
   type MessageDirection,
   type TicketActivityAction,
 } from "@ticket/shared";
-import { COLLEAGUE, seedColleagues } from "../test/fixtures";
+import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { Prisma, prisma, resetDb } from "../test/pg";
+import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the route ──────────────────────────────────────────── */
 
@@ -148,22 +138,7 @@ describe("toActivityEntry", () => {
 
 /* ── The route ───────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/activity", activityRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/activity", activityRouter);
 
 interface Sent {
   status: number;
@@ -177,7 +152,7 @@ interface Sent {
 }
 
 async function get(qs = ""): Promise<Sent> {
-  const res = await fetch(`${origin}/api/activity${qs ? `?${qs}` : ""}`);
+  const res = await fetch(url(qs ? `?${qs}` : ""));
   return { status: res.status, body: (await res.json()) as Sent["body"] };
 }
 
@@ -217,18 +192,6 @@ const AT = {
   admin: new Date("2026-08-24T12:00:00.000Z"),
   automation: new Date("2026-08-24T13:00:00.000Z"),
 } as const;
-
-/** The one ticket every ticket-side row hangs off. */
-function seedTicket() {
-  return prisma.ticket.create({
-    data: {
-      id: TICKET_ID,
-      subject: "Cannot log in",
-      customerEmail: "customer@example.com",
-      customerName: "Marta",
-    },
-  });
-}
 
 /** The one article every knowledge revision hangs off. */
 function seedArticle() {
@@ -403,7 +366,7 @@ async function seedOnePerSource() {
 beforeEach(async () => {
   await resetDb();
   await seedColleagues("agent", "other", "admin");
-  await seedTicket();
+  await seedTicket({ id: TICKET_ID });
   await seedArticle();
 });
 
