@@ -39,18 +39,20 @@
  * row shape, green. `jobs/send-email.ts` has no test of its own; that is the
  * gap to close, and it is that module's to close.
  *
- * **The seam is deliberately this module rather than `./jobs/boss`**, which
- * would have let the real `enqueueEmail` run end to end. `jobs/sweeps.test.ts`
- * already registers a `./boss` factory whose `getBoss` falls through to the
- * real one unless one of its own tests is watching a queue, and the
- * `mock.module` registry is one process wide: a second factory for that module
- * with different behaviour would mean whichever file loaded first decided what
- * the other one got — the exact hazard `docs/standards/testing.md` describes,
- * and the one that shows up as a file that passes alone and fails in the suite.
+ * **The seam is deliberately `./jobs/send-email` rather than `./jobs/boss`**,
+ * which would have let the real `enqueueEmail` run end to end.
+ * `jobs/sweeps.test.ts` already registers a `./boss` factory whose `getBoss`
+ * falls through to the real one unless one of its own tests is watching a
+ * queue, and the `mock.module` registry is one process wide: a second factory
+ * for that module with different behaviour would mean whichever file loaded
+ * first decided what the other one got — the exact hazard
+ * `docs/standards/testing.md` describes, and the one that shows up as a file
+ * that passes alone and fails in the suite.
  *
- * The factory spreads the real module, so `requeueEmail`, `SEND_EMAIL_WORKER`
- * and `registerSendEmail` stay genuine for `routes/outbox.ts` and `boss.test.ts`
- * whichever order the suite reaches them in.
+ * **The stub itself now lives in `./test/send-email`** (#172), for that same
+ * reason one level up: `routes/users.test.ts` provokes an invitation email and
+ * needs the identical seam, and this one holds a switch — two copies would be
+ * two switches, of which the registry keeps one. See that module's header.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -66,59 +68,12 @@ import {
   seedTicket,
 } from "./test/fixtures";
 import { Prisma, prisma, resetDb } from "./test/pg";
+import { sendEmail, stubSendEmail } from "./test/send-email";
 
 /* ── The world behind the module ─────────────────────────────────────────── */
 
 mock.module("./db", () => ({ Prisma, prisma }));
-
-const sendEmail = { ...(await import("./jobs/send-email")) };
-type EnqueueEmailInput = Parameters<typeof sendEmail.enqueueEmail>[0];
-
-/**
- * Fail the enqueue *after* the outbox row has been written — the shape
- * `getBoss().send()` fails in, on a queue that is unreachable or was never
- * started.
- *
- * Thrown by this stub rather than reached for in the real `enqueueEmail`,
- * whose `getBoss()` would throw that error by itself. That would be the more
- * genuine article, and it is unavailable for the reason in the header: whether
- * the *real* `getBoss` is the one in force by the time this file loads depends
- * on whether `jobs/sweeps.test.ts` registered its `./boss` fake first, which
- * depends on the order `bun test` reaches the files in. A rollback test that
- * only fails on CI is worth less than a rollback test.
- */
-let enqueueFailsAfterWriting = false;
-
-mock.module("./jobs/send-email", () => ({
-  ...sendEmail,
-  enqueueEmail: async (
-    input: EnqueueEmailInput,
-    tx?: Prisma.TransactionClient,
-  ) => {
-    // The real module's insert, minus the `getBoss().send()` beneath it. The
-    // client is the caller's transaction when there is one, which is the whole
-    // property under test — see the header.
-    const row = await (tx ?? prisma).outboundEmail.create({
-      data: {
-        kind: input.kind,
-        messageId: input.messageId ?? null,
-        toEmail: input.toEmail,
-        toName: input.toName ?? null,
-        subject: input.subject,
-        textBody: input.textBody,
-        emailMessageId: input.emailMessageId ?? null,
-        inReplyTo: input.inReplyTo ?? null,
-        references: input.references ?? [],
-      },
-      select: { id: true },
-    });
-
-    if (enqueueFailsAfterWriting) {
-      throw new Error("send-email: the queue is unreachable");
-    }
-    return row;
-  },
-}));
+await stubSendEmail();
 
 const { REPLY_ORIGIN, SEND_OUTCOME, sendReply } = await import("./outbound");
 
@@ -184,7 +139,7 @@ async function ticketRow() {
 }
 
 beforeEach(async () => {
-  enqueueFailsAfterWriting = false;
+  sendEmail.failAfterWriting = false;
   await resetDb();
   await seedColleagues("agent");
   await seedTicket({
@@ -235,7 +190,7 @@ describe("sendReply writes a message and an outbox row together", () => {
     // transaction — a thread showing an answer the desk never queued is a
     // customer waiting on something nobody is going to send, and it is exactly
     // the state ADR-0009 exists to make impossible.
-    enqueueFailsAfterWriting = true;
+    sendEmail.failAfterWriting = true;
 
     await expect(sendReply(agentReply())).rejects.toThrow(
       "send-email: the queue is unreachable",

@@ -4,7 +4,7 @@
  * The API suite's test seam was the Prisma *client*: eleven files replaced
  * `../db` with an object of `mock()`s, so what the tests exercised was a
  * hand-written re-implementation of whichever slice of Prisma the route
- * happened to call. Three are left (`automation`, `routes/{ai,users}`) and
+ * happened to call. Two are left (`automation`, `routes/ai`) and
  * `docs/standards/testing.md` tracks them.
  *
  * This module is the other seam — a real Prisma client on a real Postgres
@@ -93,10 +93,85 @@ async function openDatabase(): Promise<PGlite> {
 }
 
 const db = await openDatabase();
-
-export const prisma = new PrismaClient({
+const client = new PrismaClient({
   adapter: new PrismaPGlite(db),
   log: ["error"],
+});
+
+/**
+ * How many times each Prisma operation has been called since the last reset,
+ * keyed `model.operation` — `user.findUnique`, `ticket.updateMany`.
+ *
+ * This is `routes/users.test.ts`'s only way to keep the assertions #115 earned.
+ * That change made `rejectAssistant` take the row its caller had already read
+ * instead of an id it fetched for itself, and the property it bought — one
+ * request reads the account once — is invisible to every other kind of
+ * assertion: a route that reads the same row twice returns exactly the same
+ * response. Against a hand-written client the counts came free, because every
+ * method *was* a `mock()`. Against a real one they have to come from somewhere,
+ * and a guard that quietly puts the second query back is precisely the
+ * regression nobody would notice.
+ *
+ * **Counting only, wrapping nothing** — and that restraint is the whole design.
+ * The obvious implementation is a client extension
+ * (`$extends({ query: { $allModels: { $allOperations } } })`), and it is wrong
+ * here: an extension replaces each operation's `PrismaPromise` with an ordinary
+ * one, and the *array* form of `$transaction` needs the former to batch. Tried,
+ * measured, discarded — `prisma.$transaction([...])` then mis-associates its
+ * arguments and fails with a validation error naming a column from a different
+ * model. `routes/users.ts`'s `DELETE` is built on that array form, so an
+ * extension would have broken the very route these counts exist for. This proxy
+ * increments a number and hands back the delegate's own return value untouched,
+ * so every operation is the same `PrismaPromise` it always was.
+ *
+ * **What it does not see**: operations issued on the `tx` handle inside an
+ * interactive `prisma.$transaction(async (tx) => …)`, which Prisma hands the
+ * caller directly. The array form is counted, because those operations are
+ * created on this client before they are handed over.
+ */
+const calls = new Map<string, number>();
+
+/** Calls to one operation since the last `resetDb()`, e.g. `dbCalls("user.findUnique")`. */
+export function dbCalls(operation: string): number {
+  return calls.get(operation) ?? 0;
+}
+
+// One wrapper per delegate, cached: `prisma.user` has to be the same object
+// every time it is read, or nothing may rely on its identity.
+const delegates = new Map<string, unknown>();
+
+export const prisma = new Proxy(client, {
+  get(target, property, receiver) {
+    const value = Reflect.get(target, property, receiver);
+    if (typeof property !== "string") return value;
+
+    // `$transaction`, `$queryRaw`, `$connect` and the private `_`-prefixed
+    // internals, bound to the real client: they read `this`, and a proxy is
+    // not it.
+    if (property.startsWith("$") || property.startsWith("_")) {
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+    if (typeof value !== "object" || value === null) return value;
+
+    const cached = delegates.get(property);
+    if (cached) return cached;
+
+    const wrapped = new Proxy(value, {
+      get(delegate, operation) {
+        const method = Reflect.get(delegate, operation);
+        if (typeof operation !== "string" || typeof method !== "function") {
+          return method;
+        }
+        return (...args: unknown[]) => {
+          const key = `${property}.${operation}`;
+          calls.set(key, (calls.get(key) ?? 0) + 1);
+          return method.apply(delegate, args);
+        };
+      },
+    });
+    delegates.set(property, wrapped);
+    return wrapped;
+  },
 });
 
 /**
@@ -160,5 +235,6 @@ const RESET_SQL = await (async () => {
 })();
 
 export async function resetDb(): Promise<void> {
+  calls.clear();
   await db.exec(RESET_SQL);
 }

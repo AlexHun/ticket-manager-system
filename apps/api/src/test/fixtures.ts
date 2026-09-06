@@ -75,6 +75,29 @@ export const COLLEAGUE = {
     emailVerified: true,
     role: USER_ROLE.admin,
   },
+  /**
+   * The assistant's account — not a colleague, and here anyway (#172).
+   *
+   * It is a `user` row like the others (ADR-0002: the assistant is an account,
+   * not a role), and `routes/users.ts` refuses to change or delete it on the
+   * strength of one column, so a test of those refusals needs the row to
+   * exist. Kept beside the people rather than in a corner of its own because
+   * what a caller needs from this module is *an identity that is really in the
+   * table*, and the assistant is one — the guard reads `automated` off the row,
+   * so a locally-typed stand-in would be asserting against itself.
+   *
+   * Never an actor. Nothing signs in as it: it has no `Account` row, which is
+   * the whole of why `sendResetPassword` and `rejectAssistant` both refuse to
+   * mint one for it.
+   */
+  assistant: {
+    id: "u_assistant",
+    name: "AI Assistant",
+    email: "assistant@automation.invalid",
+    emailVerified: true,
+    role: USER_ROLE.agent,
+    automated: true,
+  },
 } as const;
 
 export type ColleagueKey = keyof typeof COLLEAGUE;
