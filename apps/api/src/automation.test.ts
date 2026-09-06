@@ -31,20 +31,10 @@
  * assert that the stub runs.
  */
 
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { HANDOFF_TARGET, USER_ROLE, type HandoffTarget } from "@ticket/shared";
+import { serveRouter } from "./test/route-app";
 
 // Pure query-string builders with no connection behind them — safe to pull
 // off the generated client directly rather than through `./db`, which is the
@@ -587,22 +577,7 @@ describe("handoffChange", () => {
 
 /* ── The route ───────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/automation", automationRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/automation", automationRouter);
 
 interface Sent {
   status: number;
@@ -631,12 +606,12 @@ const AS_ADMIN = {
 };
 
 async function get(): Promise<Sent> {
-  const res = await fetch(`${origin}/api/automation`, { headers: AS_ADMIN });
+  const res = await fetch(url(), { headers: AS_ADMIN });
   return { status: res.status, body: (await res.json()) as Sent["body"] };
 }
 
 async function patch(body: unknown): Promise<Sent> {
-  const res = await fetch(`${origin}/api/automation/handoff`, {
+  const res = await fetch(url("/handoff"), {
     method: "PATCH",
     headers: { "content-type": "application/json", ...AS_ADMIN },
     body: JSON.stringify(body),

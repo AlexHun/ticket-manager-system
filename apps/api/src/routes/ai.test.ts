@@ -10,21 +10,11 @@
  * `polishDraft` itself is covered next door in `../ai/polish.test.ts`.
  */
 
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { MESSAGE_DIRECTION } from "@ticket/shared";
 import * as polishModule from "../ai/polish";
+import { serveRouter } from "../test/route-app";
 
 const { POLISH_FAILURE } = polishModule;
 type PolishResult = Awaited<ReturnType<typeof polishModule.polishDraft>>;
@@ -107,22 +97,7 @@ const { aiRouter } = await import("./ai");
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/ai", aiRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/ai", aiRouter);
 
 interface Sent {
   status: number;
@@ -146,7 +121,7 @@ async function post(
   body: unknown,
   options: { user?: string; agentName?: string } = {},
 ): Promise<Sent> {
-  const res = await fetch(`${origin}/api/ai/polish-reply`, {
+  const res = await fetch(url("/polish-reply"), {
     method: "POST",
     headers: {
       "content-type": "application/json",

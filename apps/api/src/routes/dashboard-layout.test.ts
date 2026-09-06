@@ -15,19 +15,8 @@
  * before a `GET` reads it, so the response really is the stored layout.
  */
 
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   DEFAULT_DASHBOARD_LAYOUT,
   type DashboardLayoutResponse,
@@ -35,6 +24,7 @@ import {
 } from "@ticket/shared";
 import { Prisma, prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
+import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -96,22 +86,7 @@ async function savedLayouts(): Promise<
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/dashboard-layout", dashboardLayoutRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/dashboard-layout", dashboardLayoutRouter);
 
 interface Sent<T> {
   status: number;
@@ -121,7 +96,7 @@ interface Sent<T> {
 async function get<T>(
   headers: Record<string, string> = AGENT,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/dashboard-layout`, { headers });
+  const res = await fetch(url(), { headers });
   return { status: res.status, body: (await res.json()) as Sent<T>["body"] };
 }
 
@@ -129,7 +104,7 @@ async function put<T>(
   body: unknown,
   headers: Record<string, string> = AGENT,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/dashboard-layout`, {
+  const res = await fetch(url(), {
     method: "PUT",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
@@ -140,7 +115,7 @@ async function put<T>(
 async function del<T>(
   headers: Record<string, string> = AGENT,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/dashboard-layout`, {
+  const res = await fetch(url(), {
     method: "DELETE",
     headers,
   });
