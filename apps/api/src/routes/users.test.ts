@@ -162,11 +162,27 @@ describe("userEditChanges", () => {
 /* ── The world behind the modules ────────────────────────────────────────── */
 
 /**
- * Set before `../auth` is imported, because it reads both at module scope and
- * throws without them. Assigned rather than defaulted with `??=`, so the file
- * does not quietly run against whatever a developer's `.env` happens to hold —
- * `TRUSTED_ORIGINS[0]` becomes `appOrigin`, which is the origin every
- * invitation link below is checked against.
+ * Set before `../auth` is imported, because it reads all three at module scope.
+ *
+ * Assigned rather than defaulted with `??=`, so the file does not quietly run
+ * against whatever a developer's `.env` happens to hold. That is not a
+ * precaution — it is the bug CI caught on this file's first run. Bun loads
+ * `.env` and then `.env.test`, both gitignored, so `BETTER_AUTH_URL` had a
+ * value on a dev machine and none on CI, and the invitation link came out as
+ * `http://localhost:3002/api/auth/reset-password/…` locally and a bare
+ * `/reset-password/…` there. Two of the three were pinned; the third is why.
+ *
+ * What each one decides:
+ *
+ *   - `TRUSTED_ORIGINS[0]` becomes `appOrigin`, the `callbackURL` every
+ *     invitation carries — and Better Auth checks a `redirectTo` against this
+ *     same list before honouring it, so the two have to agree.
+ *   - `BETTER_AUTH_SECRET` signs the session cookie `beforeAll` mints. Any
+ *     32 characters will do; nothing leaves the process.
+ *   - `BETTER_AUTH_URL` is the origin the reset link is *built* on. Better Auth
+ *     cannot infer it here: `routes/users.ts` calls `auth.api.requestPasswordReset`
+ *     server-side with forwarded headers rather than a `Request`, so with this
+ *     unset the link has no origin at all.
  *
  * This is the one file in the suite that loads `auth.ts`, so nothing else is
  * reading these.
@@ -174,6 +190,7 @@ describe("userEditChanges", () => {
 process.env.TRUSTED_ORIGINS = "http://localhost:5173";
 process.env.BETTER_AUTH_SECRET =
   "users-route-test-secret-of-at-least-32-chars";
+process.env.BETTER_AUTH_URL = "http://127.0.0.1:3999";
 
 mock.module("../db", () => ({ Prisma, prisma }));
 await stubSendEmail();
@@ -364,12 +381,17 @@ async function settle() {
  * a bad value fails closed — with `invite=1` so the page can say "welcome"
  * rather than "reset your password".
  *
- * Worth pinning both. A link that skipped the API would land somebody on a form
- * holding a token nothing had validated, and a `callbackURL` pointing at this
- * process would send a colleague to a JSON endpoint.
+ * Worth pinning all three parts. A link with no origin at all is what CI got
+ * before `BETTER_AUTH_URL` was pinned above, and it is unclickable — so the
+ * absolute prefix is asserted rather than the path alone. A link that skipped
+ * the API would land somebody on a form holding a token nothing had validated,
+ * and a `callbackURL` pointing at this process would send a colleague to a JSON
+ * endpoint.
  */
 function expectInviteLink(textBody: string | undefined) {
-  expect(textBody).toContain("/api/auth/reset-password/");
+  expect(textBody).toContain(
+    `${process.env.BETTER_AUTH_URL}/api/auth/reset-password/`,
+  );
   expect(textBody).toContain(
     `callbackURL=${encodeURIComponent(`${appOrigin}/reset-password?invite=1`)}`,
   );
