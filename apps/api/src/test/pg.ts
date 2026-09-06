@@ -131,8 +131,29 @@ const client = new PrismaClient({
  */
 const calls = new Map<string, number>();
 
-/** Calls to one operation since the last `resetDb()`, e.g. `dbCalls("user.findUnique")`. */
+/**
+ * Calls to one operation since the last `resetDb()` — `dbCalls("user.findUnique")`.
+ *
+ * **The key is checked against the client, not looked up and defaulted to
+ * zero.** Every assertion these counts back is of the form `toBe(n)`, and half
+ * of them are `toBe(0)` — so a typo in the string would satisfy the assertion
+ * rather than fail it, and a test that has quietly stopped counting anything
+ * reads exactly like a route that has quietly stopped querying. `user.findFirst`
+ * mistyped as `user.findfirst` is the whole failure, and it is silent. Throwing
+ * on a name the client does not have is what makes the zero mean something.
+ */
 export function dbCalls(operation: string): number {
+  const [model, method] = operation.split(".");
+  const delegate = model
+    ? (client as unknown as Record<string, Record<string, unknown> | undefined>)[
+        model
+      ]
+    : undefined;
+  if (!method || !delegate || typeof delegate[method] !== "function") {
+    throw new Error(
+      `dbCalls("${operation}"): no such Prisma operation — expected "<model>.<method>"`,
+    );
+  }
   return calls.get(operation) ?? 0;
 }
 

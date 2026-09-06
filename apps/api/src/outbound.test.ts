@@ -68,7 +68,7 @@ import {
   seedTicket,
 } from "./test/fixtures";
 import { Prisma, prisma, resetDb } from "./test/pg";
-import { sendEmail, stubSendEmail } from "./test/send-email";
+import { sendEmailStub, stubSendEmail } from "./test/send-email";
 
 /* ── The world behind the module ─────────────────────────────────────────── */
 
@@ -139,7 +139,7 @@ async function ticketRow() {
 }
 
 beforeEach(async () => {
-  sendEmail.failAfterWriting = false;
+  sendEmailStub.failAfterWriting = false;
   await resetDb();
   await seedColleagues("agent");
   await seedTicket({
@@ -190,7 +190,7 @@ describe("sendReply writes a message and an outbox row together", () => {
     // transaction — a thread showing an answer the desk never queued is a
     // customer waiting on something nobody is going to send, and it is exactly
     // the state ADR-0009 exists to make impossible.
-    sendEmail.failAfterWriting = true;
+    sendEmailStub.failAfterWriting = true;
 
     await expect(sendReply(agentReply())).rejects.toThrow(
       "send-email: the queue is unreachable",

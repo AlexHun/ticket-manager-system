@@ -84,7 +84,7 @@ import { userEditChanges } from "../admin-activity";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { Prisma, dbCalls, prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
-import { stubSendEmail } from "../test/send-email";
+import { sendEmailStub, stubSendEmail } from "../test/send-email";
 
 /* ── userEditChanges — no mocking needed, it touches nothing ────────────── */
 
@@ -243,17 +243,30 @@ const PASSWORD = "correct-horse-battery-staple";
 let sessionRow: Prisma.SessionUncheckedCreateInput;
 let sessionCookie = "";
 
+/**
+ * Give an account a password, the way Better Auth would.
+ *
+ * Two callers want it for opposite reasons: `beforeAll` needs one to sign the
+ * admin in at all, and the resend test needs one on a *colleague* so that
+ * `sendResetPassword` sees a credential row and writes a `passwordReset`
+ * instead of an `invitation`. Through `internalAdapter` rather than an
+ * `account.create` of our own, so the row is shaped and hashed by the thing
+ * that will later read it.
+ */
+async function givePassword(userId: string) {
+  const ctx = await auth.$context;
+  await ctx.internalAdapter.linkAccount({
+    accountId: userId,
+    providerId: "credential",
+    password: await ctx.password.hash(PASSWORD),
+    userId,
+  });
+}
+
 beforeAll(async () => {
   await resetDb();
   await seedColleagues("admin");
-
-  const ctx = await auth.$context;
-  await ctx.internalAdapter.linkAccount({
-    accountId: ADMIN.id,
-    providerId: "credential",
-    password: await ctx.password.hash(PASSWORD),
-    userId: ADMIN.id,
-  });
+  await givePassword(ADMIN.id);
 
   const res = await auth.api.signInEmail({
     body: { email: ADMIN.email, password: PASSWORD },
@@ -277,6 +290,10 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  // Shared with `../outbound.test.ts` through the one registered factory, so
+  // every installing file resets it — not only the file that flips it. See
+  // `../test/send-email`.
+  sendEmailStub.failAfterWriting = false;
   await resetDb();
   await seedColleagues("admin", "agent", "otherAdmin", "assistant");
   await prisma.session.create({ data: sessionRow });
@@ -363,8 +380,17 @@ async function waitForOutbox(count = 1) {
   }
 }
 
-/** Give the un-awaited invitation task a chance to write, so "nothing was
- *  sent" means nothing was sent rather than nothing has been sent *yet*. */
+/**
+ * A beat, for the three refusals below that assert *nothing* was mailed.
+ *
+ * Deliberately a fixed sleep and not a poll, because there is nothing to poll
+ * for: each of those requests is refused by `routes/users.ts` before it reaches
+ * `auth.api.requestPasswordReset` at all, so no task is in flight and this is
+ * only proving that. `waitForOutbox`'s deadline is for the opposite shape — a
+ * row that is coming, at an unknown tick. If a refusal ever *does* start
+ * something asynchronous, this sleep stops being enough, and that is a change
+ * to the route rather than to the number here.
+ */
 async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
@@ -785,13 +811,7 @@ describe("POST /api/users/:id/invite — user_invited, resend", () => {
    * other wording. One mechanism, and the account row decides which it is.
    */
   test("a colleague who already has a password gets a reset, not an invitation", async () => {
-    const ctx = await auth.$context;
-    await ctx.internalAdapter.linkAccount({
-      accountId: AGENT.id,
-      providerId: "credential",
-      password: await ctx.password.hash(PASSWORD),
-      userId: AGENT.id,
-    });
+    await givePassword(AGENT.id);
 
     await post(`/${AGENT.id}/invite`, {});
 
@@ -974,6 +994,48 @@ describe("DELETE /api/users/:id", () => {
     const sent = await del(`/${AGENT.id}`);
 
     expect(sent.status).toBe(404);
+    expect(await adminActivityRows()).toEqual([]);
+  });
+
+  /**
+   * The other half of "all together": nothing lands when one statement fails.
+   *
+   * The end-state test above proves the five writes *happened*; it cannot tell
+   * a transaction from five statements that all went through. This one makes
+   * one of them fail and checks that none of the five survived it — which is the
+   * assertion `outbound.test.ts` and `routes/knowledge.test.ts` make for their
+   * own transactions, and the one a fake `$transaction` (`Promise.all` over an
+   * array) could never support.
+   *
+   * The provocation is a real shape rather than a stub: an admin whose own
+   * account is no longer there, which the actor foreign keys refuse —
+   * `TicketActivity.actorId` trips first, being earlier in the array, and
+   * `AdminActivity.actorId` would have. Nothing else in the request notices —
+   * the guard is stubbed, the target reads fine, the cookie is still valid — so
+   * the failure arrives where it matters, inside the `$transaction([...])`. The
+   * route has no handler of its own, so it surfaces as a 500; the status is
+   * incidental here, the empty tables are the point.
+   */
+  test("one failing statement takes the whole delete with it", async () => {
+    await agentAtWork();
+
+    const res = await fetch(url(`/${AGENT.id}`), {
+      method: "DELETE",
+      headers: { ...asAdmin(), "x-test-user": "u_admin_who_is_gone" },
+    });
+
+    expect(res.status).toBe(500);
+    expect(await userRow(AGENT.id)).toMatchObject({
+      deletedAt: null,
+      banned: false,
+    });
+    expect(
+      await prisma.session.findMany({ where: { userId: AGENT.id } }),
+    ).toHaveLength(1);
+    expect(
+      await prisma.ticket.findUniqueOrThrow({ where: { id: TICKET_ID } }),
+    ).toMatchObject({ assignedToId: AGENT.id });
+    expect(await prisma.ticketActivity.findMany()).toEqual([]);
     expect(await adminActivityRows()).toEqual([]);
   });
 });

@@ -60,10 +60,14 @@ import { prisma, type Prisma } from "./pg";
  * which depends on the order `bun test` reaches the files in. A rollback test
  * that only fails on CI is worth less than a rollback test.
  *
- * Reset it in the same `beforeEach` that calls `resetDb()`. It is shared state
- * between files by construction; leaving it on would leak.
+ * **Reset it in the same `beforeEach` that calls `resetDb()`, in every file
+ * that installs this stub** — not only the one that flips it. It is shared
+ * state between files by construction, so a file that leaves it on hands the
+ * next file a queue that throws, and a file that never resets it is relying on
+ * the flipping file happening to reset first. Both are the "passes alone, fails
+ * in the suite" failure `docs/standards/testing.md` describes.
  */
-export const sendEmail = { failAfterWriting: false };
+export const sendEmailStub = { failAfterWriting: false };
 
 let installed = false;
 
@@ -110,7 +114,7 @@ export async function stubSendEmail(): Promise<void> {
         select: { id: true },
       });
 
-      if (sendEmail.failAfterWriting) {
+      if (sendEmailStub.failAfterWriting) {
         throw new Error("send-email: the queue is unreachable");
       }
       return row;
