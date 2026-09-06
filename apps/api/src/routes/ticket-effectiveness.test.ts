@@ -11,11 +11,12 @@
  * sent-and-polished messages in the slice.
  *
  * Deliberately does not import `./ticket-effectiveness` itself, which pulls in
- * `../db`: that specifier is process-wide `mock.module`d by `automation.test.ts`
- * and `outbound.test.ts` without spreading the real module, so importing
- * anything that reaches `../db` here would bind to whichever of those stubs
- * `bun test` happened to load first — see the "registry is one process wide"
- * note in `docs/standards/testing.md`.
+ * `../db`: that specifier is `mock.module`d process-wide by most of the suite,
+ * and one of those factories — `./ai.test.ts`, the last hand-written client
+ * left (#174) — is not the shared `../test/pg` one everything else binds. So
+ * importing anything that reaches `../db` here would bind to whichever
+ * registration `bun test` happened to load first; see the "registry is one
+ * process wide" note in `docs/standards/testing.md`.
  */
 
 import { describe, expect, test } from "bun:test";

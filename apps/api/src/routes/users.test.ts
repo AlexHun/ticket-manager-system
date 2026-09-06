@@ -58,7 +58,7 @@
  * since sharing it is the point (`docs/standards/testing.md`).
  *
  * `../middleware/auth` is **deliberately identical** to the one in
- * `../automation.test.ts`, `./ai.test.ts`, `./knowledge.test.ts` and
+ * `./automation.test.ts`, `./ai.test.ts`, `./knowledge.test.ts` and
  * `./activity.test.ts`, for the reason given there: the `mock.module` registry
  * is one process wide, so if one changes, change all of them. Note the seam
  * this leaves: the *route's* guard is stubbed, as in every other route test,
@@ -196,7 +196,7 @@ mock.module("../db", () => ({ Prisma, prisma }));
 await stubSendEmail();
 
 /**
- * Deliberately identical to `../automation.test.ts`, `./ai.test.ts`,
+ * Deliberately identical to `./automation.test.ts`, `./ai.test.ts`,
  * `./knowledge.test.ts` and `./activity.test.ts` — see the file header.
  */
 const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
