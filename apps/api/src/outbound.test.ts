@@ -59,7 +59,12 @@ import {
   OUTBOUND_EMAIL_KIND,
   OUTBOUND_EMAIL_STATUS,
 } from "@ticket/shared";
-import { COLLEAGUE, seedColleagues } from "./test/fixtures";
+import {
+  COLLEAGUE,
+  CUSTOMER,
+  seedColleagues,
+  seedTicket,
+} from "./test/fixtures";
 import { Prisma, prisma, resetDb } from "./test/pg";
 
 /* ── The world behind the module ─────────────────────────────────────────── */
@@ -132,19 +137,6 @@ const AGENT = {
   email: COLLEAGUE.agent.email,
 };
 
-function seedTicket() {
-  return prisma.ticket.create({
-    data: {
-      id: TICKET_ID,
-      subject: "Cannot log in",
-      customerEmail: "customer@example.com",
-      customerName: "Marta",
-      lastMessageAt: OPENED_AT,
-      createdAt: OPENED_AT,
-    },
-  });
-}
-
 /** A message already on the thread, as `ingest.ts` would have stored it —
  *  `messageId` without angle brackets, which is the detail threading rests on. */
 function seedInbound(messageId: string, createdAt: Date) {
@@ -152,8 +144,8 @@ function seedInbound(messageId: string, createdAt: Date) {
     data: {
       ticketId: TICKET_ID,
       messageId,
-      senderEmail: "customer@example.com",
-      senderName: "Marta",
+      senderEmail: CUSTOMER.email,
+      senderName: CUSTOMER.name,
       textBody: "I still cannot log in.",
       direction: MESSAGE_DIRECTION.inbound,
       createdAt,
@@ -195,7 +187,11 @@ beforeEach(async () => {
   enqueueFailsAfterWriting = false;
   await resetDb();
   await seedColleagues("agent");
-  await seedTicket();
+  await seedTicket({
+    id: TICKET_ID,
+    lastMessageAt: OPENED_AT,
+    createdAt: OPENED_AT,
+  });
 });
 
 /* ── The two rows, and the one commit ────────────────────────────────────── */
@@ -224,8 +220,8 @@ describe("sendReply writes a message and an outbox row together", () => {
       // The two rows are joined, which is what puts a sent reply on the outbox
       // screen next to the thread it belongs to.
       messageId: message.id,
-      toEmail: "customer@example.com",
-      toName: "Marta",
+      toEmail: CUSTOMER.email,
+      toName: CUSTOMER.name,
       status: OUTBOUND_EMAIL_STATUS.queued,
       // The same id, not one of its own: the header the customer's client will
       // thread its answer on has to be the one `ingest.ts` can look up.

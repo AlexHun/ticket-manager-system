@@ -24,21 +24,11 @@
  * all four.
  */
 
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { USER_ROLE } from "@ticket/shared";
 import { userEditChanges } from "../admin-activity";
+import { serveRouter } from "../test/route-app";
 
 /* ── userEditChanges — no mocking needed, it touches nothing ────────────── */
 
@@ -354,22 +344,7 @@ beforeEach(() => {
 
 /* ── The route ───────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/users", usersRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/users", usersRouter);
 
 const AS_ADMIN = {
   "x-test-user": ADMIN.id,
@@ -383,7 +358,7 @@ interface Sent {
 }
 
 async function post(path: string, body: unknown): Promise<Sent> {
-  const res = await fetch(`${origin}/api/users${path}`, {
+  const res = await fetch(url(path), {
     method: "POST",
     headers: { "content-type": "application/json", ...AS_ADMIN },
     body: JSON.stringify(body),
@@ -392,7 +367,7 @@ async function post(path: string, body: unknown): Promise<Sent> {
 }
 
 async function patch(path: string, body: unknown): Promise<Sent> {
-  const res = await fetch(`${origin}/api/users${path}`, {
+  const res = await fetch(url(path), {
     method: "PATCH",
     headers: { "content-type": "application/json", ...AS_ADMIN },
     body: JSON.stringify(body),
@@ -401,7 +376,7 @@ async function patch(path: string, body: unknown): Promise<Sent> {
 }
 
 async function del(path: string): Promise<Sent> {
-  const res = await fetch(`${origin}/api/users${path}`, {
+  const res = await fetch(url(path), {
     method: "DELETE",
     headers: AS_ADMIN,
   });

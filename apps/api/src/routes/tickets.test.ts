@@ -29,25 +29,16 @@
  * hazard (`docs/standards/testing.md`).
  */
 
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import type { NextFunction, Request, Response } from "express";
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test";
-import express from "express";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type {
   TicketDetailResponse,
   TicketUnreadResponse,
   UpdateTicketResponse,
 } from "@ticket/shared";
+import { seedTicket } from "../test/fixtures";
 import { Prisma, prisma, resetDb } from "../test/pg";
+import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -93,18 +84,16 @@ function makeTicket(row: {
   assignedToId?: string | null;
   assignmentSeenAt?: Date | null;
 }) {
-  return prisma.ticket.create({
-    data: {
-      id: row.id,
-      subject: row.subject ?? "Cannot log in",
-      status: row.status ?? "Open",
-      customerEmail: "customer@example.com",
-      customerName: "Marta",
-      assignedToId: row.assignedToId ?? null,
-      assignmentSeenAt: row.assignmentSeenAt ?? null,
-      lastMessageAt: NOW,
-      createdAt: NOW,
-    },
+  return seedTicket({
+    id: row.id,
+    // Omitted rather than defaulted here: the subject these tests use is the
+    // shared one, and repeating it would be the duplicate this delegates away.
+    ...(row.subject === undefined ? {} : { subject: row.subject }),
+    status: row.status ?? "Open",
+    assignedToId: row.assignedToId ?? null,
+    assignmentSeenAt: row.assignmentSeenAt ?? null,
+    lastMessageAt: NOW,
+    createdAt: NOW,
   });
 }
 
@@ -147,22 +136,7 @@ beforeEach(async () => {
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
-let server: Server;
-let origin: string;
-
-beforeAll(async () => {
-  const app = express();
-  app.use(express.json());
-  app.use("/api/tickets", ticketsRouter);
-  server = await new Promise<Server>((resolve) => {
-    const s = app.listen(0, "127.0.0.1", () => resolve(s));
-  });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-afterAll(() => {
-  server.close();
-});
+const url = serveRouter("/api/tickets", ticketsRouter);
 
 interface Sent<T> {
   status: number;
@@ -173,7 +147,7 @@ async function get<T>(
   path: string,
   headers: Record<string, string> = AGENT,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/tickets${path}`, { headers });
+  const res = await fetch(url(path), { headers });
   return { status: res.status, body: (await res.json()) as Sent<T>["body"] };
 }
 
@@ -182,7 +156,7 @@ async function patch<T>(
   body: unknown,
   headers: Record<string, string> = AGENT,
 ): Promise<Sent<T>> {
-  const res = await fetch(`${origin}/api/tickets${path}`, {
+  const res = await fetch(url(path), {
     method: "PATCH",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
