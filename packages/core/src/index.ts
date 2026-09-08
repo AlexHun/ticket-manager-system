@@ -8,3 +8,5 @@ export * from "./schemas/knowledge";
 export * from "./schemas/pipeline";
 export * from "./schemas/tutorials";
 export * from "./schemas/dashboard";
+export * from "./schemas/evals";
+export * from "./cases/auto-reply-cases";

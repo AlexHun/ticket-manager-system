@@ -961,3 +961,113 @@ model ChangelogSeen {
 
   @@map("changelog_seen")
 }
+
+/// One run of the eval harness: the unattended path answered against a set of
+/// cases whose expected outcome is written down, so a prompt edit, a model
+/// change or an edited article shows up as a number rather than as somebody
+/// remembering to click through the pipeline page.
+///
+/// **A run creates and modifies nothing a customer or an agent would see**
+/// (PRD R12), and that is structural rather than a promise this file is
+/// keeping. `evals/runner.ts` hands a synthesized `AutoReplyContext` straight
+/// to `autoReply`, which takes its corpus as a value and touches no database at
+/// all — so there is no ticket row to avoid creating, because the code path a
+/// run reaches cannot create one. These two tables are the only rows a run
+/// writes.
+///
+/// Runs are kept indefinitely: the whole value of the thing is comparing today
+/// against three weeks ago (R7), and a handful of rows per night is not a
+/// retention problem the way `outbound_email` is.
+model EvalRun {
+  id      Int         @id @default(autoincrement())
+  /// Which knowledge base this run answered from. Results from the two are
+  /// never averaged into one number (R4) — a live-corpus run makes a red result
+  /// ambiguous between a prompt regression and an admin's article edit, so the
+  /// two form independent series.
+  corpus  EvalCorpus
+  status  EvalRunStatus @default(running)
+  /// Why the run itself fell over — the provider was unreachable, or the queue
+  /// ran out of retries. Prose, shown to an admin and read by nothing.
+  ///
+  /// Distinct from a run whose *numbers* are bad: that run completed, and its
+  /// numbers are the answer this harness exists to give.
+  error   String?
+  startedAt  DateTime @default(now())
+  /// Null while the run is in flight. The worker's idempotency guard is a
+  /// conditional write on this column, so a job delivered twice can only
+  /// finish a run once.
+  finishedAt DateTime?
+
+  results EvalCaseResult[]
+
+  /// The page lists newest first.
+  @@index([startedAt])
+  @@map("eval_run")
+}
+
+/// What one case did in one run.
+///
+/// `expected*` is **copied onto the row**, not looked up from the case set when
+/// the row is read. The case set is edited by hand, and a run from three weeks
+/// ago has to keep saying what it was measured against; a row that re-derived
+/// its expectation would silently agree with whatever the file says today,
+/// which is exactly the drift a stored result exists to make visible.
+///
+/// The four outcome columns are plain strings rather than Postgres enums, for
+/// the reason `Ticket.autoReplyDecline` is: they are display-only, written by
+/// one function, and grow a value every time a safety check is added to
+/// `ai/auto-reply.ts` — an enum would put a migration in front of each of
+/// those. `PIPELINE_OUTCOME` and `AUTO_REPLY_DECLINE` in `@ticket/shared` are
+/// the authority, and the API validates against them on the way out.
+model EvalCaseResult {
+  id              Int      @id @default(autoincrement())
+  runId           Int
+  run             EvalRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  /// The case's stable id, e.g. `off-corpus`. A run names the case rather than
+  /// pointing at a row, because the case set lives in `@ticket/core` and is
+  /// reviewed in a pull request — see the note on `AUTO_REPLY_CASES`.
+  caseId          String
+  /// Denormalised so a result stays readable after a case is renamed, the same
+  /// reasoning `KnowledgeArticleRevision.editorName` uses.
+  caseName        String
+  /// Whether this case is one of the planted payloads. Copied for the same
+  /// reason the expectations are: the catch rate is reported separately from
+  /// decline accuracy (R9), and re-deriving which rows counted would make an
+  /// old run's numbers move when the case set changes.
+  adversarial     Boolean
+  expectedOutcome String
+  expectedDecline String?
+  actualOutcome   String
+  actualDecline   String?
+  /// Outcome and, when declined, reason both landed where expected. Stored
+  /// rather than computed on read so a run's verdict cannot change under it.
+  matched         Boolean
+  createdAt       DateTime @default(now())
+
+  @@index([runId])
+  @@map("eval_case_result")
+}
+
+/// Which knowledge base a run answered from. Mirrors `EVAL_CORPUS` in
+/// `@ticket/shared`.
+///
+/// An enum rather than free text, unlike the outcome columns above: this one is
+/// filtered on — the rule that frozen and live runs are never averaged is a
+/// `where` — and the set is genuinely closed at two.
+enum EvalCorpus {
+  /// `apps/api/knowledge-base.md`, the seed corpus, read as data. Moves only
+  /// when the file does, which is what makes a trend line attributable.
+  frozen
+  /// The `knowledge_article` table as an admin has it right now.
+  live
+}
+
+/// How far a run got. Mirrors `EVAL_RUN_STATUS` in `@ticket/shared`.
+enum EvalRunStatus {
+  running
+  completed
+  /// The run itself fell over. Not "a metric came in below its threshold" —
+  /// that is a `completed` run with bad numbers, which is the answer, not an
+  /// error.
+  failed
+}

@@ -1,7 +1,9 @@
 import { isAiConfigured } from "../ai/provider";
+import { isEvalConfigured } from "../evals/config";
 import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
+import { registerEvalRun } from "./eval-run";
 import { registerPruneActivityTrails } from "./prune-activity-trails";
 import { registerPruneOutbox } from "./prune-outbox";
 import { registerSendEmail } from "./send-email";
@@ -38,6 +40,15 @@ export async function startJobs(): Promise<void> {
   if (isAiConfigured()) {
     await registerClassifyTicket(boss);
     await registerAutoReplyTicket(boss);
+  }
+  // Gated the same way and for the same reason, through the eval harness's own
+  // one-line guard: `enqueueEvalRun` is a no-op without a key and the route
+  // refuses first, so a keyless deployment's worker on this queue would be pure
+  // overhead — and worse than overhead the day a second, AI-enabled process
+  // points at the same database, where an idle-but-registered worker can pick
+  // up a job it cannot answer.
+  if (isEvalConfigured()) {
+    await registerEvalRun(boss);
   }
   await registerSendEmail(boss);
   await registerPruneOutbox(boss);

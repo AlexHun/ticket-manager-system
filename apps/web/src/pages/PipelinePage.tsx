@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, CircleSlash, RotateCcw } from "lucide-react";
+import type { AutoReplyCase } from "@ticket/core";
 import {
   DASHBOARD_RANGE,
   DEFAULT_DASHBOARD_RANGE,
@@ -34,7 +35,6 @@ import { cn } from "@/lib/utils";
 import { PipelineHandoff } from "./PipelineHandoff";
 import { PipelineRail } from "./PipelineRail";
 import { PipelineSimulator } from "./PipelineSimulator";
-import type { Scenario } from "./pipeline-scenarios";
 
 /**
  * What the system does when nobody is looking.
@@ -134,7 +134,7 @@ export function PipelinePage() {
   const [watchedTicketId, setWatchedTicketId] = useState<number | null>(null);
   const [watching, setWatching] = useState(false);
   const [stalled, setStalled] = useState(false);
-  const [scenario, setScenario] = useState<Scenario | null>(null);
+  const [scenario, setScenario] = useState<AutoReplyCase | null>(null);
   const queryClient = useQueryClient();
   const { connected } = useRealtimeStatus();
 
@@ -168,7 +168,7 @@ export function PipelinePage() {
     void queryClient.invalidateQueries({ queryKey: pipelineKeys.all });
   }, [outcome, queryClient]);
 
-  const handleSent = (ticketId: number, sentScenario: Scenario | null) => {
+  const handleSent = (ticketId: number, sentScenario: AutoReplyCase | null) => {
     setWatchedTicketId(ticketId);
     setScenario(sentScenario);
     setWatching(true);
@@ -458,7 +458,7 @@ function RunVerdict({
   pipelineLive,
 }: {
   run: PipelineRun;
-  scenario: Scenario | null;
+  scenario: AutoReplyCase | null;
   stalled: boolean;
   /** Whether the unattended reply is switched on at all — see `notOffered`. */
   pipelineLive: boolean;

@@ -20,6 +20,7 @@ import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
 import { changelogRouter } from "./routes/changelog";
 import { dashboardLayoutRouter } from "./routes/dashboard-layout";
+import { evalsRouter } from "./routes/evals";
 import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
 import { newFeaturesRouter } from "./routes/new-features";
@@ -147,6 +148,11 @@ app.use("/api/knowledge-articles", knowledgeRouter);
 // one: it reads back how the unattended pipeline is behaving, and — behind
 // `PIPELINE_SIMULATOR_ENABLED` — it can post an email into it.
 app.use("/api/pipeline", pipelineRouter);
+// Admin-only for the two reasons the pipeline is, sharpened: starting a run
+// spends model calls, and its results describe how the unattended path's own
+// safety checks are holding. A run writes nothing a customer or an agent would
+// ever see — see routes/evals.ts.
+app.use("/api/evals", evalsRouter);
 // Admin-only as well: it decides where every ticket the assistant hands back
 // lands, which is a staffing decision rather than something an agent picks.
 app.use("/api/automation", automationRouter);

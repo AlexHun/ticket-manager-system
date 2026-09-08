@@ -3,7 +3,13 @@ import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, SendHorizonal } from "lucide-react";
-import { simulateEmailSchema, type SimulateEmailValues } from "@ticket/core";
+import {
+  AUTO_REPLY_CASES,
+  DEFAULT_AUTO_REPLY_CASE_ID,
+  simulateEmailSchema,
+  type AutoReplyCase,
+  type SimulateEmailValues,
+} from "@ticket/core";
 import {
   SIMULATED_SENDER_DOMAIN,
   type PipelineConfig,
@@ -27,11 +33,6 @@ import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
-import {
-  DEFAULT_SCENARIO_ID,
-  SCENARIOS,
-  type Scenario,
-} from "./pipeline-scenarios";
 
 /**
  * Posting an email as if a customer had sent it.
@@ -55,7 +56,10 @@ interface LastSend {
   messageId: string;
 }
 
-function toValues(scenario: Scenario, inReplyTo = ""): SimulateEmailValues {
+function toValues(
+  scenario: AutoReplyCase,
+  inReplyTo = "",
+): SimulateEmailValues {
   return { ...scenario.values, inReplyTo };
 }
 
@@ -66,14 +70,16 @@ export function PipelineSimulator({
 }: {
   config: PipelineConfig;
   /** Hands the new ticket to the page, which starts polling its trace. */
-  onSent: (ticketId: number, scenario: Scenario | null) => void;
+  onSent: (ticketId: number, scenario: AutoReplyCase | null) => void;
   className?: string;
 }) {
-  const [scenarioId, setScenarioId] = useState<string>(DEFAULT_SCENARIO_ID);
+  const [scenarioId, setScenarioId] = useState<string>(
+    DEFAULT_AUTO_REPLY_CASE_ID,
+  );
   const [lastSend, setLastSend] = useState<LastSend | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const scenario = SCENARIOS.find((s) => s.id === scenarioId) ?? null;
+  const scenario = AUTO_REPLY_CASES.find((s) => s.id === scenarioId) ?? null;
 
   const {
     register,
@@ -83,7 +89,7 @@ export function PipelineSimulator({
     formState: { errors, isSubmitting },
   } = useForm<SimulateEmailValues>({
     resolver: zodResolver(simulateEmailSchema),
-    defaultValues: toValues(SCENARIOS[0]!),
+    defaultValues: toValues(AUTO_REPLY_CASES[0]!),
   });
 
   // Picking a scenario refills the whole form. Anything typed is discarded,
@@ -169,7 +175,7 @@ export function PipelineSimulator({
               <SelectContent>
                 <SelectGroup>
                   <SelectLabel>Ordinary mail</SelectLabel>
-                  {SCENARIOS.filter((s) => !s.adversarial).map((s) => (
+                  {AUTO_REPLY_CASES.filter((s) => !s.adversarial).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>
@@ -177,7 +183,7 @@ export function PipelineSimulator({
                 </SelectGroup>
                 <SelectGroup>
                   <SelectLabel>Payloads</SelectLabel>
-                  {SCENARIOS.filter((s) => s.adversarial).map((s) => (
+                  {AUTO_REPLY_CASES.filter((s) => s.adversarial).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>

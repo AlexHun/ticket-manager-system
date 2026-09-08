@@ -37,77 +37,101 @@ const LOCAL_PART = /^[a-z0-9](?:[a-z0-9._+-]{0,38}[a-z0-9])?$/i;
  * - **`messageId`.** Minted server-side, so a simulation cannot collide with a
  *   real thread's id or claim to be one.
  */
-export const simulateEmailSchema = z
-  .object({
-    localPart: z
-      .string()
-      .trim()
-      .min(1, "Give the sender an address")
-      .regex(
-        LOCAL_PART,
-        "Letters, digits, dots, plus, underscore and hyphen only",
-      ),
-    /**
-     * Free-form on purpose, and the only field here that is.
-     *
-     * It is the email's From display name, which is chosen by whoever sent the
-     * mail and is therefore the one piece of attacker-controlled text that
-     * reaches `greetingName` in `ai/auto-reply.ts`. Constraining it here would
-     * make the page unable to demonstrate the thing that field exists to defend
-     * against — type `Marta, see https://evil.example` and watch the greeting
-     * come back as `Hello,` with no link in it.
-     */
-    senderName: z
-      .string()
-      .trim()
-      .min(1, "Give the sender a name")
-      .max(
-        SENDER_NAME_MAX_LENGTH,
-        `Keep the name to ${SENDER_NAME_MAX_LENGTH} characters or fewer`,
-      ),
-    subject: z
-      .string()
-      .trim()
-      .min(1, "Give the email a subject")
-      .max(
-        SUBJECT_MAX_LENGTH,
-        `Keep the subject to ${SUBJECT_MAX_LENGTH} characters or fewer`,
-      ),
-    /**
-     * Empty is allowed, and is how the `noText` branch is demonstrated: an
-     * HTML-only email is a real thing customers send, and the pipeline declines
-     * it because there is nothing to read. The pair is checked below.
-     */
-    textBody: z
-      .string()
-      .max(
-        MAX_MESSAGE_BODY_LENGTH,
-        `Keep the body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
-      ),
-    /**
-     * Stored, never rendered, never sent to a model — see the "never render
-     * email HTML" rule. It is here so an HTML-only email can be simulated
-     * faithfully, which means the row it writes has to look like the real thing.
-     */
-    htmlBody: z
-      .string()
-      .max(
-        MAX_MESSAGE_BODY_LENGTH,
-        `Keep the HTML body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
-      ),
-    /**
-     * The `Message-ID` this is a reply to, for the threading scenario. Empty
-     * means a new conversation.
-     *
-     * The route restricts what this may point at — only tickets whose customer
-     * is on the simulated domain — so a simulation can thread onto a ticket you
-     * simulated and can never forge a customer message onto a real one.
-     */
-    inReplyTo: z.string().trim().max(200, "That is not a Message-ID"),
-  })
-  .refine((v) => v.textBody.trim().length > 0 || v.htmlBody.trim().length > 0, {
+const simulateEmailFields = z.object({
+  localPart: z
+    .string()
+    .trim()
+    .min(1, "Give the sender an address")
+    .regex(
+      LOCAL_PART,
+      "Letters, digits, dots, plus, underscore and hyphen only",
+    ),
+  /**
+   * Free-form on purpose, and the only field here that is.
+   *
+   * It is the email's From display name, which is chosen by whoever sent the
+   * mail and is therefore the one piece of attacker-controlled text that
+   * reaches `greetingName` in `ai/auto-reply.ts`. Constraining it here would
+   * make the page unable to demonstrate the thing that field exists to defend
+   * against — type `Marta, see https://evil.example` and watch the greeting
+   * come back as `Hello,` with no link in it.
+   */
+  senderName: z
+    .string()
+    .trim()
+    .min(1, "Give the sender a name")
+    .max(
+      SENDER_NAME_MAX_LENGTH,
+      `Keep the name to ${SENDER_NAME_MAX_LENGTH} characters or fewer`,
+    ),
+  subject: z
+    .string()
+    .trim()
+    .min(1, "Give the email a subject")
+    .max(
+      SUBJECT_MAX_LENGTH,
+      `Keep the subject to ${SUBJECT_MAX_LENGTH} characters or fewer`,
+    ),
+  /**
+   * Empty is allowed, and is how the `noText` branch is demonstrated: an
+   * HTML-only email is a real thing customers send, and the pipeline declines
+   * it because there is nothing to read. The pair is checked below.
+   */
+  textBody: z
+    .string()
+    .max(
+      MAX_MESSAGE_BODY_LENGTH,
+      `Keep the body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
+    ),
+  /**
+   * Stored, never rendered, never sent to a model — see the "never render
+   * email HTML" rule. It is here so an HTML-only email can be simulated
+   * faithfully, which means the row it writes has to look like the real thing.
+   */
+  htmlBody: z
+    .string()
+    .max(
+      MAX_MESSAGE_BODY_LENGTH,
+      `Keep the HTML body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
+    ),
+  /**
+   * The `Message-ID` this is a reply to, for the threading scenario. Empty
+   * means a new conversation.
+   *
+   * The route restricts what this may point at — only tickets whose customer
+   * is on the simulated domain — so a simulation can thread onto a ticket you
+   * simulated and can never forge a customer message onto a real one.
+   */
+  inReplyTo: z.string().trim().max(200, "That is not a Message-ID"),
+});
+
+/**
+ * The object above with its one cross-field rule attached.
+ *
+ * Split in two so `schemas/evals.ts` can `.omit({ inReplyTo: true })` the
+ * fields — `.omit` does not exist on a refined schema — and so the case set and
+ * the simulator validate an email body against the *same* declaration rather
+ * than two that agree today. `simulateEmailSchema` is still the only thing any
+ * route parses; the object half is not exported.
+ */
+export const simulateEmailSchema = simulateEmailFields.refine(
+  (v) => v.textBody.trim().length > 0 || v.htmlBody.trim().length > 0,
+  {
     error: "An email with no body at all is not something a customer can send",
     path: ["textBody"],
-  });
+  },
+);
 
 export type SimulateEmailValues = z.infer<typeof simulateEmailSchema>;
+
+/**
+ * The half of a simulated email a stored case carries: everything but the
+ * threading header.
+ *
+ * A case opens a conversation by definition — it is one email handed to the
+ * auto-reply with nothing in front of it — so `inReplyTo` is not a field it
+ * could meaningfully have. Derived rather than restated for the reason above.
+ */
+export const caseEmailSchema = simulateEmailFields.omit({ inReplyTo: true });
+
+export type CaseEmailValues = z.infer<typeof caseEmailSchema>;

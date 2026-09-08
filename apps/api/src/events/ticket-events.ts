@@ -59,6 +59,30 @@ export function publishPipelineChanged(ticketId: number): void {
 }
 
 /**
+ * An eval run started, finished, or fell over.
+ *
+ * The one publisher here that names something other than a ticket, and the
+ * reason `TicketEvent` is a union: a run answers a synthesized input and never
+ * reaches the code that writes a ticket, so there is no ticket id to carry and
+ * inventing one would be the first lie on this channel.
+ *
+ * Admin-only by `EVENT_AUDIENCE`, matching `requireAdmin` on every route in
+ * `routes/evals.ts` — an event that outran its own endpoint would be a leak no
+ * route guard could catch.
+ *
+ * Both rules at the top of this file apply unchanged. It is published *after*
+ * the transaction that recorded the verdict, and the enforcement at the seam
+ * (ADR-0015) is what makes that free for a publisher added years later.
+ */
+export function publishEvalRunChanged(runId: number): void {
+  publish({
+    kind: TICKET_EVENT.eval_run_changed,
+    runId,
+    at: new Date().toISOString(),
+  });
+}
+
+/**
  * An inbound email opened a ticket.
  *
  * The one event with no ticket on anyone's screen to correct: nobody has this

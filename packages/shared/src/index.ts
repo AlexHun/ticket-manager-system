@@ -753,6 +753,20 @@ export const TICKET_EVENT = {
    * genuinely wants to watch it.
    */
   pipeline_changed: "pipeline_changed",
+  /**
+   * An eval run started, finished, or failed.
+   *
+   * Admin-only for exactly the reason `pipeline_changed` is: every route in
+   * `apps/api/src/routes/evals.ts` is `requireAdmin`, and an event that outran
+   * its own endpoint would be a leak no route guard could catch.
+   *
+   * It is also the first kind that is **not about a ticket**, which is what
+   * makes `TicketEvent` below a union rather than one interface. See the note
+   * there — an eval run touches no ticket at all, by construction, and an
+   * event carrying a `ticketId` it made up would be the first lie on this
+   * channel.
+   */
+  eval_run_changed: "eval_run_changed",
 } as const;
 
 export type TicketEventKind = (typeof TICKET_EVENT)[keyof typeof TICKET_EVENT];
@@ -818,14 +832,53 @@ export const ACTIVITY_EVENT_FIELD: Record<
  * payloads at 8000 bytes, and a design that only ever sends ids can never meet
  * that wall.
  */
-export interface TicketEvent {
+/** Every event, whatever it is about: a verb and a timestamp. */
+interface EventBase {
   kind: TicketEventKind;
-  ticketId: number;
   /** ISO. Ordering, and a "last updated" affordance on screen. */
   at: string;
+}
+
+/** The four kinds that name a ticket. */
+export interface TicketScopedEvent extends EventBase {
+  kind: Exclude<TicketEventKind, typeof TICKET_EVENT.eval_run_changed>;
+  ticketId: number;
   /** Only on `ticket_updated`, so the client knows whether counts can have moved. */
   fields?: TicketEventField[];
 }
+
+/**
+ * The one kind that names an eval run instead.
+ *
+ * A run is answered by handing a synthesized input straight to `autoReply`, so
+ * it never reaches the code that writes a ticket and there is no ticket id to
+ * put here. The alternative — reusing `ticketId` for a run id — would make the
+ * field's name a lie on one branch of a union nothing forces you to narrow,
+ * which is precisely the sort of thing that is discovered from a screen showing
+ * the wrong ticket.
+ */
+export interface EvalRunEvent extends EventBase {
+  kind: typeof TICKET_EVENT.eval_run_changed;
+  runId: number;
+}
+
+export type TicketEvent = TicketScopedEvent | EvalRunEvent;
+
+/**
+ * The member of the union a given kind arrives as — for a handler table keyed
+ * by kind.
+ *
+ * A conditional rather than `Extract<TicketEvent, { kind: K }>`, which yields
+ * `never` here: `TicketScopedEvent` declares `kind` as the four-literal union,
+ * and that is not assignable to `{ kind: "ticket_updated" }`. Splitting the
+ * scoped branch into four single-kind interfaces would make `Extract` work and
+ * would cost four copies of the same three fields, which is a worse trade than
+ * one conditional.
+ */
+export type EventOfKind<K extends TicketEventKind> =
+  K extends typeof TICKET_EVENT.eval_run_changed
+    ? EvalRunEvent
+    : TicketScopedEvent;
 
 /**
  * Who may hear each kind.
@@ -837,13 +890,15 @@ export interface TicketEvent {
  *
  * `pipeline_changed` is `admin` because every route in `routes/pipeline.ts` is
  * `requireAdmin` — an event that outran its own endpoint would be a leak that no
- * route guard could catch.
+ * route guard could catch. `eval_run_changed` is `admin` for exactly that
+ * reason, against `routes/evals.ts`.
  */
 export const EVENT_AUDIENCE: Record<TicketEventKind, UserRole | "all"> = {
   ticket_created: "all",
   ticket_updated: "all",
   ticket_message: "all",
   pipeline_changed: USER_ROLE.admin,
+  eval_run_changed: USER_ROLE.admin,
 };
 
 /**
@@ -1699,6 +1754,104 @@ export const PIPELINE_RECENT_LIMIT = 12;
  * and being able to type a hostile one is how you watch it work.
  */
 export const SIMULATED_SENDER_DOMAIN = "sim.example.com";
+
+/**
+ * Which knowledge base an eval run answered from. Mirrors the `EvalCorpus`
+ * enum in the schema.
+ *
+ * Recorded on every run, and the two are **never averaged into one number**
+ * (PRD R4). A `frozen` run answers from `apps/api/knowledge-base.md` — the seed
+ * corpus, read as data — so its trend line moves only when the code does. A
+ * `live` run answers from the `knowledge_article` table, where an admin's edit
+ * and a prompt regression look identical from the outside. Mixing them makes a
+ * red run unattributable, which is the one thing this harness exists to stop.
+ *
+ * Slice 1 writes `frozen` and nothing else; `live` arrives with the corpus
+ * choice on the start route.
+ */
+export const EVAL_CORPUS = {
+  frozen: "frozen",
+  live: "live",
+} as const;
+
+export type EvalCorpus = (typeof EVAL_CORPUS)[keyof typeof EVAL_CORPUS];
+
+/**
+ * Where one run got to. Mirrors the `EvalRunStatus` enum in the schema.
+ *
+ * `failed` is the run itself falling over — the provider was unreachable, or
+ * the queue ran out of retries. It is **not** a metric below its threshold:
+ * that is a finished run whose numbers are bad, which is the answer this thing
+ * is for, and it stays `completed`.
+ */
+export const EVAL_RUN_STATUS = {
+  running: "running",
+  completed: "completed",
+  failed: "failed",
+} as const;
+
+export type EvalRunStatus =
+  (typeof EVAL_RUN_STATUS)[keyof typeof EVAL_RUN_STATUS];
+
+/**
+ * What one case did when it was answered.
+ *
+ * `expected` is copied onto the row rather than looked up from the case set at
+ * read time, and that is deliberate: the case set is edited by hand, and a run
+ * from three weeks ago has to keep saying what *it* was measured against. A
+ * row that re-derived its own expectation would silently agree with whatever
+ * the file says today, which is the failure mode a stored result exists to
+ * prevent.
+ *
+ * `outcome` and `decline` are plain strings in the database, narrowed here by
+ * the API — same arrangement as `Ticket.autoReplyDecline`, and for the same
+ * reason: they are display-only and grow a value every time a safety check is
+ * added to `ai/auto-reply.ts`. `null` on the wire means "a reason this build
+ * has no wording for", which is better than rendering a raw column at an admin.
+ */
+export interface EvalCaseResultRow {
+  id: number;
+  caseId: string;
+  caseName: string;
+  adversarial: boolean;
+  expectedOutcome: PipelineOutcome;
+  expectedDecline: AutoReplyDecline | null;
+  actualOutcome: PipelineOutcome;
+  actualDecline: AutoReplyDecline | null;
+  /** Whether outcome *and*, when declined, reason both landed where expected. */
+  matched: boolean;
+}
+
+/** One run, with every case it answered. */
+export interface EvalRunRow {
+  id: number;
+  corpus: EvalCorpus;
+  status: EvalRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  /** Why the run itself fell over. Null on every run that reached a verdict. */
+  error: string | null;
+  results: EvalCaseResultRow[];
+}
+
+export interface EvalRunsResponse {
+  /**
+   * Whether this deployment can run an eval at all — one key behind every AI
+   * feature (ADR-0003), so an unkeyed deployment cannot start one. A presence
+   * boolean, never the value: same rule the pipeline config block keeps.
+   */
+  evalConfigured: boolean;
+  /** Newest first. */
+  runs: EvalRunRow[];
+}
+
+/** The reply to `POST /api/evals/runs`: the run is queued, not finished. */
+export interface EvalRunStartedResponse {
+  runId: number;
+}
+
+/** How many runs `GET /api/evals/runs` carries. Named here because the heading quotes it. */
+export const EVAL_RUN_LIMIT = 20;
 
 /**
  * What became of one email this desk meant to send.
