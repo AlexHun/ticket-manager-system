@@ -7,7 +7,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    /*
+  /*
      * Two families, two jobs.
      *
      * `--font-display` is a transitional serif and it is used in exactly one
@@ -30,77 +30,77 @@
      * headings are chrome — the app naming its own sections — and giving them
      * the serif would spend the distinction on the least interesting words here.
      */
-    --font-display: 'Source Serif 4 Variable', ui-serif, Georgia, serif;
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    /* Elapsed silence, in four steps. See the values in :root for what each one
+  --font-display: "Source Serif 4 Variable", ui-serif, Georgia, serif;
+  --font-heading: var(--font-sans);
+  --font-sans: "Geist Variable", sans-serif;
+  /* Elapsed silence, in four steps. See the values in :root for what each one
        means and what it was measured at. */
-    --color-ember-1: var(--ember-1);
-    --color-ember-2: var(--ember-2);
-    --color-ember-3: var(--ember-3);
-    --color-calm: var(--calm);
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    /* `inline` is what makes these work per-mode: the declared value is itself a
+  --color-ember-1: var(--ember-1);
+  --color-ember-2: var(--ember-2);
+  --color-ember-3: var(--ember-3);
+  --color-calm: var(--calm);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  /* `inline` is what makes these work per-mode: the declared value is itself a
        var(), so `bg-viz-open` emits `background-color: var(--viz-open)` and
        resolves against whichever of :root / .dark is in force at use time. */
-    --color-viz-ord-1: var(--viz-ord-1);
-    --color-viz-ord-2: var(--viz-ord-2);
-    --color-viz-ord-3: var(--viz-ord-3);
-    --color-viz-ord-4: var(--viz-ord-4);
-    --color-viz-new: var(--viz-new);
-    --color-viz-open: var(--viz-open);
-    --color-viz-resolved: var(--viz-resolved);
-    --color-viz-closed: var(--viz-closed);
-    --color-viz-processing: var(--viz-processing);
-    --color-viz-accent: var(--viz-accent);
-    --color-viz-grid: var(--viz-grid);
-    --color-viz-cursor: var(--viz-cursor);
-    --color-viz-tooltip-edge: var(--viz-tooltip-edge);
-    /* Status. Reserved for good/warning/critical state and never for a series —
+  --color-viz-ord-1: var(--viz-ord-1);
+  --color-viz-ord-2: var(--viz-ord-2);
+  --color-viz-ord-3: var(--viz-ord-3);
+  --color-viz-ord-4: var(--viz-ord-4);
+  --color-viz-new: var(--viz-new);
+  --color-viz-open: var(--viz-open);
+  --color-viz-resolved: var(--viz-resolved);
+  --color-viz-closed: var(--viz-closed);
+  --color-viz-processing: var(--viz-processing);
+  --color-viz-accent: var(--viz-accent);
+  --color-viz-grid: var(--viz-grid);
+  --color-viz-cursor: var(--viz-cursor);
+  --color-viz-tooltip-edge: var(--viz-tooltip-edge);
+  /* Status. Reserved for good/warning/critical state and never for a series —
        see the note beside the values in :root. */
-    --color-status-good: var(--status-good);
-    --color-status-warning: var(--status-warning);
-    --color-status-critical: var(--status-critical);
-    --color-status-good-soft: var(--status-good-soft);
-    --color-status-warning-soft: var(--status-warning-soft);
-    --color-status-critical-soft: var(--status-critical-soft);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-critical: var(--status-critical);
+  --color-status-good-soft: var(--status-good-soft);
+  --color-status-warning-soft: var(--status-warning-soft);
+  --color-status-critical-soft: var(--status-critical-soft);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 /*
@@ -121,44 +121,45 @@
  * `index.html` therefore hard-codes `class="dark"` on <html>, with no script
  * and nothing to read from localStorage.
  */
-:root, .dark {
-    /* Native UI — <select> popups, scrollbars, focus rings — is drawn by the
+:root,
+.dark {
+  /* Native UI — <select> popups, scrollbars, focus rings — is drawn by the
        browser, not by these tokens. Without this it renders light and the
        near-white option text lands on a white popup. */
-    color-scheme: dark;
-    --background: oklch(0.148 0.004 228.8);
-    --foreground: oklch(0.987 0.002 197.1);
-    --card: oklch(0.218 0.008 223.9);
-    --card-foreground: oklch(0.987 0.002 197.1);
-    --popover: oklch(0.218 0.008 223.9);
-    --popover-foreground: oklch(0.987 0.002 197.1);
-    --primary: oklch(0.432 0.095 166.913);
-    --primary-foreground: oklch(0.979 0.021 166.113);
-    --secondary: oklch(0.274 0.006 286.033);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.275 0.011 216.9);
-    --muted-foreground: oklch(0.723 0.014 214.4);
-    --accent: oklch(0.275 0.011 216.9);
-    --accent-foreground: oklch(0.987 0.002 197.1);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.56 0.021 213.5);
-    --chart-1: oklch(0.845 0.143 164.978);
-    --chart-2: oklch(0.696 0.17 162.48);
-    --chart-3: oklch(0.596 0.145 163.225);
-    --chart-4: oklch(0.508 0.118 165.612);
-    --chart-5: oklch(0.432 0.095 166.913);
+  color-scheme: dark;
+  --background: oklch(0.148 0.004 228.8);
+  --foreground: oklch(0.987 0.002 197.1);
+  --card: oklch(0.218 0.008 223.9);
+  --card-foreground: oklch(0.987 0.002 197.1);
+  --popover: oklch(0.218 0.008 223.9);
+  --popover-foreground: oklch(0.987 0.002 197.1);
+  --primary: oklch(0.432 0.095 166.913);
+  --primary-foreground: oklch(0.979 0.021 166.113);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.275 0.011 216.9);
+  --muted-foreground: oklch(0.723 0.014 214.4);
+  --accent: oklch(0.275 0.011 216.9);
+  --accent-foreground: oklch(0.987 0.002 197.1);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.56 0.021 213.5);
+  --chart-1: oklch(0.845 0.143 164.978);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.596 0.145 163.225);
+  --chart-4: oklch(0.508 0.118 165.612);
+  --chart-5: oklch(0.432 0.095 166.913);
 
-    /* The ordinal window starts at --chart-1 and runs down, because --chart-5
+  /* The ordinal window starts at --chart-1 and runs down, because --chart-5
        measures only 2.28:1 on this card and would vanish into it. Contrasts:
        11.42 / 7.02 / 4.76 / 3.24. */
-    --viz-ord-1: var(--chart-1);
-    --viz-ord-2: var(--chart-2);
-    --viz-ord-3: var(--chart-3);
-    --viz-ord-4: var(--chart-4);
+  --viz-ord-1: var(--chart-1);
+  --viz-ord-2: var(--chart-2);
+  --viz-ord-3: var(--chart-3);
+  --viz-ord-4: var(--chart-4);
 
-    /* The status ramp, now split across both families instead of being five
+  /* The status ramp, now split across both families instead of being five
        greens.
 
        These used to be `--chart-1` through `--chart-5` — one emerald ramp, so
@@ -183,15 +184,15 @@
        opposite of true. Grey says "not yours to act on" without claiming a side.
 
        Measured on the card, not eyeballed — see the check in the header above. */
-    --viz-new: var(--ember-1);
-    --viz-open: var(--ember-2);
-    --viz-resolved: var(--calm);
-    --viz-closed: oklch(0.508 0.118 165.612);
-    --viz-processing: oklch(0.55 0.012 220);
+  --viz-new: var(--ember-1);
+  --viz-open: var(--ember-2);
+  --viz-resolved: var(--calm);
+  --viz-closed: oklch(0.508 0.118 165.612);
+  --viz-processing: oklch(0.55 0.012 220);
 
-    --viz-accent: var(--chart-3);
+  --viz-accent: var(--chart-3);
 
-    /*
+  /*
      * Calm and ember: the one idea this palette now carries.
      *
      * Green used to mean status, series, brand, primary action and "good" at the
@@ -225,12 +226,12 @@
      * settled half of the queue the first thing the eye caught. It still clears
      * 4.5:1, so it is safe as badge text as well as as a mark.
      */
-    --calm: oklch(0.596 0.145 163.225);
-    --ember-1: oklch(0.85 0.14 85);
-    --ember-2: oklch(0.68 0.19 45);
-    --ember-3: oklch(0.62 0.21 25);
+  --calm: oklch(0.596 0.145 163.225);
+  --ember-1: oklch(0.85 0.14 85);
+  --ember-2: oklch(0.68 0.19 45);
+  --ember-3: oklch(0.62 0.21 25);
 
-    /*
+  /*
      * The AI shine, and the one place in this file where a colour is chosen to
      * be *light* rather than to hold a contrast ratio.
      *
@@ -249,15 +250,15 @@
      * Neither is a text or a fill colour and neither is held to a contrast
      * ratio — they are never behind type. Don't reach for them as accents.
      */
-    --ai-shine: oklch(0.9 0.15 165);
-    --ai-shine-core: oklch(0.99 0.04 165);
+  --ai-shine: oklch(0.9 0.15 165);
+  --ai-shine-core: oklch(0.99 0.04 165);
 
-    /* Chart furniture — quieter than every mark drawn on top of it. */
-    --viz-grid: oklch(1 0 0 / 5%);         /* 1.82:1 — what border/50 resolved to */
-    --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
-    --viz-tooltip-edge: oklch(1 0 0 / 5%);  /* = border/50, unchanged */
+  /* Chart furniture — quieter than every mark drawn on top of it. */
+  --viz-grid: oklch(1 0 0 / 5%); /* 1.82:1 — what border/50 resolved to */
+  --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
+  --viz-tooltip-edge: oklch(1 0 0 / 5%); /* = border/50, unchanged */
 
-    /*
+  /*
      * Status. A small reserved scale for state — never a series colour, and
      * never "the fourth thing on the chart".
      *
@@ -282,23 +283,23 @@
      * The -soft steps are chip fills, not text: low-alpha washes of the same
      * hue that sit under the label on top of them.
      */
-    --status-good: #34d399;
-    --status-warning: #fbbf24;
-    --status-critical: #ff6467;
-    --status-good-soft: oklch(0.75 0.15 165 / 18%);
-    --status-warning-soft: oklch(0.83 0.16 85 / 18%);
-    --status-critical-soft: oklch(0.70 0.19 22 / 20%);
+  --status-good: #34d399;
+  --status-warning: #fbbf24;
+  --status-critical: #ff6467;
+  --status-good-soft: oklch(0.75 0.15 165 / 18%);
+  --status-warning-soft: oklch(0.83 0.16 85 / 18%);
+  --status-critical-soft: oklch(0.7 0.19 22 / 20%);
 
-    --sidebar: oklch(0.218 0.008 223.9);
-    --sidebar-foreground: oklch(0.987 0.002 197.1);
-    --sidebar-primary: oklch(0.696 0.17 162.48);
-    --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
-    --sidebar-accent: oklch(0.275 0.011 216.9);
-    --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.56 0.021 213.5);
+  --sidebar: oklch(0.218 0.008 223.9);
+  --sidebar-foreground: oklch(0.987 0.002 197.1);
+  --sidebar-primary: oklch(0.696 0.17 162.48);
+  --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
+  --sidebar-accent: oklch(0.275 0.011 216.9);
+  --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.56 0.021 213.5);
 
-    --radius: 0.45rem;
+  --radius: 0.45rem;
 }
 
 /*
@@ -315,13 +316,25 @@
  * no individual component has to remember to.
  */
 @keyframes status-in {
-  from { opacity: 0; transform: scale(0.85); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes panel-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @utility animate-status-in {
@@ -336,8 +349,14 @@
    moves the entire page, and the same 6px that reads as a lift on one card
    reads as a lurch on a full screen of content. */
 @keyframes page-in {
-  from { opacity: 0; transform: translateY(3px); }
-  to   { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @utility animate-page-in {
@@ -368,8 +387,12 @@
      light should arrive and leave rather than snapping into existence. Paired
      with a bar half the element's width, 200% starts it just off the right and
      -100% carries it just past the left. */
-  from { transform: translateX(200%); }
-  to   { transform: translateX(-100%); }
+  from {
+    transform: translateX(200%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
 }
 
 @utility animate-ai-shine {
@@ -441,8 +464,15 @@
 }
 
 @keyframes ai-glow {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.55; transform: scale(0.88); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.88);
+  }
 }
 
 @utility animate-ai-glow {
@@ -465,13 +495,13 @@
 
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
     @apply bg-background text-foreground;
-    }
+  }
   html {
     @apply font-sans;
-    }
+  }
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus,
@@ -481,5 +511,5 @@
     box-shadow: inset 0 0 0 1000px var(--background);
     transition: background-color 5000s ease-in-out 0s;
     caret-color: var(--foreground);
-    }
+  }
 }

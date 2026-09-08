@@ -197,7 +197,9 @@ for (const pageKey of TUTORIAL_PAGE_KEYS) {
   inserted.push(pageKey);
 }
 
-console.log(`[seed-tutorials] ${inserted.length} page(s) seeded, ${skipped.length} already had content`);
+console.log(
+  `[seed-tutorials] ${inserted.length} page(s) seeded, ${skipped.length} already had content`,
+);
 if (inserted.length > 0) {
   console.log(`[seed-tutorials] inserted: ${inserted.join(", ")}`);
 }

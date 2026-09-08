@@ -188,8 +188,7 @@ describe("userEditChanges", () => {
  * reading these.
  */
 process.env.TRUSTED_ORIGINS = "http://localhost:5173";
-process.env.BETTER_AUTH_SECRET =
-  "users-route-test-secret-of-at-least-32-chars";
+process.env.BETTER_AUTH_SECRET = "users-route-test-secret-of-at-least-32-chars";
 process.env.BETTER_AUTH_URL = "http://127.0.0.1:3999";
 
 await stubSendEmail();
@@ -1044,7 +1043,9 @@ describe("DELETE /api/users/:id", () => {
 describe("GET /api/users", () => {
   async function roster() {
     const res = await fetch(url("/"), { headers: asAdmin() });
-    return (await res.json()) as { users: { id: string; automated: boolean }[] };
+    return (await res.json()) as {
+      users: { id: string; automated: boolean }[];
+    };
   }
 
   test("lists everyone still on the desk, oldest first", async () => {

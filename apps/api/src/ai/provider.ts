@@ -70,7 +70,10 @@ export function isAiConfigured(): boolean {
 let provider: ReturnType<typeof createOpenAI> | undefined;
 
 export function openaiModel(modelId: string) {
-  provider ??= createOpenAI({ apiKey: OPENAI_API_KEY, baseURL: OPENAI_BASE_URL });
+  provider ??= createOpenAI({
+    apiKey: OPENAI_API_KEY,
+    baseURL: OPENAI_BASE_URL,
+  });
   return provider(modelId);
 }
 
@@ -205,8 +208,7 @@ export function classify(err: unknown): AiFailure {
   const cause = RetryError.isInstance(err) ? (err.lastError ?? err) : err;
   if (!APICallError.isInstance(cause)) return AI_FAILURE.provider;
 
-  const body =
-    typeof cause.responseBody === "string" ? cause.responseBody : "";
+  const body = typeof cause.responseBody === "string" ? cause.responseBody : "";
   if (/insufficient_quota|credit_balance_exhausted|billing/i.test(body)) {
     return AI_FAILURE.quota;
   }

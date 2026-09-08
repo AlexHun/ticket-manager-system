@@ -258,7 +258,10 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
 
   const undoPolish = () => {
     if (prePolish === null) return;
-    setValue("textBody", prePolish, { shouldDirty: true, shouldValidate: true });
+    setValue("textBody", prePolish, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
     setPrePolish(null);
     setPolishedDraft(null);
     polish.reset();
@@ -272,8 +275,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     mutation.mutate({ ...values, polishedDraft: polishedDraft ?? undefined });
   });
 
-  const busy =
-    mutation.isPending || polish.isPending || resolve.isPending;
+  const busy = mutation.isPending || polish.isPending || resolve.isPending;
 
   /**
    * "Send & resolve", as one gesture.

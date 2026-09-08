@@ -33,7 +33,8 @@ export const ticketKeys = {
    * instead of the ticket and its whole conversation. `isDetailKey` stays
    * correct beside it — that tests `key[1] === "detail"`.
    */
-  activity: (id: string | number) => ["tickets", "activity", String(id)] as const,
+  activity: (id: string | number) =>
+    ["tickets", "activity", String(id)] as const,
 
   /** The params object is part of the key: each filter/sort/page is its own entry. */
   list: (params: object) => ["tickets", params] as const,

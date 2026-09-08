@@ -14,7 +14,11 @@ import { FilterSelect } from "@/components/FilterSelect";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ACTIVITY_ENTITY_LABEL } from "@/lib/activity-feed-labels";
 import { useIsMobile } from "@/lib/use-mobile";
 import { useUsersQuery } from "@/lib/use-users";
@@ -37,7 +41,9 @@ export const EMPTY_ACTIVITY_FILTERS: ActivityFilterState = {
   to: "",
 };
 
-export function hasActiveActivityFilters(filters: ActivityFilterState): boolean {
+export function hasActiveActivityFilters(
+  filters: ActivityFilterState,
+): boolean {
   return (
     filters.entityType !== ANY ||
     filters.actorId !== ANY ||
@@ -92,7 +98,10 @@ interface DatePreset {
  * first rendered.
  */
 const DATE_PRESETS: DatePreset[] = [
-  { label: "Today", range: () => ({ from: startOfToday(), to: startOfToday() }) },
+  {
+    label: "Today",
+    range: () => ({ from: startOfToday(), to: startOfToday() }),
+  },
   {
     label: "Last 7 days",
     range: () => ({ from: addDays(startOfToday(), -6), to: startOfToday() }),
@@ -216,7 +225,9 @@ function ActivityDateRangeField({
       <Label htmlFor="activity-date-range">Date range</Label>
       <Popover
         open={open}
-        onOpenChange={(next) => (next ? setOpen(true) : closeAndDiscardPending())}
+        onOpenChange={(next) =>
+          next ? setOpen(true) : closeAndDiscardPending()
+        }
       >
         <PopoverTrigger asChild>
           <Button
@@ -242,7 +253,10 @@ function ActivityDateRangeField({
                 className="justify-start font-normal"
                 onClick={() => {
                   const picked = preset.range();
-                  onChange({ from: toValue(picked.from), to: toValue(picked.to) });
+                  onChange({
+                    from: toValue(picked.from),
+                    to: toValue(picked.to),
+                  });
                   closeAndDiscardPending();
                 }}
               >
@@ -287,7 +301,10 @@ function ActivityDateRangeField({
               onDayMouseEnter={(date) => setHoveredDate(date)}
               onSelect={(range) => {
                 if (range?.from && range?.to) {
-                  onChange({ from: toValue(range.from), to: toValue(range.to) });
+                  onChange({
+                    from: toValue(range.from),
+                    to: toValue(range.to),
+                  });
                   setOpen(false);
                   setPending(undefined);
                   setHoveredDate(undefined);

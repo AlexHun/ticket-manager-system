@@ -105,8 +105,7 @@ export interface ClassifyContext {
 }
 
 export type ClassifyResult =
-  | { ok: true; category: TicketCategory }
-  | { ok: false; reason: AiFailure };
+  { ok: true; category: TicketCategory } | { ok: false; reason: AiFailure };
 
 /**
  * The shape the model must answer in.

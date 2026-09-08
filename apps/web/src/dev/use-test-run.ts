@@ -231,19 +231,40 @@ export function useTestRunner(): TestRunner {
     [command],
   );
 
-  return { runs, activeId, queued, connected, problem, run, runAll, cancel, clear };
+  return {
+    runs,
+    activeId,
+    queued,
+    connected,
+    problem,
+    run,
+    runAll,
+    cancel,
+    clear,
+  };
 }
 
 /** One event folded into one suite's accumulated state. */
-function apply(run: SuiteRun, event: RunEvent, nextLineId: () => number): SuiteRun {
+function apply(
+  run: SuiteRun,
+  event: RunEvent,
+  nextLineId: () => number,
+): SuiteRun {
   switch (event.type) {
     case "start":
       // A fresh start wipes the previous run's output rather than appending to
       // it, so the log under a card is always one run's worth.
-      return { ...EMPTY_RUN, status: RUN_STATUS.running, startedAt: event.startedAt };
+      return {
+        ...EMPTY_RUN,
+        status: RUN_STATUS.running,
+        startedAt: event.startedAt,
+      };
 
     case "line": {
-      const lines = [...run.lines, { id: nextLineId(), text: event.text, stream: event.stream }];
+      const lines = [
+        ...run.lines,
+        { id: nextLineId(), text: event.text, stream: event.stream },
+      ];
       const overflow = Math.max(0, lines.length - MAX_LINES);
       return {
         ...run,

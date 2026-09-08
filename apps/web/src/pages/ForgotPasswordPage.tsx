@@ -66,7 +66,9 @@ export function ForgotPasswordPage() {
 
         <Card className="w-full">
           <CardHeader>
-            <CardTitle>{sent ? "Check your email" : "Forgot password"}</CardTitle>
+            <CardTitle>
+              {sent ? "Check your email" : "Forgot password"}
+            </CardTitle>
             <CardDescription>
               {sent
                 ? "If that address has an account, a link to choose a new password is on its way. It is good for 24 hours."

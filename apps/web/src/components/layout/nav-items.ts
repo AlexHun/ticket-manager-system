@@ -12,7 +12,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { matchPath } from "react-router-dom";
-import { NEW_FEATURE_KEY, USER_ROLE, type NewFeatureKey, type UserRole } from "@ticket/shared";
+import {
+  NEW_FEATURE_KEY,
+  USER_ROLE,
+  type NewFeatureKey,
+  type UserRole,
+} from "@ticket/shared";
 import { ROUTE, type RoutePath } from "@/lib/routes";
 
 export interface NavItem {
@@ -42,9 +47,19 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { to: ROUTE.dashboard.path, label: "Dashboard", icon: LayoutDashboardIcon, end: true },
+  {
+    to: ROUTE.dashboard.path,
+    label: "Dashboard",
+    icon: LayoutDashboardIcon,
+    end: true,
+  },
   { to: ROUTE.tickets.path, label: "Tickets", icon: TicketIcon },
-  { to: ROUTE.users.path, label: "Users", icon: UsersIcon, role: USER_ROLE.admin },
+  {
+    to: ROUTE.users.path,
+    label: "Users",
+    icon: UsersIcon,
+    role: USER_ROLE.admin,
+  },
   {
     to: ROUTE.knowledge.path,
     label: "Knowledge base",
@@ -94,13 +109,25 @@ export const NAV_ITEMS: readonly NavItem[] = [
  */
 export const DEV_NAV_ITEMS: readonly NavItem[] = import.meta.env.DEV
   ? ([
-      { to: ROUTE.devMap.path, label: "Project map", icon: NetworkIcon, end: true },
-      { to: ROUTE.devTests.path, label: "Tests", icon: FlaskConicalIcon, end: true },
+      {
+        to: ROUTE.devMap.path,
+        label: "Project map",
+        icon: NetworkIcon,
+        end: true,
+      },
+      {
+        to: ROUTE.devTests.path,
+        label: "Tests",
+        icon: FlaskConicalIcon,
+        end: true,
+      },
     ] as const)
   : [];
 
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
-  return matchPath({ path: item.to, end: item.end ?? false }, pathname) !== null;
+  return (
+    matchPath({ path: item.to, end: item.end ?? false }, pathname) !== null
+  );
 }
 
 /** Nav items this role is allowed to see. `undefined` role sees only the public ones. */
@@ -124,6 +151,8 @@ export function navItemsFor(role: UserRole | undefined): NavItem[] {
  * heading you can actually see; see `PageHeader`.
  */
 export function sectionTitle(pathname: string): string | null {
-  const item = NAV_ITEMS.find((candidate) => isNavItemActive(candidate, pathname));
+  const item = NAV_ITEMS.find((candidate) =>
+    isNavItemActive(candidate, pathname),
+  );
   return item?.label ?? null;
 }

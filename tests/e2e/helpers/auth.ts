@@ -2,7 +2,10 @@ import type { Page } from "@playwright/test";
 import type { UserRole } from "@ticket/shared";
 import { waitForInvitationLink } from "./db";
 
-export const CREDENTIALS: Record<UserRole, { email: string; password: string }> = {
+export const CREDENTIALS: Record<
+  UserRole,
+  { email: string; password: string }
+> = {
   admin: { email: "admin@example.com", password: "password123" },
   agent: { email: "agent@example.com", password: "password123" },
 };

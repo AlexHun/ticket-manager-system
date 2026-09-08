@@ -23,15 +23,17 @@ const PANEL_ID_BY_LABEL = new Map<string, DashboardPanelId>(
 );
 
 const FIRST_PANEL = DEFAULT_DASHBOARD_LAYOUT[0]!.panelId;
-const LAST_PANEL = DEFAULT_DASHBOARD_LAYOUT[DEFAULT_DASHBOARD_LAYOUT.length - 1]!.panelId;
+const LAST_PANEL =
+  DEFAULT_DASHBOARD_LAYOUT[DEFAULT_DASHBOARD_LAYOUT.length - 1]!.panelId;
 // statusMix is narrow (the minimum width) and topCustomers is wide (the
 // maximum) in the default layout — see DEFAULT_DASHBOARD_LAYOUT in
 // packages/shared/src/index.ts.
 const NARROWEST_PANEL = DEFAULT_DASHBOARD_LAYOUT.find(
   (p) => p.width === "narrow",
 )!.panelId;
-const WIDEST_PANEL = DEFAULT_DASHBOARD_LAYOUT.find((p) => p.width === "wide")!
-  .panelId;
+const WIDEST_PANEL = DEFAULT_DASHBOARD_LAYOUT.find(
+  (p) => p.width === "wide",
+)!.panelId;
 
 function label(panelId: DashboardPanelId): string {
   return DASHBOARD_PANEL_LABEL[panelId];
@@ -175,7 +177,9 @@ test.describe("Dashboard panel customization", () => {
     page,
   }) => {
     await signIn(page, "agent");
-    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Dashboard" }),
+    ).toBeVisible();
     await expect(
       page.getByText("Tickets created", { exact: true }),
     ).toBeVisible();
@@ -209,7 +213,10 @@ test.describe("Dashboard panel customization", () => {
     await enterCustomizeMode(page);
 
     const expectedOrder = DEFAULT_DASHBOARD_LAYOUT.map((p) => p.panelId);
-    [expectedOrder[0], expectedOrder[1]] = [expectedOrder[1]!, expectedOrder[0]!];
+    [expectedOrder[0], expectedOrder[1]] = [
+      expectedOrder[1]!,
+      expectedOrder[0]!,
+    ];
 
     await clickAndWaitForSave(
       page,

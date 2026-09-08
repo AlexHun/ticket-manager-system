@@ -1,0 +1,10 @@
+# Commits that are pure reformatting. `git blame` skips these so it reports the
+# commit that last changed a line's *content*, not the one that rewrapped it.
+#
+# GitHub's blame view reads this file automatically. Locally it is opt-in, once
+# per clone:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# chore: format the repo with Prettier
+71ec266177ef88db65ed687fe20f6f3bd38e070f

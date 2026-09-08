@@ -111,8 +111,10 @@ export const postmarkAdapter: RequestHandler = (req, _res, next) => {
     // the quoted history starts is good, but the thread is what an agent reads
     // and what the summariser is given, and a body silently missing its context
     // is worse than one carrying too much.
-    textBody: typeof payload.TextBody === "string" ? payload.TextBody : undefined,
-    htmlBody: typeof payload.HtmlBody === "string" ? payload.HtmlBody : undefined,
+    textBody:
+      typeof payload.TextBody === "string" ? payload.TextBody : undefined,
+    htmlBody:
+      typeof payload.HtmlBody === "string" ? payload.HtmlBody : undefined,
     inReplyTo: headerValue(headers, "in-reply-to") ?? undefined,
     references: references && references.length > 0 ? references : undefined,
   };

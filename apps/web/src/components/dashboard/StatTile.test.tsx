@@ -85,7 +85,9 @@ describe("StatTile", () => {
         statusLabel="Backlog high"
       />,
     );
-    expect(container.querySelector(".text-status-critical")).toBeInTheDocument();
+    expect(
+      container.querySelector(".text-status-critical"),
+    ).toBeInTheDocument();
   });
 
   /**

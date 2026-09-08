@@ -26,7 +26,11 @@ import {
   ticketListQueryParams,
 } from "@/lib/ticket-list-query";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { ROW_DENSITY, useRowDensity, type RowDensity } from "@/lib/use-row-density";
+import {
+  ROW_DENSITY,
+  useRowDensity,
+  type RowDensity,
+} from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
 import { Toggle } from "@/components/ui/toggle";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -92,7 +96,10 @@ function toSortParams(sorting: SortingState): {
 } {
   const active = sorting[0];
   if (!active || !isTicketSortField(active.id)) {
-    return { sort: DEFAULT_TICKET_SORT.field, order: DEFAULT_TICKET_SORT.order };
+    return {
+      sort: DEFAULT_TICKET_SORT.field,
+      order: DEFAULT_TICKET_SORT.order,
+    };
   }
   return {
     sort: active.id,

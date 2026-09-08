@@ -393,47 +393,55 @@ export async function ticketStatsHandler(
     LIMIT ${TOP_CUSTOMERS_LIMIT}
   `;
 
-  const [facts, volume, latency, age, workload, customers, attention, previousTotal] =
-    await prisma.$transaction([
-      prisma.$queryRaw<FactsRow[]>(factsSql),
-      prisma.$queryRaw<VolumeRow[]>(volumeSql),
-      prisma.$queryRaw<LatencyRow[]>(latencySql),
-      prisma.$queryRaw<AgeRow[]>(ageSql),
-      prisma.$queryRaw<WorkloadRow[]>(workloadSql),
-      prisma.$queryRaw<CustomerRow[]>(customersSql),
-      prisma.ticket.findMany({
-        // Same "not dealt with" definition as `backlog` above, in Prisma's
-        // vocabulary. `Processing` is excluded by construction: a ticket a
-        // worker is answering right now is the one thing on the dashboard that
-        // needs no attention at all.
-        where: { status: { in: [...BACKLOG_STATUS] }, ...mineWhere },
-        // Longest silence first; id breaks ties because seeded threads share an
-        // instant and an unstable order would reshuffle the card between loads.
-        orderBy: [{ lastMessageAt: "asc" }, { id: "asc" }],
-        take: NEEDS_ATTENTION_LIMIT,
-        select: {
-          id: true,
-          subject: true,
-          customerName: true,
-          lastMessageAt: true,
-          createdAt: true,
-          assignedTo: { select: { id: true, name: true, email: true } },
-          // Only the direction of the newest message: if the customer had the
-          // last word — or nobody has said anything — the ball is on our side.
-          messages: {
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-            take: 1,
-            select: { direction: true },
-          },
+  const [
+    facts,
+    volume,
+    latency,
+    age,
+    workload,
+    customers,
+    attention,
+    previousTotal,
+  ] = await prisma.$transaction([
+    prisma.$queryRaw<FactsRow[]>(factsSql),
+    prisma.$queryRaw<VolumeRow[]>(volumeSql),
+    prisma.$queryRaw<LatencyRow[]>(latencySql),
+    prisma.$queryRaw<AgeRow[]>(ageSql),
+    prisma.$queryRaw<WorkloadRow[]>(workloadSql),
+    prisma.$queryRaw<CustomerRow[]>(customersSql),
+    prisma.ticket.findMany({
+      // Same "not dealt with" definition as `backlog` above, in Prisma's
+      // vocabulary. `Processing` is excluded by construction: a ticket a
+      // worker is answering right now is the one thing on the dashboard that
+      // needs no attention at all.
+      where: { status: { in: [...BACKLOG_STATUS] }, ...mineWhere },
+      // Longest silence first; id breaks ties because seeded threads share an
+      // instant and an unstable order would reshuffle the card between loads.
+      orderBy: [{ lastMessageAt: "asc" }, { id: "asc" }],
+      take: NEEDS_ATTENTION_LIMIT,
+      select: {
+        id: true,
+        subject: true,
+        customerName: true,
+        lastMessageAt: true,
+        createdAt: true,
+        assignedTo: { select: { id: true, name: true, email: true } },
+        // Only the direction of the newest message: if the customer had the
+        // last word — or nobody has said anything — the ball is on our side.
+        messages: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { direction: true },
         },
-      }),
-      prisma.ticket.count({
-        where: {
-          createdAt: { gte: previousFrom, lt: from },
-          ...(isMine ? { assignedToId: session.user.id } : {}),
-        },
-      }),
-    ]);
+      },
+    }),
+    prisma.ticket.count({
+      where: {
+        createdAt: { gte: previousFrom, lt: from },
+        ...(isMine ? { assignedToId: session.user.id } : {}),
+      },
+    }),
+  ]);
 
   // Each raw query is an aggregate with no GROUP BY, so it always returns
   // exactly one row — but reading [0] off an empty array would be `undefined`,
@@ -457,7 +465,9 @@ export async function ticketStatsHandler(
   // for a slot in the top-N agents.
   const unassignedRow = workload.find((r) => r.id === null);
   const agents: AgentWorkload[] = workload
-    .filter((r): r is WorkloadRow & { id: string; name: string } => r.id !== null)
+    .filter(
+      (r): r is WorkloadRow & { id: string; name: string } => r.id !== null,
+    )
     .slice(0, WORKLOAD_AGENT_LIMIT)
     .map((r) => ({
       id: r.id,

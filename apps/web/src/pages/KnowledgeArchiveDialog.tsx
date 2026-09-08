@@ -73,9 +73,7 @@ export function KnowledgeArchiveDialog({
           <DialogTitle>
             {restoring ? "Restore this article?" : "Archive this article?"}
           </DialogTitle>
-          <DialogDescription>
-            {article?.title}
-          </DialogDescription>
+          <DialogDescription>{article?.title}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3 text-sm text-muted-foreground">

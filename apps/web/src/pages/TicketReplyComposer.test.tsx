@@ -26,7 +26,8 @@ const polishPost = apiStub.post(POLISH_URL);
 const sendPost = apiStub.post("/api/tickets/:id/messages");
 
 const DRAFT = "shipped fri, ur parcel is on the way";
-const POLISHED = "Hi Marta,\n\nYour parcel shipped on Friday.\n\nThanks,\nAaron";
+const POLISHED =
+  "Hi Marta,\n\nYour parcel shipped on Friday.\n\nThanks,\nAaron";
 
 function replyBox(): HTMLTextAreaElement {
   return screen.getByRole("textbox", { name: "Reply" });
@@ -185,7 +186,9 @@ describe("TicketReplyComposer polish — the round trip", () => {
 
     // The box is about to be overwritten; keystrokes typed into it in the
     // meantime would be thrown away.
-    expect(await screen.findByRole("button", { name: "Polishing…" })).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: "Polishing…" }),
+    ).toBeDisabled();
     expect(replyBox()).toBeDisabled();
     expect(sendButton()).toBeDisabled();
 
@@ -246,7 +249,9 @@ describe("TicketReplyComposer polish — undo", () => {
 
     await user.click(screen.getByRole("button", { name: "Undo polish" }));
 
-    expect(replyBox()).toHaveValue(`${POLISHED}\n\nPS: tracking updates tomorrow.`);
+    expect(replyBox()).toHaveValue(
+      `${POLISHED}\n\nPS: tracking updates tomorrow.`,
+    );
   });
 
   test("goes away once the reply is sent", async () => {
@@ -308,7 +313,9 @@ describe("TicketReplyComposer polish — the draft a send is compared against", 
     const user = renderComposer();
     fillDraft(DRAFT);
     await user.click(polishButton());
-    await user.click(await screen.findByRole("button", { name: "Undo polish" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Undo polish" }),
+    );
 
     await user.click(sendButton());
 
@@ -325,7 +332,9 @@ describe("TicketReplyComposer polish — one alert at a time", () => {
     fillDraft(DRAFT);
 
     await user.click(sendButton());
-    expect(await screen.findByRole("alert")).toHaveTextContent("Ticket not found");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Ticket not found",
+    );
 
     mockApi();
     await user.click(polishButton());

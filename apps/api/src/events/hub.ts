@@ -1,5 +1,9 @@
 import * as Sentry from "@sentry/bun";
-import { EVENT_AUDIENCE, type TicketEvent, type UserRole } from "@ticket/shared";
+import {
+  EVENT_AUDIENCE,
+  type TicketEvent,
+  type UserRole,
+} from "@ticket/shared";
 import { inTransaction } from "../transaction-scope";
 
 /**

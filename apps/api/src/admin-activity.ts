@@ -108,7 +108,11 @@ export function userEditChanges(
 ): AdminActivityEntry[] {
   return diffToEntries<AdminUserFields, AdminActivityAction>(before, after, [
     { field: "name", action: ADMIN_ACTIVITY_ACTION.user_edited, label: "Name" },
-    { field: "email", action: ADMIN_ACTIVITY_ACTION.user_edited, label: "Email" },
+    {
+      field: "email",
+      action: ADMIN_ACTIVITY_ACTION.user_edited,
+      label: "Email",
+    },
     { field: "role", action: ADMIN_ACTIVITY_ACTION.role_changed },
   ]);
 }

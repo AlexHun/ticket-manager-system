@@ -67,7 +67,9 @@ function isCategory(value: string): value is TicketCategory {
  * `internalNote` column is simply never selected into a prompt. Same guarantee,
  * and the notes survive for the people they were written for.
  */
-export function parseKnowledgeBaseMarkdown(markdown: string): ImportedArticle[] {
+export function parseKnowledgeBaseMarkdown(
+  markdown: string,
+): ImportedArticle[] {
   const articles: ImportedArticle[] = [];
 
   let id: string | null = null;
@@ -137,7 +139,8 @@ export function parseKnowledgeBaseMarkdown(markdown: string): ImportedArticle[] 
     if (meta) {
       const value = meta[1]!;
       category = isCategory(value) ? value : null;
-      if (category === null) console.warn(`[kb-import] ${id}: unknown category "${value}"`);
+      if (category === null)
+        console.warn(`[kb-import] ${id}: unknown category "${value}"`);
       autoReply = meta[2] === "yes";
       continue;
     }

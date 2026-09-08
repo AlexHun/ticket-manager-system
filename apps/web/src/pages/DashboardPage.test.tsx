@@ -240,9 +240,7 @@ describe("DashboardPage", () => {
     renderDashboard();
     expect(await screen.findByText("13 unassigned")).toBeInTheDocument();
     expect(screen.getByText("Median first reply")).toBeInTheDocument();
-    expect(
-      screen.getByText("27 of 51 resolved or closed"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("27 of 51 resolved or closed")).toBeInTheDocument();
   });
 
   /**
@@ -412,7 +410,9 @@ describe("DashboardPage", () => {
     });
     renderDashboard();
     expect(await screen.findByText("Needs attention")).toBeInTheDocument();
-    expect(screen.getByText("Nothing waiting. Inbox zero.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Nothing waiting. Inbox zero."),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("No tickets were classified in this range."),
     ).toBeInTheDocument();
@@ -526,9 +526,9 @@ describe("DashboardPage customize mode", () => {
 
     await user.click(screen.getByRole("button", { name: "Reset to default" }));
 
-    await waitFor(() => expect(layoutDelete).toHaveBeenCalledWith(
-      "/api/dashboard-layout",
-    ));
+    await waitFor(() =>
+      expect(layoutDelete).toHaveBeenCalledWith("/api/dashboard-layout"),
+    );
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Reset to default" }),

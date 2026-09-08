@@ -109,14 +109,19 @@ test.describe("Users API — agent session (forbidden)", () => {
   });
 
   test("PATCH /api/users/:id (own id) -> 403", async ({ page }) => {
-    const res = await page.request.patch(`${API_URL}/api/users/${agentUserId}`, {
-      data: { name: "Agent User", email: AGENT.email },
-    });
+    const res = await page.request.patch(
+      `${API_URL}/api/users/${agentUserId}`,
+      {
+        data: { name: "Agent User", email: AGENT.email },
+      },
+    );
     expect(res.status()).toBe(403);
   });
 
   test("DELETE /api/users/:id (own id) -> 403", async ({ page }) => {
-    const res = await page.request.delete(`${API_URL}/api/users/${agentUserId}`);
+    const res = await page.request.delete(
+      `${API_URL}/api/users/${agentUserId}`,
+    );
     expect(res.status()).toBe(403);
   });
 });
@@ -132,7 +137,9 @@ test.describe("Users API — admin-delete guard", () => {
   }) => {
     await signIn(page, "admin");
 
-    const res = await page.request.delete(`${API_URL}/api/users/${adminUserId}`);
+    const res = await page.request.delete(
+      `${API_URL}/api/users/${adminUserId}`,
+    );
     expect(res.status()).toBe(403);
     await expect(res.json()).resolves.toEqual({
       error: "Admin users cannot be deleted",
@@ -154,9 +161,12 @@ test.describe("Users API — self role-change guard", () => {
   test("PATCH /api/users/:id demoting yourself -> 403, and no change", async ({
     page,
   }) => {
-    const res = await page.request.patch(`${API_URL}/api/users/${adminUserId}`, {
-      data: { name: adminUser.name, email: ADMIN.email, role: "agent" },
-    });
+    const res = await page.request.patch(
+      `${API_URL}/api/users/${adminUserId}`,
+      {
+        data: { name: adminUser.name, email: ADMIN.email, role: "agent" },
+      },
+    );
 
     expect(res.status()).toBe(403);
     await expect(res.json()).resolves.toEqual({
@@ -173,9 +183,12 @@ test.describe("Users API — self role-change guard", () => {
   test("PATCH /api/users/:id on yourself with the role unchanged -> 200", async ({
     page,
   }) => {
-    const res = await page.request.patch(`${API_URL}/api/users/${adminUserId}`, {
-      data: { name: adminUser.name, email: ADMIN.email, role: "admin" },
-    });
+    const res = await page.request.patch(
+      `${API_URL}/api/users/${adminUserId}`,
+      {
+        data: { name: adminUser.name, email: ADMIN.email, role: "admin" },
+      },
+    );
 
     expect(res.status()).toBe(200);
   });

@@ -53,7 +53,8 @@ const dsn = import.meta.env.VITE_SENTRY_DSN;
  * mode-specific `.env.staging` — **not** in `.env`, which Vite loads in every
  * mode and which would therefore relabel production too.
  */
-const environment = import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE;
+const environment =
+  import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE;
 
 if (dsn) {
   Sentry.init({
@@ -92,7 +93,9 @@ if (dsn) {
 
     // Off unless asked for, and asked for with a number. Tracing every route
     // change buys little on an internal tool this size.
-    tracesSampleRate: Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0),
+    tracesSampleRate: Number(
+      import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? 0,
+    ),
 
     /**
      * The same hard stop the API carries, for the same measured reason: on the

@@ -40,7 +40,7 @@ recent revision of an otherwise-untouched knowledge article. Rejected for
 [0006](./0006-knowledge-articles-are-rows-with-revisions.md) made articles
 undeletable through the ORM by construction — the revision's own `Restrict`
 relation cannot be satisfied once no revision names the article — and an
-article that has not been edited in over a year would lose its *only*
+article that has not been edited in over a year would lose its _only_
 revision to a blind sweep, silently reopening that hole. So this job keeps
 each article's single most recent revision regardless of age (`prisma
 groupBy` on `articleId`, `_max(id)`, then excludes those ids from the delete);

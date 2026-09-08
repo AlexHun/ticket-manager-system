@@ -339,7 +339,9 @@ function computePlacement(target: DOMRect, calloutHeight: number): Placement {
       Math.max(VIEWPORT_PADDING, vw - CALLOUT_WIDTH - VIEWPORT_PADDING),
     );
     calloutTop = clamp(
-      side === "bottom" ? target.bottom + GAP : target.top - GAP - calloutHeight,
+      side === "bottom"
+        ? target.bottom + GAP
+        : target.top - GAP - calloutHeight,
       VIEWPORT_PADDING,
       Math.max(VIEWPORT_PADDING, vh - calloutHeight - VIEWPORT_PADDING),
     );
@@ -524,7 +526,10 @@ function AnchoredCallout({
           ].join(", "),
         }}
       />
-      <svg aria-hidden="true" className="absolute inset-0 size-full overflow-visible">
+      <svg
+        aria-hidden="true"
+        className="absolute inset-0 size-full overflow-visible"
+      >
         <line
           x1={placement.dot.x}
           y1={placement.dot.y}

@@ -264,11 +264,7 @@ function messagesEndpoint(id: number | string): string {
  * the client could never produce, which is the whole reason the server
  * validates rather than trusting the composer.
  */
-async function reply(
-  page: Page,
-  ticketId: number | string,
-  textBody: unknown,
-) {
+async function reply(page: Page, ticketId: number | string, textBody: unknown) {
   return page.request.post(messagesEndpoint(ticketId), { data: { textBody } });
 }
 
@@ -438,14 +434,16 @@ async function columnWidths(page: Page): Promise<Record<string, number>> {
   // column names, and `.Subject` comes back undefined. aria-label is the one
   // thing only the loaded table sets, so scope both the wait and the read to it.
   await page.locator('th[aria-label="Subject"]').waitFor();
-  return page.locator("th[aria-label]").evaluateAll((els) =>
-    Object.fromEntries(
-      els.map((el) => [
-        el.getAttribute("aria-label") ?? "",
-        el.getBoundingClientRect().width,
-      ]),
-    ),
-  );
+  return page
+    .locator("th[aria-label]")
+    .evaluateAll((els) =>
+      Object.fromEntries(
+        els.map((el) => [
+          el.getAttribute("aria-label") ?? "",
+          el.getBoundingClientRect().width,
+        ]),
+      ),
+    );
 }
 
 function resizeHandleFor(page: Page, column: string) {
@@ -519,7 +517,9 @@ const WATCH_FOR_SKELETON = () => {
 
 function skeletonWasSeen(page: Page): Promise<boolean | undefined> {
   return page.evaluate(
-    () => (window as Window & { __loadingTicketsSeen?: boolean }).__loadingTicketsSeen,
+    () =>
+      (window as Window & { __loadingTicketsSeen?: boolean })
+        .__loadingTicketsSeen,
   );
 }
 
@@ -577,13 +577,15 @@ test.describe("Tickets API — list", () => {
   test("breaks createdAt ties by descending id", async ({ page }) => {
     const sameInstant = new Date("2025-06-01T09:00:00.000Z");
     await testDb.ticket.createMany({
-      data: ["First insert", "Second insert", "Third insert"].map((subject) => ({
-        subject,
-        customerEmail: "tie@example.com",
-        customerName: "Tie Customer",
-        createdAt: sameInstant,
-        lastMessageAt: sameInstant,
-      })),
+      data: ["First insert", "Second insert", "Third insert"].map(
+        (subject) => ({
+          subject,
+          customerEmail: "tie@example.com",
+          customerName: "Tie Customer",
+          createdAt: sameInstant,
+          lastMessageAt: sameInstant,
+        }),
+      ),
     });
     await signIn(page, "agent");
 
@@ -650,7 +652,11 @@ test.describe("Tickets API — sorting", () => {
       await fetchSubjects(page, TICKET_SORT_FIELD.customerName, SORT_ORDER.asc),
     ).toEqual(["Middle ticket", "Newest ticket", "Oldest ticket"]);
     expect(
-      await fetchSubjects(page, TICKET_SORT_FIELD.customerName, SORT_ORDER.desc),
+      await fetchSubjects(
+        page,
+        TICKET_SORT_FIELD.customerName,
+        SORT_ORDER.desc,
+      ),
     ).toEqual(["Oldest ticket", "Newest ticket", "Middle ticket"]);
   });
 
@@ -772,9 +778,9 @@ test.describe("Tickets API — filtering", () => {
     expect(
       await filterSubjects(page, { status: TICKET_STATUS.Resolved }),
     ).toEqual(["Middle ticket"]);
-    expect(await filterSubjects(page, { status: TICKET_STATUS.Closed })).toEqual(
-      ["Oldest ticket"],
-    );
+    expect(
+      await filterSubjects(page, { status: TICKET_STATUS.Closed }),
+    ).toEqual(["Oldest ticket"]);
   });
 
   test("filters by category", async ({ page }) => {
@@ -841,9 +847,9 @@ test.describe("Tickets API — filtering", () => {
     await seedTickets();
     await signIn(page, "agent");
 
-    expect(await filterSubjects(page, { q: "no-such-ticket-anywhere" })).toEqual(
-      [],
-    );
+    expect(
+      await filterSubjects(page, { q: "no-such-ticket-anywhere" }),
+    ).toEqual([]);
   });
 
   test("combines filters as AND", async ({ page }) => {
@@ -1324,9 +1330,9 @@ test.describe("Ticket assignment API", () => {
     const res = await assign(page, id, YURI.id);
 
     expect(res.status()).toBe(200);
-    expect(((await res.json()) as UpdateTicketResponse).ticket.assignedToId).toBe(
-      YURI.id,
-    );
+    expect(
+      ((await res.json()) as UpdateTicketResponse).ticket.assignedToId,
+    ).toBe(YURI.id);
   });
 
   test("unassigns on null", async ({ page }) => {
@@ -1951,7 +1957,8 @@ test.describe("Tickets page", () => {
     await seedNumberedTickets(30);
     await testDb.ticket.create({
       data: {
-        subject: "A dramatically longer subject line that would stretch a column",
+        subject:
+          "A dramatically longer subject line that would stretch a column",
         customerEmail: "long@example.com",
         customerName: "A Very Long Customer Name Indeed",
         createdAt: new Date(Date.UTC(2024, 0, 1, 12)),
@@ -1964,7 +1971,9 @@ test.describe("Tickets page", () => {
     const widths = () =>
       page
         .getByRole("columnheader")
-        .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+        .evaluateAll((els) =>
+          els.map((el) => el.getBoundingClientRect().width),
+        );
 
     await expect(page.getByRole("row").nth(1)).toContainText("Ticket 30");
     const first = await widths();
@@ -1996,10 +2005,26 @@ test.describe("Tickets page", () => {
   test("badges are distinct and legible", async ({ page }) => {
     await testDb.ticket.createMany({
       data: [
-        { subject: "S-Open", status: TICKET_STATUS.Open, category: TICKET_CATEGORY.General },
-        { subject: "S-Resolved", status: TICKET_STATUS.Resolved, category: TICKET_CATEGORY.Technical },
-        { subject: "S-Closed", status: TICKET_STATUS.Closed, category: TICKET_CATEGORY.Refund },
-        { subject: "S-Other", status: TICKET_STATUS.Open, category: TICKET_CATEGORY.Other },
+        {
+          subject: "S-Open",
+          status: TICKET_STATUS.Open,
+          category: TICKET_CATEGORY.General,
+        },
+        {
+          subject: "S-Resolved",
+          status: TICKET_STATUS.Resolved,
+          category: TICKET_CATEGORY.Technical,
+        },
+        {
+          subject: "S-Closed",
+          status: TICKET_STATUS.Closed,
+          category: TICKET_CATEGORY.Refund,
+        },
+        {
+          subject: "S-Other",
+          status: TICKET_STATUS.Open,
+          category: TICKET_CATEGORY.Other,
+        },
       ].map((t, i) => ({
         ...t,
         customerEmail: `badge${i}@example.com`,
@@ -2068,7 +2093,10 @@ test.describe("Tickets page", () => {
     expect(readings.length).toBeGreaterThanOrEqual(8);
     for (const r of readings) {
       // WCAG AA for small text — these badges are text-xs.
-      expect(r.contrast, `${r.label} (${r.contrast.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
+      expect(
+        r.contrast,
+        `${r.label} (${r.contrast.toFixed(2)}:1)`,
+      ).toBeGreaterThanOrEqual(4.5);
     }
 
     const categories = readings.filter((r) =>
@@ -2199,7 +2227,9 @@ test.describe("Tickets page", () => {
     expect(overflow).toBeLessThanOrEqual(1);
 
     // The pagination controls must be reachable without scrolling the page.
-    await expect(page.getByRole("button", { name: "Next page" })).toBeInViewport();
+    await expect(
+      page.getByRole("button", { name: "Next page" }),
+    ).toBeInViewport();
   });
 
   test("keeps the header visible while the rows scroll", async ({ page }) => {
@@ -2239,7 +2269,9 @@ test.describe("Tickets page", () => {
    * reports every scroll dimension as 0, so this is the only place the claim
    * can be held.
    */
-  test("scrolls the rows from the keyboard, header still held", async ({ page }) => {
+  test("scrolls the rows from the keyboard, header still held", async ({
+    page,
+  }) => {
     await seedNumberedTickets(30);
     await signIn(page, "agent");
     await page.goto("/tickets");
@@ -2299,7 +2331,9 @@ test.describe("Tickets page", () => {
     await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
   });
 
-  test("fetches the list at navigation time, not on mount", async ({ page }) => {
+  test("fetches the list at navigation time, not on mount", async ({
+    page,
+  }) => {
     await seedTickets();
     await signIn(page, "agent");
 
@@ -2525,7 +2559,9 @@ test.describe("Ticket detail page", () => {
     await expect(page.getByText("Messages (3)")).toBeVisible();
     expect(
       await page.evaluate(
-        () => (window as Window & { __loadingTicketSeen?: boolean }).__loadingTicketSeen,
+        () =>
+          (window as Window & { __loadingTicketSeen?: boolean })
+            .__loadingTicketSeen,
       ),
     ).toBe(false);
   });
@@ -2541,14 +2577,18 @@ test.describe("Ticket detail page", () => {
     await expect(messages.nth(0)).toContainText(
       "First message, from the customer.",
     );
-    await expect(messages.nth(1)).toContainText("Second message, from support.");
+    await expect(messages.nth(1)).toContainText(
+      "Second message, from support.",
+    );
     await expect(messages.nth(1)).toContainText("From support");
     await expect(messages.nth(2)).toContainText(
       "Third message, from the customer.",
     );
   });
 
-  test("an agent replies and the message joins the thread", async ({ page }) => {
+  test("an agent replies and the message joins the thread", async ({
+    page,
+  }) => {
     const id = await seedTicketWithThread();
     await signIn(page, "agent");
     await page.goto(`/tickets/${id}`);
@@ -2619,10 +2659,9 @@ test.describe("Ticket detail page", () => {
       page.getByRole("heading", { name: "Deep linked", level: 1 }),
     ).toBeVisible();
     // No list state to return to, so the back link falls back to a bare list.
-    await expect(page.getByRole("link", { name: "Back to tickets" })).toHaveAttribute(
-      "href",
-      "/tickets",
-    );
+    await expect(
+      page.getByRole("link", { name: "Back to tickets" }),
+    ).toHaveAttribute("href", "/tickets");
   });
 
   test("explains an unknown ticket instead of rendering a blank page", async ({
@@ -2635,7 +2674,9 @@ test.describe("Ticket detail page", () => {
     await expect(
       page.getByRole("heading", { name: "Ticket not found", level: 1 }),
     ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Back to tickets" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Back to tickets" }),
+    ).toBeVisible();
   });
 
   test("never renders a message's inbound HTML", async ({ page }) => {
@@ -2683,9 +2724,7 @@ test.describe("Ticket detail page", () => {
     const firstRowSubject = await page.getByRole("row").nth(1).textContent();
 
     await page.getByRole("row").nth(1).getByRole("link").click();
-    await expect(
-      page.getByRole("heading", { level: 1 }).first(),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
 
     // The router doesn't push the ticket-detail URL until its lazy chunk has
     // resolved, which lands slightly after the heading is already on screen.
@@ -2857,7 +2896,9 @@ test.describe("Tickets list URL state", () => {
     await expect(page).not.toHaveURL(/page=/);
   });
 
-  test("leaves the URL clean when nothing has been chosen", async ({ page }) => {
+  test("leaves the URL clean when nothing has been chosen", async ({
+    page,
+  }) => {
     await seedTickets();
     await signIn(page, "agent");
     await page.goto("/tickets");

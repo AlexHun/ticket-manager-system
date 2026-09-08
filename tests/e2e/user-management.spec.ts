@@ -104,7 +104,9 @@ test.describe.serial("User management (admin)", () => {
     page,
   }) => {
     const row = page.getByRole("row", { name: NEW_USER_EMAIL });
-    await row.getByRole("button", { name: `Edit ${RENAMED_USER_NAME}` }).click();
+    await row
+      .getByRole("button", { name: `Edit ${RENAMED_USER_NAME}` })
+      .click();
 
     const dialog = page.getByRole("dialog");
     // Not a native select — click the trigger, then the option.
@@ -117,7 +119,9 @@ test.describe.serial("User management (admin)", () => {
     const promoted = page.getByRole("row", { name: NEW_USER_EMAIL });
     await expect(promoted.getByText("admin", { exact: true })).toBeVisible();
     // An admin cannot be deleted, so the row's third slot is now a spacer.
-    await expect(promoted.getByRole("button", { name: /Delete/ })).toHaveCount(0);
+    await expect(promoted.getByRole("button", { name: /Delete/ })).toHaveCount(
+      0,
+    );
 
     await promoted
       .getByRole("button", { name: `Edit ${RENAMED_USER_NAME}` })
@@ -189,14 +193,12 @@ test.describe("Admin row protections", () => {
 
     // Delete is hidden entirely for admin rows (UsersTable renders a
     // placeholder span instead of a button for role === "admin").
-    await expect(
-      adminRow.getByRole("button", { name: /Delete/ }),
-    ).toHaveCount(0);
+    await expect(adminRow.getByRole("button", { name: /Delete/ })).toHaveCount(
+      0,
+    );
 
     // Edit is still present, proving the row rendered normally.
-    await expect(
-      adminRow.getByRole("button", { name: /Edit/ }),
-    ).toBeVisible();
+    await expect(adminRow.getByRole("button", { name: /Edit/ })).toBeVisible();
   });
 });
 

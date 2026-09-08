@@ -193,9 +193,15 @@ const BRANCHES: {
 }[] = [
   { entityType: ACTIVITY_ENTITY_TYPE.ticket, build: ticketActivityBranch },
   { entityType: ACTIVITY_ENTITY_TYPE.ticket, build: outboundMessageBranch },
-  { entityType: ACTIVITY_ENTITY_TYPE.knowledge, build: knowledgeRevisionBranch },
+  {
+    entityType: ACTIVITY_ENTITY_TYPE.knowledge,
+    build: knowledgeRevisionBranch,
+  },
   { entityType: ACTIVITY_ENTITY_TYPE.admin, build: adminActivityBranch },
-  { entityType: ACTIVITY_ENTITY_TYPE.automation, build: automationRevisionBranch },
+  {
+    entityType: ACTIVITY_ENTITY_TYPE.automation,
+    build: automationRevisionBranch,
+  },
 ];
 
 /** Raw-row shape. `$queryRaw<T[]>` is an unchecked cast — every column above

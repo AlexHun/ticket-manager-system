@@ -30,8 +30,10 @@ const FRAME =
  * would have it silently dropped. Better a type error than a prop that looks
  * accepted and isn't.
  */
-interface TableFrameProps
-  extends Omit<ComponentProps<"div">, "role" | "aria-label" | "tabIndex"> {
+interface TableFrameProps extends Omit<
+  ComponentProps<"div">,
+  "role" | "aria-label" | "tabIndex"
+> {
   /**
    * The region's accessible name. Required, and that is the whole point of
    * the prop: `tabIndex={0}` on its own turns the frame into a tab stop that

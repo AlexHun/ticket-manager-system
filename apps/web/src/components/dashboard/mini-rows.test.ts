@@ -75,7 +75,10 @@ describe("categoryRows", () => {
       { category: null, count: 99 },
       { category: TICKET_CATEGORY.Technical, count: 2 },
     ]);
-    expect(labels(rows)).toEqual([TICKET_CATEGORY.Technical, UNCATEGORISED_LABEL]);
+    expect(labels(rows)).toEqual([
+      TICKET_CATEGORY.Technical,
+      UNCATEGORISED_LABEL,
+    ]);
   });
 
   test("omits the uncategorised row entirely when the API sends no null bucket", () => {

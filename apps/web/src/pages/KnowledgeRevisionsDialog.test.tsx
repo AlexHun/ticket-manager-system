@@ -64,7 +64,9 @@ function renderDialog(article: KnowledgeArticle | null = ARTICLE) {
   return renderRoutes([
     {
       path: "/",
-      element: <KnowledgeRevisionsDialog article={article} onOpenChange={() => {}} />,
+      element: (
+        <KnowledgeRevisionsDialog article={article} onOpenChange={() => {}} />
+      ),
     },
   ]);
 }

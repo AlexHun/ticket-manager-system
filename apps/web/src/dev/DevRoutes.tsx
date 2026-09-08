@@ -41,7 +41,10 @@ export function DevRoutes() {
             <LogoMark className="size-4 shrink-0" />
             <span className="text-sm font-semibold">Dev tools</span>
           </Link>
-          <Separator orientation="vertical" className="h-6 data-vertical:self-center" />
+          <Separator
+            orientation="vertical"
+            className="h-6 data-vertical:self-center"
+          />
           <nav aria-label="Dev tools" className="flex items-center gap-1">
             {DEV_NAV_ITEMS.map((item) => (
               <NavLink

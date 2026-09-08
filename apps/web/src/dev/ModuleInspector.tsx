@@ -23,7 +23,11 @@ interface ModuleInspectorProps {
   onSelect: (id: string) => void;
 }
 
-export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProps) {
+export function ModuleInspector({
+  graph,
+  module,
+  onSelect,
+}: ModuleInspectorProps) {
   // Kind is looked up per edge because a pair can be joined by more than one:
   // a module can import runtime values and types from the same neighbour.
   const kindsTo = new Map<string, string[]>();
@@ -78,7 +82,11 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
 
       {module.testFile ? (
         <Field label="Covered by">
-          <IdButton id={module.testFile} onSelect={onSelect} icon={<FlaskConical />} />
+          <IdButton
+            id={module.testFile}
+            onSelect={onSelect}
+            icon={<FlaskConical />}
+          />
         </Field>
       ) : covers ? (
         <Field label="Covers">
@@ -94,10 +102,16 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
       )}
 
       {servesRoutes.length > 0 && (
-        <Field label={`Serves ${servesRoutes.length === 1 ? "route" : "routes"}`}>
+        <Field
+          label={`Serves ${servesRoutes.length === 1 ? "route" : "routes"}`}
+        >
           <div className="flex flex-wrap gap-1">
             {servesRoutes.map((route) => (
-              <Badge key={route.path} variant="secondary" className="font-mono font-normal">
+              <Badge
+                key={route.path}
+                variant="secondary"
+                className="font-mono font-normal"
+              >
                 {route.path}
               </Badge>
             ))}
@@ -109,7 +123,10 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
         <Field label="Defines endpoints">
           <ul className="flex flex-col gap-1">
             {defines.map((endpoint) => (
-              <li key={`${endpoint.method} ${endpoint.path}`} className="font-mono text-xs">
+              <li
+                key={`${endpoint.method} ${endpoint.path}`}
+                className="font-mono text-xs"
+              >
                 <span className="text-muted-foreground">{endpoint.method}</span>{" "}
                 {endpoint.path}
               </li>
@@ -122,7 +139,10 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
         <Field label="Calls endpoints">
           <ul className="flex flex-col gap-1">
             {calls.map((endpoint) => (
-              <li key={`${endpoint.method} ${endpoint.path}`} className="font-mono text-xs">
+              <li
+                key={`${endpoint.method} ${endpoint.path}`}
+                className="font-mono text-xs"
+              >
                 <span className="text-muted-foreground">{endpoint.method}</span>{" "}
                 {endpoint.path}
               </li>
@@ -131,7 +151,10 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
         </Field>
       )}
 
-      <Field label={`Imports (${module.imports.length})`} empty="Imports nothing internal.">
+      <Field
+        label={`Imports (${module.imports.length})`}
+        empty="Imports nothing internal."
+      >
         {module.imports.map((id) => (
           <IdButton
             key={id}
@@ -153,7 +176,9 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
 
       <Field
         label={`Imported by (${module.importedBy.length})`}
-        empty={module.isTest ? "Nothing imports a test." : "Nothing imports this."}
+        empty={
+          module.isTest ? "Nothing imports a test." : "Nothing imports this."
+        }
       >
         {module.importedBy.map((id) => (
           <IdButton key={id} id={id} onSelect={onSelect} />
@@ -164,7 +189,11 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
         <Field label={`Packages (${module.externals.length})`}>
           <div className="flex flex-wrap gap-1">
             {module.externals.map((name) => (
-              <Badge key={name} variant="outline" className="font-mono font-normal">
+              <Badge
+                key={name}
+                variant="outline"
+                className="font-mono font-normal"
+              >
                 {name}
               </Badge>
             ))}
@@ -176,14 +205,18 @@ export function ModuleInspector({ graph, module, onSelect }: ModuleInspectorProp
         <Field label="Not modules">
           <div className="flex flex-wrap gap-1">
             {module.unresolved.map((spec) => (
-              <Badge key={spec} variant="outline" className="font-mono font-normal">
+              <Badge
+                key={spec}
+                variant="outline"
+                className="font-mono font-normal"
+              >
                 {spec}
               </Badge>
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            Real imports the graph holds no node for — a stylesheet, or generated
-            code the scan skips.
+            Real imports the graph holds no node for — a stylesheet, or
+            generated code the scan skips.
           </p>
         </Field>
       )}
@@ -275,7 +308,9 @@ function IdButton({
       >
         {icon}
         <span className="flex min-w-0 items-baseline font-mono">
-          <span className="truncate text-muted-foreground">{id.slice(0, cut + 1)}</span>
+          <span className="truncate text-muted-foreground">
+            {id.slice(0, cut + 1)}
+          </span>
           <span className="shrink-0">{id.slice(cut + 1)}</span>
         </span>
         {note && (

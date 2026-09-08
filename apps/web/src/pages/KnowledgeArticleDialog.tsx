@@ -130,19 +130,14 @@ export function KnowledgeArticleDialog({
       if (data.pendingRevision) {
         // Nothing customer-visible moved — say so, rather than "updated",
         // which would read as if the edit already took effect.
-        toast.success(
-          `${data.article.id} submitted for approval`,
-          {
-            description:
-              "A second admin needs to approve it before it goes live.",
-          },
-        );
+        toast.success(`${data.article.id} submitted for approval`, {
+          description:
+            "A second admin needs to approve it before it goes live.",
+        });
         return;
       }
       toast.success(
-        isEdit
-          ? `${data.article.id} updated`
-          : `${data.article.id} created`,
+        isEdit ? `${data.article.id} updated` : `${data.article.id} created`,
       );
     },
     onError: (err) => {

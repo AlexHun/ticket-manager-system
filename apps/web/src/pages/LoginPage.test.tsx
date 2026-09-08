@@ -35,7 +35,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const CARD_DESCRIPTION = "Use your email and password to access the ticket manager.";
+const CARD_DESCRIPTION =
+  "Use your email and password to access the ticket manager.";
 
 describe("LoginPage — rendering", () => {
   test("renders the sign-in card with both fields and submit button", () => {

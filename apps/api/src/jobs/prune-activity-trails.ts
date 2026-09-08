@@ -134,9 +134,7 @@ async function latestRevisionIdPerArticle(): Promise<Set<number>> {
     _max: { id: true },
   });
   return new Set(
-    latest
-      .map((row) => row._max.id)
-      .filter((id): id is number => id !== null),
+    latest.map((row) => row._max.id).filter((id): id is number => id !== null),
   );
 }
 
@@ -186,7 +184,9 @@ export async function pruneActivityTrails(): Promise<void> {
   // Silent when there is nothing to do, which is most days — same reasoning
   // as `prune-outbox.ts`'s own log line.
   if (total > 0) {
-    console.log(`[activity-trails] pruned ${total} row(s): ${counts.join(" ")}`);
+    console.log(
+      `[activity-trails] pruned ${total} row(s): ${counts.join(" ")}`,
+    );
   }
 }
 

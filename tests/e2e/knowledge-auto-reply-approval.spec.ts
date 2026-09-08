@@ -13,7 +13,13 @@ import {
 import { Role } from "../../apps/api/src/generated/prisma/client";
 import { KNOWLEDGE_ARTICLE_MARKER } from "./fake-openai/constants";
 import { CREDENTIALS } from "./helpers/auth";
-import { E2E_EMAIL_PREFIX, resetE2eEmails, resetE2eUsers, testDb, waitForInvitationLink } from "./helpers/db";
+import {
+  E2E_EMAIL_PREFIX,
+  resetE2eEmails,
+  resetE2eUsers,
+  testDb,
+  waitForInvitationLink,
+} from "./helpers/db";
 
 /**
  * Issue #26 — the regression test for the whole #17/#23/#24/#25 chain: an
@@ -140,7 +146,8 @@ async function latestOutboundMessage(ticketId: number) {
   });
 }
 
-test.describe.serial("Knowledge-base auto-reply approval gate (real pipeline)", () => {
+test.describe
+  .serial("Knowledge-base auto-reply approval gate (real pipeline)", () => {
   const runId = Date.now();
   const articleTitle = "How do I reset the E2E test widget?";
   const originalBody = `${KNOWLEDGE_ARTICLE_MARKER} For run ${runId}: press and hold the button for ORIGINAL-${runId} seconds to reset the widget.`;

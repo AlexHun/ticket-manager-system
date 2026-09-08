@@ -33,7 +33,10 @@ export const trustedOrigins = parsedOrigins;
  */
 export const appOrigin = parsedOrigins[0] as string;
 
-if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) {
+if (
+  !process.env.BETTER_AUTH_SECRET ||
+  process.env.BETTER_AUTH_SECRET.length < 32
+) {
   throw new Error(
     "BETTER_AUTH_SECRET must be set and at least 32 characters (generate with: openssl rand -base64 32)",
   );
@@ -124,7 +127,9 @@ const sameOriginApi = (() => {
  * environment checks in this file, because a typo here costs an afternoon.
  */
 if (cookieDomain) {
-  const suffix = cookieDomain.startsWith(".") ? cookieDomain : `.${cookieDomain}`;
+  const suffix = cookieDomain.startsWith(".")
+    ? cookieDomain
+    : `.${cookieDomain}`;
   const covered = trustedOrigins.some((origin) => {
     try {
       const { hostname } = new URL(origin);

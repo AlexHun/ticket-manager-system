@@ -15,7 +15,11 @@ import {
   publishTicketUpdated,
 } from "./events/ticket-events";
 import { enqueueClassification } from "./jobs/classify-ticket";
-import { customerActor, recordActivity, writeActivity } from "./ticket-activity";
+import {
+  customerActor,
+  recordActivity,
+  writeActivity,
+} from "./ticket-activity";
 
 /**
  * Turning an inbound email into a ticket, or into a message on one.
@@ -49,7 +53,8 @@ export const INGEST_OUTCOME = {
   created: "created",
 } as const;
 
-export type IngestOutcome = (typeof INGEST_OUTCOME)[keyof typeof INGEST_OUTCOME];
+export type IngestOutcome =
+  (typeof INGEST_OUTCOME)[keyof typeof INGEST_OUTCOME];
 
 export interface IngestResult {
   outcome: IngestOutcome;
@@ -220,7 +225,10 @@ export async function ingestInboundEmail(
 
       await recordActivity(
         ticketId,
-        { action: TICKET_ACTIVITY_ACTION.reopened, toValue: TICKET_STATUS.Open },
+        {
+          action: TICKET_ACTIVITY_ACTION.reopened,
+          toValue: TICKET_STATUS.Open,
+        },
         actor,
       );
       changed.push(TICKET_EVENT_FIELD.status);

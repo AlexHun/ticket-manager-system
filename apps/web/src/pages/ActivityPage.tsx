@@ -110,7 +110,9 @@ function changeText(entry: ActivityEntry): string {
 }
 
 export function ActivityPage() {
-  const [filters, setFilters] = useState<ActivityFilterState>(EMPTY_ACTIVITY_FILTERS);
+  const [filters, setFilters] = useState<ActivityFilterState>(
+    EMPTY_ACTIVITY_FILTERS,
+  );
   const [page, setPage] = useState(FIRST_PAGE);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 

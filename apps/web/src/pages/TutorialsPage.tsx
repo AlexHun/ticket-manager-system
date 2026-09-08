@@ -103,12 +103,18 @@ function TutorialRow({
               {TUTORIAL_PAGE_LABEL[tutorial.pageKey]}
             </h2>
             {written ? (
-              <Badge variant="outline" className="border-border text-foreground/70">
+              <Badge
+                variant="outline"
+                className="border-border text-foreground/70"
+              >
                 {tutorial.steps.length}{" "}
                 {tutorial.steps.length === 1 ? "step" : "steps"}
               </Badge>
             ) : (
-              <Badge variant="outline" className="border-dashed text-muted-foreground">
+              <Badge
+                variant="outline"
+                className="border-dashed text-muted-foreground"
+              >
                 Not written yet
               </Badge>
             )}
@@ -139,7 +145,11 @@ function TutorialRow({
 
 function TutorialsSkeleton() {
   return (
-    <ul className="flex flex-col gap-2" aria-busy="true" aria-label="Loading tutorials">
+    <ul
+      className="flex flex-col gap-2"
+      aria-busy="true"
+      aria-label="Loading tutorials"
+    >
       {Array.from({ length: 4 }).map((_, i) => (
         <li key={i} className="rounded-lg border p-4">
           <Skeleton className="mb-2 h-4 w-40" />

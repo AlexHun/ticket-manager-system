@@ -3,14 +3,21 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
+    "prepare": "husky",
     "dev": "bun --filter '*' dev",
     "dev:api": "bun --filter '@ticket/api' dev",
     "dev:web": "bun --filter '@ticket/web' dev",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-stop.ps1",
     "build": "bun --filter '*' build",
     "typecheck": "bun --filter '*' typecheck",
+    "test": "bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
@@ -25,6 +32,9 @@
     "@ticket/shared": "workspace:*",
     "@types/node": "^26.2.0",
     "chrome-devtools-mcp": "^1.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.0",
+    "prettier": "^3.9.6",
     "typescript": "^7.0.2"
   }
 }

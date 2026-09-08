@@ -88,8 +88,7 @@ function sweep(now: number): void {
 }
 
 type Admission =
-  | { allowed: true }
-  | { allowed: false; retryAfterSeconds: number };
+  { allowed: true } | { allowed: false; retryAfterSeconds: number };
 
 function admit(key: string): Admission {
   const now = Date.now();
@@ -154,7 +153,8 @@ const FAILURE_RESPONSE: Record<
   },
   [POLISH_FAILURE.empty]: {
     status: 502,
-    error: "Polishing came back empty — try again, or send your draft as it is.",
+    error:
+      "Polishing came back empty — try again, or send your draft as it is.",
   },
   // Says what happened without teaching anyone how it happened. "The rewrite
   // offered a refund your draft didn't" would tell an agent something useful and
@@ -253,7 +253,8 @@ aiRouter.post(
     if (!admission.allowed) {
       res.setHeader("Retry-After", String(admission.retryAfterSeconds));
       res.status(429).json({
-        error: "You've polished a lot of drafts just now — try again in a minute.",
+        error:
+          "You've polished a lot of drafts just now — try again in a minute.",
       });
       return;
     }
@@ -311,7 +312,8 @@ const SUMMARY_FAILURE_RESPONSE: Record<
 > = {
   [AI_FAILURE.provider]: {
     status: 502,
-    error: "Couldn't summarise this ticket — try again, or read the thread below.",
+    error:
+      "Couldn't summarise this ticket — try again, or read the thread below.",
   },
   [AI_FAILURE.busy]: {
     status: 503,
@@ -325,7 +327,8 @@ const SUMMARY_FAILURE_RESPONSE: Record<
   },
   [AI_FAILURE.auth]: {
     status: 503,
-    error: "Summaries are unavailable — the server's AI credentials were rejected.",
+    error:
+      "Summaries are unavailable — the server's AI credentials were rejected.",
   },
   // The server log carries the provider's own sentence, which names the
   // offending model or parameter. The agent gets none of that: they cannot act
@@ -333,7 +336,8 @@ const SUMMARY_FAILURE_RESPONSE: Record<
   // working.
   [AI_FAILURE.config]: {
     status: 503,
-    error: "Summarising is misconfigured on this server — the AI request was rejected.",
+    error:
+      "Summarising is misconfigured on this server — the AI request was rejected.",
   },
   // Covers a budget spent on reasoning and an answer that wasn't the schema.
   // Both look the same from here and have the same remedy.
@@ -441,7 +445,8 @@ aiRouter.post(
     if (!admission.allowed) {
       res.setHeader("Retry-After", String(admission.retryAfterSeconds));
       res.status(429).json({
-        error: "You've asked for a lot of summaries just now — try again in a minute.",
+        error:
+          "You've asked for a lot of summaries just now — try again in a minute.",
       });
       return;
     }

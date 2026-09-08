@@ -131,18 +131,38 @@ function makeGraph(): ProjectGraph {
     ],
     externals: [
       { name: "axios", users: [TICKETS_PAGE], workspaces: [WORKSPACE.web] },
-      { name: "recharts", users: [DASHBOARD_PAGE], workspaces: [WORKSPACE.web] },
+      {
+        name: "recharts",
+        users: [DASHBOARD_PAGE],
+        workspaces: [WORKSPACE.web],
+      },
     ],
     models: [
       {
         name: "Ticket",
         table: "tickets",
-        fields: [{ name: "subject", type: "String", optional: false, list: false, relationTo: null }],
+        fields: [
+          {
+            name: "subject",
+            type: "String",
+            optional: false,
+            list: false,
+            relationTo: null,
+          },
+        ],
       },
       {
         name: "KnowledgeArticle",
         table: "knowledge_articles",
-        fields: [{ name: "title", type: "String", optional: false, list: false, relationTo: null }],
+        fields: [
+          {
+            name: "title",
+            type: "String",
+            optional: false,
+            list: false,
+            relationTo: null,
+          },
+        ],
       },
     ],
     cycles: [],
@@ -248,10 +268,16 @@ describe("the search reaches every tab", () => {
     await search("nothing-matches-this");
 
     await waitFor(() => {
-      expect(screen.getByText("No endpoint matches the search.")).toBeInTheDocument();
+      expect(
+        screen.getByText("No endpoint matches the search."),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByText("No client route matches the search.")).toBeInTheDocument();
-    expect(screen.getByText("No model matches the search.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No client route matches the search."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("No model matches the search."),
+    ).toBeInTheDocument();
   });
 
   test("Modules narrows to the matching rows", async () => {

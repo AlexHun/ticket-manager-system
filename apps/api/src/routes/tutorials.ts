@@ -53,7 +53,13 @@ function toWireContent(row: {
  * same "half-finished ⇒ inert" default `KnowledgeArticle.autoReply` uses.
  */
 function defaultContent(pageKey: TutorialPageKey): TutorialContent {
-  return { pageKey, title: "", steps: [], updatedAt: null, updatedByName: null };
+  return {
+    pageKey,
+    title: "",
+    steps: [],
+    updatedAt: null,
+    updatedByName: null,
+  };
 }
 
 tutorialsRouter.get(

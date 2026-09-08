@@ -22,7 +22,12 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { scanProject } from "./scan.ts";
-import { findSuite, runSuite, suiteDescriptors, type RunHandle } from "./suites.ts";
+import {
+  findSuite,
+  runSuite,
+  suiteDescriptors,
+  type RunHandle,
+} from "./suites.ts";
 import {
   DEVTOOLS_API,
   type DevStreamMessage,
@@ -170,7 +175,9 @@ export function devToolsPlugin(): Plugin {
 
       server.middlewares.use(
         DEVTOOLS_API.suites,
-        only("GET", (_req, res) => sendJson(res, 200, { suites: suiteDescriptors })),
+        only("GET", (_req, res) =>
+          sendJson(res, 200, { suites: suiteDescriptors }),
+        ),
       );
 
       server.middlewares.use(
@@ -226,7 +233,10 @@ export function devToolsPlugin(): Plugin {
           const unknown = requested.filter((id) => !findSuite(id));
           if (requested.length === 0 || unknown.length > 0) {
             sendJson(res, 400, {
-              error: unknown.length > 0 ? `No such suite: ${unknown.join(", ")}` : "No suites given",
+              error:
+                unknown.length > 0
+                  ? `No such suite: ${unknown.join(", ")}`
+                  : "No suites given",
             });
             return;
           }

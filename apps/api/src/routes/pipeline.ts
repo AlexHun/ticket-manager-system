@@ -32,7 +32,11 @@ import {
 import { autoReplyArticleCount } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
 import { prisma, type Prisma } from "../db";
-import { findParentTicketId, INGEST_OUTCOME, ingestInboundEmail } from "../ingest";
+import {
+  findParentTicketId,
+  INGEST_OUTCOME,
+  ingestInboundEmail,
+} from "../ingest";
 import { AUTO_REPLY_QUEUE } from "../jobs/auto-reply-ticket";
 import { getBoss } from "../jobs/boss";
 import { CLASSIFY_QUEUE } from "../jobs/classify-ticket";
@@ -388,12 +392,18 @@ pipelineRouter.get(
       readConfig(),
       prisma.ticket.count({ where: window }),
       prisma.ticket.count({
-        where: { ...window, classifiedAt: { not: null }, category: { not: null } },
+        where: {
+          ...window,
+          classifiedAt: { not: null },
+          category: { not: null },
+        },
       }),
       prisma.ticket.count({
         where: { ...window, classifiedAt: { not: null }, category: null },
       }),
-      prisma.ticket.count({ where: { ...window, autoResolvedAt: { not: null } } }),
+      prisma.ticket.count({
+        where: { ...window, autoResolvedAt: { not: null } },
+      }),
       prisma.ticket.groupBy({
         by: ["autoReplyDecline"],
         where: { ...window, autoReplyDecline: { not: null } },

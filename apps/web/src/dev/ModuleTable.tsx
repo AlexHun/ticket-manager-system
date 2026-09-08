@@ -35,9 +35,24 @@ interface Column {
 
 const COLUMNS: Column[] = [
   { key: SORT_KEY.path, label: "Module" },
-  { key: SORT_KEY.code, label: "Code", numeric: true, title: "Lines that are neither blank nor comment" },
-  { key: SORT_KEY.fanIn, label: "In", numeric: true, title: "Modules importing this one" },
-  { key: SORT_KEY.fanOut, label: "Out", numeric: true, title: "Internal modules this one imports" },
+  {
+    key: SORT_KEY.code,
+    label: "Code",
+    numeric: true,
+    title: "Lines that are neither blank nor comment",
+  },
+  {
+    key: SORT_KEY.fanIn,
+    label: "In",
+    numeric: true,
+    title: "Modules importing this one",
+  },
+  {
+    key: SORT_KEY.fanOut,
+    label: "Out",
+    numeric: true,
+    title: "Internal modules this one imports",
+  },
 ];
 
 function valueOf(module: ModuleNode, key: SortKey): string | number {
@@ -53,7 +68,11 @@ interface ModuleTableProps {
   onSelect: (id: string) => void;
 }
 
-export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps) {
+export function ModuleTable({
+  modules,
+  selectedId,
+  onSelect,
+}: ModuleTableProps) {
   const [key, setKey] = useState<SortKey>(SORT_KEY.fanIn);
   const [descending, setDescending] = useState(true);
 
@@ -134,7 +153,10 @@ export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps)
                 </Hint>
               </th>
             ))}
-            <th scope="col" className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium">
+            <th
+              scope="col"
+              className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium"
+            >
               Layer
             </th>
             <Hint content="Has a *.test.* file beside it">
@@ -177,11 +199,15 @@ export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps)
                       <span className="truncate text-muted-foreground">
                         {module.id.slice(0, cut + 1)}
                       </span>
-                      <span className="shrink-0">{module.id.slice(cut + 1)}</span>
+                      <span className="shrink-0">
+                        {module.id.slice(cut + 1)}
+                      </span>
                     </button>
                   </Hint>
                 </td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{module.code}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">
+                  {module.code}
+                </td>
                 <td className="px-3 py-1.5 text-right tabular-nums">
                   {module.importedBy.length}
                 </td>
@@ -198,7 +224,10 @@ export function ModuleTable({ modules, selectedId, onSelect }: ModuleTableProps)
                       className="mx-auto size-3.5 text-status-good"
                     />
                   ) : (
-                    <span className="text-muted-foreground" aria-label="no test">
+                    <span
+                      className="text-muted-foreground"
+                      aria-label="no test"
+                    >
                       —
                     </span>
                   )}

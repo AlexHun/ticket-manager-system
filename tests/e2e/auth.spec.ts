@@ -99,9 +99,7 @@ test.describe("Login flow", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     // Zod messages wired via react-hook-form
-    await expect(
-      page.getByText("Enter a valid email"),
-    ).toBeVisible();
+    await expect(page.getByText("Enter a valid email")).toBeVisible();
     await expect(page.getByText("Password is required")).toBeVisible();
     await expect(page).toHaveURL("/login");
   });
@@ -152,7 +150,9 @@ test.describe("Login flow", () => {
     // During the stalled request both inputs and the button must be disabled
     await expect(page.getByLabel("Email")).toBeDisabled();
     await expect(page.getByLabel("Password")).toBeDisabled();
-    await expect(page.getByRole("button", { name: /Signing in/i })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: /Signing in/i }),
+    ).toBeDisabled();
   });
 });
 
@@ -212,9 +212,7 @@ test.describe("Route protection — authenticated admin", () => {
   test("/users renders the Users heading for admin", async ({ page }) => {
     await page.goto("/users");
     await expect(page).toHaveURL("/users");
-    await expect(
-      page.getByRole("heading", { name: "Users" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
   });
 });
 
@@ -241,16 +239,13 @@ test.describe("Session persistence", () => {
 
 test.describe("Sign-up disabled", () => {
   test("POST /api/auth/sign-up/email is rejected", async ({ request }) => {
-    const response = await request.post(
-      `${API_URL}/api/auth/sign-up/email`,
-      {
-        data: {
-          email: NEW_USER_EMAIL,
-          password: ADMIN.password,
-          name: NEW_USER_NAME,
-        },
+    const response = await request.post(`${API_URL}/api/auth/sign-up/email`, {
+      data: {
+        email: NEW_USER_EMAIL,
+        password: ADMIN.password,
+        name: NEW_USER_NAME,
       },
-    );
+    });
 
     // Better Auth rejects sign-up when disableSignUp: true — must not be 2xx
     expect(response.ok()).toBe(false);

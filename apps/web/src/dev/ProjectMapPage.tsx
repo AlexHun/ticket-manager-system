@@ -21,14 +21,24 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
 import { DependencyGraph } from "./DependencyGraph";
 import { useProjectGraph } from "./dev-api";
-import { INCIDENTAL_LAYERS, LAYER_ORDER, LAYER_VISUAL, WORKSPACE_LABEL } from "./layer-visuals";
+import {
+  INCIDENTAL_LAYERS,
+  LAYER_ORDER,
+  LAYER_VISUAL,
+  WORKSPACE_LABEL,
+} from "./layer-visuals";
 import { LayerBadge } from "./LayerBadge";
 import { MapOverview } from "./MapOverview";
 import { MapWiring } from "./MapWiring";
 import { ModuleInspector } from "./ModuleInspector";
 import { matchesQuery } from "./module-match";
 import { ModuleTable } from "./ModuleTable";
-import { LAYER, type Layer, type ProjectGraph, type Workspace } from "./protocol";
+import {
+  LAYER,
+  type Layer,
+  type ProjectGraph,
+  type Workspace,
+} from "./protocol";
 
 /**
  * Everything the repository is, on one page.
@@ -52,7 +62,13 @@ const TAB = {
 } as const;
 
 export function ProjectMapPage() {
-  const { data: graph, isPending, error, refetch, isFetching } = useProjectGraph();
+  const {
+    data: graph,
+    isPending,
+    error,
+    refetch,
+    isFetching,
+  } = useProjectGraph();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -69,8 +85,10 @@ export function ProjectMapPage() {
   const visible = useMemo(() => {
     if (!graph) return [];
     return graph.modules.filter((module) => {
-      if (workspace !== ANY_WORKSPACE && module.workspace !== workspace) return false;
-      if (!showIncidental && INCIDENTAL_LAYERS.includes(module.layer)) return false;
+      if (workspace !== ANY_WORKSPACE && module.workspace !== workspace)
+        return false;
+      if (!showIncidental && INCIDENTAL_LAYERS.includes(module.layer))
+        return false;
       if (!showVendored && module.layer === LAYER.ui) return false;
       return true;
     });
@@ -98,12 +116,15 @@ export function ProjectMapPage() {
           </CardHeader>
           <CardContent className="flex flex-col items-start gap-3">
             <p className="text-sm text-muted-foreground">
-              {extractErrorMessage(error, "The dev middleware returned an error.")}
+              {extractErrorMessage(
+                error,
+                "The dev middleware returned an error.",
+              )}
             </p>
             <p className="text-xs text-muted-foreground">
               This page is served by the Vite plugin in{" "}
-              <code className="font-mono">apps/web/dev/plugin.ts</code>. If the dev
-              server was started before that file existed, restart it.
+              <code className="font-mono">apps/web/dev/plugin.ts</code>. If the
+              dev server was started before that file existed, restart it.
             </p>
             <Button variant="outline" size="sm" onClick={() => void refetch()}>
               <RefreshCw aria-hidden="true" />
@@ -144,7 +165,11 @@ export function ProjectMapPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-      <Header graph={graph} onRescan={() => void refetch()} isFetching={isFetching} />
+      <Header
+        graph={graph}
+        onRescan={() => void refetch()}
+        isFetching={isFetching}
+      />
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-56 flex-1 flex-col gap-1.5">
@@ -250,13 +275,13 @@ export function ProjectMapPage() {
               query={query}
             />
             <p className="text-xs text-muted-foreground">
-              Columns are architectural depth, left to right, so every curve means
-              "imports". Both apps converge on the two rightmost columns —{" "}
+              Columns are architectural depth, left to right, so every curve
+              means "imports". Both apps converge on the two rightmost columns —{" "}
               <code className="font-mono">packages/core</code> and{" "}
-              <code className="font-mono">packages/shared</code> — which is the only
-              code they share. Hover a node to light its edges and mark their
-              direction; click to pin it in the inspector. Dashed is a type-only
-              import (erased at runtime); dotted is a lazy{" "}
+              <code className="font-mono">packages/shared</code> — which is the
+              only code they share. Hover a node to light its edges and mark
+              their direction; click to pin it in the inspector. Dashed is a
+              type-only import (erased at runtime); dotted is a lazy{" "}
               <code className="font-mono">import()</code>.
             </p>
           </TabsContent>
@@ -277,7 +302,10 @@ export function ProjectMapPage() {
         {/* Sticky rather than in the scroll flow: the inspector is the constant
             while the tab beside it changes, and a 20rem column that scrolled away
             would make walking the graph a lot of scrolling back up. */}
-        <Card size="sm" className="xl:sticky xl:top-0 xl:max-h-[calc(100dvh-2rem)]">
+        <Card
+          size="sm"
+          className="xl:sticky xl:top-0 xl:max-h-[calc(100dvh-2rem)]"
+        >
           <CardHeader>
             <CardTitle className="flex items-center justify-between gap-2">
               Inspector
@@ -295,12 +323,16 @@ export function ProjectMapPage() {
           </CardHeader>
           <CardContent className="flex min-h-0 flex-col">
             {selected ? (
-              <ModuleInspector graph={graph} module={selected} onSelect={select} />
+              <ModuleInspector
+                graph={graph}
+                module={selected}
+                onSelect={select}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Pick a module — a node in the graph, a row in the table, a handler
-                in the wiring list — to see what it imports, what imports it, and
-                what it exposes.
+                Pick a module — a node in the graph, a row in the table, a
+                handler in the wiring list — to see what it imports, what
+                imports it, and what it exposes.
               </p>
             )}
           </CardContent>
@@ -336,7 +368,12 @@ function Header({
       </div>
       <div className="flex items-center gap-2">
         <Badge variant="outline">dev only</Badge>
-        <Button variant="outline" size="sm" onClick={onRescan} disabled={isFetching}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRescan}
+          disabled={isFetching}
+        >
           {isFetching ? (
             <Loader2 aria-hidden="true" className="animate-spin" />
           ) : (
@@ -373,7 +410,11 @@ function Legend({ layers }: { layers: Layer[] }) {
 
 function MapSkeleton() {
   return (
-    <div className="flex flex-col gap-4 p-4" aria-busy="true" aria-label="Scanning the project">
+    <div
+      className="flex flex-col gap-4 p-4"
+      aria-busy="true"
+      aria-label="Scanning the project"
+    >
       <Skeleton className="h-10 w-72" />
       <Skeleton className="h-9 w-full" />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">

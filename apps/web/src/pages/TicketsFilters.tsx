@@ -140,7 +140,11 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
       />
 
       {active && (
-        <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onChange(EMPTY_FILTERS)}
+        >
           <X />
           Clear filters
         </Button>
@@ -207,9 +211,7 @@ function AssigneeShortcuts({
       {/* Hidden rather than disabled without a session: there is no session to
           resolve "mine" against, and a dead control is worse than no control.
           In practice `ProtectedRoute` means this is always present. */}
-      {myId && (
-        <ToggleGroupItem value={SHORTCUT.mine}>Mine</ToggleGroupItem>
-      )}
+      {myId && <ToggleGroupItem value={SHORTCUT.mine}>Mine</ToggleGroupItem>}
       <ToggleGroupItem value={SHORTCUT.unassigned}>
         {UNASSIGNED_LABEL}
       </ToggleGroupItem>

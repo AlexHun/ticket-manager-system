@@ -128,7 +128,12 @@ export function TicketDetailPage() {
 
       {/* Outside the loaded branch: the not-found screen is a dead end
           without it. */}
-      <Button asChild variant="ghost" size="sm" className="-ml-2 mb-4 self-start">
+      <Button
+        asChild
+        variant="ghost"
+        size="sm"
+        className="-ml-2 mb-4 self-start"
+      >
         <Link to={backTo}>
           <ArrowLeft aria-hidden="true" />
           Back to tickets

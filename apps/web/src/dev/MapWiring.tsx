@@ -32,7 +32,10 @@ interface MapWiringProps {
   query: string;
 }
 
-const GUARD_VISUAL: Record<Guard, { label: string; icon: ReactNode; className: string }> = {
+const GUARD_VISUAL: Record<
+  Guard,
+  { label: string; icon: ReactNode; className: string }
+> = {
   [GUARD.admin]: {
     label: "admin only",
     icon: <ShieldCheck />,
@@ -59,7 +62,13 @@ const GUARD_VISUAL: Record<Guard, { label: string; icon: ReactNode; className: s
 
 export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
   const routes = graph.routes.filter((route) =>
-    matchesQuery(query, route.path, route.component, route.file, route.redirectTo),
+    matchesQuery(
+      query,
+      route.path,
+      route.component,
+      route.file,
+      route.redirectTo,
+    ),
   );
   const endpoints = graph.endpoints.filter((endpoint) =>
     matchesQuery(
@@ -73,7 +82,12 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
   // Field names are in the haystack too: a Prisma model is not a module, so the
   // only way the search reaches this card at all is by what it is made of.
   const models = graph.models.filter((model) =>
-    matchesQuery(query, model.name, model.table, ...model.fields.map((f) => f.name)),
+    matchesQuery(
+      query,
+      model.name,
+      model.table,
+      ...model.fields.map((f) => f.name),
+    ),
   );
 
   return (
@@ -100,7 +114,10 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
                 </thead>
                 <tbody>
                   {routes.map((route) => (
-                    <tr key={`${route.path}|${route.component}`} className="border-b border-border/50 last:border-0">
+                    <tr
+                      key={`${route.path}|${route.component}`}
+                      className="border-b border-border/50 last:border-0"
+                    >
                       <td className="py-1.5 pr-3 font-mono text-xs whitespace-nowrap">
                         {route.path}
                         {route.redirectTo && (
@@ -111,7 +128,11 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
                       </td>
                       <td className="py-1.5 pr-3">
                         {route.file ? (
-                          <ModuleLink id={route.file} label={route.component} onSelect={onSelect} />
+                          <ModuleLink
+                            id={route.file}
+                            label={route.component}
+                            onSelect={onSelect}
+                          />
                         ) : (
                           <span className="text-xs text-muted-foreground">
                             {route.component} — from the router
@@ -120,11 +141,17 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
                       </td>
                       <td className="py-1.5 pr-3">
                         {route.guards.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">public</span>
+                          <span className="text-xs text-muted-foreground">
+                            public
+                          </span>
                         ) : (
                           <span className="flex flex-wrap items-center gap-1">
                             {route.guards.map((guard) => (
-                              <Badge key={guard} variant="secondary" className="font-normal">
+                              <Badge
+                                key={guard}
+                                variant="secondary"
+                                className="font-normal"
+                              >
                                 {guard}
                               </Badge>
                             ))}
@@ -141,10 +168,11 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            "Behind" is the nesting in <code className="font-mono">App.tsx</code>,
-            outermost first — read out of the JSX rather than assumed, so it is the
-            gate the router actually applies. It is UX, not security: the check
-            that matters is the middleware on the endpoint below.
+            "Behind" is the nesting in{" "}
+            <code className="font-mono">App.tsx</code>, outermost first — read
+            out of the JSX rather than assumed, so it is the gate the router
+            actually applies. It is UX, not security: the check that matters is
+            the middleware on the endpoint below.
           </p>
         </CardContent>
       </Card>
@@ -152,7 +180,8 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
       <Card size="sm">
         <CardHeader>
           <CardTitle>
-            API endpoints ({countLabel(endpoints.length, graph.endpoints.length)})
+            API endpoints (
+            {countLabel(endpoints.length, graph.endpoints.length)})
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -230,12 +259,11 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
             </div>
           )}
           <p className="text-xs text-muted-foreground">
-            Guards are read from the middleware in the route registration.
-            "Not from the SPA" means no{" "}
-            <code className="font-mono">api.*</code> call in{" "}
-            <code className="font-mono">apps/web</code> matches this path — true of
-            health, the Better Auth handler and the inbound-email webhook, all of
-            which are reached from somewhere else.
+            Guards are read from the middleware in the route registration. "Not
+            from the SPA" means no <code className="font-mono">api.*</code> call
+            in <code className="font-mono">apps/web</code> matches this path —
+            true of health, the Better Auth handler and the inbound-email
+            webhook, all of which are reached from somewhere else.
           </p>
         </CardContent>
       </Card>
@@ -273,7 +301,9 @@ export function MapWiring({ graph, onSelect, query }: MapWiringProps) {
                     <span
                       className={cn(
                         "shrink-0 font-mono",
-                        field.relationTo ? "text-foreground" : "text-muted-foreground",
+                        field.relationTo
+                          ? "text-foreground"
+                          : "text-muted-foreground",
                       )}
                     >
                       {field.relationTo && "→ "}
@@ -310,7 +340,10 @@ function NoMatch({ what }: { what: string }) {
 
 function Th({ children }: { children: ReactNode }) {
   return (
-    <th scope="col" className="py-1.5 pr-3 text-left text-xs font-medium last:pr-0">
+    <th
+      scope="col"
+      className="py-1.5 pr-3 text-left text-xs font-medium last:pr-0"
+    >
       {children}
     </th>
   );

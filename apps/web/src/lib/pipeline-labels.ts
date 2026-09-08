@@ -35,14 +35,21 @@ import {
  * is `Open` and waiting, which is exactly what should happen.
  */
 export const DECLINE_LABEL: Record<AutoReplyDecline, string> = {
-  [AUTO_REPLY_DECLINE.category]: "Not eligible — refunds and unfiled tickets are never auto-answered",
-  [AUTO_REPLY_DECLINE.answered]: "Already answered — only opening messages are auto-answered",
-  [AUTO_REPLY_DECLINE.noText]: "Nothing to read — the email carried no plain text",
+  [AUTO_REPLY_DECLINE.category]:
+    "Not eligible — refunds and unfiled tickets are never auto-answered",
+  [AUTO_REPLY_DECLINE.answered]:
+    "Already answered — only opening messages are auto-answered",
+  [AUTO_REPLY_DECLINE.noText]:
+    "Nothing to read — the email carried no plain text",
   [AUTO_REPLY_DECLINE.notCovered]: "Not covered by the knowledge base",
-  [AUTO_REPLY_DECLINE.noCitation]: "Draft discarded — it cited no article that exists",
-  [AUTO_REPLY_DECLINE.unbackedCommitment]: "Draft discarded — it promised something no cited article states",
-  [AUTO_REPLY_DECLINE.unbackedReference]: "Draft discarded — it carried a link or address no cited article contains",
-  [AUTO_REPLY_DECLINE.tooLong]: "Draft discarded — too long to be a knowledge-base answer",
+  [AUTO_REPLY_DECLINE.noCitation]:
+    "Draft discarded — it cited no article that exists",
+  [AUTO_REPLY_DECLINE.unbackedCommitment]:
+    "Draft discarded — it promised something no cited article states",
+  [AUTO_REPLY_DECLINE.unbackedReference]:
+    "Draft discarded — it carried a link or address no cited article contains",
+  [AUTO_REPLY_DECLINE.tooLong]:
+    "Draft discarded — too long to be a knowledge-base answer",
   [AUTO_REPLY_DECLINE.unavailable]: "The assistant could not be reached",
 };
 
