@@ -239,6 +239,10 @@ Every deploy after the first is step 1 alone.
 | `bun run dev:stop`    | kills every dev server on 3001/3002/4000/4001 and proves the ports came back. **Windows/PowerShell only** — it has to outlive the `bun` that launched it |
 | `bun run build`       | builds every workspace that has a `build` script (the web app; the API ships as source) |
 | `bun run typecheck`   | `tsc --noEmit` across all four workspaces                           |
+| `bun run test`        | both unit suites, `@ticket/api` then `@ticket/web` — what `.husky/pre-push` runs. ~5.5 min on Windows |
+| `bun run format`      | Prettier `--write` over the repo, minus `.prettierignore`            |
+| `bun run format:check`| Prettier `--check`; CI runs this, and it is the only one of these that touches nothing |
+| `prepare`             | not typed by hand — `bun install` runs it, and it is what points `core.hooksPath` at `.husky/_` |
 | `bun run test:e2e`    | Playwright; starts its own API and web on :3002/:4001 from `.env.test` |
 | `bun run test:e2e:ui` | the same, in Playwright's UI mode                                   |
 | `bun run test:e2e:report` | opens the last HTML report                                      |
