@@ -4,15 +4,16 @@ import {
   test,
   type APIRequestContext,
 } from "@playwright/test";
-import { EVAL_CORPUS, EVAL_RUN_STATUS, PIPELINE_OUTCOME } from "@ticket/shared";
-import { SLICE_ONE_CASE_ID } from "@ticket/core";
+import { EVAL_CORPUS, EVAL_RUN_STATUS } from "@ticket/shared";
+import { SMOKE_CASE_IDS } from "@ticket/core";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { testDb } from "./helpers/db";
 import { API_URL } from "./helpers/env";
 
 /**
- * Slice 1 of the eval harness — an admin starts a run, a case is answered, and
- * a row says what was expected, what was reached, and whether they matched.
+ * The eval harness — an admin starts a run, every case in it is answered five
+ * times, and the rows say what was expected, where the repeats landed, how many
+ * matched, and what the whole thing cost.
  *
  * **Two servers, because this suite deliberately runs two.** The ordinary
  * :3002 API has no `OPENAI_API_KEY` (see `.env.test`), which is the whole
@@ -31,7 +32,14 @@ import { API_URL } from "./helpers/env";
  *
  * Request-level for that half, no browser: the web app on :4001 has
  * `VITE_API_URL` baked in at build time and has no route to :3003. What the
- * browser half can and does prove is the screen and both guards.
+ * browser half can and does prove is the screen and both guards; what the
+ * *screen* makes of a rate is `EvalsPage.test.tsx`'s job.
+ *
+ * **A pinned subset, not the whole set.** `SMOKE_CASE_IDS` is two cases — one
+ * decided by the gates and one that reaches the model — because a spec that
+ * answered all thirty-five would put ~175 answers through the runner on every
+ * push. The calls are free here and the minutes are not, and R11's whole point
+ * is that an eval suite wired to a CI gate is an eval suite that gets disabled.
  *
  * The stub answers `answered: false` for any corpus with no marked article in
  * it (see `fake-openai/server.ts`), and the frozen corpus has none — so the
@@ -124,7 +132,7 @@ test.describe("a run against the frozen corpus", () => {
 
   test.beforeAll(async () => {
     // `pwRequest.newContext()` rather than the per-test `request` fixture: the
-    // admin's session on :3003 has to survive the sign-in and the run below.
+    // admin's session on :3003 has to survive the sign-in and the runs below.
     ctx = await pwRequest.newContext();
     const res = await ctx.post(`${AI_API_URL}/api/auth/sign-in/email`, {
       data: { email: ADMIN.email, password: ADMIN.password },
@@ -140,13 +148,13 @@ test.describe("a run against the frozen corpus", () => {
     await ctx.dispose();
   });
 
-  test("answers the case and records what it reached", async () => {
+  test("answers each case five times and records a rate, not a pass", async () => {
     const started = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
-      data: {},
+      data: { corpus: EVAL_CORPUS.frozen, caseIds: [...SMOKE_CASE_IDS] },
     });
 
     // 202: accepted, not finished. The whole point of the queue is that the
-    // request does not block on a model call.
+    // request does not block on a set of model calls.
     expect(started.status()).toBe(202);
     const { runId } = (await started.json()) as { runId: number };
 
@@ -155,26 +163,82 @@ test.describe("a run against the frozen corpus", () => {
     expect(run.status).toBe(EVAL_RUN_STATUS.completed);
     expect(run.corpus).toBe(EVAL_CORPUS.frozen);
     expect(run.error).toBeNull();
-    expect(run.results).toHaveLength(1);
+    expect(run.repeats).toBe(5);
+    expect(run.results).toHaveLength(SMOKE_CASE_IDS.length);
 
-    const [result] = run.results;
-    expect(result!.caseId).toBe(SLICE_ONE_CASE_ID);
-    // The expectation comes from the shared case set and the outcome from a
-    // real trip through `autoReply` — which is the thing slice 1 exists to
-    // retire: a synthesized input reproduces a verdict the pipeline would have
-    // reached.
-    expect(result!.expectedOutcome).toBe(PIPELINE_OUTCOME.declined);
-    expect(result!.expectedDecline).toBe("notCovered");
-    expect(result!.actualOutcome).toBe(PIPELINE_OUTCOME.declined);
-    expect(result!.actualDecline).toBe("notCovered");
-    expect(result!.matched).toBe(true);
+    for (const result of run.results) {
+      // The assertion this slice exists for: `n/5`, never a boolean. The stub
+      // answers the same way every time, so five out of five is what a correct
+      // harness produces — what would fail here is a runner that asked once.
+      expect(result.repeats).toBe(5);
+      expect(result.matches).toBe(5);
+      expect(Array.isArray(result.verdicts)).toBe(true);
+      expect(result.verdicts).toHaveLength(5);
+    }
+
+    // And the run's own aggregate, which is the percentage the screen draws.
+    // (What the screen makes of it is `EvalsPage.test.tsx`'s job: the browser
+    // half of this suite runs against :3002, which has no key and no route to
+    // this server.)
+    expect(run.attempts).toBe(SMOKE_CASE_IDS.length * 5);
+    expect(run.matches).toBe(run.attempts);
+    expect(run.abandoned).toBe(0);
+  });
+
+  test("a case decided by the gates costs no model call", async () => {
+    // `refund` never reaches the provider — `gateDecline` answers it from three
+    // values. That is what makes three of the nine decline reasons measurable at
+    // all, and a run that paid for them would be paying to re-derive a constant.
+    const started = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
+      data: { caseIds: ["refund"] },
+    });
+    const { runId } = (await started.json()) as { runId: number };
+
+    const run = await waitForRun(runId);
+
+    expect(run.results[0]!.matches).toBe(5);
+    expect(run.results[0]!.expectedDecline).toBe("category");
+    expect(run.usd).toBe(0);
+  });
+
+  test("records what the run cost", async () => {
+    // R10. The fake provider reports usage like a real one, so the figure is
+    // computed rather than stubbed — what is asserted is that it is recorded at
+    // all, which is the thing `logUsage` used to print and throw away.
+    const started = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
+      data: { caseIds: ["off-corpus"] },
+    });
+    const { runId } = (await started.json()) as { runId: number };
+
+    const run = await waitForRun(runId);
+
+    expect(run.usd).toBeGreaterThan(0);
+  });
+
+  test("a live-corpus run is labelled as one, and kept apart", async () => {
+    // R4. The two are never averaged, and what makes that possible is that
+    // every run says on its own row which knowledge base answered it. A live
+    // run's *outcomes* are deliberately not asserted here — they depend on what
+    // the article table happens to hold, which is the whole reason a live run is
+    // ambiguous and the nightly runs frozen.
+    const started = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
+      data: { corpus: EVAL_CORPUS.live, caseIds: ["refund"] },
+    });
+    const { runId } = (await started.json()) as { runId: number };
+
+    const run = await waitForRun(runId);
+
+    expect(run.corpus).toBe(EVAL_CORPUS.live);
+    // Its own row, with its own results. Nothing merges it into the frozen ones.
+    expect(run.results).toHaveLength(1);
   });
 
   test("creates nothing a customer or an agent would see", async () => {
     // R12, asserted the way the PRD asks for it: row counts across a run. It is
     // structural rather than careful — the runner hands a synthesized input to
-    // `autoReply`, which never reaches the code that writes a ticket — and this
-    // is what would notice if that ever stopped being true.
+    // `autoReply` and three values to `gateDecline`, neither of which reaches
+    // the code that writes a ticket — and this is what would notice if that ever
+    // stopped being true.
     const before = {
       tickets: await testDb.ticket.count(),
       messages: await testDb.message.count(),
@@ -183,7 +247,7 @@ test.describe("a run against the frozen corpus", () => {
     };
 
     const started = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
-      data: {},
+      data: { caseIds: [...SMOKE_CASE_IDS] },
     });
     const { runId } = (await started.json()) as { runId: number };
     await waitForRun(runId);
@@ -196,7 +260,7 @@ test.describe("a run against the frozen corpus", () => {
 
   test("refuses a case id nothing names", async () => {
     const res = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
-      data: { caseId: "no-such-case" },
+      data: { caseIds: ["no-such-case"] },
     });
 
     expect(res.status()).toBe(400);
@@ -208,8 +272,12 @@ test.describe("a run against the frozen corpus", () => {
  * pg-boss, asynchronously to the POST that enqueued it. Same shape as
  * `waitForAutoResolved` in `knowledge-auto-reply-approval.spec.ts`, against a
  * different column.
+ *
+ * The timeout is generous because a run is now repeats × cases: the smoke
+ * subset is ten answers against a local stub, which is quick, but a run that is
+ * merely slow must not be reported as a run that never finished.
  */
-async function waitForRun(runId: number, timeoutMs = 30_000) {
+async function waitForRun(runId: number, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
 
   for (;;) {

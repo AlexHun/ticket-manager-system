@@ -14,6 +14,7 @@ import {
   openaiModel,
   unbackedCommitments,
   withoutDashes,
+  type AiUsage,
 } from "./provider";
 
 /**
@@ -252,10 +253,19 @@ export type AutoReplyFailure =
  * Both, rather than one derived from the other: widening `reason` would put
  * display strings into the retry table, and narrowing `decline` would put retry
  * semantics into the UI.
+ *
+ * `usage` rides on both branches and is absent whenever no call was made — an
+ * empty corpus, or a throw before the provider answered. It is here for the eval
+ * harness, which has to add up what a run cost (PRD R10) and to watch that
+ * repeats of a case are still hitting the prompt cache; `logUsage` already
+ * prints it and the job above ignores it. Optional rather than required because
+ * accounting is the provider's to report and not ours to demand — a call that
+ * came back fine but said nothing about tokens must not become a failed reply.
  */
-export type AutoReplyResult =
+export type AutoReplyResult = { usage?: AiUsage } & (
   | { ok: true; reply: string; articleIds: string[] }
-  | { ok: false; reason: AutoReplyFailure; decline: AutoReplyDecline };
+  | { ok: false; reason: AutoReplyFailure; decline: AutoReplyDecline }
+);
 
 /**
  * The shape the model must answer in.
@@ -629,6 +639,16 @@ export async function autoReply(
   }
 
   let output: z.infer<typeof autoReplySchema>;
+  /**
+   * What the call cost, carried down to every verdict below.
+   *
+   * Declared out here rather than threaded through, because the interesting
+   * verdicts are the *declines*: a reply thrown out by check 5 cost exactly as
+   * much as one that was sent, and an eval run that only counted the answers
+   * would understate what it spent by however often the safety checks fired —
+   * which is most of the time, by design.
+   */
+  let usage: AiUsage | undefined;
   try {
     const generated = await generateText({
       model: openaiModel(AUTO_REPLY_MODEL),
@@ -654,6 +674,7 @@ export async function autoReply(
       // rejects it on reasoning models.
     });
     logUsage("auto-reply", AUTO_REPLY_MODEL, generated.usage);
+    usage = generated.usage;
     output = generated.output;
   } catch (err) {
     console.error("[auto-reply] generateText failed:", err);
@@ -679,6 +700,7 @@ export async function autoReply(
       ok: false,
       reason: AUTO_REPLY_FAILURE.declined,
       decline: AUTO_REPLY_DECLINE.notCovered,
+      usage,
     };
   }
 
@@ -695,6 +717,7 @@ export async function autoReply(
       ok: false,
       reason: AUTO_REPLY_FAILURE.declined,
       decline: AUTO_REPLY_DECLINE.notCovered,
+      usage,
     };
   }
 
@@ -705,6 +728,7 @@ export async function autoReply(
       ok: false,
       reason: AUTO_REPLY_FAILURE.ungrounded,
       decline: AUTO_REPLY_DECLINE.tooLong,
+      usage,
     };
   }
 
@@ -736,6 +760,7 @@ export async function autoReply(
       ok: false,
       reason: AUTO_REPLY_FAILURE.ungrounded,
       decline: AUTO_REPLY_DECLINE.noCitation,
+      usage,
     };
   }
 
@@ -770,6 +795,7 @@ export async function autoReply(
       ok: false,
       reason: AUTO_REPLY_FAILURE.ungrounded,
       decline: AUTO_REPLY_DECLINE.unbackedCommitment,
+      usage,
     };
   }
 
@@ -782,8 +808,14 @@ export async function autoReply(
       ok: false,
       reason: AUTO_REPLY_FAILURE.ungrounded,
       decline: AUTO_REPLY_DECLINE.unbackedReference,
+      usage,
     };
   }
 
-  return { ok: true, reply, articleIds: cited.map((article) => article.id) };
+  return {
+    ok: true,
+    reply,
+    articleIds: cited.map((article) => article.id),
+    usage,
+  };
 }

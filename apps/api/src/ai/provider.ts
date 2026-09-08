@@ -102,6 +102,44 @@ export interface AiUsage {
 }
 
 /**
+ * What one call cost, in USD, priced off the list above.
+ *
+ * Split out of `logUsage` rather than duplicated beside it, because the eval
+ * harness has to *record* the number the log line has always thrown away (PRD
+ * R10): `logUsage` computed this, printed it and dropped it, so "what did that
+ * run cost" was answerable only by grepping a log nobody keeps. Same arithmetic,
+ * one copy, and the log line below is unchanged — see the note there about why
+ * that matters more than it looks.
+ *
+ * Zero for a call that reported no usage. Not null: a run adds these up, and a
+ * missing figure is better read as "nothing known to charge" than as a hole that
+ * every caller has to decide what to do with. The count of unreported calls is
+ * the thing to watch, and it is visible in the log.
+ *
+ * **The estimate will go stale**, exactly as `USD_PER_MTOK` says. Nothing bills
+ * off it; it is here so a number appears beside a run that would otherwise spend
+ * money with nobody watching.
+ */
+export function usdFor(usage: AiUsage | undefined): number {
+  if (!usage) return 0;
+
+  const input = usage.inputTokens ?? 0;
+  const cached = usage.cachedInputTokens ?? 0;
+  const output = usage.outputTokens ?? 0;
+
+  // Cached tokens are a subset of the input count, not an addition to it, so
+  // charging both would double-count the cheap half.
+  const fresh = Math.max(input - cached, 0);
+
+  return (
+    (fresh * USD_PER_MTOK.input +
+      cached * USD_PER_MTOK.cachedInput +
+      output * USD_PER_MTOK.output) /
+    1_000_000
+  );
+}
+
+/**
  * One line per model call, in one format, from one place.
  *
  * Every AI feature here is a single request with no streaming and no tool loop,
@@ -117,6 +155,12 @@ export interface AiUsage {
  * timestamp, or letting article text vary per request. A run of calls with
  * `cached=0` on a feature that should be hitting it is that regression, and
  * there is otherwise nothing on any screen that would show it.
+ *
+ * **Do not change the shape of this line.** The pricing arithmetic moved out to
+ * `usdFor` so the eval harness can record the figure instead of only printing
+ * it; the line itself did not move and must not, because `cached=` is what a
+ * pair of eyes and a log shipper both key on and it is the only place a stopped
+ * prompt cache is visible at all.
  *
  * Never logs prompt or completion text: these calls carry customer email, and a
  * log is the one place it would sit in plaintext outside the database.
@@ -139,15 +183,7 @@ export function logUsage(
   const input = usage.inputTokens ?? 0;
   const cached = usage.cachedInputTokens ?? 0;
   const output = usage.outputTokens ?? 0;
-
-  // Cached tokens are a subset of the input count, not an addition to it, so
-  // charging both would double-count the cheap half.
-  const fresh = Math.max(input - cached, 0);
-  const usd =
-    (fresh * USD_PER_MTOK.input +
-      cached * USD_PER_MTOK.cachedInput +
-      output * USD_PER_MTOK.output) /
-    1_000_000;
+  const usd = usdFor(usage);
 
   console.log(
     `[ai] feature=${feature} model=${model} input=${input} cached=${cached} ` +

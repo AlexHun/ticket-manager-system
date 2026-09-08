@@ -1808,6 +1808,10 @@ export type EvalRunStatus =
  * reason: they are display-only and grow a value every time a safety check is
  * added to `ai/auto-reply.ts`. `null` on the wire means "a reason this build
  * has no wording for", which is better than rendering a raw column at an admin.
+ *
+ * What it carries is a **rate and not a verdict** (R3). One answer from a model
+ * is a coin toss reported as a fact; `matches` out of `repeats` is the thing a
+ * threshold can be set against and the thing a later run can be compared with.
  */
 export interface EvalCaseResultRow {
   id: number;
@@ -1816,9 +1820,32 @@ export interface EvalCaseResultRow {
   adversarial: boolean;
   expectedOutcome: PipelineOutcome;
   expectedDecline: AutoReplyDecline | null;
-  actualOutcome: PipelineOutcome;
-  actualDecline: AutoReplyDecline | null;
-  /** Whether outcome *and*, when declined, reason both landed where expected. */
+  /** How many times this case was answered, and how many landed as written. */
+  repeats: number;
+  matches: number;
+  /** Repeats the provider could not answer at all. Never counted as a miss. */
+  abandoned: number;
+  /** Estimated USD across this case's repeats, discarded replies included. */
+  usd: number;
+  /** Repeats after the first served partly from the prompt cache. */
+  cachedRepeats: number;
+  /**
+   * Where each repeat actually landed, deduplicated and counted.
+   *
+   * Not the raw five: what a reader needs from `3/5` is *which* two failed and
+   * where they went instead, and a case that reached the same place five times
+   * should say so once. Ordered most frequent first, so the first entry is what
+   * the case usually does.
+   */
+  reached: EvalReachedRow[];
+}
+
+/** One distinct place a case landed, and how often. */
+export interface EvalReachedRow {
+  outcome: PipelineOutcome;
+  decline: AutoReplyDecline | null;
+  count: number;
+  /** Whether landing here is what the case said would happen. */
   matched: boolean;
 }
 
@@ -1831,6 +1858,39 @@ export interface EvalRunRow {
   finishedAt: string | null;
   /** Why the run itself fell over. Null on every run that reached a verdict. */
   error: string | null;
+  /** How many times each case was answered. Five, and recorded rather than assumed. */
+  repeats: number;
+  /**
+   * Repeats answered, and how many landed where their case said.
+   *
+   * `matches / attempts` is decline accuracy — the PRD's second metric, and the
+   * one whose target is `TBD` until a run produces a baseline. Zero while a run
+   * is still in flight: a fraction of a run is not a smaller version of the
+   * answer, it is a different number, and drawing one would invite reading it.
+   */
+  attempts: number;
+  matches: number;
+  /**
+   * Repeats the provider could not answer.
+   *
+   * Kept out of `matches` and shown separately, because an outage is not the
+   * model getting things wrong. A run with a high count here has measured the
+   * provider's availability and nothing else.
+   */
+  abandoned: number;
+  /** Estimated USD for the whole run (R10). An estimate; nothing bills off it. */
+  usd: number;
+  /**
+   * Repeats after each case's first that were served partly from the prompt
+   * cache, out of `cacheable`.
+   *
+   * The auto-reply's cost rests on this and it stops engaging silently — a run
+   * of zero here on a finished run is the regression nothing else in this app
+   * would show (`ai-features.md`).
+   */
+  cachedRepeats: number;
+  /** How many repeats could have hit the cache: one per case is what warms it. */
+  cacheable: number;
   results: EvalCaseResultRow[];
 }
 

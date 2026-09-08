@@ -4,8 +4,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, SendHorizonal } from "lucide-react";
 import {
-  AUTO_REPLY_CASES,
+  SIMULATABLE_CASES,
   DEFAULT_AUTO_REPLY_CASE_ID,
+  autoReplyCaseById,
   simulateEmailSchema,
   type AutoReplyCase,
   type SimulateEmailValues,
@@ -79,7 +80,7 @@ export function PipelineSimulator({
   const [lastSend, setLastSend] = useState<LastSend | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const scenario = AUTO_REPLY_CASES.find((s) => s.id === scenarioId) ?? null;
+  const scenario = SIMULATABLE_CASES.find((s) => s.id === scenarioId) ?? null;
 
   const {
     register,
@@ -89,7 +90,10 @@ export function PipelineSimulator({
     formState: { errors, isSubmitting },
   } = useForm<SimulateEmailValues>({
     resolver: zodResolver(simulateEmailSchema),
-    defaultValues: toValues(AUTO_REPLY_CASES[0]!),
+    // The same case `scenarioId` opens on, rather than whichever one happens to
+    // be first in the set — the two used to coincide and stopped when the set
+    // grew a group of gate cases in front of it.
+    defaultValues: toValues(autoReplyCaseById(DEFAULT_AUTO_REPLY_CASE_ID)!),
   });
 
   // Picking a scenario refills the whole form. Anything typed is discarded,
@@ -175,7 +179,7 @@ export function PipelineSimulator({
               <SelectContent>
                 <SelectGroup>
                   <SelectLabel>Ordinary mail</SelectLabel>
-                  {AUTO_REPLY_CASES.filter((s) => !s.adversarial).map((s) => (
+                  {SIMULATABLE_CASES.filter((s) => !s.adversarial).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>
@@ -183,7 +187,7 @@ export function PipelineSimulator({
                 </SelectGroup>
                 <SelectGroup>
                   <SelectLabel>Payloads</SelectLabel>
-                  {AUTO_REPLY_CASES.filter((s) => s.adversarial).map((s) => (
+                  {SIMULATABLE_CASES.filter((s) => s.adversarial).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
                       {s.name}
                     </SelectItem>
