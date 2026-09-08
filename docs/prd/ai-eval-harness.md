@@ -94,6 +94,15 @@ tickets, messages, activity rows or outbound email created or modified by a run.
 - Settled before this PRD and not reopened here: results live in the application
   database; one runner is shared by a CLI and an admin-triggered background job;
   the case set moves into `packages/core` so both readers share it.
+- **A case is handed to the auto-reply as a synthesized input, not posted
+  through ingestion.** That is what makes R12 structural rather than a promise
+  to be careful: the harness never reaches the code that writes a ticket. The
+  cost is stated in the risks — ingestion and the classification handoff are
+  outside what this measures.
+- **The nightly is a scheduled queue in the deployed API**, alongside the four
+  sweeps already registered through `registerScheduledSweep` in `jobs/boss.ts`.
+  pg-boss elects one instance to run the cron, so a scaled-out API does not
+  produce N runs a night, and a changed cron is upserted on boot.
 - Prompt caching is load-bearing on the auto-reply (`ai-features.md`: `cached=0`
   is the regression nothing on any screen would show). Repeats of a case must
   not perturb the prompt prefix — no run id, timestamp or counter in front of
@@ -101,31 +110,26 @@ tickets, messages, activity rows or outbound email created or modified by a run.
 
 ## Risks
 
-| Risk                                                                                                                                                         | Impact                                                                                                                       | Mitigation                                                                                                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Five repeats is a small sample. A metric moving from 5/5 to 3/5 is hard to tell from noise, and a threshold set too tight makes every run red for no reason. | The harness cries wolf, then gets ignored — the exact failure it exists to prevent.                                          | Report rates rather than verdicts (R3), set thresholds with margin off the slice-2 baseline, and read a move against the trend of prior runs (R14) rather than one run alone.  |
-| Live-corpus runs make a red run ambiguous: a prompt regression and an admin's article edit look identical.                                                   | Time lost chasing the wrong cause; worse, a real regression dismissed as "someone edited the KB".                            | Every run is labelled with its corpus and the two are never mixed (R4); the nightly runs frozen, so that trend line moves only when the code does.                             |
-| The cases are written by the person who wrote the prompt, against expectations that person already holds.                                                    | The harness confirms its author's beliefs and misses the failure nobody imagined.                                            | The adversarial cases are not invented — they are payloads that already beat the prompt in measured runs. Add a case for every real decline seen in production, as they occur. |
-| An unattended nightly run spends money forever with nobody watching the bill.                                                                                | Quiet cost, discovered on an invoice.                                                                                        | Cost recorded and shown per run (R10). No ceiling this pass — a deliberate choice; revisit if the number surprises anyone.                                                     |
-| A run that exercises the real ingestion path would create real ticket rows.                                                                                  | Eval traffic pollutes the ticket list, the dashboard aggregates and the activity trail — the desk's own numbers start lying. | R12 states the guarantee; the open question below must be settled before slice 1 picks an entry point.                                                                         |
+| Risk                                                                                                                                                         | Impact                                                                                                                                              | Mitigation                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Five repeats is a small sample. A metric moving from 5/5 to 3/5 is hard to tell from noise, and a threshold set too tight makes every run red for no reason. | The harness cries wolf, then gets ignored — the exact failure it exists to prevent.                                                                 | Report rates rather than verdicts (R3), set thresholds with margin off the slice-2 baseline, and read a move against the trend of prior runs (R14) rather than one run alone.                                                           |
+| Live-corpus runs make a red run ambiguous: a prompt regression and an admin's article edit look identical.                                                   | Time lost chasing the wrong cause; worse, a real regression dismissed as "someone edited the KB".                                                   | Every run is labelled with its corpus and the two are never mixed (R4); the nightly runs frozen, so that trend line moves only when the code does.                                                                                      |
+| The cases are written by the person who wrote the prompt, against expectations that person already holds.                                                    | The harness confirms its author's beliefs and misses the failure nobody imagined.                                                                   | The adversarial cases are not invented — they are payloads that already beat the prompt in measured runs. Add a case for every real decline seen in production, as they occur.                                                          |
+| An unattended nightly run spends money forever with nobody watching the bill.                                                                                | Quiet cost, discovered on an invoice.                                                                                                               | Cost recorded and shown per run (R10). No ceiling this pass — a deliberate choice; revisit if the number surprises anyone.                                                                                                              |
+| A run that exercised the real ingestion path would create real ticket rows.                                                                                  | Eval traffic pollutes the ticket list, the dashboard aggregates and the activity trail — the desk's own numbers start lying.                        | Settled: cases are synthesized inputs handed to the auto-reply, so the harness never reaches the code that writes a ticket. R12 is then structural, and testable by asserting the row counts are unchanged across a run.                |
+| The synthesized entry point means ingestion, threading and the classify-to-auto-reply handoff are never exercised by the harness.                            | A green board while the desk is broken upstream of the model — the thing that actually decides whether a ticket ever reaches the auto-reply at all. | The same case set feeds both readers (R1): `/pipeline` posts a case through real ingestion, the harness hands it straight to the model. Two entry points, one set of expectations, and a disagreement between them localises the fault. |
 
 ## Open questions
 
 - [ ] **Target for decline accuracy is TBD** — needs the slice-2 baseline before
       a number means anything. Confirm who sets it once that run exists.
-- [ ] **The two metrics disagree about their targets.** The interview answer was
-      "both primary, no target yet", but the safety catch rate already has a
-      measured baseline and ADR-0004 fixes its target at 100% by construction —
-      a fail-closed check that catches 96% is a bug, not a score. Written as
-      100% above; confirm, or downgrade it to TBD alongside the other.
-- [ ] **How does a case reach the auto-reply?** Through the real ingestion path
-      (which creates ticket rows, contradicting R12), or by handing the
-      auto-reply a synthesized input directly (which skips ingestion, so an
-      ingestion bug would be invisible to the harness)? _Blocks R12 and slice 1._
-- [ ] **Where does the nightly run?** A repo CI schedule, or a scheduled job in
-      the deployed API — both stay inside the no-new-infrastructure rule, and
-      they differ on which corpus and which environment is reachable.
-      _Blocks R13._
+- [x] ~~The two metrics disagree about their targets.~~ **Settled: 100%.** The
+      safety catch rate is not a forecast — ADR-0004 makes a fail-closed check
+      that catches 96% a bug rather than a score.
+- [x] ~~How does a case reach the auto-reply?~~ **Settled: a synthesized input,
+      not the real ingestion path.** See Constraints, and the risk this buys.
+- [x] ~~Where does the nightly run?~~ **Settled: a scheduled queue in the
+      deployed API**, registered like the four existing sweeps.
 - [ ] **Assumed:** 5 repeats is fixed, not configurable per run — a configurable
       count makes runs incomparable, which is why it was assumed fixed. Confirm.
 - [ ] **Assumed:** the nightly runs the frozen corpus only, and live-corpus runs
