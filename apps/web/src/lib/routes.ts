@@ -48,6 +48,7 @@ export const ROUTE = {
   knowledge: { path: "/knowledge" },
   outbox: { path: "/outbox" },
   pipeline: { path: "/pipeline" },
+  evals: { path: "/evals" },
   activity: { path: "/activity" },
   tutorials: { path: "/tutorials" },
 

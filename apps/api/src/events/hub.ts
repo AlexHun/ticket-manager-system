@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/bun";
 import {
   EVENT_AUDIENCE,
+  TICKET_EVENT,
   type TicketEvent,
   type UserRole,
 } from "@ticket/shared";
@@ -70,6 +71,20 @@ export function subscribe(connection: EventConnection): () => void {
 }
 
 /**
+ * What one event is about, for a log line and an alert.
+ *
+ * `TicketEvent` is a union: four kinds name a ticket and `eval_run_changed`
+ * names a run, because an eval run answers a synthesized input and never
+ * reaches the code that writes a ticket. Narrowed here rather than assumed, so
+ * the message says which thing it means instead of printing `undefined`.
+ */
+function subjectOf(event: TicketEvent): string {
+  return event.kind === TICKET_EVENT.eval_run_changed
+    ? `eval run ${event.runId}`
+    : `ticket ${event.ticketId}`;
+}
+
+/**
  * Refuse an event published from inside an open transaction — or, in
  * production, report it and let it through.
  *
@@ -103,7 +118,7 @@ function refuseInsideTransaction(event: TicketEvent): void {
   if (!inTransaction()) return;
 
   const message =
-    `[events] ${event.kind} for ticket ${event.ticketId} was published inside a ` +
+    `[events] ${event.kind} for ${subjectOf(event)} was published inside a ` +
     `transaction — publish after the commit, never inside it (ADR-0015)`;
 
   // Read at call time, not at import: a test needs to exercise both branches,

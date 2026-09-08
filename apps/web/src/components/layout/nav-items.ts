@@ -1,6 +1,7 @@
 import {
   BookTextIcon,
   FlaskConicalIcon,
+  GaugeIcon,
   GraduationCapIcon,
   HistoryIcon,
   LayoutDashboardIcon,
@@ -76,6 +77,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: ROUTE.pipeline.path,
     label: "Pipeline",
     icon: WorkflowIcon,
+    role: USER_ROLE.admin,
+  },
+  {
+    to: ROUTE.evals.path,
+    label: "Evals",
+    icon: GaugeIcon,
     role: USER_ROLE.admin,
   },
   {

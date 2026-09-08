@@ -180,6 +180,18 @@ export const router = createBrowserRouter([
                         Component: m.PipelinePage,
                       })),
                   },
+                  // Admin-only for the pipeline's two reasons, sharpened:
+                  // starting a run spends model calls, and the results
+                  // describe how the unattended path's own safety checks are
+                  // holding. `requireAdmin` on every route in
+                  // `apps/api/src/routes/evals.ts` is the control.
+                  {
+                    path: ROUTE.evals.path,
+                    lazy: () =>
+                      import("@/pages/EvalsPage").then((m) => ({
+                        Component: m.EvalsPage,
+                      })),
+                  },
                   // Admin-only for the same reason knowledge and pipeline
                   // are: it reads across account and automation history an
                   // agent has no route to elsewhere. `requireAdmin` on every

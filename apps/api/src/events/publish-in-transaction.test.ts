@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   TICKET_EVENT,
   type TicketEvent,
-  type TicketEventKind,
+  type TicketScopedEvent,
 } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
 import { publish, subscribe } from "./hub";
@@ -32,8 +32,14 @@ import { publish, subscribe } from "./hub";
 
 const NOT_PRODUCTION = /published inside a transaction/;
 
+/**
+ * A ticket-scoped event of whichever kind. `eval_run_changed` is the one kind
+ * this cannot build — it names a run rather than a ticket — and it does not
+ * need to: what is under test here is the transaction guard, which reads the
+ * scope and not the payload.
+ */
 function event(
-  kind: TicketEventKind = TICKET_EVENT.ticket_updated,
+  kind: TicketScopedEvent["kind"] = TICKET_EVENT.ticket_updated,
 ): TicketEvent {
   return { kind, ticketId: 1, at: new Date().toISOString() };
 }

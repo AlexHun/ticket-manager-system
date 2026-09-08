@@ -29,6 +29,7 @@
     "@playwright/test": "^1.62.1",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@ticket/core": "workspace:*",
     "@ticket/shared": "workspace:*",
     "@types/node": "^26.2.0",
     "chrome-devtools-mcp": "^1.7.0",
