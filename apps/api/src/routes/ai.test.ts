@@ -1,14 +1,23 @@
 /**
- * Unit tests for `POST /api/ai/polish-reply`.
+ * Unit tests for `./ai` — both `POST /api/ai/polish-reply` and
+ * `POST /api/ai/summarize-ticket`.
  *
  * The router on a real Express app over a real socket, over a real database
  * (#174 — the last file ADR-0014 had left) and a stubbed provider. That last
- * one is not a seam this ticket moves: an AI feature test must not spend money
- * or depend on the network, so `../ai/polish` stays mocked, and `polishDraft`
- * itself is covered next door in `../ai/polish.test.ts`. What is under test is
- * the order the route does things in — configured, valid, found, within budget,
- * only then paid for — the context it assembles from the thread, and the
- * sentence each failure turns into.
+ * one is not a seam ADR-0014 moves: an AI feature test must not spend money or
+ * depend on the network, so `../ai/polish` and `../ai/summarize` stay mocked,
+ * and `polishDraft` itself is covered next door in `../ai/polish.test.ts`.
+ * What is under test is the order each route does things in — configured,
+ * valid, found, within budget, only then paid for — the context it assembles
+ * from the thread, and the sentence each failure turns into.
+ *
+ * **The summary endpoint had no test anywhere until #174**, which is worth
+ * knowing when reading the two halves: the polish tests are a conversion of
+ * assertions that already existed, and the summary ones below are new. They are
+ * deliberately shaped alike, because the two routes are alike everywhere except
+ * the query — and the differences between those two queries are where one could
+ * be mistaken for the other. Each of those differences was mutation-checked
+ * against `./ai.ts`.
  *
  * ## What the real database changed here
  *
