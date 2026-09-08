@@ -45,6 +45,7 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { PrismaPGlite } from "pglite-prisma-adapter";
 import { PrismaClient } from "../generated/prisma/client";
+import { scopeTransactions } from "../transaction-scope";
 
 // Re-exported so `./preload.ts`'s `../db` factory can hand the modules under
 // test the same `Prisma` namespace the real `../db` exports — it is a *value*
@@ -97,10 +98,22 @@ async function openDatabase(): Promise<PGlite> {
 }
 
 const db = await openDatabase();
-const client = new PrismaClient({
-  adapter: new PrismaPGlite(db),
-  log: ["error"],
-});
+
+// Wrapped exactly as `db.ts` wraps the real one, and for the reason that file
+// gives: `scopeTransactions` marks the inside of an interactive `$transaction`
+// so `events/hub.ts` can refuse an event published there (ADR-0015). Since #175
+// the preload hands *this* client to everything under test, so a guard applied
+// only in `db.ts` would leave the whole suite unguarded while reading as though
+// it were covered. Innermost, under the counting proxy below: the two wrappers
+// touch disjoint properties — this one only `$transaction`, that one only the
+// model delegates — so the nesting reads in the order the client is built
+// rather than deciding anything.
+const client = scopeTransactions(
+  new PrismaClient({
+    adapter: new PrismaPGlite(db),
+    log: ["error"],
+  }),
+);
 
 /**
  * How many times each Prisma operation has been called since the last reset,
