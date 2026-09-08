@@ -12,6 +12,7 @@ import {
   AI_FAILURE,
   classify,
   fenced,
+  isAiConfigured,
   logUsage,
   openaiModel,
   withoutDashes,
@@ -165,6 +166,28 @@ const THREAD_CHAR_BUDGET = 12_000;
  * the team's mouth inside the one structure the model is told to trust.
  */
 const MESSAGE_MARKER = "##MSG";
+
+/**
+ * Whether this deployment can summarise at all.
+ *
+ * The twin of `isPolishConfigured` in `./polish.ts`, and here for the reasons
+ * given there: there is one key behind every AI feature, so "can polish" and
+ * "can summarise" are the same question, but a route reading
+ * `isSummarizeConfigured()` says what it is guarding — and it is what a test
+ * replaces.
+ *
+ * That last half is why this exists rather than the route reaching for
+ * `isAiConfigured` directly, which is what it did until #174 wrote the tests
+ * for that route. Replacing the provider's own export means registering a
+ * second `mock.module("../ai/provider", …)` on a specifier `jobs/sweeps.test.ts`
+ * already owns — and that stub holds *state*, so the process-wide registry
+ * would keep one of the two switches and quietly ignore the other
+ * (`docs/standards/testing.md`). A per-feature guard is one line, and it keeps
+ * each route's test on a specifier of its own.
+ */
+export function isSummarizeConfigured(): boolean {
+  return isAiConfigured();
+}
 
 /** One thread message, in the only shape this module needs it. */
 export interface SummaryMessage {

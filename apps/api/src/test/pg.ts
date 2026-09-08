@@ -4,8 +4,8 @@
  * The API suite's test seam was the Prisma *client*: eleven files replaced
  * `../db` with an object of `mock()`s, so what the tests exercised was a
  * hand-written re-implementation of whichever slice of Prisma the route
- * happened to call. Two are left (`automation`, `routes/ai`) and
- * `docs/standards/testing.md` tracks them.
+ * happened to call. None are left — `routes/ai` was the last, in #174 — so
+ * every `../db` factory in this workspace now binds the client below.
  *
  * This module is the other seam — a real Prisma client on a real Postgres
  * (PGLite, compiled to WASM and run inside this process), so `where`, `select`,

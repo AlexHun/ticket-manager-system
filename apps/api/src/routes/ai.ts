@@ -12,8 +12,12 @@ import {
   polishDraft,
   type PolishFailure,
 } from "../ai/polish";
-import { AI_FAILURE, isAiConfigured, type AiFailure } from "../ai/provider";
-import { summarizeTicket, type SummaryMessage } from "../ai/summarize";
+import { AI_FAILURE, type AiFailure } from "../ai/provider";
+import {
+  isSummarizeConfigured,
+  summarizeTicket,
+  type SummaryMessage,
+} from "../ai/summarize";
 import { prisma } from "../db";
 import { requireAuth, sessionOf } from "../middleware/auth";
 
@@ -363,7 +367,7 @@ aiRouter.post(
   ) => {
     // First, and before the body is even looked at: on a deployment with no key
     // the answer is the same for every request.
-    if (!isAiConfigured()) {
+    if (!isSummarizeConfigured()) {
       res
         .status(503)
         .json({ error: "Summarising isn't configured on this server." });
