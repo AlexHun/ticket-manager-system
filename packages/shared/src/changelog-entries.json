@@ -108,5 +108,10 @@
     "version": "0.1.61",
     "date": "2026-09-05",
     "title": "Move RESET_TOKEN_TTL_SECONDS out of auth.ts so a test can load it"
+  },
+  {
+    "version": "0.1.72",
+    "date": "2026-09-08",
+    "title": "Refuse an event published inside a transaction, at the publish seam (#177)"
   }
 ]
