@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { CHART_HEIGHT_CLASS } from "./chart-tokens";
 
@@ -84,7 +85,9 @@ export function ChartCard({
             <p className="text-sm text-muted-foreground">{emptyMessage}</p>
           </div>
         ) : showTable ? (
-          <div className={cn(CHART_HEIGHT_CLASS, "overflow-auto")}>{table}</div>
+          <TableFrame label={title} className={CHART_HEIGHT_CLASS}>
+            {table}
+          </TableFrame>
         ) : (
           children
         )}
