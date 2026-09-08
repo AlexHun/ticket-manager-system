@@ -1,0 +1,7 @@
+# Git hooks are executed by `sh`, and this repo is developed on Windows with
+# core.autocrlf=true — which would check these out with CRLF endings and leave
+# `sh` reading a stray \r as part of the last argument on every line. Nothing
+# else in the tree is pinned: the working copy stays CRLF on Windows and Git
+# normalises to LF in the object store as before, which is why Prettier is
+# configured with `endOfLine: "auto"` rather than the default "lf".
+.husky/* text eol=lf

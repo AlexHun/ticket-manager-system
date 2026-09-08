@@ -26,9 +26,7 @@ const UNASSIGNED_LABEL = "Unassigned";
  * is a different kind of thing from the real categories, and sorting it into the
  * middle of them implies it is one of them.
  */
-export function categoryRows(
-  categories: TicketCategoryCount[],
-): MiniBarRow[] {
+export function categoryRows(categories: TicketCategoryCount[]): MiniBarRow[] {
   const named = categories
     .filter((c) => c.category !== null)
     .sort((a, b) => b.count - a.count)

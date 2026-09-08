@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
-import { render, type RenderOptions, type RenderResult } from "@testing-library/react";
+import {
+  render,
+  type RenderOptions,
+  type RenderResult,
+} from "@testing-library/react";
 import {
   RouterProvider,
   createMemoryRouter,

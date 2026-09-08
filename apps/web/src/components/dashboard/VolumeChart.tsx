@@ -90,7 +90,12 @@ export function VolumeChart({
             minTickGap={16}
             tickFormatter={(value: string) => formatBucketLabel(value, bucket)}
           />
-          <YAxis tickLine={false} axisLine={false} width={40} allowDecimals={false} />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            width={40}
+            allowDecimals={false}
+          />
           <ChartTooltip
             content={
               <ChartTooltipContent
@@ -111,9 +116,7 @@ export function VolumeChart({
               // Only the topmost segment carries the rounded data-end; the stack
               // stays square where it meets the baseline.
               shape={
-                <StackSegmentV
-                  radius={i === STATUS_STACK.length - 1 ? 4 : 0}
-                />
+                <StackSegmentV radius={i === STATUS_STACK.length - 1 ? 4 : 0} />
               }
             />
           ))}

@@ -35,7 +35,9 @@ vi.mock("@/lib/auth-client", () => ({
 
 // --- Fixtures ---------------------------------------------------------------
 
-function makeEntry(overrides: Partial<ActivityEntry> & Pick<ActivityEntry, "id">): ActivityEntry {
+function makeEntry(
+  overrides: Partial<ActivityEntry> & Pick<ActivityEntry, "id">,
+): ActivityEntry {
   return {
     entityType: ACTIVITY_ENTITY_TYPE.ticket,
     entityId: "42",
@@ -186,7 +188,9 @@ describe("ActivityPage", () => {
     await screen.findByText("Status changed");
 
     for (const header of ["When", "Actor", "Entity", "Action", "Change"]) {
-      expect(screen.getByRole("columnheader", { name: header })).toBeInTheDocument();
+      expect(
+        screen.getByRole("columnheader", { name: header }),
+      ).toBeInTheDocument();
     }
   });
 
@@ -212,10 +216,9 @@ describe("ActivityPage", () => {
     mockApiRoutes({ activity: activityResponse([ticketEntry]) });
     renderActivityPage();
 
-    expect(await screen.findByRole("link", { name: "Ticket #42" })).toHaveAttribute(
-      "href",
-      "/tickets/42",
-    );
+    expect(
+      await screen.findByRole("link", { name: "Ticket #42" }),
+    ).toHaveAttribute("href", "/tickets/42");
   });
 
   test("links a knowledge entry to the knowledge base", async () => {
@@ -233,14 +236,18 @@ describe("ActivityPage", () => {
 
     await screen.findByText("Handoff changed");
     expect(screen.getByText("Automation")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Automation/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Automation/ }),
+    ).not.toBeInTheDocument();
   });
 
   test("renders an empty-state message when nothing is returned", async () => {
     mockApiRoutes({ activity: activityResponse([]) });
     renderActivityPage();
 
-    expect(await screen.findByText("Nothing recorded yet.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Nothing recorded yet."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -295,7 +302,9 @@ describe("ActivityPage filtering", () => {
     await user.click(screen.getByRole("combobox", { name: "Actor" }));
     await waitFor(() => expect(usersGet).toHaveBeenCalled());
 
-    await user.click(await screen.findByRole("option", { name: "Priya Raman" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Priya Raman" }),
+    );
 
     await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
     expect(activityParamsOfCall(1)).toMatchObject({ actorId: "user-1" });
@@ -304,7 +313,9 @@ describe("ActivityPage filtering", () => {
   test("labels the automated assistant distinctly in the actor list", async () => {
     mockApiRoutes({
       activity: activityResponse(allEntries),
-      users: [makeUser({ id: "assistant-1", name: "AI Assistant", automated: true })],
+      users: [
+        makeUser({ id: "assistant-1", name: "AI Assistant", automated: true }),
+      ],
     });
     const user = userEvent.setup();
     renderActivityPage();
@@ -319,7 +330,9 @@ describe("ActivityPage filtering", () => {
   /** Opens the single date-range popover — pinned by `vi.setSystemTime` in
    *  each test below so "today" (the Calendar's default month, and the
    *  presets' anchor) always lands where the test means it to. */
-  async function openDateRangePopover(user: ReturnType<typeof userEvent.setup>) {
+  async function openDateRangePopover(
+    user: ReturnType<typeof userEvent.setup>,
+  ) {
     await user.click(screen.getByRole("button", { name: "Date range" }));
     return screen.findByRole("dialog");
   }
@@ -387,7 +400,9 @@ describe("ActivityPage filtering", () => {
     await user.click(withinFirstMonth(popover).getByText("1"));
     await user.click(withinFirstMonth(popover).getByText("24"));
     await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
 
     // Regression for #95: reopening with a full range already selected used
     // to let react-day-picker's default range logic extend that old range
@@ -404,7 +419,9 @@ describe("ActivityPage filtering", () => {
       from: "2026-08-10",
       to: "2026-08-21",
     });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   test("abandoning an in-progress pick by closing the popover doesn't commit it", async () => {
@@ -416,14 +433,16 @@ describe("ActivityPage filtering", () => {
     expect(activityGet).toHaveBeenCalledTimes(1);
 
     await user.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
     expect(activityGet).toHaveBeenCalledTimes(1);
 
     // The trigger still reads "Any date" — the abandoned from-only pick was
     // never committed to `ActivityPage`'s filters.
-    expect(screen.getByRole("button", { name: "Date range" })).toHaveTextContent(
-      "Any date",
-    );
+    expect(
+      screen.getByRole("button", { name: "Date range" }),
+    ).toHaveTextContent("Any date");
   });
 
   /** The rendered day button for a given day number in the first month —
@@ -447,9 +466,18 @@ describe("ActivityPage filtering", () => {
 
     // The anchor itself is a plain from-only pick, not a `range_start` —
     // react-day-picker only marks that once a range has both ends.
-    expect(dayButton(popover, "1")).toHaveAttribute("data-selected-single", "true");
-    expect(dayButton(popover, "5")).toHaveAttribute("data-range-preview-middle", "true");
-    expect(dayButton(popover, "10")).toHaveAttribute("data-range-preview-end", "true");
+    expect(dayButton(popover, "1")).toHaveAttribute(
+      "data-selected-single",
+      "true",
+    );
+    expect(dayButton(popover, "5")).toHaveAttribute(
+      "data-range-preview-middle",
+      "true",
+    );
+    expect(dayButton(popover, "10")).toHaveAttribute(
+      "data-range-preview-end",
+      "true",
+    );
     // Cosmetic only — the hovered day never reaches `ActivityPage`'s filters.
     expect(activityGet).toHaveBeenCalledTimes(1);
   });
@@ -463,9 +491,18 @@ describe("ActivityPage filtering", () => {
 
     await user.hover(dayButton(popover, "10"));
 
-    expect(dayButton(popover, "10")).toHaveAttribute("data-range-preview-end", "true");
-    expect(dayButton(popover, "15")).toHaveAttribute("data-range-preview-middle", "true");
-    expect(dayButton(popover, "24")).toHaveAttribute("data-selected-single", "true");
+    expect(dayButton(popover, "10")).toHaveAttribute(
+      "data-range-preview-end",
+      "true",
+    );
+    expect(dayButton(popover, "15")).toHaveAttribute(
+      "data-range-preview-middle",
+      "true",
+    );
+    expect(dayButton(popover, "24")).toHaveAttribute(
+      "data-selected-single",
+      "true",
+    );
   });
 
   test("drops the preview once the pointer leaves the calendar", async () => {
@@ -475,14 +512,22 @@ describe("ActivityPage filtering", () => {
     const popover = await openDateRangePopover(user);
     await user.click(withinFirstMonth(popover).getByText("1"));
     await user.hover(dayButton(popover, "10"));
-    expect(dayButton(popover, "5")).toHaveAttribute("data-range-preview-middle", "true");
+    expect(dayButton(popover, "5")).toHaveAttribute(
+      "data-range-preview-middle",
+      "true",
+    );
 
     await user.unhover(dayButton(popover, "10"));
 
     // No `modifiers` prop at all once there's no pointer-driven preview, so
     // the attribute is absent rather than `"false"`.
-    expect(dayButton(popover, "5")).not.toHaveAttribute("data-range-preview-middle");
-    expect(dayButton(popover, "1")).toHaveAttribute("data-selected-single", "true");
+    expect(dayButton(popover, "5")).not.toHaveAttribute(
+      "data-range-preview-middle",
+    );
+    expect(dayButton(popover, "1")).toHaveAttribute(
+      "data-selected-single",
+      "true",
+    );
   });
 
   test("applies a preset range and closes the popover", async () => {
@@ -497,7 +542,9 @@ describe("ActivityPage filtering", () => {
       from: "2026-08-15",
       to: "2026-08-16",
     });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   test("clears the date range via the All time preset", async () => {
@@ -519,7 +566,9 @@ describe("ActivityPage filtering", () => {
     await user.click(withinFirstMonth(reopened).getByText("1"));
     expect(activityGet).toHaveBeenCalledTimes(2);
 
-    await user.click(within(reopened).getByRole("button", { name: "All time" }));
+    await user.click(
+      within(reopened).getByRole("button", { name: "All time" }),
+    );
 
     await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(3));
     expect(activityParamsOfCall(2)).not.toHaveProperty("from");
@@ -559,7 +608,9 @@ describe("ActivityPage filtering", () => {
     renderActivityPage();
     await screen.findByText("Status changed");
 
-    mockApiRoutes({ activity: activityResponse(allEntries, { total: 60, page: 2 }) });
+    mockApiRoutes({
+      activity: activityResponse(allEntries, { total: 60, page: 2 }),
+    });
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(activityParamsOfCall(1).page).toBe(2));
 
@@ -616,7 +667,10 @@ describe("ActivityPage pagination", () => {
     await user.click(await screen.findByRole("option", { name: "50" }));
 
     await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(3));
-    expect(activityParamsOfCall(2)).toMatchObject({ pageSize: 50, page: FIRST_PAGE });
+    expect(activityParamsOfCall(2)).toMatchObject({
+      pageSize: 50,
+      page: FIRST_PAGE,
+    });
   });
 
   test("hides the pagination bar when nothing matches", async () => {

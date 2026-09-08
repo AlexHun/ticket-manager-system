@@ -122,7 +122,9 @@ function urlParams(router: TestRouter): Record<string, string> {
 
 function rowSubjects(): string[] {
   const [, ...bodyRows] = screen.getAllByRole("row");
-  return bodyRows.map((row) => within(row).getAllByRole("cell")[0].textContent ?? "");
+  return bodyRows.map(
+    (row) => within(row).getAllByRole("cell")[0].textContent ?? "",
+  );
 }
 
 type TicketsRequestOptions = {
@@ -277,7 +279,9 @@ describe("TicketsPage", () => {
   });
 
   test("renders a row per ticket once the query resolves", async () => {
-    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
+    ticketsGet.mockResolvedValue(
+      ticketsResponse([newestTicket, middleTicket, oldestTicket]),
+    );
     renderTicketsPage();
 
     expect(await screen.findByText("Newest ticket")).toBeInTheDocument();
@@ -300,7 +304,9 @@ describe("TicketsPage", () => {
   });
 
   test("preserves the server's newest-first order", async () => {
-    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
+    ticketsGet.mockResolvedValue(
+      ticketsResponse([newestTicket, middleTicket, oldestTicket]),
+    );
     renderTicketsPage();
 
     await screen.findByText("Newest ticket");
@@ -324,7 +330,9 @@ describe("TicketsPage", () => {
   });
 
   test("renders a distinct badge variant per status", async () => {
-    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket, middleTicket, oldestTicket]));
+    ticketsGet.mockResolvedValue(
+      ticketsResponse([newestTicket, middleTicket, oldestTicket]),
+    );
     renderTicketsPage();
 
     // Scoped to the table so the status filter can never shadow these.
@@ -436,7 +444,9 @@ describe("TicketsPage", () => {
     renderTicketsPage();
 
     await waitFor(() => {
-      expect(screen.queryByLabelText("Loading tickets")).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Loading tickets"),
+      ).not.toBeInTheDocument();
     });
     expect(screen.getByText("Newest ticket")).toBeInTheDocument();
   });
@@ -733,7 +743,9 @@ describe("TicketsPage pagination", () => {
   test("disables Previous on the first page and Next on the last", async () => {
     const user = await renderLoaded();
 
-    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Previous page" }),
+    ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
 
     ticketsGet.mockResolvedValue(manyPages({ page: 10 }));
@@ -746,7 +758,9 @@ describe("TicketsPage pagination", () => {
   });
 
   test("clamps the range label on a partial last page", async () => {
-    ticketsGet.mockResolvedValue(ticketsResponse(allTickets, { total: 53, page: 3 }));
+    ticketsGet.mockResolvedValue(
+      ticketsResponse(allTickets, { total: 53, page: 3 }),
+    );
     renderTicketsPage();
 
     // 53 items, 25 per page: the third page holds only 3.

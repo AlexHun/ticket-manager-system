@@ -76,7 +76,10 @@ describe("handle", () => {
     // is not offered back, and this job arriving again must not re-open it.
     await CLASSIFY_WORKER.handle({ ticketId: id });
 
-    expect(await verdictOn(id)).toEqual({ category: null, classifiedAt: stamped });
+    expect(await verdictOn(id)).toEqual({
+      category: null,
+      classifiedAt: stamped,
+    });
   });
 
   test("does nothing when the ticket is gone", async () => {

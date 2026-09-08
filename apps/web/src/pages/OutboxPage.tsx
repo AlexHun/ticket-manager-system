@@ -74,63 +74,63 @@ export function OutboxPage() {
       <Tutorial pageKey={TUTORIAL_PAGE_KEY.outbox} />
 
       <div className="flex max-w-5xl flex-col gap-6">
-      <PageHeader
-        title="Outbox"
-        description="Every email the desk has written, and what became of it."
-      >
-        <div data-tutorial-anchor="status" className="contents">
-          <Select
-            value={status}
-            onValueChange={(v) =>
-              setStatus(v as OutboundEmailStatus | typeof ANY_STATUS)
-            }
-          >
-            <SelectTrigger className="w-44" aria-label="Filter by status">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY_STATUS}>Any status</SelectItem>
-              {Object.values(OUTBOUND_EMAIL_STATUS).map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_LABEL[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </PageHeader>
+        <PageHeader
+          title="Outbox"
+          description="Every email the desk has written, and what became of it."
+        >
+          <div data-tutorial-anchor="status" className="contents">
+            <Select
+              value={status}
+              onValueChange={(v) =>
+                setStatus(v as OutboundEmailStatus | typeof ANY_STATUS)
+              }
+            >
+              <SelectTrigger className="w-44" aria-label="Filter by status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY_STATUS}>Any status</SelectItem>
+                {Object.values(OUTBOUND_EMAIL_STATUS).map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </PageHeader>
 
-      {/* Said out loud rather than left to be inferred from a page of rows all
+        {/* Said out loud rather than left to be inferred from a page of rows all
           reading "Not sent". From every other screen, "no provider bound" and
           "a quiet week" look identical. */}
-      {/* Theme tokens on the card below, not a raw palette colour: there is no
+        {/* Theme tokens on the card below, not a raw palette colour: there is no
           warning token in this theme, and inventing one here would put a fourth
           hard-coded `amber-500` in the app. The icon and heading carry it. */}
-      {data && !data.mailConfigured && (
-        <Card className="border-dashed bg-muted/40">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="size-4" />
-              No mail provider is configured
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Nothing below has been sent, and nothing will be until
-            <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
-              POSTMARK_SERVER_TOKEN
-            </code>
-            is set. Until then this page is how invitations and password resets
-            reach people — open one and pass on the link it contains.
-          </CardContent>
-        </Card>
-      )}
+        {data && !data.mailConfigured && (
+          <Card className="border-dashed bg-muted/40">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <AlertTriangle className="size-4" />
+                No mail provider is configured
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Nothing below has been sent, and nothing will be until
+              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+                POSTMARK_SERVER_TOKEN
+              </code>
+              is set. Until then this page is how invitations and password
+              resets reach people — open one and pass on the link it contains.
+            </CardContent>
+          </Card>
+        )}
 
-      {data && (
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-muted-foreground">
-            {data.total} email{data.total === 1 ? "" : "s"}
-          </p>
-          {/* Said on the screen because it is the one thing here that would
+        {data && (
+          <div className="flex flex-col gap-1">
+            <p className="text-sm text-muted-foreground">
+              {data.total} email{data.total === 1 ? "" : "s"}
+            </p>
+            {/* Said on the screen because it is the one thing here that would
               otherwise look like data loss. An invitation row is a link and
               nothing else, so it is kept for exactly as long as the link works
               and then deleted (`jobs/prune-outbox.ts`) — an admin who came back
@@ -142,39 +142,46 @@ export function OutboxPage() {
               the sweep). Changing either there without changing this sentence
               leaves the screen lying; if a third number ever joins them, send
               them down with `mailConfigured` instead of adding another copy. */}
-          <p className="text-xs text-muted-foreground">
-            Invitation and password-reset links work for 24 hours, and their
-            emails are cleared once they expire — resend from{" "}
-            <Link to={ROUTE.users.path} className="underline underline-offset-2">
-              Users
-            </Link>{" "}
-            if one has gone. Ticket replies are kept for 90 days.
+            <p className="text-xs text-muted-foreground">
+              Invitation and password-reset links work for 24 hours, and their
+              emails are cleared once they expire — resend from{" "}
+              <Link
+                to={ROUTE.users.path}
+                className="underline underline-offset-2"
+              >
+                Users
+              </Link>{" "}
+              if one has gone. Ticket replies are kept for 90 days.
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error.message}
           </p>
-        </div>
-      )}
+        )}
 
-      {error && (
-        <p className="text-sm text-destructive" role="alert">
-          {error.message}
-        </p>
-      )}
+        {isPending && !error && (
+          <div
+            className="flex flex-col gap-3"
+            aria-busy="true"
+            aria-label="Loading outbox"
+          >
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-lg" />
+            ))}
+          </div>
+        )}
 
-      {isPending && !error && (
-        <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading outbox">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-lg" />
-          ))}
-        </div>
-      )}
-
-      {data && data.emails.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-12 text-center">
-          <Inbox className="size-6 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            Nothing here yet. Emails appear as the desk writes them.
-          </p>
-        </div>
-      )}
+        {data && data.emails.length === 0 && (
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-12 text-center">
+            <Inbox className="size-6 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              Nothing here yet. Emails appear as the desk writes them.
+            </p>
+          </div>
+        )}
 
         <div data-tutorial-anchor="rows" className="contents">
           {data?.emails.map((email) => (
@@ -239,7 +246,8 @@ function OutboxRow({
         </div>
         <CardTitle className="text-base">{email.subject}</CardTitle>
         <p className="text-sm text-muted-foreground">
-          To {email.toName ? `${email.toName} <${email.toEmail}>` : email.toEmail}
+          To{" "}
+          {email.toName ? `${email.toName} <${email.toEmail}>` : email.toEmail}
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

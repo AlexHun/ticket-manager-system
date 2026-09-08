@@ -54,7 +54,10 @@ import { requireAdmin, sessionOf } from "../middleware/auth";
  * react-hook-form on the client.
  */
 function withNote<T extends { internalNote: string }>(data: T) {
-  return { ...data, internalNote: data.internalNote.length === 0 ? null : data.internalNote };
+  return {
+    ...data,
+    internalNote: data.internalNote.length === 0 ? null : data.internalNote,
+  };
 }
 
 function parseBody<S extends ZodType>(
@@ -331,7 +334,10 @@ knowledgeRouter.post(
  * catch. Only an edit that is `autoReply: false` on both sides is genuinely
  * outside the blast radius (`docs/adr`, issue #17).
  */
-function needsApproval(existing: { autoReply: boolean }, data: { autoReply: boolean }): boolean {
+function needsApproval(
+  existing: { autoReply: boolean },
+  data: { autoReply: boolean },
+): boolean {
   return existing.autoReply || data.autoReply;
 }
 

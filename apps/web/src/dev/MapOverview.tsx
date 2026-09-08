@@ -38,7 +38,9 @@ interface MapOverviewProps {
 export function MapOverview({ graph, onSelect, query }: MapOverviewProps) {
   const { totals } = graph;
   const covered =
-    totals.testableModules === 0 ? 0 : totals.testedModules / totals.testableModules;
+    totals.testableModules === 0
+      ? 0
+      : totals.testedModules / totals.testableModules;
 
   // `testable` comes from the scan rather than being re-derived here, so this
   // list can never disagree with the ratio above it.
@@ -57,16 +59,36 @@ export function MapOverview({ graph, onSelect, query }: MapOverviewProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <StatTile label="Modules" value={totals.modules} sub="TypeScript files scanned" />
-        <StatTile label="Lines of code" value={totals.code} sub="blank and comment lines excluded" />
+        <StatTile
+          label="Modules"
+          value={totals.modules}
+          sub="TypeScript files scanned"
+        />
+        <StatTile
+          label="Lines of code"
+          value={totals.code}
+          sub="blank and comment lines excluded"
+        />
         <StatTile
           label="Lines of comment"
           value={totals.comments}
           sub={`${formatPercent(totals.comments / Math.max(1, totals.code))} of the code`}
         />
-        <StatTile label="Import edges" value={totals.edges} sub="module → module" />
-        <StatTile label="API endpoints" value={totals.endpoints} sub={`${totals.routes} client routes`} />
-        <StatTile label="Test files" value={totals.testFiles} sub="component specs + E2E" />
+        <StatTile
+          label="Import edges"
+          value={totals.edges}
+          sub="module → module"
+        />
+        <StatTile
+          label="API endpoints"
+          value={totals.endpoints}
+          sub={`${totals.routes} client routes`}
+        />
+        <StatTile
+          label="Test files"
+          value={totals.testFiles}
+          sub="component specs + E2E"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -136,7 +158,9 @@ export function MapOverview({ graph, onSelect, query }: MapOverviewProps) {
             {graph.workspaces.map((workspace) => (
               <div key={workspace.workspace} className="flex flex-col gap-1.5">
                 <div className="flex items-baseline justify-between gap-2 text-sm">
-                  <code className="font-mono">{WORKSPACE_LABEL[workspace.workspace]}</code>
+                  <code className="font-mono">
+                    {WORKSPACE_LABEL[workspace.workspace]}
+                  </code>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {workspace.modules} modules · {workspace.code} lines
                   </span>
@@ -179,8 +203,12 @@ export function MapOverview({ graph, onSelect, query }: MapOverviewProps) {
       <Card size="sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <PackageOpen aria-hidden="true" className="size-4 text-muted-foreground" />
-            External packages ({countLabel(externals.length, graph.externals.length)})
+            <PackageOpen
+              aria-hidden="true"
+              className="size-4 text-muted-foreground"
+            />
+            External packages (
+            {countLabel(externals.length, graph.externals.length)})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -194,18 +222,20 @@ export function MapOverview({ graph, onSelect, query }: MapOverviewProps) {
                 <li key={dep.name}>
                   <Badge variant="outline" className="font-mono font-normal">
                     {dep.name}
-                    <span className="text-foreground/70 tabular-nums">{dep.users.length}</span>
+                    <span className="text-foreground/70 tabular-nums">
+                      {dep.users.length}
+                    </span>
                   </Badge>
                 </li>
               ))}
             </ul>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
-            The number is how many modules import it, and it counts every importer
-            rather than only the matching ones — it says how load-bearing the
-            package is, which does not change because you searched. Counted from
-            source, so a transitive dependency nothing imports directly does not
-            appear.
+            The number is how many modules import it, and it counts every
+            importer rather than only the matching ones — it says how
+            load-bearing the package is, which does not change because you
+            searched. Counted from source, so a transitive dependency nothing
+            imports directly does not appear.
           </p>
         </CardContent>
       </Card>
@@ -230,7 +260,9 @@ function Findings({
   query: string;
 }) {
   const hasNothing =
-    graph.cycles.length === 0 && graph.orphans.length === 0 && graph.warnings.length === 0;
+    graph.cycles.length === 0 &&
+    graph.orphans.length === 0 &&
+    graph.warnings.length === 0;
 
   // A ring is a hit if any module on it is: you search for the file you suspect,
   // and the cycle it sits in comes back whole rather than clipped to the one

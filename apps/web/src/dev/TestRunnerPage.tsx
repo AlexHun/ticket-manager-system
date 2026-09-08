@@ -117,7 +117,10 @@ export function TestRunnerPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              {extractErrorMessage(error, "The dev middleware returned an error.")}
+              {extractErrorMessage(
+                error,
+                "The dev middleware returned an error.",
+              )}
             </p>
           </CardContent>
         </Card>
@@ -145,13 +148,13 @@ export function TestRunnerPage() {
         <SuiteCard key={suite.id} suite={suite} runner={runner} />
       ))}
       <p className="text-xs text-muted-foreground">
-        Each suite is the same command you would type in the terminal, run in the
-        repo root by the Vite dev plugin — no test-specific server, and no
-        environment of its own. The runs belong to the dev server, not to this tab:
-        reloading or navigating away leaves them going and reconnects to whatever is
-        in flight. Only Cancel stops one, and it kills the whole process tree —
-        which for the E2E suite includes the two servers it started. Restarting
-        `vite dev` also stops everything.
+        Each suite is the same command you would type in the terminal, run in
+        the repo root by the Vite dev plugin — no test-specific server, and no
+        environment of its own. The runs belong to the dev server, not to this
+        tab: reloading or navigating away leaves them going and reconnects to
+        whatever is in flight. Only Cancel stops one, and it kills the whole
+        process tree — which for the E2E suite includes the two servers it
+        started. Restarting `vite dev` also stops everything.
       </p>
     </div>
   );
@@ -183,8 +186,8 @@ function Controls({
         <div>
           <h1 className="text-lg font-semibold">Tests</h1>
           <p className="text-sm text-muted-foreground">
-            {suites.length} suites. Run one, or run them all — fastest first, so a
-            broken type fails before Playwright boots a browser.
+            {suites.length} suites. Run one, or run them all — fastest first, so
+            a broken type fails before Playwright boots a browser.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -222,7 +225,9 @@ function Controls({
             <Loader2 aria-hidden="true" className="size-4 animate-spin" />
             <span>
               Running{" "}
-              <span className="font-medium">{running?.label ?? "next suite"}</span>
+              <span className="font-medium">
+                {running?.label ?? "next suite"}
+              </span>
               {runner.queued.length > 0 && ` · ${runner.queued.length} queued`}
             </span>
           </>
@@ -232,14 +237,20 @@ function Controls({
           </span>
         ) : failed.length === 0 ? (
           <>
-            <CheckCircle2 aria-hidden="true" className="size-4 text-status-good" />
+            <CheckCircle2
+              aria-hidden="true"
+              className="size-4 text-status-good"
+            />
             <span>
               {finished.length} of {suites.length} suites run — all passed.
             </span>
           </>
         ) : (
           <>
-            <XCircle aria-hidden="true" className="size-4 text-status-critical" />
+            <XCircle
+              aria-hidden="true"
+              className="size-4 text-status-critical"
+            />
             <span>
               {failed.length} of {finished.length} suites run failed:{" "}
               {failed.map((suite) => suite.label).join(", ")}.
@@ -302,7 +313,11 @@ function SuiteCard({
             <CollapsibleTrigger asChild>
               {/* Only the name is the trigger. Making the whole row one would put
                   Run and Clear inside a button, which is invalid and unclickable. */}
-              <Button variant="ghost" size="sm" className="-ml-1.5 text-sm font-medium">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-1.5 text-sm font-medium"
+              >
                 <ChevronRight
                   aria-hidden="true"
                   className={cn("transition-transform", open && "rotate-90")}
@@ -359,7 +374,8 @@ function SuiteCard({
                 <span className="flex items-center gap-1 text-xs text-status-warning">
                   <Database aria-hidden="true" className="size-3.5" />
                   needs Postgres — run{" "}
-                  <code className="font-mono">bun run db:test:reset</code> once first
+                  <code className="font-mono">bun run db:test:reset</code> once
+                  first
                 </span>
               )}
             </div>
@@ -378,7 +394,11 @@ function SuiteCard({
                * panel keeps its own height instead of stretching to the tall one. */
               <div className="grid items-start gap-3 lg:grid-cols-2">
                 <CaseList run={run} suite={suite} />
-                <LogView lines={run.lines} dropped={run.dropped} live={isRunning} />
+                <LogView
+                  lines={run.lines}
+                  dropped={run.dropped}
+                  live={isRunning}
+                />
               </div>
             )}
           </CardContent>
@@ -392,7 +412,10 @@ function StatusBadge({ status }: { status: RunStatus }) {
   const visual = STATUS_VISUAL[status];
   const Icon = visual.icon;
   return (
-    <Badge variant="outline" className={cn("gap-1.5 font-normal", visual.className)}>
+    <Badge
+      variant="outline"
+      className={cn("gap-1.5 font-normal", visual.className)}
+    >
       <Icon
         aria-hidden="true"
         className={status === RUN_STATUS.running ? "animate-spin" : undefined}
@@ -480,7 +503,9 @@ function RunStats({ run, live }: { run: SuiteRun; live: boolean }) {
       {chips.map((chip) => (
         <div key={chip.label} className="flex items-baseline gap-1">
           <dt className="text-muted-foreground">{chip.label}</dt>
-          <dd className={cn("font-medium tabular-nums", chip.tone)}>{chip.value}</dd>
+          <dd className={cn("font-medium tabular-nums", chip.tone)}>
+            {chip.value}
+          </dd>
         </div>
       ))}
     </dl>
@@ -509,7 +534,10 @@ function Panel({
   return (
     <section className="flex min-w-0 flex-col rounded-md ring-1 ring-border">
       <h3 className="flex items-center gap-2 border-b border-border px-2.5 py-1.5 text-xs font-medium">
-        <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <Icon
+          aria-hidden="true"
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
         {title}
         <span className="ml-auto flex items-center gap-2 font-normal text-muted-foreground tabular-nums">
           {meta}
@@ -521,7 +549,9 @@ function Panel({
 }
 
 function CaseList({ run, suite }: { run: SuiteRun; suite: SuiteDescriptor }) {
-  const failures = run.cases.filter((result) => result.status === CASE_STATUS.failed);
+  const failures = run.cases.filter(
+    (result) => result.status === CASE_STATUS.failed,
+  );
   // Failures first: on a red run they are the only rows anyone reads, and a long
   // list of passes above them is in the way.
   const ordered = [
@@ -537,7 +567,9 @@ function CaseList({ run, suite }: { run: SuiteRun; suite: SuiteDescriptor }) {
         run.cases.length > 0 && (
           <>
             {failures.length > 0 && (
-              <span className="text-status-critical">{failures.length} failed</span>
+              <span className="text-status-critical">
+                {failures.length} failed
+              </span>
             )}
             <span>{run.cases.length}</span>
           </>
@@ -680,7 +712,8 @@ function LogView({
         onScroll={(event) => {
           const element = event.currentTarget;
           stickRef.current =
-            element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+            element.scrollHeight - element.scrollTop - element.clientHeight <
+            24;
         }}
         className="max-h-80 overflow-auto p-2.5"
       >

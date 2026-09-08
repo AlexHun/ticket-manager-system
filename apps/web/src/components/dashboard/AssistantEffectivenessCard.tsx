@@ -96,9 +96,7 @@ export function AssistantEffectivenessCard({
                       <span className="text-muted-foreground">
                         {DECLINE_SHORT[reason]}
                       </span>
-                      <span className="font-medium tabular-nums">
-                        {count}
-                      </span>
+                      <span className="font-medium tabular-nums">{count}</span>
                     </li>
                   ))}
                 </ul>

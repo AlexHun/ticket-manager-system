@@ -123,8 +123,7 @@ function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
   }
 
   if (query.category) {
-    where.category =
-      query.category === CATEGORY_NONE ? null : query.category;
+    where.category = query.category === CATEGORY_NONE ? null : query.category;
   }
 
   // Matched on the id, not through the relation: `assignedToId` is on the
@@ -515,7 +514,11 @@ ticketsRouter.get(
     const viewerId = sessionOf(res).user.id;
     if (ticket.assignedToId === viewerId) {
       await prisma.ticket.updateMany({
-        where: { id: ticket.id, assignedToId: viewerId, assignmentSeenAt: null },
+        where: {
+          id: ticket.id,
+          assignedToId: viewerId,
+          assignmentSeenAt: null,
+        },
         data: { assignmentSeenAt: new Date() },
       });
     }
@@ -562,7 +565,10 @@ ticketsRouter.get(
 ticketsRouter.get(
   "/:id/activity",
   requireAuth,
-  async (req: Request, res: Response<TicketActivityResponse | { error: string }>) => {
+  async (
+    req: Request,
+    res: Response<TicketActivityResponse | { error: string }>,
+  ) => {
     const parsed = ticketIdParamSchema.safeParse(req.params);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0].message });

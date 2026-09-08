@@ -79,8 +79,12 @@ describe("bracket bookkeeping", () => {
     markNavigate(TICKETS);
     markRouteRendered(TICKETS);
 
-    expect(performance.getEntriesByName(navigateMarkName(TICKETS), "mark")).toHaveLength(1);
-    expect(performance.getEntriesByName(renderedMarkName(TICKETS), "mark")).toHaveLength(1);
+    expect(
+      performance.getEntriesByName(navigateMarkName(TICKETS), "mark"),
+    ).toHaveLength(1);
+    expect(
+      performance.getEntriesByName(renderedMarkName(TICKETS), "mark"),
+    ).toHaveLength(1);
     expect(
       performance.getEntriesByName(timeToDataMeasureName(TICKETS), "measure"),
     ).toHaveLength(1);
@@ -105,7 +109,9 @@ describe("bracket bookkeeping", () => {
   it("records nothing when no bracket is open", () => {
     markRouteRendered(TICKETS);
 
-    expect(performance.getEntriesByName(renderedMarkName(TICKETS), "mark")).toHaveLength(0);
+    expect(
+      performance.getEntriesByName(renderedMarkName(TICKETS), "mark"),
+    ).toHaveLength(0);
     expect(
       performance.getEntriesByName(timeToDataMeasureName(TICKETS), "measure"),
     ).toHaveLength(0);
@@ -132,7 +138,10 @@ describe("bracket bookkeeping", () => {
     markNavigate(TICKETS, 0);
     markRouteRendered(TICKETS);
 
-    const [navigate] = performance.getEntriesByName(navigateMarkName(TICKETS), "mark");
+    const [navigate] = performance.getEntriesByName(
+      navigateMarkName(TICKETS),
+      "mark",
+    );
     expect(navigate!.startTime).toBe(0);
   });
 

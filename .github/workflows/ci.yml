@@ -79,6 +79,14 @@ jobs:
           DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
         run: bunx --bun prisma generate
 
+      # Prettier is enforced by .husky/pre-commit through lint-staged, which
+      # only ever sees staged files — so a `--no-verify`, a web edit, or a
+      # merge that reintroduces unformatted code reaches main unnoticed
+      # without this. It reads .prettierignore, so the vendored skills under
+      # .claude/ and .agents/ (hash-pinned in skills-lock.json) stay untouched.
+      - name: Check formatting
+        run: bun run format:check
+
       - name: Typecheck all workspaces
         run: bun run typecheck
 

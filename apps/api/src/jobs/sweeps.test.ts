@@ -86,7 +86,8 @@ let enqueued: { queue: string; ticketId: number }[] = [];
  * The queue a test is watching, or `undefined` for "behave like the real
  * module". Set by `watchQueue()` and cleared in `beforeEach`.
  */
-let watchedQueue: { send: (queue: string, data: unknown) => Promise<string> } | undefined;
+let watchedQueue:
+  { send: (queue: string, data: unknown) => Promise<string> } | undefined;
 
 const bossModule = { ...(await import("./boss")) };
 mock.module("./boss", () => ({
@@ -102,15 +103,17 @@ mock.module("./boss", () => ({
 function watchQueue(): void {
   watchedQueue = {
     send: async (queue: string, data: unknown) => {
-      enqueued.push({ queue, ticketId: (data as { ticketId: number }).ticketId });
+      enqueued.push({
+        queue,
+        ticketId: (data as { ticketId: number }).ticketId,
+      });
       return "fake-job-id";
     },
   };
 }
 
-const { CLASSIFY_QUEUE, CLASSIFY_RECONCILE_SWEEP } = await import(
-  "./classify-ticket"
-);
+const { CLASSIFY_QUEUE, CLASSIFY_RECONCILE_SWEEP } =
+  await import("./classify-ticket");
 const { AUTO_REPLY_RECOVER_SWEEP } = await import("./auto-reply-ticket");
 const { PRUNE_OUTBOX_SWEEP } = await import("./prune-outbox");
 const { PRUNE_ACTIVITY_TRAILS_SWEEP } = await import("./prune-activity-trails");
@@ -241,7 +244,10 @@ describe("CLASSIFY_RECONCILE_SWEEP", () => {
     // one to look at by hand, not one to keep paying for forever.
     await newTicket({ createdAt: ago(2 * DAY) });
     // A verdict was reached — filed, or given up on by the dead-letter path.
-    await newTicket({ createdAt: ago(30 * MINUTE), classifiedAt: ago(20 * MINUTE) });
+    await newTicket({
+      createdAt: ago(30 * MINUTE),
+      classifiedAt: ago(20 * MINUTE),
+    });
     // An agent categorised it by hand during the call. `classifiedAt` is still
     // null, which is the distinction that column exists to draw: this is not
     // "never attempted", and re-offering it would fight the person.

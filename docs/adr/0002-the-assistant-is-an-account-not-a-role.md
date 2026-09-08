@@ -31,7 +31,7 @@ changes — the controls that actually hold are the `automated` flag, the 403s o
 the mutating user routes, and the exclusion from the assignee picker — but the
 absent credential is now evidence rather than a guarantee.
 
-That same change opened a route to *creating* the missing credential:
+That same change opened a route to _creating_ the missing credential:
 `/request-password-reset` is public, so anyone could name the assistant's
 address and mint a link that sets a password on it. `sendResetPassword` in
 `auth.ts` refuses `automated` accounts for exactly this reason, and that guard is

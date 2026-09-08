@@ -158,7 +158,9 @@ describe("editDistance", () => {
   });
 
   test("completely disjoint strings: the naive worst case still comes out exact", () => {
-    expect(editDistance("abcdef", "uvwxyz")).toBe(naiveDistance("abcdef", "uvwxyz"));
+    expect(editDistance("abcdef", "uvwxyz")).toBe(
+      naiveDistance("abcdef", "uvwxyz"),
+    );
   });
 
   test("matches the textbook DP over random pairs", () => {

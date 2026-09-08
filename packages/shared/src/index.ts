@@ -78,10 +78,7 @@ export type AgentSettableStatus = (typeof AGENT_SETTABLE_STATUS)[number];
  * them that way would have made a deployment with no AI key report an empty
  * queue while every ticket in it sat unread in `New`.
  */
-export const BACKLOG_STATUS = [
-  TICKET_STATUS.New,
-  TICKET_STATUS.Open,
-] as const;
+export const BACKLOG_STATUS = [TICKET_STATUS.New, TICKET_STATUS.Open] as const;
 
 export const TICKET_CATEGORY = {
   General: "General",
@@ -155,11 +152,11 @@ export type AutoReplyDecline =
  * and the pipeline — and a narrowing that exists twice is a narrowing that will
  * eventually disagree with itself.
  */
-export function asAutoReplyDecline(value: string | null): AutoReplyDecline | null {
+export function asAutoReplyDecline(
+  value: string | null,
+): AutoReplyDecline | null {
   if (value === null) return null;
-  return (
-    Object.values(AUTO_REPLY_DECLINE).find((d) => d === value) ?? null
-  );
+  return Object.values(AUTO_REPLY_DECLINE).find((d) => d === value) ?? null;
 }
 
 export interface Ticket {
@@ -270,8 +267,7 @@ export const STATUS_BACKLOG = "backlog";
 
 /** What the status filter accepts: one status, or the backlog as a set. */
 export type ClientTicketStatusFilter =
-  | ClientTicketStatus
-  | typeof STATUS_BACKLOG;
+  ClientTicketStatus | typeof STATUS_BACKLOG;
 
 /**
  * The saved views in the sidebar: the four questions an agent opens the queue to
@@ -759,8 +755,7 @@ export const TICKET_EVENT = {
   pipeline_changed: "pipeline_changed",
 } as const;
 
-export type TicketEventKind =
-  (typeof TICKET_EVENT)[keyof typeof TICKET_EVENT];
+export type TicketEventKind = (typeof TICKET_EVENT)[keyof typeof TICKET_EVENT];
 
 /** The three mutable fields, as `ticketChanges` already names them. */
 export const TICKET_EVENT_FIELD = {
@@ -1417,7 +1412,8 @@ export const PIPELINE_STAGE = {
   resolved: "resolved",
 } as const;
 
-export type PipelineStage = (typeof PIPELINE_STAGE)[keyof typeof PIPELINE_STAGE];
+export type PipelineStage =
+  (typeof PIPELINE_STAGE)[keyof typeof PIPELINE_STAGE];
 
 /** Render order. A `const` array so the page never has to restate it. */
 export const PIPELINE_STAGES = [
@@ -2011,7 +2007,8 @@ export const NEW_FEATURE_KEY = {
   activityPage: "activityPage",
 } as const;
 
-export type NewFeatureKey = (typeof NEW_FEATURE_KEY)[keyof typeof NEW_FEATURE_KEY];
+export type NewFeatureKey =
+  (typeof NEW_FEATURE_KEY)[keyof typeof NEW_FEATURE_KEY];
 
 export const NEW_FEATURE_KEYS = [NEW_FEATURE_KEY.activityPage] as const;
 
@@ -2109,15 +2106,39 @@ export interface DashboardPanelPlacement {
  * default" is defined as returning to it.
  */
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardPanelPlacement[] = [
-  { panelId: DASHBOARD_PANEL_ID.volumeChart, width: DASHBOARD_PANEL_WIDTH.twoThirds },
-  { panelId: DASHBOARD_PANEL_ID.statusMix, width: DASHBOARD_PANEL_WIDTH.narrow },
-  { panelId: DASHBOARD_PANEL_ID.needsAttention, width: DASHBOARD_PANEL_WIDTH.twoThirds },
-  { panelId: DASHBOARD_PANEL_ID.firstResponseChart, width: DASHBOARD_PANEL_WIDTH.narrow },
-  { panelId: DASHBOARD_PANEL_ID.byCategory, width: DASHBOARD_PANEL_WIDTH.narrow },
+  {
+    panelId: DASHBOARD_PANEL_ID.volumeChart,
+    width: DASHBOARD_PANEL_WIDTH.twoThirds,
+  },
+  {
+    panelId: DASHBOARD_PANEL_ID.statusMix,
+    width: DASHBOARD_PANEL_WIDTH.narrow,
+  },
+  {
+    panelId: DASHBOARD_PANEL_ID.needsAttention,
+    width: DASHBOARD_PANEL_WIDTH.twoThirds,
+  },
+  {
+    panelId: DASHBOARD_PANEL_ID.firstResponseChart,
+    width: DASHBOARD_PANEL_WIDTH.narrow,
+  },
+  {
+    panelId: DASHBOARD_PANEL_ID.byCategory,
+    width: DASHBOARD_PANEL_WIDTH.narrow,
+  },
   { panelId: DASHBOARD_PANEL_ID.workload, width: DASHBOARD_PANEL_WIDTH.narrow },
-  { panelId: DASHBOARD_PANEL_ID.backlogAge, width: DASHBOARD_PANEL_WIDTH.narrow },
-  { panelId: DASHBOARD_PANEL_ID.topCustomers, width: DASHBOARD_PANEL_WIDTH.wide },
-  { panelId: DASHBOARD_PANEL_ID.assistantEffectiveness, width: DASHBOARD_PANEL_WIDTH.wide },
+  {
+    panelId: DASHBOARD_PANEL_ID.backlogAge,
+    width: DASHBOARD_PANEL_WIDTH.narrow,
+  },
+  {
+    panelId: DASHBOARD_PANEL_ID.topCustomers,
+    width: DASHBOARD_PANEL_WIDTH.wide,
+  },
+  {
+    panelId: DASHBOARD_PANEL_ID.assistantEffectiveness,
+    width: DASHBOARD_PANEL_WIDTH.wide,
+  },
 ];
 
 /** `GET` / `PUT /api/dashboard-layout`: the caller's layout, defaulted where

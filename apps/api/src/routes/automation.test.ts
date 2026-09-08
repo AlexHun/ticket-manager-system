@@ -265,7 +265,10 @@ describe("PATCH /api/automation/handoff — the pair", () => {
   test("refuses a person attached to an automatic target", async () => {
     // An id under `admin` would sit in the database looking like a decision
     // while nothing read it.
-    const sent = await patch({ target: HANDOFF_TARGET.admin, userId: AGENT.id });
+    const sent = await patch({
+      target: HANDOFF_TARGET.admin,
+      userId: AGENT.id,
+    });
 
     expect(sent.status).toBe(400);
     expect(sent.body.error).toBe(

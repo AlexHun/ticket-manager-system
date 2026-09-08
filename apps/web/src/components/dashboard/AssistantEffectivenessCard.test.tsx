@@ -54,7 +54,9 @@ describe("AssistantEffectivenessCard", () => {
   });
 
   test("shows the classified count in the subtitle", () => {
-    render(<AssistantEffectivenessCard data={effectiveness({ classified: 40 })} />);
+    render(
+      <AssistantEffectivenessCard data={effectiveness({ classified: 40 })} />,
+    );
     expect(
       screen.getByText("40 tickets classified in this range"),
     ).toBeInTheDocument();
@@ -88,7 +90,9 @@ describe("AssistantEffectivenessCard", () => {
       />,
     );
 
-    const list = screen.getByText("Decline reasons").closest("div") as HTMLElement;
+    const list = screen
+      .getByText("Decline reasons")
+      .closest("div") as HTMLElement;
     const items = list.querySelectorAll("li");
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent("Not covered by the knowledge base");
@@ -99,21 +103,31 @@ describe("AssistantEffectivenessCard", () => {
   test("omits the decline reasons section when nothing declined", () => {
     render(
       <AssistantEffectivenessCard
-        data={effectiveness({ decline: { count: 0, rate: 0, reasons: zeroReasons() } })}
+        data={effectiveness({
+          decline: { count: 0, rate: 0, reasons: zeroReasons() },
+        })}
       />,
     );
     expect(screen.queryByText("Decline reasons")).not.toBeInTheDocument();
   });
 
   test("notes that edit distance isn't tracked yet when the slice has no pairs", () => {
-    render(<AssistantEffectivenessCard data={effectiveness({ avgEditDistance: null })} />);
+    render(
+      <AssistantEffectivenessCard
+        data={effectiveness({ avgEditDistance: null })}
+      />,
+    );
     expect(
       screen.getByText("Draft-vs-sent edit distance isn't tracked yet."),
     ).toBeInTheDocument();
   });
 
   test("shows the rounded average once a number exists", () => {
-    render(<AssistantEffectivenessCard data={effectiveness({ avgEditDistance: 12.5 })} />);
+    render(
+      <AssistantEffectivenessCard
+        data={effectiveness({ avgEditDistance: 12.5 })}
+      />,
+    );
     expect(
       screen.queryByText("Draft-vs-sent edit distance isn't tracked yet."),
     ).not.toBeInTheDocument();

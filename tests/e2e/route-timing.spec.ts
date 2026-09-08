@@ -50,12 +50,10 @@ async function entries(
 ): Promise<{ startTime: number; duration: number }[]> {
   return page.evaluate(
     ([entryName, entryType]) =>
-      performance
-        .getEntriesByName(entryName, entryType)
-        .map((entry) => ({
-          startTime: entry.startTime,
-          duration: entry.duration,
-        })),
+      performance.getEntriesByName(entryName, entryType).map((entry) => ({
+        startTime: entry.startTime,
+        duration: entry.duration,
+      })),
     [name, type] as const,
   );
 }

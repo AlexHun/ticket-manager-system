@@ -251,7 +251,10 @@ function ArticleRow({
               </Badge>
             )}
             {article.archived && (
-              <Badge variant="outline" className="border-border text-foreground/70">
+              <Badge
+                variant="outline"
+                className="border-border text-foreground/70"
+              >
                 Archived
               </Badge>
             )}
@@ -281,7 +284,9 @@ function ArticleRow({
               {/* Marked as staff-only in the interface as well as in the
                   schema. The column never reaches a prompt; this line is so
                   the person reading it knows that without having to ask. */}
-              <span className="font-medium text-foreground/80">Internal — </span>
+              <span className="font-medium text-foreground/80">
+                Internal —{" "}
+              </span>
               {article.internalNote}
             </p>
           )}
@@ -325,7 +330,11 @@ function ArticleRow({
 
 function KnowledgeSkeleton() {
   return (
-    <ul className="flex flex-col gap-2" aria-busy="true" aria-label="Loading articles">
+    <ul
+      className="flex flex-col gap-2"
+      aria-busy="true"
+      aria-label="Loading articles"
+    >
       {Array.from({ length: 4 }).map((_, i) => (
         <li key={i} className="rounded-lg border p-4">
           <Skeleton className="mb-2 h-4 w-40" />

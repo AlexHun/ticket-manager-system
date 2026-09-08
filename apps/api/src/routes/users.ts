@@ -71,7 +71,9 @@ function rejectAssistant(
   res: Response<{ error: string }>,
 ): boolean {
   if (target?.automated) {
-    res.status(403).json({ error: "The assistant's account cannot be changed" });
+    res
+      .status(403)
+      .json({ error: "The assistant's account cannot be changed" });
     return true;
   }
   return false;
@@ -208,7 +210,13 @@ usersRouter.patch(
     // instead of fetching its own.
     const before = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { id: true, name: true, email: true, role: true, automated: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        automated: true,
+      },
     });
 
     if (rejectAssistant(before, res)) return;
@@ -329,7 +337,10 @@ usersRouter.patch(
 usersRouter.post(
   "/:id/invite",
   requireAdmin,
-  async (req: Request, res: Response<{ error: string } | Record<string, never>>) => {
+  async (
+    req: Request,
+    res: Response<{ error: string } | Record<string, never>>,
+  ) => {
     const userId = req.params.id as string;
 
     const target = await prisma.user.findUnique({
@@ -371,7 +382,10 @@ usersRouter.post(
 usersRouter.delete(
   "/:id",
   requireAdmin,
-  async (req: Request, res: Response<{ error: string } | Record<string, never>>) => {
+  async (
+    req: Request,
+    res: Response<{ error: string } | Record<string, never>>,
+  ) => {
     const userId = req.params.id as string;
 
     const target = await prisma.user.findUnique({

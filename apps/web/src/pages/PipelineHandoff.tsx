@@ -136,7 +136,10 @@ export function PipelineHandoff() {
         <dl className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2">
           <div>
             <dt className="flex items-center gap-1.5 text-sm font-medium">
-              <Bot aria-hidden="true" className="size-4 text-muted-foreground" />
+              <Bot
+                aria-hidden="true"
+                className="size-4 text-muted-foreground"
+              />
               Answered and resolved
             </dt>
             <dd className="mt-2">
@@ -144,8 +147,9 @@ export function PipelineHandoff() {
                 <>
                   <p className="text-sm">{current.assistant.name}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Fixed. A resolved ticket is filed under the assistant because
-                    that is what happened to it, not because anyone chose.
+                    Fixed. A resolved ticket is filed under the assistant
+                    because that is what happened to it, not because anyone
+                    chose.
                   </p>
                 </>
               ) : (
@@ -221,10 +225,7 @@ export function PipelineHandoff() {
                   </span>
                 )}
               </div>
-              <HandoffStatus
-                settings={current}
-                rosterError={rosterError}
-              />
+              <HandoffStatus settings={current} rosterError={rosterError} />
             </dd>
           </div>
         </dl>

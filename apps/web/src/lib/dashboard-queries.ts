@@ -27,10 +27,13 @@ export function ticketStatsQueryOptions(params: TicketStatsQuery) {
   return queryOptions({
     queryKey: ticketKeys.stats(params),
     queryFn: async ({ signal }) => {
-      const { data } = await api.get<TicketStatsResponse>("/api/tickets/stats", {
-        params,
-        signal,
-      });
+      const { data } = await api.get<TicketStatsResponse>(
+        "/api/tickets/stats",
+        {
+          params,
+          signal,
+        },
+      );
       return data;
     },
     // Changing the range holds the rendered dashboard rather than replacing it

@@ -1,0 +1,24 @@
+# Generated code. The Prisma client is emitted by `prisma generate` and is
+# gitignored; lint-staged and a bare `prettier .` both walk the working tree
+# rather than the index, so it has to be named here too.
+apps/api/src/generated
+
+# Build output and test artefacts.
+dist
+coverage
+*.tsbuildinfo
+apps/web/csp.caddy
+playwright-report
+test-results
+blob-report
+
+# Lockfile.
+bun.lock
+
+# Agent skills. Most of these are vendored from upstream repos and pinned by
+# content hash in skills-lock.json (see `.claude/skills/`, `.agents/skills/`) —
+# reformatting one changes its hash and puts this repo permanently out of sync
+# with its source. The repo-authored ones sit in the same trees, so the whole
+# of both is excluded rather than a fragile per-skill list.
+.claude
+.agents

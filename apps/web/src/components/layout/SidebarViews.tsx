@@ -137,7 +137,10 @@ export function SidebarViews() {
                       on the list. The search params are what tell them apart, so
                       the state is computed here and written by hand. */}
                   <Link
-                    to={{ pathname: ROUTE.tickets.path, search: `?${new URLSearchParams(params)}` }}
+                    to={{
+                      pathname: ROUTE.tickets.path,
+                      search: `?${new URLSearchParams(params)}`,
+                    }}
                     aria-current={active ? "page" : undefined}
                   >
                     <Icon aria-hidden="true" />

@@ -184,7 +184,8 @@ function replyResponse(overrides: Partial<ThreadMessage> = {}) {
       message: makeMessage({
         id: 99,
         // Bare, the way the server mints and stores it.
-        messageId: "12.11111111-2222-3333-4444-555555555555@tickets.example.com",
+        messageId:
+          "12.11111111-2222-3333-4444-555555555555@tickets.example.com",
         senderEmail: "aaron@example.com",
         senderName: "Aaron Agent",
         textBody: "Try the reset link again.",
@@ -523,12 +524,13 @@ describe("TicketDetailPage thread", () => {
     await screen.findByText("First message");
     // Ids are deliberately unsorted: a page that re-sorted client-side would
     // reorder these, and the server's order is the one that's correct.
-    const bodies = Array.from(container.querySelectorAll("ol > li")).map((li) =>
-      li.textContent?.includes("First message")
-        ? "First"
-        : li.textContent?.includes("Second message")
-          ? "Second"
-          : "Third",
+    const bodies = Array.from(container.querySelectorAll("ol > li")).map(
+      (li) =>
+        li.textContent?.includes("First message")
+          ? "First"
+          : li.textContent?.includes("Second message")
+            ? "Second"
+            : "Third",
     );
     expect(bodies).toEqual(["First", "Second", "Third"]);
     expect(screen.getByText("Messages (3)")).toBeInTheDocument();
@@ -832,13 +834,15 @@ describe("TicketDetailPage errors", () => {
     renderDetail("/tickets/999");
 
     expect(
-      await screen.findByRole("heading", { name: "Ticket not found", level: 1 }),
+      await screen.findByRole("heading", {
+        name: "Ticket not found",
+        level: 1,
+      }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Back to tickets/ })).toHaveAttribute(
-      "href",
-      "/tickets",
-    );
+    expect(
+      screen.getByRole("link", { name: /Back to tickets/ }),
+    ).toHaveAttribute("href", "/tickets");
   });
 
   test("surfaces the API message in an alert for other failures", async () => {
@@ -863,10 +867,9 @@ describe("TicketDetailPage back link", () => {
     });
 
     await screen.findByRole("heading", { name: "Cannot log in", level: 1 });
-    expect(screen.getByRole("link", { name: /Back to tickets/ })).toHaveAttribute(
-      "href",
-      "/tickets?status=Open&page=2",
-    );
+    expect(
+      screen.getByRole("link", { name: /Back to tickets/ }),
+    ).toHaveAttribute("href", "/tickets?status=Open&page=2");
   });
 
   test("falls back to a bare /tickets when opened by a direct link", async () => {
@@ -874,9 +877,8 @@ describe("TicketDetailPage back link", () => {
     renderDetail("/tickets/12");
 
     await screen.findByRole("heading", { name: "Cannot log in", level: 1 });
-    expect(screen.getByRole("link", { name: /Back to tickets/ })).toHaveAttribute(
-      "href",
-      "/tickets",
-    );
+    expect(
+      screen.getByRole("link", { name: /Back to tickets/ }),
+    ).toHaveAttribute("href", "/tickets");
   });
 });

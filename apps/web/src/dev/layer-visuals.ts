@@ -79,7 +79,8 @@ export const LAYER_VISUAL: Record<Layer, LayerVisual> = {
   },
   [LAYER.lib]: {
     label: "Lib / hooks",
-    blurb: "Client-side plumbing: the axios instance, query keys, hooks, formatters.",
+    blurb:
+      "Client-side plumbing: the axios instance, query keys, hooks, formatters.",
     color: SLOT.aqua,
     depth: 4,
   },

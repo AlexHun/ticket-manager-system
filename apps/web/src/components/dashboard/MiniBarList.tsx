@@ -65,7 +65,10 @@ export function MiniBarList({
         ) : (
           <ul className="flex flex-col gap-2">
             {rows.map((row) => (
-              <li key={row.label} className="grid grid-cols-[8rem_1fr_auto] items-center gap-2">
+              <li
+                key={row.label}
+                className="grid grid-cols-[8rem_1fr_auto] items-center gap-2"
+              >
                 <Hint content={row.label}>
                   <span className="truncate text-sm text-muted-foreground">
                     {row.label}

@@ -353,7 +353,9 @@ function AggregateRail({
       <Stop
         stage={PIPELINE_STAGE.classified}
         trailing={<Count value={stages[PIPELINE_STAGE.classified]} />}
-        railStyle={{ width: railWidth(stages[PIPELINE_STAGE.classified] / top) }}
+        railStyle={{
+          width: railWidth(stages[PIPELINE_STAGE.classified] / top),
+        }}
       >
         <Exit
           label="Retries exhausted — left uncategorised for a person"
@@ -377,7 +379,9 @@ function AggregateRail({
               detail={decline}
               count={counts.declines[decline]}
               tone={declineTone(decline)}
-              muted={counts.declines[decline] === 0 || decline === "unavailable"}
+              muted={
+                counts.declines[decline] === 0 || decline === "unavailable"
+              }
             />
           ))}
         </Stop>
@@ -440,7 +444,7 @@ function TraceRail({ run }: { run: PipelineRun }) {
         // would be claiming work nobody is doing.
         const working =
           active &&
-          ((stage === PIPELINE_STAGE.received) ||
+          (stage === PIPELINE_STAGE.received ||
             (stage === PIPELINE_STAGE.drafted &&
               run.status === TICKET_STATUS.Processing));
 

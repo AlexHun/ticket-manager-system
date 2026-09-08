@@ -1,0 +1,12 @@
+# Fast gate. Everything here is paid on every commit, so it is deliberately
+# short — the unit suites are in pre-push, and the reason is in that file.
+
+# Prettier over the *staged* files only, re-staging what it rewrites, so what
+# lands is already formatted. `--ignore-unknown` is what lets the pattern be a
+# bare `*` in .lintstagedrc: .sql migrations, schema.prisma and the .png
+# fixtures pass straight through instead of erroring for want of a parser.
+bunx lint-staged
+
+# The cheapest real feedback in the repo: four workspaces, ~17s, and it is the
+# check that catches the class of mistake nothing else here would.
+bun run typecheck

@@ -81,9 +81,7 @@ interface UsersTableProps {
 
 export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   if (users.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">No users found.</p>
-    );
+    return <p className="text-sm text-muted-foreground">No users found.</p>;
   }
 
   return (
@@ -209,7 +207,10 @@ function AssistantBadge() {
 
 function RoleBadge({ role }: { role: UserRole }) {
   return (
-    <Badge variant={role === USER_ROLE.admin ? "default" : "secondary"} className="capitalize">
+    <Badge
+      variant={role === USER_ROLE.admin ? "default" : "secondary"}
+      className="capitalize"
+    >
       {role}
     </Badge>
   );

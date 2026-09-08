@@ -60,7 +60,11 @@ export function DashboardFilters({
         aria-label="Time range"
       >
         {RANGES.map(({ value, label }) => (
-          <ToggleGroupItem key={value} value={value} aria-label={`Last ${label}`}>
+          <ToggleGroupItem
+            key={value}
+            value={value}
+            aria-label={`Last ${label}`}
+          >
             {label}
           </ToggleGroupItem>
         ))}

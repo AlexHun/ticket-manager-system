@@ -2,16 +2,16 @@
 
 Three services in one Railway project, from one GitHub repo:
 
-| Service | What it is | Built by |
-|---|---|---|
-| `postgres` | Railway's Postgres | Railway template |
-| `api` | Express + Bun, long-lived; also runs the pg-boss workers | `apps/api/Dockerfile` |
-| `web` | The built SPA, served by Caddy — and the public front door for the API | `apps/web/Dockerfile` |
+| Service    | What it is                                                             | Built by              |
+| ---------- | ---------------------------------------------------------------------- | --------------------- |
+| `postgres` | Railway's Postgres                                                     | Railway template      |
+| `api`      | Express + Bun, long-lived; also runs the pg-boss workers               | `apps/api/Dockerfile` |
+| `web`      | The built SPA, served by Caddy — and the public front door for the API | `apps/web/Dockerfile` |
 
 `web` proxies `/api/*` to `api` over Railway's private network, so the browser
 only ever talks to one origin. That is a **cookie** decision: sessions are
 cookies and `up.railway.app` is on the Public Suffix List, so two Railway
-domains are two *sites*, and a session that has to span them is a third-party
+domains are two _sites_, and a session that has to span them is a third-party
 cookie that Chrome incognito and Safari drop. See
 [Cookies](#cookies-read-this-before-the-first-login).
 
@@ -33,7 +33,7 @@ railway init                 # or create the project in the dashboard
 railway add --database postgres
 ```
 
-Then create two empty services from the repo (dashboard → *New* → *GitHub Repo*,
+Then create two empty services from the repo (dashboard → _New_ → _GitHub Repo_,
 same repo twice) and name them `api` and `web`.
 
 ## 2. Point each service at its config
@@ -41,12 +41,12 @@ same repo twice) and name them `api` and `web`.
 Railway's config-as-code path is **absolute from the repo root and does not
 follow the Root Directory**, so a single `railway.json` at the root would apply
 to both services. Each service therefore carries its own file, and each has to be
-told where it is — *Service → Settings → Config as code*:
+told where it is — _Service → Settings → Config as code_:
 
-| Service | Config path |
-|---|---|
-| `api` | `/apps/api/railway.json` |
-| `web` | `/apps/web/railway.json` |
+| Service | Config path              |
+| ------- | ------------------------ |
+| `api`   | `/apps/api/railway.json` |
+| `web`   | `/apps/web/railway.json` |
 
 Leave **Root Directory empty on both.**
 
@@ -58,18 +58,18 @@ policy, and — for `api` — the pre-deploy migration command. They also set
 
 ### `api`
 
-| Variable | Value | Notes |
-|---|---|---|
-| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Reference variable. pg-boss opens its own small pool against the same string, in its own `pgboss` schema. |
-| `BETTER_AUTH_SECRET` | `openssl rand -base64 32` | Validated at boot: ≥32 chars or the process refuses to start. |
-| `BETTER_AUTH_URL` | `https://<web-domain>` | The origin the **browser** reaches this API on. Behind the `/api/*` proxy that is the *web* service's domain, not this one's — and it is what tells the API it is same-origin and may keep `SameSite=Lax`. |
-| `TRUSTED_ORIGINS` | `https://<web-domain>` | The web service's public URL. Drives both CORS and Better Auth's origin check; an origin missing here cannot sign in. |
-| `COOKIE_DOMAIN` | *(empty)* | See [Cookies](#cookies-read-this-before-the-first-login) below. Empty is correct behind the proxy. |
-| `INBOUND_EMAIL_WEBHOOK_USERNAME` / `_PASSWORD` | your choice | Empty values reject every webhook request. |
-| `OPENAI_API_KEY` | your key | Optional. Empty ⇒ the two AI endpoints answer 503 and new tickets stay uncategorised in `New`. |
-| `AUTO_REPLY_ENABLED` | `true` / `false` | The kill switch for the one feature that writes to customers unattended. |
-| `PIPELINE_SIMULATOR_ENABLED` | `false` unless wanted | Default off; only the literal `"true"` turns it on. |
-| `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE` | optional | Unset ⇒ the SDK never initialises. |
+| Variable                                       | Value                        | Notes                                                                                                                                                                                                      |
+| ---------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                 | `${{Postgres.DATABASE_URL}}` | Reference variable. pg-boss opens its own small pool against the same string, in its own `pgboss` schema.                                                                                                  |
+| `BETTER_AUTH_SECRET`                           | `openssl rand -base64 32`    | Validated at boot: ≥32 chars or the process refuses to start.                                                                                                                                              |
+| `BETTER_AUTH_URL`                              | `https://<web-domain>`       | The origin the **browser** reaches this API on. Behind the `/api/*` proxy that is the _web_ service's domain, not this one's — and it is what tells the API it is same-origin and may keep `SameSite=Lax`. |
+| `TRUSTED_ORIGINS`                              | `https://<web-domain>`       | The web service's public URL. Drives both CORS and Better Auth's origin check; an origin missing here cannot sign in.                                                                                      |
+| `COOKIE_DOMAIN`                                | _(empty)_                    | See [Cookies](#cookies-read-this-before-the-first-login) below. Empty is correct behind the proxy.                                                                                                         |
+| `INBOUND_EMAIL_WEBHOOK_USERNAME` / `_PASSWORD` | your choice                  | Empty values reject every webhook request.                                                                                                                                                                 |
+| `OPENAI_API_KEY`                               | your key                     | Optional. Empty ⇒ the two AI endpoints answer 503 and new tickets stay uncategorised in `New`.                                                                                                             |
+| `AUTO_REPLY_ENABLED`                           | `true` / `false`             | The kill switch for the one feature that writes to customers unattended.                                                                                                                                   |
+| `PIPELINE_SIMULATOR_ENABLED`                   | `false` unless wanted        | Default off; only the literal `"true"` turns it on.                                                                                                                                                        |
+| `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`      | optional                     | Unset ⇒ the SDK never initialises.                                                                                                                                                                         |
 
 `PORT` and `NODE_ENV` are **not** set here: Railway injects `PORT`, and the
 Dockerfile pins `NODE_ENV=production` so that secure cookies, the rate limiter
@@ -82,13 +82,13 @@ Everything Vite bakes into the bundle. These are **build-time** values — each 
 declared as an `ARG` in `apps/web/Dockerfile`, which is what opts a Railway
 variable into the build. Changing one requires a **rebuild**, not a redeploy.
 
-| Variable | Value |
-|---|---|
-| `VITE_API_URL` | ***(empty)*** — the app calls `/api/*` on its own origin |
-| `VITE_SENTRY_DSN` | optional |
-| `VITE_SENTRY_TRACES_SAMPLE_RATE` | optional, defaults to 0 |
-| `VITE_SENTRY_ENVIRONMENT` | optional; set to `staging` for a non-production build |
-| `VITE_SENTRY_RELEASE` | `web@0.0.0+${{RAILWAY_GIT_COMMIT_SHA}}` — recommended |
+| Variable                         | Value                                                    |
+| -------------------------------- | -------------------------------------------------------- |
+| `VITE_API_URL`                   | _**(empty)**_ — the app calls `/api/*` on its own origin |
+| `VITE_SENTRY_DSN`                | optional                                                 |
+| `VITE_SENTRY_TRACES_SAMPLE_RATE` | optional, defaults to 0                                  |
+| `VITE_SENTRY_ENVIRONMENT`        | optional; set to `staging` for a non-production build    |
+| `VITE_SENTRY_RELEASE`            | `web@0.0.0+${{RAILWAY_GIT_COMMIT_SHA}}` — recommended    |
 
 `VITE_SENTRY_RELEASE` is worth setting because `.git` is excluded from the build
 context, so `releaseName()` in `vite.config.ts` cannot ask git for a commit and
@@ -97,8 +97,8 @@ falls back to a version with no sha in it.
 `web` needs one **runtime** variable as well, which is not a Vite value and is
 not baked into the bundle:
 
-| Variable | Value |
-|---|---|
+| Variable       | Value                                            |
+| -------------- | ------------------------------------------------ |
 | `API_UPSTREAM` | `${{<api-service>.RAILWAY_PRIVATE_DOMAIN}}:3001` |
 
 That is what the Caddyfile's `handle /api/*` block proxies to. A reference
@@ -108,7 +108,7 @@ API keeps its own public domain regardless — Postmark's webhook still calls it
 directly rather than through here.
 
 There is a chicken-and-egg here: each service needs the other's domain. Generate
-both domains first (*Settings → Networking → Generate Domain*), then fill in the
+both domains first (_Settings → Networking → Generate Domain_), then fill in the
 variables, then deploy.
 
 ## 4. First deploy
@@ -125,7 +125,7 @@ shebang and there is no Node in the image.)
 No `cd` in front of it, deliberately. The image's `WORKDIR` is already
 `/app/apps/api`, so the `cd /app/apps/api &&` this used to carry bought nothing
 and cost the one thing that matters here: a command containing `&&` only runs if
-Railway hands it to a shell, and a pre-deploy container that fails to *start*
+Railway hands it to a shell, and a pre-deploy container that fails to _start_
 reports "Pre-deploy command failed" with an empty log, which is the least
 debuggable failure in the whole pipeline. This form is a plain argv and runs
 either way.
@@ -135,7 +135,7 @@ takes traffic and a failed migration aborts the release rather than half-applyin
 it. pg-boss provisions its own `pgboss` schema on boot — that is a second
 migration system beside Prisma's and it needs nothing from you.
 
-The healthcheck is `GET /api/health`. Note that `startJobs()` runs *before*
+The healthcheck is `GET /api/health`. Note that `startJobs()` runs _before_
 `app.listen`, deliberately: a failure to start the queue takes the boot down
 rather than serving an API that silently runs no background work. If the
 healthcheck times out, read the deploy logs for a pg-boss error before suspecting
@@ -165,7 +165,7 @@ Prisma client and a publicly reachable database on your own machine).
 variables afterwards; nothing reads them again.
 
 **Changing `SEED_ADMIN_PASSWORD` and re-running the seed does nothing.**
-`upsertUser` sets a password only when it *creates* the account — an existing
+`upsertUser` sets a password only when it _creates_ the account — an existing
 one has its role reconciled and its credentials left alone, deliberately, so
 that re-running the seed on a live database cannot reset a real person's
 password. To change the admin password after the fact, use the app: sign in and
@@ -345,13 +345,13 @@ The first row is the one that matters: `BETTER_AUTH_URL` sitting inside
 `TRUSTED_ORIGINS` is what the same-origin proxy looks like from the API's side.
 Expected, and verified for all five cases:
 
-| `NODE_ENV` | `COOKIE_DOMAIN` | `BETTER_AUTH_URL` | cookie name | `secure` | `sameSite` | `domain` |
-|---|---|---|---|---|---|---|
-| production | *(empty)* | a trusted origin | `__Secure-…` | `true` | `lax` | — |
-| production | *(empty)* | the API's own | `__Secure-…` | `true` | `none` | — |
-| production | `.example.com` | either | `__Secure-…` | `true` | `lax` | `.example.com` |
-| *(dev)* | *(empty)* | either | plain | `false` | `lax` | — |
-| test | *(empty)* | either | plain | `false` | `lax` | — |
+| `NODE_ENV` | `COOKIE_DOMAIN` | `BETTER_AUTH_URL` | cookie name  | `secure` | `sameSite` | `domain`       |
+| ---------- | --------------- | ----------------- | ------------ | -------- | ---------- | -------------- |
+| production | _(empty)_       | a trusted origin  | `__Secure-…` | `true`   | `lax`      | —              |
+| production | _(empty)_       | the API's own     | `__Secure-…` | `true`   | `none`     | —              |
+| production | `.example.com`  | either            | `__Secure-…` | `true`   | `lax`      | `.example.com` |
+| _(dev)_    | _(empty)_       | either            | plain        | `false`  | `lax`      | —              |
+| test       | _(empty)_       | either            | plain        | `false`  | `lax`      | —              |
 
 Dev and test are deliberately untouched by any of this — the E2E suite depends on
 them.

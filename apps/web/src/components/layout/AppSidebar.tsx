@@ -102,7 +102,8 @@ export function AppSidebar() {
                           to={item.to}
                           end={item.end}
                           onClick={() => {
-                            if (isNew) markNewFeatureSeen.mutate(item.newFeatureKey!);
+                            if (isNew)
+                              markNewFeatureSeen.mutate(item.newFeatureKey!);
                           }}
                         >
                           <item.icon aria-hidden="true" />

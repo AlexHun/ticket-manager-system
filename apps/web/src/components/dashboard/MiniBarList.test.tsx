@@ -109,7 +109,11 @@ describe("MiniBarList", () => {
 
   test("renders the title and optional subtitle", () => {
     render(
-      <MiniBarList title="By category" subtitle="Including unfiled" rows={rows} />,
+      <MiniBarList
+        title="By category"
+        subtitle="Including unfiled"
+        rows={rows}
+      />,
     );
     expect(screen.getByText("By category")).toBeInTheDocument();
     expect(screen.getByText("Including unfiled")).toBeInTheDocument();

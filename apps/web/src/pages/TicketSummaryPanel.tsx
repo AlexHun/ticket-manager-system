@@ -150,7 +150,10 @@ export function TicketSummaryPanel({
                 {result ? (
                   <RotateCw
                     aria-hidden="true"
-                    className={cn("size-4", summarize.isPending && "animate-spin")}
+                    className={cn(
+                      "size-4",
+                      summarize.isPending && "animate-spin",
+                    )}
                   />
                 ) : (
                   <Sparkles

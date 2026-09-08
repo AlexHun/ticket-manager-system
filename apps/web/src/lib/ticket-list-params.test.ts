@@ -201,9 +201,11 @@ describe("writeTicketListParams", () => {
   });
 
   test("drops a param cleared to undefined or to an empty string", () => {
-    expect(write("status=Open&category=Refund", { status: undefined })).toEqual({
-      category: TICKET_CATEGORY.Refund,
-    });
+    expect(write("status=Open&category=Refund", { status: undefined })).toEqual(
+      {
+        category: TICKET_CATEGORY.Refund,
+      },
+    );
     expect(write("q=login", { q: "" })).toEqual({});
   });
 
@@ -211,12 +213,12 @@ describe("writeTicketListParams", () => {
     test("is dropped by any patch that does not name it", () => {
       // Re-sorting and re-filtering rebuild the result set, so page 3 of the
       // old one means nothing in the new one and is often past the end.
-      expect(write("page=3", { sort: TICKET_SORT_FIELD.subject })).not.toHaveProperty(
-        LIST_PARAM.page,
-      );
-      expect(write("page=3", { status: TICKET_STATUS.Open })).not.toHaveProperty(
-        LIST_PARAM.page,
-      );
+      expect(
+        write("page=3", { sort: TICKET_SORT_FIELD.subject }),
+      ).not.toHaveProperty(LIST_PARAM.page);
+      expect(
+        write("page=3", { status: TICKET_STATUS.Open }),
+      ).not.toHaveProperty(LIST_PARAM.page);
       expect(write("page=3", { pageSize: 50 })).not.toHaveProperty(
         LIST_PARAM.page,
       );

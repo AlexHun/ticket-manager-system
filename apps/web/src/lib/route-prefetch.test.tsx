@@ -212,9 +212,13 @@ describe("prefetchLoader", () => {
 
     const substitute = new QueryClient();
 
-    await runLoader(prefetchLoader(() => [prefetchQuery(thing.options)]), "/", {
-      queryClient: substitute,
-    });
+    await runLoader(
+      prefetchLoader(() => [prefetchQuery(thing.options)]),
+      "/",
+      {
+        queryClient: substitute,
+      },
+    );
 
     // The seam #157 opened. Reaching `@/lib/query-client` directly, as the three
     // loaders used to, meant a test could call a loader and see nothing of what

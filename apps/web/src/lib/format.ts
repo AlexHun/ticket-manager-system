@@ -12,7 +12,8 @@ export const EMPTY_VALUE = "—";
 export function formatHours(hours: number | null): string {
   if (hours === null || !Number.isFinite(hours)) return EMPTY_VALUE;
   if (hours < 1) return `${Math.round(hours * 60)}m`;
-  if (hours < 48) return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)}h`;
+  if (hours < 48)
+    return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)}h`;
   const days = hours / 24;
   return `${days < 10 ? days.toFixed(1) : Math.round(days)}d`;
 }
@@ -35,8 +36,18 @@ export function formatDelta(delta: number): string {
 }
 
 const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ];
 
 /**

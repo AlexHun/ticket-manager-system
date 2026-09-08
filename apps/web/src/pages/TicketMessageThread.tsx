@@ -46,7 +46,11 @@ const DAY_FORMAT = new Intl.DateTimeFormat(undefined, {
 });
 
 function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  ).getTime();
 }
 
 const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -57,7 +61,9 @@ const ONE_DAY = 24 * 60 * 60 * 1000;
  * named rather than dated.
  */
 function dayLabel(date: Date): string {
-  const daysAgo = Math.round((startOfDay(new Date()) - startOfDay(date)) / ONE_DAY);
+  const daysAgo = Math.round(
+    (startOfDay(new Date()) - startOfDay(date)) / ONE_DAY,
+  );
   if (daysAgo === 0) return "Today";
   if (daysAgo === 1) return "Yesterday";
   return DAY_FORMAT.format(date);
@@ -294,14 +300,17 @@ export function TicketMessageThread({
                 one, inside this message's <li> — see the note on ThreadRow. */}
             <ActivityRun items={before} opensThread={index === 0} />
 
-            {newDay && <DayDivider label={dayLabel(sentAt)} first={opensThread} />}
+            {newDay && (
+              <DayDivider label={dayLabel(sentAt)} first={opensThread} />
+            )}
 
             <div className={cn("flex gap-2", outbound && "flex-row-reverse")}>
               {startsRun ? (
                 <Avatar>
                   <AvatarFallback
                     className={cn(
-                      outbound && "bg-primary/10 text-primary dark:bg-primary/20",
+                      outbound &&
+                        "bg-primary/10 text-primary dark:bg-primary/20",
                     )}
                   >
                     {initialsOf(message.senderName)}

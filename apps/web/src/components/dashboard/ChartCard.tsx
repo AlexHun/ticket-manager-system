@@ -105,7 +105,7 @@ export function DataTable({
   rows,
 }: {
   columns: string[];
-  rows: (ReactNode[])[];
+  rows: ReactNode[][];
 }) {
   return (
     <table className="w-full text-sm">

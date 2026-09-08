@@ -166,9 +166,17 @@ async function patch<T>(
 
 describe("GET /api/tickets/unread", () => {
   test("lists tickets assigned to the caller that they have not opened", async () => {
-    await makeTicket({ id: 1, assignedToId: "u_agent", assignmentSeenAt: null });
+    await makeTicket({
+      id: 1,
+      assignedToId: "u_agent",
+      assignmentSeenAt: null,
+    });
     await makeTicket({ id: 2, assignedToId: "u_agent", assignmentSeenAt: NOW });
-    await makeTicket({ id: 3, assignedToId: "u_other", assignmentSeenAt: null });
+    await makeTicket({
+      id: 3,
+      assignedToId: "u_other",
+      assignmentSeenAt: null,
+    });
 
     const sent = await get<TicketUnreadResponse>("/unread");
 
@@ -210,7 +218,11 @@ describe("GET /api/tickets/unread", () => {
 
 describe("GET /api/tickets/:id — assignmentSeenAt side effect", () => {
   test("clears assignmentSeenAt when the caller opens their own unread ticket", async () => {
-    await makeTicket({ id: 1, assignedToId: "u_agent", assignmentSeenAt: null });
+    await makeTicket({
+      id: 1,
+      assignedToId: "u_agent",
+      assignmentSeenAt: null,
+    });
 
     const sent = await get<TicketDetailResponse>("/1");
 
@@ -219,7 +231,11 @@ describe("GET /api/tickets/:id — assignmentSeenAt side effect", () => {
   });
 
   test("does not touch a ticket assigned to somebody else", async () => {
-    await makeTicket({ id: 1, assignedToId: "u_other", assignmentSeenAt: null });
+    await makeTicket({
+      id: 1,
+      assignedToId: "u_other",
+      assignmentSeenAt: null,
+    });
 
     await get<TicketDetailResponse>("/1");
 
@@ -238,7 +254,11 @@ describe("GET /api/tickets/:id — assignmentSeenAt side effect", () => {
   });
 
   test("removes the ticket from the unread list once opened", async () => {
-    await makeTicket({ id: 1, assignedToId: "u_agent", assignmentSeenAt: null });
+    await makeTicket({
+      id: 1,
+      assignedToId: "u_agent",
+      assignmentSeenAt: null,
+    });
 
     await get<TicketDetailResponse>("/1");
     const sent = await get<TicketUnreadResponse>("/unread");
@@ -296,7 +316,11 @@ describe("PATCH /api/tickets/:id/assignee — assignmentSeenAt reset", () => {
   });
 
   test("unassigning clears it too, and the ticket drops off everyone's unread list", async () => {
-    await makeTicket({ id: 1, assignedToId: "u_agent", assignmentSeenAt: null });
+    await makeTicket({
+      id: 1,
+      assignedToId: "u_agent",
+      assignmentSeenAt: null,
+    });
 
     await patch("/1/assignee", { assignedToId: null }, OTHER);
 

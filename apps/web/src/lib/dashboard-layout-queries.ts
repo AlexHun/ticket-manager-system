@@ -69,10 +69,13 @@ export function useSaveDashboardLayout() {
       const previous = queryClient.getQueryData<DashboardLayoutResponse>(
         dashboardLayoutKeys.all,
       );
-      queryClient.setQueryData<DashboardLayoutResponse>(dashboardLayoutKeys.all, {
-        layout,
-        isDefault: false,
-      });
+      queryClient.setQueryData<DashboardLayoutResponse>(
+        dashboardLayoutKeys.all,
+        {
+          layout,
+          isDefault: false,
+        },
+      );
       return { previous };
     },
     onError: (err, _layout, context) => {

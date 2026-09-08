@@ -9,7 +9,7 @@ undo somebody's decision to withhold an article from the machine.
 
 Keep it in step with the table by hand, or do not: it is the starting point and
 the worked example of the format, not a mirror. What is still true is everything
-below about *how to write an article*, because the table stores exactly the same
+below about _how to write an article_, because the table stores exactly the same
 fields — with one improvement. `> Internal:` notes are their own column there
 rather than lines a parser strips, so the guarantee that they never reach a model
 is now "the corpus query does not select that column" rather than "a regex
@@ -31,7 +31,7 @@ stranger emailed in.
    internal hostnames, no ticket or account numbers, no names of staff. Assume
    the whole file is one paraphrase away from an inbox.
 2. **Internal guidance is marked `> Internal:` and is never quoted.** It tells an
-   agent (or a drafting prompt) what *not* to promise and when to hand the ticket
+   agent (or a drafting prompt) what _not_ to promise and when to hand the ticket
    to a person. It is the one part of an article the customer must not see.
 3. **Facts are specific and checkable.** "14 days" and "5–10 business days"
    can be compared against a draft; "promptly" cannot. A vague knowledge base
@@ -48,14 +48,14 @@ stranger emailed in.
    whether the article is put in front of the unattended auto-reply at all, so a
    `no` article can never appear in a reply nobody read. It is the control that
    lives in content rather than in code — a switch on `/knowledge` now, a `no`
-   here — and it is deliberately the *first* gate rather than the last:
+   here — and it is deliberately the _first_ gate rather than the last:
    everything downstream is a check on what a model produced, and this is the
    one that decides what it was ever asked.
 
    Say no whenever the honest answer needs a fact only a person can look up (has
    this customer actually been charged twice?), commits the company to spending
    money, or is really an escalation wearing an answer's clothing. Refund
-   articles are `no` here *and* refused in code — `Refund` tickets are never
+   articles are `no` here _and_ refused in code — `Refund` tickets are never
    auto-replied whatever this file says, so the two have to disagree before
    anything can go wrong.
 
@@ -85,7 +85,7 @@ Three consequences worth stating before someone builds on this:
   to leave version control at all. A write path that skips it is not a bug in a
   feature; it is the feature's justification failing.
 - **A policy here does not authorise a promise.** `inventedCommitments` compares
-  a polished reply against *the agent's draft*, not against this file, so a draft
+  a polished reply against _the agent's draft_, not against this file, so a draft
   that never mentioned a refund cannot acquire one during polishing even where
   the article says the customer is owed it. That is deliberate. The knowledge
   base tells an agent what is true; the agent still has to write it.
@@ -93,7 +93,7 @@ Three consequences worth stating before someone builds on this:
   checked against the text of the articles it cited: money words, links and email
   addresses that appear in the reply but in none of them cause the whole reply to
   be thrown away and the ticket handed to a person. So an article is not just a
-  source here, it is the *permission* — which is the other reason to keep the
+  source here, it is the _permission_ — which is the other reason to keep the
   facts specific. A vague article authorises vague replies.
 
 ---
@@ -213,7 +213,7 @@ of an annual plan's initial charge, which is refundable in full.
 **Category:** Refund · **Auto-reply:** no
 
 If the charge landed after the cancellation was confirmed it is refunded in full.
-The common near-miss is a cancellation made *during* the renewal — the charge is
+The common near-miss is a cancellation made _during_ the renewal — the charge is
 already in flight and lands anyway.
 
 > Internal: check the cancellation timestamp against the charge. If cancellation

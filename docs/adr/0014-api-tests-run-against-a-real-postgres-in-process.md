@@ -31,14 +31,14 @@ section.
 
 **Keep mocking the Prisma client.** Free and fast — the suite runs in ~4s with
 no prerequisites. Rejected because the fakes are not a cheaper version of the
-database, they are a *different* database, and the difference is where the bugs
+database, they are a _different_ database, and the difference is where the bugs
 live. `routes/tickets.test.ts` before this change re-implemented the conditional
 `updateMany` behind "mark the assignment seen" in the test file, so the test
 named "no-ops on a ticket already seen" was checking a matcher written twelve
 lines above it rather than the route's `where` clause. Its `findMany` fake
 returned `{ id, subject }` no matter what the route selected, so an `include`
 that leaked the customer's address onto `GET /unread` would have passed. Neither
-gap is fixable by writing better fakes; they are what a fake *is*. The claim in
+gap is fixable by writing better fakes; they are what a fake _is_. The claim in
 `jobs/auto-reply-ticket.ts` — `New → Processing` in one conditional
 `updateMany`, the thing that stops two agents replying to one customer — has no
 faithful expression in a mock at all.
@@ -51,22 +51,22 @@ that matters most. Against a local Postgres on the same schema and the same
 queries, through the first-party `@prisma/adapter-pg` the app already depends
 on:
 
-| | PGLite (in process) | local Postgres |
-| --- | --- | --- |
-| schema ready | 3.4s (cached) / ~10s cold — but see the platform note below | 1.4s |
-| `SELECT 1` | 4.0ms | 1.5ms |
-| `findUnique` | 9.2ms | 3.1ms |
-| `findMany`, 50 rows + relation | 15.4ms | 5.3ms |
-| conditional `updateMany` | 6.9ms | 3.0ms |
-| interactive `$transaction` | 6.6ms | 3.8ms |
-| `resetDb()` | 22ms | 40ms |
+|                                | PGLite (in process)                                         | local Postgres |
+| ------------------------------ | ----------------------------------------------------------- | -------------- |
+| schema ready                   | 3.4s (cached) / ~10s cold — but see the platform note below | 1.4s           |
+| `SELECT 1`                     | 4.0ms                                                       | 1.5ms          |
+| `findUnique`                   | 9.2ms                                                       | 3.1ms          |
+| `findMany`, 50 rows + relation | 15.4ms                                                      | 5.3ms          |
+| conditional `updateMany`       | 6.9ms                                                       | 3.0ms          |
+| interactive `$transaction`     | 6.6ms                                                       | 3.8ms          |
+| `resetDb()`                    | 22ms                                                        | 40ms           |
 
 Both columns are the Windows machine, which is where PGLite is at its worst —
 on the Linux runner its per-test cost is ~4x lower, so the real gap is
 narrower than this table makes it look.
 
 Rejected anyway, on the dev loop. `bun run --filter @ticket/api test` currently
-needs *nothing* — no key, no server, no container — and that is a property
+needs _nothing_ — no key, no server, no container — and that is a property
 worth about as much as the three-fold latency. Requiring a running Postgres
 turns a fresh clone's first test run into a setup task, makes the suite fail
 offline, and puts a service container in the one CI job that does not have one.
@@ -95,14 +95,14 @@ previous paragraph names its exit.
 **The suite gets slower, and how much depends on the platform far more than
 expected.** Both numbers are real and both are worth having:
 
-| | Windows dev machine | CI (ubuntu-latest) |
-| --- | --- | --- |
-| suite before | 4.07s | 0.85s |
-| suite, one file converted | 10.0s | 4.09s |
-| fixed cost per run | ~3.4s (cached) | ~2.65s (**cold**, no cache) |
-| per converted route test | ~150ms | ~26–39ms |
-| projected, all 190 tests converted | 30–40s | **~10s** |
-| measured, migration complete (#175) | ~24s, 405 tests | see below |
+|                                     | Windows dev machine | CI (ubuntu-latest)          |
+| ----------------------------------- | ------------------- | --------------------------- |
+| suite before                        | 4.07s               | 0.85s                       |
+| suite, one file converted           | 10.0s               | 4.09s                       |
+| fixed cost per run                  | ~3.4s (cached)      | ~2.65s (**cold**, no cache) |
+| per converted route test            | ~150ms              | ~26–39ms                    |
+| projected, all 190 tests converted  | 30–40s              | **~10s**                    |
+| measured, migration complete (#175) | ~24s, 405 tests     | see below                   |
 
 The last row is the whole suite as it stands, with every file converted and
 the preload in place — 405 tests across 22 files, three runs at 23.6s, 24.1s and
@@ -165,13 +165,13 @@ workarounds this ADR opened by naming go with it: a factory no longer
 re-exports a `Prisma` namespace the file never touches — `src/test/pg.ts`
 still exports it, for the preload and for the one test file that composes raw
 SQL of its own — and two suites that both reach the database no longer have to
-share a file. Every *other* specifier a factory replaces is still one registry
+share a file. Every _other_ specifier a factory replaces is still one registry
 deep, and still gets `bun test <a> <b>` in both orders before it is believed.
 
 **A mis-registered mock is silent and dangerous.** Registering the binding
 under a path that does not match — `new URL("../src/db.ts",
 import.meta.url).pathname` yields `/C:/…` on Windows — does not error. The
-routes link the *real* `../db`, which connects to whatever `DATABASE_URL`
+routes link the _real_ `../db`, which connects to whatever `DATABASE_URL`
 names, and on a developer's machine that is the dev database. Demonstrated
 during the spike; nothing was written, because the requests failed before
 their writes landed, but that was luck. The preload therefore overwrites

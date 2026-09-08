@@ -58,7 +58,9 @@ describe("apiStub", () => {
   test("matches a pattern path", async () => {
     apiStub.get("/api/beta/:id").mockResolvedValue({ data: "one beta" });
 
-    await expect(api.get("/api/beta/42")).resolves.toEqual({ data: "one beta" });
+    await expect(api.get("/api/beta/42")).resolves.toEqual({
+      data: "one beta",
+    });
   });
 
   test("prefers a literal registration over a pattern that also matches", async () => {
@@ -105,7 +107,9 @@ describe("apiStub", () => {
 
       expect(data.tutorial.shouldShow).toBe(false);
       expect(data.tutorial.content.pageKey).toBe(TUTORIAL_PAGE_KEY.tickets);
-      await expect(api.post(`${statusUrl}/seen`)).resolves.toEqual({ data: {} });
+      await expect(api.post(`${statusUrl}/seen`)).resolves.toEqual({
+        data: {},
+      });
     });
 
     test("can be overridden by a test that is actually about it", async () => {

@@ -231,8 +231,14 @@ describe("sendReply writes a message and an outbox row together", () => {
 
 describe("threading", () => {
   test("the reply hangs off whatever the thread ended with", async () => {
-    await seedInbound("first@mail.example.com", new Date("2026-08-27T09:00:00.000Z"));
-    await seedInbound("second@mail.example.com", new Date("2026-08-27T10:00:00.000Z"));
+    await seedInbound(
+      "first@mail.example.com",
+      new Date("2026-08-27T09:00:00.000Z"),
+    );
+    await seedInbound(
+      "second@mail.example.com",
+      new Date("2026-08-27T10:00:00.000Z"),
+    );
 
     await sendReply(agentReply());
     const [, , reply] = await messageRows();
@@ -345,9 +351,7 @@ describe("the origin decides the byline and the flags", () => {
 
   test("an agent reply sent from a polish carries the draft it was sent from", async () => {
     const draft = "Hi Marta, your parcel shipped Friday.\n\nThanks,\nAaron";
-    await sendReply(
-      agentReply({ textBody: draft, polishedDraft: draft }),
-    );
+    await sendReply(agentReply({ textBody: draft, polishedDraft: draft }));
 
     expect((await messageRows())[0].polishedDraft).toBe(draft);
   });

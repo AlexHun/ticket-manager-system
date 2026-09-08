@@ -14,7 +14,9 @@ const { parsed, inserted, skipped } = await importKnowledgeBase();
 
 console.log(`[kb-import] parsed ${parsed} article(s) from knowledge-base.md`);
 if (inserted.length > 0) {
-  console.log(`[kb-import] inserted ${inserted.length}: ${inserted.join(", ")}`);
+  console.log(
+    `[kb-import] inserted ${inserted.length}: ${inserted.join(", ")}`,
+  );
 }
 if (skipped.length > 0) {
   console.log(

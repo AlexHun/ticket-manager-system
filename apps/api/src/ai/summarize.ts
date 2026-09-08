@@ -218,8 +218,7 @@ export interface SummarizeContext {
 }
 
 export type SummarizeResult =
-  | { ok: true; summary: TicketSummary }
-  | { ok: false; reason: AiFailure };
+  { ok: true; summary: TicketSummary } | { ok: false; reason: AiFailure };
 
 /**
  * The shape the model must answer in.
@@ -381,7 +380,9 @@ function threadBlock(messages: SummaryMessage[]): string {
   return [
     first,
     ...(dropped > 0
-      ? [`${MESSAGE_MARKER} […${dropped} message(s) omitted from the middle of this thread]`]
+      ? [
+          `${MESSAGE_MARKER} […${dropped} message(s) omitted from the middle of this thread]`,
+        ]
       : []),
     ...tail,
   ].join("\n\n");
