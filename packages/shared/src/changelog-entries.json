@@ -113,5 +113,10 @@
     "version": "0.1.72",
     "date": "2026-09-08",
     "title": "Refuse an event published inside a transaction, at the publish seam (#177)"
+  },
+  {
+    "version": "0.1.73",
+    "date": "2026-09-08",
+    "title": "Give RTL an async budget the machine can actually meet"
   }
 ]
