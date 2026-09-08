@@ -14,7 +14,8 @@
  * of two (testing.md, #174). `../jobs/eval-run` stands in for the enqueue,
  * because `getBoss()` throws with no queue running — and it is mocked rather
  * than `../jobs/boss`, which `jobs/sweeps.test.ts` owns under a path that
- * resolves to the same module.
+ * resolves to the same module. Both factories **spread the real module**; see
+ * the note on the second one for what happened when one of them did not.
  */
 
 import type { NextFunction, Request, Response } from "express";
@@ -55,8 +56,26 @@ mock.module("../evals/config", () => ({
   isEvalConfigured: () => configured,
 }));
 
+// **Spread, and this one was measured rather than copied.** Without it, this
+// file is the first to load `../jobs/eval-run` — through a factory exporting
+// one function — so the registry's copy of that module has no
+// `EVAL_RUN_WORKER` on it at all, and `jobs/eval-run.test.ts`, which loads
+// later, destructures `undefined`. Ten tests, green on Windows and red on
+// ubuntu-latest, which is the platform-order trap `testing.md` warns about.
+//
+// Two things about `bun test` make it work that way, both checked directly
+// rather than inferred from the failure. **Every test file's module body runs
+// before any test does**, so "which file registered first" is decided entirely
+// by discovery order and never by which test happens to run. And a factory
+// registered later *does* reach a module that already linked the real one —
+// live bindings are rewired — which is why snapshotting the real module here,
+// eagerly, costs the files below nothing. It has to be eager: an `await
+// import` of this same specifier inside the factory recurses.
+const evalRunModule = await import("../jobs/eval-run");
+
 let enqueued: { runId: number; caseId: string }[] = [];
 mock.module("../jobs/eval-run", () => ({
+  ...evalRunModule,
   enqueueEvalRun: async (runId: number, caseId: string) => {
     enqueued.push({ runId, caseId });
   },

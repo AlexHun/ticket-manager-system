@@ -41,7 +41,16 @@ let nextOutcome: EvalCaseOutcome = {
 
 let answered = 0;
 
+// Spread, for the reason the note in `routes/evals.test.ts` records at length:
+// a factory that does not spread the real module *is* that module for every
+// file that loads it afterwards. Nothing depends on this one today —
+// `evals/runner.test.ts` destructures `answerCase` while loading, so it holds
+// the real function whatever is registered later — but "nothing depends on it
+// today" is how the other one got written, and it cost a red CI run.
+const runnerModule = await import("../evals/runner");
+
 mock.module("../evals/runner", () => ({
+  ...runnerModule,
   answerCase: async () => {
     answered += 1;
     return nextOutcome;
