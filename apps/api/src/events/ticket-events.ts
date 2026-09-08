@@ -23,6 +23,12 @@ import { publish } from "./hub";
  *    could read pre-commit state, cache it, and then never be told again, because
  *    the event it needed has already fired. The repo has met this shape of bug
  *    once already: "NOTIFY fires on insert, not when a retry becomes due".
+ *    **This one is no longer only a rule.** Since ADR-0015 the clients in
+ *    `db.ts` and `test/pg.ts` mark the inside of an interactive `$transaction`
+ *    and `publish` refuses a call made there — a throw outside production, a log
+ *    and an alert inside it. Nothing here changed to get that; the enforcement
+ *    is at the seam, which is why a seventh function added to this file inherits
+ *    it for free.
  * 2. **Never throw into the caller.** By the time these run, a route has
  *    committed or a job has already appended a reply to a customer's thread. A
  *    failed fan-out is a screen that refreshes a moment late; an exception here

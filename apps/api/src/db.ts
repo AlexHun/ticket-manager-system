@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
+import { scopeTransactions } from "./transaction-scope";
 
 export { Role } from "./generated/prisma/client";
 // A value export, not `export type`: `Prisma` is a namespace, so this one line
@@ -28,14 +29,20 @@ function createPrismaClient() {
   const isProduction = process.env.NODE_ENV === "production";
   const logQueries = !isProduction && process.env.PRISMA_LOG_QUERIES === "1";
 
-  return new PrismaClient({
-    adapter,
-    log: isProduction
-      ? ["error"]
-      : logQueries
-        ? ["query", "error", "warn"]
-        : ["error", "warn"],
-  });
+  // Wrapped on the way out and never handed round unwrapped. `scopeTransactions`
+  // marks the inside of an interactive `$transaction`, which is the only way
+  // `events/hub.ts` can refuse an event published there (ADR-0015). No call site
+  // knows about it, and the array form is passed through untouched.
+  return scopeTransactions(
+    new PrismaClient({
+      adapter,
+      log: isProduction
+        ? ["error"]
+        : logQueries
+          ? ["query", "error", "warn"]
+          : ["error", "warn"],
+    }),
+  );
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
