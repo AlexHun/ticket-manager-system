@@ -23,19 +23,36 @@
  *   - the direction filter is "our own reply is not a candidate at all";
  *   - the ordering is "the customer's newest message, with no older one
  *     standing in for it";
- *   - `select: { textBody: true }` is "an HTML-only email is an absence" —
- *     the "never render email HTML" rule, which extends to prompts;
  *   - and the `[createdAt desc, id desc]` tie-break, which no argument
  *     assertion could reach at all, is a test: two messages sharing an instant
  *     resolve to the later id, which is what `ingest.ts` writing a batch makes
  *     an ordinary case rather than a contrived one.
  *
- * One of those three argument assertions does *not* survive the move, and it is
- * worth being exact about which. `take: 1` is now unasserted: the handler reads `messages[0]`, so
- * raising the take changes nothing about the answer (checked — the file stays
- * green at `take: 5`). It bounds what Postgres reads rather than what the model
- * is told, and the ordering above is what does the work the old
- * `expect(args.select.messages.take).toBe(1)` looked like it was doing.
+ * ## Two of those three assertions do not survive the move
+ *
+ * Which two matters, because the tempting thing to write here is a comment
+ * claiming the coverage rather than the loss. Both were measured, by mutating
+ * `./ai.ts` and re-running this file:
+ *
+ *   - **`take: 1` is unasserted.** The handler reads `messages[0]`, so raising
+ *     the take changes nothing about the answer — green at `take: 5`. It bounds
+ *     what Postgres reads, not what the model is told, and the ordering above is
+ *     what does the work `expect(args.select.messages.take).toBe(1)` looked like
+ *     it was doing.
+ *   - **`select: { textBody: true }` is unasserted, and cannot be asserted from
+ *     here at all.** That select is the "never render email HTML" rule reaching
+ *     into a prompt (ADR-0008), and the handler only ever reads `textBody` — so
+ *     adding `htmlBody: true` to the route's select is green too. The column
+ *     never reaches the response, so no test at this seam can see it. This one
+ *     is a genuine loss rather than a fake assertion removed: a hand-written
+ *     client could watch a query the caller cannot otherwise inspect, and a real
+ *     database cannot. It is the one thing ADR-0014 costs, and it is worth
+ *     saying rather than papering over.
+ *
+ * The HTML test below is still worth having — it asserts the outcome (no markup
+ * reaches the model, and a message with no text does not fall through to the one
+ * before it) rather than the mechanism. What it does not do is stop `htmlBody`
+ * being selected.
  *
  * **On usage logging**, which #174 also asked to see asserted as rows: there
  * are none. `logUsage` in `../ai/provider.ts` writes one `console.log` line per
@@ -401,9 +418,11 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
 
     await post(goodBody());
 
-    // Two rules at once. `htmlBody` is not selected, so no markup can reach the
-    // prompt; and the newest inbound message is the *only* candidate, so the
-    // text-bearing one before it does not quietly stand in for it.
+    // What this asserts is the outcome: no markup reaches the model, and the
+    // text-bearing message before this one does not quietly stand in for it.
+    // What it does *not* assert — see the header — is the mechanism. The route
+    // selects `textBody` alone, and nothing here would notice `htmlBody` being
+    // selected beside it, because the handler never reads it.
     expect(lastContext().customerMessage).toBeNull();
   });
 
