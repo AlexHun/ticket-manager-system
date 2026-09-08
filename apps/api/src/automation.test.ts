@@ -44,14 +44,12 @@
  * other route tests.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { HANDOFF_TARGET, USER_ROLE, type HandoffTarget } from "@ticket/shared";
 import { COLLEAGUE, seedColleagues } from "./test/fixtures";
-import { Prisma, dbCalls, prisma, resetDb } from "./test/pg";
+import { dbCalls, prisma, resetDb } from "./test/pg";
 
 /* ── The world behind the module ─────────────────────────────────────────── */
-
-mock.module("./db", () => ({ Prisma, prisma }));
 
 const {
   assistantUser,

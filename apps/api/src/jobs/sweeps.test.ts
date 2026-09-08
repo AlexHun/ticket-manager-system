@@ -20,7 +20,7 @@ import {
   type OutboundEmailStatus,
   type TicketStatus,
 } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 
 /**
  * All four scheduled sweeps, called directly — no pg-boss anywhere.
@@ -68,8 +68,6 @@ import { Prisma, prisma, resetDb } from "../test/pg";
  * which is the shape `testing.md` warns about — a file that passes alone and
  * fails in the suite.
  */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 // Spread into a plain object *now*, before the mock is registered: `mock.module`
 // replaces the live namespace, so a factory that spreads the import binding is

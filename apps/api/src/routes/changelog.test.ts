@@ -23,7 +23,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ChangelogStatusResponse } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
@@ -32,8 +32,6 @@ import { serveRouter } from "../test/route-app";
 const LATEST_VERSION = "0.5.10";
 
 const NOW = new Date("2026-08-29T12:00:00.000Z");
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 const actualShared = await import("@ticket/shared");
 mock.module("@ticket/shared", () => ({

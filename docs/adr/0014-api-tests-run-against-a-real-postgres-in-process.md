@@ -102,6 +102,15 @@ expected.** Both numbers are real and both are worth having:
 | fixed cost per run | ~3.4s (cached) | ~2.65s (**cold**, no cache) |
 | per converted route test | ~150ms | ~26–39ms |
 | projected, all 190 tests converted | 30–40s | **~10s** |
+| measured, migration complete (#175) | ~24s, 405 tests | see below |
+
+The last row is the whole suite as it stands, with every file converted and
+the preload in place — 405 tests across 22 files, three runs at 23.6s, 24.1s and
+25.3s on the Windows machine. It came in under the 30–40s projection, which had
+extrapolated from a per-test cost measured on route tests alone; the suite also
+contains files that never touch the database. Moving the binding into the
+preload is not itself a speed change — a run immediately before it measured
+26.8s, inside the same spread — and was never meant to be one.
 
 PGLite on the Windows machine is roughly four times slower than on the Linux
 runner at everything, and its cold boot is twenty times slower than PGLite's
@@ -119,10 +128,16 @@ dumps the finished data directory to
 `node_modules/.cache/pglite/schema-<hash>.tar` (39.7MB, gitignored via
 `node_modules`) keyed by a hash of the SQL — a new migration invalidates it
 automatically. The cache is worth ~8s a run on Windows (~10s replay against a
-~1.5s restore) and about ~2s on Linux, which is why CI without one is already
-acceptable and a cache step there is a nicety rather than a blocker. Gzip was
-measured and rejected: 4.6MB instead of 39.7MB, but ~300ms slower to restore,
-and the file is never committed or transferred.
+~1.5s restore) and about ~2s on Linux, which is why CI ran without one until
+the migration was finished. #175 added it: an `actions/cache` step on
+`apps/api/node_modules/.cache/pglite`, keyed on `hashFiles` of the same
+migration SQL the tar's own name is hashed from, placed after `bun install`
+because the path lives inside `node_modules`. No `restore-keys`, because the
+tar's filename carries that same hash: an inexact restore would hand the job a
+tar it will never open, so it would bake the schema anyway and then carry the
+dead 40MB forward for as long as the key stayed warm. Gzip was measured and
+rejected: 4.6MB instead of 39.7MB, but ~300ms slower to restore, and the file
+is never committed or transferred.
 
 **One database for the whole run, reset per test.** `bun test` loads every file
 into a single process — the same property that makes the mock registry
@@ -136,26 +151,35 @@ all cost. Restarting the sequences is what lets a test write ticket 1 and then
 read `/1`.
 
 **`mock.module` does not go away, but it stops being a hazard for `../db`.**
-A converted file still binds the specifier — it binds it to the one shared real
-client, which is what every other converted file wants too, so two of them
-sharing a binding is a no-op rather than a stranger's stub. The `Prisma`
-re-export rule survives for the same reason it exists (`Prisma.sql` is a value
-import in three modules) and `src/test/pg.ts` re-exports it so a factory reads
-`{ Prisma, prisma }`. The end state, verified in the spike, is a
-`bun test --preload` that registers the binding once before any test file
-loads, at which point no test file mocks `../db` at all; it is deliberately
-left to the last migration ticket rather than done first, because it only pays
-off once every file is converted.
+Through the migration each converted file bound the specifier itself, to the
+one shared real client — which is what every other converted file wanted too,
+so two of them sharing a binding was a no-op rather than a stranger's stub.
+#175 removed even that: `src/test/preload.ts` registers the binding once
+before any test file loads, `package.json`'s `test` script passes it with
+`--preload` and `apps/api/bunfig.toml` lists it under `[test]`, and no test
+file mocks `../db` at all — sixteen identical registrations became one. It was
+deliberately left to the last migration ticket rather than done first, because
+a preload binding the specifier while some files still bound it to a
+hand-written fake would have been the hazard rather than the cure. Both
+workarounds this ADR opened by naming go with it: a factory no longer
+re-exports a `Prisma` namespace the file never touches — `src/test/pg.ts`
+still exports it, for the preload and for the one test file that composes raw
+SQL of its own — and two suites that both reach the database no longer have to
+share a file. Every *other* specifier a factory replaces is still one registry
+deep, and still gets `bun test <a> <b>` in both orders before it is believed.
 
 **A mis-registered mock is silent and dangerous.** Registering the binding
-under a path that does not match — `new URL("../src/db.ts", import.meta.url).pathname`
-yields `/C:/…` on Windows — does not error. The routes link the *real* `../db`,
-which connects to whatever `DATABASE_URL` names, and on a developer's machine
-that is the dev database. Demonstrated during the spike; nothing was written,
-because the requests failed before their writes landed, but that was luck.
-Any preload must therefore overwrite `DATABASE_URL` with an unreachable
-sentinel before registering anything, so a fallthrough fails loudly instead of
-quietly finding a real server.
+under a path that does not match — `new URL("../src/db.ts",
+import.meta.url).pathname` yields `/C:/…` on Windows — does not error. The
+routes link the *real* `../db`, which connects to whatever `DATABASE_URL`
+names, and on a developer's machine that is the dev database. Demonstrated
+during the spike; nothing was written, because the requests failed before
+their writes landed, but that was luck. The preload therefore overwrites
+`DATABASE_URL` with an unreachable sentinel before registering anything, so a
+fallthrough fails loudly instead of quietly finding a real server. Checked by
+hand when it landed: breaking the specifier takes the suite from 405 pass / 0
+fail to 217 failures, every one of them `Can't reach database server at
+127.0.0.1:1`.
 
 **Migrations are now executed by the unit suite.** A migration whose SQL
 Postgres will not accept fails `bun test`, not just the E2E job. All 28 of this

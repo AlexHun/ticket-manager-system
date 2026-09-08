@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY, type TicketCategory } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 
 /**
  * Both halves of the classify worker, called directly — no pg-boss anywhere.
@@ -23,8 +23,6 @@ import { Prisma, prisma, resetDb } from "../test/pg";
  * one the guards settle before `classifyTicket` is reached, which is exactly
  * what makes them worth pinning down.
  */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 const { CLASSIFY_WORKER } = await import("./classify-ticket");
 

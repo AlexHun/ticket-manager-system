@@ -45,13 +45,11 @@ import {
   type KnowledgeRevisionApprovalResponse,
   type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues, type ColleagueKey } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 /**
  * Deliberately identical to `./ai.test.ts` and `./automation.test.ts` — see

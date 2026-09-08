@@ -4,8 +4,9 @@
  * The API suite's test seam was the Prisma *client*: eleven files replaced
  * `../db` with an object of `mock()`s, so what the tests exercised was a
  * hand-written re-implementation of whichever slice of Prisma the route
- * happened to call. None are left — `routes/ai` was the last, in #174 — so
- * every `../db` factory in this workspace now binds the client below.
+ * happened to call. None are left — `routes/ai` was the last, in #174 — and
+ * since #175 no test file binds `../db` at all: `./preload.ts` does it once for
+ * the whole process, pointing the specifier at the client below.
  *
  * This module is the other seam — a real Prisma client on a real Postgres
  * (PGLite, compiled to WASM and run inside this process), so `where`, `select`,
@@ -45,9 +46,12 @@ import { PGlite } from "@electric-sql/pglite";
 import { PrismaPGlite } from "pglite-prisma-adapter";
 import { PrismaClient } from "../generated/prisma/client";
 
-// Re-exported so a test file's `mock.module("../db", …)` factory can hand the
-// module under test the same `Prisma` namespace the real `../db` exports — it
-// is a *value* export (`Prisma.sql`), see `docs/standards/testing.md`.
+// Re-exported so `./preload.ts`'s `../db` factory can hand the modules under
+// test the same `Prisma` namespace the real `../db` exports — it is a *value*
+// export (`Prisma.sql`), which `routes/activity.ts`, `routes/ticket-stats.ts`
+// and `routes/ticket-effectiveness.ts` import as one. A test file needs it only
+// if it composes raw SQL of its own; `routes/users.test.ts` is the one that
+// does.
 export { Prisma } from "../generated/prisma/client";
 
 const MIGRATIONS = join(import.meta.dir, "..", "..", "prisma", "migrations");
