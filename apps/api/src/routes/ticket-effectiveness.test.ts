@@ -11,12 +11,17 @@
  * sent-and-polished messages in the slice.
  *
  * Deliberately does not import `./ticket-effectiveness` itself, which pulls in
- * `../db`: that specifier is `mock.module`d process-wide by most of the suite,
- * and one of those factories — `./ai.test.ts`, the last hand-written client
- * left (#174) — is not the shared `../test/pg` one everything else binds. So
- * importing anything that reaches `../db` here would bind to whichever
- * registration `bun test` happened to load first; see the "registry is one
- * process wide" note in `docs/standards/testing.md`.
+ * `../db`. That used to be a hazard — the specifier is `mock.module`d
+ * process-wide by most of the suite, and until #174 one of those factories was
+ * a hand-written client rather than the shared `../test/pg` one, so importing
+ * anything reaching `../db` here would bind to whichever registration
+ * `bun test` happened to load first. It is not a hazard any more: every
+ * factory binds the same client now. What is left is the plainer reason — the
+ * two modules above are pure functions over plain rows and need no database to
+ * exercise, so this file mocks nothing and imports neither. The handler's own
+ * raw SQL is *now* testable the way `routes/activity.ts`'s `UNION ALL` is
+ * (#171), against real rows in a real Postgres; nobody has written that yet,
+ * and it would be its own file rather than an extension of this one.
  */
 
 import { describe, expect, test } from "bun:test";
