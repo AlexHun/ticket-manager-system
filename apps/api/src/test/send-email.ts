@@ -72,9 +72,12 @@ export const sendEmailStub = { failAfterWriting: false };
 let installed = false;
 
 /**
- * Register the stub. Call it at module scope, **after** the file's
- * `mock.module("../db", …)` — this imports `../jobs/send-email`, which imports
- * `../db`, and the real one throws without `DATABASE_URL`.
+ * Register the stub, at module scope. This imports `../jobs/send-email`,
+ * which imports `../db` — safe from anywhere since #175, because `./preload.ts`
+ * has already bound that specifier to the in-process client before any test
+ * file loads. Until then this had to follow the calling file's own
+ * `mock.module("../db", …)`, because the real `../db` throws without
+ * `DATABASE_URL`.
  *
  * Idempotent: the second caller gets the first caller's registration, which is
  * the entire point.

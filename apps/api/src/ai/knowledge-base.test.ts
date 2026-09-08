@@ -20,11 +20,9 @@
  * getting them back in the right one.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
-
-mock.module("../db", () => ({ Prisma, prisma }));
+import { prisma, resetDb } from "../test/pg";
 
 const { autoReplyArticleCount, autoReplyArticles } = await import(
   "./knowledge-base"

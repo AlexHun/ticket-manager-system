@@ -55,7 +55,7 @@
  * two switches, of which the registry keeps one. See that module's header.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   MESSAGE_DIRECTION,
   OUTBOUND_EMAIL_KIND,
@@ -67,12 +67,11 @@ import {
   seedColleagues,
   seedTicket,
 } from "./test/fixtures";
-import { Prisma, prisma, resetDb } from "./test/pg";
+import { prisma, resetDb } from "./test/pg";
 import { sendEmailStub, stubSendEmail } from "./test/send-email";
 
 /* ── The world behind the module ─────────────────────────────────────────── */
 
-mock.module("./db", () => ({ Prisma, prisma }));
 await stubSendEmail();
 
 const { REPLY_ORIGIN, SEND_OUTCOME, sendReply } = await import("./outbound");

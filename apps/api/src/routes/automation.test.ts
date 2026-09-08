@@ -40,12 +40,10 @@ import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { HANDOFF_TARGET, type HandoffTarget } from "@ticket/shared";
 import { COLLEAGUE, seedColleagues, type ColleagueKey } from "../test/fixtures";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 /**
  * The session the audit columns are written from.

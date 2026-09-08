@@ -7,7 +7,7 @@ import {
   type TicketEventField,
   type TicketStatus,
 } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 
 /**
  * The two background sites that publish `ticket_updated` and write an Activity
@@ -40,8 +40,6 @@ import { Prisma, prisma, resetDb } from "../test/pg";
  * returned, and with the publish first the read is *issued* before the insert
  * exists at all.
  */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 /** The trail as it stood each time `ticket_updated` went out, in order. */
 let trailAtPublish: Promise<{ action: string }[]>[] = [];

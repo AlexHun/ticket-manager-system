@@ -47,6 +47,27 @@ jobs:
       # fails in the image.
       - run: bun install --frozen-lockfile
 
+      # The baked PGLite schema the API unit suite runs against (ADR-0014).
+      # `src/test/pg.ts` replays this repo's migrations into an in-process
+      # Postgres and dumps the finished data directory to
+      # `schema-<hash of the migration SQL>.tar` (~40MB); restoring that is
+      # ~1.5s against a ~10s replay, and CI paid the replay on every run until
+      # this step existed.
+      #
+      # After `bun install`, not before: the path is inside node_modules,
+      # which the install step owns.
+      #
+      # No `restore-keys`, deliberately. The tar's filename carries the same
+      # migration hash as this key, so an inexact restore hands the job a tar
+      # it will never open: it bakes the new schema anyway, then saves both
+      # under the new key and carries the dead 40MB forward for as long as the
+      # key stays warm. A new migration should invalidate this outright.
+      - name: Cache the baked PGLite schema
+        uses: actions/cache@v4
+        with:
+          path: apps/api/node_modules/.cache/pglite
+          key: pglite-${{ runner.os }}-${{ hashFiles('apps/api/prisma/migrations/**/migration.sql') }}
+
       # The Prisma client is generated into apps/api/src/generated/prisma, which
       # is gitignored, and there is no postinstall — nothing typechecks until
       # this runs. `prisma generate` loads prisma.config.ts, which reads
@@ -61,8 +82,9 @@ jobs:
       - name: Typecheck all workspaces
         run: bun run typecheck
 
-      # Provider, database and session are mocked, so this needs no
-      # OPENAI_API_KEY and no Postgres.
+      # The provider and the session are mocked; the database is real but runs
+      # in process (PGLite, ADR-0014), so this still needs no OPENAI_API_KEY and
+      # no Postgres server.
       - name: API unit tests
         run: bun run --filter '@ticket/api' test
 

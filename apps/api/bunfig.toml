@@ -1,0 +1,16 @@
+# `bun test` from this workspace preloads the `../db` binding — see
+# `src/test/preload.ts` and ADR-0014.
+#
+# This is the belt to `package.json`'s braces, which passes the same file with
+# `--preload`, and the pair is deliberate rather than redundant. The script's
+# flag is what CI runs, and it fails loudly (module not found) if it is ever
+# resolved from the wrong directory. This file covers the runs the script does
+# not: a bare `bun test src/routes/knowledge.test.ts`, and in particular the
+# `bun test <a> <b>` in both orders that `docs/standards/testing.md` prescribes
+# before believing a new mock. Without it, those runs would load no preload at
+# all — which means no sentinel `DATABASE_URL` either, so the modules under test
+# would link the real `../db` and quietly find the developer's dev database.
+# Bun evaluates a module once, so listing the preload twice registers the
+# binding once.
+[test]
+preload = ["./src/test/preload.ts"]

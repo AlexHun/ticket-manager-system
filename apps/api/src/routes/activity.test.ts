@@ -58,12 +58,10 @@ import {
   type TicketActivityAction,
 } from "@ticket/shared";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the route ──────────────────────────────────────────── */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 /** Deliberately identical to `./automation.test.ts`, `./ai.test.ts` and
  *  `routes/knowledge.test.ts` — see this file's header comment. */

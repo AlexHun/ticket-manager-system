@@ -84,7 +84,7 @@ import * as polishModule from "../ai/polish";
 import { AI_FAILURE } from "../ai/provider";
 import * as summarizeModule from "../ai/summarize";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
-import { Prisma, dbCalls, prisma, resetDb } from "../test/pg";
+import { dbCalls, prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
 const { POLISH_FAILURE } = polishModule;
@@ -115,8 +115,6 @@ const summarizeTicket = mock(
   (_context: SummarizeContext, _signal?: AbortSignal) =>
     Promise.resolve(summaryResult),
 );
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 // The real `requireAuth` would pull in `../auth`, which throws at import unless
 // BETTER_AUTH_SECRET is set — and the identity it resolves is not what this

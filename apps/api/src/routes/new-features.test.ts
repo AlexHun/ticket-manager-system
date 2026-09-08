@@ -23,15 +23,13 @@ import {
   NEW_FEATURE_VERSIONS,
   type NewFeatureStatusResponse,
 } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
 const NOW = new Date("2026-08-29T12:00:00.000Z");
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 /** Deliberately identical to `tutorials.test.ts` — see this file's header. */
 const fakeGuard = (req: Request, res: Response, next: NextFunction) => {

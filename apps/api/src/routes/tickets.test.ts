@@ -37,12 +37,10 @@ import type {
   UpdateTicketResponse,
 } from "@ticket/shared";
 import { seedTicket } from "../test/fixtures";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 /** Deliberately identical in shape to every other route test's stub — see
  *  the file header and `docs/standards/testing.md`. */

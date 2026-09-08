@@ -192,7 +192,6 @@ process.env.BETTER_AUTH_SECRET =
   "users-route-test-secret-of-at-least-32-chars";
 process.env.BETTER_AUTH_URL = "http://127.0.0.1:3999";
 
-mock.module("../db", () => ({ Prisma, prisma }));
 await stubSendEmail();
 
 /**

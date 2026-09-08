@@ -22,13 +22,11 @@ import {
   type DashboardLayoutResponse,
   type DashboardPanelPlacement,
 } from "@ticket/shared";
-import { Prisma, prisma, resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
-
-mock.module("../db", () => ({ Prisma, prisma }));
 
 const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
   res.locals.session = {
