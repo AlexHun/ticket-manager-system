@@ -1,0 +1,14 @@
+# Slow gate — the two unit suites, plus a typecheck the pre-commit hook may
+# never have run (a `--no-verify` commit, a commit made by another tool, a
+# rebase). Nothing reaches the remote without passing what CI is about to run.
+#
+# Measured on a Windows dev machine: typecheck ~17s, `@ticket/api` ~28s,
+# `@ticket/web` ~4min — the web suite is jsdom-bound and Windows is ~4x slower
+# than ubuntu-latest here (see docs/standards/testing.md). That total is why
+# this is per-push and not per-commit: a five-minute pre-commit is one people
+# learn to `--no-verify` around, which costs more than it saves.
+#
+# E2E is not here on purpose. It needs a Postgres, a migrated ticket_manager_test
+# and two servers on alt ports (SCRIPTS.md); CI's `e2e` job owns it.
+bun run typecheck
+bun run test
