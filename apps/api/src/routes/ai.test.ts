@@ -63,8 +63,17 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { MESSAGE_DIRECTION, type MessageDirection } from "@ticket/shared";
+import {
+  MESSAGE_DIRECTION,
+  SUMMARY_SENTIMENT,
+  TICKET_CATEGORY,
+  TICKET_STATUS,
+  type MessageDirection,
+  type TicketSummary,
+} from "@ticket/shared";
 import * as polishModule from "../ai/polish";
+import { AI_FAILURE } from "../ai/provider";
+import * as summarizeModule from "../ai/summarize";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
 import { Prisma, dbCalls, prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
@@ -73,6 +82,10 @@ const { POLISH_FAILURE } = polishModule;
 type PolishResult = Awaited<ReturnType<typeof polishModule.polishDraft>>;
 type PolishContext = Parameters<typeof polishModule.polishDraft>[1];
 type PolishFailureValue = Extract<PolishResult, { ok: false }>["reason"];
+
+type SummarizeResult = Awaited<ReturnType<typeof summarizeModule.summarizeTicket>>;
+type SummarizeContext = Parameters<typeof summarizeModule.summarizeTicket>[0];
+type AiFailureValue = Extract<SummarizeResult, { ok: false }>["reason"];
 
 /* ── The world behind the route ──────────────────────────────────────────── */
 
@@ -83,6 +96,15 @@ let configured: boolean;
 const polishDraft = mock(
   (_draft: string, _context: PolishContext, _signal?: AbortSignal) =>
     Promise.resolve(polishResult),
+);
+
+/** The same two, for the other endpoint. */
+let summaryResult: SummarizeResult;
+let summaryConfigured: boolean;
+
+const summarizeTicket = mock(
+  (_context: SummarizeContext, _signal?: AbortSignal) =>
+    Promise.resolve(summaryResult),
 );
 
 mock.module("../db", () => ({ Prisma, prisma }));
@@ -130,6 +152,21 @@ mock.module("../ai/polish", () => ({
   polishDraft,
 }));
 
+// The summary endpoint's twin, and the reason `../ai/summarize` grew an
+// `isSummarizeConfigured` in #174 rather than this file replacing the
+// provider's `isAiConfigured` directly: `jobs/sweeps.test.ts` already registers
+// a `../ai/provider` factory, and that stub holds **state** — a switch its own
+// reconcile tests flip. Two stateful copies on one specifier are two boxes, of
+// which the process-wide registry keeps one, leaving the other file's switch
+// inert (`docs/standards/testing.md` says so about `../test/send-email`, for
+// exactly this reason). A per-feature guard beside `polishDraft`'s own gives
+// each route's test a specifier nothing else touches.
+mock.module("../ai/summarize", () => ({
+  ...summarizeModule,
+  isSummarizeConfigured: () => summaryConfigured,
+  summarizeTicket,
+}));
+
 const { aiRouter } = await import("./ai");
 
 /* ── The thread ──────────────────────────────────────────────────────────── */
@@ -164,15 +201,21 @@ function seedMessage(
     textBody?: string | null;
     htmlBody?: string;
     direction?: MessageDirection;
+    senderName?: string;
     createdAt?: Date;
   } = {},
 ) {
+  const outbound = over.direction === MESSAGE_DIRECTION.outbound;
   return prisma.message.create({
     data: {
       ticketId: over.ticketId ?? TICKET,
       messageId: `m-${++messages}@tickets.example.com`,
-      senderEmail: CUSTOMER.email,
-      senderName: CUSTOMER.name,
+      // The sender follows the direction unless a test names one: an outbound
+      // message the thread attributes to the customer would be a row `ingest.ts`
+      // and `outbound.ts` between them cannot produce, and the summary prompt
+      // reads this column.
+      senderEmail: outbound ? AGENT_EMAIL : CUSTOMER.email,
+      senderName: over.senderName ?? (outbound ? AGENT_NAME : CUSTOMER.name),
       textBody: over.textBody === undefined ? LATEST : over.textBody,
       ...(over.htmlBody === undefined ? {} : { htmlBody: over.htmlBody }),
       direction: over.direction ?? MESSAGE_DIRECTION.inbound,
@@ -180,6 +223,19 @@ function seedMessage(
     },
   });
 }
+
+/** The colleague whose name outbound messages carry. Matches `fakeGuard`. */
+const AGENT_NAME = "Aaron Agent";
+const AGENT_EMAIL = "agent@example.com";
+
+/** What the summariser returns when a test is not about the failure path. */
+const SUMMARY: TicketSummary = {
+  overview: "A parcel from order TR-99182 has not arrived and tracking is stuck.",
+  keyPoints: ["Label created, never scanned"],
+  nextStep: "Chase the courier for a scan event.",
+  sentiment: SUMMARY_SENTIMENT.frustrated,
+  highlights: ["TR-99182"],
+};
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
@@ -236,11 +292,58 @@ function lastContext(): PolishContext {
   return call[1];
 }
 
+interface Summarised {
+  status: number;
+  body: {
+    summary?: TicketSummary;
+    messageCount?: number;
+    error?: string;
+  };
+  retryAfter: string | null;
+}
+
+/**
+ * One request to the other endpoint.
+ *
+ * Its own helper rather than a verb-and-path parameter on `post` above: the two
+ * endpoints take different bodies and answer with different shapes, and a
+ * shared helper would be generic in both — the lowest common denominator
+ * `../test/route-app` explicitly declines to build.
+ */
+async function postSummary(
+  body: unknown,
+  options: { user?: string } = {},
+): Promise<Summarised> {
+  const res = await fetch(url("/summarize-ticket"), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-test-user": options.user ?? freshUser(),
+    },
+    body: JSON.stringify(body),
+  });
+  return {
+    status: res.status,
+    body: (await res.json()) as Summarised["body"],
+    retryAfter: res.headers.get("retry-after"),
+  };
+}
+
+/** The thread the summariser was handed on its most recent call. */
+function lastSummaryContext(): SummarizeContext {
+  const call = summarizeTicket.mock.calls.at(-1);
+  if (!call) throw new Error("summarizeTicket was never called");
+  return call[0];
+}
+
 beforeEach(async () => {
   await resetDb();
   polishDraft.mockClear();
+  summarizeTicket.mockClear();
   configured = true;
+  summaryConfigured = true;
   polishResult = { ok: true, text: "Hi Marta,\n\nYour parcel shipped on Friday." };
+  summaryResult = { ok: true, summary: SUMMARY };
   await seedTicket({ id: TICKET, subject: SUBJECT, createdAt: AT.opened });
   await seedMessage();
 });
@@ -550,5 +653,296 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
     // A provider that is down, retried ten times a minute, is exactly what the
     // guard is here to stop.
     expect((await post(goodBody(), { user })).status).toBe(429);
+  });
+});
+
+/* ── The other endpoint ──────────────────────────────────────────────────── */
+
+/**
+ * `POST /api/ai/summarize-ticket`, which had no test anywhere until #174.
+ *
+ * It is the same router, the same guard and the same rate limiter, and the
+ * shape of these deliberately mirrors the polish half above — but the thing it
+ * reads is the opposite of a polish, and that is what most of them are about.
+ * Polishing takes the customer's *newest inbound* message and nothing else;
+ * summarising takes the **whole thread, oldest first, both directions**,
+ * because a summary of the latest message is not a summary of the
+ * conversation. Every clause that differs between the two queries is a place
+ * they could be confused for one another, and none of them was covered before.
+ */
+
+describe("POST /api/ai/summarize-ticket — refusing before it costs anything", () => {
+  test("answers 503 on a deployment with no key, and reads nothing", async () => {
+    summaryConfigured = false;
+
+    const sent = await postSummary({ ticketId: TICKET });
+
+    expect(sent.status).toBe(503);
+    expect(sent.body.error).toBe("Summarising isn't configured on this server.");
+    expect(dbCalls("ticket.findUnique")).toBe(0);
+    expect(summarizeTicket).not.toHaveBeenCalled();
+  });
+
+  test("rejects a request with no ticket to summarise", async () => {
+    const sent = await postSummary({});
+
+    expect(sent.status).toBe(400);
+    expect(summarizeTicket).not.toHaveBeenCalled();
+  });
+
+  test("rejects a ticket id that is not one", async () => {
+    for (const ticketId of [0, -3, 1.5, "twelve", 2_147_483_648]) {
+      expect((await postSummary({ ticketId })).status).toBe(400);
+    }
+    expect(dbCalls("ticket.findUnique")).toBe(0);
+  });
+
+  test("answers 404 for a ticket that isn't there", async () => {
+    const sent = await postSummary({ ticketId: TICKET + 1 });
+
+    expect(sent.status).toBe(404);
+    expect(sent.body.error).toBe("Ticket not found");
+    expect(summarizeTicket).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/ai/summarize-ticket — the thread it assembles", () => {
+  test("sends the whole conversation, oldest first, both directions", async () => {
+    // The property that most distinguishes this endpoint from the polish one
+    // next door, which takes a single inbound message and discards the rest.
+    await seedMessage({
+      textBody: "It was due on Tuesday and never came.",
+      createdAt: AT.earlier,
+    });
+    await seedMessage({
+      textBody: "We're chasing the courier now.",
+      direction: MESSAGE_DIRECTION.outbound,
+      createdAt: AT.after,
+    });
+
+    await postSummary({ ticketId: TICKET });
+
+    expect(lastSummaryContext().messages.map((m) => m.text)).toEqual([
+      "It was due on Tuesday and never came.",
+      LATEST,
+      "We're chasing the courier now.",
+    ]);
+  });
+
+  test("breaks a same-instant tie by id — the other way round from a polish", async () => {
+    // Oldest first here, newest first there, so one pair of messages resolves
+    // to opposite ends. `ingest.ts` writes a batch in one transaction, so a
+    // shared `createdAt` is ordinary rather than contrived.
+    await seedMessage({ textBody: "Second, same instant.", createdAt: AT.latest });
+
+    await postSummary({ ticketId: TICKET });
+
+    expect(lastSummaryContext().messages.map((m) => m.text)).toEqual([
+      LATEST,
+      "Second, same instant.",
+    ]);
+  });
+
+  test("names the ticket's subject, customer, status and category", async () => {
+    await prisma.ticket.update({
+      where: { id: TICKET },
+      data: {
+        status: TICKET_STATUS.Processing,
+        category: TICKET_CATEGORY.Refund,
+      },
+    });
+
+    await postSummary({ ticketId: TICKET });
+
+    expect(lastSummaryContext()).toMatchObject({
+      subject: SUBJECT,
+      customerName: CUSTOMER.name,
+      status: TICKET_STATUS.Processing,
+      category: TICKET_CATEGORY.Refund,
+    });
+  });
+
+  test("sends a category of null rather than inventing one", async () => {
+    // A ticket the classifier has not reached yet. `SummarizeContext.category`
+    // is nullable for exactly this, and a string here would tell the model the
+    // desk had filed something it has not.
+    await postSummary({ ticketId: TICKET });
+
+    expect(lastSummaryContext().category).toBeNull();
+  });
+
+  test("dates and attributes each message the way the thread records it", async () => {
+    await seedMessage({
+      textBody: "We're chasing the courier now.",
+      direction: MESSAGE_DIRECTION.outbound,
+      createdAt: AT.after,
+    });
+
+    await postSummary({ ticketId: TICKET });
+
+    expect(lastSummaryContext().messages).toEqual([
+      {
+        direction: MESSAGE_DIRECTION.inbound,
+        senderName: CUSTOMER.name,
+        sentAt: AT.latest.toISOString(),
+        text: LATEST,
+      },
+      {
+        direction: MESSAGE_DIRECTION.outbound,
+        senderName: AGENT_NAME,
+        sentAt: AT.after.toISOString(),
+        text: "We're chasing the courier now.",
+      },
+    ]);
+  });
+
+  test("drops a message with no text, and still counts it", async () => {
+    // An HTML-only email is dropped rather than sent as a blank — a numbered
+    // gap in the thread would invite the model to guess what was in it — but it
+    // is still part of how long the conversation is, which is what the panel
+    // compares against its own copy to notice a reply has landed.
+    await seedMessage({
+      textBody: null,
+      htmlBody: "<p>Still <b>nothing</b>.</p>",
+      createdAt: AT.after,
+    });
+
+    const sent = await postSummary({ ticketId: TICKET });
+
+    expect(lastSummaryContext().messages.map((m) => m.text)).toEqual([LATEST]);
+    expect(sent.body.messageCount).toBe(2);
+  });
+
+  test("drops a whitespace-only message too", async () => {
+    await seedMessage({ textBody: "  \n ", createdAt: AT.after });
+
+    await postSummary({ ticketId: TICKET });
+
+    expect(lastSummaryContext().messages.map((m) => m.text)).toEqual([LATEST]);
+  });
+
+  test("summarises a thread with nothing readable in it at all", async () => {
+    // Every message HTML-only. The endpoint still answers — the subject, the
+    // customer and the status are a summary's worth of context on their own —
+    // rather than 404ing or handing the model a list of blanks.
+    await prisma.message.deleteMany({});
+    await seedMessage({ textBody: null, htmlBody: "<p>Nothing.</p>" });
+
+    const sent = await postSummary({ ticketId: TICKET });
+
+    expect(sent.status).toBe(200);
+    expect(lastSummaryContext().messages).toEqual([]);
+    expect(sent.body.messageCount).toBe(1);
+  });
+
+  test("hands the model a signal it can be abandoned with", async () => {
+    await postSummary({ ticketId: TICKET });
+
+    expect(summarizeTicket.mock.calls.at(-1)![1]).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("POST /api/ai/summarize-ticket — answering", () => {
+  test("returns the summary and the length of the thread it read", async () => {
+    const sent = await postSummary({ ticketId: TICKET });
+
+    expect(sent.status).toBe(200);
+    expect(sent.body).toEqual({ summary: SUMMARY, messageCount: 1 });
+    expect(dbCalls("ticket.findUnique")).toBe(1);
+  });
+
+  test("turns each failure into a status and a sentence an agent can act on", async () => {
+    // Its own table in the route rather than a template over the polish one,
+    // because the useful half of each sentence is the fallback advice and the
+    // two features have different fallbacks: "send your draft as it is" has no
+    // equivalent here, where the thread is already on screen.
+    const cases: { reason: AiFailureValue; status: number; says: string }[] = [
+      { reason: AI_FAILURE.provider, status: 502, says: "read the thread below" },
+      { reason: AI_FAILURE.busy, status: 503, says: "busy" },
+      { reason: AI_FAILURE.quota, status: 503, says: "out of credit" },
+      { reason: AI_FAILURE.auth, status: 503, says: "credentials were rejected" },
+      { reason: AI_FAILURE.config, status: 503, says: "misconfigured" },
+      { reason: AI_FAILURE.empty, status: 502, says: "came back empty" },
+    ];
+
+    for (const { reason, status, says } of cases) {
+      summaryResult = { ok: false, reason };
+      const sent = await postSummary({ ticketId: TICKET });
+      expect(sent.status).toBe(status);
+      expect(sent.body.error).toContain(says);
+      // Never the provider's own words, and never half an answer.
+      expect(sent.body.summary).toBeUndefined();
+      expect(sent.body.messageCount).toBeUndefined();
+    }
+  });
+
+  test("does not tell an agent to retry an empty balance", async () => {
+    summaryResult = { ok: false, reason: AI_FAILURE.quota };
+
+    const sent = await postSummary({ ticketId: TICKET });
+
+    expect(sent.body.error).not.toContain("try again");
+    expect(sent.retryAfter).toBeNull();
+  });
+
+  test("says when to come back, but only when coming back would help", async () => {
+    summaryResult = { ok: false, reason: AI_FAILURE.busy };
+    expect((await postSummary({ ticketId: TICKET })).retryAfter).toBe("10");
+
+    summaryResult = { ok: false, reason: AI_FAILURE.config };
+    expect((await postSummary({ ticketId: TICKET })).retryAfter).toBeNull();
+  });
+});
+
+describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
+  test("allows ten in a window and refuses the eleventh", async () => {
+    const user = freshUser();
+
+    for (let i = 0; i < 10; i++) {
+      expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(200);
+    }
+    const refused = await postSummary({ ticketId: TICKET }, { user });
+
+    expect(refused.status).toBe(429);
+    expect(refused.body.error).toContain("try again in a minute");
+    expect(Number(refused.retryAfter)).toBeGreaterThan(0);
+    expect(summarizeTicket).toHaveBeenCalledTimes(10);
+  });
+
+  test("its own budget: polishing all morning does not cost a summary", async () => {
+    // The claim the two-bucket design exists to make. A shared counter would
+    // let ten polishes lock an agent out of summarising — a feature they have
+    // not touched and a limit they cannot see the reason for.
+    const user = freshUser();
+
+    for (let i = 0; i < 10; i++) {
+      expect((await post(goodBody(), { user })).status).toBe(200);
+    }
+    expect((await post(goodBody(), { user })).status).toBe(429);
+
+    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(200);
+  });
+
+  test("and it runs the other way too", async () => {
+    const user = freshUser();
+
+    for (let i = 0; i < 10; i++) {
+      await postSummary({ ticketId: TICKET }, { user });
+    }
+    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(429);
+
+    expect((await post(goodBody(), { user })).status).toBe(200);
+  });
+
+  test("spends a slot only on a request that would reach the model", async () => {
+    const user = freshUser();
+
+    for (let i = 0; i < 12; i++) {
+      expect(
+        (await postSummary({ ticketId: TICKET + 1 }, { user })).status,
+      ).toBe(404);
+    }
+
+    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(200);
   });
 });
