@@ -38,106 +38,328 @@ interface TicketSeed {
  * by status or category has to actually work to produce the right answer.
  */
 const TICKETS: TicketSeed[] = [
-  { subject: "Cannot log in after password reset", category: TICKET_CATEGORY.Technical },
-  { subject: "Refund request for a duplicate charge", category: TICKET_CATEGORY.Refund },
+  {
+    subject: "Cannot log in after password reset",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Refund request for a duplicate charge",
+    category: TICKET_CATEGORY.Refund,
+  },
   { subject: "How do I invite a teammate?", category: TICKET_CATEGORY.General },
-  { subject: "Feature request: recurring reminders", category: TICKET_CATEGORY.Other },
+  {
+    subject: "Feature request: recurring reminders",
+    category: TICKET_CATEGORY.Other,
+  },
   { subject: "Urgent - please call me", category: null },
-  { subject: "API returns 500 on bulk export", category: TICKET_CATEGORY.Technical },
-  { subject: "Charged twice for the annual plan", category: TICKET_CATEGORY.Refund },
+  {
+    subject: "API returns 500 on bulk export",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Charged twice for the annual plan",
+    category: TICKET_CATEGORY.Refund,
+  },
   { subject: "Question about seat pricing", category: TICKET_CATEGORY.General },
-  { subject: "Feedback on the new navigation", category: TICKET_CATEGORY.Other },
-  { subject: "Webhook deliveries stopped overnight", category: TICKET_CATEGORY.Technical },
-  { subject: "Where can I find my invoices?", category: TICKET_CATEGORY.General },
-  { subject: "Cancel subscription and refund the remainder", category: TICKET_CATEGORY.Refund },
+  {
+    subject: "Feedback on the new navigation",
+    category: TICKET_CATEGORY.Other,
+  },
+  {
+    subject: "Webhook deliveries stopped overnight",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Where can I find my invoices?",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Cancel subscription and refund the remainder",
+    category: TICKET_CATEGORY.Refund,
+  },
   { subject: "Help", category: null },
-  { subject: "Two-factor codes rejected on the iOS app", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Two-factor codes rejected on the iOS app",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Partnership inquiry", category: TICKET_CATEGORY.Other },
-  { subject: "Update our company billing address", category: TICKET_CATEGORY.General },
-  { subject: "Prorated refund never arrived", category: TICKET_CATEGORY.Refund },
-  { subject: "CSV import fails with an encoding error", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Update our company billing address",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Prorated refund never arrived",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "CSV import fails with an encoding error",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Change the account owner", category: TICKET_CATEGORY.General },
   { subject: "Reporting a typo in the docs", category: TICKET_CATEGORY.Other },
-  { subject: "Dashboard charts not loading in Safari", category: TICKET_CATEGORY.Technical },
-  { subject: "Refund still pending after 10 days", category: TICKET_CATEGORY.Refund },
-  { subject: "Do you offer a nonprofit discount?", category: TICKET_CATEGORY.General },
+  {
+    subject: "Dashboard charts not loading in Safari",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Refund still pending after 10 days",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Do you offer a nonprofit discount?",
+    category: TICKET_CATEGORY.General,
+  },
   { subject: "Follow-up on my previous email", category: null },
-  { subject: "SSO redirect loop with Okta", category: TICKET_CATEGORY.Technical },
-  { subject: "Security researcher: responsible disclosure", category: TICKET_CATEGORY.Other },
+  {
+    subject: "SSO redirect loop with Okta",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Security researcher: responsible disclosure",
+    category: TICKET_CATEGORY.Other,
+  },
   { subject: "Request for a W-9 form", category: TICKET_CATEGORY.General },
-  { subject: "Wrong currency charged on renewal", category: TICKET_CATEGORY.Refund },
-  { subject: "Rate limit hit despite low traffic", category: TICKET_CATEGORY.Technical },
-  { subject: "How to export all of my data", category: TICKET_CATEGORY.General },
-  { subject: "Attachments over 5 MB fail to upload", category: TICKET_CATEGORY.Technical },
-  { subject: "Requesting a refund for unused seats", category: TICKET_CATEGORY.Refund },
-  { subject: "Press inquiry about your Series B", category: TICKET_CATEGORY.Other },
-  { subject: "Change plan from monthly to annual", category: TICKET_CATEGORY.General },
-  { subject: "Scheduled report never arrived", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Wrong currency charged on renewal",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Rate limit hit despite low traffic",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "How to export all of my data",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Attachments over 5 MB fail to upload",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Requesting a refund for unused seats",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Press inquiry about your Series B",
+    category: TICKET_CATEGORY.Other,
+  },
+  {
+    subject: "Change plan from monthly to annual",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Scheduled report never arrived",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Re: your last message", category: null },
-  { subject: "Double billing after a plan upgrade", category: TICKET_CATEGORY.Refund },
-  { subject: "Add a purchase order number to invoices", category: TICKET_CATEGORY.General },
-  { subject: "Search returns stale results", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Double billing after a plan upgrade",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Add a purchase order number to invoices",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Search returns stale results",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Job application follow-up", category: TICKET_CATEGORY.Other },
-  { subject: "Question about the data retention policy", category: TICKET_CATEGORY.General },
-  { subject: "Mobile app crashes on startup", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Question about the data retention policy",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Mobile app crashes on startup",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Refund to a closed bank card", category: TICKET_CATEGORY.Refund },
   { subject: "Need a signed DPA", category: TICKET_CATEGORY.General },
-  { subject: "Timezone shown incorrectly on invoices", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Timezone shown incorrectly on invoices",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Request for a case study", category: TICKET_CATEGORY.Other },
-  { subject: "Trial converted to paid without consent", category: TICKET_CATEGORY.Refund },
+  {
+    subject: "Trial converted to paid without consent",
+    category: TICKET_CATEGORY.Refund,
+  },
   { subject: "How to set up custom roles", category: TICKET_CATEGORY.General },
-  { subject: "Email notifications going to spam", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Email notifications going to spam",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Not sure who to contact", category: null },
-  { subject: "Increase the API rate limit for our plan", category: TICKET_CATEGORY.General },
-  { subject: "Data sync stuck at 40 percent", category: TICKET_CATEGORY.Technical },
-  { subject: "Overcharged for add-on storage", category: TICKET_CATEGORY.Refund },
-  { subject: "Accessibility feedback on colour contrast", category: TICKET_CATEGORY.Other },
-  { subject: "PDF export renders blank pages", category: TICKET_CATEGORY.Technical },
-  { subject: "Request a product demo for our team", category: TICKET_CATEGORY.General },
+  {
+    subject: "Increase the API rate limit for our plan",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Data sync stuck at 40 percent",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Overcharged for add-on storage",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Accessibility feedback on colour contrast",
+    category: TICKET_CATEGORY.Other,
+  },
+  {
+    subject: "PDF export renders blank pages",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Request a product demo for our team",
+    category: TICKET_CATEGORY.General,
+  },
   { subject: "Chargeback filed by mistake", category: TICKET_CATEGORY.Refund },
-  { subject: "Session expires every five minutes", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Session expires every five minutes",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Onboarding call scheduling", category: TICKET_CATEGORY.General },
-  { subject: "Suggestion for keyboard navigation", category: TICKET_CATEGORY.Other },
-  { subject: "Custom domain SSL certificate error", category: TICKET_CATEGORY.Technical },
-  { subject: "Partial refund for the downtime last week", category: TICKET_CATEGORY.Refund },
-  { subject: "Question about the uptime SLA", category: TICKET_CATEGORY.General },
+  {
+    subject: "Suggestion for keyboard navigation",
+    category: TICKET_CATEGORY.Other,
+  },
+  {
+    subject: "Custom domain SSL certificate error",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Partial refund for the downtime last week",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Question about the uptime SLA",
+    category: TICKET_CATEGORY.General,
+  },
   { subject: "Issue with account", category: null },
-  { subject: "Zapier integration disconnected", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Zapier integration disconnected",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Rename our workspace", category: TICKET_CATEGORY.General },
-  { subject: "Duplicate records after the migration", category: TICKET_CATEGORY.Technical },
-  { subject: "Newsletter unsubscribe not working", category: TICKET_CATEGORY.Other },
-  { subject: "Transfer projects between workspaces", category: TICKET_CATEGORY.General },
-  { subject: "Slow page load on the reports tab", category: TICKET_CATEGORY.Technical },
-  { subject: "Zero-usage month, requesting a credit", category: TICKET_CATEGORY.Refund },
-  { subject: "Enable the audit log for compliance", category: TICKET_CATEGORY.General },
-  { subject: "Keyboard shortcuts not working", category: TICKET_CATEGORY.Technical },
-  { subject: "Localization request for German", category: TICKET_CATEGORY.Other },
+  {
+    subject: "Duplicate records after the migration",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Newsletter unsubscribe not working",
+    category: TICKET_CATEGORY.Other,
+  },
+  {
+    subject: "Transfer projects between workspaces",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Slow page load on the reports tab",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Zero-usage month, requesting a credit",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Enable the audit log for compliance",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Keyboard shortcuts not working",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Localization request for German",
+    category: TICKET_CATEGORY.Other,
+  },
   { subject: "Question", category: null },
-  { subject: "Dark mode contrast issue on tables", category: TICKET_CATEGORY.Technical },
-  { subject: "Refund for an accidental annual upgrade", category: TICKET_CATEGORY.Refund },
-  { subject: "Yearly renewal quote request", category: TICKET_CATEGORY.General },
-  { subject: "File preview shows the wrong thumbnail", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Dark mode contrast issue on tables",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Refund for an accidental annual upgrade",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "Yearly renewal quote request",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "File preview shows the wrong thumbnail",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Idea: shared saved filters", category: TICKET_CATEGORY.Other },
-  { subject: "Update the primary contact email", category: TICKET_CATEGORY.General },
-  { subject: "Bulk delete removed the wrong records", category: TICKET_CATEGORY.Technical },
-  { subject: "Invoice paid twice by our finance team", category: TICKET_CATEGORY.Refund },
-  { subject: "VAT number missing from the invoice", category: TICKET_CATEGORY.General },
-  { subject: "Xero integration failing to sync invoices", category: TICKET_CATEGORY.Technical },
-  { subject: "Conference sponsorship inquiry", category: TICKET_CATEGORY.Other },
-  { subject: "Extend our trial by two weeks", category: TICKET_CATEGORY.General },
-  { subject: "Yesterday's backup did not complete", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Update the primary contact email",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Bulk delete removed the wrong records",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Invoice paid twice by our finance team",
+    category: TICKET_CATEGORY.Refund,
+  },
+  {
+    subject: "VAT number missing from the invoice",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Xero integration failing to sync invoices",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Conference sponsorship inquiry",
+    category: TICKET_CATEGORY.Other,
+  },
+  {
+    subject: "Extend our trial by two weeks",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Yesterday's backup did not complete",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Legal hold request", category: TICKET_CATEGORY.Other },
-  { subject: "Bulk user provisioning via SCIM", category: TICKET_CATEGORY.General },
-  { subject: "Login page blank on Firefox ESR", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Bulk user provisioning via SCIM",
+    category: TICKET_CATEGORY.General,
+  },
+  {
+    subject: "Login page blank on Firefox ESR",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Quote for 250 seats", category: TICKET_CATEGORY.General },
-  { subject: "Notifications duplicated three times", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Notifications duplicated three times",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Old account cleanup request", category: TICKET_CATEGORY.Other },
-  { subject: "Kanban board drag and drop broken", category: TICKET_CATEGORY.Technical },
-  { subject: "Query builder times out on large sets", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Kanban board drag and drop broken",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Query builder times out on large sets",
+    category: TICKET_CATEGORY.Technical,
+  },
   { subject: "Vanity URL returns 404", category: TICKET_CATEGORY.Technical },
-  { subject: "Uploaded avatar not displaying", category: TICKET_CATEGORY.Technical },
-  { subject: "Guest access link expired early", category: TICKET_CATEGORY.Technical },
-  { subject: "IP allowlist blocking our office", category: TICKET_CATEGORY.Technical },
+  {
+    subject: "Uploaded avatar not displaying",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "Guest access link expired early",
+    category: TICKET_CATEGORY.Technical,
+  },
+  {
+    subject: "IP allowlist blocking our office",
+    category: TICKET_CATEGORY.Technical,
+  },
 ];
 
 interface Customer {
@@ -398,8 +620,9 @@ function buildThread(
 ): MessageSeed[] {
   const count = messageCountFor(source.status, index);
   const support =
-    (source.assignedToId ? assigneesById.get(source.assignedToId) : undefined) ??
-    SUPPORT_FALLBACK;
+    (source.assignedToId
+      ? assigneesById.get(source.assignedToId)
+      : undefined) ?? SUPPORT_FALLBACK;
 
   const start = source.createdAt.getTime();
   // Clamped: a ticket whose lastMessageAt somehow precedes its createdAt would
@@ -469,7 +692,9 @@ function buildRows(assignees: Assignee[]): TicketRow[] {
     const status = statusFor(daysAgo, i);
     // Open tickets are still moving; settled ones went quiet days ago.
     const replyGap =
-      status === TICKET_STATUS.Open ? (2 + (i % 8)) * HOUR : (1 + (i % 5)) * DAY;
+      status === TICKET_STATUS.Open
+        ? (2 + (i % 8)) * HOUR
+        : (1 + (i % 5)) * DAY;
 
     const customer = CUSTOMERS[(i * 17) % CUSTOMERS.length];
 
@@ -528,7 +753,9 @@ if (reset) {
   const existing = await prisma.ticket.findMany({
     select: { id: true, subject: true, customerEmail: true },
   });
-  const doomed = existing.filter((t) => demoKeys.has(keyOf(t))).map((t) => t.id);
+  const doomed = existing
+    .filter((t) => demoKeys.has(keyOf(t)))
+    .map((t) => t.id);
 
   if (doomed.length > 0) {
     // Messages cascade on ticket delete (see schema.prisma).

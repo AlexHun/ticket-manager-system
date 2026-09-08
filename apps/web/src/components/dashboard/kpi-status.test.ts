@@ -143,9 +143,8 @@ describe("openVerdict", () => {
 
   test("enough unassigned tickets are critical on their own", () => {
     expect(
-      openVerdict(
-        summary({ openUnassigned: KPI_THRESHOLD.criticalUnassigned }),
-      )?.status,
+      openVerdict(summary({ openUnassigned: KPI_THRESHOLD.criticalUnassigned }))
+        ?.status,
     ).toBe(KPI_STATUS.critical);
   });
 });

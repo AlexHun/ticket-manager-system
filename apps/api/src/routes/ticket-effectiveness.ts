@@ -130,7 +130,8 @@ export async function ticketEffectivenessHandler(
     if (reason) reasons[reason] += group._count._all;
   }
 
-  const rate = (n: number): number | null => (classified === 0 ? null : n / classified);
+  const rate = (n: number): number | null =>
+    classified === 0 ? null : n / classified;
 
   res.json({
     range,

@@ -30,11 +30,7 @@ interface TutorialTriggerContextValue {
 const TutorialTriggerContext =
   createContext<TutorialTriggerContextValue | null>(null);
 
-export function TutorialTriggerProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function TutorialTriggerProvider({ children }: { children: ReactNode }) {
   const [reopen, setReopen] = useState<(() => void) | null>(null);
 
   const register = useCallback((fn: () => void) => {

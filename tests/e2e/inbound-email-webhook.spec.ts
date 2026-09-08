@@ -1,4 +1,9 @@
-import { test, expect, type APIRequestContext, type APIResponse } from "@playwright/test";
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type APIResponse,
+} from "@playwright/test";
 import { MESSAGE_DIRECTION, TICKET_STATUS } from "@ticket/shared";
 import { resetTickets, testDb } from "./helpers/db";
 import {
@@ -94,7 +99,10 @@ test.describe("Inbound-email webhook — auth", () => {
     { name: "empty credentials", header: basicAuth("", "") },
     { name: "non-Basic scheme", header: `Bearer ${PASS}` },
     { name: "malformed base64 payload", header: "Basic !!!not-base64!!!" },
-    { name: "credentials with no colon separator", header: `Basic ${Buffer.from(USER).toString("base64")}` },
+    {
+      name: "credentials with no colon separator",
+      header: `Basic ${Buffer.from(USER).toString("base64")}`,
+    },
   ];
 
   for (const { name, header } of cases) {
@@ -129,7 +137,11 @@ test.describe("Inbound-email webhook — validation", () => {
     },
     {
       name: "invalid senderEmail",
-      body: { messageId: "m@x.com", senderEmail: "not-an-email", senderName: "A" },
+      body: {
+        messageId: "m@x.com",
+        senderEmail: "not-an-email",
+        senderName: "A",
+      },
     },
     {
       name: "missing senderName",
@@ -316,7 +328,9 @@ test.describe("Inbound-email webhook — threading", () => {
     );
   });
 
-  test("threads via references when inReplyTo is absent", async ({ request }) => {
+  test("threads via references when inReplyTo is absent", async ({
+    request,
+  }) => {
     const first = await postOk(request, { messageId: "root@example.com" });
 
     const reply = await postOk(request, {
@@ -389,7 +403,9 @@ test.describe("Inbound-email webhook — dedup", () => {
   test("dedups a redelivered reply without duplicating the thread", async ({
     request,
   }) => {
-    const first = await postOk(request, { messageId: "redeliver-parent@example.com" });
+    const first = await postOk(request, {
+      messageId: "redeliver-parent@example.com",
+    });
     const replyPayload = buildPayload({
       messageId: "redeliver-child@example.com",
       inReplyTo: "redeliver-parent@example.com",

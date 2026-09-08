@@ -212,7 +212,9 @@ function SubjectCell({ ticket }: { ticket: Ticket }) {
     <Hint content={ticket.subject}>
       <Link
         to={ticketDetailPath(ticket.id)}
-        state={{ listSearch: location.search } satisfies TicketListLocationState}
+        state={
+          { listSearch: location.search } satisfies TicketListLocationState
+        }
         // `block` is what makes `truncate` work: an inline <a> isn't constrained
         // by the fixed-layout cell, so the ellipsis would never appear.
         className={cn(
@@ -414,7 +416,9 @@ export function TicketsTable({
                     // Explicit, so the resize handle's own label doesn't get
                     // concatenated into the header's accessible name.
                     ariaLabel={label}
-                    ariaSort={direction === false ? "none" : ARIA_SORT[direction]}
+                    ariaSort={
+                      direction === false ? "none" : ARIA_SORT[direction]
+                    }
                   >
                     <button
                       type="button"
@@ -483,7 +487,11 @@ export function TicketsTable({
  * sort. Double-click resets one column; arrow keys give it a keyboard path,
  * since a drag handle is otherwise mouse-only.
  */
-function ResizeHandle({ header }: { header: Header<TicketWithAssignee, unknown> }) {
+function ResizeHandle({
+  header,
+}: {
+  header: Header<TicketWithAssignee, unknown>;
+}) {
   if (!header.column.getCanResize()) return null;
 
   const label = COLUMN_META[header.column.id as TicketSortField].label;
@@ -632,4 +640,3 @@ function SortIcon({ direction }: { direction: false | SortDirection }) {
     />
   );
 }
-

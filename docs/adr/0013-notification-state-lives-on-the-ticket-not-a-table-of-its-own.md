@@ -39,7 +39,7 @@ the bug it was filed to fix, just with a nicer transition.
 **A persisted `Notification` table**, one row per assignment, with its own
 read/unread state and an unread count that follows the agent across devices.
 Rejected on cardinality grounds as much as cost: `assignedToId` is
-single-valued, so "has the *current* assignment been seen" only ever has one
+single-valued, so "has the _current_ assignment been seen" only ever has one
 live answer per ticket, not a history of answers per event. A table of rows
 would duplicate the fact `TicketActivity.assignee_changed` already records
 durably (`fromValue`/`toValue`, `actorName`, `createdAt` —

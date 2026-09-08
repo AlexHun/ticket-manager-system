@@ -84,7 +84,9 @@ describe("ChangelogPopover", () => {
     );
     await user.click(screen.getByRole("button", { name: "What's new" }));
 
-    await waitFor(() => expect(seenPost).toHaveBeenCalledWith("/api/changelog/seen"));
+    await waitFor(() =>
+      expect(seenPost).toHaveBeenCalledWith("/api/changelog/seen"),
+    );
   });
 
   test("opening while already seen does not write again", async () => {

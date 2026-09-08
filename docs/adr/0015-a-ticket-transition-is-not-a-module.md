@@ -16,14 +16,14 @@ does not survive that test.
 
 ## The five sites, compared
 
-| | guard | actor | entries | activity write | events | order after commit |
-| --- | --- | --- | --- | --- | --- | --- |
-| `updateTicket` (`routes/tickets.ts`) | a **before/after diff**, not a `where` | `agentActor`, sync, off the session | 0..N, one per changed field | `writeActivity(tx, …)` **inside** the transaction; a failure rolls the update back | `publishTicketChanges`, derived from the entries | entries, then publish |
-| ingestion — reopen (`ingest.ts`) | `where autoResolvedAt != null`, inside an array `$transaction` with the message insert | `customerActor`, sync | 1 (`reopened`) + 0..1 (`assignee_changed`) behind a **second** conditional write with its own guard and its own name lookup | `recordActivity`, after the commit, swallowed | an **unconditional** `ticket_message` beside an accumulated `ticket_updated` | entries, then publish |
-| ingestion — create (`ingest.ts`) | none; nothing is conditional | `customerActor`, sync | 1 (`created`) | `writeActivity(tx, …)` **inside** the transaction | `pipeline_changed` + `ticket_created`, neither derived from an entry | publish only |
-| classification (`jobs/classify-ticket.ts`) | `where category: null` | `await assistantActor()`, **async, one query** | 1 (`category_changed`) | `recordActivity`, swallowed | `pipeline_changed` + `ticket_updated([category])` | **publish, then entries** |
-| auto-reply — release (`jobs/auto-reply-ticket.ts`) | `where status: Processing` | `await assistantActor()`, async | 0..1 (`auto_declined`), gated on the `decline` **parameter**, not on the guard, and only on the `Open` exit | `recordActivity`, swallowed | `pipeline_changed` on both exits, `ticket_updated([status, assignee])` on one | publish, write, publish, **then entries** |
-| auto-reply — resolve (`jobs/auto-reply-ticket.ts`) | `where status: Processing`, **inside** a transaction that also writes the reply and may throw to roll the resolve back | `await assistantActor()`, async | 1 (`auto_resolved`), deliberately covering the resolve **and** a later assignment write outside the guard | `recordActivity`, swallowed | three: `pipeline_changed`, `ticket_updated([status, assignee])`, `ticket_message` | entries, then publish |
+|                                                    | guard                                                                                                                  | actor                                          | entries                                                                                                                     | activity write                                                                     | events                                                                            | order after commit                        |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------- |
+| `updateTicket` (`routes/tickets.ts`)               | a **before/after diff**, not a `where`                                                                                 | `agentActor`, sync, off the session            | 0..N, one per changed field                                                                                                 | `writeActivity(tx, …)` **inside** the transaction; a failure rolls the update back | `publishTicketChanges`, derived from the entries                                  | entries, then publish                     |
+| ingestion — reopen (`ingest.ts`)                   | `where autoResolvedAt != null`, inside an array `$transaction` with the message insert                                 | `customerActor`, sync                          | 1 (`reopened`) + 0..1 (`assignee_changed`) behind a **second** conditional write with its own guard and its own name lookup | `recordActivity`, after the commit, swallowed                                      | an **unconditional** `ticket_message` beside an accumulated `ticket_updated`      | entries, then publish                     |
+| ingestion — create (`ingest.ts`)                   | none; nothing is conditional                                                                                           | `customerActor`, sync                          | 1 (`created`)                                                                                                               | `writeActivity(tx, …)` **inside** the transaction                                  | `pipeline_changed` + `ticket_created`, neither derived from an entry              | publish only                              |
+| classification (`jobs/classify-ticket.ts`)         | `where category: null`                                                                                                 | `await assistantActor()`, **async, one query** | 1 (`category_changed`)                                                                                                      | `recordActivity`, swallowed                                                        | `pipeline_changed` + `ticket_updated([category])`                                 | **publish, then entries**                 |
+| auto-reply — release (`jobs/auto-reply-ticket.ts`) | `where status: Processing`                                                                                             | `await assistantActor()`, async                | 0..1 (`auto_declined`), gated on the `decline` **parameter**, not on the guard, and only on the `Open` exit                 | `recordActivity`, swallowed                                                        | `pipeline_changed` on both exits, `ticket_updated([status, assignee])` on one     | publish, write, publish, **then entries** |
+| auto-reply — resolve (`jobs/auto-reply-ticket.ts`) | `where status: Processing`, **inside** a transaction that also writes the reply and may throw to roll the resolve back | `await assistantActor()`, async                | 1 (`auto_resolved`), deliberately covering the resolve **and** a later assignment write outside the guard                   | `recordActivity`, swallowed                                                        | three: `pipeline_changed`, `ticket_updated([status, assignee])`, `ticket_message` | entries, then publish                     |
 
 Six rows, not five: `ingest.ts` contains two of them, and they disagree with
 each other about whether the Activity row belongs inside the transaction — for
@@ -41,40 +41,43 @@ the spike tested:
 
 ```ts
 transition({
-  ticketId, where, data,          // the guard and the change
-  actor,                          // sync value or async thunk
-  entries,                        // array or a callback over the result
-  events,                         // list, or derived from the entries
-  tx, activityInTransaction,      // route vs. job
-  onCommitted,                    // sendReply, assignIfUnowned, enqueueAutoReply
-})
+  ticketId,
+  where,
+  data, // the guard and the change
+  actor, // sync value or async thunk
+  entries, // array or a callback over the result
+  events, // list, or derived from the entries
+  tx,
+  activityInTransaction, // route vs. job
+  onCommitted, // sendReply, assignIfUnowned, enqueueAutoReply
+});
 ```
 
 Nine parameters before the first caller, three of them callbacks. Rejected on
 four counts, each traceable to a specific row above:
 
-*`where` + `data` cannot express two of the six.* `updateTicket`'s guard is a
+_`where` + `data` cannot express two of the six._ `updateTicket`'s guard is a
 diff, not a row-level condition, and must stay one: the route has to tell a
 404 (no row) from a no-op (row unchanged) and return the whole ticket either
-way. The auto-reply's resolve and ingestion's reopen each carry a *second*
+way. The auto-reply's resolve and ingestion's reopen each carry a _second_
 write in the same transaction — `sendReply`, the message insert — and the
 resolve's second write can throw to roll the guarded one back. A parameter
 pair that describes one statement describes neither.
 
-*The entries do not follow from the guard.* Only classification's do. Elsewhere
+_The entries do not follow from the guard._ Only classification's do. Elsewhere
 they come from a diff, from a second conditional write with a different `where`,
 from a parameter that is not the guard at all (`decline`), or are deliberately
 made one entry for two writes. Five of six need a callback — and a callback is
 the caller writing the code, with a wrapper around it.
 
-*The events do not follow from the entries.* `publishTicketChanges` already
+_The events do not follow from the entries._ `publishTicketChanges` already
 derives events from entries, and it is used at exactly one site, because it is
 only true at one site. Everywhere else there are events with no entry
 (`pipeline_changed` on all four automated rows), entries with no event, an
 unconditional event beside a conditional one, and an event that belongs to
 `sendReply` rather than to the transition.
 
-*The deletion test.* Delete the module and what reappears at the callers is a
+_The deletion test._ Delete the module and what reappears at the callers is a
 `count > 0` check and a publish placed after an `await`. Complexity does not
 reappear across N callers; it never left them. That is the definition of a
 pass-through with an options bag — a shallow module wearing a deep module's
@@ -83,16 +86,16 @@ was filed to find out and what `assignIfUnowned` already warns against for a
 single `updateMany`.
 
 There is a fifth signal, from `CONTEXT.md` rather than from the code: **the
-thing this module would own has no name in the glossary.** *Claim*, *Handoff*,
-*Reopen*, *Decline*, *Classification* are all there; "transition" appears only
-inside the definition of *Activity*, as a word describing what an entry
+thing this module would own has no name in the glossary.** _Claim_, _Handoff_,
+_Reopen_, _Decline_, _Classification_ are all there; "transition" appears only
+inside the definition of _Activity_, as a word describing what an entry
 records. A module whose subject the domain has never needed a noun for is
 usually a module the domain does not have.
 
 **Extracting only the shared half — a `recordAndPublish(count, entries, events)`
 helper.** Genuinely smaller, and it does hold for four of the six rows.
 Rejected because it collapses the one axis that is actually load-bearing and
-actually wrong today: the ordering *between* the entry and the event (see
+actually wrong today: the ordering _between_ the entry and the event (see
 below). A helper that takes both and does them in a fixed order would fix that
 by accident, which sounds like an argument for it — but it would also make the
 route site, where the entry is inside the transaction and the event is derived
@@ -138,7 +141,7 @@ cannot publish from inside one at all. Filed as
 [#177](https://github.com/AlexHun/ticket-manager-system/issues/177).
 
 **The comparison found one real defect, and it is not the one the issue
-expected.** No site publishes inside a transaction. Two publish *before* the
+expected.** No site publishes inside a transaction. Two publish _before_ the
 Activity row: classification, and the auto-reply's release to `Open`. Both are
 `ticket_updated`, and `EVENT_EFFECT` in `apps/web/src/lib/realtime-events.ts`
 invalidates `ticketKeys.activity(ticketId)` on exactly that event — so an open
@@ -152,7 +155,7 @@ moving one `await` above two lines, in two files.
 That defect is also the argument for this ADR rather than against it. It was
 found by reading six sites against each other, which is what the issue asked
 for and what a shared module would have made unnecessary — and it is the one
-kind of divergence a module *would* have prevented. The trade is deliberate:
+kind of divergence a module _would_ have prevented. The trade is deliberate:
 two lines of duplicated care per site, against an interface that no site could
 have used without a callback.
 

@@ -9,7 +9,11 @@ type Fields = {
 
 describe("diffToEntries", () => {
   test("returns nothing when no field changed", () => {
-    const before: Fields = { status: "Open", category: "Billing", assignee: "Alex" };
+    const before: Fields = {
+      status: "Open",
+      category: "Billing",
+      assignee: "Alex",
+    };
     const after: Fields = { ...before };
 
     expect(
@@ -23,7 +27,11 @@ describe("diffToEntries", () => {
 
   test("emits one entry per changed field, in field-map order, skipping unchanged ones", () => {
     const before: Fields = { status: "New", category: null, assignee: null };
-    const after: Fields = { status: "Open", category: "Billing", assignee: null };
+    const after: Fields = {
+      status: "Open",
+      category: "Billing",
+      assignee: null,
+    };
 
     expect(
       diffToEntries(before, after, [
@@ -37,13 +45,25 @@ describe("diffToEntries", () => {
     ]);
   });
 
-  test("passes null through as null rather than the string \"null\"", () => {
-    const before: Fields = { status: "Open", category: "Billing", assignee: "Alex" };
-    const after: Fields = { status: "Open", category: "Billing", assignee: null };
+  test('passes null through as null rather than the string "null"', () => {
+    const before: Fields = {
+      status: "Open",
+      category: "Billing",
+      assignee: "Alex",
+    };
+    const after: Fields = {
+      status: "Open",
+      category: "Billing",
+      assignee: null,
+    };
 
     expect(
-      diffToEntries(before, after, [{ field: "assignee", action: "assignee_changed" }]),
-    ).toEqual([{ action: "assignee_changed", fromValue: "Alex", toValue: null }]);
+      diffToEntries(before, after, [
+        { field: "assignee", action: "assignee_changed" },
+      ]),
+    ).toEqual([
+      { action: "assignee_changed", fromValue: "Alex", toValue: null },
+    ]);
   });
 
   test("prefixes the value with the label when one is given", () => {
@@ -56,7 +76,11 @@ describe("diffToEntries", () => {
         { field: "email", action: "user_edited", label: "Email" },
       ]),
     ).toEqual([
-      { action: "user_edited", fromValue: "Name: Ada", toValue: "Name: Ada Lovelace" },
+      {
+        action: "user_edited",
+        fromValue: "Name: Ada",
+        toValue: "Name: Ada Lovelace",
+      },
     ]);
   });
 });

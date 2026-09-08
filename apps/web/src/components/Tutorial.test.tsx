@@ -102,7 +102,10 @@ describe("Tutorial", () => {
 
     await screen.findByRole("dialog");
 
-    const [url, options] = statusGet.mock.calls[0] as [string, { signal: AbortSignal }];
+    const [url, options] = statusGet.mock.calls[0] as [
+      string,
+      { signal: AbortSignal },
+    ];
     expect(url).toBe(`/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}`);
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
@@ -115,7 +118,9 @@ describe("Tutorial", () => {
     expect(dialog).toHaveTextContent("Reading the dashboard");
     expect(dialog).toHaveTextContent("Step 1 of 2");
     expect(dialog).toHaveTextContent("The stat row");
-    expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Back" }),
+    ).not.toBeInTheDocument();
   });
 
   test("Next advances the step and reveals Back; Got it finishes on the last step", async () => {
@@ -129,7 +134,9 @@ describe("Tutorial", () => {
     expect(dialog).toHaveTextContent("Step 2 of 2");
     expect(dialog).toHaveTextContent("The chart");
     expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Next" }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Got it" }));
 
@@ -210,7 +217,9 @@ describe("Tutorial — anchored callout", () => {
       name: "Reading the dashboard",
     });
     expect(callout).toHaveTextContent("The stat row");
-    expect(callout.parentElement?.querySelector("svg line")).toBeInTheDocument();
+    expect(
+      callout.parentElement?.querySelector("svg line"),
+    ).toBeInTheDocument();
     expect(
       callout.parentElement?.querySelector(".animate-ping"),
     ).toBeInTheDocument();

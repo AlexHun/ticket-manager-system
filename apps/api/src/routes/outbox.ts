@@ -46,7 +46,9 @@ outboxRouter.get(
   requireAdmin,
   async (
     req: Request,
-    res: Response<(OutboxListResponse & { mailConfigured: boolean }) | { error: string }>,
+    res: Response<
+      (OutboxListResponse & { mailConfigured: boolean }) | { error: string }
+    >,
   ) => {
     const parsed = listQuerySchema.safeParse(req.query);
     if (!parsed.success) {
@@ -163,7 +165,8 @@ outboxRouter.post(
     // screen already says why in the card at the top.
     if (!isMailConfigured()) {
       res.status(409).json({
-        error: "No mail provider is configured, so there is nothing to retry to",
+        error:
+          "No mail provider is configured, so there is nothing to retry to",
       });
       return;
     }

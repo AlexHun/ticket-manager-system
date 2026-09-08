@@ -561,7 +561,8 @@ function composeReply(
 }
 
 /** Absolute and protocol-relative URLs, plus bare `example.com/path` forms. */
-const URL_LIKE = /\b(?:https?:\/\/|www\.)[^\s<>"')\]]+|\b[a-z0-9-]+\.[a-z]{2,}\/[^\s<>"')\]]*/gi;
+const URL_LIKE =
+  /\b(?:https?:\/\/|www\.)[^\s<>"')\]]+|\b[a-z0-9-]+\.[a-z]{2,}\/[^\s<>"')\]]*/gi;
 
 const EMAIL_LIKE = /\b[^\s<>"'()[\]]+@[a-z0-9.-]+\.[a-z]{2,}\b/gi;
 
@@ -617,7 +618,9 @@ export async function autoReply(
   if (articles.length === 0) {
     // Nothing to answer from. Config rather than a provider fault: someone
     // deleted the knowledge base, or every article in it is withheld.
-    console.error("[auto-reply] no auto-replyable articles in the knowledge base");
+    console.error(
+      "[auto-reply] no auto-replyable articles in the knowledge base",
+    );
     return {
       ok: false,
       reason: AUTO_REPLY_FAILURE.config,
@@ -749,7 +752,9 @@ export async function autoReply(
   // the greeting carries the one piece of untrusted text `greetingName` let
   // through, and a check that stops short of the finished string is a check with
   // a gap in it.
-  const source = cited.map((article) => `${article.title}\n${article.body}`).join("\n\n");
+  const source = cited
+    .map((article) => `${article.title}\n${article.body}`)
+    .join("\n\n");
 
   const commitments = unbackedCommitments(reply, source);
   if (commitments.length > 0) {

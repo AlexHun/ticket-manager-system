@@ -92,7 +92,9 @@ type PolishResult = Awaited<ReturnType<typeof polishModule.polishDraft>>;
 type PolishContext = Parameters<typeof polishModule.polishDraft>[1];
 type PolishFailureValue = Extract<PolishResult, { ok: false }>["reason"];
 
-type SummarizeResult = Awaited<ReturnType<typeof summarizeModule.summarizeTicket>>;
+type SummarizeResult = Awaited<
+  ReturnType<typeof summarizeModule.summarizeTicket>
+>;
 type SummarizeContext = Parameters<typeof summarizeModule.summarizeTicket>[0];
 type AiFailureValue = Extract<SummarizeResult, { ok: false }>["reason"];
 
@@ -237,7 +239,8 @@ const AGENT_EMAIL = "agent@example.com";
 
 /** What the summariser returns when a test is not about the failure path. */
 const SUMMARY: TicketSummary = {
-  overview: "A parcel from order TR-99182 has not arrived and tracking is stuck.",
+  overview:
+    "A parcel from order TR-99182 has not arrived and tracking is stuck.",
   keyPoints: ["Label created, never scanned"],
   nextStep: "Chase the courier for a scan event.",
   sentiment: SUMMARY_SENTIMENT.frustrated,
@@ -289,7 +292,11 @@ async function post(
 
 /** A well-formed request body, so each test only states what it is about. */
 function goodBody(overrides: Record<string, unknown> = {}) {
-  return { draft: "shipped fri, ur parcel is on the way", ticketId: TICKET, ...overrides };
+  return {
+    draft: "shipped fri, ur parcel is on the way",
+    ticketId: TICKET,
+    ...overrides,
+  };
 }
 
 /** The context the route handed the model on its most recent call. */
@@ -349,7 +356,10 @@ beforeEach(async () => {
   summarizeTicket.mockClear();
   configured = true;
   summaryConfigured = true;
-  polishResult = { ok: true, text: "Hi Marta,\n\nYour parcel shipped on Friday." };
+  polishResult = {
+    ok: true,
+    text: "Hi Marta,\n\nYour parcel shipped on Friday.",
+  };
   summaryResult = { ok: true, summary: SUMMARY };
   await seedTicket({ id: TICKET, subject: SUBJECT, createdAt: AT.opened });
   await seedMessage();
@@ -522,7 +532,8 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
   test("treats an HTML-only latest message as an absence, not as markup", async () => {
     await seedMessage({
       textBody: null,
-      htmlBody: "<p>Still <b>nothing</b> — see the <a href='#'>tracking</a>.</p>",
+      htmlBody:
+        "<p>Still <b>nothing</b> — see the <a href='#'>tracking</a>.</p>",
       createdAt: AT.after,
     });
 
@@ -571,14 +582,26 @@ describe("POST /api/ai/polish-reply — answering", () => {
   });
 
   test("turns each failure into a status and a sentence an agent can act on", async () => {
-    const cases: { reason: PolishFailureValue; status: number; says: string }[] = [
+    const cases: {
+      reason: PolishFailureValue;
+      status: number;
+      says: string;
+    }[] = [
       { reason: POLISH_FAILURE.provider, status: 502, says: "try again" },
       { reason: POLISH_FAILURE.busy, status: 503, says: "busy" },
       { reason: POLISH_FAILURE.quota, status: 503, says: "out of credit" },
-      { reason: POLISH_FAILURE.auth, status: 503, says: "credentials were rejected" },
+      {
+        reason: POLISH_FAILURE.auth,
+        status: 503,
+        says: "credentials were rejected",
+      },
       { reason: POLISH_FAILURE.config, status: 503, says: "misconfigured" },
       { reason: POLISH_FAILURE.empty, status: 502, says: "came back empty" },
-      { reason: POLISH_FAILURE.invented, status: 502, says: "added a commitment" },
+      {
+        reason: POLISH_FAILURE.invented,
+        status: 502,
+        says: "added a commitment",
+      },
     ];
 
     for (const { reason, status, says } of cases) {
@@ -639,9 +662,9 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
     const user = freshUser();
 
     for (let i = 0; i < 12; i++) {
-      expect((await post(goodBody({ ticketId: TICKET + 1 }), { user })).status).toBe(
-        404,
-      );
+      expect(
+        (await post(goodBody({ ticketId: TICKET + 1 }), { user })).status,
+      ).toBe(404);
     }
 
     // Twelve refusals later the budget is untouched, because none of them cost
@@ -685,7 +708,9 @@ describe("POST /api/ai/summarize-ticket — refusing before it costs anything", 
     const sent = await postSummary({ ticketId: TICKET });
 
     expect(sent.status).toBe(503);
-    expect(sent.body.error).toBe("Summarising isn't configured on this server.");
+    expect(sent.body.error).toBe(
+      "Summarising isn't configured on this server.",
+    );
     expect(dbCalls("ticket.findUnique")).toBe(0);
     expect(summarizeTicket).not.toHaveBeenCalled();
   });
@@ -740,7 +765,10 @@ describe("POST /api/ai/summarize-ticket — the thread it assembles", () => {
     // Oldest first here, newest first there, so one pair of messages resolves
     // to opposite ends. `ingest.ts` writes a batch in one transaction, so a
     // shared `createdAt` is ordinary rather than contrived.
-    await seedMessage({ textBody: "Second, same instant.", createdAt: AT.latest });
+    await seedMessage({
+      textBody: "Second, same instant.",
+      createdAt: AT.latest,
+    });
 
     await postSummary({ ticketId: TICKET });
 
@@ -864,10 +892,18 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
     // two features have different fallbacks: "send your draft as it is" has no
     // equivalent here, where the thread is already on screen.
     const cases: { reason: AiFailureValue; status: number; says: string }[] = [
-      { reason: AI_FAILURE.provider, status: 502, says: "read the thread below" },
+      {
+        reason: AI_FAILURE.provider,
+        status: 502,
+        says: "read the thread below",
+      },
       { reason: AI_FAILURE.busy, status: 503, says: "busy" },
       { reason: AI_FAILURE.quota, status: 503, says: "out of credit" },
-      { reason: AI_FAILURE.auth, status: 503, says: "credentials were rejected" },
+      {
+        reason: AI_FAILURE.auth,
+        status: 503,
+        says: "credentials were rejected",
+      },
       { reason: AI_FAILURE.config, status: 503, says: "misconfigured" },
       { reason: AI_FAILURE.empty, status: 502, says: "came back empty" },
     ];
@@ -906,7 +942,9 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
     const user = freshUser();
 
     for (let i = 0; i < 10; i++) {
-      expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(200);
+      expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(
+        200,
+      );
     }
     const refused = await postSummary({ ticketId: TICKET }, { user });
 
@@ -927,7 +965,9 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
     }
     expect((await post(goodBody(), { user })).status).toBe(429);
 
-    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(200);
+    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(
+      200,
+    );
   });
 
   test("and it runs the other way too", async () => {
@@ -936,7 +976,9 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
     for (let i = 0; i < 10; i++) {
       await postSummary({ ticketId: TICKET }, { user });
     }
-    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(429);
+    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(
+      429,
+    );
 
     expect((await post(goodBody(), { user })).status).toBe(200);
   });
@@ -950,6 +992,8 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
       ).toBe(404);
     }
 
-    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(200);
+    expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(
+      200,
+    );
   });
 });

@@ -112,8 +112,26 @@ interface StrippedSource {
  * of those are in here, so anything else means a regex is starting.
  */
 const REGEX_MAY_FOLLOW = new Set([
-  "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", "+", "-", "*", "%",
-  "<", ">", "~", "^", "\n",
+  "(",
+  ",",
+  "=",
+  ":",
+  "[",
+  "!",
+  "&",
+  "|",
+  "?",
+  "{",
+  ";",
+  "+",
+  "-",
+  "*",
+  "%",
+  "<",
+  ">",
+  "~",
+  "^",
+  "\n",
 ]);
 
 /** Past the closing quote of the string starting at `start`. */
@@ -251,7 +269,8 @@ interface RawImport {
  * `(`, `)` or `=`. Without that fence, `export const x = …` earlier in a file
  * would lazily match forward to some later `from "…"` and invent an edge.
  */
-const FROM_RE = /^[ \t]*(?:import|export)\s+([^;()=]*?)\s+from\s*["']([^"']+)["']/gm;
+const FROM_RE =
+  /^[ \t]*(?:import|export)\s+([^;()=]*?)\s+from\s*["']([^"']+)["']/gm;
 const BARE_IMPORT_RE = /^[ \t]*import\s*["']([^"']+)["']/gm;
 const DYNAMIC_IMPORT_RE = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
 
@@ -289,7 +308,11 @@ function extractExports(code: string): string[] {
   for (const m of code.matchAll(EXPORT_LIST_RE)) {
     for (const part of m[1]!.split(",")) {
       // `a as b` is exported under `b`; `type A` is exported as `A`.
-      const name = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop();
+      const name = part
+        .trim()
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)
+        .pop();
       if (name) names.add(name);
     }
   }
@@ -301,7 +324,8 @@ function extractExports(code: string): string[] {
 
 function workspaceOf(id: string): Workspace {
   for (const entry of WORKSPACE_DIRS) {
-    if (id === entry.dir || id.startsWith(`${entry.dir}/`)) return entry.workspace;
+    if (id === entry.dir || id.startsWith(`${entry.dir}/`))
+      return entry.workspace;
   }
   return WORKSPACE.root;
 }
@@ -372,9 +396,11 @@ function walk(root: string, dir: string, out: string[]): void {
 /* ── Endpoints, routes, models ───────────────────────────────────────────── */
 
 const MOUNT_RE = /app\.use\(\s*["']([^"']+)["']\s*,\s*(\w+)\s*\)/g;
-const APP_HANDLER_RE = /app\.(get|post|patch|put|delete|all)\(\s*["']([^"']+)["']/g;
+const APP_HANDLER_RE =
+  /app\.(get|post|patch|put|delete|all)\(\s*["']([^"']+)["']/g;
 const ROUTER_DECL_RE = /export\s+const\s+(\w+)\s*=\s*Router\(\)/g;
-const ROUTER_HANDLER_RE = /(\w+)\.(get|post|patch|put|delete|all)\(\s*["']([^"']*)["']/g;
+const ROUTER_HANDLER_RE =
+  /(\w+)\.(get|post|patch|put|delete|all)\(\s*["']([^"']*)["']/g;
 
 /** How far past the path to look for a guard — far enough to clear a formatted
  *  argument list, short enough not to reach the next handler. */
@@ -419,7 +445,9 @@ function extractEndpoints(
     const [prefix, routerName] = [mount[1]!, mount[2]!];
     const file = routerFile.get(routerName);
     if (!file) {
-      warnings.push(`Router \`${routerName}\` is mounted at ${prefix} but not declared in any scanned module.`);
+      warnings.push(
+        `Router \`${routerName}\` is mounted at ${prefix} but not declared in any scanned module.`,
+      );
       continue;
     }
     const source = sources.get(file)!;
@@ -518,7 +546,8 @@ function linkCallers(endpoints: Endpoint[], calls: ApiCall[]): void {
         // either a route parameter or a literal segment — one point either way,
         // which is what keeps a literal/literal agreement ahead of it.
         if (a === b) score += 2;
-        else if (b === "*" || a.startsWith(":") || a.startsWith("{")) score += 1;
+        else if (b === "*" || a.startsWith(":") || a.startsWith("{"))
+          score += 1;
         else {
           ok = false;
           break;
@@ -534,7 +563,8 @@ function linkCallers(endpoints: Endpoint[], calls: ApiCall[]): void {
     }
 
     for (const endpoint of best) {
-      if (!endpoint.callers.includes(call.file)) endpoint.callers.push(call.file);
+      if (!endpoint.callers.includes(call.file))
+        endpoint.callers.push(call.file);
     }
   }
 }
@@ -747,12 +777,16 @@ function extractRoutes(
       }
 
       if (!element.startsWith("{")) {
-        warnings.push(`Unrecognized entry in App.tsx's route tree: ${element.slice(0, 60)}`);
+        warnings.push(
+          `Unrecognized entry in App.tsx's route tree: ${element.slice(0, 60)}`,
+        );
         continue;
       }
       const span = bracketSpan(element, 0);
       if (!span) {
-        warnings.push(`Unbalanced route object in App.tsx: ${element.slice(0, 60)}`);
+        warnings.push(
+          `Unbalanced route object in App.tsx: ${element.slice(0, 60)}`,
+        );
         continue;
       }
       const body = element.slice(span.start, span.end);
@@ -763,19 +797,24 @@ function extractRoutes(
       if (childrenIdx !== -1) {
         const bracket = body.indexOf("[", childrenIdx);
         const childSpan = bracket === -1 ? null : bracketSpan(body, bracket);
-        if (childSpan) childrenInner = body.slice(childSpan.start, childSpan.end);
+        if (childSpan)
+          childrenInner = body.slice(childSpan.start, childSpan.end);
       }
 
       const routePath = routePathIn(ownText, routePaths, warnings);
       const lazyMatch = LAZY_COMPONENT_RE.exec(ownText);
-      const component = lazyMatch ? lazyMatch[2]! : (STATIC_COMPONENT_RE.exec(ownText)?.[1] ?? null);
+      const component = lazyMatch
+        ? lazyMatch[2]!
+        : (STATIC_COMPONENT_RE.exec(ownText)?.[1] ?? null);
       const isLazy = lazyMatch !== null;
 
       if (routePath && component) {
         routes.push({
           path: routePath,
           component,
-          file: isLazy ? resolve(lazyMatch![1]!, appFile) : (staticFiles.get(component) ?? null),
+          file: isLazy
+            ? resolve(lazyMatch![1]!, appFile)
+            : (staticFiles.get(component) ?? null),
           lazy: isLazy,
           guards: [...stack],
           redirectTo: null,
@@ -794,7 +833,9 @@ function extractRoutes(
       if (wrapper) stack.pop();
 
       if (!routePath && !component && childrenInner === null) {
-        warnings.push(`Unrecognized route object in App.tsx: ${body.slice(0, 60)}`);
+        warnings.push(
+          `Unrecognized route object in App.tsx: ${body.slice(0, 60)}`,
+        );
       }
     }
   }
@@ -809,9 +850,14 @@ const MAP_RE = /@@map\("([^"]+)"\)/;
 function extractModels(root: string, warnings: string[]): PrismaModel[] {
   let source: string;
   try {
-    source = readFileSync(path.join(root, "apps/api/prisma/schema.prisma"), "utf8");
+    source = readFileSync(
+      path.join(root, "apps/api/prisma/schema.prisma"),
+      "utf8",
+    );
   } catch {
-    warnings.push("No apps/api/prisma/schema.prisma — the data model is absent from this map.");
+    warnings.push(
+      "No apps/api/prisma/schema.prisma — the data model is absent from this map.",
+    );
     return [];
   }
 
@@ -956,7 +1002,9 @@ export function scanProject(root: string): ProjectGraph {
     let base: string | null = null;
 
     if (spec.startsWith(".")) {
-      base = path.posix.normalize(path.posix.join(path.posix.dirname(from), spec));
+      base = path.posix.normalize(
+        path.posix.join(path.posix.dirname(from), spec),
+      );
     } else if (spec.startsWith("@/")) {
       base = `apps/web/src/${spec.slice(2)}`;
     } else {
@@ -988,7 +1036,8 @@ export function scanProject(root: string): ProjectGraph {
         if (raw.spec.startsWith(".") || raw.spec.startsWith("@/")) {
           // A real file that is simply not a module here — a stylesheet, or the
           // generated Prisma client.
-          if (!node.unresolved.includes(raw.spec)) node.unresolved.push(raw.spec);
+          if (!node.unresolved.includes(raw.spec))
+            node.unresolved.push(raw.spec);
         } else {
           const pkg = packageNameOf(raw.spec);
           if (!node.externals.includes(pkg)) node.externals.push(pkg);
@@ -1055,23 +1104,28 @@ export function scanProject(root: string): ProjectGraph {
       users: [...users].sort(),
       workspaces: [...new Set([...users].map(workspaceOf))],
     }))
-    .sort((a, b) => b.users.length - a.users.length || a.name.localeCompare(b.name));
+    .sort(
+      (a, b) => b.users.length - a.users.length || a.name.localeCompare(b.name),
+    );
 
-  const workspaces: WorkspaceSummary[] = WORKSPACE_DIRS.map(({ dir, workspace }) => {
-    const members = moduleList.filter((m) => m.workspace === workspace);
-    const layers = new Map<Layer, number>();
-    for (const m of members) layers.set(m.layer, (layers.get(m.layer) ?? 0) + 1);
-    return {
-      workspace,
-      dir,
-      modules: members.length,
-      code: members.reduce((sum, m) => sum + m.code, 0),
-      comments: members.reduce((sum, m) => sum + m.comments, 0),
-      layers: [...layers.entries()]
-        .map(([layer, count]) => ({ layer, count }))
-        .sort((a, b) => b.count - a.count),
-    };
-  }).filter((w) => w.modules > 0);
+  const workspaces: WorkspaceSummary[] = WORKSPACE_DIRS.map(
+    ({ dir, workspace }) => {
+      const members = moduleList.filter((m) => m.workspace === workspace);
+      const layers = new Map<Layer, number>();
+      for (const m of members)
+        layers.set(m.layer, (layers.get(m.layer) ?? 0) + 1);
+      return {
+        workspace,
+        dir,
+        modules: members.length,
+        code: members.reduce((sum, m) => sum + m.code, 0),
+        comments: members.reduce((sum, m) => sum + m.comments, 0),
+        layers: [...layers.entries()]
+          .map(([layer, count]) => ({ layer, count }))
+          .sort((a, b) => b.count - a.count),
+      };
+    },
+  ).filter((w) => w.modules > 0);
 
   const testable = moduleList.filter((m) => m.testable);
 

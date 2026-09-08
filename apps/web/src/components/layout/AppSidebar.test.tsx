@@ -50,7 +50,9 @@ function zeroViewCounts() {
   return { data: { counts } satisfies TicketViewCountsResponse };
 }
 
-function newFeatureStatuses(overrides: Partial<Record<NewFeatureKey, boolean>> = {}) {
+function newFeatureStatuses(
+  overrides: Partial<Record<NewFeatureKey, boolean>> = {},
+) {
   const statuses = Object.fromEntries(
     NEW_FEATURE_KEYS.map((key) => [key, overrides[key] ?? false]),
   ) as Record<NewFeatureKey, boolean>;
@@ -89,7 +91,9 @@ describe("AppSidebar unread badge", () => {
     renderSidebar();
 
     await waitFor(() => expect(unreadGet).toHaveBeenCalled());
-    expect(screen.queryByText("0", { selector: '[data-slot="sidebar-menu-badge"]' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("0", { selector: '[data-slot="sidebar-menu-badge"]' }),
+    ).not.toBeInTheDocument();
   });
 
   test("badges Tickets with the unread count", async () => {
@@ -113,7 +117,9 @@ describe("AppSidebar new-feature badge", () => {
     );
     renderSidebar();
 
-    expect(await screen.findByTestId("new-feature-badge")).toHaveTextContent("New");
+    expect(await screen.findByTestId("new-feature-badge")).toHaveTextContent(
+      "New",
+    );
   });
 
   test("shows no badge once the badge has been seen", async () => {

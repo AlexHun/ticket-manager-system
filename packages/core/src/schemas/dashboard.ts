@@ -30,7 +30,10 @@ export const dashboardLayoutSchema = z.object({
         DASHBOARD_PANEL_IDS.every((id) =>
           placements.some((p) => p.panelId === id),
         ),
-      { message: "Layout must include each current dashboard panel exactly once" },
+      {
+        message:
+          "Layout must include each current dashboard panel exactly once",
+      },
     ),
 });
 

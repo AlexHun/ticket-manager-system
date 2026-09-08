@@ -146,7 +146,10 @@ describe("UsersPage", () => {
     await screen.findByText("Ada Admin");
 
     expect(usersGet).toHaveBeenCalledTimes(1);
-    const [url, options] = usersGet.mock.calls[0] as [string, { signal: AbortSignal }];
+    const [url, options] = usersGet.mock.calls[0] as [
+      string,
+      { signal: AbortSignal },
+    ];
     expect(url).toBe("/api/users");
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
@@ -248,7 +251,9 @@ describe("UsersPage — create user", () => {
     renderUsersPage();
 
     await screen.findByText("Ada Admin");
-    expect(screen.getByRole("button", { name: "New user" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "New user" }),
+    ).toBeInTheDocument();
   });
 
   test("opens the dialog with name and email fields", async () => {
@@ -277,7 +282,9 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Jo");
     await user.type(within(dialog).getByLabelText("Email"), "ok@example.com");
-    await user.click(within(dialog).getByRole("button", { name: "Create user" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create user" }),
+    );
 
     expect(
       await within(dialog).findByText("Name must be at least 3 characters"),
@@ -294,7 +301,9 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Valid Name");
     await user.type(within(dialog).getByLabelText("Email"), "not-an-email");
-    await user.click(within(dialog).getByRole("button", { name: "Create user" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create user" }),
+    );
 
     expect(
       await within(dialog).findByText("Enter a valid email"),
@@ -316,7 +325,9 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Nora New");
     await user.type(within(dialog).getByLabelText("Email"), "nora@example.com");
-    await user.click(within(dialog).getByRole("button", { name: "Create user" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create user" }),
+    );
 
     await waitFor(() => {
       expect(usersPost).toHaveBeenCalledTimes(1);
@@ -357,7 +368,9 @@ describe("UsersPage — create user", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Dup Name");
     await user.type(within(dialog).getByLabelText("Email"), "dup@example.com");
-    await user.click(within(dialog).getByRole("button", { name: "Create user" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create user" }),
+    );
 
     expect(
       await within(dialog).findByText("Email already in use"),
@@ -396,12 +409,8 @@ describe("UsersPage — delete user", () => {
     expect(
       within(dialog).getByRole("heading", { name: "Delete user" }),
     ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/Aaron Agent/),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/agent@example\.com/),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/Aaron Agent/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/agent@example\.com/)).toBeInTheDocument();
   });
 
   test("Cancel closes the dialog without calling DELETE", async () => {
@@ -458,7 +467,10 @@ describe("UsersPage — delete user", () => {
     usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     const axiosError = Object.assign(new Error("Request failed"), {
       isAxiosError: true,
-      response: { status: 403, data: { error: "Admin users cannot be deleted" } },
+      response: {
+        status: 403,
+        data: { error: "Admin users cannot be deleted" },
+      },
     });
     userDelete.mockRejectedValue(axiosError);
 

@@ -200,8 +200,8 @@ export function PipelineSimulator({
             <Label htmlFor="senderName">Display name</Label>
             <Input id="senderName" {...register("senderName")} />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Attacker-controlled in a real email, so it never reaches the model.
-              Try a hostile one.
+              Attacker-controlled in a real email, so it never reaches the
+              model. Try a hostile one.
             </p>
             {errors.senderName && (
               <p className="text-xs text-destructive">

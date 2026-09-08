@@ -83,7 +83,9 @@ function layOut(modules: ModuleNode[]): Layout {
   depths.forEach((depth, col) => {
     const members = groups.get(depth)!;
     // Directory first, so siblings sit together and a file stays findable by eye.
-    members.sort((a, b) => a.dir.localeCompare(b.dir) || a.name.localeCompare(b.name));
+    members.sort(
+      (a, b) => a.dir.localeCompare(b.dir) || a.name.localeCompare(b.name),
+    );
 
     const x = PAD_X + col * (NODE_W + COL_GAP);
     columns.push({
@@ -107,7 +109,8 @@ function layOut(modules: ModuleNode[]): Layout {
     placed,
     byId,
     columns,
-    width: PAD_X * 2 + Math.max(1, depths.length) * (NODE_W + COL_GAP) - COL_GAP,
+    width:
+      PAD_X * 2 + Math.max(1, depths.length) * (NODE_W + COL_GAP) - COL_GAP,
     height: HEADER_H + Math.max(1, tallest) * (NODE_H + ROW_GAP),
   };
 }
@@ -347,7 +350,9 @@ export function DependencyGraph({
                 y={NODE_H / 2 + 3.5}
                 className={cn(
                   "pointer-events-none text-[10px]",
-                  isFocus ? "fill-foreground font-medium" : "fill-foreground/85",
+                  isFocus
+                    ? "fill-foreground font-medium"
+                    : "fill-foreground/85",
                 )}
               >
                 {truncate(node.name, LABEL_CHARS)}

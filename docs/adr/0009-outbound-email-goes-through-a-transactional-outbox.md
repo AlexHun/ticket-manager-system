@@ -10,7 +10,7 @@ rather than a change to any caller.
 ## Considered Options
 
 **Sending inline, where the decision to send is made**, is the obvious path and
-is impossible here. `sendReply` is called *inside* `prisma.$transaction` by
+is impossible here. `sendReply` is called _inside_ `prisma.$transaction` by
 `jobs/auto-reply-ticket.ts`, deliberately, so that the reply and the status
 transition proving the worker still held its claim commit together. An HTTP call
 there would hold a Postgres transaction open across a round trip to a third

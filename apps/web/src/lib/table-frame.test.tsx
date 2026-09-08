@@ -54,7 +54,11 @@ describe("TableFrame", () => {
 
   it("passes the remaining props through, which is how the skeletons stay busy", () => {
     renderAtRoot(
-      <TableFrame label="Loading users" aria-busy="true" data-tutorial-anchor="feed">
+      <TableFrame
+        label="Loading users"
+        aria-busy="true"
+        data-tutorial-anchor="feed"
+      >
         <p>body</p>
       </TableFrame>,
     );

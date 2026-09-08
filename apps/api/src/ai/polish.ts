@@ -170,7 +170,8 @@ const CUSTOMER_EXCERPT_LIMIT = 2_000;
 /** Everything that changes per request, in one message. */
 function userPrompt(draft: string, context: PolishContext): string {
   const excerpt =
-    context.customerMessage && context.customerMessage.length > CUSTOMER_EXCERPT_LIMIT
+    context.customerMessage &&
+    context.customerMessage.length > CUSTOMER_EXCERPT_LIMIT
       ? `${context.customerMessage.slice(0, CUSTOMER_EXCERPT_LIMIT)}\n[…the rest of this message is not shown]`
       : context.customerMessage;
 
@@ -222,8 +223,7 @@ export type PolishFailure =
   (typeof POLISH_FAILURE)[keyof typeof POLISH_FAILURE];
 
 export type PolishResult =
-  | { ok: true; text: string }
-  | { ok: false; reason: PolishFailure };
+  { ok: true; text: string } | { ok: false; reason: PolishFailure };
 
 /** A fence the model was told not to emit, stripped anyway rather than shown to an agent. */
 const CODE_FENCE = /^```[^\n]*\n([\s\S]*?)\n?```$/;
@@ -301,7 +301,8 @@ export async function polishDraft(
     const polished = withoutDashes(
       (CODE_FENCE.exec(text.trim())?.[1] ?? text).trim(),
     ).trim();
-    if (polished.length === 0) return { ok: false, reason: POLISH_FAILURE.empty };
+    if (polished.length === 0)
+      return { ok: false, reason: POLISH_FAILURE.empty };
 
     const invented = inventedCommitments(polished, draft);
     if (invented.length > 0) {

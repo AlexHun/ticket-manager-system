@@ -235,7 +235,10 @@ function childEnv(root: string): NodeJS.ProcessEnv {
  * lose. Only CSI is handled — off a TTY, with NO_COLOR set on the child, that is
  * the whole of what these reporters emit.
  */
-const ANSI_RE = new RegExp(String.fromCharCode(27) + "[[][0-9;?]*[ -/]*[@-~]", "g");
+const ANSI_RE = new RegExp(
+  String.fromCharCode(27) + "[[][0-9;?]*[ -/]*[@-~]",
+  "g",
+);
 
 function clean(text: string): string {
   return text.replace(ANSI_RE, "").replace(/\r/g, "");
@@ -298,11 +301,15 @@ const VITEST_TOTAL_RE = /^\s*(Test Files|Tests)\s+(.+?)\s*$/;
 const BUN_TOTAL_RE = /^\s*(\d+)\s+(pass|fail|skip)\b/;
 const PLAYWRIGHT_CASE_RE =
   /^\s*([✓✔✘×✗-])\s+\d+\s+(.+?)(?:\s+\((\d+(?:\.\d+)?)(ms|s)\))?\s*$/;
-const PLAYWRIGHT_TOTAL_RE = /^\s*(\d+)\s+(passed|failed|skipped|flaky|did not run)\b/;
+const PLAYWRIGHT_TOTAL_RE =
+  /^\s*(\d+)\s+(passed|failed|skipped|flaky|did not run)\b/;
 const TSC_ERROR_RE = /error TS\d+:/;
 const TSC_TOTAL_RE = /^\s*Found (\d+) errors?/;
 
-function toMs(value: string | undefined, unit: string | undefined): number | null {
+function toMs(
+  value: string | undefined,
+  unit: string | undefined,
+): number | null {
   if (!value) return null;
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(unit === "s" ? n * 1000 : n) : null;
@@ -323,7 +330,9 @@ function parseVitestCounts(segment: string): RunCounts {
     else counts.skipped += n;
   }
   const total = /\((\d+)\)/.exec(segment);
-  counts.total = total ? Number(total[1]) : counts.passed + counts.failed + counts.skipped;
+  counts.total = total
+    ? Number(total[1])
+    : counts.passed + counts.failed + counts.skipped;
   return counts;
 }
 
@@ -387,7 +396,9 @@ class RunParser {
 
     const result: CaseResult = {
       name: m[2]!,
-      status: failed ? CASE_STATUS.failed : (SYMBOL_STATUS[m[1]!] ?? CASE_STATUS.passed),
+      status: failed
+        ? CASE_STATUS.failed
+        : (SYMBOL_STATUS[m[1]!] ?? CASE_STATUS.passed),
       tests: Number(m[3]),
       durationMs: toMs(m[5], m[6]),
     };
@@ -401,7 +412,8 @@ class RunParser {
       const counts = this.tests ?? emptyCounts();
       const n = Number(total[1]);
       if (total[2] === "passed") counts.passed += n;
-      else if (total[2] === "failed" || total[2] === "flaky") counts.failed += n;
+      else if (total[2] === "failed" || total[2] === "flaky")
+        counts.failed += n;
       else counts.skipped += n;
       counts.total = counts.passed + counts.failed + counts.skipped;
       this.tests = counts;
@@ -505,7 +517,11 @@ export function runSuite(
     // tsc prints nothing at all when it is happy, so a clean typecheck has no
     // diagnostics to count and the card would show no number. Exit code 0 from
     // tsc *means* zero errors — this states it rather than leaving a blank.
-    if (suite.kind === SUITE_KIND.types && exitCode === 0 && summary.errors === null) {
+    if (
+      suite.kind === SUITE_KIND.types &&
+      exitCode === 0 &&
+      summary.errors === null
+    ) {
       summary.errors = 0;
     }
     emit({
@@ -540,7 +556,10 @@ export function runSuite(
   child.stderr?.on("data", reader("err"));
 
   child.on("error", (err) => {
-    emit({ type: "error", message: `Could not start \`${suite.command}\`: ${err.message}` });
+    emit({
+      type: "error",
+      message: `Could not start \`${suite.command}\`: ${err.message}`,
+    });
     finish(null);
   });
   child.on("close", (code) => finish(code));
@@ -550,7 +569,11 @@ export function runSuite(
       if (finished || cancelled) return;
       cancelled = true;
       emit({ type: "line", text: "", stream: "out" });
-      emit({ type: "line", text: "— cancelled from the dev tools page —", stream: "err" });
+      emit({
+        type: "line",
+        text: "— cancelled from the dev tools page —",
+        stream: "err",
+      });
       killTree(child);
     },
   };

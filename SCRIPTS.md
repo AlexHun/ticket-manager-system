@@ -3,7 +3,7 @@
 Every command this repo can run, what it writes, and whether it belongs on a dev
 machine or on a deployment.
 
-`DEPLOYMENT.md` is the deployment *procedure*; this file is the index of the
+`DEPLOYMENT.md` is the deployment _procedure_; this file is the index of the
 commands it calls. Where the two overlap, `DEPLOYMENT.md` wins on Railway
 specifics and this file wins on "what does this script actually do".
 
@@ -11,11 +11,11 @@ specifics and this file wins on "what does this script actually do".
 
 ## The three environments
 
-|              | database               | API   | web   | env file                            |
-| ------------ | ---------------------- | ----- | ----- | ----------------------------------- |
-| **dev**      | `ticket_manager`       | :3001 | :4000 | `apps/api/.env`, `apps/web/.env`    |
-| **test/E2E** | `ticket_manager_test`  | :3002 | :4001 | `apps/api/.env.test`                |
-| **prod**     | Railway `postgres`     | service URL | service URL | Railway service variables |
+|              | database              | API         | web         | env file                         |
+| ------------ | --------------------- | ----------- | ----------- | -------------------------------- |
+| **dev**      | `ticket_manager`      | :3001       | :4000       | `apps/api/.env`, `apps/web/.env` |
+| **test/E2E** | `ticket_manager_test` | :3002       | :4001       | `apps/api/.env.test`             |
+| **prod**     | Railway `postgres`    | service URL | service URL | Railway service variables        |
 
 Dev and test are fully separate — different database, different ports, different
 `BETTER_AUTH_SECRET` — so an E2E run can happen while `bun run dev` is up.
@@ -30,7 +30,7 @@ cd apps/api && bun run db:seed          # do this
 bun run --filter '@ticket/api' db:seed  # not for anything DB-shaped
 ```
 
-`bun run --filter '<pkg>' <script>` *does* execute with the workspace as its cwd
+`bun run --filter '<pkg>' <script>` _does_ execute with the workspace as its cwd
 on the Bun in use here (1.3.13 — verified, `bun test src` resolves inside
 `apps/api`). It has not always: an older Bun ran the inner script from the
 caller's cwd, which made `dotenv -e .env.test` silently find no file and pointed

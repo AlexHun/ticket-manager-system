@@ -210,10 +210,7 @@ async function submitPending(): Promise<number> {
 
 describe("PATCH /api/knowledge-articles/:id", () => {
   test("an edit to an article that is not, and will not be, auto-reply applies immediately", async () => {
-    const sent = await patch<KnowledgeArticleEditResponse>(
-      "KB-001",
-      EDIT_BODY,
-    );
+    const sent = await patch<KnowledgeArticleEditResponse>("KB-001", EDIT_BODY);
 
     expect(sent.status).toBe(200);
     expect(sent.body.pendingRevision).toBeNull();

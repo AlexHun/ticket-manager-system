@@ -18,7 +18,9 @@ export function useUsersQuery({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: USERS_QUERY_KEY,
     queryFn: async ({ signal }) => {
-      const { data } = await api.get<UsersListResponse>("/api/users", { signal });
+      const { data } = await api.get<UsersListResponse>("/api/users", {
+        signal,
+      });
       return data.users;
     },
     enabled,

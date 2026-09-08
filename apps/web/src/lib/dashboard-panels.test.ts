@@ -150,7 +150,9 @@ describe("applyPanelCommand", () => {
       current = applyPanelCommand(current, current[0]!.panelId, "shrink")!;
     }
     expect(current[0]!.width).toBe(NARROWEST);
-    expect(applyPanelCommand(current, current[0]!.panelId, "shrink")).toBeNull();
+    expect(
+      applyPanelCommand(current, current[0]!.panelId, "shrink"),
+    ).toBeNull();
   });
 
   test("returns null for every command the capabilities refuse", () => {
@@ -183,8 +185,12 @@ describe("applyPanelCommand", () => {
     const last =
       DEFAULT_DASHBOARD_LAYOUT[DEFAULT_DASHBOARD_LAYOUT.length - 1]!.panelId;
 
-    expect(applyPanelCommand(DEFAULT_DASHBOARD_LAYOUT, first, "moveEarlier")).toBeNull();
-    expect(applyPanelCommand(DEFAULT_DASHBOARD_LAYOUT, last, "moveLater")).toBeNull();
+    expect(
+      applyPanelCommand(DEFAULT_DASHBOARD_LAYOUT, first, "moveEarlier"),
+    ).toBeNull();
+    expect(
+      applyPanelCommand(DEFAULT_DASHBOARD_LAYOUT, last, "moveLater"),
+    ).toBeNull();
     expect(
       ids(applyPanelCommand(DEFAULT_DASHBOARD_LAYOUT, first, "moveLater")!),
     ).toEqual([
@@ -227,7 +233,11 @@ describe("reorderPanels", () => {
 
   test("returns null when either id is not in the layout", () => {
     const l = layout();
-    expect(reorderPanels(l, DASHBOARD_PANEL_ID.workload, l[0]!.panelId)).toBeNull();
-    expect(reorderPanels(l, l[0]!.panelId, DASHBOARD_PANEL_ID.workload)).toBeNull();
+    expect(
+      reorderPanels(l, DASHBOARD_PANEL_ID.workload, l[0]!.panelId),
+    ).toBeNull();
+    expect(
+      reorderPanels(l, l[0]!.panelId, DASHBOARD_PANEL_ID.workload),
+    ).toBeNull();
   });
 });

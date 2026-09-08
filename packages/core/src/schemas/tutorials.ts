@@ -66,7 +66,10 @@ export const tutorialContentSchema = z.object({
   steps: z
     .array(tutorialStepSchema)
     .min(1, "A tutorial needs at least one step")
-    .max(TUTORIAL_MAX_STEPS, `A tutorial can have at most ${TUTORIAL_MAX_STEPS} steps`),
+    .max(
+      TUTORIAL_MAX_STEPS,
+      `A tutorial can have at most ${TUTORIAL_MAX_STEPS} steps`,
+    ),
 });
 
 export type TutorialStepValues = z.infer<typeof tutorialStepSchema>;

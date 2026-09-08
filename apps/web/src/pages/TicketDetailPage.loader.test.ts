@@ -49,7 +49,9 @@ describe("ticketDetailLoader", () => {
   });
 
   test("returns null even when the request fails", async () => {
-    ticketGet.mockRejectedValue(new Error("Request failed with status code 404"));
+    ticketGet.mockRejectedValue(
+      new Error("Request failed with status code 404"),
+    );
 
     const { data } = await runLoader(ticketDetailLoader, "/tickets/999999", {
       params: { id: "999999" },

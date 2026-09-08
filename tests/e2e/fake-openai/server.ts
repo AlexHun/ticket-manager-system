@@ -1,4 +1,8 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { KNOWLEDGE_ARTICLE_MARKER, STUB_PORT } from "./constants";
 
 /**
@@ -162,7 +166,9 @@ function classifyResponse(): string {
  */
 function autoReplyResponse(systemText: string): string {
   const corpus = parseCorpus(systemText);
-  const marked = corpus.filter((entry) => entry.body.includes(KNOWLEDGE_ARTICLE_MARKER));
+  const marked = corpus.filter((entry) =>
+    entry.body.includes(KNOWLEDGE_ARTICLE_MARKER),
+  );
   const chosen = marked.sort((a, b) => (a.id > b.id ? -1 : 1))[0];
 
   if (!chosen) {

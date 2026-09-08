@@ -129,9 +129,13 @@ const TUTORIAL_SEEN_PATH = "/api/tutorials/:pageKey/seen";
  * A test that *is* about the tutorial overrides this like any other response;
  * `reset()` puts it back.
  */
-function tutorialStatus(url: string): Promise<{ data: TutorialStatusResponse }> {
-  const pageKey = matchPath({ path: TUTORIAL_STATUS_PATH, end: true }, pathOf(url))
-    ?.params.pageKey as TutorialPageKey;
+function tutorialStatus(
+  url: string,
+): Promise<{ data: TutorialStatusResponse }> {
+  const pageKey = matchPath(
+    { path: TUTORIAL_STATUS_PATH, end: true },
+    pathOf(url),
+  )?.params.pageKey as TutorialPageKey;
 
   return Promise.resolve({
     data: {

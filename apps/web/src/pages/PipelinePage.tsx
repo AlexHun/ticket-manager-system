@@ -152,7 +152,10 @@ export function PipelinePage() {
   const timeoutRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!watching) return;
-    timeoutRef.current = window.setTimeout(() => setStalled(true), RUN_STALLED_MS);
+    timeoutRef.current = window.setTimeout(
+      () => setStalled(true),
+      RUN_STALLED_MS,
+    );
     return () => window.clearTimeout(timeoutRef.current);
   }, [watching, watchedTicketId]);
 
@@ -194,7 +197,11 @@ export function PipelinePage() {
           aria-label="Time range"
         >
           {RANGES.map(({ value, label }) => (
-            <ToggleGroupItem key={value} value={value} aria-label={`Last ${label}`}>
+            <ToggleGroupItem
+              key={value}
+              value={value}
+              aria-label={`Last ${label}`}
+            >
               {label}
             </ToggleGroupItem>
           ))}
@@ -228,8 +235,13 @@ export function PipelinePage() {
               className="rounded-lg border bg-card p-5"
             >
               <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
-                <h2 id="rail-heading" className="font-heading text-base font-semibold">
-                  {run.data ? `Ticket #${run.data.ticketId}` : "The unattended path"}
+                <h2
+                  id="rail-heading"
+                  className="font-heading text-base font-semibold"
+                >
+                  {run.data
+                    ? `Ticket #${run.data.ticketId}`
+                    : "The unattended path"}
                 </h2>
                 {run.data ? (
                   <Button
@@ -257,7 +269,9 @@ export function PipelinePage() {
                 <RunVerdict
                   run={run.data}
                   scenario={scenario}
-                  stalled={stalled && run.data.outcome === PIPELINE_OUTCOME.pending}
+                  stalled={
+                    stalled && run.data.outcome === PIPELINE_OUTCOME.pending
+                  }
                   pipelineLive={
                     config.aiConfigured &&
                     config.autoReplyEnabled &&
@@ -273,7 +287,10 @@ export function PipelinePage() {
               />
             </section>
 
-            <RecentRuns runs={overview.data.recent} onWatch={setWatchedTicketId} />
+            <RecentRuns
+              runs={overview.data.recent}
+              onWatch={setWatchedTicketId}
+            />
           </div>
 
           <div className="min-w-0" data-tutorial-anchor="simulator">
@@ -468,8 +485,8 @@ function RunVerdict({
       {stalled ? (
         <p className="text-xs leading-relaxed text-ember-2">
           Still no verdict after two minutes. The retry ladder runs for about
-          seven and a half minutes — this is still listening, and the verdict will
-          replace this line whenever it lands.
+          seven and a half minutes — this is still listening, and the verdict
+          will replace this line whenever it lands.
         </p>
       ) : pending ? (
         <p className="text-xs text-muted-foreground">Working…</p>

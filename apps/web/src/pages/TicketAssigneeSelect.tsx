@@ -28,7 +28,11 @@ const UNASSIGNED = "unassigned";
 
 const UNASSIGNED_LABEL = "Unassigned";
 
-export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee }) {
+export function TicketAssigneeSelect({
+  ticket,
+}: {
+  ticket: TicketWithAssignee;
+}) {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
   const {
@@ -115,7 +119,10 @@ export function TicketAssigneeSelect({ ticket }: { ticket: TicketWithAssignee })
             a screen reader — the live region is what announces the wait. */}
         {mutation.isPending && (
           <span role="status" className="relative text-muted-foreground">
-            <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" />
+            <Loader2
+              aria-hidden="true"
+              className="size-4 shrink-0 animate-spin"
+            />
             <span className="sr-only">Saving assignee</span>
           </span>
         )}
@@ -185,7 +192,9 @@ function AssigneeStatus({
   }
 
   if (selected) {
-    return <span className="text-xs text-muted-foreground">{selected.email}</span>;
+    return (
+      <span className="text-xs text-muted-foreground">{selected.email}</span>
+    );
   }
 
   return null;

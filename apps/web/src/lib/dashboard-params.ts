@@ -58,7 +58,10 @@ export function writeDashboardParams(
   const next = new URLSearchParams(current);
 
   for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined || value === DEFAULTS[key as keyof typeof DEFAULTS]) {
+    if (
+      value === undefined ||
+      value === DEFAULTS[key as keyof typeof DEFAULTS]
+    ) {
       next.delete(key);
     } else {
       next.set(key, String(value));

@@ -11,11 +11,7 @@ import {
 import { formatHours, formatPercent } from "@/lib/format";
 import { ROUTE } from "@/lib/routes";
 import { StatTile } from "./StatTile";
-import {
-  firstReplyVerdict,
-  openVerdict,
-  settledVerdict,
-} from "./kpi-status";
+import { firstReplyVerdict, openVerdict, settledVerdict } from "./kpi-status";
 
 interface KpiRowProps {
   summary: TicketStatsSummary;
@@ -33,8 +29,7 @@ interface KpiRowProps {
  */
 export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
   const open = summary.byStatus[TICKET_STATUS.Open];
-  const untriaged =
-    categories.find((c) => c.category === null)?.count ?? 0;
+  const untriaged = categories.find((c) => c.category === null)?.count ?? 0;
 
   // Thresholds live in `kpi-status.ts`, not here — this component's job is to
   // lay four tiles out, and burying the definition of "bad" in JSX is how it
@@ -100,18 +95,18 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
         status={replyState?.status}
         statusLabel={replyState?.label}
         sub={
-          firstResponse.awaiting > 0
-            ? `${firstResponse.awaiting} still awaiting a first reply`
-            : untriaged > 0
-              ? (
-                  <Link
-                    to={`${ROUTE.tickets.path}?category=${CATEGORY_NONE}`}
-                    className="text-foreground underline underline-offset-2"
-                  >
-                    {untriaged} untriaged
-                  </Link>
-                )
-              : "every ticket answered"
+          firstResponse.awaiting > 0 ? (
+            `${firstResponse.awaiting} still awaiting a first reply`
+          ) : untriaged > 0 ? (
+            <Link
+              to={`${ROUTE.tickets.path}?category=${CATEGORY_NONE}`}
+              className="text-foreground underline underline-offset-2"
+            >
+              {untriaged} untriaged
+            </Link>
+          ) : (
+            "every ticket answered"
+          )
         }
       />
     </div>

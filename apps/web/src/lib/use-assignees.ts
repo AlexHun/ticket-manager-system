@@ -30,7 +30,9 @@ interface UseAssigneesOptions {
  * share a cache entry: opening a ticket warms the filter and vice versa, and
  * there is a single place where the staleness rule above is written down.
  */
-export function useAssigneesQuery({ enabled = true }: UseAssigneesOptions = {}) {
+export function useAssigneesQuery({
+  enabled = true,
+}: UseAssigneesOptions = {}) {
   return useQuery({
     queryKey: ticketAssigneesKey,
     queryFn: async ({ signal }) => {

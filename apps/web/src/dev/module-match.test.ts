@@ -26,7 +26,9 @@ describe("matchesQuery", () => {
   });
 
   it("lowercases the haystack — the query arrives already lowercased", () => {
-    expect(matchesQuery("ticketspage", "apps/web/src/pages/TicketsPage.tsx")).toBe(true);
+    expect(
+      matchesQuery("ticketspage", "apps/web/src/pages/TicketsPage.tsx"),
+    ).toBe(true);
   });
 
   it("is a hit when any one field matches, and skips absent ones", () => {

@@ -81,7 +81,11 @@ export function parseTicketListParams(sp: URLSearchParams): TicketsQuery {
     ),
     status: field(shape.status, sp.get(LIST_PARAM.status), undefined),
     category: field(shape.category, sp.get(LIST_PARAM.category), undefined),
-    assignedTo: field(shape.assignedTo, sp.get(LIST_PARAM.assignedTo), undefined),
+    assignedTo: field(
+      shape.assignedTo,
+      sp.get(LIST_PARAM.assignedTo),
+      undefined,
+    ),
     q: field(shape.q, sp.get(LIST_PARAM.q), undefined),
     page: field(shape.page, sp.get(LIST_PARAM.page), FIRST_PAGE),
     pageSize: field(

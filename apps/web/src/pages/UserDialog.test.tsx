@@ -154,7 +154,9 @@ describe("UserDialog — create mode", () => {
 
     await user.type(within(dialog).getByLabelText("Name"), "Nora New");
     await user.type(within(dialog).getByLabelText("Email"), "nora@example.com");
-    await user.click(within(dialog).getByRole("button", { name: "Create user" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create user" }),
+    );
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -187,7 +189,9 @@ describe("UserDialog — edit mode", () => {
       within(dialog).getByRole("heading", { name: "Edit user" }),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Aaron Agent");
-    expect(within(dialog).getByLabelText("Email")).toHaveValue("agent@example.com");
+    expect(within(dialog).getByLabelText("Email")).toHaveValue(
+      "agent@example.com",
+    );
     // Not a native select, so the current value is read off the trigger.
     expect(within(dialog).getByLabelText("Role")).toHaveTextContent("Agent");
   });
@@ -266,7 +270,10 @@ describe("UserDialog — edit mode", () => {
     await waitFor(() => {
       expect(userPatch).toHaveBeenCalledTimes(1);
     });
-    const [, body] = userPatch.mock.calls[0] as [string, Record<string, string>];
+    const [, body] = userPatch.mock.calls[0] as [
+      string,
+      Record<string, string>,
+    ];
     expect(body.email).toBe("aaron.agent@example.com");
     expect(emailInput).toHaveValue("Aaron.Agent@Example.com");
   });
@@ -289,7 +296,10 @@ describe("UserDialog — edit mode", () => {
     await waitFor(() => {
       expect(userPatch).toHaveBeenCalledTimes(1);
     });
-    const [, body] = userPatch.mock.calls[0] as [string, Record<string, string>];
+    const [, body] = userPatch.mock.calls[0] as [
+      string,
+      Record<string, string>,
+    ];
     expect(body).toEqual({
       name: "Aaron Agent",
       email: "agent@example.com",
@@ -337,7 +347,9 @@ describe("UserDialog — edit mode", () => {
     await openEdit("Beth Beta");
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Beth Beta");
-    expect(within(dialog).getByLabelText("Email")).toHaveValue("beth@example.com");
+    expect(within(dialog).getByLabelText("Email")).toHaveValue(
+      "beth@example.com",
+    );
   });
 });
 

@@ -63,10 +63,14 @@ const ACTION_LABEL: Record<KnowledgeRevisionAction, string> = {
  * this list is looking for.
  */
 const ACTION_CLASS: Record<KnowledgeRevisionAction, string> = {
-  [KNOWLEDGE_REVISION_ACTION.created]: "border-transparent bg-muted text-muted-foreground",
-  [KNOWLEDGE_REVISION_ACTION.updated]: "border-transparent bg-muted text-muted-foreground",
-  [KNOWLEDGE_REVISION_ACTION.archived]: "border-transparent bg-ember-2/15 text-ember-2",
-  [KNOWLEDGE_REVISION_ACTION.restored]: "border-transparent bg-calm/12 text-calm",
+  [KNOWLEDGE_REVISION_ACTION.created]:
+    "border-transparent bg-muted text-muted-foreground",
+  [KNOWLEDGE_REVISION_ACTION.updated]:
+    "border-transparent bg-muted text-muted-foreground",
+  [KNOWLEDGE_REVISION_ACTION.archived]:
+    "border-transparent bg-ember-2/15 text-ember-2",
+  [KNOWLEDGE_REVISION_ACTION.restored]:
+    "border-transparent bg-calm/12 text-calm",
 };
 
 function useRevisions(id: string | undefined) {
@@ -292,9 +296,7 @@ function PendingRevisionCard({
               disabled={busy || isOwnRevision}
               onClick={() => approve.mutate()}
             >
-              {approve.isPending && (
-                <Loader2 className="size-4 animate-spin" />
-              )}
+              {approve.isPending && <Loader2 className="size-4 animate-spin" />}
               Approve
             </Button>
           </span>

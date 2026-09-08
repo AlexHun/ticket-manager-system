@@ -33,7 +33,7 @@ is admin-only and audited.
 
 **Outbound mail.** Every email goes through a transactional outbox before it
 goes anywhere else. With no mail provider configured the desk still works —
-messages record as *undeliverable* and admins read them at `/outbox`, which is
+messages record as _undeliverable_ and admins read them at `/outbox`, which is
 how an invitation reaches a colleague on a deployment with no mail.
 
 **Accounts.** Email/password sessions via Better Auth. Two roles: **admin**
@@ -47,18 +47,18 @@ are `General`, `Technical`, `Refund`, `Other`.
 
 ## Stack
 
-| Layer | Pick |
-|---|---|
-| Runtime | Bun 1.3.13 |
+| Layer    | Pick                                                                       |
+| -------- | -------------------------------------------------------------------------- |
+| Runtime  | Bun 1.3.13                                                                 |
 | Frontend | React 19 + Vite + TypeScript, Tailwind v4, shadcn/ui, TanStack Query/Table |
-| Backend | Express 5 + TypeScript, server-sent events for live updates |
-| Database | Postgres + Prisma 7 |
-| Auth | Better Auth — database sessions, opaque cookie |
-| AI | OpenAI `gpt-5-nano` via the Vercel AI SDK |
-| Jobs | pg-boss, in its own `pgboss` schema in the same Postgres |
-| Email | Postmark inbound webhook + outbound (both optional) |
-| Errors | Sentry (optional) |
-| Hosting | Railway — `api`, `web` and `postgres` in one project |
+| Backend  | Express 5 + TypeScript, server-sent events for live updates                |
+| Database | Postgres + Prisma 7                                                        |
+| Auth     | Better Auth — database sessions, opaque cookie                             |
+| AI       | OpenAI `gpt-5-nano` via the Vercel AI SDK                                  |
+| Jobs     | pg-boss, in its own `pgboss` schema in the same Postgres                   |
+| Email    | Postmark inbound webhook + outbound (both optional)                        |
+| Errors   | Sentry (optional)                                                          |
+| Hosting  | Railway — `api`, `web` and `postgres` in one project                       |
 
 See [`tech-stack.md`](./tech-stack.md) for the rationale, including what was
 deliberately skipped.
@@ -135,15 +135,15 @@ Root scripts run from the repo root; anything database-shaped must run from
 `apps/api` — [`SCRIPTS.md`](./SCRIPTS.md) explains why, and is the full index of
 every command with what it writes and where it may be run.
 
-| Command | Does |
-|---|---|
-| `bun run dev` | both apps in watch mode |
-| `bun run build` | build every workspace |
-| `bun run typecheck` | typecheck every workspace |
-| `bun run --filter '@ticket/api' test` | API unit tests (`bun test`) |
+| Command                               | Does                                      |
+| ------------------------------------- | ----------------------------------------- |
+| `bun run dev`                         | both apps in watch mode                   |
+| `bun run build`                       | build every workspace                     |
+| `bun run typecheck`                   | typecheck every workspace                 |
+| `bun run --filter '@ticket/api' test` | API unit tests (`bun test`)               |
 | `bun run --filter '@ticket/web' test` | web unit tests (Vitest + Testing Library) |
-| `bun run test:e2e` | Playwright end-to-end suite |
-| `bun run test:e2e:ui` | Playwright in UI mode |
+| `bun run test:e2e`                    | Playwright end-to-end suite               |
+| `bun run test:e2e:ui`                 | Playwright in UI mode                     |
 
 **End-to-end tests** run against their own database (`ticket_manager_test`) on
 their own ports (API `:3002`, web `:4001`), so a suite can run while

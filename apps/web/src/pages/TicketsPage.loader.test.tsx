@@ -67,8 +67,7 @@ function ticketsResponse(subject: string): { data: TicketsListResponse } {
 /** The params one recorded `GET /api/tickets` was sent with. */
 function paramsOfCall(index: number): unknown {
   const config = ticketsGet.mock.calls[index]?.[1] as
-    | { params?: unknown }
-    | undefined;
+    { params?: unknown } | undefined;
   return config?.params;
 }
 

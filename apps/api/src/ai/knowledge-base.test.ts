@@ -24,9 +24,8 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
 
-const { autoReplyArticleCount, autoReplyArticles } = await import(
-  "./knowledge-base"
-);
+const { autoReplyArticleCount, autoReplyArticles } =
+  await import("./knowledge-base");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
@@ -54,7 +53,8 @@ function seedArticle(
       title: "How do I reset my password?",
       category: TICKET_CATEGORY.Technical,
       body: "Use the 'forgot password' link on the sign-in page.",
-      internalNote: "Never promise a same-day reset — the queue can run to 24h.",
+      internalNote:
+        "Never promise a same-day reset — the queue can run to 24h.",
       autoReply: true,
       archived: false,
       ...overrides,

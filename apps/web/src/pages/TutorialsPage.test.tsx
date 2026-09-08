@@ -73,19 +73,25 @@ describe("TutorialsPage", () => {
   });
 
   test("renders a row per tutorial once the query resolves", async () => {
-    tutorialsGet.mockResolvedValue({ data: { tutorials: [written, unwritten] } });
+    tutorialsGet.mockResolvedValue({
+      data: { tutorials: [written, unwritten] },
+    });
     renderTutorialsPage();
 
     expect(await screen.findByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Outbox")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Loading tutorials")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Loading tutorials"),
+    ).not.toBeInTheDocument();
   });
 
   test("shows the title and step count for a written tutorial", async () => {
     tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     renderTutorialsPage();
 
-    expect(await screen.findByText("Reading the dashboard")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Reading the dashboard"),
+    ).toBeInTheDocument();
     expect(screen.getByText("2 steps")).toBeInTheDocument();
     expect(screen.getByText(/Updated .* by Ada Admin/)).toBeInTheDocument();
   });
@@ -109,7 +115,10 @@ describe("TutorialsPage", () => {
     await screen.findByText("Dashboard");
 
     expect(tutorialsGet).toHaveBeenCalledTimes(1);
-    const [url, options] = tutorialsGet.mock.calls[0] as [string, { signal: AbortSignal }];
+    const [url, options] = tutorialsGet.mock.calls[0] as [
+      string,
+      { signal: AbortSignal },
+    ];
     expect(url).toBe("/api/tutorials");
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
@@ -201,7 +210,9 @@ describe("TutorialsPage — editing", () => {
 
     await user.type(within(dialog).getByLabelText("Step 1 title"), "First");
     await user.type(within(dialog).getByLabelText("Step 1 body"), "Do this.");
-    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
 
     expect(
       await within(dialog).findByText("Give the tutorial a title"),
@@ -227,7 +238,9 @@ describe("TutorialsPage — editing", () => {
       within(dialog).getByLabelText("Step 1 body"),
       "Every outbound message waits here first.",
     );
-    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
 
     await waitFor(() => {
       expect(tutorialPut).toHaveBeenCalledTimes(1);
@@ -263,7 +276,9 @@ describe("TutorialsPage — editing", () => {
 
     const user = await openEditDialog("Edit");
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
 
     expect(
       await within(dialog).findByText("Give the tutorial a title"),
@@ -291,7 +306,9 @@ describe("TutorialsPage — step anchors", () => {
     expect(
       await screen.findByRole("option", { name: "Status filter" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "An email row" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "An email row" }),
+    ).toBeInTheDocument();
   });
 
   test("picking an anchor saves it on that step", async () => {
@@ -304,7 +321,10 @@ describe("TutorialsPage — step anchors", () => {
     const user = await openEditDialog("Edit");
     const dialog = await screen.findByRole("dialog");
 
-    await user.type(within(dialog).getByLabelText("Title"), "Filtering the outbox");
+    await user.type(
+      within(dialog).getByLabelText("Title"),
+      "Filtering the outbox",
+    );
     await user.type(within(dialog).getByLabelText("Step 1 title"), "Status");
     await user.type(
       within(dialog).getByLabelText("Step 1 body"),
@@ -313,9 +333,13 @@ describe("TutorialsPage — step anchors", () => {
     await user.click(
       within(dialog).getByRole("combobox", { name: "Step 1 points at" }),
     );
-    await user.click(await screen.findByRole("option", { name: "Status filter" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Status filter" }),
+    );
 
-    await user.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
 
     await waitFor(() => expect(tutorialPut).toHaveBeenCalledTimes(1));
     const [, body] = tutorialPut.mock.calls[0] as [

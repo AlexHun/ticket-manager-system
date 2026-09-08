@@ -77,7 +77,10 @@ function migrationSql(): string[] {
 
 async function openDatabase(): Promise<PGlite> {
   const sql = migrationSql();
-  const key = createHash("sha256").update(sql.join("\n")).digest("hex").slice(0, 16);
+  const key = createHash("sha256")
+    .update(sql.join("\n"))
+    .digest("hex")
+    .slice(0, 16);
   const cached = join(CACHE_DIR, `schema-${key}.tar`);
 
   if (existsSync(cached)) {
@@ -162,9 +165,9 @@ const calls = new Map<string, number>();
 export function dbCalls(operation: string): number {
   const [model, method] = operation.split(".");
   const delegate = model
-    ? (client as unknown as Record<string, Record<string, unknown> | undefined>)[
-        model
-      ]
+    ? (
+        client as unknown as Record<string, Record<string, unknown> | undefined>
+      )[model]
     : undefined;
   if (!method || !delegate || typeof delegate[method] !== "function") {
     throw new Error(

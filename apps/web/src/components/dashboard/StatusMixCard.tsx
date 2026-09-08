@@ -50,7 +50,9 @@ export function StatusMixCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {total === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing in this range.</p>
+          <p className="text-sm text-muted-foreground">
+            Nothing in this range.
+          </p>
         ) : (
           <>
             {/* gap-0.5 is the 2px surface gap: the segments are separated by the
@@ -58,9 +60,9 @@ export function StatusMixCard({
             <div
               className="flex h-6 gap-0.5 overflow-hidden rounded-md"
               role="img"
-              aria-label={STATUS_STACK.map(
-                (s) => `${s}: ${byStatus[s]}`,
-              ).join(", ")}
+              aria-label={STATUS_STACK.map((s) => `${s}: ${byStatus[s]}`).join(
+                ", ",
+              )}
             >
               {segments.map(({ status, count }) => (
                 <div

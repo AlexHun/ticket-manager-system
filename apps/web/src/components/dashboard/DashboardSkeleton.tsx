@@ -66,7 +66,9 @@ function PanelSkeleton({
         <Skeleton className="h-3 w-48" />
       </CardHeader>
       <CardContent>
-        <Skeleton className={cn(short ? "h-20" : CHART_HEIGHT_CLASS, "w-full")} />
+        <Skeleton
+          className={cn(short ? "h-20" : CHART_HEIGHT_CLASS, "w-full")}
+        />
       </CardContent>
     </Card>
   );

@@ -144,7 +144,7 @@ function ipMatches(clientIp: string, rule: string): boolean {
   if (bits === 0) return true;
 
   const mask = (0xffffffff << (32 - bits)) >>> 0;
-  return ((base & mask) >>> 0) === ((client & mask) >>> 0);
+  return (base & mask) >>> 0 === (client & mask) >>> 0;
 }
 
 const requireWebhookIp: RequestHandler = (req, res, next) => {
@@ -160,7 +160,9 @@ const requireWebhookIp: RequestHandler = (req, res, next) => {
   if (!WEBHOOK_IPS.some((rule) => ipMatches(clientIp, rule))) {
     // Logged because the alternative is silent: a genuine delivery refused by a
     // stale allowlist looks, from Postmark's side, exactly like an outage.
-    console.warn(`[webhook] refused inbound email from ${clientIp || "unknown"}`);
+    console.warn(
+      `[webhook] refused inbound email from ${clientIp || "unknown"}`,
+    );
     res.status(403).json({ error: "Forbidden" });
     return;
   }

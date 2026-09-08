@@ -13,7 +13,7 @@ its own loading state (`RouteFallback`, then a query spinner). An agent or
 admin clicking into a ticket watches a blank shell, then a spinner, then the
 ticket. Note: this is not a `useEffect`-fetching problem — this codebase
 already fetches exclusively through react-query per
-`docs/standards/frontend.md` — it's a *timing* problem: the fetch is
+`docs/standards/frontend.md` — it's a _timing_ problem: the fetch is
 triggered by mount, not by navigation.
 
 ## Users
@@ -26,8 +26,8 @@ sequence.
 
 ## Success metrics
 
-| Metric | Today | Target |
-| ------ | ----- | ------ |
+| Metric                                                                                 | Today                                       | Target                                                        |
+| -------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
 | Time from route navigation to data-populated render, on Dashboard/Tickets/TicketDetail | unknown — instrumented but not yet recorded | TBD — needs a baseline measurement before a number can be set |
 
 The metric is now measurable: each of the three routes writes a
@@ -46,13 +46,13 @@ increase on any route touched by this change.
 
 ### In this pass
 
-| # | Requirement | Priority |
-| - | ----------- | -------- |
-| R1 | Navigating to `/`, `/tickets`, or `/tickets/:id` starts that route's primary data fetch no later than when its code chunk begins downloading — not after the component mounts. | Must |
-| R2 | react-query remains the fetch/cache/mutation layer for these three routes: queries still use `useQuery`/`useSuspenseQuery` with the existing query keys (e.g. `ticketKeys.detail`), so existing invalidation call sites keep working unchanged. | Must |
-| R3 | A user navigating to any of the three routes sees at most one loading state before content appears, never a chunk-loading fallback followed by a separate data spinner. | Must |
-| R4 | After the change, an unauthenticated visitor or a wrong-role visitor hitting these routes is still redirected exactly as `ProtectedRoute`/`AdminRoute` do today — no protected data is fetched or shown before the auth check runs. | Must |
-| R5 | A before/after timing measurement (navigation to data-populated render) is captured for all three routes and recorded, to convert the TBD target above into a real number. | Should |
+| #   | Requirement                                                                                                                                                                                                                                     | Priority |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| R1  | Navigating to `/`, `/tickets`, or `/tickets/:id` starts that route's primary data fetch no later than when its code chunk begins downloading — not after the component mounts.                                                                  | Must     |
+| R2  | react-query remains the fetch/cache/mutation layer for these three routes: queries still use `useQuery`/`useSuspenseQuery` with the existing query keys (e.g. `ticketKeys.detail`), so existing invalidation call sites keep working unchanged. | Must     |
+| R3  | A user navigating to any of the three routes sees at most one loading state before content appears, never a chunk-loading fallback followed by a separate data spinner.                                                                         | Must     |
+| R4  | After the change, an unauthenticated visitor or a wrong-role visitor hitting these routes is still redirected exactly as `ProtectedRoute`/`AdminRoute` do today — no protected data is fetched or shown before the auth check runs.             | Must     |
+| R5  | A before/after timing measurement (navigation to data-populated render) is captured for all three routes and recorded, to convert the TBD target above into a real number.                                                                      | Should   |
 
 ### Non-goals
 
@@ -63,7 +63,7 @@ increase on any route touched by this change.
   a loader's own `fetch` call) — `docs/standards/frontend.md` mandates
   react-query for every server call, and this PRD doesn't reopen that.
 - Server-side rendering — the app stays client-rendered; this only moves
-  *when* a client-side fetch starts, not where HTML is generated.
+  _when_ a client-side fetch starts, not where HTML is generated.
 - Rewriting the URL/input-sync `useEffect` in `TicketsPage` or the
   polling/simulator `useEffect`s in `PipelinePage` — those are state-sync
   side effects, not fetch-timing, and are unaffected by this change.
@@ -83,11 +83,11 @@ increase on any route touched by this change.
 
 ## Risks
 
-| Risk | Impact | Mitigation |
-| ---- | ------ | ---------- |
-| Adopting a data router (`createBrowserRouter`/`RouterProvider`) is an app-wide change to `App.tsx`'s route tree, even though only 3 routes get real prefetching — every other route (login, admin pages, `/__dev`) has to move to the new router too. | Larger blast radius than the 3 in-scope pages; regressions could show up on untouched routes. | Land the router-mode migration as a behavior-neutral step first (all other routes get no-op loaders), verified by the existing E2E suite, before adding real prefetching to the 3 target routes. |
-| `ProtectedRoute`/`AdminRoute` gate access by rendering a wrapper component that reads session state; a data router's loaders run *before* any component renders, which is a different point in the lifecycle. | A loader that fetches protected data before the session check runs could leak a flash of data or race the redirect. | Keep `ProtectedRoute`/`AdminRoute` exactly as the authorization gate; loaders own prefetching only, never authorization. |
-| No baseline measurement exists — the waterfall described here is inferred from reading the code, not from measured user impact. | Could ship a nontrivial routing migration for a gap that's imperceptible on real network conditions. | R5's baseline gates the rest: if the measured gap is negligible, close this out instead of forcing the migration. |
+| Risk                                                                                                                                                                                                                                                  | Impact                                                                                                              | Mitigation                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Adopting a data router (`createBrowserRouter`/`RouterProvider`) is an app-wide change to `App.tsx`'s route tree, even though only 3 routes get real prefetching — every other route (login, admin pages, `/__dev`) has to move to the new router too. | Larger blast radius than the 3 in-scope pages; regressions could show up on untouched routes.                       | Land the router-mode migration as a behavior-neutral step first (all other routes get no-op loaders), verified by the existing E2E suite, before adding real prefetching to the 3 target routes. |
+| `ProtectedRoute`/`AdminRoute` gate access by rendering a wrapper component that reads session state; a data router's loaders run _before_ any component renders, which is a different point in the lifecycle.                                         | A loader that fetches protected data before the session check runs could leak a flash of data or race the redirect. | Keep `ProtectedRoute`/`AdminRoute` exactly as the authorization gate; loaders own prefetching only, never authorization.                                                                         |
+| No baseline measurement exists — the waterfall described here is inferred from reading the code, not from measured user impact.                                                                                                                       | Could ship a nontrivial routing migration for a gap that's imperceptible on real network conditions.                | R5's baseline gates the rest: if the measured gap is negligible, close this out instead of forcing the migration.                                                                                |
 
 ## Open questions
 

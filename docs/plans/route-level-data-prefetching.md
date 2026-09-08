@@ -16,7 +16,7 @@ web (App.tsx routing config; ProtectedRoute / AdminRoute; DashboardPage,
 
 Everything below the API is untouched: no `@ticket/core` schema, no
 `apps/api/src` domain module, no Prisma model, no queue. This is a
-frontend-only change to *when* an existing fetch is triggered, not what it
+frontend-only change to _when_ an existing fetch is triggered, not what it
 fetches. `packages/shared`'s `USER_ROLE`, `ticketKeys`, and the response
 types are read, never edited.
 
@@ -74,7 +74,7 @@ slice 2.)
 `auth.spec.ts`'s sign-in/sign-out and redirect assertions, `tickets.spec.ts`,
 `dashboard-layout.spec.ts`, and `user-management.spec.ts` must all pass
 unmodified against the new router. No new spec; a slice that changes only
-the routing *implementation* is proven by every existing path still
+the routing _implementation_ is proven by every existing path still
 working, not by a new assertion.
 
 ## Slice 2 — TicketDetailPage loader
@@ -100,7 +100,7 @@ route param, no filters.
   populated ticket — never fallback-then-spinner.
 - `useTicketActivityQuery` and the unread-invalidation `useEffect`
   (`TicketDetailPage.tsx:73-77`) are untouched — only the ticket-detail
-  query's *trigger point* moves; its key, retry policy, and every mutation
+  query's _trigger point_ moves; its key, retry policy, and every mutation
   that invalidates it stay exactly as written.
 
 **E2E:** extend `tests/e2e/tickets.spec.ts` (or add
@@ -119,7 +119,7 @@ component derives from `useSearchParams`, produce the identical
 `ticketKeys.list(params)` key, and coexist with the component's own
 `setSearchParams`-driven refetching on every filter change without a
 duplicate network call. Harder than slice 2: the query is parameterized and
-the *component*, not just the route, can change it in place.
+the _component_, not just the route, can change it in place.
 
 Confirmed via context7: a search-string change makes React Router's default
 `shouldRevalidate` return `true` (`currentUrl.search !== nextUrl.search`),
@@ -151,7 +151,7 @@ pagination test must stay green unmodified.
 **Measured while building it** (carries into slice 4, which reads
 `useSearchParams` the same way):
 
-- The two paths de-dupe for *different* reasons. A select, sort or page
+- The two paths de-dupe for _different_ reasons. A select, sort or page
   change is written to the URL first, so the awaited loader gets there
   first and the component's later observer finds a fresh entry (the
   client's `staleTime: 30_000` is what stops it refetching on mount) — one
@@ -160,7 +160,7 @@ pagination test must stay green unmodified.
   genuinely share one in-flight request.
 - An awaited loader means `setSearchParams` no longer lands in a microtask:
   the router holds the navigation for the whole fetch, and the URL keeps
-  reading the *old* params until it resolves. Any state derived from
+  reading the _old_ params until it resolves. Any state derived from
   "did the URL change?" has to tell that pending window apart from a real
   URL move — `TicketsPage`'s search box did not, and reverted what was
   typed inside it. Fixed there with a second ref (the last URL value
@@ -193,7 +193,7 @@ Reorder/resize/reset tests must stay green unmodified.
 - The parallelism claim needed its own assertion, and `Promise.allSettled` is
   what carries it: hold all three endpoints open, click through to `/`, and
   wait for all three to be in flight at once. A loader that `await`s them one
-  after another satisfies every *other* assertion in this slice — the fetch
+  after another satisfies every _other_ assertion in this slice — the fetch
   still starts at navigation time, there is still one loading state — and only
   this one fails it (measured: `waitForRequest` times out with the serialized
   version, since the second request never leaves).
@@ -243,14 +243,14 @@ step outside CI, not an assertion against a target — no target exists yet.
 **Measured while building it:**
 
 - The loader is the obvious home for the `navigate` mark and the wrong one. It
-  is where a navigation to all three routes starts *today*, and marking there
+  is where a navigation to all three routes starts _today_, and marking there
   needs no router plumbing at all — but the number is only worth having beside a
-  *before* number, and "before" is slice 1, which has no loaders. The mark has
+  _before_ number, and "before" is slice 1, which has no loaders. The mark has
   to come from the router for the same module to drop onto that revision
   unchanged; otherwise the two runs measure two spans that merely share a name.
 - The probe has to sit **above `ProtectedRoute`**, on the root pathless route,
   not inside `AppShell` where all three instrumented pages live. React Router
-  keeps the *outgoing* screen rendered for the whole of a navigation, so during
+  keeps the _outgoing_ screen rendered for the whole of a navigation, so during
   `/login` → `/` nothing under the shell exists yet — a probe there would miss
   the one navigation every user makes on every sign-in, which is the one slice 4
   singled out.
@@ -284,13 +284,13 @@ step outside CI, not an assertion against a target — no target exists yet.
 
 ## Requirement coverage
 
-| Req | Slice | Note |
-| --- | ----- | ---- |
-| R1 | 2, 3, 4 | fetch starts at navigation, one per route |
-| R2 | 2, 3, 4 | react-query stays the cache/fetch layer throughout |
-| R3 | 2, 3, 4 | single loading state, asserted per route |
-| R4 | 1 | foundational proof; re-verified incidentally by 2-4's E2E runs |
-| R5 | 5 | instrumentation + one manual recording pass |
+| Req | Slice   | Note                                                           |
+| --- | ------- | -------------------------------------------------------------- |
+| R1  | 2, 3, 4 | fetch starts at navigation, one per route                      |
+| R2  | 2, 3, 4 | react-query stays the cache/fetch layer throughout             |
+| R3  | 2, 3, 4 | single loading state, asserted per route                       |
+| R4  | 1       | foundational proof; re-verified incidentally by 2-4's E2E runs |
+| R5  | 5       | instrumentation + one manual recording pass                    |
 
 Every `Must` (R1-R4) has a slice. R5 (`Should`) has one too, thinner by
 design since its output is a number, not user-facing behavior.

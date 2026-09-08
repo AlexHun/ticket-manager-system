@@ -12,7 +12,7 @@ control of a mailbox that a colleague has already vouched for in person.
 the check is an admin mistyping a colleague's address, which is caught the
 moment that colleague says the invitation never arrived.
 
-**Verifying only on an email *change*** is the defensible middle, and is the one
+**Verifying only on an email _change_** is the defensible middle, and is the one
 to revisit if this app ever opens sign-up. It was rejected for now because it
 builds a whole flow for an action that happens roughly never.
 

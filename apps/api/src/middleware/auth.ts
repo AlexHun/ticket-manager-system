@@ -3,7 +3,9 @@ import { fromNodeHeaders } from "better-auth/node";
 import { USER_ROLE } from "@ticket/shared";
 import { auth } from "../auth";
 
-export type Session = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
+export type Session = NonNullable<
+  Awaited<ReturnType<typeof auth.api.getSession>>
+>;
 
 /**
  * The session `requireAuth` parked on `res.locals`.
@@ -17,7 +19,11 @@ export function sessionOf(res: Response): Session {
   return res.locals.session as Session;
 }
 
-export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
@@ -31,7 +37,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+export async function requireAdmin(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   const session = await auth.api.getSession({
     headers: fromNodeHeaders(req.headers),
   });
