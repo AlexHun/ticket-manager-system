@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { resetPrefetchQueryClient } from "@/lib/route-prefetch";
 
 /**
@@ -50,6 +50,27 @@ if (!window.matchMedia) {
       dispatchEvent: vi.fn(() => false),
     }) as MediaQueryList;
 }
+
+/**
+ * RTL keeps its own async budget, and Vitest's `testTimeout` does not govern
+ * it: `findBy*` and `waitFor` give up after **1000ms** regardless of the
+ * 15s in `vite.config.ts`. That default is not survivable here. The suite
+ * mounts data routers, so a `findBy*` is waiting on a loader to settle *and*
+ * the first render behind it, and this machine class runs the web suite ~4x
+ * slower than `ubuntu-latest` (see docs/standards/testing.md) with 32 files in
+ * parallel. `TicketsPage.loader.test.tsx` was failing roughly two runs in three
+ * at 1226ms with an empty `<body><div /></body>` — the router had simply not
+ * rendered yet — which is a red suite that says nothing about the code.
+ *
+ * 5s, not more: it has to stay well under the 15s `testTimeout` so a genuinely
+ * missing element still fails as RTL's own error, which names the query and
+ * prints the DOM, rather than as a bare Vitest timeout that prints neither.
+ *
+ * Two files pass a per-call `timeout` (`Tutorial.test.tsx`, `TicketsPage.test.tsx`);
+ * those were this same 1000ms default worked around one call site at a time,
+ * and a per-call value still wins over this one where it is larger.
+ */
+configure({ asyncUtilTimeout: 5_000 });
 
 vi.mock("sonner", () => ({
   toast: {
