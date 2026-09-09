@@ -5,7 +5,7 @@ import { autoReplyArticles, type KbArticle } from "../ai/knowledge-base";
 import { prisma } from "../db";
 import { isEvalConfigured } from "../evals/config";
 import { frozenCorpus } from "../evals/frozen-corpus";
-import { EVAL_REPEATS, runCase } from "../evals/runner";
+import { expectedCategoryOf, EVAL_REPEATS, runCase } from "../evals/runner";
 import { publishEvalRunChanged } from "../events/ticket-events";
 import { getBoss, registerWorker, type WorkerSpec } from "./boss";
 
@@ -217,6 +217,10 @@ async function handle(job: EvalRunJob): Promise<void> {
         adversarial: evalCase.adversarial,
         expectedOutcome: evalCase.expected.outcome,
         expectedDecline: evalCase.expected.decline,
+        // Null on the two cases the classifier is not scored against, rather
+        // than the category they happen to declare: a row reading "expected
+        // General, 0 of 0 classified" claims a measurement nobody made.
+        expectedCategory: expectedCategoryOf(evalCase),
         repeats: outcome.repeats,
         matches: outcome.matches,
         abandoned: outcome.abandoned,
@@ -224,6 +228,8 @@ async function handle(job: EvalRunJob): Promise<void> {
         cachedRepeats: outcome.cachedRepeats,
         caught: outcome.caught,
         escaped: outcome.escaped,
+        classifiedRepeats: outcome.classifiedRepeats,
+        classifyMatches: outcome.classifyMatches,
         verdicts: outcome.verdicts.map((v) => ({
           outcome: v.outcome,
           decline: v.decline,
@@ -234,6 +240,11 @@ async function handle(job: EvalRunJob): Promise<void> {
           // 7-of-9 and 10-of-10 measurements already drew.
           caught: v.caught,
           escaped: v.escaped,
+          // Per repeat for the same reason `caught` is: the run's totals say
+          // four of five were filed as expected, and only the array can say
+          // where the fifth one went — which is the whole of the per-category
+          // breakdown (R15).
+          category: v.category,
         })),
       },
     });
@@ -261,6 +272,8 @@ async function handle(job: EvalRunJob): Promise<void> {
       cachedRepeats: true,
       caught: true,
       escaped: true,
+      classifiedRepeats: true,
+      classifyMatches: true,
     },
   });
 
@@ -276,6 +289,8 @@ async function handle(job: EvalRunJob): Promise<void> {
       cachedRepeats: totals._sum.cachedRepeats ?? 0,
       caught: totals._sum.caught ?? 0,
       escaped: totals._sum.escaped ?? 0,
+      classifiedRepeats: totals._sum.classifiedRepeats ?? 0,
+      classifyMatches: totals._sum.classifyMatches ?? 0,
     },
   });
 
@@ -290,6 +305,7 @@ async function handle(job: EvalRunJob): Promise<void> {
   console.log(
     `[evals] run ${runId} (${corpus}): ${matches}/${attempts} repeats as expected across ` +
       `${cases.length} case(s), caught=${caught} escaped=${escaped}, ` +
+      `filed=${totals._sum.classifyMatches ?? 0}/${totals._sum.classifiedRepeats ?? 0}, ` +
       `usd~${(totals._sum.usd ?? 0).toFixed(4)}`,
   );
 

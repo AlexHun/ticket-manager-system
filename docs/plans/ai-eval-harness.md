@@ -189,7 +189,7 @@ a cron could reach.
 per-check breakdown. The nightly itself is unit-tested by calling the exported
 spec's `run`, not by waiting for a cron.
 
-## Slice 4 — Classifier accuracy
+## Slice 4 — Classifier accuracy ✅
 
 **Retires:** nothing dangerous — this is the cheap add-on the grilling called
 it, and it is fourth for that reason.
@@ -203,6 +203,36 @@ rate, same threshold mechanism.
   filed where.
 
 **E2E:** extends the spec — the summary shows three metrics.
+
+**Three decisions this slice actually turned on**, none of which the sentence
+above implies:
+
+1. **The classifier's answer is measured, not consumed.** `gateDecline` still
+   reads the case's _declared_ `preflight.category`, exactly as before. Feeding
+   it the live answer would have been the obvious wiring and it is the wrong
+   one: a classifier flake would then move decline accuracy too, and a red board
+   would no longer say which of the two models drifted.
+2. **A gated case is no longer free.** Three of the five cases the gates
+   decline are classified anyway (the other two are point 3) — `refund`
+   misfiled as `General` _is_ the category gate failing, and that gate is the only control between a refund request and an
+   unattended reply, so it is the sharpest place to measure rather than one to
+   skip. What the gate still buys is the expensive call: one call a repeat
+   rather than two. The E2E asserts exactly that, as a halving.
+3. **Two cases are outside the metric, and it is a rule with content rather
+   than an optimisation.** `unclassified` expects classification to have
+   _failed_, so nothing the model could say would be right; `no-inbound-message`
+   carries a placeholder body precisely because nothing reads it.
+
+`evals/classify-case.ts` is a module rather than three lines in the runner for
+two reasons: it holds that rule, and it gives `runner.test.ts` a mock seam.
+`../ai/classify` is already owned by `jobs/activity-before-publish.test.ts`
+with a stateless stub, and `mock.module`'s registry is one process wide — a
+second, scripted factory there is the hazard `testing.md` describes.
+
+**Not measured, and left that way deliberately:** the threshold ships at 0.8 on
+no baseline at all, the same provisional footing decline accuracy shipped on and
+for weaker reasons — no full-set run has priced this metric yet. Tighten it from
+the trend, not from an opinion.
 
 ## Slice 5 — What moved since last time
 

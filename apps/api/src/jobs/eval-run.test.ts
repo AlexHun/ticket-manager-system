@@ -24,6 +24,7 @@ import {
   EVAL_CORPUS,
   EVAL_RUN_STATUS,
   PIPELINE_OUTCOME,
+  TICKET_CATEGORY,
   TICKET_EVENT,
   type TicketEvent,
 } from "@ticket/shared";
@@ -44,6 +45,8 @@ function cleanRun(repeats: number): EvalCaseOutcome {
       cached: true,
       caught: false,
       escaped: false,
+      category: TICKET_CATEGORY.General,
+      classifyMatched: true,
     })),
     repeats,
     matches: repeats,
@@ -52,6 +55,31 @@ function cleanRun(repeats: number): EvalCaseOutcome {
     cachedRepeats: repeats - 1,
     caught: 0,
     escaped: 0,
+    classifiedRepeats: repeats,
+    classifyMatches: repeats,
+  };
+}
+
+/**
+ * A case the classifier filed somewhere else on the last repeat.
+ *
+ * Built off `cleanRun` and kept in step with it the same way `payloadRun` is:
+ * the run's aggregate is summed from the rows, so a fixture whose totals
+ * disagreed with its own verdicts would be testing a state nothing can reach.
+ */
+function misfiledRun(repeats: number): EvalCaseOutcome {
+  const clean = cleanRun(repeats);
+  const verdicts = clean.verdicts.map((verdict, index) =>
+    index === repeats - 1
+      ? { ...verdict, category: TICKET_CATEGORY.Other, classifyMatched: false }
+      : verdict,
+  );
+
+  return {
+    ...clean,
+    verdicts,
+    classifiedRepeats: verdicts.filter((v) => v.category !== null).length,
+    classifyMatches: verdicts.filter((v) => v.classifyMatched).length,
   };
 }
 
@@ -273,6 +301,62 @@ describe("handle", () => {
     expect(result.expectedDecline).toBe(AUTO_REPLY_DECLINE.notCovered);
     expect(result.caseName).toBe("Nothing in the corpus covers it");
     expect(result.adversarial).toBe(false);
+    // The classifier's expectation too, and for the same reason.
+    expect(result.expectedCategory).toBe(TICKET_CATEGORY.General);
+  });
+
+  test("leaves the expected category null on a case the classifier is not scored on", async () => {
+    // `unclassified` expects classification to have *failed*, so there is
+    // nothing to score and nothing to write down. A row that carried an
+    // expectation here would read as "0 of 0 filed as General", which claims a
+    // measurement that never happened.
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["unclassified"],
+    });
+
+    const result = await prisma.evalCaseResult.findFirstOrThrow({
+      where: { runId },
+    });
+    expect(result.expectedCategory).toBeNull();
+  });
+
+  test("records what the classifier did, and rolls that up onto the run too", async () => {
+    // R15. The per-repeat category is on the stored verdicts as well as in the
+    // totals, because "what was filed where" is read out of the array — a bare
+    // 4-of-5 cannot say *which* category the fifth one went to.
+    nextOutcome = misfiledRun;
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
+    });
+
+    const result = await prisma.evalCaseResult.findFirstOrThrow({
+      where: { runId },
+    });
+    expect(result.classifiedRepeats).toBe(REPEATS);
+    expect(result.classifyMatches).toBe(REPEATS - 1);
+    expect(
+      (result.verdicts as { category: string | null }[]).map((v) => v.category),
+    ).toEqual([
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.Other,
+    ]);
+
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: runId },
+    });
+    expect(run.classifiedRepeats).toBe(REPEATS);
+    expect(run.classifyMatches).toBe(REPEATS - 1);
   });
 
   test("records misses without failing the run", async () => {
@@ -289,6 +373,8 @@ describe("handle", () => {
         cached: true,
         caught: false,
         escaped: false,
+        category: TICKET_CATEGORY.General,
+        classifyMatched: true,
       })),
     });
     const runId = await newRun();

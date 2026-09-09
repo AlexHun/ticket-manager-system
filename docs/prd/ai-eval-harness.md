@@ -61,6 +61,24 @@ tickets, messages, activity rows or outbound email created or modified by a run.
 | R14 | The screen shows how each metric moved against the previous run on the same corpus.                                                                                                  | Should   |
 | R15 | Classifier accuracy — the share of repeats filed under the expected category — is reported as an additional metric.                                                                  | Should   |
 
+**R15 as shipped — and one reading of it that was chosen rather than given.**
+R15 says "the share of repeats filed under the expected category". It does not
+say which repeats are in the share, and the implementation had to decide. It
+counts repeats the classifier **answered**, on the 33 of 35 cases that declare
+an expected category at all — two cases are excluded because no answer could be
+right (`unclassified` expects classification to have _failed_;
+`no-inbound-message` carries no message to read), and a repeat the provider
+could not answer shrinks the denominator rather than counting as a miss, which
+is the same split `abandoned` already draws on decline accuracy. **That is a
+narrowing of the requirement, made after the fact, and a reviewer is entitled
+to reject it** — the honest alternative is a share taken over all 175 repeats,
+which would report a permanent ~6% shortfall that no prompt change could ever
+close.
+
+The other shipped property is not a reading of R15 but a constraint on it: the
+classifier's answer is **scored and not consumed**. The gates keep reading each
+case's declared category, so a classifier flake cannot move decline accuracy.
+
 ### Non-goals
 
 - **A model judging answer quality.** Scoring the prose a customer reads needs a
@@ -146,6 +164,17 @@ tickets, messages, activity rows or outbound email created or modified by a run.
       count makes runs incomparable, which is why it was assumed fixed. Confirm.
 - [ ] **Assumed:** the nightly runs the frozen corpus only, and live-corpus runs
       are always started by hand. Confirm.
+- [ ] **A target for classifier accuracy, on no baseline whatever.**
+      `EVAL_THRESHOLD.classifierAccuracy` ships at **0.8** — chosen with margin,
+      not read off a measurement, because the metric arrived with the slice that
+      computes it. Weaker footing than decline accuracy's provisional 0.8, which
+      at least has two runs behind it. Two things make a high guess unwise: the
+      expectations are hand-written by the people who wrote the prompt, so a
+      miss is as likely to be a wrong expectation as a wrong answer (the PRD
+      already records `feature-suggestion` as exactly that on the other metric);
+      and six of the cases are adversarial payloads, several of which argue
+      about their own category on purpose. **Run the full set and set this from
+      the trend.**
 - [ ] **Assumed:** "at least 30 cases" (R2) is the bar, from the grilling's
       "30-40". Confirm nobody expects even coverage across the nine decline
       reasons — three of them (`noText`, `answered`, `category`) never reach the

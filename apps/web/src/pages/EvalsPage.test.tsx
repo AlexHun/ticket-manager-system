@@ -7,6 +7,7 @@ import {
   EVAL_RUN_STATUS,
   EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
+  TICKET_CATEGORY,
   USER_ROLE,
   type EvalCaseResultRow,
   type EvalMetric,
@@ -62,6 +63,10 @@ function makeResult(
     cachedRepeats: 4,
     caught: 0,
     escaped: 0,
+    expectedCategory: TICKET_CATEGORY.General,
+    classifiedRepeats: 5,
+    classifyMatches: 5,
+    filed: [{ category: TICKET_CATEGORY.General, count: 5, matched: true }],
     reached: [
       {
         outcome: PIPELINE_OUTCOME.declined,
@@ -111,6 +116,16 @@ function makeRun(overrides: Partial<EvalRunRow> = {}): EvalRunRow {
     caught: 0,
     escaped: 0,
     checks: [],
+    classifiedRepeats: 5,
+    classifyMatches: 5,
+    categories: [
+      {
+        expected: TICKET_CATEGORY.General,
+        actual: TICKET_CATEGORY.General,
+        count: 5,
+        matched: true,
+      },
+    ],
     metrics: [
       makeMetric(EVAL_METRIC.catchRate, {
         value: null,
@@ -118,6 +133,7 @@ function makeRun(overrides: Partial<EvalRunRow> = {}): EvalRunRow {
         denominator: 0,
       }),
       makeMetric(EVAL_METRIC.declineAccuracy),
+      makeMetric(EVAL_METRIC.classifierAccuracy),
     ],
     failing: false,
     results: [makeResult()],
@@ -162,7 +178,13 @@ describe("a finished run", () => {
   test("reports a rate per case rather than a pass", async () => {
     render();
 
-    expect(await screen.findByText("5/5")).toBeInTheDocument();
+    const row = (
+      await screen.findByText("Nothing in the corpus covers it")
+    ).closest("tr")!;
+    // Both of the row's rate cells since slice 4 — how often it landed where it
+    // said, and how often the classifier filed it where it said. Neither is a
+    // tick, which is the claim this test is making.
+    expect(within(row).getAllByText("5/5")).toHaveLength(2);
   });
 
   test("shows a split as a split, not as a failure", async () => {
@@ -478,5 +500,151 @@ describe("starting a run", () => {
       await screen.findByText("No AI provider is configured"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+  });
+});
+
+describe("classifier accuracy", () => {
+  test("is a third metric with a denominator of its own", async () => {
+    // R15. Three numbers, three different denominators, and the third one is
+    // repeats the classifier *answered* rather than repeats the run made —
+    // which is why the unit is on screen rather than left to be inferred.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.catchRate, {
+                value: null,
+                numerator: 0,
+                denominator: 0,
+              }),
+              makeMetric(EVAL_METRIC.declineAccuracy),
+              makeMetric(EVAL_METRIC.classifierAccuracy, {
+                value: 0.8,
+                numerator: 4,
+                denominator: 5,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    render();
+
+    expect(await screen.findByText("Classifier accuracy")).toBeInTheDocument();
+    expect(screen.getByText("80%")).toBeInTheDocument();
+    expect(screen.getByText(/4 of 5 repeats classified/)).toBeInTheDocument();
+  });
+
+  test("says which category was mistaken for which", async () => {
+    // The breakdown, and the pair is the point. "Refund → General" is the one
+    // line on this page that says the control between a refund request and an
+    // unattended reply has moved.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            categories: [
+              {
+                expected: TICKET_CATEGORY.Refund,
+                actual: TICKET_CATEGORY.General,
+                count: 3,
+                matched: false,
+              },
+              {
+                expected: TICKET_CATEGORY.Refund,
+                actual: TICKET_CATEGORY.Refund,
+                count: 2,
+                matched: true,
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    render();
+
+    const list = await screen.findByRole("list", {
+      name: "Cases filed under an unexpected category",
+    });
+    expect(within(list).getByText("Refund → General")).toBeInTheDocument();
+    // Only the disagreements. A pair that landed where it should has said so in
+    // the rate, and listing it here is how a breakdown stops being read.
+    expect(within(list).queryByText("Refund → Refund")).not.toBeInTheDocument();
+  });
+
+  test("draws no breakdown at all when everything landed where it should", async () => {
+    render();
+
+    await screen.findByText("Nothing in the corpus covers it");
+    expect(
+      screen.queryByRole("list", {
+        name: "Cases filed under an unexpected category",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("a case it cannot be scored on draws a dash, not a zero", async () => {
+    // `unclassified` and `no-inbound-message` are never asked. "0/0" in that
+    // cell would read as a measurement that came out badly.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            results: [
+              makeResult({
+                caseId: "unclassified",
+                caseName: "Classification never landed",
+                expectedCategory: null,
+                classifiedRepeats: 0,
+                classifyMatches: 0,
+                filed: [],
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    render();
+
+    const row = (
+      await screen.findByText("Classification never landed")
+    ).closest("tr")!;
+    expect(within(row).getByText("—")).toBeInTheDocument();
+    expect(within(row).queryByText("0/0")).not.toBeInTheDocument();
+  });
+
+  test("a case filed somewhere else shows the rate and where the rest went", async () => {
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            results: [
+              makeResult({
+                expectedCategory: TICKET_CATEGORY.Refund,
+                classifiedRepeats: 5,
+                classifyMatches: 3,
+                filed: [
+                  { category: TICKET_CATEGORY.Refund, count: 3, matched: true },
+                  {
+                    category: TICKET_CATEGORY.General,
+                    count: 2,
+                    matched: false,
+                  },
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+    render();
+
+    const row = (
+      await screen.findByText("Nothing in the corpus covers it")
+    ).closest("tr")!;
+    expect(within(row).getByText("3/5")).toBeInTheDocument();
+    expect(within(row).getByText("expected Refund")).toBeInTheDocument();
+    expect(within(row).getByText("General")).toBeInTheDocument();
   });
 });

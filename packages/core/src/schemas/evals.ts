@@ -45,8 +45,13 @@ export const autoReplyCaseSchema = z.object({
    * `/pipeline` does not read this. It posts the case through real ingestion and
    * lets the classifier and the thread decide, which is the point of having two
    * readers: `category` here is what the classifier is *expected* to say, so a
-   * pipeline run that lands somewhere else has found the disagreement. (Slice 4
-   * measures that expectation directly, as classifier accuracy.)
+   * pipeline run that lands somewhere else has found the disagreement. The
+   * harness now measures that expectation directly as well, as classifier
+   * accuracy (R15): it asks the classifier where this email belongs and scores
+   * the answer against this field — *without* feeding it to the gates, which
+   * keep reading the declared value, so the two metrics stay independent.
+   * `apps/api/src/evals/classify-case.ts` is where the two cases that cannot be
+   * scored are named and argued.
    *
    * Not every combination is something ingestion can produce — a ticket with no
    * inbound message is not, since a ticket is created *by* an inbound email — so

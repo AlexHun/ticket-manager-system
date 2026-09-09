@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import {
   asAutoReplyDecline,
+  asTicketCategory,
   EVAL_CORPUS,
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
@@ -11,7 +12,9 @@ import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
   type EvalCaseResultRow,
+  type EvalCategoryRow,
   type EvalCheckRow,
+  type EvalFiledRow,
   type EvalMetric,
   type EvalMetricRow,
   type EvalReachedRow,
@@ -19,6 +22,7 @@ import {
   type EvalRunsResponse,
   type EvalRunStartedResponse,
   type PipelineOutcome,
+  type TicketCategory,
 } from "@ticket/shared";
 import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
@@ -72,49 +76,65 @@ function asPipelineOutcome(value: unknown): PipelineOutcome {
 }
 
 /**
- * The five repeats, collapsed into the distinct places the case landed.
+ * A case's stored repeats, collapsed into distinct rows with counts.
  *
- * Five identical rows say one thing and take five lines to say it; the
- * interesting case is the one that went two different ways, and what a reader
- * needs then is *which* way and how often. Sorted by count, so the first entry
- * is what the case usually does.
+ * The shape both breakdowns on this page need, and the reason it is one
+ * function: "five repeats" is never what a reader wants to see. Five identical
+ * rows say one thing and take five lines to say it; the interesting case is the
+ * one that went two different ways, and what is wanted then is *which* way and
+ * how often. Sorted by count, so the first entry is what the case usually does.
  *
- * Reads the stored `verdicts` array defensively — it is `Json`, so Postgres
- * makes no promise about its shape, and a row written by an older build (or by
- * the backfill in this slice's migration) is a shape this code did not write.
- * Anything unreadable becomes `notOffered`, the same way an unknown decline
- * becomes null, rather than throwing on a page whose whole job is to say what
- * happened.
+ * `rowOf` decides what a repeat counts as: a key to group on and the row to
+ * carry, or `null` to leave the repeat out of the tally entirely. `count` is
+ * added here rather than by the caller, which is what stops the two callers
+ * disagreeing about whether a skipped repeat is a zero or an absence.
+ *
+ * Every caller reads the stored `verdicts` array **defensively**, and that is
+ * not optional: it is `Json`, so Postgres makes no promise about its shape, and
+ * rows written by older builds are shapes this code did not write — a run from
+ * before slice 4 carries no `category` on any repeat. Narrowing belongs in
+ * `rowOf`, where each caller can say what an unreadable value means to it.
  */
-function reachedFrom(verdicts: unknown): EvalReachedRow[] {
-  const rows = new Map<string, EvalReachedRow>();
+function tally<T>(
+  verdicts: unknown,
+  rowOf: (verdict: Record<string, unknown>) => { key: string; row: T } | null,
+): (T & { count: number })[] {
+  const rows = new Map<string, T & { count: number }>();
 
   for (const entry of Array.isArray(verdicts) ? verdicts : []) {
-    const verdict = entry as {
-      outcome?: unknown;
-      decline?: unknown;
-      matched?: unknown;
-    };
-    const outcome = asPipelineOutcome(verdict.outcome);
-    const decline = asAutoReplyDecline(
-      typeof verdict.decline === "string" ? verdict.decline : null,
-    );
-    const key = `${outcome}:${decline ?? ""}`;
+    const made = rowOf(entry as Record<string, unknown>);
+    if (made === null) continue;
 
-    const existing = rows.get(key);
+    const existing = rows.get(made.key);
     if (existing) {
       existing.count += 1;
       continue;
     }
-    rows.set(key, {
-      outcome,
-      decline,
-      count: 1,
-      matched: verdict.matched === true,
-    });
+    rows.set(made.key, { ...made.row, count: 1 });
   }
 
   return [...rows.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
+ * The distinct places a case landed, and how often.
+ *
+ * An outcome this build has no wording for becomes `notOffered`, the same way
+ * an unknown decline becomes null, rather than throwing on a page whose whole
+ * job is to say what happened.
+ */
+function reachedFrom(verdicts: unknown): EvalReachedRow[] {
+  return tally(verdicts, (verdict) => {
+    const outcome = asPipelineOutcome(verdict.outcome);
+    const decline = asAutoReplyDecline(
+      typeof verdict.decline === "string" ? verdict.decline : null,
+    );
+
+    return {
+      key: `${outcome}:${decline ?? ""}`,
+      row: { outcome, decline, matched: verdict.matched === true },
+    };
+  });
 }
 
 /**
@@ -169,6 +189,84 @@ function thresholdsFrom(value: unknown): Record<string, number> {
       (entry): entry is [string, number] => typeof entry[1] === "number",
     ),
   );
+}
+
+/**
+ * Where one case's repeats were actually filed, counted (R15).
+ *
+ * Read out of the stored `verdicts` for the same reason `reachedFrom` is:
+ * "4 of 5 as expected" is the rate, and *which* category the fifth one went to
+ * is the finding. Sorted by count, so the first entry is what the classifier
+ * usually does with this email.
+ *
+ * A repeat with no category was one the classifier could not answer, or one on
+ * a case it is not scored against; it appears here as a null so a reader can
+ * see the denominator shrink rather than wonder why five repeats add to three.
+ * `matched` is read from the row's own expectation rather than recomputed
+ * against the case set, which is the whole point of denormalising it.
+ */
+function filedFrom(
+  verdicts: unknown,
+  expected: TicketCategory | null,
+): EvalFiledRow[] {
+  return tally(verdicts, (verdict) => {
+    const category = asTicketCategory(verdict.category);
+    // Nothing was asked, so there is nothing to report — the `null` return is
+    // what keeps the repeat out of the tally rather than counting it as a
+    // filing of nowhere. Distinct from a null *answer*, which is a repeat the
+    // provider could not answer and is worth showing; the two are
+    // indistinguishable on the row, so the honest reading is the quieter one: a
+    // case with no expectation reports no filings at all.
+    if (category === null && expected === null) return null;
+
+    return {
+      key: category ?? "",
+      row: {
+        category,
+        matched: category !== null && category === expected,
+      },
+    };
+  });
+}
+
+/**
+ * What was filed where across a whole run, most frequent first (R15).
+ *
+ * A pair — expected and actual — rather than a tally of categories, because the
+ * useful question about a classifier is never "how many Generals" but **which
+ * category is being mistaken for which**. On this desk that is not academic:
+ * the category gate is the only control between a refund request and an
+ * unattended reply, so "Refund → General ×4" is the single most alarming line
+ * this page can draw, and a bare per-category count could not draw it.
+ *
+ * Built from the per-case rows so it never disagrees with them.
+ */
+function categoriesFrom(
+  results: { expectedCategory: string | null; verdicts: unknown }[],
+): EvalCategoryRow[] {
+  const rows = new Map<string, EvalCategoryRow>();
+
+  for (const result of results) {
+    const expected = asTicketCategory(result.expectedCategory);
+    if (expected === null) continue;
+
+    for (const filed of filedFrom(result.verdicts, expected)) {
+      const key = `${expected}:${filed.category ?? ""}`;
+      const existing = rows.get(key);
+      if (existing) {
+        existing.count += filed.count;
+        continue;
+      }
+      rows.set(key, {
+        expected,
+        actual: filed.category,
+        count: filed.count,
+        matched: filed.matched,
+      });
+    }
+  }
+
+  return [...rows.values()].sort((a, b) => b.count - a.count);
 }
 
 /**
@@ -313,6 +411,17 @@ evalsRouter.get(
                   run.attempts,
                   thresholds,
                 ),
+                // Last, and over its own denominator: `classifiedRepeats` is
+                // the classifier answered, which is neither `attempts` nor the
+                // case count. A run from before this metric existed has both
+                // halves at zero and reports no accuracy rather than a zero —
+                // `metricRow` is what makes that the honest reading.
+                metricRow(
+                  EVAL_METRIC.classifierAccuracy,
+                  run.classifyMatches,
+                  run.classifiedRepeats,
+                  thresholds,
+                ),
               ]
             : [];
 
@@ -340,6 +449,9 @@ evalsRouter.get(
           caught: run.caught,
           escaped: run.escaped,
           checks: checksFrom(run.results),
+          classifiedRepeats: run.classifiedRepeats,
+          classifyMatches: run.classifyMatches,
+          categories: categoriesFrom(run.results),
           metrics,
           // Marked failing, shown failing, and nothing else happens (R8, R11):
           // no issue, no notification, and nothing that could turn a pull request
@@ -360,6 +472,13 @@ evalsRouter.get(
             cachedRepeats: result.cachedRepeats,
             caught: result.caught,
             escaped: result.escaped,
+            expectedCategory: asTicketCategory(result.expectedCategory),
+            classifiedRepeats: result.classifiedRepeats,
+            classifyMatches: result.classifyMatches,
+            filed: filedFrom(
+              result.verdicts,
+              asTicketCategory(result.expectedCategory),
+            ),
             reached: reachedFrom(result.verdicts),
           })),
         };

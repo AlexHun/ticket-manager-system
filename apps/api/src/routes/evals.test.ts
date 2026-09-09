@@ -28,12 +28,14 @@ import {
   EVAL_METRIC,
   EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
+  TICKET_CATEGORY,
   type EvalCorpus,
   type EvalMetric,
   type EvalMetricRow,
   type EvalRunStatus,
   type EvalRunsResponse,
   type EvalRunStartedResponse,
+  type TicketCategory,
 } from "@ticket/shared";
 import { AUTO_REPLY_CASES } from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
@@ -243,6 +245,52 @@ function caseResult(overrides: Record<string, unknown> = {}) {
     })),
     ...overrides,
   };
+}
+
+/**
+ * A finished run whose classifier filed things where this test says.
+ *
+ * One case, one expectation, and a list of what the repeats were actually filed
+ * as — `null` standing for a repeat the classifier could not answer. The run's
+ * two totals are derived from that list rather than stated beside it, because a
+ * row whose totals disagreed with its own verdicts is a state the worker cannot
+ * produce and a test asserting against one would be asserting about nothing.
+ */
+async function classifiedRun(
+  expectedCategory: TicketCategory | null,
+  filed: (TicketCategory | null)[],
+) {
+  const classifiedRepeats = filed.filter((c) => c !== null).length;
+  const classifyMatches = filed.filter((c) => c === expectedCategory).length;
+
+  return prisma.evalRun.create({
+    data: {
+      corpus: EVAL_CORPUS.frozen,
+      status: EVAL_RUN_STATUS.completed,
+      finishedAt: new Date(),
+      repeats: filed.length,
+      attempts: filed.length,
+      matches: filed.length,
+      thresholds: EVAL_THRESHOLD,
+      classifiedRepeats,
+      classifyMatches,
+      results: {
+        create: caseResult({
+          repeats: filed.length,
+          matches: filed.length,
+          expectedCategory,
+          classifiedRepeats,
+          classifyMatches,
+          verdicts: filed.map((category) => ({
+            outcome: PIPELINE_OUTCOME.declined,
+            decline: "notCovered",
+            matched: true,
+            category,
+          })),
+        }),
+      },
+    },
+  });
 }
 
 /**
@@ -472,6 +520,92 @@ describe("GET /runs", () => {
     expect(metricOf(await runs(), EVAL_METRIC.catchRate).threshold).toBe(
       EVAL_THRESHOLD[EVAL_METRIC.catchRate],
     );
+  });
+
+  test("reports classifier accuracy over the repeats it answered", async () => {
+    // R15. Four of five filed as expected, and the denominator is the repeats
+    // the classifier answered rather than the repeats the run made.
+    await classifiedRun(TICKET_CATEGORY.General, [
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.Other,
+    ]);
+
+    const metric = metricOf(await runs(), EVAL_METRIC.classifierAccuracy);
+
+    expect(metric.numerator).toBe(4);
+    expect(metric.denominator).toBe(5);
+    expect(metric.value).toBeCloseTo(0.8, 6);
+  });
+
+  test("leaves a repeat the classifier could not answer out of the rate entirely", async () => {
+    // An outage is not the model getting things wrong. Two of two, not two of
+    // three — the same split `abandoned` draws on the other metric.
+    await classifiedRun(TICKET_CATEGORY.General, [
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      null,
+    ]);
+
+    const metric = metricOf(await runs(), EVAL_METRIC.classifierAccuracy);
+
+    expect(metric.numerator).toBe(2);
+    expect(metric.denominator).toBe(2);
+  });
+
+  test("reports no classifier accuracy at all on a run that predates it", async () => {
+    // Every row written before this slice: both halves zero. Null rather than a
+    // zero, which would draw a catastrophe on a run that never asked.
+    await finishedRun({ caught: 0, escaped: 0 });
+
+    const metric = metricOf(await runs(), EVAL_METRIC.classifierAccuracy);
+
+    expect(metric.value).toBeNull();
+    expect(metric.meets).toBe(true);
+  });
+
+  test("says what was filed where, expected category and all", async () => {
+    // The pair, not a tally of categories. "Refund → General" is the line worth
+    // drawing on this desk, because the category gate is the only control
+    // between a refund request and an unattended reply — and a per-category
+    // count could not draw it.
+    await classifiedRun(TICKET_CATEGORY.Refund, [
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.Refund,
+    ]);
+
+    const body = await runs();
+
+    expect(body.runs[0]?.categories).toEqual([
+      {
+        expected: TICKET_CATEGORY.Refund,
+        actual: TICKET_CATEGORY.General,
+        count: 2,
+        matched: false,
+      },
+      {
+        expected: TICKET_CATEGORY.Refund,
+        actual: TICKET_CATEGORY.Refund,
+        count: 1,
+        matched: true,
+      },
+    ]);
+  });
+
+  test("leaves a case the classifier is not scored on out of the breakdown", async () => {
+    // `expectedCategory` is null on the two cases that cannot be scored, and on
+    // every row written before the column existed. Neither has a filing to
+    // report, and inventing one would claim a measurement nobody made.
+    await classifiedRun(null, [null, null]);
+
+    const body = await runs();
+
+    expect(body.runs[0]?.categories).toEqual([]);
+    expect(body.runs[0]?.results[0]?.filed).toEqual([]);
+    expect(body.runs[0]?.results[0]?.expectedCategory).toBeNull();
   });
 
   test("says which check caught each payload", async () => {

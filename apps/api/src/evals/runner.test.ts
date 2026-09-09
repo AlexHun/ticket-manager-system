@@ -24,9 +24,15 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   PIPELINE_OUTCOME,
+  TICKET_CATEGORY,
   type AutoReplyDecline,
+  type TicketCategory,
 } from "@ticket/shared";
-import { autoReplyCaseById, AUTO_REPLY_CASES } from "@ticket/core";
+import {
+  autoReplyCaseById,
+  AUTO_REPLY_CASES,
+  type AutoReplyCase,
+} from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
 import type { AiUsage } from "../ai/provider";
 import type { KbArticle } from "../ai/knowledge-base";
@@ -82,6 +88,41 @@ mock.module("../ai/auto-reply", () => ({
   },
 }));
 
+/* ── The classifier, on a seam of its own ────────────────────────────────── */
+
+/**
+ * `./classify-case` rather than `../ai/classify`, and that is the whole reason
+ * that module exists as a module. `jobs/activity-before-publish.test.ts`
+ * already registers a factory on `../ai/classify` — one that answers
+ * `Technical` and nothing else — and `mock.module`'s registry is one process
+ * wide, so a second, scripted factory on that specifier would leave one of the
+ * two files running against the other's stub (`testing.md`). This specifier is
+ * owned by nothing else.
+ *
+ * `isClassifiable` is deliberately **not** replaced: which cases can honestly
+ * be scored is the rule under test, not a fixture.
+ */
+let classifyScript: (TicketCategory | null)[] = [];
+let classifyCalls = 0;
+let classifyUsd = 0;
+
+const classifyActual = await import("./classify-case");
+
+mock.module("./classify-case", () => ({
+  ...classifyActual,
+  classifyCase: async (evalCase: AutoReplyCase) => {
+    if (!classifyActual.isClassifiable(evalCase)) {
+      return { category: null, usd: 0 };
+    }
+    const answer =
+      classifyScript.length === 0
+        ? evalCase.preflight.category
+        : classifyScript[Math.min(classifyCalls, classifyScript.length - 1)]!;
+    classifyCalls += 1;
+    return { category: answer, usd: classifyUsd };
+  },
+}));
+
 const { answerCase, runCase, EVAL_REPEATS } = await import("./runner");
 
 const CORPUS: KbArticle[] = [
@@ -98,6 +139,9 @@ beforeEach(async () => {
   lastCall = undefined;
   calls = 0;
   script = [DECLINED];
+  classifyScript = [];
+  classifyCalls = 0;
+  classifyUsd = 0;
 });
 
 /* ── What the model is asked ─────────────────────────────────────────────── */
@@ -394,11 +438,31 @@ describe("runCase", () => {
     expect(outcome.cachedRepeats).toBe(4);
   });
 
-  test("a gated case costs no model calls at all", async () => {
+  test("a gated case asks no model to write a reply", async () => {
+    // It is no longer *free*, and that changed in slice 4 on purpose: a gated
+    // case is still classified, because the gate's whole job is to read what the
+    // classifier said and a harness that skipped it here would be measuring the
+    // classifier only where its answer does not matter. What the gate still
+    // buys is the expensive call — the corpus never reaches a prompt.
+    classifyUsd = 0.0002;
+
     const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
 
     expect(calls).toBe(0);
     expect(outcome.matches).toBe(5);
+    expect(outcome.usd).toBeCloseTo(0.001, 10);
+  });
+
+  test("a case the classifier cannot be scored on costs nothing at all", async () => {
+    classifyUsd = 0.0002;
+
+    const outcome = await runCase(
+      CORPUS,
+      autoReplyCaseById("no-inbound-message")!,
+    );
+
+    expect(calls).toBe(0);
+    expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.usd).toBe(0);
   });
 });
@@ -630,4 +694,86 @@ test("answering every case writes nothing a customer or agent would see", async 
   expect(await prisma.message.count()).toBe(0);
   expect(await prisma.ticketActivity.count()).toBe(0);
   expect(await prisma.outboundEmail.count()).toBe(0);
+});
+
+/* ── R15: the third metric, and the one that is not about the auto-reply ─── */
+
+describe("the classifier", () => {
+  test("is asked for every repeat, and its answer is on the verdict", async () => {
+    classifyScript = [TICKET_CATEGORY.General];
+
+    const verdict = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
+
+    expect(classifyCalls).toBe(1);
+    expect(verdict.category).toBe(TICKET_CATEGORY.General);
+    expect(verdict.classifyMatched).toBe(true);
+  });
+
+  test("filing a case somewhere else is a miss on that metric and nothing else", async () => {
+    // The point of measuring this separately. `refund` is declined by the
+    // category gate whatever the classifier says, because the gate reads the
+    // case's *declared* preflight — so decline accuracy is a clean 5/5 while
+    // the classifier is 0/5. Two numbers, two findings; one blended score
+    // would have shown neither.
+    classifyScript = [TICKET_CATEGORY.General];
+
+    const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
+
+    expect(outcome.matches).toBe(5);
+    expect(outcome.classifiedRepeats).toBe(5);
+    expect(outcome.classifyMatches).toBe(0);
+    expect(outcome.verdicts[0]!.category).toBe(TICKET_CATEGORY.General);
+  });
+
+  test("is never asked about a case it cannot be scored on", async () => {
+    // `unclassified` expects classification to have *failed*. There is no right
+    // answer, so there is no call and no denominator.
+    const outcome = await runCase(CORPUS, autoReplyCaseById("unclassified")!);
+
+    expect(classifyCalls).toBe(0);
+    expect(outcome.classifiedRepeats).toBe(0);
+    expect(outcome.classifyMatches).toBe(0);
+    expect(outcome.verdicts.every((v) => v.category === null)).toBe(true);
+  });
+
+  test("a repeat it could not answer shrinks the denominator, never the numerator", async () => {
+    // An outage is not the model getting things wrong. Two answers, then the
+    // provider stops answering: 2 of 2, not 2 of 5.
+    classifyScript = [
+      TICKET_CATEGORY.General,
+      TICKET_CATEGORY.General,
+      null,
+      null,
+      null,
+    ];
+
+    const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
+
+    expect(outcome.classifiedRepeats).toBe(2);
+    expect(outcome.classifyMatches).toBe(2);
+  });
+
+  test("costs are added to what the case spent, not reported apart from it", async () => {
+    // R10 stays one number: an admin reading "what did this run cost" wants
+    // everything the run spent, and the classifier's calls are now most of a
+    // gated case's bill.
+    classifyUsd = 0.0002;
+    script = [{ ok: true, reply: "Here you go.", articleIds: ["KB-001"] }];
+
+    const verdict = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
+
+    expect(verdict.usd).toBeCloseTo(0.0002, 10);
+  });
+
+  test("does not disturb what the auto-reply is asked", async () => {
+    // The prompt-cache rule (see the runner's header): repeats of a case have to
+    // reach `autoReply` with an identical prefix. Interleaving a second call
+    // with a different system prompt is fine — the provider's cache is keyed on
+    // the prefix, not on what the last request was — but the corpus and context
+    // handed over must not move.
+    await runCase(CORPUS, autoReplyCaseById("off-corpus")!, 2);
+
+    expect(calls).toBe(2);
+    expect(lastCall?.articles).toBe(CORPUS);
+  });
 });
