@@ -25,7 +25,25 @@
 
 import { describe, expect, spyOn, test } from "bun:test";
 import type { LanguageModelUsage } from "ai";
-import { logUsage, toAiUsage, usdFor, type AiUsage } from "./provider";
+import type { AiUsage } from "./provider";
+
+/**
+ * Set before `./provider` is imported below, and the import is dynamic for that
+ * reason rather than for the mock-registration one `testing.md` gives.
+ *
+ * `provider.ts` reads `OPENAI_API_KEY` into a module-level `const` at import,
+ * and bun evaluates a module once for the whole process — so whichever test file
+ * pulls it in first decides what `isAiConfigured()` answers for every file after
+ * it. Nothing here needs a key; a *static* import from this file still linked
+ * `./provider` during the load phase, ahead of `polish.test.ts` setting its own,
+ * and left `isPolishConfigured()` false in a file that never mentions this one.
+ * It passed on Windows and failed on `ubuntu-latest`, which is the file-order
+ * difference `testing.md` warns about wearing different clothes: the hazard is
+ * not only `mock.module`, it is anything a module captures at import.
+ */
+process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+
+const { logUsage, toAiUsage, usdFor } = await import("./provider");
 
 /** What `@ai-sdk/openai` v4 actually hands back, via `convertOpenAIChatUsage`. */
 function sdkUsage(over: Partial<LanguageModelUsage> = {}): LanguageModelUsage {
