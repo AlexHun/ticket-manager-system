@@ -600,6 +600,8 @@ export async function summarizeTicket(
     // actually happened and matches what a truncated answer means everywhere
     // else in this app.
     if (NoObjectGeneratedError.isInstance(err)) {
+      // It still cost what it cost — see the same branch in `classify.ts`.
+      logUsage("summarize", SUMMARY_MODEL, toAiUsage(err.usage));
       return { ok: false, reason: AI_FAILURE.empty };
     }
 

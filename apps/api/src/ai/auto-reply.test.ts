@@ -951,7 +951,29 @@ describe("autoReply — declining and failing", () => {
       ok: false,
       reason: AUTO_REPLY_FAILURE.empty,
       decline: AUTO_REPLY_DECLINE.unavailable,
+      usage: {
+        inputTokens: 4_000,
+        outputTokens: 0,
+        totalTokens: 4_000,
+        reasoningTokens: 0,
+        cachedInputTokens: 0,
+      },
     });
+  });
+
+  test("still counts what a call that produced nothing parseable cost", async () => {
+    // The most expensive way this can fail — `finishReason: "length"`, the whole
+    // output budget spent on reasoning with nothing to show for it — and the one
+    // failure the SDK hands back a usage report for. Dropping it made this the
+    // only path through the module that logged no `[ai]` line at all and
+    // recorded $0 against a call that burned four thousand input tokens, which
+    // is precisely the understatement the note above `let usage` warns about.
+    failWith(noObjectGenerated());
+
+    const result = await autoReply(ARTICLES, CONTEXT);
+
+    expect(result.usage?.inputTokens).toBe(4_000);
+    expect(logged()).toContain("[ai] feature=auto-reply");
   });
 
   test("keeps the reason a retry ladder needs and tells the agent one thing", async () => {

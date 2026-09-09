@@ -684,10 +684,19 @@ export async function autoReply(
     // not be asked — so they share one `decline` while keeping the `reason` that
     // decides whether a retry is coming.
     if (NoObjectGeneratedError.isInstance(err)) {
+      // The one fault that comes with a bill attached. This is the call whose
+      // output budget went entirely on reasoning — `finishReason: "length"` —
+      // so it is both the most expensive way to fail and the only one the SDK
+      // reports usage for. Logged and carried like any other call: a run that
+      // counted only the calls that came back would understate itself by
+      // exactly the failures it is most important to notice.
+      const failed = toAiUsage(err.usage);
+      logUsage("auto-reply", AUTO_REPLY_MODEL, failed);
       return {
         ok: false,
         reason: AI_FAILURE.empty,
         decline: AUTO_REPLY_DECLINE.unavailable,
+        usage: failed,
       };
     }
     return {
