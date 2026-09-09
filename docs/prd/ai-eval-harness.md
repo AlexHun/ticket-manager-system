@@ -61,6 +61,15 @@ tickets, messages, activity rows or outbound email created or modified by a run.
 | R14 | The screen shows how each metric moved against the previous run on the same corpus.                                                                                                  | Should   |
 | R15 | Classifier accuracy — the share of repeats filed under the expected category — is reported as an additional metric.                                                                  | Should   |
 
+Shipped R15 with two properties worth stating here rather than only in the
+plan. The classifier's answer is **scored and not consumed** — the gates keep
+reading each case's declared category — so a classifier flake cannot move
+decline accuracy. And the metric's denominator is repeats the classifier
+_answered_, on the 33 of 35 cases it can be scored against at all: two cases
+have no right answer (`unclassified` expects classification to have failed,
+`no-inbound-message` carries no message), and a repeat the provider could not
+answer shrinks the denominator rather than counting as a miss.
+
 ### Non-goals
 
 - **A model judging answer quality.** Scoring the prose a customer reads needs a
@@ -146,6 +155,17 @@ tickets, messages, activity rows or outbound email created or modified by a run.
       count makes runs incomparable, which is why it was assumed fixed. Confirm.
 - [ ] **Assumed:** the nightly runs the frozen corpus only, and live-corpus runs
       are always started by hand. Confirm.
+- [ ] **A target for classifier accuracy, on no baseline whatever.**
+      `EVAL_THRESHOLD.classifierAccuracy` ships at **0.8** — chosen with margin,
+      not read off a measurement, because the metric arrived with the slice that
+      computes it. Weaker footing than decline accuracy's provisional 0.8, which
+      at least has two runs behind it. Two things make a high guess unwise: the
+      expectations are hand-written by the people who wrote the prompt, so a
+      miss is as likely to be a wrong expectation as a wrong answer (the PRD
+      already records `feature-suggestion` as exactly that on the other metric);
+      and six of the cases are adversarial payloads, several of which argue
+      about their own category on purpose. **Run the full set and set this from
+      the trend.**
 - [ ] **Assumed:** "at least 30 cases" (R2) is the bar, from the grilling's
       "30-40". Confirm nobody expects even coverage across the nine decline
       reasons — three of them (`noText`, `answered`, `category`) never reach the

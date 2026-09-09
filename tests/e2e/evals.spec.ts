@@ -10,6 +10,7 @@ import {
   EVAL_RUN_STATUS,
   EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
+  TICKET_CATEGORY,
 } from "@ticket/shared";
 import { SMOKE_CASE_IDS } from "@ticket/core";
 import { CREDENTIALS, signIn } from "./helpers/auth";
@@ -243,6 +244,13 @@ test.describe("a run against the frozen corpus", () => {
     await ctx.dispose();
   });
 
+  /** Start a run on the AI-enabled server and hand back its id. */
+  async function start(data: Record<string, unknown>): Promise<number> {
+    const res = await ctx.post(`${AI_API_URL}/api/evals/runs`, { data });
+    expect(res.status()).toBe(202);
+    return ((await res.json()) as { runId: number }).runId;
+  }
+
   test("answers each case five times and records a rate, not a pass", async () => {
     const started = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
       data: { corpus: EVAL_CORPUS.frozen, caseIds: [...SMOKE_CASE_IDS] },
@@ -280,19 +288,60 @@ test.describe("a run against the frozen corpus", () => {
     expect(run.abandoned).toBe(0);
   });
 
-  test("a case decided by the gates costs no model call", async () => {
-    // `refund` never reaches the provider — `gateDecline` answers it from three
-    // values. That is what makes three of the nine decline reasons measurable at
-    // all, and a run that paid for them would be paying to re-derive a constant.
-    const started = await ctx.post(`${AI_API_URL}/api/evals/runs`, {
-      data: { caseIds: ["refund"] },
-    });
-    const { runId } = (await started.json()) as { runId: number };
+  test("a case decided by the gates pays for its classification and nothing else", async () => {
+    // `refund` never reaches the *auto-reply* — `gateDecline` answers it from
+    // three values, which is what makes three of the nine decline reasons
+    // measurable at all and what stops a run paying to re-derive a constant.
+    //
+    // Since slice 4 it is no longer free, deliberately: the gate reads what the
+    // classifier said, so this is the sharpest place to measure the classifier
+    // rather than one to skip. What that costs is exactly **one call a repeat
+    // instead of two**, and the stub reports the same usage on every call — so
+    // a gated case's bill is precisely half an ungated one's, and that is a
+    // fact about which calls were made rather than about any number's size.
+    const gated = await waitForRun(await start({ caseIds: ["refund"] }));
+    const full = await waitForRun(await start({ caseIds: ["off-corpus"] }));
 
-    const run = await waitForRun(runId);
+    expect(gated.results[0]!.matches).toBe(5);
+    expect(gated.results[0]!.expectedDecline).toBe("category");
+    expect(gated.usd).toBeGreaterThan(0);
+    expect(full.usd).toBeCloseTo(gated.usd * 2, 10);
+  });
 
-    expect(run.results[0]!.matches).toBe(5);
-    expect(run.results[0]!.expectedDecline).toBe("category");
+  test("scores the classifier beside the auto-reply, and apart from it", async () => {
+    // R15, and the reason it is a metric of its own. The stub files everything
+    // as General, so `refund` is misfiled every repeat — and its decline
+    // accuracy is still a clean 5 of 5, because the gates read the case's
+    // *declared* category rather than what the classifier just said. Two
+    // findings, two numbers; one blended score would have shown neither.
+    const run = await waitForRun(await start({ caseIds: [...SMOKE_CASE_IDS] }));
+
+    const refund = run.results.find((r) => r.caseId === "refund")!;
+    const offCorpus = run.results.find((r) => r.caseId === "off-corpus")!;
+
+    expect(refund.expectedCategory).toBe(TICKET_CATEGORY.Refund);
+    expect(refund.classified).toBe(5);
+    expect(refund.classifyMatches).toBe(0);
+    expect(refund.matches).toBe(5);
+
+    expect(offCorpus.expectedCategory).toBe(TICKET_CATEGORY.General);
+    expect(offCorpus.classifyMatches).toBe(5);
+
+    // And the run's own roll-up, which is the percentage the screen draws.
+    expect(run.classified).toBe(10);
+    expect(run.classifyMatches).toBe(5);
+  });
+
+  test("does not ask the classifier about a case it cannot score", async () => {
+    // `no-inbound-message` carries a placeholder body precisely because nothing
+    // reads it, and on the real path there is no ticket to classify at all. No
+    // expectation on the row, no call, no cost.
+    const run = await waitForRun(
+      await start({ caseIds: ["no-inbound-message"] }),
+    );
+
+    expect(run.results[0]!.expectedCategory).toBeNull();
+    expect(run.classified).toBe(0);
     expect(run.usd).toBe(0);
   });
 

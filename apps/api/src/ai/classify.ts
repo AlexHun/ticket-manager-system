@@ -9,6 +9,7 @@ import {
   openaiModel,
   toAiUsage,
   type AiFailure,
+  type AiUsage,
 } from "./provider";
 
 /**
@@ -105,8 +106,23 @@ export interface ClassifyContext {
   text: string | null;
 }
 
-export type ClassifyResult =
-  { ok: true; category: TicketCategory } | { ok: false; reason: AiFailure };
+/**
+ * What the classifier decided, and what the call cost.
+ *
+ * `usage` rides on both branches and is absent whenever no call reached the
+ * provider, exactly as `AutoReplyResult` carries it and for the same reason:
+ * `logUsage` prints the figure and throws it away, and an eval run has to be
+ * able to *record* what it spent (PRD R10). Optional rather than required
+ * because accounting is the provider's to report and not ours to demand — a
+ * call that came back fine but said nothing about tokens must not become a
+ * failed classification.
+ *
+ * `../jobs/classify-ticket.ts` ignores it, which is the right shape: nobody is
+ * billing off a ticket.
+ */
+export type ClassifyResult = { usage?: AiUsage } & (
+  { ok: true; category: TicketCategory } | { ok: false; reason: AiFailure }
+);
 
 /**
  * The shape the model must answer in.
@@ -264,9 +280,10 @@ export async function classifyTicket(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("classify", CLASSIFY_MODEL, toAiUsage(usage));
+    const aiUsage = toAiUsage(usage);
+    logUsage("classify", CLASSIFY_MODEL, aiUsage);
 
-    return { ok: true, category: output.category };
+    return { ok: true, category: output.category, usage: aiUsage };
   } catch (err) {
     // The real cause goes to the log and nowhere else — there is no client on
     // the other end of this to tell, which is exactly why it has to be logged
@@ -282,8 +299,11 @@ export async function classifyTicket(
       // It still cost what it cost. This is the one fault the SDK reports usage
       // for, and skipping the line would leave the most expensive way to fail as
       // the only call this module makes that no log line accounts for.
-      logUsage("classify", CLASSIFY_MODEL, toAiUsage(err.usage));
-      return { ok: false, reason: AI_FAILURE.empty };
+      const failed = toAiUsage(err.usage);
+      logUsage("classify", CLASSIFY_MODEL, failed);
+      // Carried, not only logged: an eval run that priced only its successes
+      // would understate itself by the most expensive way this call can fail.
+      return { ok: false, reason: AI_FAILURE.empty, usage: failed };
     }
 
     return { ok: false, reason: classifyFailure(err) };

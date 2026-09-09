@@ -2,6 +2,7 @@ import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
   type PipelineOutcome,
+  type TicketCategory,
 } from "@ticket/shared";
 import type { AutoReplyCase } from "@ticket/core";
 import { autoReply, type AutoReplyResult } from "../ai/auto-reply";
@@ -9,6 +10,7 @@ import { gateDecline } from "../ai/auto-reply-gates";
 import type { KbArticle } from "../ai/knowledge-base";
 import { usdFor } from "../ai/provider";
 import { isRetryable } from "../jobs/ai-retry";
+import { classifyCase, isClassifiable } from "./classify-case";
 
 /**
  * Answering one case five times, and deciding how often it landed where it said
@@ -48,6 +50,24 @@ import { isRetryable } from "../jobs/ai-retry";
  * cache is *observable*: `cachedRepeats` below counts them, and a run reporting
  * zero on a full set is that regression, showing up on a screen for the first
  * time.
+ *
+ * ## Two measurements per repeat, and why they do not talk to each other
+ *
+ * A repeat asks the classifier where the email belongs (R15) and then asks the
+ * gates and the auto-reply what to do about it. The second **does not read the
+ * first**: `gateDecline` is handed the case's *declared* `preflight.category`,
+ * exactly as it was before this existed. That is deliberate, and it is the whole
+ * reason the two numbers are worth having side by side. Chaining them would mean
+ * a classifier flake moved decline accuracy, so a red board would no longer say
+ * which of the two models had drifted — and `refund` misfiled as General would
+ * read as a decline-accuracy miss rather than as what it is: the one control
+ * standing between a refund request and an unattended reply having failed.
+ *
+ * The cost of measuring it is a call on every classifiable repeat, **including
+ * the three gated cases the classifier can be scored on**, which used to be
+ * free. `isClassifiable` in `./classify-case` carries that argument. Interleaving a second prompt does
+ * not disturb the auto-reply's cache: the provider keys its cache on the prefix,
+ * not on what the previous request was.
  */
 
 /** What one answer to one case was, and what it cost. */
@@ -80,6 +100,23 @@ export interface EvalVerdict {
    * `payloadMarkers`. False on every non-adversarial case.
    */
   escaped: boolean;
+  /**
+   * Where the classifier filed this email, or null when it was not asked or
+   * could not answer (R15).
+   *
+   * Null on both, and the two are not told apart on the verdict because nothing
+   * downstream treats them differently: neither is on either side of the rate.
+   * What distinguishes them is the case — `isClassifiable` in
+   * `./classify-case` says which cases are ever asked at all.
+   */
+  category: TicketCategory | null;
+  /**
+   * Whether that is the category the case expected.
+   *
+   * False whenever `category` is null, so it can never be a numerator with no
+   * denominator behind it.
+   */
+  classifyMatched: boolean;
 }
 
 /** What a case did over all of its repeats. */
@@ -122,6 +159,18 @@ export interface EvalCaseOutcome {
    */
   caught: number;
   escaped: number;
+  /**
+   * Repeats the classifier answered, and how many of those it filed where the
+   * case said (R15).
+   *
+   * `classified` is the denominator, and it is neither `repeats` nor a
+   * constant: a case the classifier is not scored against contributes zero of
+   * zero, and a repeat the provider could not answer is left out rather than
+   * counted as a miss — the same split `abandoned` draws on the other half, for
+   * the same reason.
+   */
+  classified: number;
+  classifyMatches: number;
 }
 
 /**
@@ -248,6 +297,16 @@ export async function answerCase(
   evalCase: AutoReplyCase,
   signal?: AbortSignal,
 ): Promise<EvalVerdict> {
+  // First, as it is first on the real path: an email is classified on arrival
+  // and the gates read the result. What is measured here is only whether the
+  // classifier agreed with the case — the gates below are handed the case's own
+  // declared category regardless, which is what keeps the two metrics
+  // independent. See the header.
+  const classified = await classifyCase(evalCase, signal);
+  const classifyMatched =
+    classified.category !== null &&
+    classified.category === evalCase.preflight.category;
+
   const gated = gateDecline({
     category: evalCase.preflight.category,
     hasOutbound: evalCase.preflight.answered,
@@ -262,13 +321,17 @@ export async function answerCase(
       outcome: PIPELINE_OUTCOME.declined,
       decline: gated,
       matched: matches(evalCase, PIPELINE_OUTCOME.declined, gated),
-      // Free, and honestly so: no provider was asked.
-      usd: 0,
+      // No reply was drafted, so the expensive call was never made — but the
+      // classification above was, and a run that dropped its cost here would
+      // under-report what it spent by five calls on every gated case.
+      usd: classified.usd,
       cached: false,
       // A gate answers from three values, before any prompt is built. Nothing
       // was drafted, so nothing was caught and nothing got out.
       caught: false,
       escaped: false,
+      category: classified.category,
+      classifyMatched,
     };
   }
 
@@ -299,8 +362,9 @@ export async function answerCase(
     // Counted on every verdict, not only the answers. A reply thrown out by
     // check 5 cost exactly what one that was sent would have, and a run that
     // priced only its successes would understate itself by however often the
-    // safety checks fired — which is most of the time, by design.
-    usd: usdFor(result.usage),
+    // safety checks fired — which is most of the time, by design. The
+    // classifier's call is in here too: one figure for what the repeat spent.
+    usd: usdFor(result.usage) + classified.usd,
     cached: (result.usage?.cachedInputTokens ?? 0) > 0,
     // Both are about the payloads and only the payloads (R9). An ordinary case
     // declined by the money check is a decline-accuracy miss worth reading, but
@@ -321,6 +385,8 @@ export async function answerCase(
       evalCase.adversarial &&
       result.ok &&
       payloadIn(evalCase, result.reply, articles),
+    category: classified.category,
+    classifyMatched,
   };
 }
 
@@ -360,5 +426,24 @@ export async function runCase(
     cachedRepeats: verdicts.slice(1).filter((v) => v.cached).length,
     caught: verdicts.filter((v) => v.caught).length,
     escaped: verdicts.filter((v) => v.escaped).length,
+    // A repeat with no category was either never asked or could not be
+    // answered. Neither is a miss, so neither is in the denominator.
+    classified: verdicts.filter((v) => v.category !== null).length,
+    classifyMatches: verdicts.filter((v) => v.classifyMatched).length,
   };
+}
+
+/**
+ * The category this case's classification is scored against, or null when it is
+ * not scored at all.
+ *
+ * Lives here rather than being inlined at the one call site because
+ * `../jobs/eval-run.ts` denormalises it onto the stored row, and a row reading
+ * "expected General, classified 0 of 0" would be carrying an expectation
+ * nothing was ever measured against.
+ */
+export function expectedCategoryOf(
+  evalCase: AutoReplyCase,
+): TicketCategory | null {
+  return isClassifiable(evalCase) ? evalCase.preflight.category : null;
 }

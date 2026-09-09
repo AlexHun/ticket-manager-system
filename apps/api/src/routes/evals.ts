@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import {
   asAutoReplyDecline,
+  asTicketCategory,
   EVAL_CORPUS,
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
@@ -11,7 +12,9 @@ import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
   type EvalCaseResultRow,
+  type EvalCategoryRow,
   type EvalCheckRow,
+  type EvalFiledRow,
   type EvalMetric,
   type EvalMetricRow,
   type EvalReachedRow,
@@ -19,6 +22,7 @@ import {
   type EvalRunsResponse,
   type EvalRunStartedResponse,
   type PipelineOutcome,
+  type TicketCategory,
 } from "@ticket/shared";
 import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
@@ -172,6 +176,91 @@ function thresholdsFrom(value: unknown): Record<string, number> {
 }
 
 /**
+ * Where one case's repeats were actually filed, counted (R15).
+ *
+ * Read out of the stored `verdicts` for the same reason `reachedFrom` is:
+ * "4 of 5 as expected" is the rate, and *which* category the fifth one went to
+ * is the finding. Sorted by count, so the first entry is what the classifier
+ * usually does with this email.
+ *
+ * A repeat with no category was one the classifier could not answer, or one on
+ * a case it is not scored against; it appears here as a null so a reader can
+ * see the denominator shrink rather than wonder why five repeats add to three.
+ * `matched` is read from the row's own expectation rather than recomputed
+ * against the case set, which is the whole point of denormalising it.
+ */
+function filedFrom(
+  verdicts: unknown,
+  expected: TicketCategory | null,
+): EvalFiledRow[] {
+  const rows = new Map<string, EvalFiledRow>();
+
+  for (const entry of Array.isArray(verdicts) ? verdicts : []) {
+    const verdict = entry as { category?: unknown };
+    const category = asTicketCategory(verdict.category);
+    // Nothing was asked, so there is nothing to report. Distinct from a null
+    // *answer*, which is a repeat the provider could not answer and is worth
+    // showing — but the two are indistinguishable on the row, so the honest
+    // reading is the quieter one: a case with no expectation reports no filings.
+    if (category === null && expected === null) continue;
+
+    const key = category ?? "";
+    const existing = rows.get(key);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    rows.set(key, {
+      category,
+      count: 1,
+      matched: category !== null && category === expected,
+    });
+  }
+
+  return [...rows.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
+ * What was filed where across a whole run, most frequent first (R15).
+ *
+ * A pair — expected and actual — rather than a tally of categories, because the
+ * useful question about a classifier is never "how many Generals" but **which
+ * category is being mistaken for which**. On this desk that is not academic:
+ * the category gate is the only control between a refund request and an
+ * unattended reply, so "Refund → General ×4" is the single most alarming line
+ * this page can draw, and a bare per-category count could not draw it.
+ *
+ * Built from the per-case rows so it never disagrees with them.
+ */
+function categoriesFrom(
+  results: { expectedCategory: string | null; verdicts: unknown }[],
+): EvalCategoryRow[] {
+  const rows = new Map<string, EvalCategoryRow>();
+
+  for (const result of results) {
+    const expected = asTicketCategory(result.expectedCategory);
+    if (expected === null) continue;
+
+    for (const filed of filedFrom(result.verdicts, expected)) {
+      const key = `${expected}:${filed.category ?? ""}`;
+      const existing = rows.get(key);
+      if (existing) {
+        existing.count += filed.count;
+        continue;
+      }
+      rows.set(key, {
+        expected,
+        actual: filed.category,
+        count: filed.count,
+        matched: filed.matched,
+      });
+    }
+  }
+
+  return [...rows.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
  * Which of the two output checks caught each payload, most frequent first (R9).
  *
  * Read out of the stored `verdicts` rather than off a column, because it is the
@@ -313,6 +402,17 @@ evalsRouter.get(
                   run.attempts,
                   thresholds,
                 ),
+                // Last, and over its own denominator: `classified` is repeats
+                // the classifier answered, which is neither `attempts` nor the
+                // case count. A run from before this metric existed has both
+                // halves at zero and reports no accuracy rather than a zero —
+                // `metricRow` is what makes that the honest reading.
+                metricRow(
+                  EVAL_METRIC.classifierAccuracy,
+                  run.classifyMatches,
+                  run.classified,
+                  thresholds,
+                ),
               ]
             : [];
 
@@ -340,6 +440,9 @@ evalsRouter.get(
           caught: run.caught,
           escaped: run.escaped,
           checks: checksFrom(run.results),
+          classified: run.classified,
+          classifyMatches: run.classifyMatches,
+          categories: categoriesFrom(run.results),
           metrics,
           // Marked failing, shown failing, and nothing else happens (R8, R11):
           // no issue, no notification, and nothing that could turn a pull request
@@ -360,6 +463,13 @@ evalsRouter.get(
             cachedRepeats: result.cachedRepeats,
             caught: result.caught,
             escaped: result.escaped,
+            expectedCategory: asTicketCategory(result.expectedCategory),
+            classified: result.classified,
+            classifyMatches: result.classifyMatches,
+            filed: filedFrom(
+              result.verdicts,
+              asTicketCategory(result.expectedCategory),
+            ),
             reached: reachedFrom(result.verdicts),
           })),
         };

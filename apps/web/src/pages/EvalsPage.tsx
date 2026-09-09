@@ -8,7 +8,9 @@ import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
   type EvalCaseResultRow,
+  type EvalCategoryRow,
   type EvalCorpus,
+  type EvalFiledRow,
   type EvalMetric,
   type EvalMetricRow,
   type EvalReachedRow,
@@ -16,6 +18,7 @@ import {
   type EvalRunStartedResponse,
   type EvalRunsResponse,
   type PipelineOutcome,
+  type TicketCategory,
 } from "@ticket/shared";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -83,21 +86,38 @@ const CORPUS_LABEL: Record<EvalCorpus, string> = {
 const METRIC_LABEL: Record<EvalMetric, string> = {
   [EVAL_METRIC.catchRate]: "Safety catch rate",
   [EVAL_METRIC.declineAccuracy]: "Decline accuracy",
+  [EVAL_METRIC.classifierAccuracy]: "Classifier accuracy",
 };
 
 /**
  * What the number underneath a metric counts, in words.
  *
- * The denominators are different in kind and that is worth spelling out rather
- * than printing two bare fractions. Decline accuracy is taken over every repeat
- * in the run; the catch rate is taken only over the repeats where the model
- * actually planted the payload — which is usually a handful, and reading it as
- * though it were out of 175 would make a 3-of-4 look like a rounding error.
+ * The denominators are different in kind, all three of them, and that is worth
+ * spelling out rather than printing three bare fractions. Decline accuracy is
+ * taken over every repeat in the run; the catch rate only over the repeats where
+ * the model actually planted the payload — usually a handful, and reading it as
+ * though it were out of 175 would make a 3-of-4 look like a rounding error; and
+ * classifier accuracy over the repeats the classifier answered, on the cases it
+ * can be scored against at all.
  */
 const METRIC_UNIT: Record<EvalMetric, string> = {
   [EVAL_METRIC.catchRate]: "payloads attempted",
   [EVAL_METRIC.declineAccuracy]: "repeats",
+  // A third denominator, different again: repeats the classifier *answered*, on
+  // the cases it can be scored against at all. Two of the cases cannot be — one
+  // expects classification to have failed, the other carries no message to read
+  // — so this is never the run's repeat count and printing it as a bare
+  // percentage would invite reading it as one.
+  [EVAL_METRIC.classifierAccuracy]: "repeats classified",
 };
+
+/** The one place a filed-nowhere repeat is given a word. */
+const UNCLASSIFIED = "Unclassified";
+
+/** A category, or the word for a repeat the classifier could not answer. */
+function categoryLabel(category: TicketCategory | null): string {
+  return category ?? UNCLASSIFIED;
+}
 
 /**
  * An outcome with its reason, the way a result row reads it.
@@ -214,6 +234,52 @@ function Reached({ reached }: { reached: EvalReachedRow[] }) {
   );
 }
 
+/**
+ * Where the classifier put this case's repeats (R15).
+ *
+ * A rate and the categories behind it, for the reason every other cell on this
+ * row is a rate: "4/5" is the number a threshold reads and "the fifth went to
+ * Other" is the thing somebody would act on. A case the classifier is not
+ * scored against draws a dash rather than a zero — there is no measurement, and
+ * "0/0" invites reading one.
+ */
+function Filed({ result }: { result: EvalCaseResultRow }) {
+  if (result.expectedCategory === null) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  return (
+    <>
+      <span
+        className={cn(
+          "tabular-nums",
+          result.classifyMatches === result.classified
+            ? "text-foreground"
+            : "text-muted-foreground",
+        )}
+      >
+        {result.classifyMatches}/{result.classified}
+      </span>
+      <div className="text-xs text-muted-foreground">
+        expected {result.expectedCategory}
+      </div>
+      {/* Only the ones that went somewhere else. A case filed as expected every
+          time has said so in the rate above, and repeating it here would bury
+          the rows that did not under the rows that did. */}
+      <ul className="mt-0.5 space-y-0.5 text-xs">
+        {result.filed
+          .filter((row: EvalFiledRow) => !row.matched)
+          .map((row) => (
+            <li key={row.category ?? ""} className="flex gap-1.5">
+              <span className="tabular-nums">{row.count}×</span>
+              <span>{categoryLabel(row.category)}</span>
+            </li>
+          ))}
+      </ul>
+    </>
+  );
+}
+
 function ResultRow({ result }: { result: EvalCaseResultRow }) {
   const clean = result.matches === result.repeats;
 
@@ -269,6 +335,9 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
           </div>
         )}
       </td>
+      <td className="px-3 py-2 align-top">
+        <Filed result={result} />
+      </td>
     </tr>
   );
 }
@@ -276,6 +345,12 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
 function RunCard({ run }: { run: EvalRunRow }) {
   const running = run.status === EVAL_RUN_STATUS.running;
   const answered = run.results.reduce((n, r) => n + r.repeats, 0);
+  // Only the pairs that disagree. A run where everything landed where it should
+  // has said so in the rate, and listing the matches beside the misses is how a
+  // breakdown stops being read at all.
+  const misfilings = run.categories.filter(
+    (row: EvalCategoryRow) => !row.matched,
+  );
 
   return (
     <Card>
@@ -334,8 +409,13 @@ function RunCard({ run }: { run: EvalRunRow }) {
         {/* Only once the run has closed. A percentage taken over the third of
             the set that has finished is not a smaller version of the answer,
             it is a different number, and drawing one invites reading it. */}
+        {/* Three across and two rows deep, not six across. The sixth figure
+            arrived with classifier accuracy, and at six columns inside a
+            max-w-5xl card every label wraps to two lines and every detail to
+            three — a row of numbers nobody can scan is worse than a second row
+            of numbers they can. */}
         {!running && (
-          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
             {run.metrics.map((metric) => (
               <MetricCell key={metric.metric} row={metric} />
             ))}
@@ -390,6 +470,44 @@ function RunCard({ run }: { run: EvalRunRow }) {
           </div>
         )}
 
+        {/* R15's second half, and the reason classifier accuracy is not one
+            number either. A rate says how often the classifier agreed; this
+            says *which* category is being mistaken for which — and on this desk
+            that is not academic, because the category gate is the only control
+            standing between a refund request and an unattended reply.
+
+            A repeat the classifier could not answer shows up here as
+            "→ Unclassified". It is outside the rate above, deliberately — an
+            outage is not the model getting things wrong — but it is worth
+            drawing, because the rate alone cannot say *which* cases went
+            unanswered. */}
+        {!running && misfilings.length > 0 && (
+          <div className="mb-4 text-sm">
+            <span className="text-muted-foreground">Filed elsewhere:</span>{" "}
+            {/* Named, for the reason the check breakdown is: the same four
+                words label a category in the table below, so a locator that
+                only knew the wording would be pointing at two claims. */}
+            <ul
+              aria-label="Cases filed under an unexpected category"
+              className="mt-1 flex flex-wrap gap-x-4 gap-y-1"
+            >
+              {misfilings.map((row) => (
+                <li
+                  key={`${row.expected}:${row.actual ?? ""}`}
+                  className="flex gap-2"
+                >
+                  <span>
+                    {row.expected} → {categoryLabel(row.actual)}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    ×{row.count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {run.results.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {running
@@ -418,6 +536,14 @@ function RunCard({ run }: { run: EvalRunRow }) {
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
                       As expected
+                    </th>
+                    {/* Last, and set apart on purpose: the three columns to its
+                        left are the auto-reply, this one is the classifier —
+                        a different model answering a different question, which
+                        is why it is a metric of its own rather than a column
+                        blended into the rate beside it. */}
+                    <th scope="col" className="px-3 py-2 font-medium">
+                      Filed
                     </th>
                   </tr>
                 </thead>

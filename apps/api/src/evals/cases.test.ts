@@ -16,6 +16,7 @@ import {
   AUTO_REPLY_DECLINE,
   isOutputCheckDecline,
   PIPELINE_OUTCOME,
+  TICKET_CATEGORY,
   type AutoReplyDecline,
 } from "@ticket/shared";
 import {
@@ -26,6 +27,7 @@ import {
   autoReplyCaseById,
 } from "@ticket/core";
 import { gateDecline } from "../ai/auto-reply-gates";
+import { isClassifiable } from "./classify-case";
 import { frozenCorpus } from "./frozen-corpus";
 
 /* ── R2, as a measurement rather than a claim ────────────────────────────── */
@@ -82,6 +84,34 @@ describe("the set covers what the PRD asked for", () => {
         `${evalCase.id} expects ${evalCase.expected.decline}`,
       ).not.toContain(evalCase.expected.decline);
     }
+  });
+});
+
+/* ── R15: what the classifier can be measured on ─────────────────────────── */
+
+describe("the categories the classifier is scored against", () => {
+  test("cover all four, so no category is measured only by its absence", () => {
+    // A classifier accuracy taken over three categories would be silent about
+    // the fourth — and the fourth is the one that matters most here, because
+    // `Other` is where a model puts everything it finds hard and `Refund` is
+    // what the category gate is guarding. A missing category shows up as a
+    // number that never moves rather than as a gap.
+    const expected = new Set(
+      AUTO_REPLY_CASES.filter(isClassifiable).map((c) => c.preflight.category),
+    );
+
+    expect([...expected].sort()).toEqual(Object.values(TICKET_CATEGORY).sort());
+  });
+
+  test("leave out exactly the two cases that have no right answer", () => {
+    // `unclassified` expects classification to have *failed*, and
+    // `no-inbound-message` carries a placeholder body precisely because nothing
+    // reads it. Scoring either would be scoring the harness's own fiction.
+    const excluded = AUTO_REPLY_CASES.filter((c) => !isClassifiable(c)).map(
+      (c) => c.id,
+    );
+
+    expect(excluded.sort()).toEqual(["no-inbound-message", "unclassified"]);
   });
 });
 
