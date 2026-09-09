@@ -178,5 +178,10 @@
     "version": "0.1.79",
     "date": "2026-09-09",
     "title": "Set the key before provider.test.ts links the provider"
+  },
+  {
+    "version": "0.1.80",
+    "date": "2026-09-09",
+    "title": "Classifier accuracy, scored and not consumed"
   }
 ]
