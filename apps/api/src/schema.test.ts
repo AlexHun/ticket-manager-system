@@ -21,7 +21,11 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { KNOWLEDGE_REVISION_ACTION, TICKET_CATEGORY } from "@ticket/shared";
+import {
+  EVAL_COUNTERS,
+  KNOWLEDGE_REVISION_ACTION,
+  TICKET_CATEGORY,
+} from "@ticket/shared";
 import { prisma, resetDb } from "./test/pg";
 import { COLLEAGUE, seedColleagues } from "./test/fixtures";
 
@@ -119,5 +123,74 @@ describe("KnowledgeArticleRevision.article", () => {
       editorName: COLLEAGUE.admin.name,
       editorEmail: COLLEAGUE.admin.email,
     });
+  });
+});
+
+describe("the eval counter set", () => {
+  /**
+   * The declaration in `@ticket/shared` and the two eval tables agree.
+   *
+   * `EVAL_COUNTERS` is where the harness's per-case counters are named once, so
+   * the outcome interface, the case-result write, the run aggregate and the run
+   * update all derive from it instead of restating it. The Prisma schema is its
+   * own language and cannot derive from a TypeScript declaration, which leaves
+   * exactly one gap the compiler cannot close: a counter declared with no
+   * column behind it, or a column added without being declared.
+   *
+   * Both directions are asserted, and the second is the one worth having. A
+   * counter with no column fails loudly the first time a run writes; a *column*
+   * nobody declared is silent — it stays zero for every run, and a metric taken
+   * over it reads as a measurement rather than as an absence.
+   */
+  const numericColumns = async (table: string): Promise<string[]> => {
+    const rows = await prisma.$queryRaw<{ column_name: string }[]>`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = ${table}
+        AND data_type IN ('integer', 'double precision')
+      ORDER BY column_name
+    `;
+
+    return rows.map((row) => row.column_name);
+  };
+
+  test("every declared counter has a column on eval_case_result", async () => {
+    const columns = new Set(await numericColumns("eval_case_result"));
+
+    const undeclared = Object.keys(EVAL_COUNTERS).filter(
+      (counter) => !columns.has(counter),
+    );
+
+    expect(undeclared).toEqual([]);
+  });
+
+  test("every declared counter has a column on eval_run", async () => {
+    const columns = new Set(await numericColumns("eval_run"));
+
+    const undeclared = Object.values(EVAL_COUNTERS).filter(
+      (column) => !columns.has(column),
+    );
+
+    expect(undeclared).toEqual([]);
+  });
+
+  test("no counter column on either table is undeclared", async () => {
+    // The numeric columns that are not counters, named rather than inferred,
+    // and the two tables do not exclude the same things. `repeats` is a
+    // counter on a case result - how many times that case was answered - and
+    // on a run it is the setting the run was started with, stamped so an old
+    // row still says what its rates are over. It is summed from nothing.
+    const notCaseCounters = new Set(["id", "runId"]);
+    const notRunCounters = new Set(["id", "repeats"]);
+
+    const caseColumns = (await numericColumns("eval_case_result")).filter(
+      (column) => !notCaseCounters.has(column),
+    );
+    const runColumns = (await numericColumns("eval_run")).filter(
+      (column) => !notRunCounters.has(column),
+    );
+
+    expect(caseColumns).toEqual([...Object.keys(EVAL_COUNTERS)].sort());
+    expect(runColumns).toEqual([...Object.values(EVAL_COUNTERS)].sort());
   });
 });

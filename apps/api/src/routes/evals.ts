@@ -20,6 +20,7 @@ import {
   type EvalMetricRow,
   type EvalPreviousMetric,
   type EvalReachedRow,
+  type EvalRunCounters,
   type EvalRunRow,
   type EvalRunsResponse,
   type EvalRunStatus,
@@ -147,15 +148,22 @@ function reachedFrom(verdicts: unknown): EvalReachedRow[] {
  * it: the page of runs, which selects everything, and the narrow lookup for the
  * run before it (`COMPARISON_COLUMNS`), which selects eight columns and none of
  * the results.
+ *
+ * A `Pick` over the run-level counters rather than six restated fields, so a
+ * counter renamed in `EVAL_COUNTERS` fails here rather than resolving to a
+ * column that no longer exists. `COMPARISON_COLUMNS` needs no such treatment —
+ * its rows are read as `PriorRun`, so a column dropped from that select is
+ * already a compile error.
  */
-interface MetricCounts {
-  caught: number;
-  escaped: number;
-  matches: number;
-  attempts: number;
-  classifyMatches: number;
-  classifiedRepeats: number;
-}
+type MetricCounts = Pick<
+  EvalRunCounters,
+  | "caught"
+  | "escaped"
+  | "matches"
+  | "attempts"
+  | "classifyMatches"
+  | "classifiedRepeats"
+>;
 
 /** A run reduced to what the run after it needs in order to say what moved. */
 interface PriorRun extends MetricCounts {

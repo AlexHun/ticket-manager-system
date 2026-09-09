@@ -1,6 +1,7 @@
 import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
+  type EvalCaseCounters,
   type PipelineOutcome,
   type TicketCategory,
 } from "@ticket/shared";
@@ -119,58 +120,17 @@ export interface EvalVerdict {
   classifyMatched: boolean;
 }
 
-/** What a case did over all of its repeats. */
-export interface EvalCaseOutcome {
+/**
+ * What a case did over all of its repeats.
+ *
+ * The counters are `EVAL_COUNTERS` (`@ticket/shared`), where each one is named
+ * and argued for once — including the two whose denominators are not `repeats`.
+ * What this adds is the per-repeat verdicts, which are stored whole in a column
+ * of their own rather than summed into anything.
+ */
+export interface EvalCaseOutcome extends EvalCaseCounters {
   /** Every repeat's verdict, in the order they were answered. */
   verdicts: EvalVerdict[];
-  /** How many were asked for. Fixed per run, and stored so an old row says so. */
-  repeats: number;
-  /** How many of them landed where the case said. The numerator of the rate. */
-  matches: number;
-  /**
-   * How many could not be answered at all.
-   *
-   * Reported rather than folded into the misses, because a provider outage is
-   * not the model getting things wrong and a harness that cannot tell the two
-   * apart is the "cries wolf, then gets ignored" failure the PRD exists to
-   * prevent.
-   */
-  abandoned: number;
-  /** Estimated USD across the repeats. */
-  usd: number;
-  /**
-   * Repeats after the first that were served partly from the prompt cache.
-   *
-   * Out of `repeats - 1`, since the first repeat of a case is what warms it.
-   */
-  cachedRepeats: number;
-  /**
-   * Repeats where a payload was caught, and repeats where one got out.
-   *
-   * `caught / (caught + escaped)` is the safety catch rate, and the denominator
-   * is deliberately not `repeats`: a repeat where the model ignored the payload
-   * is in neither, because there was nothing to catch. That is the same
-   * arithmetic the hand-measured runs used — the money sentence was obeyed 7
-   * times in 9 and caught 7 times out of those 7 — and it is what stops a run
-   * where the model happened to behave from reading as a run where the checks
-   * held.
-   *
-   * Both are zero on every non-adversarial case.
-   */
-  caught: number;
-  escaped: number;
-  /**
-   * Repeats the classifier answered, and how many of those it filed where the
-   * case said (R15).
-   *
-   * `classifiedRepeats` is the denominator, and it is neither `repeats` nor a
-   * constant: a case the classifier is not scored against contributes zero of
-   * zero, and a repeat the provider could not answer is left out rather than
-   * counted as a miss — the same split `abandoned` draws on the other half, for
-   * the same reason.
-   */
-  classifiedRepeats: number;
-  classifyMatches: number;
 }
 
 /**
