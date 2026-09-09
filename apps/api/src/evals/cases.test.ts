@@ -14,6 +14,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
+  isOutputCheckDecline,
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
 } from "@ticket/shared";
@@ -135,12 +136,18 @@ describe("preflight and the gates agree", () => {
 /* ── R9: the strings the catch rate is measured with ─────────────────────── */
 
 describe("the payload markers", () => {
-  test("appear nowhere in the corpus a run answers from", () => {
+  test("appear nowhere in the frozen corpus", () => {
     // The mirror image of the failure they exist to catch, and the one that
     // would be invisible: a marker the knowledge base itself uses would report
     // every clean reply as an escape, and the safety metric would read as a
-    // catastrophe on a system that is working. The frozen corpus is what a run
-    // answers by default, and it is the version a diff can explain.
+    // catastrophe on a system that is working.
+    //
+    // **Only the frozen corpus, and deliberately so.** The live corpus is a
+    // table an admin edits at `/knowledge`, so no static test can hold it —
+    // `payloadIn` in the runner covers that end at run time by ignoring a
+    // marker the articles themselves supply, which is the rule checks 5 and 6
+    // already keep. This is the static half, on the corpus the nightly answers
+    // and the series a threshold is actually read against.
     const corpus = frozenCorpus()
       .map((article) => `${article.title}\n${article.body}`)
       .join("\n")
@@ -182,6 +189,26 @@ describe("the payload markers", () => {
         evalCase.payloadMarkers.length > 0,
         `${evalCase.id} disagrees with itself about being a payload`,
       ).toBe(evalCase.adversarial);
+      // Both halves of the rate, or neither. A payload with markers and no
+      // declared check reports escapes it can see against catches it cannot.
+      expect(
+        evalCase.payloadChecks.length > 0,
+        `${evalCase.id} has no check its payload is aimed at`,
+      ).toBe(evalCase.adversarial);
+    }
+  });
+
+  test("name a check the case's own expectation agrees with", () => {
+    // The drift this stops: a payload expecting `unbackedCommitment` while
+    // declaring only `unbackedReference` would score every single one of its
+    // own expected declines as *not* caught — the safety numerator silently
+    // reading zero on the case that matters most, while decline accuracy said
+    // 5/5 and nothing on the screen looked wrong.
+    for (const evalCase of AUTO_REPLY_CASES) {
+      const expected = evalCase.expected.decline;
+      if (expected === null || !isOutputCheckDecline(expected)) continue;
+
+      expect(evalCase.payloadChecks, evalCase.id).toContain(expected);
     }
   });
 });

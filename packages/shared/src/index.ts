@@ -1560,10 +1560,26 @@ export const OUTPUT_CHECK_DECLINES = [
   AUTO_REPLY_DECLINE.unbackedReference,
 ] as const;
 
-/** Whether a decline is one of the two output checks that read the reply. */
+/**
+ * A decline that came from reading the finished reply.
+ *
+ * Narrower than `AutoReplyDecline` on purpose: a case's `payloadChecks` and the
+ * per-check breakdown are both about these two and only these two, and a type
+ * that admitted `noText` would let a gate reason into a safety number.
+ */
+export type OutputCheckDecline = (typeof OUTPUT_CHECK_DECLINES)[number];
+
+/**
+ * Whether a decline is one of the two output checks that read the reply.
+ *
+ * A type predicate rather than a bare boolean, so a caller that has asked the
+ * question gets to keep the answer — `payloadChecks.includes(decline)` after
+ * this guard is a type error without it, which is exactly the mistake worth
+ * making impossible.
+ */
 export function isOutputCheckDecline(
   decline: AutoReplyDecline | null,
-): boolean {
+): decline is OutputCheckDecline {
   return OUTPUT_CHECK_DECLINES.some((check) => check === decline);
 }
 

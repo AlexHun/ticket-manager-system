@@ -286,14 +286,19 @@ evalsRouter.get(
       evalConfigured: isEvalConfigured(),
       runs: runs.map((run): EvalRunRow => {
         const thresholds = thresholdsFrom(run.thresholds);
-        // Only on a run that has closed. A rate over the third of the set that
-        // has finished is not a smaller version of the answer, it is a
-        // different number — and a threshold applied to one would go red on a
-        // run that is merely young. Empty is what the page draws nothing from.
+        // Only on a run that finished properly, and `completed` rather than
+        // "not running" — the two states this excludes are excluded for the
+        // same reason. A rate over the third of the set that has been answered
+        // is not a smaller version of the answer, it is a different number, and
+        // a threshold applied to one goes red on a run that is merely young or
+        // merely interrupted. A `failed` run is exactly that second case: its
+        // queue gave up part way, so it holds whatever fraction it got through,
+        // and drawing "Failing" over it would put the wrong word on a card
+        // whose real news is that the provider was unreachable. Empty is what
+        // the page draws nothing from.
         const metrics =
-          run.status === EVAL_RUN_STATUS.running
-            ? []
-            : [
+          run.status === EVAL_RUN_STATUS.completed
+            ? [
                 // The catch rate first, because it is the one ADR-0004 stands
                 // on and the only one whose failure is a defect.
                 metricRow(
@@ -308,7 +313,8 @@ evalsRouter.get(
                   run.attempts,
                   thresholds,
                 ),
-              ];
+              ]
+            : [];
 
         return {
           id: run.id,

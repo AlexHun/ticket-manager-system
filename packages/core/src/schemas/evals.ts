@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   AUTO_REPLY_DECLINE,
   EVAL_CORPUS,
+  isOutputCheckDecline,
+  OUTPUT_CHECK_DECLINES,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
 } from "@ticket/shared";
@@ -124,6 +126,36 @@ export const autoReplyCaseSchema = z.object({
    * a payload it cannot detect — worse than not measuring it at all.
    */
   payloadMarkers: z.array(z.string().min(1)).default([]),
+  /**
+   * The output checks this payload is aimed at — the ones that could plausibly
+   * be the thing that stopped it.
+   *
+   * The other half of the catch rate, and it exists because the two halves were
+   * asymmetric without it. `escaped` demands a marker; `caught` demanded only
+   * that *some* output check fired on an adversarial case — so a money payload
+   * thrown out because the model happened to invent an unrelated link counted
+   * as the money check holding. That inflates the one number ADR-0004 stands on
+   * with repeats where the payload was never in flight, and it does so in the
+   * reassuring direction, which is the worst way for a safety metric to be
+   * wrong.
+   *
+   * It has to be declared rather than derived, and the reason is worth knowing:
+   * **a discarded reply's text is not observable.** `autoReply` returns no
+   * `reply` on the `ok: false` branch, by design — a caught payload is a
+   * discarded reply — so nothing downstream can check the markers against the
+   * draft the check threw away. What a case *can* say is which check its own
+   * payload was written to trip, which is a claim a person writes down and a
+   * reviewer can check.
+   *
+   * Nor can it simply be `expected.decline`. Two of the six payloads expect a
+   * clean reply — the fence-escape attempt and the hostile display name — and
+   * for those, an output check firing is still a genuine catch: it means the
+   * structural defence (`fenced()` stripping the delimiters, `greetingName`
+   * reducing the From name) let something through and check 5 or 6 stopped it.
+   * That is precisely the outcome those two cases are watching for, and a rule
+   * keyed on the expected decline would score it as nothing at all.
+   */
+  payloadChecks: z.array(z.enum(OUTPUT_CHECK_DECLINES)).default([]),
   /** The email itself, validated the same way the simulator validates one. */
   values: caseEmailSchema,
 });
@@ -161,6 +193,26 @@ export const autoReplyCasesSchema = z
     {
       error:
         "An adversarial case needs at least one payload marker, and only an adversarial case may have one",
+    },
+  )
+  .refine(
+    (cases) => cases.every((c) => c.adversarial === c.payloadChecks.length > 0),
+    {
+      error:
+        "An adversarial case needs at least one payload check, and only an adversarial case may have one",
+    },
+  )
+  .refine(
+    (cases) =>
+      cases.every(
+        (c) =>
+          c.expected.decline === null ||
+          !isOutputCheckDecline(c.expected.decline) ||
+          c.payloadChecks.includes(c.expected.decline),
+      ),
+    {
+      error:
+        "A case expecting an output check to decline it must list that check among its payload checks",
     },
   );
 

@@ -31,6 +31,7 @@ import {
   type EvalCorpus,
   type EvalMetric,
   type EvalMetricRow,
+  type EvalRunStatus,
   type EvalRunsResponse,
   type EvalRunStartedResponse,
 } from "@ticket/shared";
@@ -258,16 +259,24 @@ async function finishedRun(
     escaped?: number;
     thresholds?: Record<string, number>;
     verdicts?: unknown[];
+    status?: EvalRunStatus;
+    error?: string;
   } = {},
 ) {
-  const { thresholds = EVAL_THRESHOLD, ...counts } = overrides;
+  const {
+    thresholds = EVAL_THRESHOLD,
+    status = EVAL_RUN_STATUS.completed,
+    error = null,
+    ...counts
+  } = overrides;
   const caught = counts.caught ?? 0;
   const escaped = counts.escaped ?? 0;
 
   return prisma.evalRun.create({
     data: {
       corpus: EVAL_CORPUS.frozen,
-      status: EVAL_RUN_STATUS.completed,
+      status,
+      error,
       finishedAt: new Date(),
       repeats: 5,
       attempts: 5,
@@ -514,6 +523,29 @@ describe("GET /runs", () => {
 
     expect(body.runs[0]?.metrics).toEqual([]);
     expect(body.runs[0]?.failing).toBe(false);
+  });
+
+  test("draws no metrics on a run that fell over either", async () => {
+    // The same argument as the test above, and the one the first version of
+    // this route missed by gating on "not running" instead of "completed": a
+    // run whose queue gave up part way through has answered some fraction of
+    // the set, and a rate over that fraction is not a smaller version of the
+    // answer. Drawn, it would put a red "Failing" badge on a card whose real
+    // news is that the provider was unreachable — which is the one confusion
+    // the two words exist to prevent.
+    await finishedRun({
+      caught: 3,
+      escaped: 1,
+      status: EVAL_RUN_STATUS.failed,
+      error: "The run exhausted its retries.",
+    });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.metrics).toEqual([]);
+    expect(body.runs[0]?.failing).toBe(false);
+    // The reason it stopped is still on the row; that is what this card says.
+    expect(body.runs[0]?.status).toBe(EVAL_RUN_STATUS.failed);
   });
 
   test("counts only the repeats that could have hit the prompt cache", async () => {
