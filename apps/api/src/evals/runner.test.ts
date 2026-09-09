@@ -44,6 +44,25 @@ const DECLINED: AutoReplyOutcome = {
   decline: AUTO_REPLY_DECLINE.notCovered,
 };
 
+/**
+ * A usage report naming only the counts a test is about.
+ *
+ * `AiUsage`'s fields are required-and-nullable rather than optional, on purpose
+ * — that is what makes a mapper unable to drop one silently (see
+ * `ai/provider.test.ts`). The cost of that is here: a fixture has to say what it
+ * is not measuring, so it says it once.
+ */
+function usage(over: Partial<AiUsage>): AiUsage {
+  return {
+    inputTokens: undefined,
+    outputTokens: undefined,
+    totalTokens: undefined,
+    reasoningTokens: undefined,
+    cachedInputTokens: undefined,
+    ...over,
+  };
+}
+
 /** Answers, in order. The last one is repeated once the list runs out. */
 let script: AutoReplyOutcome[] = [DECLINED];
 let calls = 0;
@@ -224,7 +243,11 @@ describe("cost", () => {
     script = [
       {
         ...DECLINED,
-        usage: { inputTokens: 1_000, outputTokens: 500, cachedInputTokens: 0 },
+        usage: usage({
+          inputTokens: 1_000,
+          outputTokens: 500,
+          cachedInputTokens: 0,
+        }),
       },
     ];
 
@@ -242,7 +265,7 @@ describe("cost", () => {
         ok: false,
         reason: "ungrounded",
         decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-        usage: { inputTokens: 1_000, outputTokens: 0 },
+        usage: usage({ inputTokens: 1_000, outputTokens: 0 }),
       },
     ];
 
@@ -346,7 +369,9 @@ describe("runCase", () => {
   });
 
   test("adds up what the repeats cost", async () => {
-    script = [{ ...DECLINED, usage: { inputTokens: 1_000, outputTokens: 0 } }];
+    script = [
+      { ...DECLINED, usage: usage({ inputTokens: 1_000, outputTokens: 0 }) },
+    ];
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -358,7 +383,10 @@ describe("runCase", () => {
     // 20% cached forever, which is exactly the sort of number that stops
     // anybody looking at it.
     script = [
-      { ...DECLINED, usage: { inputTokens: 1_000, cachedInputTokens: 900 } },
+      {
+        ...DECLINED,
+        usage: usage({ inputTokens: 1_000, cachedInputTokens: 900 }),
+      },
     ];
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);

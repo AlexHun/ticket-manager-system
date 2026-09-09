@@ -15,6 +15,7 @@ import {
   isAiConfigured,
   logUsage,
   openaiModel,
+  toAiUsage,
   withoutDashes,
   type AiFailure,
 } from "./provider";
@@ -579,7 +580,7 @@ export async function summarizeTicket(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("summarize", SUMMARY_MODEL, usage);
+    logUsage("summarize", SUMMARY_MODEL, toAiUsage(usage));
 
     const summary = tidy(output);
     if (!summary) return { ok: false, reason: AI_FAILURE.empty };

@@ -6,6 +6,7 @@ import {
   isAiConfigured,
   logUsage,
   openaiModel,
+  toAiUsage,
   unbackedCommitments,
   withoutDashes,
 } from "./provider";
@@ -296,7 +297,7 @@ export async function polishDraft(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("polish", POLISH_MODEL, usage);
+    logUsage("polish", POLISH_MODEL, toAiUsage(usage));
 
     const polished = withoutDashes(
       (CODE_FENCE.exec(text.trim())?.[1] ?? text).trim(),

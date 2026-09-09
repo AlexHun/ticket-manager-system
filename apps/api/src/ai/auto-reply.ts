@@ -12,6 +12,7 @@ import {
   fenced,
   logUsage,
   openaiModel,
+  toAiUsage,
   unbackedCommitments,
   withoutDashes,
   type AiUsage,
@@ -673,8 +674,9 @@ export async function autoReply(
       // No `temperature`: `openai(id)` resolves to the Responses API, which
       // rejects it on reasoning models.
     });
-    logUsage("auto-reply", AUTO_REPLY_MODEL, generated.usage);
-    usage = generated.usage;
+    const aiUsage = toAiUsage(generated.usage);
+    logUsage("auto-reply", AUTO_REPLY_MODEL, aiUsage);
+    usage = aiUsage;
     output = generated.output;
   } catch (err) {
     console.error("[auto-reply] generateText failed:", err);

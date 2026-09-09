@@ -7,6 +7,7 @@ import {
   fenced,
   logUsage,
   openaiModel,
+  toAiUsage,
   type AiFailure,
 } from "./provider";
 
@@ -263,7 +264,7 @@ export async function classifyTicket(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("classify", CLASSIFY_MODEL, usage);
+    logUsage("classify", CLASSIFY_MODEL, toAiUsage(usage));
 
     return { ok: true, category: output.category };
   } catch (err) {
