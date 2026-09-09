@@ -183,5 +183,10 @@
     "version": "0.1.80",
     "date": "2026-09-09",
     "title": "Classifier accuracy, scored and not consumed"
+  },
+  {
+    "version": "0.1.81",
+    "date": "2026-09-09",
+    "title": "Enable github plugin in settings.json"
   }
 ]
