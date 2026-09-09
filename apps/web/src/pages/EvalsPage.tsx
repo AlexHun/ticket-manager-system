@@ -12,8 +12,8 @@ import {
   type EvalCorpus,
   type EvalFiledRow,
   type EvalMetric,
-  type EvalMetricDelta,
   type EvalMetricRow,
+  type EvalPreviousMetric,
   type EvalReachedRow,
   type EvalRunRow,
   type EvalRunStartedResponse,
@@ -136,10 +136,23 @@ function verdict(
   return decline ? `${label} — ${DECLINE_SHORT[decline]}` : label;
 }
 
+/**
+ * A rate as the whole number this page prints for it.
+ *
+ * The single rounding rule, and it is a function rather than an inline
+ * `Math.round` at each site for one reason: the delta beneath a metric is a
+ * subtraction between two of these, and a second rounding rule would let the
+ * caption disagree with the figures above it — 89.6% and 84.4% draw as "90%"
+ * and "84%", six points apart on screen and five in the raw fractions.
+ */
+function points(value: number): number {
+  return Math.round(value * 100);
+}
+
 /** A share, as a whole-number percentage. Nothing here deserves a decimal. */
 function percent(numerator: number, denominator: number): string {
   if (denominator === 0) return "—";
-  return `${Math.round((numerator / denominator) * 100)}%`;
+  return `${points(numerator / denominator)}%`;
 }
 
 /**
@@ -151,16 +164,34 @@ function percent(numerator: number, denominator: number): string {
  * whole purpose of this line is somebody deciding whether a prompt edit made
  * things worse.
  *
+ * **The difference is between the two figures as drawn**, not between the rates
+ * behind them, so "unchanged" is a claim about what is on screen rather than an
+ * assertion about hidden decimals, and no caption can ever contradict the number
+ * it sits under.
+ *
  * Terse on purpose: the card says which run this is against and when it ran,
- * once, so three tiles do not have to repeat it. `null` is its own sentence
- * rather than a zero — see `EvalMetricDelta`.
+ * once, so three tiles do not have to repeat it. An unmeasured side is its own
+ * sentence rather than a zero — see `EvalPreviousMetric`.
  */
-function deltaLabel(previous: EvalMetricDelta): string {
-  if (previous.delta === null) return "not measured on both runs";
+function deltaLabel(
+  value: number | null,
+  previous: EvalPreviousMetric,
+): string {
+  const before = previous.value === null ? null : points(previous.value);
+  const now = value === null ? null : points(value);
 
-  const points = Math.round(previous.delta * 100);
-  if (points === 0) return "unchanged";
-  return `${points > 0 ? "+" : ""}${points}pp`;
+  // Four sentences, because four things can be true, and only one of them is a
+  // number. A run that measured something its predecessor did not has *started*
+  // measuring, which is news; a run that measured nothing this time still gets
+  // told what the figure was, because "—" beside a remembered 100% is the shape
+  // of a quiet night, and "—" beside a remembered 40% is not.
+  if (before === null)
+    return now === null ? "neither run measured this" : "not measured last run";
+  if (now === null) return `previously ${before}%`;
+
+  const moved = now - before;
+  if (moved === 0) return "unchanged";
+  return `${moved > 0 ? "+" : ""}${moved}pp`;
 }
 
 /**
@@ -238,11 +269,13 @@ function MetricCell({ row }: { row: EvalMetricRow }) {
       label={METRIC_LABEL[row.metric]}
       value={row.value === null ? "—" : percent(row.numerator, row.denominator)}
       failing={failing}
-      delta={row.previous === null ? undefined : deltaLabel(row.previous)}
+      delta={
+        row.previous === null ? undefined : deltaLabel(row.value, row.previous)
+      }
       detail={
         row.value === null
           ? `no ${METRIC_UNIT[row.metric]} in this run`
-          : `${row.numerator} of ${row.denominator} ${METRIC_UNIT[row.metric]} · needs ${Math.round(row.threshold * 100)}%`
+          : `${row.numerator} of ${row.denominator} ${METRIC_UNIT[row.metric]} · needs ${points(row.threshold)}%`
       }
     />
   );

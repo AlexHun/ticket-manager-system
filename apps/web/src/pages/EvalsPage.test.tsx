@@ -663,13 +663,13 @@ describe("what moved since last time", () => {
           value: 1,
           numerator: 4,
           denominator: 4,
-          previous: { value: 1, delta: 0 },
+          previous: { value: 1 },
         }),
         makeMetric(EVAL_METRIC.declineAccuracy, {
           value: 0.84,
           numerator: 21,
           denominator: 25,
-          previous: { value: 0.9, delta: -0.06 },
+          previous: { value: 0.9 },
         }),
       ],
       ...overrides,
@@ -725,7 +725,7 @@ describe("what moved since last time", () => {
                 value: null,
                 numerator: 0,
                 denominator: 0,
-                previous: { value: null, delta: null },
+                previous: { value: null },
               }),
             ],
           }),
@@ -736,8 +736,92 @@ describe("what moved since last time", () => {
     render();
 
     await screen.findByText("Safety catch rate");
-    expect(screen.getByText("not measured on both runs")).toBeInTheDocument();
+    expect(screen.getByText("neither run measured this")).toBeInTheDocument();
     expect(screen.queryByText("unchanged")).not.toBeInTheDocument();
+  });
+
+  test("takes the delta between the two figures as drawn, not the rates behind them", async () => {
+    // 89.6% and 84.4% are five points apart and draw as 90% and 84%, which are
+    // six. A caption rounded off the raw fractions would sit under two numbers
+    // it contradicts — and on a screen whose whole job is "did this get worse",
+    // arguing with itself is the one thing it cannot afford to do.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          comparedRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.896,
+                numerator: 112,
+                denominator: 125,
+                previous: { value: 0.844 },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    expect(await screen.findByText("90%")).toBeInTheDocument();
+    expect(screen.getByText("+6pp")).toBeInTheDocument();
+    expect(screen.queryByText("+5pp")).not.toBeInTheDocument();
+  });
+
+  test("says what the last run measured when this one measured nothing", async () => {
+    // A dash where a number was is not the same news twice over: "—" under a
+    // remembered 100% is a quiet night, and "—" under a remembered 40% is a
+    // metric that has stopped being taken at all.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          comparedRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.catchRate, {
+                value: null,
+                numerator: 0,
+                denominator: 0,
+                previous: { value: 0.4 },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText("Safety catch rate");
+    expect(screen.getByText("previously 40%")).toBeInTheDocument();
+  });
+
+  test("says a metric is newly measured rather than drawing a delta from nothing", async () => {
+    // The first run after a metric was added. There is no fall from zero here —
+    // there is no earlier figure at all, and inventing one is how a green
+    // dashboard turns into an alarm nobody trusts.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          comparedRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.classifierAccuracy, {
+                value: 0.8,
+                numerator: 4,
+                denominator: 5,
+                previous: { value: null },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText("Classifier accuracy");
+    expect(screen.getByText("not measured last run")).toBeInTheDocument();
+    expect(screen.queryByText(/pp$/)).not.toBeInTheDocument();
   });
 
   test("compares nothing on a run that is still filling in", async () => {

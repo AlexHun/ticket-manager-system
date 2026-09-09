@@ -17,11 +17,12 @@ import {
   type EvalCorpus,
   type EvalFiledRow,
   type EvalMetric,
-  type EvalMetricDelta,
   type EvalMetricRow,
+  type EvalPreviousMetric,
   type EvalReachedRow,
   type EvalRunRow,
   type EvalRunsResponse,
+  type EvalRunStatus,
   type EvalRunStartedResponse,
   type PipelineOutcome,
   type TicketCategory,
@@ -235,36 +236,31 @@ function metricRow(
     denominator,
     threshold,
     meets: value === null || value >= threshold,
-    previous: previous === null ? null : deltaFrom(metric, value, previous),
+    previous: previous === null ? null : previousMetric(metric, previous),
   };
 }
 
 /**
- * How far one metric moved since the run before it (R14).
+ * What the run before this one made of the same metric (R14).
  *
- * The subtraction happens here rather than on the page so that the rule about
- * what is comparable lives in one place. **An unmeasured side gives a null
- * delta, never a zero**: the catch rate is null on a run where the model
- * planted no payload, and treating that as a zero would report a 100-point
- * collapse on the safety metric the first quiet night — the PRD's "cries wolf,
- * then gets ignored" risk arriving through the very door meant to catch it.
+ * Taken through `METRIC_COUNTS`, which is the point: the predecessor's rate is
+ * computed by the same arithmetic as this run's, so a delta can never be a
+ * comparison between two different definitions of the same word.
  *
- * The previous run's own value still travels, unmeasured or not, so the page
- * can say what it was rather than only how far it is away.
+ * **A value, not a difference.** Deciding which run is comparable belongs here;
+ * subtracting belongs to the page, which rounds both figures to whole percents
+ * before it prints them and must caption the numbers it actually drew. A
+ * difference taken over the raw fractions can round the other way and contradict
+ * them — see `EvalPreviousMetric`. An unmeasured metric stays null the whole way
+ * out, never a zero.
  */
-function deltaFrom(
+function previousMetric(
   metric: EvalMetric,
-  value: number | null,
   previous: PriorRun,
-): EvalMetricDelta {
+): EvalPreviousMetric {
   const { numerator, denominator } = METRIC_COUNTS[metric](previous);
-  const previousValue = rate(numerator, denominator);
 
-  return {
-    value: previousValue,
-    delta:
-      value === null || previousValue === null ? null : value - previousValue,
-  };
+  return { value: rate(numerator, denominator) };
 }
 
 /** What a run needs to be compared against — no results, no prose, no Json. */
@@ -301,7 +297,7 @@ const COMPARISON_COLUMNS = {
  * older than the page, which is two queries whatever the history holds.
  */
 async function previousRuns(
-  page: (PriorRun & { corpus: EvalCorpus; status: string })[],
+  page: (PriorRun & { corpus: EvalCorpus; status: EvalRunStatus })[],
 ): Promise<Map<number, PriorRun>> {
   const previous = new Map<number, PriorRun>();
   // "The newest completed run of this corpus seen so far", walking oldest-first

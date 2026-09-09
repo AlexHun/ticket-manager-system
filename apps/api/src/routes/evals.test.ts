@@ -781,8 +781,8 @@ function sept(day: number): Date {
   return new Date(`2026-09-${String(day).padStart(2, "0")}T10:00:00Z`);
 }
 
-/** The comparison a run's decline accuracy carries, or a legible failure. */
-function deltaOf(body: EvalRunsResponse, metric: EvalMetric) {
+/** What the newest run says the run before it made of `metric`. */
+function previousOf(body: EvalRunsResponse, metric: EvalMetric) {
   return metricOf(body, metric).previous;
 }
 
@@ -809,11 +809,11 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
       id: older.id,
       startedAt: sept(1).toISOString(),
     });
-    // A fraction, in the same units as `value`, so the page draws percentage
-    // points without the server and the screen disagreeing about the scale.
-    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.value).toBeCloseTo(1, 6);
-    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.delta).toBeCloseTo(
-      -0.4,
+    // The predecessor's own rate, as a fraction — 5 of 5, against this run's 3
+    // of 5. The subtraction is the page's, over the two figures it draws, so
+    // that a caption can never round the other way from the numbers above it.
+    expect(previousOf(body, EVAL_METRIC.declineAccuracy)?.value).toBeCloseTo(
+      1,
       6,
     );
   });
@@ -848,7 +848,7 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
     const body = await runs();
 
     expect(body.runs[0]?.previous).toBeNull();
-    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)).toBeNull();
+    expect(previousOf(body, EVAL_METRIC.declineAccuracy)).toBeNull();
   });
 
   test("looks past a run that fell over rather than comparing against it", async () => {
@@ -884,8 +884,10 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
 
     expect(body.runs[0]?.id).toBe(latest.id);
     expect(body.runs[0]?.previous?.id).toBe(good.id);
-    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.delta).toBeCloseTo(
-      -0.2,
+    // The good run's 5 of 5, not the failed one's 0 of 1 — the value says which
+    // run was read as well as the id does.
+    expect(previousOf(body, EVAL_METRIC.declineAccuracy)?.value).toBeCloseTo(
+      1,
       6,
     );
   });
@@ -901,10 +903,7 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
     const body = await runs();
 
     expect(body.runs[0]?.previous).not.toBeNull();
-    expect(deltaOf(body, EVAL_METRIC.catchRate)).toEqual({
-      value: null,
-      delta: null,
-    });
+    expect(previousOf(body, EVAL_METRIC.catchRate)).toEqual({ value: null });
   });
 
   test("finds the previous run even when it has fallen off the end of the page", async () => {
@@ -913,11 +912,13 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
     // stop being comparable at exactly the point somebody most wants to know
     // whether an article edit moved anything. One anchor lookup per corpus is
     // what stops the window deciding what is comparable.
+    // 4 of 5, where every frozen run in the way is 5 of 5: the value that comes
+    // back names which run was read, not only the id beside it.
     const live = await finishedRun({
       corpus: EVAL_CORPUS.live,
       startedAt: sept(1),
       attempts: 5,
-      matches: 5,
+      matches: 4,
     });
     for (let day = 2; day <= EVAL_RUN_LIMIT + 1; day += 1) {
       await finishedRun({ startedAt: sept(day) });
@@ -937,8 +938,8 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
 
     expect(body.runs[0]?.id).toBe(newer.id);
     expect(body.runs[0]?.previous?.id).toBe(live.id);
-    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.delta).toBeCloseTo(
-      -0.4,
+    expect(previousOf(body, EVAL_METRIC.declineAccuracy)?.value).toBeCloseTo(
+      0.8,
       6,
     );
   });

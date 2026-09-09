@@ -2084,29 +2084,32 @@ export interface EvalMetricRow {
    * how far each of three numbers moved is three facts and belongs beside each
    * number.
    */
-  previous: EvalMetricDelta | null;
+  previous: EvalPreviousMetric | null;
 }
 
 /**
- * How one metric moved between two runs of the same corpus (R14).
+ * What the previous run on the same corpus made of one metric (R14).
  *
- * `delta` is a difference in the same units as `value` — a fraction, drawn as
- * percentage points — and it is carried rather than left to the page to
- * subtract, so the rule about what is comparable is written down once on the
- * server instead of once per reader.
+ * **A value, and deliberately not a difference.** The server decides *which*
+ * run is comparable — that rule is worth writing down once — but the page owns
+ * the subtraction, because the only defensible delta is the one between the two
+ * numbers actually on screen. Every rate here is drawn as a whole percent; a
+ * difference taken over the raw fractions and rounded on its own can disagree
+ * with them, and "90%" beside "84%" captioned "-5pp" is a screen arguing with
+ * itself in front of the person it is meant to inform. One rounding rule,
+ * applied once, on the side that does the rendering.
  *
- * **Null is the interesting case and it is not zero.** Either side may be
- * unmeasured: the catch rate over a run where the model planted no payload is
- * `null`, and a run from before a metric existed is `null` too. A subtraction
- * that treated those as zero would report a 100-point collapse on the safety
- * metric the first quiet night, which is the PRD's "cries wolf, then gets
- * ignored" risk arriving through the one door meant to catch it.
+ * **Null is the interesting case and it is not zero.** That run may have
+ * measured nothing: the catch rate over a night where the model planted no
+ * payload is `null`, and so is a metric from before it existed. Subtracting one
+ * of those as a zero would report a 100-point collapse on the safety metric the
+ * first quiet night, which is the PRD's "cries wolf, then gets ignored" risk
+ * arriving through the one door meant to catch it. Null here means "that run
+ * says nothing about this", and the page says exactly that.
  */
-export interface EvalMetricDelta {
+export interface EvalPreviousMetric {
   /** The previous run's rate for this metric, or null when it measured none. */
   value: number | null;
-  /** This run's rate minus that one's. Null when either side is unmeasured. */
-  delta: number | null;
 }
 
 /**

@@ -1,6 +1,6 @@
 # Plan: An eval harness for the unattended path
 
-**PRD:** [docs/prd/ai-eval-harness.md](../prd/ai-eval-harness.md) · **Status:** Draft · **Date:** 2026-09-08
+**PRD:** [docs/prd/ai-eval-harness.md](../prd/ai-eval-harness.md) · **Status:** Complete — all five slices shipped · **Date:** 2026-09-08
 
 ## Layers crossed
 
@@ -252,7 +252,7 @@ independent series and never compare across.
 **E2E:** two runs seeded with different numbers; assert the delta renders and
 that a live-corpus run is not compared against a frozen one.
 
-**Four decisions this slice turned on**, none of them implied by the sentence
+**Five decisions this slice turned on**, none of them implied by the sentence
 above:
 
 1. **The predecessor is three conditions, not one**, and each rules out a
@@ -285,6 +285,16 @@ above:
    per metric at each site (which is what the route did), a delta could silently
    be a comparison between two different arithmetics. A fourth metric is now a
    compile error there as well as in `EVAL_THRESHOLD`.
+5. **The server sends the previous _value_; the page does the subtraction** —
+   settled by review, having first been built the other way round. The wire
+   carrying a ready-made delta looked like the tidier split, but the page rounds
+   every rate to a whole percent before it draws it, and a difference rounded
+   separately off the raw fractions can disagree: 89.6% and 84.4% draw as "90%"
+   and "84%" under a caption reading "-5pp". A screen that argues with itself is
+   worse than one that says less, so the only delta anyone sees is now the one
+   between the two numbers actually on screen — and "unchanged" is a claim about
+   those, not about hidden decimals. Deciding _which_ run is comparable stays on
+   the server, where the three conditions in (1) live.
 
 The delta is drawn **muted whichever way it went**, deliberately.
 `text-destructive` on this page means "below the bar this run was declared to

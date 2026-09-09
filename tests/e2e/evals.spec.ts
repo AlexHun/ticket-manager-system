@@ -269,8 +269,13 @@ test.describe("the evals screen", () => {
       await signIn(page, "admin");
       await page.goto("/evals");
 
+      // Matched on the title exactly, not on `hasText`: run ids are serial and
+      // this database is never wiped, so "Run 7" is a substring of "Run 74"
+      // and a substring match would eventually resolve to two cards.
       const card = (id: number) =>
-        page.locator('[data-slot="card"]', { hasText: `Run ${id}` });
+        page.locator('[data-slot="card"]', {
+          has: page.getByText(`Run ${id}`, { exact: true }),
+        });
 
       await expect(
         card(newer.id).getByText(`Compared with run ${older.id}`),
@@ -283,6 +288,18 @@ test.describe("the evals screen", () => {
       // run it *is* compared against is deliberately not asserted — that is
       // whatever live run an earlier pass of this suite left behind, and the
       // claim here is only that a frozen run is never the answer.
+      //
+      // The two counts below are worth nothing on their own: a locator that
+      // resolved to no card at all would satisfy both. So the card is asserted
+      // on screen first, and asserted to be drawing the comparison line — one
+      // predecessor or the sentence that says there is none — before anything
+      // is claimed about what that line does *not* say.
+      await expect(card(live.id)).toBeVisible();
+      await expect(
+        card(live.id).getByText(
+          /Compared with run \d+|First run on the live articles/,
+        ),
+      ).toBeVisible();
       await expect(
         card(live.id).getByText(`Compared with run ${older.id}`),
       ).toHaveCount(0);
