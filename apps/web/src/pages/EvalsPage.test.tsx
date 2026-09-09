@@ -94,6 +94,9 @@ function makeMetric(
     denominator: 5,
     threshold: EVAL_THRESHOLD[metric],
     meets: true,
+    // No earlier run by default, so a test about something else is not also a
+    // test about R14. The comparison tests below opt in.
+    previous: null,
     ...overrides,
   };
 }
@@ -135,6 +138,7 @@ function makeRun(overrides: Partial<EvalRunRow> = {}): EvalRunRow {
       makeMetric(EVAL_METRIC.declineAccuracy),
       makeMetric(EVAL_METRIC.classifierAccuracy),
     ],
+    previous: null,
     failing: false,
     results: [makeResult()],
     ...overrides,
@@ -646,5 +650,119 @@ describe("classifier accuracy", () => {
     expect(within(row).getByText("3/5")).toBeInTheDocument();
     expect(within(row).getByText("expected Refund")).toBeInTheDocument();
     expect(within(row).getByText("General")).toBeInTheDocument();
+  });
+});
+
+describe("what moved since last time", () => {
+  /** A run whose decline accuracy is down six points on the run before it. */
+  function comparedRun(overrides: Partial<EvalRunRow> = {}): EvalRunRow {
+    return makeRun({
+      previous: { id: 6, startedAt: "2026-09-03T10:00:00.000Z" },
+      metrics: [
+        makeMetric(EVAL_METRIC.catchRate, {
+          value: 1,
+          numerator: 4,
+          denominator: 4,
+          previous: { value: 1, delta: 0 },
+        }),
+        makeMetric(EVAL_METRIC.declineAccuracy, {
+          value: 0.84,
+          numerator: 21,
+          denominator: 25,
+          previous: { value: 0.9, delta: -0.06 },
+        }),
+      ],
+      ...overrides,
+    });
+  }
+
+  test("shows how far each metric moved, in percentage points", async () => {
+    // R14, and the whole reason the epic stores runs rather than printing them:
+    // an admin edits a prompt, runs the harness, and reads what changed without
+    // opening a second page or re-running anything.
+    runsGet.mockResolvedValue(response({ runs: [comparedRun()] }));
+
+    render();
+
+    await screen.findByText("Decline accuracy");
+    expect(screen.getByText("-6pp")).toBeInTheDocument();
+    // Points, not percent: 90 to 84 is a fall of six points and of seven
+    // percent, and the unit is what stops the two being read as one.
+    expect(screen.queryByText("-6%")).not.toBeInTheDocument();
+    // A metric that held says so rather than drawing a bare zero.
+    expect(screen.getByText("unchanged")).toBeInTheDocument();
+  });
+
+  test("says which run those deltas are against", async () => {
+    // A delta whose other end is unnamed is a number nobody can go and look at.
+    runsGet.mockResolvedValue(response({ runs: [comparedRun()] }));
+
+    render();
+
+    expect(await screen.findByText(/Compared with run 6/)).toBeInTheDocument();
+  });
+
+  test("says out loud that a first run has nothing to compare against", async () => {
+    // Otherwise "no delta on this card" and "nothing moved" look identical —
+    // and on this screen the second reading is the reassuring one, which is the
+    // wrong way round for a silence to be misread.
+    render();
+
+    expect(
+      await screen.findByText(/First run on the frozen corpus/),
+    ).toBeInTheDocument();
+  });
+
+  test("draws no delta at all on a metric neither run measured", async () => {
+    // The catch rate on two quiet nights. A zero here would say the two runs
+    // agreed about something neither of them measured.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          comparedRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.catchRate, {
+                value: null,
+                numerator: 0,
+                denominator: 0,
+                previous: { value: null, delta: null },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText("Safety catch rate");
+    expect(screen.getByText("not measured on both runs")).toBeInTheDocument();
+    expect(screen.queryByText("unchanged")).not.toBeInTheDocument();
+  });
+
+  test("compares nothing on a run that is still filling in", async () => {
+    // A rate over the third of the set that has been answered is a different
+    // number, not a smaller one, so there is nothing yet to compare — and the
+    // line that names a predecessor would imply there was.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            status: EVAL_RUN_STATUS.running,
+            finishedAt: null,
+            metrics: [],
+            previous: null,
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText(/Running/);
+    expect(screen.queryByText(/Compared with run/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/First run on the frozen corpus/),
+    ).not.toBeInTheDocument();
   });
 });

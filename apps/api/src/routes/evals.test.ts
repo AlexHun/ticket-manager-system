@@ -24,6 +24,7 @@ import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   EVAL_CORPUS,
+  EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   EVAL_METRIC,
   EVAL_THRESHOLD,
@@ -309,12 +310,21 @@ async function finishedRun(
     verdicts?: unknown[];
     status?: EvalRunStatus;
     error?: string;
+    /** For the comparison tests, which are entirely about these three. */
+    corpus?: EvalCorpus;
+    startedAt?: Date;
+    attempts?: number;
+    matches?: number;
   } = {},
 ) {
   const {
     thresholds = EVAL_THRESHOLD,
     status = EVAL_RUN_STATUS.completed,
     error = null,
+    corpus = EVAL_CORPUS.frozen,
+    startedAt,
+    attempts = 5,
+    matches = 5,
     ...counts
   } = overrides;
   const caught = counts.caught ?? 0;
@@ -322,13 +332,14 @@ async function finishedRun(
 
   return prisma.evalRun.create({
     data: {
-      corpus: EVAL_CORPUS.frozen,
+      corpus,
       status,
       error,
+      ...(startedAt ? { startedAt } : {}),
       finishedAt: new Date(),
       repeats: 5,
-      attempts: 5,
-      matches: 5,
+      attempts,
+      matches,
       caught,
       escaped,
       thresholds,
@@ -760,5 +771,175 @@ describe("GET /runs", () => {
 
     expect(res.status).toBe(200);
     expect(body.runs[0]?.results[0]?.reached).toEqual([]);
+  });
+});
+
+/* ── What moved since last time ──────────────────────────────────────────── */
+
+/** A day in September 2026, so a test can order runs without racing the clock. */
+function sept(day: number): Date {
+  return new Date(`2026-09-${String(day).padStart(2, "0")}T10:00:00Z`);
+}
+
+/** The comparison a run's decline accuracy carries, or a legible failure. */
+function deltaOf(body: EvalRunsResponse, metric: EvalMetric) {
+  return metricOf(body, metric).previous;
+}
+
+describe("GET /runs — comparison against the previous run (R14)", () => {
+  test("compares a finished run against the one before it on the same corpus", async () => {
+    // The question the whole epic exists to make answerable: an admin edits a
+    // prompt, runs the harness, and reads how far each number moved without
+    // opening a second page or re-running anything.
+    const older = await finishedRun({
+      startedAt: sept(1),
+      attempts: 5,
+      matches: 5,
+    });
+    const newer = await finishedRun({
+      startedAt: sept(2),
+      attempts: 5,
+      matches: 3,
+    });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.id).toBe(newer.id);
+    expect(body.runs[0]?.previous).toEqual({
+      id: older.id,
+      startedAt: sept(1).toISOString(),
+    });
+    // A fraction, in the same units as `value`, so the page draws percentage
+    // points without the server and the screen disagreeing about the scale.
+    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.value).toBeCloseTo(1, 6);
+    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.delta).toBeCloseTo(
+      -0.4,
+      6,
+    );
+  });
+
+  test("never compares a live run against a frozen one", async () => {
+    // R4 arriving on R14's doorstep. The two corpora are independent series,
+    // and a delta across them would be measuring what an admin did to the
+    // article table that morning while calling it a prompt regression — the
+    // single most expensive way this screen could be wrong.
+    await finishedRun({
+      corpus: EVAL_CORPUS.frozen,
+      startedAt: sept(1),
+      attempts: 5,
+      matches: 5,
+    });
+    const live = await finishedRun({
+      corpus: EVAL_CORPUS.live,
+      startedAt: sept(2),
+      attempts: 5,
+      matches: 3,
+    });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.id).toBe(live.id);
+    expect(body.runs[0]?.previous).toBeNull();
+  });
+
+  test("the first run on a corpus is compared against nothing", async () => {
+    await finishedRun({ startedAt: sept(1) });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.previous).toBeNull();
+    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)).toBeNull();
+  });
+
+  test("looks past a run that fell over rather than comparing against it", async () => {
+    // A failed run holds whatever fraction of the set its queue got through
+    // before giving up, so a rate over it is not a smaller version of the
+    // answer — it is a different number that looks exactly like the real one.
+    // Compared against, it would manufacture a swing out of nothing but the
+    // provider having been unreachable; used as the predecessor, it would hide
+    // the last real measurement. So it is skipped in both directions.
+    const good = await finishedRun({
+      startedAt: sept(1),
+      attempts: 5,
+      matches: 5,
+    });
+    await finishedRun({
+      startedAt: sept(2),
+      attempts: 1,
+      matches: 0,
+      status: EVAL_RUN_STATUS.failed,
+      error: "The run exhausted its retries.",
+    });
+    const latest = await finishedRun({
+      startedAt: sept(3),
+      attempts: 5,
+      matches: 4,
+    });
+
+    const body = await runs();
+
+    // The failed run itself: no metrics, and so nothing to compare either.
+    expect(body.runs[1]?.metrics).toEqual([]);
+    expect(body.runs[1]?.previous).toBeNull();
+
+    expect(body.runs[0]?.id).toBe(latest.id);
+    expect(body.runs[0]?.previous?.id).toBe(good.id);
+    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.delta).toBeCloseTo(
+      -0.2,
+      6,
+    );
+  });
+
+  test("reports the run it compared against even when neither run measured the metric", async () => {
+    // The catch rate on two quiet nights: null on both sides, so there is no
+    // delta to state — and stating a zero would say the two runs agreed about
+    // something neither of them measured. The comparison still names the run,
+    // which is what lets the page say what it is reading against.
+    await finishedRun({ startedAt: sept(1), caught: 0, escaped: 0 });
+    await finishedRun({ startedAt: sept(2), caught: 0, escaped: 0 });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.previous).not.toBeNull();
+    expect(deltaOf(body, EVAL_METRIC.catchRate)).toEqual({
+      value: null,
+      delta: null,
+    });
+  });
+
+  test("finds the previous run even when it has fallen off the end of the page", async () => {
+    // The nightly is frozen, so twenty of them push the previous *live* run out
+    // of the window this route reads — and the live series would then quietly
+    // stop being comparable at exactly the point somebody most wants to know
+    // whether an article edit moved anything. One anchor lookup per corpus is
+    // what stops the window deciding what is comparable.
+    const live = await finishedRun({
+      corpus: EVAL_CORPUS.live,
+      startedAt: sept(1),
+      attempts: 5,
+      matches: 5,
+    });
+    for (let day = 2; day <= EVAL_RUN_LIMIT + 1; day += 1) {
+      await finishedRun({ startedAt: sept(day) });
+    }
+    const newer = await finishedRun({
+      corpus: EVAL_CORPUS.live,
+      startedAt: sept(EVAL_RUN_LIMIT + 2),
+      attempts: 5,
+      matches: 3,
+    });
+
+    const body = await runs();
+
+    // The older live run is nowhere on the page, which is the whole point.
+    expect(body.runs).toHaveLength(EVAL_RUN_LIMIT);
+    expect(body.runs.map((r) => r.id)).not.toContain(live.id);
+
+    expect(body.runs[0]?.id).toBe(newer.id);
+    expect(body.runs[0]?.previous?.id).toBe(live.id);
+    expect(deltaOf(body, EVAL_METRIC.declineAccuracy)?.delta).toBeCloseTo(
+      -0.4,
+      6,
+    );
   });
 });

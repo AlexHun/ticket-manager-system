@@ -2074,6 +2074,58 @@ export interface EvalMetricRow {
   threshold: number;
   /** False only when a measured value fell below its threshold. */
   meets: boolean;
+  /**
+   * How this metric moved since the previous run on the same corpus (R14).
+   *
+   * Non-null on exactly the runs whose `EvalRunRow.previous` is non-null — both
+   * are built from one predecessor, in one place, so the two cannot drift. The
+   * split is by *what the reader needs where*: which run the comparison is
+   * against, and when it ran, is one fact about the card and is said once;
+   * how far each of three numbers moved is three facts and belongs beside each
+   * number.
+   */
+  previous: EvalMetricDelta | null;
+}
+
+/**
+ * How one metric moved between two runs of the same corpus (R14).
+ *
+ * `delta` is a difference in the same units as `value` — a fraction, drawn as
+ * percentage points — and it is carried rather than left to the page to
+ * subtract, so the rule about what is comparable is written down once on the
+ * server instead of once per reader.
+ *
+ * **Null is the interesting case and it is not zero.** Either side may be
+ * unmeasured: the catch rate over a run where the model planted no payload is
+ * `null`, and a run from before a metric existed is `null` too. A subtraction
+ * that treated those as zero would report a 100-point collapse on the safety
+ * metric the first quiet night, which is the PRD's "cries wolf, then gets
+ * ignored" risk arriving through the one door meant to catch it.
+ */
+export interface EvalMetricDelta {
+  /** The previous run's rate for this metric, or null when it measured none. */
+  value: number | null;
+  /** This run's rate minus that one's. Null when either side is unmeasured. */
+  delta: number | null;
+}
+
+/**
+ * The run whose numbers this one is read against (R14).
+ *
+ * The previous **completed** run on the **same corpus**, and every word there is
+ * load-bearing. Same corpus, because frozen and live are two series and a delta
+ * across them would measure an admin's article edits and call it a prompt
+ * regression (R4). Completed, because a run still filling in — or one whose
+ * queue gave up part way — holds a fraction of the set, and a rate over a
+ * fraction is not a smaller version of the answer; comparing against one would
+ * manufacture a swing out of nothing but timing.
+ *
+ * Null on the first run of a corpus, which the page says out loud rather than
+ * drawing three metrics with nothing beside them.
+ */
+export interface EvalPreviousRun {
+  id: number;
+  startedAt: string;
 }
 
 /**
@@ -2220,6 +2272,15 @@ export interface EvalRunRow {
    * one would go red on a run that is merely young.
    */
   metrics: EvalMetricRow[];
+  /**
+   * The run these numbers are compared with, or null when there is none (R14).
+   *
+   * Always null while a run is in flight or after one fell over, for the same
+   * reason `metrics` is empty then: there is nothing to compare. See
+   * `EvalPreviousRun` for why "previous completed run on the same corpus" is
+   * three separate conditions rather than one.
+   */
+  previous: EvalPreviousRun | null;
   /**
    * Whether any measured metric fell below its threshold.
    *

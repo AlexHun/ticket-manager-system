@@ -12,6 +12,7 @@ import {
   type EvalCorpus,
   type EvalFiledRow,
   type EvalMetric,
+  type EvalMetricDelta,
   type EvalMetricRow,
   type EvalReachedRow,
   type EvalRunRow,
@@ -142,6 +143,27 @@ function percent(numerator: number, denominator: number): string {
 }
 
 /**
+ * How far one metric moved since the previous run on this corpus (R14).
+ *
+ * **Percentage points, and the "pp" is not decoration.** A rate that went from
+ * 90% to 84% fell by six points and by seven percent, and the two are different
+ * numbers that a bare "-6%" invites confusing — which matters here because the
+ * whole purpose of this line is somebody deciding whether a prompt edit made
+ * things worse.
+ *
+ * Terse on purpose: the card says which run this is against and when it ran,
+ * once, so three tiles do not have to repeat it. `null` is its own sentence
+ * rather than a zero — see `EvalMetricDelta`.
+ */
+function deltaLabel(previous: EvalMetricDelta): string {
+  if (previous.delta === null) return "not measured on both runs";
+
+  const points = Math.round(previous.delta * 100);
+  if (points === 0) return "unchanged";
+  return `${points > 0 ? "+" : ""}${points}pp`;
+}
+
+/**
  * One headline number with its own denominator underneath it.
  *
  * The denominator is not decoration. "84%" over 5 repeats and "84%" over 175
@@ -153,11 +175,14 @@ function Metric({
   label,
   value,
   detail,
+  delta,
   failing = false,
 }: {
   label: string;
   value: string;
   detail: string;
+  /** How far this moved since the last run on the same corpus (R14). */
+  delta?: string;
   /** Below its declared threshold, so the number is drawn as the finding. */
   failing?: boolean;
 }) {
@@ -175,6 +200,18 @@ function Metric({
         {value}
       </div>
       <div className="text-xs text-muted-foreground">{detail}</div>
+      {/* Muted whichever way it went, deliberately. `text-destructive` on this
+          page means "this fell below the bar it was declared to need" — it is
+          on the figure above, and on the sentence about a payload that got out.
+          Colouring every downward drift the same red would spend that signal on
+          run-to-run noise, which is the PRD's opening risk: a harness that
+          cries wolf is a harness nobody reads. A move that matters has already
+          turned the number itself red. */}
+      {delta && (
+        <div className="text-xs tabular-nums text-muted-foreground">
+          {delta}
+        </div>
+      )}
     </div>
   );
 }
@@ -201,6 +238,7 @@ function MetricCell({ row }: { row: EvalMetricRow }) {
       label={METRIC_LABEL[row.metric]}
       value={row.value === null ? "—" : percent(row.numerator, row.denominator)}
       failing={failing}
+      delta={row.previous === null ? undefined : deltaLabel(row.previous)}
       detail={
         row.value === null
           ? `no ${METRIC_UNIT[row.metric]} in this run`
@@ -403,6 +441,28 @@ function RunCard({ run }: { run: EvalRunRow }) {
               reply still carrying the planted payload. The output checks did
               not hold.
             </span>
+          </p>
+        )}
+
+        {/* Which run the deltas below are against, said once (R14).
+            Per-metric it would be the same sentence three times; on the card it
+            is one line, and it is the line that makes a "-6pp" mean something —
+            a delta whose other end is unnamed is a number nobody can go and
+            look at. The corpus is in it by construction, because the run before
+            this one on *this* corpus is the only run it is ever compared with:
+            frozen and live are two series, and a delta across them would be
+            measuring an admin's article edit and calling it a prompt
+            regression. Drawn only on a completed run, which is the same gate
+            the metrics are behind. */}
+        {run.metrics.length > 0 && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            {run.previous
+              ? `Compared with run ${run.previous.id}, ${new Date(
+                  run.previous.startedAt,
+                ).toLocaleDateString()}.`
+              : `First run on the ${CORPUS_LABEL[
+                  run.corpus
+                ].toLowerCase()} — nothing to compare against yet.`}
           </p>
         )}
 

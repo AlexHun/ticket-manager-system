@@ -11,6 +11,7 @@ import {
   EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
+  type EvalCorpus,
 } from "@ticket/shared";
 import { SMOKE_CASE_IDS } from "@ticket/core";
 import { CREDENTIALS, signIn } from "./helpers/auth";
@@ -215,6 +216,83 @@ test.describe("the evals screen", () => {
       // The case results cascade. Left behind, this row would be the newest run
       // on every later spec's screen.
       await testDb.evalRun.delete({ where: { id: run.id } });
+    }
+  });
+
+  test("reads each run against the one before it on the same corpus", async ({
+    page,
+  }) => {
+    // R14, and seeded rather than produced by a run for the same reason the
+    // failing card above is: what this asserts is a *relationship between three
+    // runs*, and producing one on demand would mean starting three real runs
+    // and arranging for their numbers and their order to come out right.
+    //
+    // The three timestamps are seconds apart and **just ahead of now**, which
+    // is load-bearing twice over in a database this suite shares. The global
+    // setup does not wipe it, so a run of the suite starts on top of every
+    // eval row the last one left: dated into the past, these three would sink
+    // below `EVAL_RUN_LIMIT` and never reach the page at all. And `workers: 1`
+    // is what makes "seconds apart" enough — nothing else is writing while this
+    // test holds the database, so no stranger's run can land between them and
+    // become the predecessor this test is about.
+    const base = Date.now();
+    const seed = async (
+      corpus: EvalCorpus,
+      second: number,
+      matches: number,
+    ) => {
+      const startedAt = new Date(base + second * 1000);
+      return testDb.evalRun.create({
+        data: {
+          corpus,
+          status: EVAL_RUN_STATUS.completed,
+          startedAt,
+          finishedAt: startedAt,
+          repeats: 5,
+          attempts: 25,
+          matches,
+          thresholds: EVAL_THRESHOLD,
+        },
+      });
+    };
+
+    // 92% then 84% on the frozen series: eight points down, and a figure no
+    // other assertion in this spec puts on screen.
+    const older = await seed(EVAL_CORPUS.frozen, 1, 23);
+    // Between the two frozen runs on purpose. It is the run a comparison that
+    // ignored the corpus would reach for, and the newest frozen run must step
+    // straight over it (R4).
+    const live = await seed(EVAL_CORPUS.live, 2, 5);
+    const newer = await seed(EVAL_CORPUS.frozen, 3, 21);
+
+    try {
+      await signIn(page, "admin");
+      await page.goto("/evals");
+
+      const card = (id: number) =>
+        page.locator('[data-slot="card"]', { hasText: `Run ${id}` });
+
+      await expect(
+        card(newer.id).getByText(`Compared with run ${older.id}`),
+      ).toBeVisible();
+      // Percentage points, not percent: 92 to 84 is eight points and nine
+      // percent, and this page has to mean the first.
+      await expect(card(newer.id).getByText("-8pp")).toBeVisible();
+
+      // And the live run in between is compared against neither of them. Which
+      // run it *is* compared against is deliberately not asserted — that is
+      // whatever live run an earlier pass of this suite left behind, and the
+      // claim here is only that a frozen run is never the answer.
+      await expect(
+        card(live.id).getByText(`Compared with run ${older.id}`),
+      ).toHaveCount(0);
+      await expect(
+        card(live.id).getByText(`Compared with run ${newer.id}`),
+      ).toHaveCount(0);
+    } finally {
+      await testDb.evalRun.deleteMany({
+        where: { id: { in: [older.id, live.id, newer.id] } },
+      });
     }
   });
 
