@@ -30,7 +30,6 @@ import {
 } from "@ticket/shared";
 import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
-import { isEvalConfigured } from "../evals/config";
 import { startEvalRun } from "../evals/start-run";
 import { ALL_EVAL_CASE_IDS } from "../jobs/eval-run";
 import { requireAdmin } from "../middleware/auth";
@@ -57,7 +56,27 @@ import { requireAdmin } from "../middleware/auth";
  * tables. `eval_run` and `eval_case_result` are the only rows a run writes.
  */
 
-export const evalsRouter = Router();
+/**
+ * What this router is told about its deployment, rather than asks a module.
+ *
+ * An object read per request rather than a `boolean` argument, and that is not
+ * a style choice: the router is built once, at mount, so a plain boolean would
+ * freeze at construction and a test could not vary it without standing up a
+ * second app. See `evals.test.ts`.
+ */
+export interface EvalsConfig {
+  /**
+   * Whether this deployment can run an eval at all — one key behind every AI
+   * feature (ADR-0003).
+   *
+   * `AUTO_REPLY_ENABLED` is deliberately **not** folded in. That switch stops
+   * the desk answering real customers; an eval answers a synthesized input and
+   * writes to nobody, so a deployment that has turned the feature off is
+   * precisely one where measuring it still makes sense — it is how you find out
+   * whether it is safe to turn back on. The key is the only gate.
+   */
+  evalConfigured: boolean;
+}
 
 /**
  * A stored outcome, narrowed to one this build has wording for.
@@ -497,194 +516,207 @@ function checksFrom(results: { verdicts: unknown }[]): EvalCheckRow[] {
 }
 
 /**
- * Start a run.
+ * Build the router, handed the one thing about the deployment it has to know.
  *
- * 202 rather than 201: the run has been accepted, and it has not happened yet.
- * A client that read a 201 as "created and done" would draw an empty run as a
- * finished one, which is the single most misleading thing this page could say.
+ * A factory rather than a module-level `const`, because the answer arrives as
+ * a value now — see `EvalsConfig` above and `src/index.ts`, which is where it
+ * is read off `isAiConfigured()`.
  */
-evalsRouter.post(
-  "/runs",
-  requireAdmin,
-  async (
-    req: Request,
-    res: Response<EvalRunStartedResponse | { error: string }>,
-  ) => {
-    // Before the row, so a deployment with no key never accumulates runs that
-    // read as in flight and can never be answered. ADR-0003: one provider, one
-    // key, and unset is a supported state the whole app degrades the same way.
-    if (!isEvalConfigured()) {
-      res.status(503).json({
-        error: "No AI provider is configured, so an eval cannot run.",
+export function createEvalsRouter(config: EvalsConfig): Router {
+  const router = Router();
+
+  /**
+   * Start a run.
+   *
+   * 202 rather than 201: the run has been accepted, and it has not happened yet.
+   * A client that read a 201 as "created and done" would draw an empty run as a
+   * finished one, which is the single most misleading thing this page could say.
+   */
+  router.post(
+    "/runs",
+    requireAdmin,
+    async (
+      req: Request,
+      res: Response<EvalRunStartedResponse | { error: string }>,
+    ) => {
+      // Before the row, so a deployment with no key never accumulates runs that
+      // read as in flight and can never be answered. ADR-0003: one provider, one
+      // key, and unset is a supported state the whole app degrades the same way.
+      if (!config.evalConfigured) {
+        res.status(503).json({
+          error: "No AI provider is configured, so an eval cannot run.",
+        });
+        return;
+      }
+
+      const parsed = startEvalRunSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid request" });
+        return;
+      }
+
+      const corpus = parsed.data.corpus ?? EVAL_CORPUS.frozen;
+
+      // Ids are resolved *here* rather than in the worker's schema, because the
+      // case set is data in `@ticket/core` and a schema that imported it would
+      // make every consumer of any schema in that package carry it. A bad id is
+      // the caller's mistake and is worth a 400 rather than a run that fails
+      // several minutes later with nothing to show.
+      const caseIds = parsed.data.caseIds ?? ALL_EVAL_CASE_IDS;
+      const unknown = caseIds.filter((id) => autoReplyCaseById(id) === null);
+      if (unknown.length > 0) {
+        res.status(400).json({ error: `No such case: ${unknown.join(", ")}` });
+        return;
+      }
+
+      // The row, the job and the event, in the one order that works — see
+      // `../evals/start-run`, which the nightly sweep opens its runs through too.
+      // The four decisions in there are the ones that go quietly out of step when
+      // two callers each write them out.
+      const runId = await startEvalRun(corpus, caseIds);
+
+      res.status(202).json({ runId });
+    },
+  );
+
+  /**
+   * Every run, newest first, with the cases each one answered.
+   *
+   * Results come back nested rather than through a second request: a run is
+   * ~35 rows, which is a page either way, and the screen shows the run and its
+   * cases as one thing.
+   */
+  router.get(
+    "/runs",
+    requireAdmin,
+    async (_req: Request, res: Response<EvalRunsResponse>) => {
+      const runs = await prisma.evalRun.findMany({
+        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        take: EVAL_RUN_LIMIT,
+        include: { results: { orderBy: { id: "asc" } } },
       });
-      return;
-    }
 
-    const parsed = startEvalRunSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid request" });
-      return;
-    }
+      // R14, and it is two queries rather than one per run — see `previousRuns`.
+      const previousByRun = await previousRuns(runs);
 
-    const corpus = parsed.data.corpus ?? EVAL_CORPUS.frozen;
+      res.json({
+        // A presence boolean, never the value or a prefix of it — the rule the
+        // pipeline config block keeps. It is what lets the page say "no key"
+        // rather than drawing a Run button that always fails.
+        evalConfigured: config.evalConfigured,
+        runs: runs.map((run): EvalRunRow => {
+          const thresholds = thresholdsFrom(run.thresholds);
+          // Null on every run that is not `completed`, because `previousRuns`
+          // skips those — the same gate `metrics` is behind, and for the same
+          // reason: there is nothing yet to compare.
+          const previous = previousByRun.get(run.id) ?? null;
+          // Only on a run that finished properly, and `completed` rather than
+          // "not running" — the two states this excludes are excluded for the
+          // same reason. A rate over the third of the set that has been answered
+          // is not a smaller version of the answer, it is a different number, and
+          // a threshold applied to one goes red on a run that is merely young or
+          // merely interrupted. A `failed` run is exactly that second case: its
+          // queue gave up part way, so it holds whatever fraction it got through,
+          // and drawing "Failing" over it would put the wrong word on a card
+          // whose real news is that the provider was unreachable. Empty is what
+          // the page draws nothing from.
+          const metrics =
+            run.status === EVAL_RUN_STATUS.completed
+              ? [
+                  // The catch rate first, because it is the one ADR-0004 stands
+                  // on and the only one whose failure is a defect.
+                  metricRow(EVAL_METRIC.catchRate, run, previous, thresholds),
+                  metricRow(
+                    EVAL_METRIC.declineAccuracy,
+                    run,
+                    previous,
+                    thresholds,
+                  ),
+                  // Last, and over its own denominator: `classifiedRepeats` is
+                  // the classifier answered, which is neither `attempts` nor the
+                  // case count. A run from before this metric existed has both
+                  // halves at zero and reports no accuracy rather than a zero —
+                  // `metricRow` is what makes that the honest reading.
+                  metricRow(
+                    EVAL_METRIC.classifierAccuracy,
+                    run,
+                    previous,
+                    thresholds,
+                  ),
+                ]
+              : [];
 
-    // Ids are resolved *here* rather than in the worker's schema, because the
-    // case set is data in `@ticket/core` and a schema that imported it would
-    // make every consumer of any schema in that package carry it. A bad id is
-    // the caller's mistake and is worth a 400 rather than a run that fails
-    // several minutes later with nothing to show.
-    const caseIds = parsed.data.caseIds ?? ALL_EVAL_CASE_IDS;
-    const unknown = caseIds.filter((id) => autoReplyCaseById(id) === null);
-    if (unknown.length > 0) {
-      res.status(400).json({ error: `No such case: ${unknown.join(", ")}` });
-      return;
-    }
-
-    // The row, the job and the event, in the one order that works — see
-    // `../evals/start-run`, which the nightly sweep opens its runs through too.
-    // The four decisions in there are the ones that go quietly out of step when
-    // two callers each write them out.
-    const runId = await startEvalRun(corpus, caseIds);
-
-    res.status(202).json({ runId });
-  },
-);
-
-/**
- * Every run, newest first, with the cases each one answered.
- *
- * Results come back nested rather than through a second request: a run is
- * ~35 rows, which is a page either way, and the screen shows the run and its
- * cases as one thing.
- */
-evalsRouter.get(
-  "/runs",
-  requireAdmin,
-  async (_req: Request, res: Response<EvalRunsResponse>) => {
-    const runs = await prisma.evalRun.findMany({
-      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-      take: EVAL_RUN_LIMIT,
-      include: { results: { orderBy: { id: "asc" } } },
-    });
-
-    // R14, and it is two queries rather than one per run — see `previousRuns`.
-    const previousByRun = await previousRuns(runs);
-
-    res.json({
-      // A presence boolean, never the value or a prefix of it — the rule the
-      // pipeline config block keeps. It is what lets the page say "no key"
-      // rather than drawing a Run button that always fails.
-      evalConfigured: isEvalConfigured(),
-      runs: runs.map((run): EvalRunRow => {
-        const thresholds = thresholdsFrom(run.thresholds);
-        // Null on every run that is not `completed`, because `previousRuns`
-        // skips those — the same gate `metrics` is behind, and for the same
-        // reason: there is nothing yet to compare.
-        const previous = previousByRun.get(run.id) ?? null;
-        // Only on a run that finished properly, and `completed` rather than
-        // "not running" — the two states this excludes are excluded for the
-        // same reason. A rate over the third of the set that has been answered
-        // is not a smaller version of the answer, it is a different number, and
-        // a threshold applied to one goes red on a run that is merely young or
-        // merely interrupted. A `failed` run is exactly that second case: its
-        // queue gave up part way, so it holds whatever fraction it got through,
-        // and drawing "Failing" over it would put the wrong word on a card
-        // whose real news is that the provider was unreachable. Empty is what
-        // the page draws nothing from.
-        const metrics =
-          run.status === EVAL_RUN_STATUS.completed
-            ? [
-                // The catch rate first, because it is the one ADR-0004 stands
-                // on and the only one whose failure is a defect.
-                metricRow(EVAL_METRIC.catchRate, run, previous, thresholds),
-                metricRow(
-                  EVAL_METRIC.declineAccuracy,
-                  run,
-                  previous,
-                  thresholds,
-                ),
-                // Last, and over its own denominator: `classifiedRepeats` is
-                // the classifier answered, which is neither `attempts` nor the
-                // case count. A run from before this metric existed has both
-                // halves at zero and reports no accuracy rather than a zero —
-                // `metricRow` is what makes that the honest reading.
-                metricRow(
-                  EVAL_METRIC.classifierAccuracy,
-                  run,
-                  previous,
-                  thresholds,
-                ),
-              ]
-            : [];
-
-        return {
-          id: run.id,
-          corpus: run.corpus,
-          status: run.status,
-          startedAt: run.startedAt.toISOString(),
-          finishedAt: run.finishedAt?.toISOString() ?? null,
-          error: run.error,
-          repeats: run.repeats,
-          attempts: run.attempts,
-          matches: run.matches,
-          abandoned: run.abandoned,
-          usd: run.usd,
-          cachedRepeats: run.cachedRepeats,
-          // One repeat per case is what warms the cache and can never be a hit,
-          // so the denominator is not `attempts`. Derived from the rows that exist
-          // rather than from `cases × (repeats - 1)`, so a run still filling in
-          // reports the fraction it has actually measured.
-          cacheable: run.results.reduce(
-            (total, result) => total + Math.max(result.repeats - 1, 0),
-            0,
-          ),
-          caught: run.caught,
-          escaped: run.escaped,
-          checks: checksFrom(run.results),
-          classifiedRepeats: run.classifiedRepeats,
-          classifyMatches: run.classifyMatches,
-          categories: categoriesFrom(run.results),
-          metrics,
-          // Which run those deltas are against, said once for the card rather
-          // than three times over (R14). Non-null on exactly the runs whose
-          // metrics carry a `previous`, because both come from this variable.
-          previous:
-            previous === null
-              ? null
-              : {
-                  id: previous.id,
-                  startedAt: previous.startedAt.toISOString(),
-                },
-          // Marked failing, shown failing, and nothing else happens (R8, R11):
-          // no issue, no notification, and nothing that could turn a pull request
-          // red. A slow statistical suite wired to a gate is a suite somebody
-          // switches off, which is the failure this is written to avoid.
-          failing: metrics.some((metric) => !metric.meets),
-          results: run.results.map((result): EvalCaseResultRow => ({
-            id: result.id,
-            caseId: result.caseId,
-            caseName: result.caseName,
-            adversarial: result.adversarial,
-            expectedOutcome: asPipelineOutcome(result.expectedOutcome),
-            expectedDecline: asAutoReplyDecline(result.expectedDecline),
-            repeats: result.repeats,
-            matches: result.matches,
-            abandoned: result.abandoned,
-            usd: result.usd,
-            cachedRepeats: result.cachedRepeats,
-            caught: result.caught,
-            escaped: result.escaped,
-            expectedCategory: asTicketCategory(result.expectedCategory),
-            classifiedRepeats: result.classifiedRepeats,
-            classifyMatches: result.classifyMatches,
-            filed: filedFrom(
-              result.verdicts,
-              asTicketCategory(result.expectedCategory),
+          return {
+            id: run.id,
+            corpus: run.corpus,
+            status: run.status,
+            startedAt: run.startedAt.toISOString(),
+            finishedAt: run.finishedAt?.toISOString() ?? null,
+            error: run.error,
+            repeats: run.repeats,
+            attempts: run.attempts,
+            matches: run.matches,
+            abandoned: run.abandoned,
+            usd: run.usd,
+            cachedRepeats: run.cachedRepeats,
+            // One repeat per case is what warms the cache and can never be a hit,
+            // so the denominator is not `attempts`. Derived from the rows that exist
+            // rather than from `cases × (repeats - 1)`, so a run still filling in
+            // reports the fraction it has actually measured.
+            cacheable: run.results.reduce(
+              (total, result) => total + Math.max(result.repeats - 1, 0),
+              0,
             ),
-            reached: reachedFrom(result.verdicts),
-          })),
-        };
-      }),
-    });
-  },
-);
+            caught: run.caught,
+            escaped: run.escaped,
+            checks: checksFrom(run.results),
+            classifiedRepeats: run.classifiedRepeats,
+            classifyMatches: run.classifyMatches,
+            categories: categoriesFrom(run.results),
+            metrics,
+            // Which run those deltas are against, said once for the card rather
+            // than three times over (R14). Non-null on exactly the runs whose
+            // metrics carry a `previous`, because both come from this variable.
+            previous:
+              previous === null
+                ? null
+                : {
+                    id: previous.id,
+                    startedAt: previous.startedAt.toISOString(),
+                  },
+            // Marked failing, shown failing, and nothing else happens (R8, R11):
+            // no issue, no notification, and nothing that could turn a pull request
+            // red. A slow statistical suite wired to a gate is a suite somebody
+            // switches off, which is the failure this is written to avoid.
+            failing: metrics.some((metric) => !metric.meets),
+            results: run.results.map((result): EvalCaseResultRow => ({
+              id: result.id,
+              caseId: result.caseId,
+              caseName: result.caseName,
+              adversarial: result.adversarial,
+              expectedOutcome: asPipelineOutcome(result.expectedOutcome),
+              expectedDecline: asAutoReplyDecline(result.expectedDecline),
+              repeats: result.repeats,
+              matches: result.matches,
+              abandoned: result.abandoned,
+              usd: result.usd,
+              cachedRepeats: result.cachedRepeats,
+              caught: result.caught,
+              escaped: result.escaped,
+              expectedCategory: asTicketCategory(result.expectedCategory),
+              classifiedRepeats: result.classifiedRepeats,
+              classifyMatches: result.classifyMatches,
+              filed: filedFrom(
+                result.verdicts,
+                asTicketCategory(result.expectedCategory),
+              ),
+              reached: reachedFrom(result.verdicts),
+            })),
+          };
+        }),
+      });
+    },
+  );
+
+  return router;
+}

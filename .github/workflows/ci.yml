@@ -96,6 +96,25 @@ jobs:
       - name: API unit tests
         run: bun run --filter '@ticket/api' test
 
+      # The same suite again, in reverse discovery order, and it is the check
+      # this repo has been doing by hand (`bun test <a> <b>` in both orders,
+      # testing.md) on the honour system. `mock.module`'s registry is one
+      # process wide and nothing resets it between files, so which file loads
+      # first decides which factory a shared specifier binds to — and discovery
+      # order differs between Windows and ubuntu-latest, which is how #158 came
+      # to be green three runs in a row locally and red here. Reversing it is
+      # the cheapest second order that swaps every pair at once, and it catches
+      # what the by-hand check structurally cannot: a collision whose poisoning
+      # file is a *third* one, which no pair run ever puts in the same process.
+      #
+      # An explicit file list rather than a flag, because `bun test` has no
+      # shuffle. The preload still applies: bunfig.toml lists it under [test]
+      # as well as on the `test` script's --preload, deliberately, for exactly
+      # this kind of invocation. ~30s.
+      - name: API unit tests (reverse file order)
+        working-directory: apps/api
+        run: bun test $(find src -name '*.test.ts' | sort -r)
+
       - name: Web component tests
         run: bun run --filter '@ticket/web' test
 
