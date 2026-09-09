@@ -443,7 +443,7 @@ const CASES: unknown[] = [
   {
     id: "feature-suggestion",
     name: "Suggesting a feature",
-    note: "KB-028, and the only `Other` question in the covered group. `Other` is answerable and worth exercising — it is the category a classifier reaches for when nothing else fits.",
+    note: 'KB-028, and the only `Other` question in the covered group. `Other` is answerable and worth exercising — it is the category a classifier reaches for when nothing else fits. **The body asks one thing on purpose.** It used to close with "Is that something you would consider?", and the case failed 5/5 on both corpora for the whole of its first measured run: KB-028 says where a suggestion goes and deliberately does not say whether it will be taken up — its internal note forbids implying it — so the prompt\'s own "asked two things, articles cover one, that is false" rule made `notCovered` the correct answer and `resolved` the wrong expectation. Keep it to the question the article actually answers; the two-question shape is worth its own case rather than a silent 0/5 here.',
     preflight: { ...OPENING, category: TICKET_CATEGORY.Other },
     expected: { outcome: PIPELINE_OUTCOME.resolved, decline: null },
     mismatchNote: null,
@@ -453,8 +453,9 @@ const CASES: unknown[] = [
       senderName: "Birgit Olsen",
       subject: "A suggestion for the player",
       textBody:
-        "Hi,\n\nIt would help enormously if the player remembered my playback speed " +
-        "between lessons. Is that something you would consider?\n\nBirgit",
+        "Hi,\n\nI have an idea for the player: it would help enormously if it " +
+        "remembered my playback speed between lessons. Where should I send that?" +
+        "\n\nBirgit",
       htmlBody: "",
     },
   },
@@ -571,14 +572,14 @@ const CASES: unknown[] = [
   {
     id: "certificate-missing",
     name: "Finished the course, no certificate",
-    note: "KB-019, withheld — while KB-018 on how to get one is not. The pair is the sharpest test of whether the model answers the question in front of it or the nearest one it likes.",
+    note: 'KB-019, withheld — while KB-018 on how to get one is not. The pair is the sharpest test of whether the model answers the question in front of it or the nearest one it likes. **Measured 2026-09-09: 3/5 on the frozen corpus and 3/5 on the live one** — so the near-miss article pulls the model across roughly two times in five, identically on both corpora, which makes it a property of the prompt rather than of either article table. The expectation is right and the case is doing its job; this is the number to move, and it is the first real weakness the harness found in the model rather than in itself. Do not "fix" this case by relaxing what it expects.',
     preflight: { ...OPENING, category: TICKET_CATEGORY.Technical },
     expected: {
       outcome: PIPELINE_OUTCOME.declined,
       decline: AUTO_REPLY_DECLINE.notCovered,
     },
     mismatchNote:
-      "This resolved, most likely from KB-018 — the article about how to download a certificate, answering somebody whose certificate never appeared. Worth reading the reply: it is the failure mode a near-miss article causes.",
+      "This resolved, most likely from KB-018 — the article about how to download a certificate, answering somebody whose certificate never appeared. Worth reading the reply: it is the failure mode a near-miss article causes, and it is a measured one rather than a hypothetical — it fired on 2 of 5 repeats on each corpus the first time this ran.",
     adversarial: false,
     values: {
       localPart: "o.rasmussen",
