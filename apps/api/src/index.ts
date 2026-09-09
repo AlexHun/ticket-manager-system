@@ -12,7 +12,6 @@ import helmet from "helmet";
 import type { HealthResponse } from "@ticket/shared";
 import { toNodeHandler } from "better-auth/node";
 import { prisma } from "./db";
-import { isAiConfigured } from "./ai/provider";
 import { auth, trustedOrigins } from "./auth";
 import { closeAll } from "./events/hub";
 import { startJobs, stopJobs } from "./jobs";
@@ -21,7 +20,7 @@ import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
 import { changelogRouter } from "./routes/changelog";
 import { dashboardLayoutRouter } from "./routes/dashboard-layout";
-import { createEvalsRouter } from "./routes/evals";
+import { evalsRouter } from "./routes/evals";
 import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
 import { newFeaturesRouter } from "./routes/new-features";
@@ -153,11 +152,7 @@ app.use("/api/pipeline", pipelineRouter);
 // spends model calls, and its results describe how the unattended path's own
 // safety checks are holding. A run writes nothing a customer or an agent would
 // ever see — see routes/evals.ts.
-// The one thing the eval router is told about its deployment, read here
-// rather than asked for by the router itself (spike #209). One key gates every
-// AI feature (ADR-0003), so this is `isAiConfigured()` and nothing else — the
-// auto-reply switch is deliberately not consulted; see `EvalsConfig`.
-app.use("/api/evals", createEvalsRouter({ evalConfigured: isAiConfigured() }));
+app.use("/api/evals", evalsRouter);
 // Admin-only as well: it decides where every ticket the assistant hands back
 // lands, which is a staffing decision rather than something an agent picks.
 app.use("/api/automation", automationRouter);
