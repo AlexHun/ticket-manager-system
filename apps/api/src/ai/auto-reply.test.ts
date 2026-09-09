@@ -282,6 +282,31 @@ describe("autoReply — the corpus it was handed", () => {
     });
     expect(generateText).not.toHaveBeenCalled();
   });
+
+  test("tells the model a fault report is not a question — the near-miss rule", async () => {
+    // A weak test on purpose, and worth being clear about what it is and is not.
+    // It cannot show the rule *works* — only a run against the real provider can
+    // do that, which is what the eval harness is for. What it does is stop the
+    // rule being dropped by a later prompt edit, the same way the two tests
+    // above guard what the corpus block may and may not carry.
+    //
+    // The rule exists because `certificate-missing` failed 2 of 5 repeats on
+    // each corpus in the first measured run: KB-018 says a certificate is issued
+    // at 100% completion and lives in Account → Certificates, and the customer
+    // says the course is complete and the certificate is not there. The article
+    // reads as an answer while being none, because it states how the thing works
+    // and says nothing about why it might not have.
+    //
+    // The discriminator is deliberately "does an article account for the
+    // failure", not "has the customer already tried it" — the looser rule would
+    // flip `password-reset` and `progress-not-saved`, both of which expect a
+    // reply and both of whose customers report having already tried something.
+    // KB-002 and KB-023 each explain why the thing did not work; KB-018 does not.
+    await autoReply(ARTICLES, CONTEXT);
+
+    const { system } = lastCall();
+    expect(system).toContain("A FAULT REPORT IS NOT A QUESTION");
+  });
 });
 
 describe("autoReply — the email it was asked about", () => {
