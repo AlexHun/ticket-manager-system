@@ -1,6 +1,6 @@
 # Plan: An eval harness for the unattended path
 
-**PRD:** [docs/prd/ai-eval-harness.md](../prd/ai-eval-harness.md) · **Status:** Draft · **Date:** 2026-09-08
+**PRD:** [docs/prd/ai-eval-harness.md](../prd/ai-eval-harness.md) · **Status:** Complete — all five slices shipped · **Date:** 2026-09-08
 
 ## Layers crossed
 
@@ -234,10 +234,12 @@ no baseline at all, the same provisional footing decline accuracy shipped on and
 for weaker reasons — no full-set run has priced this metric yet. Tighten it from
 the trend, not from an opinion.
 
-## Slice 5 — What moved since last time
+## Slice 5 — What moved since last time ✅
 
 **Retires:** whether the stored shape can answer "what changed" without a
-re-run — the question the whole epic exists to make answerable.
+re-run — the question the whole epic exists to make answerable. **It could, and
+no migration was needed**: every counter a delta is taken over was already on
+`EvalRun` from slices 2-4, so this slice is entirely a read.
 **Covers:** R14
 
 Each run is compared against the previous run **on the same corpus**, per
@@ -249,6 +251,56 @@ independent series and never compare across.
 
 **E2E:** two runs seeded with different numbers; assert the delta renders and
 that a live-corpus run is not compared against a frozen one.
+
+**Five decisions this slice turned on**, none of them implied by the sentence
+above:
+
+1. **The predecessor is three conditions, not one**, and each rules out a
+   comparison worse than none. _Same corpus_ is R4 arriving on R14's doorstep: a
+   delta across the two series measures an admin's article edit and calls it a
+   prompt regression. _Completed_ rules out both a run still filling in and one
+   whose queue gave up — each holds a fraction of the set, and a rate over a
+   fraction is a different number rather than a smaller one — and it rules them
+   out **in both directions**, so an interrupted run neither gets a delta nor
+   becomes the anchor that hides the last real measurement. _Before_ uses the
+   page's own `[startedAt, id]` ordering, so two runs started in the same second
+   still have one answer.
+2. **A null delta is not a zero**, and this is the one way the feature could be
+   wrong and still look right. Either side may be unmeasured — the catch rate is
+   null on a night the model planted no payload, and every metric is null on a
+   run from before it existed. Subtracting those as zeros would report a
+   hundred-point collapse on the safety metric the first quiet night, which is
+   the PRD's opening risk ("cries wolf, then gets ignored") arriving through the
+   one door meant to catch it.
+3. **One anchor query per corpus, because the window would otherwise decide
+   what is comparable.** `GET /runs` reads twenty runs; the nightly is frozen,
+   so twenty nights of it push the previous _live_ run out of that window and
+   the live series quietly stops being comparable at exactly the point somebody
+   wants to know whether an article edit moved anything. The in-page chain is
+   one pass over the runs already fetched; the two `findFirst` lookups are what
+   make the answer independent of the page size.
+4. **`METRIC_COUNTS` is a `Record`, and that is what makes the delta
+   trustworthy.** A metric's numerator and denominator are now defined once and
+   read twice — for the run being drawn and for the run before it. Written out
+   per metric at each site (which is what the route did), a delta could silently
+   be a comparison between two different arithmetics. A fourth metric is now a
+   compile error there as well as in `EVAL_THRESHOLD`.
+5. **The server sends the previous _value_; the page does the subtraction** —
+   settled by review, having first been built the other way round. The wire
+   carrying a ready-made delta looked like the tidier split, but the page rounds
+   every rate to a whole percent before it draws it, and a difference rounded
+   separately off the raw fractions can disagree: 89.6% and 84.4% draw as "90%"
+   and "84%" under a caption reading "-5pp". A screen that argues with itself is
+   worse than one that says less, so the only delta anyone sees is now the one
+   between the two numbers actually on screen — and "unchanged" is a claim about
+   those, not about hidden decimals. Deciding _which_ run is comparable stays on
+   the server, where the three conditions in (1) live.
+
+The delta is drawn **muted whichever way it went**, deliberately.
+`text-destructive` on this page means "below the bar this run was declared to
+need"; colouring every downward drift the same red spends that signal on
+run-to-run noise, and a move that matters has already turned the number itself
+red.
 
 ## Requirement coverage
 

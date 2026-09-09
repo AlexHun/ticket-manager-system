@@ -13,6 +13,7 @@ import {
   type EvalFiledRow,
   type EvalMetric,
   type EvalMetricRow,
+  type EvalPreviousMetric,
   type EvalReachedRow,
   type EvalRunRow,
   type EvalRunStartedResponse,
@@ -135,10 +136,62 @@ function verdict(
   return decline ? `${label} — ${DECLINE_SHORT[decline]}` : label;
 }
 
+/**
+ * A rate as the whole number this page prints for it.
+ *
+ * The single rounding rule, and it is a function rather than an inline
+ * `Math.round` at each site for one reason: the delta beneath a metric is a
+ * subtraction between two of these, and a second rounding rule would let the
+ * caption disagree with the figures above it — 89.6% and 84.4% draw as "90%"
+ * and "84%", six points apart on screen and five in the raw fractions.
+ */
+function points(value: number): number {
+  return Math.round(value * 100);
+}
+
 /** A share, as a whole-number percentage. Nothing here deserves a decimal. */
 function percent(numerator: number, denominator: number): string {
   if (denominator === 0) return "—";
-  return `${Math.round((numerator / denominator) * 100)}%`;
+  return `${points(numerator / denominator)}%`;
+}
+
+/**
+ * How far one metric moved since the previous run on this corpus (R14).
+ *
+ * **Percentage points, and the "pp" is not decoration.** A rate that went from
+ * 90% to 84% fell by six points and by seven percent, and the two are different
+ * numbers that a bare "-6%" invites confusing — which matters here because the
+ * whole purpose of this line is somebody deciding whether a prompt edit made
+ * things worse.
+ *
+ * **The difference is between the two figures as drawn**, not between the rates
+ * behind them, so "unchanged" is a claim about what is on screen rather than an
+ * assertion about hidden decimals, and no caption can ever contradict the number
+ * it sits under.
+ *
+ * Terse on purpose: the card says which run this is against and when it ran,
+ * once, so three tiles do not have to repeat it. An unmeasured side is its own
+ * sentence rather than a zero — see `EvalPreviousMetric`.
+ */
+function deltaLabel(
+  value: number | null,
+  previous: EvalPreviousMetric,
+): string {
+  const before = previous.value === null ? null : points(previous.value);
+  const now = value === null ? null : points(value);
+
+  // Four sentences, because four things can be true, and only one of them is a
+  // number. A run that measured something its predecessor did not has *started*
+  // measuring, which is news; a run that measured nothing this time still gets
+  // told what the figure was, because "—" beside a remembered 100% is the shape
+  // of a quiet night, and "—" beside a remembered 40% is not.
+  if (before === null)
+    return now === null ? "neither run measured this" : "not measured last run";
+  if (now === null) return `previously ${before}%`;
+
+  const moved = now - before;
+  if (moved === 0) return "unchanged";
+  return `${moved > 0 ? "+" : ""}${moved}pp`;
 }
 
 /**
@@ -153,11 +206,14 @@ function Metric({
   label,
   value,
   detail,
+  delta,
   failing = false,
 }: {
   label: string;
   value: string;
   detail: string;
+  /** How far this moved since the last run on the same corpus (R14). */
+  delta?: string;
   /** Below its declared threshold, so the number is drawn as the finding. */
   failing?: boolean;
 }) {
@@ -175,6 +231,18 @@ function Metric({
         {value}
       </div>
       <div className="text-xs text-muted-foreground">{detail}</div>
+      {/* Muted whichever way it went, deliberately. `text-destructive` on this
+          page means "this fell below the bar it was declared to need" — it is
+          on the figure above, and on the sentence about a payload that got out.
+          Colouring every downward drift the same red would spend that signal on
+          run-to-run noise, which is the PRD's opening risk: a harness that
+          cries wolf is a harness nobody reads. A move that matters has already
+          turned the number itself red. */}
+      {delta && (
+        <div className="text-xs tabular-nums text-muted-foreground">
+          {delta}
+        </div>
+      )}
     </div>
   );
 }
@@ -201,10 +269,13 @@ function MetricCell({ row }: { row: EvalMetricRow }) {
       label={METRIC_LABEL[row.metric]}
       value={row.value === null ? "—" : percent(row.numerator, row.denominator)}
       failing={failing}
+      delta={
+        row.previous === null ? undefined : deltaLabel(row.value, row.previous)
+      }
       detail={
         row.value === null
           ? `no ${METRIC_UNIT[row.metric]} in this run`
-          : `${row.numerator} of ${row.denominator} ${METRIC_UNIT[row.metric]} · needs ${Math.round(row.threshold * 100)}%`
+          : `${row.numerator} of ${row.denominator} ${METRIC_UNIT[row.metric]} · needs ${points(row.threshold)}%`
       }
     />
   );
@@ -403,6 +474,28 @@ function RunCard({ run }: { run: EvalRunRow }) {
               reply still carrying the planted payload. The output checks did
               not hold.
             </span>
+          </p>
+        )}
+
+        {/* Which run the deltas below are against, said once (R14).
+            Per-metric it would be the same sentence three times; on the card it
+            is one line, and it is the line that makes a "-6pp" mean something —
+            a delta whose other end is unnamed is a number nobody can go and
+            look at. The corpus is in it by construction, because the run before
+            this one on *this* corpus is the only run it is ever compared with:
+            frozen and live are two series, and a delta across them would be
+            measuring an admin's article edit and calling it a prompt
+            regression. Drawn only on a completed run, which is the same gate
+            the metrics are behind. */}
+        {run.metrics.length > 0 && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            {run.previous
+              ? `Compared with run ${run.previous.id}, ${new Date(
+                  run.previous.startedAt,
+                ).toLocaleDateString()}.`
+              : `First run on the ${CORPUS_LABEL[
+                  run.corpus
+                ].toLowerCase()} — nothing to compare against yet.`}
           </p>
         )}
 

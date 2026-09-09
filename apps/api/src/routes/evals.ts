@@ -14,12 +14,15 @@ import {
   type EvalCaseResultRow,
   type EvalCategoryRow,
   type EvalCheckRow,
+  type EvalCorpus,
   type EvalFiledRow,
   type EvalMetric,
   type EvalMetricRow,
+  type EvalPreviousMetric,
   type EvalReachedRow,
   type EvalRunRow,
   type EvalRunsResponse,
+  type EvalRunStatus,
   type EvalRunStartedResponse,
   type PipelineOutcome,
   type TicketCategory,
@@ -138,21 +141,84 @@ function reachedFrom(verdicts: unknown): EvalReachedRow[] {
 }
 
 /**
- * One metric, judged against what this run recorded (R8).
+ * The counters every metric is taken over, on any run.
  *
- * `denominator === 0` gives a null value rather than a zero or a one, and that
- * is the whole reason this returns a shape instead of a number. The catch rate
- * over a run where the model planted no payload is **unmeasured**, and the two
- * wrong readings pull in opposite directions: zero would light up as a
- * catastrophe on a healthy desk, and one would draw a perfect score as evidence
- * the safety checks work when nothing ever tested them. `meets` is true for it,
- * because a metric with no measurement cannot fall below anything — and the
- * page prints the denominator beside every figure so the difference is legible.
+ * Structural rather than the Prisma row, because two different queries produce
+ * it: the page of runs, which selects everything, and the narrow lookup for the
+ * run before it (`COMPARISON_COLUMNS`), which selects eight columns and none of
+ * the results.
+ */
+interface MetricCounts {
+  caught: number;
+  escaped: number;
+  matches: number;
+  attempts: number;
+  classifyMatches: number;
+  classifiedRepeats: number;
+}
+
+/** A run reduced to what the run after it needs in order to say what moved. */
+interface PriorRun extends MetricCounts {
+  id: number;
+  startedAt: Date;
+}
+
+/**
+ * Which counters each metric is a rate over.
+ *
+ * A `Record`, so a fourth metric is a compile error here until somebody says
+ * what it counts — and, more to the point, **one definition read twice**: once
+ * for the run being drawn and once for the run before it. Written out per
+ * metric at each site, a delta could silently be a comparison between two
+ * different arithmetics, which is the one way this feature could be wrong and
+ * still look right.
+ */
+const METRIC_COUNTS: Record<
+  EvalMetric,
+  (run: MetricCounts) => { numerator: number; denominator: number }
+> = {
+  // Caught over *attempted*, never over repeats: a repeat where the model
+  // ignored the payload is on neither side, because there was nothing to catch.
+  [EVAL_METRIC.catchRate]: (run) => ({
+    numerator: run.caught,
+    denominator: run.caught + run.escaped,
+  }),
+  [EVAL_METRIC.declineAccuracy]: (run) => ({
+    numerator: run.matches,
+    denominator: run.attempts,
+  }),
+  // Its own denominator again: `classifiedRepeats` is what the classifier
+  // answered, which is neither `attempts` nor the case count.
+  [EVAL_METRIC.classifierAccuracy]: (run) => ({
+    numerator: run.classifyMatches,
+    denominator: run.classifiedRepeats,
+  }),
+};
+
+/**
+ * A rate, or null when nothing was measured.
+ *
+ * `denominator === 0` gives null rather than a zero or a one, and the two wrong
+ * readings pull in opposite directions: zero would light up as a catastrophe on
+ * a healthy desk, and one would draw a perfect score as evidence the safety
+ * checks work when nothing ever tested them.
+ */
+function rate(numerator: number, denominator: number): number | null {
+  return denominator === 0 ? null : numerator / denominator;
+}
+
+/**
+ * One metric, judged against what this run recorded (R8) and read against the
+ * run before it (R14).
+ *
+ * `meets` is true for an unmeasured value, because a metric with no measurement
+ * cannot fall below anything — and the page prints the denominator beside every
+ * figure so the difference is legible.
  */
 function metricRow(
   metric: EvalMetric,
-  numerator: number,
-  denominator: number,
+  run: MetricCounts,
+  previous: PriorRun | null,
   thresholds: Record<string, number>,
 ): EvalMetricRow {
   // A run that recorded no threshold for this metric is judged by the constant
@@ -160,7 +226,8 @@ function metricRow(
   // it is the only honest reading of an absent key — the alternative is a zero
   // that reads as a bar nothing could fail.
   const threshold = thresholds[metric] ?? EVAL_THRESHOLD[metric];
-  const value = denominator === 0 ? null : numerator / denominator;
+  const { numerator, denominator } = METRIC_COUNTS[metric](run);
+  const value = rate(numerator, denominator);
 
   return {
     metric,
@@ -169,7 +236,122 @@ function metricRow(
     denominator,
     threshold,
     meets: value === null || value >= threshold,
+    previous: previous === null ? null : previousMetric(metric, previous),
   };
+}
+
+/**
+ * What the run before this one made of the same metric (R14).
+ *
+ * Taken through `METRIC_COUNTS`, which is the point: the predecessor's rate is
+ * computed by the same arithmetic as this run's, so a delta can never be a
+ * comparison between two different definitions of the same word.
+ *
+ * **A value, not a difference.** Deciding which run is comparable belongs here;
+ * subtracting belongs to the page, which rounds both figures to whole percents
+ * before it prints them and must caption the numbers it actually drew. A
+ * difference taken over the raw fractions can round the other way and contradict
+ * them — see `EvalPreviousMetric`. An unmeasured metric stays null the whole way
+ * out, never a zero.
+ */
+function previousMetric(
+  metric: EvalMetric,
+  previous: PriorRun,
+): EvalPreviousMetric {
+  const { numerator, denominator } = METRIC_COUNTS[metric](previous);
+
+  return { value: rate(numerator, denominator) };
+}
+
+/** What a run needs to be compared against — no results, no prose, no Json. */
+const COMPARISON_COLUMNS = {
+  id: true,
+  startedAt: true,
+  caught: true,
+  escaped: true,
+  matches: true,
+  attempts: true,
+  classifyMatches: true,
+  classifiedRepeats: true,
+} as const;
+
+/**
+ * For each run on the page, the completed run before it on the same corpus
+ * (R14).
+ *
+ * Three conditions, and each one rules out a comparison that would be worse
+ * than none. **Same corpus**, because frozen and live are two series (R4) and a
+ * delta across them measures an admin's article edits and calls it a prompt
+ * regression. **Completed**, because a run still filling in holds a fraction of
+ * the set and a rate over a fraction is a different number, not a smaller one —
+ * so a run in flight is skipped rather than compared against or used as a
+ * predecessor. And **before**, on the same `[startedAt, id]` ordering the page
+ * itself uses, so two runs started in the same second still have one answer.
+ *
+ * The page is walked oldest-first and each corpus's last seen run is carried
+ * forward, which is one pass and no per-run query. The one thing that pass
+ * cannot see is a predecessor that fell off the end of the page — and it will:
+ * the nightly is frozen, so twenty nights of them push the previous *live* run
+ * out of the window and the whole live series would quietly stop being
+ * comparable. So each corpus gets one anchor lookup for the run immediately
+ * older than the page, which is two queries whatever the history holds.
+ */
+async function previousRuns(
+  page: (PriorRun & { corpus: EvalCorpus; status: EvalRunStatus })[],
+): Promise<Map<number, PriorRun>> {
+  const previous = new Map<number, PriorRun>();
+  // "The newest completed run of this corpus seen so far", walking oldest-first
+  // — which starts out as the run immediately older than the page itself.
+  const newestSeen = await anchorRuns(page.at(-1));
+
+  for (const run of [...page].reverse()) {
+    // Skipped both ways: a run in flight or one that fell over is neither
+    // compared against a predecessor nor allowed to become one, which is what
+    // stops a half-finished run anchoring the series it interrupted.
+    if (run.status !== EVAL_RUN_STATUS.completed) continue;
+
+    const prior = newestSeen.get(run.corpus);
+    if (prior) previous.set(run.id, prior);
+    newestSeen.set(run.corpus, run);
+  }
+
+  return previous;
+}
+
+/**
+ * The completed run immediately older than the page, one per corpus.
+ *
+ * Two queries whatever the history holds, and they are what keep the answer
+ * independent of `EVAL_RUN_LIMIT` — see the note on `previousRuns`. The
+ * `[startedAt, id]` tie-break mirrors the page's own `orderBy` exactly; a
+ * lookup that compared `startedAt` alone would skip a run started in the same
+ * second and hand back the one before it.
+ */
+async function anchorRuns(
+  oldest: { id: number; startedAt: Date } | undefined,
+): Promise<Map<EvalCorpus, PriorRun>> {
+  const anchors = new Map<EvalCorpus, PriorRun>();
+  if (!oldest) return anchors;
+
+  await Promise.all(
+    Object.values(EVAL_CORPUS).map(async (corpus) => {
+      const run = await prisma.evalRun.findFirst({
+        where: {
+          corpus,
+          status: EVAL_RUN_STATUS.completed,
+          OR: [
+            { startedAt: { lt: oldest.startedAt } },
+            { startedAt: oldest.startedAt, id: { lt: oldest.id } },
+          ],
+        },
+        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        select: COMPARISON_COLUMNS,
+      });
+      if (run) anchors.set(corpus, run);
+    }),
+  );
+
+  return anchors;
 }
 
 /**
@@ -377,6 +559,9 @@ evalsRouter.get(
       include: { results: { orderBy: { id: "asc" } } },
     });
 
+    // R14, and it is two queries rather than one per run — see `previousRuns`.
+    const previousByRun = await previousRuns(runs);
+
     res.json({
       // A presence boolean, never the value or a prefix of it — the rule the
       // pipeline config block keeps. It is what lets the page say "no key"
@@ -384,6 +569,10 @@ evalsRouter.get(
       evalConfigured: isEvalConfigured(),
       runs: runs.map((run): EvalRunRow => {
         const thresholds = thresholdsFrom(run.thresholds);
+        // Null on every run that is not `completed`, because `previousRuns`
+        // skips those — the same gate `metrics` is behind, and for the same
+        // reason: there is nothing yet to compare.
+        const previous = previousByRun.get(run.id) ?? null;
         // Only on a run that finished properly, and `completed` rather than
         // "not running" — the two states this excludes are excluded for the
         // same reason. A rate over the third of the set that has been answered
@@ -399,16 +588,11 @@ evalsRouter.get(
             ? [
                 // The catch rate first, because it is the one ADR-0004 stands
                 // on and the only one whose failure is a defect.
-                metricRow(
-                  EVAL_METRIC.catchRate,
-                  run.caught,
-                  run.caught + run.escaped,
-                  thresholds,
-                ),
+                metricRow(EVAL_METRIC.catchRate, run, previous, thresholds),
                 metricRow(
                   EVAL_METRIC.declineAccuracy,
-                  run.matches,
-                  run.attempts,
+                  run,
+                  previous,
                   thresholds,
                 ),
                 // Last, and over its own denominator: `classifiedRepeats` is
@@ -418,8 +602,8 @@ evalsRouter.get(
                 // `metricRow` is what makes that the honest reading.
                 metricRow(
                   EVAL_METRIC.classifierAccuracy,
-                  run.classifyMatches,
-                  run.classifiedRepeats,
+                  run,
+                  previous,
                   thresholds,
                 ),
               ]
@@ -453,6 +637,16 @@ evalsRouter.get(
           classifyMatches: run.classifyMatches,
           categories: categoriesFrom(run.results),
           metrics,
+          // Which run those deltas are against, said once for the card rather
+          // than three times over (R14). Non-null on exactly the runs whose
+          // metrics carry a `previous`, because both come from this variable.
+          previous:
+            previous === null
+              ? null
+              : {
+                  id: previous.id,
+                  startedAt: previous.startedAt.toISOString(),
+                },
           // Marked failing, shown failing, and nothing else happens (R8, R11):
           // no issue, no notification, and nothing that could turn a pull request
           // red. A slow statistical suite wired to a gate is a suite somebody
