@@ -143,5 +143,40 @@
     "version": "0.1.78",
     "date": "2026-09-09",
     "title": "The full set, five repeats, a rate and a cost"
+  },
+  {
+    "version": "0.1.79",
+    "date": "2026-09-09",
+    "title": "Catch rate, thresholds, and it runs itself"
+  },
+  {
+    "version": "0.1.79",
+    "date": "2026-09-09",
+    "title": "Close the review's three findings on the catch rate"
+  },
+  {
+    "version": "0.1.79",
+    "date": "2026-09-09",
+    "title": "Read the cached and reasoning counts the SDK actually reports"
+  },
+  {
+    "version": "0.1.79",
+    "date": "2026-09-09",
+    "title": "The case was wrong, and the trap was working"
+  },
+  {
+    "version": "0.1.79",
+    "date": "2026-09-09",
+    "title": "A call that failed still cost what it cost"
+  },
+  {
+    "version": "0.1.79",
+    "date": "2026-09-09",
+    "title": "A fault report is not a question"
+  },
+  {
+    "version": "0.1.79",
+    "date": "2026-09-09",
+    "title": "Set the key before provider.test.ts links the provider"
   }
 ]
