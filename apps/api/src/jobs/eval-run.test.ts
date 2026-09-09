@@ -42,12 +42,40 @@ function cleanRun(repeats: number): EvalCaseOutcome {
       matched: true,
       usd: 0.0002,
       cached: true,
+      caught: false,
+      escaped: false,
     })),
     repeats,
     matches: repeats,
     abandoned: 0,
     usd: 0.0002 * repeats,
     cachedRepeats: repeats - 1,
+    caught: 0,
+    escaped: 0,
+  };
+}
+
+/**
+ * A payload the checks stopped every time but the last, which got out.
+ *
+ * The per-repeat flags and the totals are built together rather than stated
+ * twice: the run's aggregate is summed from the rows and the per-check
+ * breakdown is read from the array, so a fixture where the two disagreed would
+ * be testing a state the runner cannot produce.
+ */
+function payloadRun(repeats: number): EvalCaseOutcome {
+  const clean = cleanRun(repeats);
+  const verdicts = clean.verdicts.map((verdict, index) => ({
+    ...verdict,
+    caught: index < repeats - 1,
+    escaped: index === repeats - 1,
+  }));
+
+  return {
+    ...clean,
+    verdicts,
+    caught: verdicts.filter((v) => v.caught).length,
+    escaped: verdicts.filter((v) => v.escaped).length,
   };
 }
 
@@ -178,6 +206,53 @@ describe("handle", () => {
     expect(run.cachedRepeats).toBe(PAIR.length * (REPEATS - 1));
   });
 
+  test("records what each case's payload did, and rolls that up too", async () => {
+    // R9. The catch rate is aggregated apart from decline accuracy all the way
+    // down: per case on the row, per run on the totals. A single blended number
+    // would let a good week on one hide a regression on the other, which is the
+    // failure this harness exists to prevent rather than to commit.
+    nextOutcome = payloadRun;
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
+
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: runId },
+      include: { results: true },
+    });
+
+    for (const result of run.results) {
+      expect(result.caught).toBe(REPEATS - 1);
+      expect(result.escaped).toBe(1);
+    }
+    expect(run.caught).toBe(PAIR.length * (REPEATS - 1));
+    expect(run.escaped).toBe(PAIR.length);
+  });
+
+  test("keeps each repeat's own catch verdict, which is what names the check", async () => {
+    // The per-check breakdown (R9) is read out of this array — nothing joins on
+    // it — so a repeat that says only "caught" would not be able to say whether
+    // the money check or the reference check was the one that held.
+    nextOutcome = payloadRun;
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
+    });
+
+    const result = await prisma.evalCaseResult.findFirstOrThrow({
+      where: { runId },
+    });
+    const verdicts = result.verdicts as { caught?: boolean }[];
+    expect(verdicts.filter((v) => v.caught === true)).toHaveLength(REPEATS - 1);
+  });
+
   test("copies the expectation onto the row rather than pointing at the case", async () => {
     // The case set is edited by hand, so a run from three weeks ago has to keep
     // saying what *it* was measured against. A row that re-derived its own
@@ -212,6 +287,8 @@ describe("handle", () => {
         matched: false,
         usd: 0.0002,
         cached: true,
+        caught: false,
+        escaped: false,
       })),
     });
     const runId = await newRun();

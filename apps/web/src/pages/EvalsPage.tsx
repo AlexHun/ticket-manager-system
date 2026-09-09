@@ -3,11 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Play } from "lucide-react";
 import {
   EVAL_CORPUS,
+  EVAL_METRIC,
   EVAL_RUN_STATUS,
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
   type EvalCaseResultRow,
   type EvalCorpus,
+  type EvalMetric,
+  type EvalMetricRow,
   type EvalReachedRow,
   type EvalRunRow,
   type EvalRunStartedResponse,
@@ -72,6 +75,31 @@ const CORPUS_LABEL: Record<EvalCorpus, string> = {
 };
 
 /**
+ * The metrics, named for what they measure rather than for the field.
+ *
+ * A `Record`, so a third metric is a compile error here until somebody has
+ * written a heading for it — the same rule the thresholds themselves keep.
+ */
+const METRIC_LABEL: Record<EvalMetric, string> = {
+  [EVAL_METRIC.catchRate]: "Safety catch rate",
+  [EVAL_METRIC.declineAccuracy]: "Decline accuracy",
+};
+
+/**
+ * What the number underneath a metric counts, in words.
+ *
+ * The denominators are different in kind and that is worth spelling out rather
+ * than printing two bare fractions. Decline accuracy is taken over every repeat
+ * in the run; the catch rate is taken only over the repeats where the model
+ * actually planted the payload — which is usually a handful, and reading it as
+ * though it were out of 175 would make a 3-of-4 look like a rounding error.
+ */
+const METRIC_UNIT: Record<EvalMetric, string> = {
+  [EVAL_METRIC.catchRate]: "payloads attempted",
+  [EVAL_METRIC.declineAccuracy]: "repeats",
+};
+
+/**
  * An outcome with its reason, the way a result row reads it.
  *
  * `DECLINE_SHORT` rather than a second set of words: the rail already says
@@ -105,19 +133,60 @@ function Metric({
   label,
   value,
   detail,
+  failing = false,
 }: {
   label: string;
   value: string;
   detail: string;
+  /** Below its declared threshold, so the number is drawn as the finding. */
+  failing?: boolean;
 }) {
   return (
     <div>
       <div className="text-xs uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="text-2xl font-semibold tabular-nums">{value}</div>
+      <div
+        className={cn(
+          "text-2xl font-semibold tabular-nums",
+          failing && "text-destructive",
+        )}
+      >
+        {value}
+      </div>
       <div className="text-xs text-muted-foreground">{detail}</div>
     </div>
+  );
+}
+
+/**
+ * One judged metric: the rate, what it had to clear, and whether it did (R8).
+ *
+ * The threshold is on screen beside every number rather than only when one is
+ * missed, because a metric whose bar is invisible until it is broken is a
+ * metric nobody can argue with in advance — and these two bars are exactly the
+ * sort that want arguing about. It comes from the **run**, not from this
+ * build's constant, so an old run keeps saying what it was judged against.
+ *
+ * An unmeasured metric draws "—" and the reason. That is the catch rate on a
+ * run where the model planted no payload, and it is neither a zero nor a
+ * hundred percent: a green 100% there would be the most misleading thing this
+ * page could say, since nothing was ever tested.
+ */
+function MetricCell({ row }: { row: EvalMetricRow }) {
+  const failing = !row.meets;
+
+  return (
+    <Metric
+      label={METRIC_LABEL[row.metric]}
+      value={row.value === null ? "—" : percent(row.numerator, row.denominator)}
+      failing={failing}
+      detail={
+        row.value === null
+          ? `no ${METRIC_UNIT[row.metric]} in this run`
+          : `${row.numerator} of ${row.denominator} ${METRIC_UNIT[row.metric]} · needs ${Math.round(row.threshold * 100)}%`
+      }
+    />
   );
 }
 
@@ -185,6 +254,20 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             {result.abandoned} unanswered
           </div>
         )}
+        {/* A payload's row carries a second number, because "as expected" is
+            not the safety question. `hostile-display-name` expects a clean
+            reply and gets one; whether the link in that From name reached it is
+            a different fact, and one a 5/5 would hide entirely. */}
+        {result.escaped > 0 && (
+          <div className="text-xs font-medium text-destructive">
+            {result.escaped} escaped
+          </div>
+        )}
+        {result.caught > 0 && (
+          <div className="text-xs text-muted-foreground">
+            {result.caught} caught
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -216,6 +299,12 @@ function RunCard({ run }: { run: EvalRunRow }) {
           {run.status === EVAL_RUN_STATUS.failed && (
             <Badge variant="outline">Failed</Badge>
           )}
+          {/* Two different pieces of news, and the badges are deliberately not
+              the same one. "Failed" is the run falling over — the provider was
+              unreachable, the queue gave up — and it has no numbers. "Failing"
+              is a run that finished and whose numbers are below what they were
+              declared to need, which is the answer this page exists to give. */}
+          {run.failing && <Badge variant="destructive">Failing</Badge>}
           <span className="ml-auto text-sm font-normal text-muted-foreground">
             {new Date(run.startedAt).toLocaleString()}
           </span>
@@ -226,16 +315,30 @@ function RunCard({ run }: { run: EvalRunRow }) {
           <p className="mb-3 text-sm text-muted-foreground">{run.error}</p>
         )}
 
+        {/* Above the numbers, and in words rather than as a red figure among
+            black ones. Every other value on this card is a measurement; this
+            one is a defect — a payload reached a reply the desk was willing to
+            send, which is ADR-0004's claim failing. */}
+        {run.escaped > 0 && (
+          <p className="mb-3 flex items-start gap-2 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              {run.escaped} adversarial{" "}
+              {run.escaped === 1 ? "repeat" : "repeats"} reached an accepted
+              reply still carrying the planted payload. The output checks did
+              not hold.
+            </span>
+          </p>
+        )}
+
         {/* Only once the run has closed. A percentage taken over the third of
             the set that has finished is not a smaller version of the answer,
             it is a different number, and drawing one invites reading it. */}
         {!running && (
-          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Metric
-              label="Decline accuracy"
-              value={percent(run.matches, run.attempts)}
-              detail={`${run.matches} of ${run.attempts} repeats`}
-            />
+          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {run.metrics.map((metric) => (
+              <MetricCell key={metric.metric} row={metric} />
+            ))}
             <Metric
               label="Estimated cost"
               value={`$${run.usd.toFixed(4)}`}
@@ -255,6 +358,35 @@ function RunCard({ run }: { run: EvalRunRow }) {
                   : "the provider could not be reached"
               }
             />
+          </div>
+        )}
+
+        {/* R9's second half, and the reason the catch rate is not one number.
+            A rate says the checks held; this says *which* of the two string
+            comparisons did the holding — which is the thing worth knowing
+            before anybody proposes relaxing one of them. */}
+        {!running && run.checks.length > 0 && (
+          <div className="mb-4 text-sm">
+            <span className="text-muted-foreground">Caught by:</span>{" "}
+            {/* A named list rather than a run of spans. It reads as one to a
+                screen reader, which it is — and it gives the breakdown a handle
+                of its own, which it needs: the same nine words label a decline
+                in the Expected and Reached columns of the table below, so a
+                locator that only knew the wording would be pointing at three
+                different claims. */}
+            <ul
+              aria-label="Payloads caught by check"
+              className="mt-1 flex flex-wrap gap-x-4 gap-y-1"
+            >
+              {run.checks.map((check) => (
+                <li key={check.decline} className="flex gap-2">
+                  <span>{DECLINE_SHORT[check.decline]}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    ×{check.count}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

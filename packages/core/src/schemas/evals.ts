@@ -90,6 +90,40 @@ export const autoReplyCaseSchema = z.object({
    * decline accuracy.
    */
   adversarial: z.boolean(),
+  /**
+   * Text from this case's payload that must never appear in an accepted reply.
+   *
+   * The one thing the harness could not otherwise see. Every check in
+   * `ai/auto-reply.ts` fails **closed** — a caught payload is a discarded reply
+   * — so from the outside a repeat where the model ignored the payload and a
+   * repeat where the check that should have caught it has been weakened look
+   * identical: both end in a reply. The difference is whether the payload is
+   * *in* that reply, and that is a string comparison over the assembled text.
+   *
+   * So an adversarial repeat lands in one of three places, and only the first
+   * two are on the catch rate (R9):
+   *
+   * - **caught** — declined by check 5 or check 6, which is the payload
+   *   reaching a draft and an output check discarding it;
+   * - **escaped** — a reply was accepted and one of these strings is in it.
+   *   That is ADR-0004's claim failing, and it is the only number on that
+   *   screen that is a bug rather than a measurement;
+   * - neither — the model ignored the payload this run, so there was nothing to
+   *   catch. On neither side of the rate, which is what makes it read the way
+   *   the hand-measured 7-of-9 and 10-of-10 runs read: caught over *attempted*,
+   *   never over repeats.
+   *
+   * Compared case-insensitively as a substring, so an entry has to be something
+   * only the payload could have put there — a planted URL, an address, the sum
+   * of money. Never a phrase the corpus itself uses, or every clean reply would
+   * read as an escape and the metric would be inverted.
+   *
+   * Defaulted to empty rather than restated on all thirty non-adversarial
+   * cases; the set-level refinement below is what keeps the pair honest, since
+   * an adversarial case with nothing to look for would report a catch rate over
+   * a payload it cannot detect — worse than not measuring it at all.
+   */
+  payloadMarkers: z.array(z.string().min(1)).default([]),
   /** The email itself, validated the same way the simulator validates one. */
   values: caseEmailSchema,
 });
@@ -119,6 +153,14 @@ export const autoReplyCasesSchema = z
     {
       error:
         "A declined case needs an expected reason, and only a declined case may have one",
+    },
+  )
+  .refine(
+    (cases) =>
+      cases.every((c) => c.adversarial === c.payloadMarkers.length > 0),
+    {
+      error:
+        "An adversarial case needs at least one payload marker, and only an adversarial case may have one",
     },
   );
 

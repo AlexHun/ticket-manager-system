@@ -1022,6 +1022,38 @@ model EvalRun {
   /// nothing else in this app would show.
   cachedRepeats Int   @default(0)
 
+  /// Adversarial repeats whose payload reached a draft and was thrown out by
+  /// one of the two output checks, and adversarial repeats whose payload
+  /// reached an **accepted** reply.
+  ///
+  /// `caught / (caught + escaped)` is the safety catch rate (R9), and the
+  /// denominator is deliberately neither the repeats nor the adversarial
+  /// repeats: a repeat where the model ignored the payload is on neither side,
+  /// because there was nothing to catch. Same arithmetic as the hand-measured
+  /// 7-of-9 and 10-of-10 runs the auto-reply's design rests on.
+  ///
+  /// `escaped` above zero is the only number here that is a defect rather than
+  /// a measurement — it is ADR-0004's claim failing.
+  caught     Int      @default(0)
+  escaped    Int      @default(0)
+
+  /// What this run was judged against, stamped when it started (R8).
+  ///
+  /// A snapshot of `EVAL_THRESHOLD` rather than a lookup at read time, for the
+  /// reason every expectation on `EvalCaseResult` is denormalised: a run kept
+  /// for months has to keep saying what it was measured *and judged* against.
+  /// Deriving it live would mean editing a constant silently re-coloured every
+  /// run in the history, which is precisely the failure a stored result exists
+  /// to prevent.
+  ///
+  /// `Json` rather than a column per metric, because the metric set grows —
+  /// classifier accuracy is the next one — and a run from before a metric
+  /// existed should carry no threshold for it rather than a zero that reads as
+  /// one. A key this build has no metric for is ignored; a metric with no key
+  /// falls back to the current constant, which is the honest reading for the
+  /// rows written before this column existed.
+  thresholds Json     @default("{}")
+
   results EvalCaseResult[]
 
   /// The page lists newest first.
@@ -1075,6 +1107,11 @@ model EvalCaseResult {
   /// Repeats after the first served partly from the prompt cache, out of
   /// `repeats - 1`. The first repeat is what warms it.
   cachedRepeats   Int      @default(0)
+  /// This case's share of the catch rate: payload caught by an output check,
+  /// and payload reaching an accepted reply. Both zero unless `adversarial`.
+  /// See the notes on `EvalRun`.
+  caught          Int      @default(0)
+  escaped         Int      @default(0)
   /// One entry per repeat: `{ outcome, decline, matched }`, in the order they
   /// were answered.
   ///

@@ -222,10 +222,18 @@ async function handle(job: EvalRunJob): Promise<void> {
         abandoned: outcome.abandoned,
         usd: outcome.usd,
         cachedRepeats: outcome.cachedRepeats,
+        caught: outcome.caught,
+        escaped: outcome.escaped,
         verdicts: outcome.verdicts.map((v) => ({
           outcome: v.outcome,
           decline: v.decline,
           matched: v.matched,
+          // Per repeat, not only as a total, because the per-check breakdown
+          // (R9) is read out of this array: `caught` says a check held and
+          // `decline` beside it says *which* one, which is the distinction the
+          // 7-of-9 and 10-of-10 measurements already drew.
+          caught: v.caught,
+          escaped: v.escaped,
         })),
       },
     });
@@ -251,6 +259,8 @@ async function handle(job: EvalRunJob): Promise<void> {
       abandoned: true,
       usd: true,
       cachedRepeats: true,
+      caught: true,
+      escaped: true,
     },
   });
 
@@ -264,6 +274,8 @@ async function handle(job: EvalRunJob): Promise<void> {
       abandoned: totals._sum.abandoned ?? 0,
       usd: totals._sum.usd ?? 0,
       cachedRepeats: totals._sum.cachedRepeats ?? 0,
+      caught: totals._sum.caught ?? 0,
+      escaped: totals._sum.escaped ?? 0,
     },
   });
 
@@ -273,10 +285,24 @@ async function handle(job: EvalRunJob): Promise<void> {
 
   const attempts = totals._sum.repeats ?? 0;
   const matches = totals._sum.matches ?? 0;
+  const caught = totals._sum.caught ?? 0;
+  const escaped = totals._sum.escaped ?? 0;
   console.log(
     `[evals] run ${runId} (${corpus}): ${matches}/${attempts} repeats as expected across ` +
-      `${cases.length} case(s), usd~${(totals._sum.usd ?? 0).toFixed(4)}`,
+      `${cases.length} case(s), caught=${caught} escaped=${escaped}, ` +
+      `usd~${(totals._sum.usd ?? 0).toFixed(4)}`,
   );
+
+  // Said separately and in these words because it is not a number that moved:
+  // a payload reached a reply this desk was willing to send, which is ADR-0004's
+  // claim failing. Everything else a run prints is a measurement; this is a bug,
+  // and the screen alone is not where somebody would find it at three in the
+  // morning.
+  if (escaped > 0) {
+    console.error(
+      `[evals] run ${runId}: ${escaped} adversarial repeat(s) reached an accepted reply carrying the payload`,
+    );
+  }
 
   publishEvalRunChanged(runId);
 }

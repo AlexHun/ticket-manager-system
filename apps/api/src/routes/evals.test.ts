@@ -25,8 +25,12 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   EVAL_CORPUS,
   EVAL_RUN_STATUS,
+  EVAL_METRIC,
+  EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
   type EvalCorpus,
+  type EvalMetric,
+  type EvalMetricRow,
   type EvalRunsResponse,
   type EvalRunStartedResponse,
 } from "@ticket/shared";
@@ -139,6 +143,20 @@ describe("POST /runs", () => {
     expect(run.repeats).toBe(5);
   });
 
+  test("stamps the thresholds the run will be judged against", async () => {
+    // R8, and the same argument as the repeat count above one step further on:
+    // a run has to keep saying what it was *judged* against, not only what it
+    // measured. Read live, an edit to `EVAL_THRESHOLD` would silently re-colour
+    // every run in the history — including the ones a decision was taken off.
+    const res = await post();
+    const body = (await res.json()) as EvalRunStartedResponse;
+
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: body.runId },
+    });
+    expect(run.thresholds).toEqual(EVAL_THRESHOLD);
+  });
+
   test("enqueues every case unless the caller pinned a subset", async () => {
     const res = await post();
     const body = (await res.json()) as EvalRunStartedResponse;
@@ -224,6 +242,61 @@ function caseResult(overrides: Record<string, unknown> = {}) {
     })),
     ...overrides,
   };
+}
+
+/**
+ * A finished run of one adversarial case, with the catch counts a test wants.
+ *
+ * The run's totals are what the metrics are taken off, and they are set to the
+ * case's rather than left to be summed: the summing is `jobs/eval-run.ts`'s job
+ * and is asserted there, so restating it here would make this file fail for the
+ * worker's reasons.
+ */
+async function finishedRun(
+  overrides: {
+    caught?: number;
+    escaped?: number;
+    thresholds?: Record<string, number>;
+    verdicts?: unknown[];
+  } = {},
+) {
+  const { thresholds = EVAL_THRESHOLD, ...counts } = overrides;
+  const caught = counts.caught ?? 0;
+  const escaped = counts.escaped ?? 0;
+
+  return prisma.evalRun.create({
+    data: {
+      corpus: EVAL_CORPUS.frozen,
+      status: EVAL_RUN_STATUS.completed,
+      finishedAt: new Date(),
+      repeats: 5,
+      attempts: 5,
+      matches: 5,
+      caught,
+      escaped,
+      thresholds,
+      results: {
+        create: caseResult({
+          adversarial: true,
+          caseId: "planted-link",
+          caught,
+          escaped,
+          ...(counts.verdicts ? { verdicts: counts.verdicts } : {}),
+        }),
+      },
+    },
+  });
+}
+
+async function runs(): Promise<EvalRunsResponse> {
+  const res = await fetch(url("/runs"));
+  return (await res.json()) as EvalRunsResponse;
+}
+
+function metricOf(body: EvalRunsResponse, metric: EvalMetric): EvalMetricRow {
+  const row = body.runs[0]?.metrics.find((m) => m.metric === metric);
+  if (!row) throw new Error(`No ${metric} on the run`);
+  return row;
 }
 
 describe("GET /runs", () => {
@@ -321,6 +394,126 @@ describe("GET /runs", () => {
         matched: false,
       },
     ]);
+  });
+
+  test("reports the catch rate over payloads attempted, not over repeats", async () => {
+    // R9, and the denominator is the whole argument. A repeat where the model
+    // ignored the payload is on neither side of this — there was nothing to
+    // catch — so a run where it happened to behave must not read as a run where
+    // the checks held. Same arithmetic as the hand-measured 7-of-9.
+    await finishedRun({ caught: 3, escaped: 1 });
+
+    const body = await runs();
+    const metric = metricOf(body, EVAL_METRIC.catchRate);
+
+    expect(metric.numerator).toBe(3);
+    expect(metric.denominator).toBe(4);
+    expect(metric.value).toBeCloseTo(0.75, 6);
+  });
+
+  test("reports no catch rate at all when no payload was attempted", async () => {
+    // Null, and not 100%. "The model planted nothing this run" is not evidence
+    // that the checks work, and a screen that drew it as a perfect score would
+    // be the most misleading thing on the page.
+    await finishedRun({ caught: 0, escaped: 0 });
+
+    const metric = metricOf(await runs(), EVAL_METRIC.catchRate);
+
+    expect(metric.value).toBeNull();
+    // A metric with no measurement cannot fall below a threshold.
+    expect(metric.meets).toBe(true);
+  });
+
+  test("marks a run failing when a measured metric is below its threshold", async () => {
+    // R8: marked failing, shown failing, and nothing else — no issue, no
+    // notification, no red pull request.
+    await finishedRun({ caught: 3, escaped: 1 });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.failing).toBe(true);
+    // And the run itself did not fail. A failed run fell over and has no
+    // numbers; this one finished and its numbers are the answer.
+    expect(body.runs[0]?.status).toBe(EVAL_RUN_STATUS.completed);
+  });
+
+  test("judges a run against the thresholds it recorded, not today's", async () => {
+    // The reason the column exists. A run kept for months has to keep saying
+    // what it was judged against, or editing `EVAL_THRESHOLD` silently
+    // re-colours every result somebody has already taken a decision off.
+    await finishedRun({
+      caught: 3,
+      escaped: 1,
+      thresholds: { [EVAL_METRIC.catchRate]: 0.5 },
+    });
+
+    const body = await runs();
+
+    expect(metricOf(body, EVAL_METRIC.catchRate).threshold).toBe(0.5);
+    expect(body.runs[0]?.failing).toBe(false);
+  });
+
+  test("falls back to this build's threshold for a run that recorded none", async () => {
+    // Every row written before the column existed. Judging it by today's
+    // numbers is the only thing available and the only honest reading of an
+    // absent key — the alternative is a zero that reads as a threshold nothing
+    // could fail.
+    await finishedRun({ caught: 3, escaped: 1, thresholds: {} });
+
+    expect(metricOf(await runs(), EVAL_METRIC.catchRate).threshold).toBe(
+      EVAL_THRESHOLD[EVAL_METRIC.catchRate],
+    );
+  });
+
+  test("says which check caught each payload", async () => {
+    // R9's second half. A bare catch rate cannot say which of the two string
+    // comparisons is carrying the load, which is exactly what it would cost
+    // most to weaken.
+    await finishedRun({
+      caught: 3,
+      escaped: 0,
+      verdicts: [
+        ...Array.from({ length: 2 }, () => ({
+          outcome: PIPELINE_OUTCOME.declined,
+          decline: "unbackedReference",
+          matched: true,
+          caught: true,
+        })),
+        {
+          outcome: PIPELINE_OUTCOME.declined,
+          decline: "unbackedCommitment",
+          matched: true,
+          caught: true,
+        },
+        {
+          outcome: PIPELINE_OUTCOME.declined,
+          decline: "notCovered",
+          matched: false,
+          caught: false,
+        },
+      ],
+    });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.checks).toEqual([
+      { decline: "unbackedReference", count: 2 },
+      { decline: "unbackedCommitment", count: 1 },
+    ]);
+  });
+
+  test("draws no metrics on a run that has not finished", async () => {
+    // A rate over the third of the set that has finished is not a smaller
+    // version of the answer, it is a different number — and a threshold applied
+    // to one would go red on a run that is merely young.
+    await prisma.evalRun.create({
+      data: { corpus: EVAL_CORPUS.frozen, repeats: 5 },
+    });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.metrics).toEqual([]);
+    expect(body.runs[0]?.failing).toBe(false);
   });
 
   test("counts only the repeats that could have hit the prompt cache", async () => {

@@ -3,6 +3,7 @@ import { isEvalConfigured } from "../evals/config";
 import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
+import { registerEvalNightly } from "./eval-nightly";
 import { registerEvalRun } from "./eval-run";
 import { registerPruneActivityTrails } from "./prune-activity-trails";
 import { registerPruneOutbox } from "./prune-outbox";
@@ -49,6 +50,12 @@ export async function startJobs(): Promise<void> {
   // up a job it cannot answer.
   if (isEvalConfigured()) {
     await registerEvalRun(boss);
+    // And the clock that opens one a night (R13). Gated with the worker rather
+    // than beside the two pruning sweeps, because a nightly on a keyless
+    // deployment would write a run row every night that nothing could ever
+    // answer — a page filling up with runs stuck at "running", which is the
+    // worst state this screen can reach.
+    await registerEvalNightly(boss);
   }
   await registerSendEmail(boss);
   await registerPruneOutbox(boss);
