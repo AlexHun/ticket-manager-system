@@ -12,6 +12,7 @@ import {
   fenced,
   logUsage,
   openaiModel,
+  toAiUsage,
   unbackedCommitments,
   withoutDashes,
   type AiUsage,
@@ -355,6 +356,8 @@ MOST EMAILS ARE NOT YOURS TO ANSWER. Handing a ticket on is the normal, expected
 
 ANSWER ONLY IF THE ARTICLES FULLY ANSWER IT. Every fact, number, policy, address and instruction in your reply must come from an article below. If the customer asked two things and the articles cover one, that is false. If the answer depends on something only a person could look up — what this customer was charged, what their account shows, whether an exception applies to them — that is false. If you find yourself reaching for something you know about software or companies in general rather than something written below, that is false.
 
+A FAULT REPORT IS NOT A QUESTION. When the customer tells you that what an article describes did not happen for them — the thing the article says is there is not there, the step it gives has been taken and did not work, the state it treats as the goal is the state they say they are already in — you may answer only if an article accounts for that failure. An article explaining why the thing goes wrong is an answer. An article that only says how it is supposed to work is not: repeating it tells someone whose system is broken that it works, and points them where they have already looked. If nothing here explains what went wrong for them, that is false, however squarely the article seems to be about their topic.
+
 WHEN YOU ANSWER, WRITE THE BODY ONLY. The greeting and the sign off are added for you. Do not open with "Hi", "Hello" or "Dear", do not close with "Best regards", "Thanks", "The Support Team" or any signature, and never leave a placeholder in brackets for a name.
 
 HOW TO LAY IT OUT. "paragraphs" is the body, one short paragraph per entry. Answer the question in the first one, in the first sentence if you can. "steps" is only for things the customer has to do themselves, one plain sentence each, in the order they should do them; leave it null when there is nothing for them to do, and never put an explanation in there that is not an action. Finish with a short paragraph inviting them to reply if this did not sort it out. Two or three paragraphs at the very most.
@@ -673,8 +676,9 @@ export async function autoReply(
       // No `temperature`: `openai(id)` resolves to the Responses API, which
       // rejects it on reasoning models.
     });
-    logUsage("auto-reply", AUTO_REPLY_MODEL, generated.usage);
-    usage = generated.usage;
+    const aiUsage = toAiUsage(generated.usage);
+    logUsage("auto-reply", AUTO_REPLY_MODEL, aiUsage);
+    usage = aiUsage;
     output = generated.output;
   } catch (err) {
     console.error("[auto-reply] generateText failed:", err);
@@ -682,10 +686,19 @@ export async function autoReply(
     // not be asked — so they share one `decline` while keeping the `reason` that
     // decides whether a retry is coming.
     if (NoObjectGeneratedError.isInstance(err)) {
+      // The one fault that comes with a bill attached. This is the call whose
+      // output budget went entirely on reasoning — `finishReason: "length"` —
+      // so it is both the most expensive way to fail and the only one the SDK
+      // reports usage for. Logged and carried like any other call: a run that
+      // counted only the calls that came back would understate itself by
+      // exactly the failures it is most important to notice.
+      const failed = toAiUsage(err.usage);
+      logUsage("auto-reply", AUTO_REPLY_MODEL, failed);
       return {
         ok: false,
         reason: AI_FAILURE.empty,
         decline: AUTO_REPLY_DECLINE.unavailable,
+        usage: failed,
       };
     }
     return {

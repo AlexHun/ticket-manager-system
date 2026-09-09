@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { APICallError, RetryError } from "ai";
+import { APICallError, type LanguageModelUsage, RetryError } from "ai";
 
 /**
  * The machinery every AI feature in this app needs, and none of the judgement
@@ -92,13 +92,52 @@ export function openaiModel(modelId: string) {
  */
 const USD_PER_MTOK = { input: 0.05, cachedInput: 0.005, output: 0.4 } as const;
 
-/** What `generateText` reports back about one call. */
+/**
+ * What this app records about one call — its own flat shape, not the SDK's.
+ *
+ * The fields are **required and nullable** (`number | undefined`) rather than
+ * optional (`?:`), which looks like pedantry and is the whole point. They used
+ * to be optional, and this interface used to be assigned the SDK's usage object
+ * directly. That typechecked no matter what the SDK's shape was — an absent
+ * optional field is a legal value — so when the installed `ai` v7 turned out to
+ * report cached and reasoning counts under `inputTokenDetails` /
+ * `outputTokenDetails` rather than flat, both silently read `undefined` and
+ * `logUsage` printed `cached=0 reasoning=0` for every call this app had ever
+ * made. Required fields mean `toAiUsage` below cannot forget one.
+ */
 export interface AiUsage {
-  inputTokens?: number | undefined;
-  outputTokens?: number | undefined;
-  totalTokens?: number | undefined;
-  reasoningTokens?: number | undefined;
-  cachedInputTokens?: number | undefined;
+  inputTokens: number | undefined;
+  outputTokens: number | undefined;
+  totalTokens: number | undefined;
+  reasoningTokens: number | undefined;
+  cachedInputTokens: number | undefined;
+}
+
+/**
+ * The one place the SDK's usage shape is read, and the reason it is a function
+ * rather than an assignment.
+ *
+ * `LanguageModelUsage` is named here on purpose: it is the only reference to it
+ * in this codebase, so an SDK release that moves a field again breaks *this*
+ * line at compile time instead of quietly zeroing a number nobody is watching.
+ * See `provider.test.ts` for the full account of what that cost the first time.
+ *
+ * `undefined` in, `undefined` out — a call that reported no usage is not the
+ * same claim as a call that used nothing, and `usdFor` and `logUsage` each say
+ * so in their own way.
+ */
+export function toAiUsage(
+  usage: LanguageModelUsage | undefined,
+): AiUsage | undefined {
+  if (!usage) return undefined;
+
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+    reasoningTokens: usage.outputTokenDetails.reasoningTokens,
+    cachedInputTokens: usage.inputTokenDetails.cacheReadTokens,
+  };
 }
 
 /**

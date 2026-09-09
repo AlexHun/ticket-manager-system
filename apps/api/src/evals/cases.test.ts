@@ -14,6 +14,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
+  isOutputCheckDecline,
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
 } from "@ticket/shared";
@@ -25,6 +26,7 @@ import {
   autoReplyCaseById,
 } from "@ticket/core";
 import { gateDecline } from "../ai/auto-reply-gates";
+import { frozenCorpus } from "./frozen-corpus";
 
 /* ── R2, as a measurement rather than a claim ────────────────────────────── */
 
@@ -127,6 +129,86 @@ describe("preflight and the gates agree", () => {
         }),
         evalCase.id,
       ).toBe(evalCase.expected.decline);
+    }
+  });
+});
+
+/* ── R9: the strings the catch rate is measured with ─────────────────────── */
+
+describe("the payload markers", () => {
+  test("appear nowhere in the frozen corpus", () => {
+    // The mirror image of the failure they exist to catch, and the one that
+    // would be invisible: a marker the knowledge base itself uses would report
+    // every clean reply as an escape, and the safety metric would read as a
+    // catastrophe on a system that is working.
+    //
+    // **Only the frozen corpus, and deliberately so.** The live corpus is a
+    // table an admin edits at `/knowledge`, so no static test can hold it —
+    // `payloadIn` in the runner covers that end at run time by ignoring a
+    // marker the articles themselves supply, which is the rule checks 5 and 6
+    // already keep. This is the static half, on the corpus the nightly answers
+    // and the series a threshold is actually read against.
+    const corpus = frozenCorpus()
+      .map((article) => `${article.title}\n${article.body}`)
+      .join("\n")
+      .toLowerCase();
+
+    for (const evalCase of AUTO_REPLY_CASES) {
+      for (const marker of evalCase.payloadMarkers) {
+        expect(
+          corpus.includes(marker.toLowerCase()),
+          `${evalCase.id}: the corpus already contains "${marker}"`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  test("are text the payload actually plants", () => {
+    // A marker is a promise about one specific email. If it is not in that
+    // email, it can never appear in a reply either, and the case reports a
+    // catch rate over a payload it cannot detect — which reads as "nothing ever
+    // escaped" rather than as "nothing was ever checked".
+    for (const evalCase of AUTO_REPLY_CASES.filter((c) => c.adversarial)) {
+      const email = `${evalCase.values.subject}\n${evalCase.values.textBody}\n${evalCase.values.senderName}`;
+      for (const marker of evalCase.payloadMarkers) {
+        expect(
+          email.toLowerCase().includes(marker.toLowerCase()),
+          `${evalCase.id}: "${marker}" is not in the email`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("belong to the payloads and to nothing else", () => {
+    // The schema refines this at module load, so the set cannot be parsed
+    // otherwise. Asserted here as well because it is the pairing the whole
+    // metric rests on, and a refinement is one edit away from being relaxed by
+    // somebody who reads it as a formality.
+    for (const evalCase of AUTO_REPLY_CASES) {
+      expect(
+        evalCase.payloadMarkers.length > 0,
+        `${evalCase.id} disagrees with itself about being a payload`,
+      ).toBe(evalCase.adversarial);
+      // Both halves of the rate, or neither. A payload with markers and no
+      // declared check reports escapes it can see against catches it cannot.
+      expect(
+        evalCase.payloadChecks.length > 0,
+        `${evalCase.id} has no check its payload is aimed at`,
+      ).toBe(evalCase.adversarial);
+    }
+  });
+
+  test("name a check the case's own expectation agrees with", () => {
+    // The drift this stops: a payload expecting `unbackedCommitment` while
+    // declaring only `unbackedReference` would score every single one of its
+    // own expected declines as *not* caught — the safety numerator silently
+    // reading zero on the case that matters most, while decline accuracy said
+    // 5/5 and nothing on the screen looked wrong.
+    for (const evalCase of AUTO_REPLY_CASES) {
+      const expected = evalCase.expected.decline;
+      if (expected === null || !isOutputCheckDecline(expected)) continue;
+
+      expect(evalCase.payloadChecks, evalCase.id).toContain(expected);
     }
   });
 });

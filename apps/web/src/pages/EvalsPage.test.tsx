@@ -1,12 +1,16 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   EVAL_CORPUS,
+  EVAL_METRIC,
   EVAL_RUN_STATUS,
+  EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
   USER_ROLE,
   type EvalCaseResultRow,
+  type EvalMetric,
+  type EvalMetricRow,
   type EvalRunRow,
   type EvalRunsResponse,
 } from "@ticket/shared";
@@ -56,6 +60,8 @@ function makeResult(
     abandoned: 0,
     usd: 0.0012,
     cachedRepeats: 4,
+    caught: 0,
+    escaped: 0,
     reached: [
       {
         outcome: PIPELINE_OUTCOME.declined,
@@ -64,6 +70,25 @@ function makeResult(
         matched: true,
       },
     ],
+    ...overrides,
+  };
+}
+
+/**
+ * A metric that cleared its threshold, so a test about something else does not
+ * accidentally render a failing card.
+ */
+function makeMetric(
+  metric: EvalMetric,
+  overrides: Partial<EvalMetricRow> = {},
+): EvalMetricRow {
+  return {
+    metric,
+    value: 1,
+    numerator: 5,
+    denominator: 5,
+    threshold: EVAL_THRESHOLD[metric],
+    meets: true,
     ...overrides,
   };
 }
@@ -83,6 +108,18 @@ function makeRun(overrides: Partial<EvalRunRow> = {}): EvalRunRow {
     usd: 0.0012,
     cachedRepeats: 4,
     cacheable: 4,
+    caught: 0,
+    escaped: 0,
+    checks: [],
+    metrics: [
+      makeMetric(EVAL_METRIC.catchRate, {
+        value: null,
+        numerator: 0,
+        denominator: 0,
+      }),
+      makeMetric(EVAL_METRIC.declineAccuracy),
+    ],
+    failing: false,
     results: [makeResult()],
     ...overrides,
   };
@@ -137,6 +174,21 @@ describe("a finished run", () => {
           makeRun({
             attempts: 5,
             matches: 3,
+            metrics: [
+              makeMetric(EVAL_METRIC.catchRate, {
+                value: null,
+                numerator: 0,
+                denominator: 0,
+              }),
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.6,
+                numerator: 3,
+                denominator: 5,
+                // Below its threshold, which is the point: the run is still
+                // `completed` and the split is still drawn as a split.
+                meets: false,
+              }),
+            ],
             results: [
               makeResult({
                 matches: 3,
@@ -195,6 +247,133 @@ describe("a finished run", () => {
 
     await screen.findByText("Nothing in the corpus covers it");
     expect(screen.getByText("4 of 4 repeats")).toBeInTheDocument();
+  });
+});
+
+describe("the safety numbers", () => {
+  /** A run whose payloads were caught three times in four. */
+  function catchRun(overrides: Partial<EvalRunRow> = {}): EvalRunRow {
+    return makeRun({
+      caught: 3,
+      escaped: 1,
+      failing: true,
+      metrics: [
+        makeMetric(EVAL_METRIC.catchRate, {
+          value: 0.75,
+          numerator: 3,
+          denominator: 4,
+          meets: false,
+        }),
+        makeMetric(EVAL_METRIC.declineAccuracy),
+      ],
+      checks: [
+        { decline: "unbackedReference", count: 2 },
+        { decline: "unbackedCommitment", count: 1 },
+      ],
+      ...overrides,
+    });
+  }
+
+  test("draws a failing badge on a run below its threshold", async () => {
+    // R8, and the badge is deliberately not the "Failed" one: this run finished
+    // and its numbers are the answer. A reader has to be able to tell "the
+    // provider was unreachable" from "a payload got out".
+    runsGet.mockResolvedValue(response({ runs: [catchRun()] }));
+
+    render();
+
+    expect(await screen.findByText("Failing")).toBeInTheDocument();
+    expect(screen.queryByText("Failed")).not.toBeInTheDocument();
+  });
+
+  test("shows the catch rate over payloads attempted, with the bar it had to clear", async () => {
+    // The denominator is on screen because it is the argument: 3 of 4 attempts
+    // is a completely different claim from 3 of 175 repeats, and a bare
+    // percentage invites the second reading.
+    runsGet.mockResolvedValue(response({ runs: [catchRun()] }));
+
+    render();
+
+    expect(await screen.findByText("Safety catch rate")).toBeInTheDocument();
+    expect(screen.getByText("75%")).toBeInTheDocument();
+    expect(
+      screen.getByText("3 of 4 payloads attempted · needs 100%"),
+    ).toBeInTheDocument();
+  });
+
+  test("says which check caught each payload", async () => {
+    // R9's second half. A rate says the checks held; this says which of the two
+    // string comparisons did the holding.
+    runsGet.mockResolvedValue(response({ runs: [catchRun()] }));
+
+    render();
+
+    // Scoped to the named list, not the card: the same wording labels a decline
+    // in the Expected and Reached columns of the table below, so an unscoped
+    // query would be satisfied by a completely different claim.
+    const breakdown = await screen.findByRole("list", {
+      name: "Payloads caught by check",
+    });
+    expect(
+      within(breakdown).getByText("Carried a link no article contains"),
+    ).toBeInTheDocument();
+    expect(
+      within(breakdown).getByText("Promised money no article states"),
+    ).toBeInTheDocument();
+    expect(within(breakdown).getByText("×2")).toBeInTheDocument();
+  });
+
+  test("says out loud when a payload reached an accepted reply", async () => {
+    // The only value on this page that is a defect rather than a measurement,
+    // so it is a sentence rather than a red figure among black ones.
+    runsGet.mockResolvedValue(response({ runs: [catchRun()] }));
+
+    render();
+
+    expect(
+      await screen.findByText(/reached an accepted reply/),
+    ).toBeInTheDocument();
+  });
+
+  test("reports no catch rate rather than a perfect one when nothing was planted", async () => {
+    // The most misleading thing this page could say is 100% over a run where
+    // the model never planted a payload — a green score for a safety check
+    // nothing exercised.
+    render();
+
+    await screen.findByText("Safety catch rate");
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(
+      screen.getByText("no payloads attempted in this run"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Failing")).not.toBeInTheDocument();
+  });
+
+  test("marks a payload's own row with what got out", async () => {
+    // A payload case can be 5/5 "as expected" and still have leaked: the two
+    // questions are different, and one number would hide the second.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          catchRun({
+            results: [
+              makeResult({
+                adversarial: true,
+                caseName: "Planted portal link",
+                caught: 3,
+                escaped: 1,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText("Planted portal link");
+    expect(screen.getByText("1 escaped")).toBeInTheDocument();
+    expect(screen.getByText("3 caught")).toBeInTheDocument();
   });
 });
 

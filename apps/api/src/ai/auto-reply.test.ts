@@ -282,6 +282,31 @@ describe("autoReply — the corpus it was handed", () => {
     });
     expect(generateText).not.toHaveBeenCalled();
   });
+
+  test("tells the model a fault report is not a question — the near-miss rule", async () => {
+    // A weak test on purpose, and worth being clear about what it is and is not.
+    // It cannot show the rule *works* — only a run against the real provider can
+    // do that, which is what the eval harness is for. What it does is stop the
+    // rule being dropped by a later prompt edit, the same way the two tests
+    // above guard what the corpus block may and may not carry.
+    //
+    // The rule exists because `certificate-missing` failed 2 of 5 repeats on
+    // each corpus in the first measured run: KB-018 says a certificate is issued
+    // at 100% completion and lives in Account → Certificates, and the customer
+    // says the course is complete and the certificate is not there. The article
+    // reads as an answer while being none, because it states how the thing works
+    // and says nothing about why it might not have.
+    //
+    // The discriminator is deliberately "does an article account for the
+    // failure", not "has the customer already tried it" — the looser rule would
+    // flip `password-reset` and `progress-not-saved`, both of which expect a
+    // reply and both of whose customers report having already tried something.
+    // KB-002 and KB-023 each explain why the thing did not work; KB-018 does not.
+    await autoReply(ARTICLES, CONTEXT);
+
+    const { system } = lastCall();
+    expect(system).toContain("A FAULT REPORT IS NOT A QUESTION");
+  });
 });
 
 describe("autoReply — the email it was asked about", () => {
@@ -951,7 +976,29 @@ describe("autoReply — declining and failing", () => {
       ok: false,
       reason: AUTO_REPLY_FAILURE.empty,
       decline: AUTO_REPLY_DECLINE.unavailable,
+      usage: {
+        inputTokens: 4_000,
+        outputTokens: 0,
+        totalTokens: 4_000,
+        reasoningTokens: 0,
+        cachedInputTokens: 0,
+      },
     });
+  });
+
+  test("still counts what a call that produced nothing parseable cost", async () => {
+    // The most expensive way this can fail — `finishReason: "length"`, the whole
+    // output budget spent on reasoning with nothing to show for it — and the one
+    // failure the SDK hands back a usage report for. Dropping it made this the
+    // only path through the module that logged no `[ai]` line at all and
+    // recorded $0 against a call that burned four thousand input tokens, which
+    // is precisely the understatement the note above `let usage` warns about.
+    failWith(noObjectGenerated());
+
+    const result = await autoReply(ARTICLES, CONTEXT);
+
+    expect(result.usage?.inputTokens).toBe(4_000);
+    expect(logged()).toContain("[ai] feature=auto-reply");
   });
 
   test("keeps the reason a retry ladder needs and tells the agent one thing", async () => {

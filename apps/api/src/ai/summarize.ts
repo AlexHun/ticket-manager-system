@@ -15,6 +15,7 @@ import {
   isAiConfigured,
   logUsage,
   openaiModel,
+  toAiUsage,
   withoutDashes,
   type AiFailure,
 } from "./provider";
@@ -579,7 +580,7 @@ export async function summarizeTicket(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("summarize", SUMMARY_MODEL, usage);
+    logUsage("summarize", SUMMARY_MODEL, toAiUsage(usage));
 
     const summary = tidy(output);
     if (!summary) return { ok: false, reason: AI_FAILURE.empty };
@@ -599,6 +600,8 @@ export async function summarizeTicket(
     // actually happened and matches what a truncated answer means everywhere
     // else in this app.
     if (NoObjectGeneratedError.isInstance(err)) {
+      // It still cost what it cost — see the same branch in `classify.ts`.
+      logUsage("summarize", SUMMARY_MODEL, toAiUsage(err.usage));
       return { ok: false, reason: AI_FAILURE.empty };
     }
 

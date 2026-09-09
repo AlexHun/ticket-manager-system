@@ -7,6 +7,7 @@ import {
   fenced,
   logUsage,
   openaiModel,
+  toAiUsage,
   type AiFailure,
 } from "./provider";
 
@@ -263,7 +264,7 @@ export async function classifyTicket(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("classify", CLASSIFY_MODEL, usage);
+    logUsage("classify", CLASSIFY_MODEL, toAiUsage(usage));
 
     return { ok: true, category: output.category };
   } catch (err) {
@@ -278,6 +279,10 @@ export async function classifyTicket(
     // failure `classify` would get wrong, because there is no API error under it
     // to read a status off.
     if (NoObjectGeneratedError.isInstance(err)) {
+      // It still cost what it cost. This is the one fault the SDK reports usage
+      // for, and skipping the line would leave the most expensive way to fail as
+      // the only call this module makes that no log line accounts for.
+      logUsage("classify", CLASSIFY_MODEL, toAiUsage(err.usage));
       return { ok: false, reason: AI_FAILURE.empty };
     }
 

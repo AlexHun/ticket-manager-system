@@ -1,12 +1,19 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { fromPrisma } from "pg-boss";
 import {
   asAutoReplyDecline,
   EVAL_CORPUS,
+  EVAL_METRIC,
   EVAL_RUN_LIMIT,
+  EVAL_RUN_STATUS,
+  EVAL_THRESHOLD,
+  isOutputCheckDecline,
   PIPELINE_OUTCOME,
+  type AutoReplyDecline,
   type EvalCaseResultRow,
+  type EvalCheckRow,
+  type EvalMetric,
+  type EvalMetricRow,
   type EvalReachedRow,
   type EvalRunRow,
   type EvalRunsResponse,
@@ -16,12 +23,8 @@ import {
 import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
 import { isEvalConfigured } from "../evals/config";
-import { publishEvalRunChanged } from "../events/ticket-events";
-import {
-  ALL_EVAL_CASE_IDS,
-  enqueueEvalRun,
-  EVAL_REPEATS,
-} from "../jobs/eval-run";
+import { startEvalRun } from "../evals/start-run";
+import { ALL_EVAL_CASE_IDS } from "../jobs/eval-run";
 import { requireAdmin } from "../middleware/auth";
 
 /**
@@ -115,6 +118,97 @@ function reachedFrom(verdicts: unknown): EvalReachedRow[] {
 }
 
 /**
+ * One metric, judged against what this run recorded (R8).
+ *
+ * `denominator === 0` gives a null value rather than a zero or a one, and that
+ * is the whole reason this returns a shape instead of a number. The catch rate
+ * over a run where the model planted no payload is **unmeasured**, and the two
+ * wrong readings pull in opposite directions: zero would light up as a
+ * catastrophe on a healthy desk, and one would draw a perfect score as evidence
+ * the safety checks work when nothing ever tested them. `meets` is true for it,
+ * because a metric with no measurement cannot fall below anything — and the
+ * page prints the denominator beside every figure so the difference is legible.
+ */
+function metricRow(
+  metric: EvalMetric,
+  numerator: number,
+  denominator: number,
+  thresholds: Record<string, number>,
+): EvalMetricRow {
+  // A run that recorded no threshold for this metric is judged by the constant
+  // this build carries. That is every row written before the column existed, and
+  // it is the only honest reading of an absent key — the alternative is a zero
+  // that reads as a bar nothing could fail.
+  const threshold = thresholds[metric] ?? EVAL_THRESHOLD[metric];
+  const value = denominator === 0 ? null : numerator / denominator;
+
+  return {
+    metric,
+    value,
+    numerator,
+    denominator,
+    threshold,
+    meets: value === null || value >= threshold,
+  };
+}
+
+/**
+ * The thresholds a run was judged against, read back defensively.
+ *
+ * `Json`, so Postgres promises nothing about the shape, and the column carries
+ * `{}` on every row written before it existed. Anything unreadable falls
+ * through to this build's constants in `metricRow` above.
+ */
+function thresholdsFrom(value: unknown): Record<string, number> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number",
+    ),
+  );
+}
+
+/**
+ * Which of the two output checks caught each payload, most frequent first (R9).
+ *
+ * Read out of the stored `verdicts` rather than off a column, because it is the
+ * one thing a per-case total cannot say: `caught: 3` says the checks held three
+ * times and not *which* comparison did the holding — which is precisely the
+ * distinction the 7-of-9 and 10-of-10 measurements drew, and the thing worth
+ * knowing before anybody proposes relaxing one of them.
+ *
+ * Only repeats flagged `caught` are counted, so a payload declined for some
+ * other reason — the model refusing to answer at all — cannot inflate a check's
+ * tally with a decline that read no reply.
+ */
+function checksFrom(results: { verdicts: unknown }[]): EvalCheckRow[] {
+  const counts = new Map<AutoReplyDecline, number>();
+
+  for (const result of results) {
+    for (const entry of Array.isArray(result.verdicts) ? result.verdicts : []) {
+      const verdict = entry as { decline?: unknown; caught?: unknown };
+      if (verdict.caught !== true) continue;
+
+      const decline = asAutoReplyDecline(
+        typeof verdict.decline === "string" ? verdict.decline : null,
+      );
+      // A build that has no wording for the reason cannot label a bar with it,
+      // and an unlabelled bar in a safety breakdown is worse than a missing one.
+      if (decline === null || !isOutputCheckDecline(decline)) continue;
+
+      counts.set(decline, (counts.get(decline) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([decline, count]): EvalCheckRow => ({ decline, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/**
  * Start a run.
  *
  * 202 rather than 201: the run has been accepted, and it has not happened yet.
@@ -158,29 +252,13 @@ evalsRouter.post(
       return;
     }
 
-    const run = await prisma.$transaction(async (tx) => {
-      const created = await tx.evalRun.create({
-        data: {
-          corpus,
-          // Stamped on the row rather than left to be assumed from the constant
-          // this build happens to carry: a rate read months later means nothing
-          // without the denominator it was taken over.
-          repeats: EVAL_REPEATS,
-        },
-        select: { id: true },
-      });
-      // Inside the transaction, through the same connection, so the row and the
-      // job commit together. A job with no row would find nothing to write to;
-      // a row with no job would sit at "running" forever.
-      await enqueueEvalRun(created.id, corpus, caseIds, fromPrisma(tx));
-      return created;
-    });
+    // The row, the job and the event, in the one order that works — see
+    // `../evals/start-run`, which the nightly sweep opens its runs through too.
+    // The four decisions in there are the ones that go quietly out of step when
+    // two callers each write them out.
+    const runId = await startEvalRun(corpus, caseIds);
 
-    // After the commit, never inside it (ADR-0015). This is what puts the new
-    // run on an admin's screen without a reload.
-    publishEvalRunChanged(run.id);
-
-    res.status(202).json({ runId: run.id });
+    res.status(202).json({ runId });
   },
 );
 
@@ -206,42 +284,86 @@ evalsRouter.get(
       // pipeline config block keeps. It is what lets the page say "no key"
       // rather than drawing a Run button that always fails.
       evalConfigured: isEvalConfigured(),
-      runs: runs.map((run): EvalRunRow => ({
-        id: run.id,
-        corpus: run.corpus,
-        status: run.status,
-        startedAt: run.startedAt.toISOString(),
-        finishedAt: run.finishedAt?.toISOString() ?? null,
-        error: run.error,
-        repeats: run.repeats,
-        attempts: run.attempts,
-        matches: run.matches,
-        abandoned: run.abandoned,
-        usd: run.usd,
-        cachedRepeats: run.cachedRepeats,
-        // One repeat per case is what warms the cache and can never be a hit,
-        // so the denominator is not `attempts`. Derived from the rows that exist
-        // rather than from `cases × (repeats - 1)`, so a run still filling in
-        // reports the fraction it has actually measured.
-        cacheable: run.results.reduce(
-          (total, result) => total + Math.max(result.repeats - 1, 0),
-          0,
-        ),
-        results: run.results.map((result): EvalCaseResultRow => ({
-          id: result.id,
-          caseId: result.caseId,
-          caseName: result.caseName,
-          adversarial: result.adversarial,
-          expectedOutcome: asPipelineOutcome(result.expectedOutcome),
-          expectedDecline: asAutoReplyDecline(result.expectedDecline),
-          repeats: result.repeats,
-          matches: result.matches,
-          abandoned: result.abandoned,
-          usd: result.usd,
-          cachedRepeats: result.cachedRepeats,
-          reached: reachedFrom(result.verdicts),
-        })),
-      })),
+      runs: runs.map((run): EvalRunRow => {
+        const thresholds = thresholdsFrom(run.thresholds);
+        // Only on a run that finished properly, and `completed` rather than
+        // "not running" — the two states this excludes are excluded for the
+        // same reason. A rate over the third of the set that has been answered
+        // is not a smaller version of the answer, it is a different number, and
+        // a threshold applied to one goes red on a run that is merely young or
+        // merely interrupted. A `failed` run is exactly that second case: its
+        // queue gave up part way, so it holds whatever fraction it got through,
+        // and drawing "Failing" over it would put the wrong word on a card
+        // whose real news is that the provider was unreachable. Empty is what
+        // the page draws nothing from.
+        const metrics =
+          run.status === EVAL_RUN_STATUS.completed
+            ? [
+                // The catch rate first, because it is the one ADR-0004 stands
+                // on and the only one whose failure is a defect.
+                metricRow(
+                  EVAL_METRIC.catchRate,
+                  run.caught,
+                  run.caught + run.escaped,
+                  thresholds,
+                ),
+                metricRow(
+                  EVAL_METRIC.declineAccuracy,
+                  run.matches,
+                  run.attempts,
+                  thresholds,
+                ),
+              ]
+            : [];
+
+        return {
+          id: run.id,
+          corpus: run.corpus,
+          status: run.status,
+          startedAt: run.startedAt.toISOString(),
+          finishedAt: run.finishedAt?.toISOString() ?? null,
+          error: run.error,
+          repeats: run.repeats,
+          attempts: run.attempts,
+          matches: run.matches,
+          abandoned: run.abandoned,
+          usd: run.usd,
+          cachedRepeats: run.cachedRepeats,
+          // One repeat per case is what warms the cache and can never be a hit,
+          // so the denominator is not `attempts`. Derived from the rows that exist
+          // rather than from `cases × (repeats - 1)`, so a run still filling in
+          // reports the fraction it has actually measured.
+          cacheable: run.results.reduce(
+            (total, result) => total + Math.max(result.repeats - 1, 0),
+            0,
+          ),
+          caught: run.caught,
+          escaped: run.escaped,
+          checks: checksFrom(run.results),
+          metrics,
+          // Marked failing, shown failing, and nothing else happens (R8, R11):
+          // no issue, no notification, and nothing that could turn a pull request
+          // red. A slow statistical suite wired to a gate is a suite somebody
+          // switches off, which is the failure this is written to avoid.
+          failing: metrics.some((metric) => !metric.meets),
+          results: run.results.map((result): EvalCaseResultRow => ({
+            id: result.id,
+            caseId: result.caseId,
+            caseName: result.caseName,
+            adversarial: result.adversarial,
+            expectedOutcome: asPipelineOutcome(result.expectedOutcome),
+            expectedDecline: asAutoReplyDecline(result.expectedDecline),
+            repeats: result.repeats,
+            matches: result.matches,
+            abandoned: result.abandoned,
+            usd: result.usd,
+            cachedRepeats: result.cachedRepeats,
+            caught: result.caught,
+            escaped: result.escaped,
+            reached: reachedFrom(result.verdicts),
+          })),
+        };
+      }),
     });
   },
 );
