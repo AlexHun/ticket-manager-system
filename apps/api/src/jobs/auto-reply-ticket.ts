@@ -3,12 +3,12 @@ import {
   AUTO_REPLY_DECLINE,
   MESSAGE_DIRECTION,
   TICKET_ACTIVITY_ACTION,
-  TICKET_CATEGORY,
   TICKET_EVENT_FIELD,
   TICKET_STATUS,
   type AutoReplyDecline,
 } from "@ticket/shared";
 import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
+import { gateDecline } from "../ai/auto-reply-gates";
 import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
 import { assistantUser, resolveHandoff } from "../automation";
@@ -102,24 +102,6 @@ const LOCAL_CONCURRENCY = 2;
  * a dead one.
  */
 const EXPIRE_IN_SECONDS = 120;
-
-/**
- * Categories a machine may answer.
- *
- * `Refund` is absent, and this is the second of two independent gates — every
- * refund article in the knowledge base is also marked `Auto-reply: no`. Two,
- * because they fail differently, and the gap between them widened the day the
- * corpus moved into the database: the flag is now a checkbox on an admin screen,
- * so one careless `yes` — or one admin session in the wrong hands — would put an
- * unattended reply on a ticket about somebody's money, while this constant is a
- * code change with a reviewer and a deploy in front of it. They have to disagree
- * before anything can go wrong. Do not derive one from the other.
- */
-const ANSWERABLE_CATEGORIES = [
-  TICKET_CATEGORY.General,
-  TICKET_CATEGORY.Technical,
-  TICKET_CATEGORY.Other,
-] as const;
 
 /** A `type` rather than an `interface`, so it satisfies `WorkerSpec`'s payload
  *  constraint — see the note there. */
@@ -350,18 +332,16 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // and not a new question — the knowledge base answers openings, not threads.
   // Gate 3: nothing to answer from.
   //
-  // Split out of the single condition these used to share so each can say which
-  // one it was. The gates are unchanged and still evaluated in the same order;
-  // only the reporting is new.
-  const gated =
-    ticket.category === null ||
-    !ANSWERABLE_CATEGORIES.some((c) => c === ticket.category)
-      ? AUTO_REPLY_DECLINE.category
-      : answeredAlready
-        ? AUTO_REPLY_DECLINE.answered
-        : inbound.length === 0
-          ? AUTO_REPLY_DECLINE.noText
-          : null;
+  // The three conditions and their order are unchanged; they now live in
+  // `../ai/auto-reply-gates` as a predicate over three values, which is what
+  // makes them reachable from the eval harness. Those three reasons are decided
+  // here and never by the model, so until the extraction a case set could not
+  // cover them at all — see the header there.
+  const gated = gateDecline({
+    category: ticket.category,
+    hasOutbound: answeredAlready,
+    inboundCount: inbound.length,
+  });
 
   if (gated) {
     await release(ticketId, TICKET_STATUS.Open, gated);

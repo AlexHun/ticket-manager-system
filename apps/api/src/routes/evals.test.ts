@@ -2,10 +2,12 @@
  * Unit tests for `apps/api/src/routes/evals.ts`.
  *
  * The router only, on a real Express app over a real database (`../test/pg`,
- * ADR-0014). Three things it is responsible for and nothing else can be: the
+ * ADR-0014). Four things it is responsible for and nothing else can be: the
  * run row exists before the response returns, the request does not block on the
- * run, and a deployment with no key refuses instead of queueing work that will
- * never be done.
+ * run, a deployment with no key refuses instead of queueing work that will
+ * never be done, and the corpus the caller asked for is the corpus that gets
+ * recorded and enqueued — because the two must never disagree about which
+ * series a run belongs to.
  *
  * Two seams, and each is deliberately a specifier nothing else in this suite
  * owns. `../evals/config` is the one-line guard `isEvalConfigured()` exists for
@@ -24,10 +26,11 @@ import {
   EVAL_CORPUS,
   EVAL_RUN_STATUS,
   PIPELINE_OUTCOME,
+  type EvalCorpus,
   type EvalRunsResponse,
   type EvalRunStartedResponse,
 } from "@ticket/shared";
-import { SLICE_ONE_CASE_ID } from "@ticket/core";
+import { AUTO_REPLY_CASES } from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
@@ -73,11 +76,15 @@ mock.module("../evals/config", () => ({
 // import` of this same specifier inside the factory recurses.
 const evalRunModule = await import("../jobs/eval-run");
 
-let enqueued: { runId: number; caseId: string }[] = [];
+let enqueued: { runId: number; corpus: EvalCorpus; caseIds: string[] }[] = [];
 mock.module("../jobs/eval-run", () => ({
   ...evalRunModule,
-  enqueueEvalRun: async (runId: number, caseId: string) => {
-    enqueued.push({ runId, caseId });
+  enqueueEvalRun: async (
+    runId: number,
+    corpus: EvalCorpus,
+    caseIds: string[],
+  ) => {
+    enqueued.push({ runId, corpus, caseIds });
   },
 }));
 
@@ -116,28 +123,65 @@ describe("POST /runs", () => {
     expect(run.status).toBe(EVAL_RUN_STATUS.running);
     expect(run.finishedAt).toBeNull();
     // R4: every run says which knowledge base it answered, from the moment it
-    // exists. Slice 1 only ever writes `frozen`.
+    // exists. Frozen unless the caller asked otherwise.
     expect(run.corpus).toBe(EVAL_CORPUS.frozen);
   });
 
-  test("enqueues the run it just recorded", async () => {
+  test("stamps the repeat count on the row rather than leaving it to be assumed", async () => {
+    // A stored rate means nothing without the denominator it was taken over,
+    // and a run kept for months outlives whatever constant this build carried.
     const res = await post();
     const body = (await res.json()) as EvalRunStartedResponse;
 
-    expect(enqueued).toEqual([
-      { runId: body.runId, caseId: SLICE_ONE_CASE_ID },
-    ]);
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: body.runId },
+    });
+    expect(run.repeats).toBe(5);
   });
 
-  test("takes the case to run from the body", async () => {
-    const res = await post({ caseId: "planted-link" });
+  test("enqueues every case unless the caller pinned a subset", async () => {
+    const res = await post();
+    const body = (await res.json()) as EvalRunStartedResponse;
+
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.runId).toBe(body.runId);
+    expect(enqueued[0]?.caseIds).toEqual(AUTO_REPLY_CASES.map((c) => c.id));
+  });
+
+  test("takes a pinned subset from the body", async () => {
+    // What keeps the E2E suite from taking the whole set through the runner on
+    // every push, and what an admin re-running one case asks for.
+    const res = await post({ caseIds: ["planted-link", "refund"] });
 
     expect(res.status).toBe(202);
-    expect(enqueued[0]?.caseId).toBe("planted-link");
+    expect(enqueued[0]?.caseIds).toEqual(["planted-link", "refund"]);
+  });
+
+  test("records and enqueues the corpus the caller asked for", async () => {
+    // The row and the job must not disagree: the row is what says which series
+    // the numbers belong to, and the job is what decides which articles were
+    // actually answered from.
+    const res = await post({ corpus: EVAL_CORPUS.live });
+    const body = (await res.json()) as EvalRunStartedResponse;
+
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: body.runId },
+    });
+    expect(run.corpus).toBe(EVAL_CORPUS.live);
+    expect(enqueued[0]?.corpus).toBe(EVAL_CORPUS.live);
+  });
+
+  test("refuses a corpus nothing names", async () => {
+    const res = await post({ corpus: "whatever-is-lying-around" });
+
+    expect(res.status).toBe(400);
+    expect(await prisma.evalRun.count()).toBe(0);
   });
 
   test("refuses a case id nothing names, and records no run", async () => {
-    const res = await post({ caseId: "no-such-case" });
+    // Worth a 400 rather than a run that fails several minutes later with
+    // nothing to show for the wait.
+    const res = await post({ caseIds: ["off-corpus", "no-such-case"] });
 
     expect(res.status).toBe(400);
     expect(await prisma.evalRun.count()).toBe(0);
@@ -159,6 +203,28 @@ describe("POST /runs", () => {
 });
 
 /* ── Reading them back ───────────────────────────────────────────────────── */
+
+/** A finished case result, with whatever this test wants to say about it. */
+function caseResult(overrides: Record<string, unknown> = {}) {
+  return {
+    caseId: "off-corpus",
+    caseName: "Nothing in the corpus covers it",
+    adversarial: false,
+    expectedOutcome: PIPELINE_OUTCOME.declined,
+    expectedDecline: "notCovered",
+    repeats: 5,
+    matches: 5,
+    abandoned: 0,
+    usd: 0.001,
+    cachedRepeats: 4,
+    verdicts: Array.from({ length: 5 }, () => ({
+      outcome: PIPELINE_OUTCOME.declined,
+      decline: "notCovered",
+      matched: true,
+    })),
+    ...overrides,
+  };
+}
 
 describe("GET /runs", () => {
   test("is empty, and says whether a run could be started at all", async () => {
@@ -182,18 +248,10 @@ describe("GET /runs", () => {
         status: EVAL_RUN_STATUS.completed,
         startedAt: new Date("2026-09-01T10:00:00Z"),
         finishedAt: new Date("2026-09-01T10:00:20Z"),
-        results: {
-          create: {
-            caseId: SLICE_ONE_CASE_ID,
-            caseName: "Nothing in the corpus covers it",
-            adversarial: false,
-            expectedOutcome: PIPELINE_OUTCOME.declined,
-            expectedDecline: "notCovered",
-            actualOutcome: PIPELINE_OUTCOME.declined,
-            actualDecline: "notCovered",
-            matched: true,
-          },
-        },
+        repeats: 5,
+        attempts: 5,
+        matches: 5,
+        results: { create: caseResult() },
       },
     });
     const newer = await prisma.evalRun.create({
@@ -208,11 +266,87 @@ describe("GET /runs", () => {
 
     expect(body.runs.map((r) => r.id)).toEqual([newer.id, older.id]);
     expect(body.runs[1]?.results[0]).toMatchObject({
-      caseId: SLICE_ONE_CASE_ID,
+      caseId: "off-corpus",
       expectedDecline: "notCovered",
-      actualDecline: "notCovered",
-      matched: true,
+      // A rate, never a pass.
+      repeats: 5,
+      matches: 5,
     });
+  });
+
+  test("collapses the repeats into the distinct places the case landed", async () => {
+    // Five identical rows say one thing five times; a case that split 3/2 is
+    // the interesting one, and what a reader needs is which way and how often.
+    await prisma.evalRun.create({
+      data: {
+        corpus: EVAL_CORPUS.frozen,
+        status: EVAL_RUN_STATUS.completed,
+        finishedAt: new Date(),
+        repeats: 5,
+        results: {
+          create: caseResult({
+            matches: 3,
+            verdicts: [
+              ...Array.from({ length: 3 }, () => ({
+                outcome: PIPELINE_OUTCOME.declined,
+                decline: "notCovered",
+                matched: true,
+              })),
+              ...Array.from({ length: 2 }, () => ({
+                outcome: PIPELINE_OUTCOME.resolved,
+                decline: null,
+                matched: false,
+              })),
+            ],
+          }),
+        },
+      },
+    });
+
+    const res = await fetch(url("/runs"));
+    const body = (await res.json()) as EvalRunsResponse;
+
+    // Most frequent first, so the head of the list is what the case usually does.
+    expect(body.runs[0]?.results[0]?.reached).toEqual([
+      {
+        outcome: PIPELINE_OUTCOME.declined,
+        decline: "notCovered",
+        count: 3,
+        matched: true,
+      },
+      {
+        outcome: PIPELINE_OUTCOME.resolved,
+        decline: null,
+        count: 2,
+        matched: false,
+      },
+    ]);
+  });
+
+  test("counts only the repeats that could have hit the prompt cache", async () => {
+    // One repeat per case is what warms it, so the denominator is not the
+    // number of repeats — a cold run would otherwise read as 20% cached forever.
+    await prisma.evalRun.create({
+      data: {
+        corpus: EVAL_CORPUS.frozen,
+        status: EVAL_RUN_STATUS.completed,
+        finishedAt: new Date(),
+        repeats: 5,
+        cachedRepeats: 8,
+        results: {
+          create: [
+            caseResult({ caseId: "off-corpus", cachedRepeats: 4 }),
+            caseResult({ caseId: "api-access", cachedRepeats: 4 }),
+          ],
+        },
+      },
+    });
+
+    const res = await fetch(url("/runs"));
+    const body = (await res.json()) as EvalRunsResponse;
+
+    expect(body.runs[0]?.cacheable).toBe(8);
+    expect(body.runs[0]?.cachedRepeats).toBe(8);
   });
 
   test("a stored reason this build has no wording for reads as null", async () => {
@@ -226,16 +360,14 @@ describe("GET /runs", () => {
         status: EVAL_RUN_STATUS.completed,
         finishedAt: new Date(),
         results: {
-          create: {
+          create: caseResult({
             caseId: "x",
             caseName: "x",
-            adversarial: false,
-            expectedOutcome: PIPELINE_OUTCOME.declined,
             expectedDecline: "somethingFromTheFuture",
-            actualOutcome: "alsoFromTheFuture",
-            actualDecline: null,
-            matched: false,
-          },
+            verdicts: [
+              { outcome: "alsoFromTheFuture", decline: null, matched: false },
+            ],
+          }),
         },
       },
     });
@@ -246,8 +378,28 @@ describe("GET /runs", () => {
     expect(body.runs[0]?.results[0]?.expectedDecline).toBeNull();
     // An outcome is not nullable on the wire, so an unrecognised one falls back
     // to the honest "nothing is scheduled and nothing happened".
-    expect(body.runs[0]?.results[0]?.actualOutcome).toBe(
+    expect(body.runs[0]?.results[0]?.reached[0]?.outcome).toBe(
       PIPELINE_OUTCOME.notOffered,
     );
+  });
+
+  test("a verdicts column that is not the shape this build writes does not throw", async () => {
+    // `Json` makes no promise about its contents, and the migration that
+    // introduced it backfilled rows written by an older build. A page whose
+    // whole job is saying what happened must not 500 on one of them.
+    await prisma.evalRun.create({
+      data: {
+        corpus: EVAL_CORPUS.frozen,
+        status: EVAL_RUN_STATUS.completed,
+        finishedAt: new Date(),
+        results: { create: caseResult({ verdicts: { not: "an array" } }) },
+      },
+    });
+
+    const res = await fetch(url("/runs"));
+    const body = (await res.json()) as EvalRunsResponse;
+
+    expect(res.status).toBe(200);
+    expect(body.runs[0]?.results[0]?.reached).toEqual([]);
   });
 });

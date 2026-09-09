@@ -7,20 +7,21 @@ import {
   EVAL_RUN_LIMIT,
   PIPELINE_OUTCOME,
   type EvalCaseResultRow,
+  type EvalReachedRow,
   type EvalRunRow,
   type EvalRunsResponse,
   type EvalRunStartedResponse,
   type PipelineOutcome,
 } from "@ticket/shared";
-import {
-  autoReplyCaseById,
-  SLICE_ONE_CASE_ID,
-  startEvalRunSchema,
-} from "@ticket/core";
+import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
 import { isEvalConfigured } from "../evals/config";
 import { publishEvalRunChanged } from "../events/ticket-events";
-import { enqueueEvalRun } from "../jobs/eval-run";
+import {
+  ALL_EVAL_CASE_IDS,
+  enqueueEvalRun,
+  EVAL_REPEATS,
+} from "../jobs/eval-run";
 import { requireAdmin } from "../middleware/auth";
 
 /**
@@ -32,12 +33,12 @@ import { requireAdmin } from "../middleware/auth";
  * not an agent's business. `AdminRoute` on the client is UX; these two guards
  * are the control.
  *
- * The write half creates a row and returns. It does **not** wait for the run:
- * one case is a 30-second model call and slice 2's full set is minutes, so an
- * admin holding an HTTP connection open for it is a request a proxy closes and
- * a page that cannot say what is happening. The row and the job are written in
- * one transaction so they share a fate (the pattern `ingest.ts` uses to enqueue
- * classification), and the finished verdict arrives over `/api/events`.
+ * The write half creates a row and returns. It does **not** wait for the run: a
+ * full set is ~175 model calls and several minutes, so an admin holding an HTTP
+ * connection open for it is a request a proxy closes and a page that cannot say
+ * what is happening. The row and the job are written in one transaction so they
+ * share a fate (the pattern `ingest.ts` uses to enqueue classification), and the
+ * run fills in over `/api/events` as each case finishes.
  *
  * Nothing here reads or writes a ticket, a message, an activity row or the
  * outbox. That is not restraint, it is the shape of the thing (R12): the runner
@@ -60,11 +61,57 @@ export const evalsRouter = Router();
  * honest reading of a value this build cannot name — the same choice
  * `/pipeline` makes for its one known blind spot.
  */
-function asPipelineOutcome(value: string): PipelineOutcome {
+function asPipelineOutcome(value: unknown): PipelineOutcome {
   return (
     Object.values(PIPELINE_OUTCOME).find((outcome) => outcome === value) ??
     PIPELINE_OUTCOME.notOffered
   );
+}
+
+/**
+ * The five repeats, collapsed into the distinct places the case landed.
+ *
+ * Five identical rows say one thing and take five lines to say it; the
+ * interesting case is the one that went two different ways, and what a reader
+ * needs then is *which* way and how often. Sorted by count, so the first entry
+ * is what the case usually does.
+ *
+ * Reads the stored `verdicts` array defensively — it is `Json`, so Postgres
+ * makes no promise about its shape, and a row written by an older build (or by
+ * the backfill in this slice's migration) is a shape this code did not write.
+ * Anything unreadable becomes `notOffered`, the same way an unknown decline
+ * becomes null, rather than throwing on a page whose whole job is to say what
+ * happened.
+ */
+function reachedFrom(verdicts: unknown): EvalReachedRow[] {
+  const rows = new Map<string, EvalReachedRow>();
+
+  for (const entry of Array.isArray(verdicts) ? verdicts : []) {
+    const verdict = entry as {
+      outcome?: unknown;
+      decline?: unknown;
+      matched?: unknown;
+    };
+    const outcome = asPipelineOutcome(verdict.outcome);
+    const decline = asAutoReplyDecline(
+      typeof verdict.decline === "string" ? verdict.decline : null,
+    );
+    const key = `${outcome}:${decline ?? ""}`;
+
+    const existing = rows.get(key);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    rows.set(key, {
+      outcome,
+      decline,
+      count: 1,
+      matched: verdict.matched === true,
+    });
+  }
+
+  return [...rows.values()].sort((a, b) => b.count - a.count);
 }
 
 /**
@@ -97,29 +144,35 @@ evalsRouter.post(
       return;
     }
 
-    // Slice 1 answers one case. The id is resolved *here* rather than in the
-    // worker's schema, because the case set is data in `@ticket/core` and a
-    // schema that imported it would make every consumer of any schema in that
-    // package carry it. A bad id is the caller's mistake and is worth a 400
-    // rather than a run that fails a minute later.
-    const caseId = parsed.data.caseId ?? SLICE_ONE_CASE_ID;
-    if (!autoReplyCaseById(caseId)) {
-      res.status(400).json({ error: `No such case: ${caseId}` });
+    const corpus = parsed.data.corpus ?? EVAL_CORPUS.frozen;
+
+    // Ids are resolved *here* rather than in the worker's schema, because the
+    // case set is data in `@ticket/core` and a schema that imported it would
+    // make every consumer of any schema in that package carry it. A bad id is
+    // the caller's mistake and is worth a 400 rather than a run that fails
+    // several minutes later with nothing to show.
+    const caseIds = parsed.data.caseIds ?? ALL_EVAL_CASE_IDS;
+    const unknown = caseIds.filter((id) => autoReplyCaseById(id) === null);
+    if (unknown.length > 0) {
+      res.status(400).json({ error: `No such case: ${unknown.join(", ")}` });
       return;
     }
 
     const run = await prisma.$transaction(async (tx) => {
       const created = await tx.evalRun.create({
-        // Frozen, always, in slice 1 — but written rather than defaulted, so
-        // the column is meaningful from the first row and the live option is a
-        // parameter rather than a migration (R4).
-        data: { corpus: EVAL_CORPUS.frozen },
+        data: {
+          corpus,
+          // Stamped on the row rather than left to be assumed from the constant
+          // this build happens to carry: a rate read months later means nothing
+          // without the denominator it was taken over.
+          repeats: EVAL_REPEATS,
+        },
         select: { id: true },
       });
       // Inside the transaction, through the same connection, so the row and the
       // job commit together. A job with no row would find nothing to write to;
       // a row with no job would sit at "running" forever.
-      await enqueueEvalRun(created.id, caseId, fromPrisma(tx));
+      await enqueueEvalRun(created.id, corpus, caseIds, fromPrisma(tx));
       return created;
     });
 
@@ -134,9 +187,9 @@ evalsRouter.post(
 /**
  * Every run, newest first, with the cases each one answered.
  *
- * Results come back nested rather than through a second request: a run in slice
- * 1 has one case and in slice 2 has thirty, which is a page of rows either way,
- * and the screen shows the run and its cases as one thing.
+ * Results come back nested rather than through a second request: a run is
+ * ~35 rows, which is a page either way, and the screen shows the run and its
+ * cases as one thing.
  */
 evalsRouter.get(
   "/runs",
@@ -160,6 +213,20 @@ evalsRouter.get(
         startedAt: run.startedAt.toISOString(),
         finishedAt: run.finishedAt?.toISOString() ?? null,
         error: run.error,
+        repeats: run.repeats,
+        attempts: run.attempts,
+        matches: run.matches,
+        abandoned: run.abandoned,
+        usd: run.usd,
+        cachedRepeats: run.cachedRepeats,
+        // One repeat per case is what warms the cache and can never be a hit,
+        // so the denominator is not `attempts`. Derived from the rows that exist
+        // rather than from `cases × (repeats - 1)`, so a run still filling in
+        // reports the fraction it has actually measured.
+        cacheable: run.results.reduce(
+          (total, result) => total + Math.max(result.repeats - 1, 0),
+          0,
+        ),
         results: run.results.map((result): EvalCaseResultRow => ({
           id: result.id,
           caseId: result.caseId,
@@ -167,9 +234,12 @@ evalsRouter.get(
           adversarial: result.adversarial,
           expectedOutcome: asPipelineOutcome(result.expectedOutcome),
           expectedDecline: asAutoReplyDecline(result.expectedDecline),
-          actualOutcome: asPipelineOutcome(result.actualOutcome),
-          actualDecline: asAutoReplyDecline(result.actualDecline),
-          matched: result.matched,
+          repeats: result.repeats,
+          matches: result.matches,
+          abandoned: result.abandoned,
+          usd: result.usd,
+          cachedRepeats: result.cachedRepeats,
+          reached: reachedFrom(result.verdicts),
         })),
       })),
     });

@@ -2,19 +2,20 @@
  * Unit tests for `apps/api/src/jobs/eval-run.ts`.
  *
  * The storing half of the eval harness: `EVAL_RUN_WORKER.handle` answering a
- * case and writing what it found, and `onExhausted` closing a run the ladder
- * gave up on. Both are reached as function calls because the spec is exported,
- * which is what makes the terminal path testable at all — it otherwise never
- * runs on a good day (`backend.md`, #154).
+ * set of cases and writing what it found, and `onExhausted` closing a run the
+ * ladder gave up on. Both are reached as function calls because the spec is
+ * exported, which is what makes the terminal path testable at all — it
+ * otherwise never runs on a good day (`backend.md`, #154).
  *
  * `../evals/runner` is stubbed, so what is under test is the bookkeeping: the
- * expectations copied onto the row, the idempotency guard, and the event. The
- * translation it stands in for has its own file next to it.
+ * expectations copied onto each row, the aggregates rolled onto the run, the
+ * three idempotency guards, and the per-case event. The translation it stands
+ * in for has its own file next to it.
  *
  * The database is real (`../test/pg`, ADR-0014), which is what lets the
- * "delivered twice" test mean something: the guard is a conditional
- * `updateMany`, and a fake client could only report that it was called with the
- * right `where`.
+ * "delivered twice" tests mean something: two of the three guards are a
+ * conditional `updateMany` and a unique index, and a fake client could only
+ * report that it was called with the right `where`.
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -26,44 +27,72 @@ import {
   TICKET_EVENT,
   type TicketEvent,
 } from "@ticket/shared";
-import { SLICE_ONE_CASE_ID } from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
 import { subscribe } from "../events/hub";
 import type { EvalCaseOutcome } from "../evals/runner";
 
 /* ── The measuring half, replaced ────────────────────────────────────────── */
 
-let nextOutcome: EvalCaseOutcome = {
-  outcome: PIPELINE_OUTCOME.declined,
-  decline: AUTO_REPLY_DECLINE.notCovered,
-  matched: true,
-};
+/** A case that landed where it said it would, every repeat. */
+function cleanRun(repeats: number): EvalCaseOutcome {
+  return {
+    verdicts: Array.from({ length: repeats }, () => ({
+      outcome: PIPELINE_OUTCOME.declined,
+      decline: AUTO_REPLY_DECLINE.notCovered,
+      matched: true,
+      usd: 0.0002,
+      cached: true,
+    })),
+    repeats,
+    matches: repeats,
+    abandoned: 0,
+    usd: 0.0002 * repeats,
+    cachedRepeats: repeats - 1,
+  };
+}
 
-let answered = 0;
+let nextOutcome: (repeats: number) => EvalCaseOutcome = cleanRun;
+
+/** Every case the runner was asked to answer, and with how many repeats. */
+let answered: { caseId: string; repeats: number }[] = [];
+/** The corpus the runner was handed, so the R4 fork can be asserted. */
+let lastArticles: unknown;
 
 // Spread, for the reason the note in `routes/evals.test.ts` records at length:
 // a factory that does not spread the real module *is* that module for every
 // file that loads it afterwards. Nothing depends on this one today —
-// `evals/runner.test.ts` destructures `answerCase` while loading, so it holds
-// the real function whatever is registered later — but "nothing depends on it
-// today" is how the other one got written, and it cost a red CI run.
+// `evals/runner.test.ts` destructures while loading, so it holds the real
+// functions whatever is registered later — but "nothing depends on it today" is
+// how the other one got written, and it cost a red CI run.
 const runnerModule = await import("../evals/runner");
 
 mock.module("../evals/runner", () => ({
   ...runnerModule,
-  answerCase: async () => {
-    answered += 1;
-    return nextOutcome;
+  runCase: async (
+    articles: unknown,
+    evalCase: { id: string },
+    repeats: number,
+  ) => {
+    lastArticles = articles;
+    answered.push({ caseId: evalCase.id, repeats });
+    return nextOutcome(repeats);
   },
 }));
 
-const { EVAL_RUN_WORKER } = await import("./eval-run");
+const { EVAL_RUN_WORKER, ALL_EVAL_CASE_IDS } = await import("./eval-run");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-async function newRun(): Promise<number> {
+const REPEATS = 5;
+
+/** Two cases, both reached by every test that is not about the whole set. */
+const PAIR = ["off-corpus", "refund"];
+
+async function newRun(
+  corpus: (typeof EVAL_CORPUS)[keyof typeof EVAL_CORPUS] = EVAL_CORPUS.frozen,
+): Promise<number> {
   const run = await prisma.evalRun.create({
-    data: { corpus: EVAL_CORPUS.frozen },
+    data: { corpus, repeats: REPEATS },
   });
   return run.id;
 }
@@ -81,21 +110,22 @@ function collect(): { heard: TicketEvent[]; stop: () => void } {
 
 beforeEach(async () => {
   await resetDb();
-  answered = 0;
-  nextOutcome = {
-    outcome: PIPELINE_OUTCOME.declined,
-    decline: AUTO_REPLY_DECLINE.notCovered,
-    matched: true,
-  };
+  answered = [];
+  lastArticles = undefined;
+  nextOutcome = cleanRun;
 });
 
 /* ── The happy path ──────────────────────────────────────────────────────── */
 
 describe("handle", () => {
-  test("writes the case result and closes the run", async () => {
+  test("answers every case it was given and closes the run", async () => {
     const runId = await newRun();
 
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
 
     const run = await prisma.evalRun.findUniqueOrThrow({
       where: { id: runId },
@@ -104,13 +134,48 @@ describe("handle", () => {
 
     expect(run.status).toBe(EVAL_RUN_STATUS.completed);
     expect(run.finishedAt).not.toBeNull();
-    expect(run.results).toHaveLength(1);
-    expect(run.results[0]).toMatchObject({
-      caseId: SLICE_ONE_CASE_ID,
-      actualOutcome: PIPELINE_OUTCOME.declined,
-      actualDecline: AUTO_REPLY_DECLINE.notCovered,
-      matched: true,
+    expect(run.results.map((r) => r.caseId).sort()).toEqual([...PAIR].sort());
+  });
+
+  test("answers each case as many times as the run says, and stores a rate", async () => {
+    // R3. One answer from a model is a coin toss reported as a fact; the row
+    // has to carry matches out of repeats, never a boolean.
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
     });
+
+    expect(answered).toEqual([{ caseId: "off-corpus", repeats: REPEATS }]);
+    const result = await prisma.evalCaseResult.findFirstOrThrow({
+      where: { runId },
+    });
+    expect(result.repeats).toBe(REPEATS);
+    expect(result.matches).toBe(REPEATS);
+    expect(result.verdicts).toHaveLength(REPEATS);
+  });
+
+  test("rolls the case counts up onto the run", async () => {
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
+
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: runId },
+    });
+    expect(run.attempts).toBe(PAIR.length * REPEATS);
+    expect(run.matches).toBe(PAIR.length * REPEATS);
+    expect(run.abandoned).toBe(0);
+    // R10: an estimate, recorded rather than only logged.
+    expect(run.usd).toBeCloseTo(PAIR.length * REPEATS * 0.0002, 6);
+    // One repeat per case is what warms the cache and can never be a hit.
+    expect(run.cachedRepeats).toBe(PAIR.length * (REPEATS - 1));
   });
 
   test("copies the expectation onto the row rather than pointing at the case", async () => {
@@ -120,7 +185,11 @@ describe("handle", () => {
     // is the drift a stored result exists to make visible.
     const runId = await newRun();
 
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
+    });
 
     const result = await prisma.evalCaseResult.findFirstOrThrow({
       where: { runId },
@@ -131,76 +200,268 @@ describe("handle", () => {
     expect(result.adversarial).toBe(false);
   });
 
-  test("records a mismatch without failing the run", async () => {
+  test("records misses without failing the run", async () => {
     // A case landing somewhere unexpected is the answer, not an error. A run
     // that went red because a metric moved would be a run nobody could read.
-    nextOutcome = {
-      outcome: PIPELINE_OUTCOME.resolved,
-      decline: null,
-      matched: false,
-    };
+    nextOutcome = (repeats) => ({
+      ...cleanRun(repeats),
+      matches: 2,
+      verdicts: Array.from({ length: repeats }, () => ({
+        outcome: PIPELINE_OUTCOME.resolved,
+        decline: null,
+        matched: false,
+        usd: 0.0002,
+        cached: true,
+      })),
+    });
     const runId = await newRun();
 
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
+    });
 
     const run = await prisma.evalRun.findUniqueOrThrow({
       where: { id: runId },
-      include: { results: true },
     });
     expect(run.status).toBe(EVAL_RUN_STATUS.completed);
     expect(run.error).toBeNull();
-    expect(run.results[0]?.matched).toBe(false);
+    expect(run.matches).toBe(2);
+    expect(run.attempts).toBe(REPEATS);
   });
 
-  test("announces the finished run", async () => {
+  test("keeps unanswered repeats out of the matches and counts them apart", async () => {
+    // An outage is not the model getting things wrong. A harness that cannot
+    // tell them apart is the one that cries wolf and then gets ignored.
+    nextOutcome = (repeats) => ({
+      ...cleanRun(repeats),
+      matches: 0,
+      abandoned: repeats,
+      usd: 0,
+      cachedRepeats: 0,
+    });
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
+    });
+
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: runId },
+    });
+    expect(run.abandoned).toBe(REPEATS);
+    expect(run.matches).toBe(0);
+    expect(run.status).toBe(EVAL_RUN_STATUS.completed);
+  });
+
+  test("announces each case as it finishes, and the run at the end", async () => {
+    // R5's second half: an admin watches a run fill in rather than staring at a
+    // spinner for several minutes with no way to tell it from a wedged one.
     const { heard, stop } = collect();
     const runId = await newRun();
 
     try {
-      await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
+      await EVAL_RUN_WORKER.handle({
+        runId,
+        corpus: EVAL_CORPUS.frozen,
+        caseIds: PAIR,
+      });
     } finally {
       stop();
     }
 
-    expect(heard).toEqual([
+    expect(heard).toHaveLength(PAIR.length + 1);
+    expect(heard.every((e) => e.kind === TICKET_EVENT.eval_run_changed)).toBe(
+      true,
+    );
+    expect(heard.map((e) => (e as { runId: number }).runId)).toEqual([
+      runId,
+      runId,
+      runId,
+    ]);
+  });
+
+  test("answers the whole set when the route pinned nothing", async () => {
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ALL_EVAL_CASE_IDS,
+    });
+
+    expect(answered).toHaveLength(ALL_EVAL_CASE_IDS.length);
+    // R2's floor, asserted where it can actually be broken by an edit.
+    expect(ALL_EVAL_CASE_IDS.length).toBeGreaterThanOrEqual(30);
+  });
+});
+
+/* ── Which knowledge base answered (R4) ──────────────────────────────────── */
+
+/**
+ * One article in the table, so a live run has something distinguishable to read.
+ *
+ * A real row rather than a stub for `../ai/knowledge-base`, and that is a
+ * registry decision rather than a preference: `ai/knowledge-base.test.ts` tests
+ * that module and imports it, so a factory registered here would be the module
+ * it links if this file happened to load first — green on Windows, red on
+ * `ubuntu-latest`, which is exactly the file-order trap `testing.md` records.
+ * `../db` is already bound to the in-process Postgres by the preload, so a row
+ * is both cheaper and closer to the thing under test.
+ */
+async function seedLiveArticle(): Promise<void> {
+  await prisma.knowledgeArticle.create({
+    data: {
+      id: "KB-LIVE",
+      title: "Only in the table",
+      category: "General",
+      body: "This article exists in the database and not in the seed file.",
+      autoReply: true,
+    },
+  });
+}
+
+describe("the corpus", () => {
+  test("a frozen run reads the seed file", async () => {
+    await seedLiveArticle();
+    const runId = await newRun();
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
+    });
+
+    // The seed file, not the article table — and asserted by its contents
+    // rather than by which function was called, because the point is that a
+    // frozen run's numbers cannot move when somebody edits an article. The row
+    // seeded above is in the table and must not be in this prompt.
+    const articles = lastArticles as { id: string }[];
+    expect(articles.length).toBeGreaterThan(0);
+    expect(articles.some((a) => a.id === "KB-LIVE")).toBe(false);
+  });
+
+  test("a live run reads the articles table", async () => {
+    await seedLiveArticle();
+    const runId = await newRun(EVAL_CORPUS.live);
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.live,
+      caseIds: ["off-corpus"],
+    });
+
+    // Through `autoReplyArticles()` itself, so the two structural filters come
+    // with it: a withheld article is absent and `internalNote` is never
+    // selected. A run must not measure a prompt the desk would never build.
+    expect(lastArticles).toEqual([
       {
-        kind: TICKET_EVENT.eval_run_changed,
-        runId,
-        at: expect.any(String),
+        id: "KB-LIVE",
+        title: "Only in the table",
+        category: "General",
+        body: "This article exists in the database and not in the seed file.",
       },
     ]);
+  });
+
+  test("a live run leaves a withheld article out, exactly as the desk does", async () => {
+    // The flag is the first gate on the whole feature and it lives in content,
+    // not in code. A harness that measured a corpus assembled any other way
+    // would be measuring a prompt that never gets built.
+    await prisma.knowledgeArticle.create({
+      data: {
+        id: "KB-WITHHELD",
+        title: "A person answers this one",
+        category: "Refund",
+        body: "Not for a machine.",
+        autoReply: false,
+      },
+    });
+    const runId = await newRun(EVAL_CORPUS.live);
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.live,
+      caseIds: ["off-corpus"],
+    });
+
+    expect(lastArticles).toEqual([]);
   });
 });
 
 /* ── At-least-once delivery ──────────────────────────────────────────────── */
 
 describe("a job delivered twice", () => {
-  test("finishes the run once and writes one result", async () => {
+  test("finishes the run once and writes one result per case", async () => {
     const runId = await newRun();
+    const job = { runId, corpus: EVAL_CORPUS.frozen, caseIds: PAIR };
 
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.handle(job);
+    await EVAL_RUN_WORKER.handle(job);
 
-    expect(await prisma.evalCaseResult.count({ where: { runId } })).toBe(1);
+    expect(await prisma.evalCaseResult.count({ where: { runId } })).toBe(
+      PAIR.length,
+    );
   });
 
-  test("does not pay for a second model call", async () => {
-    // The re-read is above the call, not below it: an eval is the one feature
-    // whose whole cost is model calls, and a duplicate delivery that answers
-    // the case again before discovering it has nothing to write is a bill.
+  test("does not pay for a second set of model calls", async () => {
+    // The re-read is above everything: an eval is the one feature whose whole
+    // cost is model calls, and a duplicate delivery that answers the set again
+    // before discovering it has nothing to write is a bill.
     const runId = await newRun();
+    const job = { runId, corpus: EVAL_CORPUS.frozen, caseIds: PAIR };
 
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.handle(job);
+    await EVAL_RUN_WORKER.handle(job);
 
-    expect(answered).toBe(1);
+    expect(answered).toHaveLength(PAIR.length);
+  });
+
+  test("a delivery arriving mid-run resumes rather than starting again", async () => {
+    // pg-boss re-offers an expired job, and a run is minutes long. The cases
+    // already answered are already paid for; answering them twice would both
+    // cost again and double them in the rates taken off these rows.
+    const runId = await newRun();
+    await prisma.evalCaseResult.create({
+      data: {
+        runId,
+        caseId: "refund",
+        caseName: "Refund request",
+        adversarial: false,
+        expectedOutcome: PIPELINE_OUTCOME.declined,
+        expectedDecline: AUTO_REPLY_DECLINE.category,
+        repeats: REPEATS,
+        matches: REPEATS,
+        verdicts: [],
+      },
+    });
+
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
+
+    expect(answered).toEqual([{ caseId: "off-corpus", repeats: REPEATS }]);
+    // The totals still cover the whole run, not just this attempt's share.
+    const run = await prisma.evalRun.findUniqueOrThrow({
+      where: { id: runId },
+    });
+    expect(run.attempts).toBe(PAIR.length * REPEATS);
   });
 
   test("a run that has vanished is not an error", async () => {
     // A row deleted between the last attempt and this delivery must not fail
     // the job and send it round the ladder again.
     await expect(
-      EVAL_RUN_WORKER.handle({ runId: 9999, caseId: SLICE_ONE_CASE_ID }),
+      EVAL_RUN_WORKER.handle({
+        runId: 9999,
+        corpus: EVAL_CORPUS.frozen,
+        caseIds: PAIR,
+      }),
     ).resolves.toBeUndefined();
   });
 });
@@ -213,7 +474,11 @@ describe("onExhausted", () => {
     // saying what happened — indistinguishable from a job still in flight.
     const runId = await newRun();
 
-    await EVAL_RUN_WORKER.onExhausted({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.onExhausted({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
 
     const run = await prisma.evalRun.findUniqueOrThrow({
       where: { id: runId },
@@ -223,11 +488,38 @@ describe("onExhausted", () => {
     expect(run.error).toBeTruthy();
   });
 
+  test("leaves the cases it did manage where they are", async () => {
+    // They were measured and they are true. The `failed` status is what says
+    // the run covers less than a whole set.
+    const runId = await newRun();
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: ["off-corpus"],
+    });
+
+    await EVAL_RUN_WORKER.onExhausted({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
+
+    expect(await prisma.evalCaseResult.count({ where: { runId } })).toBe(1);
+  });
+
   test("leaves a run that already finished alone", async () => {
     const runId = await newRun();
-    await EVAL_RUN_WORKER.handle({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.handle({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
 
-    await EVAL_RUN_WORKER.onExhausted({ runId, caseId: SLICE_ONE_CASE_ID });
+    await EVAL_RUN_WORKER.onExhausted({
+      runId,
+      corpus: EVAL_CORPUS.frozen,
+      caseIds: PAIR,
+    });
 
     const run = await prisma.evalRun.findUniqueOrThrow({
       where: { id: runId },
@@ -236,18 +528,22 @@ describe("onExhausted", () => {
   });
 });
 
-/* ── An id nothing names ─────────────────────────────────────────────────── */
+/* ── Ids nothing names ───────────────────────────────────────────────────── */
 
-test("a case id the set does not carry fails the run rather than the job", async () => {
-  // The case set is code and the id on the job is a string that outlived a
+test("a case set the code no longer carries fails the run rather than the job", async () => {
+  // The case set is code and the ids on the job are strings that outlived a
   // rename. Retrying cannot help, so this settles the run instead of climbing
   // the ladder to say the same thing five times.
   const runId = await newRun();
 
-  await EVAL_RUN_WORKER.handle({ runId, caseId: "no-such-case" });
+  await EVAL_RUN_WORKER.handle({
+    runId,
+    corpus: EVAL_CORPUS.frozen,
+    caseIds: ["no-such-case"],
+  });
 
   const run = await prisma.evalRun.findUniqueOrThrow({ where: { id: runId } });
   expect(run.status).toBe(EVAL_RUN_STATUS.failed);
   expect(run.error).toContain("no-such-case");
-  expect(answered).toBe(0);
+  expect(answered).toEqual([]);
 });

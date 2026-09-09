@@ -1,10 +1,11 @@
 import type { PgBoss, Db } from "pg-boss";
-import { EVAL_RUN_STATUS } from "@ticket/shared";
-import { autoReplyCaseById } from "@ticket/core";
+import { EVAL_CORPUS, EVAL_RUN_STATUS, type EvalCorpus } from "@ticket/shared";
+import { autoReplyCaseById, AUTO_REPLY_CASES } from "@ticket/core";
+import { autoReplyArticles, type KbArticle } from "../ai/knowledge-base";
 import { prisma } from "../db";
 import { isEvalConfigured } from "../evals/config";
 import { frozenCorpus } from "../evals/frozen-corpus";
-import { answerCase } from "../evals/runner";
+import { EVAL_REPEATS, runCase } from "../evals/runner";
 import { publishEvalRunChanged } from "../events/ticket-events";
 import { getBoss, registerWorker, type WorkerSpec } from "./boss";
 
@@ -12,29 +13,36 @@ import { getBoss, registerWorker, type WorkerSpec } from "./boss";
  * Running one eval, off the request that asked for it.
  *
  * The scheduling and bookkeeping half of the harness; `../evals/runner.ts` is
- * the measuring half and `../evals/frozen-corpus.ts` is where the corpus comes
- * from.
+ * the measuring half and `../evals/frozen-corpus.ts` is where the frozen corpus
+ * comes from.
  *
- * **The request must not wait for it** (PRD R5). A run is model calls end to
- * end — one in slice 1, ~200 in slice 2 — and an admin holding an HTTP
- * connection open for several minutes is a request a proxy will close and a
- * page that cannot say what is happening. So `POST /api/evals/runs` writes the
- * `EvalRun` row and enqueues this in the same transaction, exactly as the
- * inbound webhook enqueues classification: the row and the job share a fate,
- * and the page hears the verdict over `/api/events` when this commits.
+ * **The request must not wait for it** (PRD R5). A run is ~175 model calls end
+ * to end, and an admin holding an HTTP connection open for that is a request a
+ * proxy will close and a page that cannot say what is happening. So
+ * `POST /api/evals/runs` writes the `EvalRun` row and enqueues this in the same
+ * transaction, exactly as the inbound webhook enqueues classification: the row
+ * and the job share a fate, and the page hears about it over `/api/events`.
+ *
+ * **A case result is written and announced the moment that case finishes**, not
+ * at the end. That is what makes R5's second half true — an admin watches the
+ * run fill in case by case rather than staring at a spinner for several minutes
+ * wondering whether anything is happening. It is also what forces the
+ * idempotency story below to be more than one conditional write.
  *
  * **The run row is the source of truth, not the job.** pg-boss delivers at
- * least once, so this may arrive twice, late, or after a restart. The guard is
- * a conditional write on `finishedAt` — a run is finished once — and it sits
- * *above* the model call rather than below it, which is the one thing this
- * handler does differently from the classifier's. A duplicate classification
- * costs a call that gets thrown away; here the call **is** the cost of the
- * whole feature, and the PRD's "quiet cost, discovered on an invoice" risk is
- * about precisely this.
+ * least once, so this may arrive twice, late, or after a restart. Three guards,
+ * and each one is there for a different delivery:
  *
- * Slice 1 answers one case, once, against the frozen corpus. The payload
- * already names a case rather than assuming one, because that is what the
- * pinned E2E subset needs and what slice 2 grows into.
+ * 1. `finishedAt` is re-read *above* everything else, so a delivery arriving
+ *    after the run closed pays for nothing. This is the one thing this handler
+ *    does differently from the classifier's, and the reason is money: a
+ *    duplicate classification costs a call that gets thrown away, whereas here
+ *    the calls **are** the whole cost of the feature.
+ * 2. Cases that already have a result row for this run are skipped, so a
+ *    delivery that arrives mid-run (an expiry, a redeploy) resumes rather than
+ *    starting again — the expensive half of the work is already paid for.
+ * 3. `@@unique([runId, caseId])` is the backstop under both, so two workers
+ *    racing the same run cannot double a case in the rates taken off these rows.
  */
 
 /** The queue an eval run is announced on. */
@@ -46,28 +54,32 @@ export const EVAL_RUN_QUEUE = "eval-run";
  * One, and for a different reason from the classifier's two: a run is not
  * competing with an agent's spinner, it is competing with **itself**. Two runs
  * at once would interleave their model calls against one provider account, and
- * slice 2's whole measurement rests on repeats of a case seeing an identical
- * prompt prefix so OpenAI's cache engages (`ai-features.md` on `cached=`).
- * Serial runs also mean the cost of the feature is one run's worth at a time,
- * which is the honest shape for something an admin triggers by clicking.
+ * the measurement rests on repeats of a case seeing an identical prompt prefix
+ * so OpenAI's cache engages (`ai-features.md` on `cached=`). Serial runs also
+ * mean the cost of the feature is one run's worth at a time, which is the honest
+ * shape for something an admin triggers by clicking.
  */
 const LOCAL_CONCURRENCY = 1;
 
 /**
  * How long one run may be active before pg-boss assumes the worker died.
  *
- * Comfortably over the 30s ceiling inside `autoReply` for the one case slice 1
- * answers. Slice 2 multiplies the work by 30 cases × 5 repeats and this number
- * moves with it — a run that legitimately takes ten minutes must not be
- * re-offered halfway through and answered twice.
+ * Forty minutes, and the arithmetic matters more than the number: a full set is
+ * ~35 cases × 5 repeats, each repeat capped at the 30s ceiling inside
+ * `autoReply`, so a genuinely slow run is minutes and a pathological one is
+ * longer than anybody would wait. A run re-offered halfway through would be
+ * answered twice and pay twice, which is why this is generous rather than tight
+ * — and why guard 2 above exists for the case where it happens anyway.
  */
-const EXPIRE_IN_SECONDS = 120;
+const EXPIRE_IN_SECONDS = 40 * 60;
 
 /** A `type` rather than an `interface`, so it satisfies `WorkerSpec`'s payload
  *  constraint — see the note there. */
 export type EvalRunJob = {
   runId: number;
-  caseId: string;
+  corpus: EvalCorpus;
+  /** The cases to answer, resolved by the route. Every case, unless pinned. */
+  caseIds: string[];
 };
 
 /**
@@ -86,14 +98,15 @@ export type EvalRunJob = {
  */
 export async function enqueueEvalRun(
   runId: number,
-  caseId: string,
+  corpus: EvalCorpus,
+  caseIds: string[],
   db?: Db,
 ): Promise<void> {
   if (!isEvalConfigured()) return;
 
   await getBoss().send(
     EVAL_RUN_QUEUE,
-    { runId, caseId } satisfies EvalRunJob,
+    { runId, corpus, caseIds } satisfies EvalRunJob,
     db ? { db } : {},
   );
 }
@@ -118,58 +131,83 @@ async function settle(
 }
 
 /**
- * Answer one case and record what it did.
+ * The corpus a run answers from (R4).
+ *
+ * The two are never mixed and never averaged, and that is enforced one level up
+ * — the run carries its corpus on the row and nothing aggregates across runs.
+ * Here it is simply a fork: the frozen file, whose numbers move only when the
+ * code does, or the live table, where an admin's edit and a prompt regression
+ * look identical from a chart.
+ */
+async function corpusFor(corpus: EvalCorpus): Promise<KbArticle[]> {
+  // `autoReplyArticles()` and not a second query of its own: `orderBy: id` and
+  // the two structural filters (withheld articles absent, `internalNote` never
+  // selected) are properties of *that* function, and a run measuring a corpus
+  // assembled any other way would be measuring a prompt the desk never builds.
+  return corpus === EVAL_CORPUS.live ? autoReplyArticles() : frozenCorpus();
+}
+
+/**
+ * Answer a run's cases and record what each one did.
  *
  * Returns rather than throws for everything that will fail identically forever
- * — a run id nothing names, a case id nothing names — because those are not
- * retryable and a ladder would only say the same thing five times. A provider
- * failure is a different matter and is left to `answerCase`'s own verdict: it
- * comes back as an `abandoned` outcome on the row rather than as a throw, so a
- * run through an outage produces a readable result instead of vanishing into
- * the dead-letter queue. That is a deliberate slice-1 simplification and the
- * place to revisit when repeats arrive.
+ * — a run id nothing names, a case set with nothing left in it — because those
+ * are not retryable and a ladder would only say the same thing five times. A
+ * provider failure is a different matter and is left to the runner's own
+ * verdict: it comes back as `abandoned` repeats on the row rather than as a
+ * throw, so a run through an outage produces a readable result — "the provider
+ * answered none of this" — instead of vanishing into the dead-letter queue.
  */
 async function handle(job: EvalRunJob): Promise<void> {
-  const { runId, caseId } = job;
+  const { runId, corpus, caseIds } = job;
 
-  // Above the model call, not below it. A duplicate delivery must discover it
-  // has nothing to write *before* it pays for an answer.
+  // Above everything, not below it. A duplicate delivery must discover it has
+  // nothing to write *before* it pays for a hundred and seventy-five answers.
   const run = await prisma.evalRun.findUnique({
     where: { id: runId },
-    select: { finishedAt: true },
+    select: { finishedAt: true, repeats: true },
   });
   if (!run) return;
   if (run.finishedAt !== null) return;
 
-  const evalCase = autoReplyCaseById(caseId);
-  if (!evalCase) {
-    // The case set is code; an id that no longer names one is a rename that
+  const cases = caseIds
+    .map(autoReplyCaseById)
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  if (cases.length === 0) {
+    // The case set is code; ids that no longer name one are a rename that
     // outlived a queued job. Nothing to retry.
     if (
-      await settle(runId, EVAL_RUN_STATUS.failed, `No such case: ${caseId}`)
+      await settle(
+        runId,
+        EVAL_RUN_STATUS.failed,
+        `No such case: ${caseIds.join(", ")}`,
+      )
     ) {
       publishEvalRunChanged(runId);
     }
     return;
   }
 
-  const outcome = await answerCase(frozenCorpus(), evalCase);
+  // Guard 2: what a re-delivery has already paid for. Read once rather than per
+  // case — the set is small and a run answers it in one pass.
+  const done = new Set(
+    (
+      await prisma.evalCaseResult.findMany({
+        where: { runId },
+        select: { caseId: true },
+      })
+    ).map((r) => r.caseId),
+  );
 
-  // One transaction, so a run is never `completed` with no result beside it —
-  // which would read on screen as a run that measured nothing and found it fine.
-  const closed = await prisma.$transaction(async (tx) => {
-    const { count } = await tx.evalRun.updateMany({
-      where: { id: runId, finishedAt: null },
-      data: {
-        status: EVAL_RUN_STATUS.completed,
-        finishedAt: new Date(),
-      },
-    });
-    // Lost the race to another delivery of this same job. Its result is already
-    // recorded; a second one would double every rate computed off these rows.
-    if (count === 0) return false;
+  const articles = await corpusFor(corpus);
 
-    await tx.evalCaseResult.create({
+  for (const evalCase of cases) {
+    if (done.has(evalCase.id)) continue;
+
+    const outcome = await runCase(articles, evalCase, run.repeats);
+
+    await prisma.evalCaseResult.create({
       data: {
         runId,
         caseId: evalCase.id,
@@ -179,25 +217,67 @@ async function handle(job: EvalRunJob): Promise<void> {
         adversarial: evalCase.adversarial,
         expectedOutcome: evalCase.expected.outcome,
         expectedDecline: evalCase.expected.decline,
-        actualOutcome: outcome.outcome,
-        actualDecline: outcome.decline,
-        matched: outcome.matched,
+        repeats: outcome.repeats,
+        matches: outcome.matches,
+        abandoned: outcome.abandoned,
+        usd: outcome.usd,
+        cachedRepeats: outcome.cachedRepeats,
+        verdicts: outcome.verdicts.map((v) => ({
+          outcome: v.outcome,
+          decline: v.decline,
+          matched: v.matched,
+        })),
       },
     });
-    return true;
+
+    // Per case, after its own commit. This is the whole of R5's second half:
+    // an admin watching a run watches it fill in, rather than watching a
+    // spinner for several minutes with no way to tell a working run from a
+    // wedged one. Published after the write and never inside a transaction
+    // (ADR-0015) — a subscriber told mid-commit caches pre-commit state and is
+    // never corrected, because the event that would have corrected it is spent.
+    publishEvalRunChanged(runId);
+  }
+
+  // The totals, read back from the rows rather than accumulated in a variable:
+  // guard 2 means some of those rows may have been written by an earlier
+  // delivery of this same job, and a run's headline number has to cover the
+  // whole run rather than this attempt's share of it.
+  const totals = await prisma.evalCaseResult.aggregate({
+    where: { runId },
+    _sum: {
+      repeats: true,
+      matches: true,
+      abandoned: true,
+      usd: true,
+      cachedRepeats: true,
+    },
   });
 
-  if (!closed) return;
+  const closed = await prisma.evalRun.updateMany({
+    where: { id: runId, finishedAt: null },
+    data: {
+      status: EVAL_RUN_STATUS.completed,
+      finishedAt: new Date(),
+      attempts: totals._sum.repeats ?? 0,
+      matches: totals._sum.matches ?? 0,
+      abandoned: totals._sum.abandoned ?? 0,
+      usd: totals._sum.usd ?? 0,
+      cachedRepeats: totals._sum.cachedRepeats ?? 0,
+    },
+  });
 
+  // Lost the race to another delivery of this same job, which has already
+  // written the same totals off the same rows. Nothing to announce.
+  if (closed.count === 0) return;
+
+  const attempts = totals._sum.repeats ?? 0;
+  const matches = totals._sum.matches ?? 0;
   console.log(
-    `[evals] run ${runId}: ${evalCase.id} reached ${outcome.outcome}` +
-      `${outcome.decline ? ` (${outcome.decline})` : ""}` +
-      `, ${outcome.matched ? "as expected" : "not as expected"}`,
+    `[evals] run ${runId} (${corpus}): ${matches}/${attempts} repeats as expected across ` +
+      `${cases.length} case(s), usd~${(totals._sum.usd ?? 0).toFixed(4)}`,
   );
 
-  // After the commit that made it true, never inside the transaction
-  // (ADR-0015). The page refetches on this, and a subscriber told mid-commit
-  // would cache pre-commit state and never be corrected.
   publishEvalRunChanged(runId);
 }
 
@@ -209,6 +289,11 @@ async function handle(job: EvalRunJob): Promise<void> {
  * Sentry alert by the time this runs. A run stuck at `running` on a page whose
  * entire job is saying what happened is indistinguishable from one still in
  * flight, which is the worst state for this screen to be able to reach.
+ *
+ * Whatever case results the run did manage are left where they are: they were
+ * measured and they are true, and deleting them would throw away the half of the
+ * answer that survived. The run is marked `failed`, which is what says its
+ * numbers cover less than a whole set.
  */
 async function onExhausted({ runId }: EvalRunJob): Promise<void> {
   if (
@@ -236,6 +321,12 @@ export const EVAL_RUN_WORKER: WorkerSpec<EvalRunJob> = {
   handle,
   onExhausted,
 };
+
+/** Every case in the set, which is what a run answers unless it was pinned. */
+export const ALL_EVAL_CASE_IDS = AUTO_REPLY_CASES.map((c) => c.id);
+
+/** How many times each case is answered. Re-exported so the route can stamp the row. */
+export { EVAL_REPEATS };
 
 /** Create the queues and start the workers. Called once, from `./index`. */
 export async function registerEvalRun(boss: PgBoss): Promise<void> {

@@ -998,6 +998,30 @@ model EvalRun {
   /// finish a run once.
   finishedAt DateTime?
 
+  /// How many times each case was answered. Fixed at five in code, recorded
+  /// here anyway: a stored rate means nothing without the denominator it was
+  /// taken over, and a run kept for months has to keep saying what it measured.
+  repeats    Int      @default(1)
+  /// Repeats actually answered across every case: cases × `repeats`. Written
+  /// when the run closes, so a run in flight reads zero rather than a fraction
+  /// of a number nobody can interpret.
+  attempts   Int      @default(0)
+  /// Repeats that landed where their case said they would. `matches/attempts`
+  /// is the decline-accuracy rate the PRD is missing a baseline for.
+  matches    Int      @default(0)
+  /// Repeats the provider could not answer. Counted apart from the misses,
+  /// because an outage is not the model getting things wrong and a number that
+  /// cannot tell them apart is a number nobody will trust twice.
+  abandoned  Int      @default(0)
+  /// Estimated USD, priced off `USD_PER_MTOK` at the time of the call. An
+  /// estimate against a printed price list that will go stale; nothing bills
+  /// off it (R10).
+  usd        Float    @default(0)
+  /// Repeats after each case's first that the provider served partly from its
+  /// prompt cache. Zero on a full run is the prompt-caching regression that
+  /// nothing else in this app would show.
+  cachedRepeats Int   @default(0)
+
   results EvalCaseResult[]
 
   /// The page lists newest first.
@@ -1037,14 +1061,37 @@ model EvalCaseResult {
   adversarial     Boolean
   expectedOutcome String
   expectedDecline String?
-  actualOutcome   String
-  actualDecline   String?
-  /// Outcome and, when declined, reason both landed where expected. Stored
-  /// rather than computed on read so a run's verdict cannot change under it.
-  matched         Boolean
+  /// How many times this case was answered in this run, and how many of those
+  /// landed where it said. A rate, never a pass — one answer from a model is
+  /// not a measurement (R3), and a case result that said true or false would be
+  /// reporting a coin toss as a verdict.
+  repeats         Int      @default(1)
+  matches         Int      @default(0)
+  /// Repeats the provider could not answer. See the note on `EvalRun`.
+  abandoned       Int      @default(0)
+  /// Estimated USD across this case's repeats, including the ones a safety
+  /// check discarded — a reply thrown out cost what one that was sent would.
+  usd             Float    @default(0)
+  /// Repeats after the first served partly from the prompt cache, out of
+  /// `repeats - 1`. The first repeat is what warms it.
+  cachedRepeats   Int      @default(0)
+  /// One entry per repeat: `{ outcome, decline, matched }`, in the order they
+  /// were answered.
+  ///
+  /// `Json` rather than a child table, for the reason `DashboardLayout.panels`
+  /// is: it is written once, read whole, and never queried by its contents.
+  /// Five small objects per case, and what they buy is the thing a bare
+  /// `3/5` cannot say — *which* two failed and where they went instead. Slice
+  /// 3's per-check breakdown reads them; nothing joins on them.
+  verdicts        Json
   createdAt       DateTime @default(now())
 
   @@index([runId])
+  /// One row per case per run. The worker writes a case result the moment that
+  /// case finishes, so an admin can watch a run fill in — which means a job
+  /// re-delivered mid-run would otherwise write a second row for a case it had
+  /// already answered and double it in every rate taken off these.
+  @@unique([runId, caseId])
   @@map("eval_case_result")
 }
 

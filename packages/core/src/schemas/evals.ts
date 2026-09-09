@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { AUTO_REPLY_DECLINE, PIPELINE_OUTCOME } from "@ticket/shared";
+import {
+  AUTO_REPLY_DECLINE,
+  EVAL_CORPUS,
+  PIPELINE_OUTCOME,
+  TICKET_CATEGORY,
+} from "@ticket/shared";
 import { caseEmailSchema } from "./pipeline";
 
 /**
@@ -25,6 +30,36 @@ export const autoReplyCaseSchema = z.object({
   name: z.string().min(1),
   /** One line on why it goes where it goes. */
   note: z.string().min(1),
+  /**
+   * The state the ticket would be in when the auto-reply job picks it up.
+   *
+   * Three facts and no more, because they are exactly what `gateDecline` reads
+   * (`apps/api/src/ai/auto-reply-gates.ts`). The auto-reply's three preflight
+   * gates — `category`, `answered`, `noText` — are decided from these and never
+   * by the model, so without them here the harness could not cover three of the
+   * nine decline reasons at all: it hands a synthesized input straight to
+   * `autoReply`, which those gates sit in front of.
+   *
+   * `/pipeline` does not read this. It posts the case through real ingestion and
+   * lets the classifier and the thread decide, which is the point of having two
+   * readers: `category` here is what the classifier is *expected* to say, so a
+   * pipeline run that lands somewhere else has found the disagreement. (Slice 4
+   * measures that expectation directly, as classifier accuracy.)
+   *
+   * Not every combination is something ingestion can produce — a ticket with no
+   * inbound message is not, since a ticket is created *by* an inbound email — so
+   * the cases that declare one are harness-only and `SIMULATABLE_CASES` leaves
+   * them out of the simulator's picker rather than offering a scenario the page
+   * cannot reproduce.
+   */
+  preflight: z.object({
+    /** What the classifier is expected to have filed this under. Null means it failed. */
+    category: z.enum(TICKET_CATEGORY).nullable(),
+    /** Whether somebody has already replied — the corpus answers openings, not threads. */
+    answered: z.boolean(),
+    /** Whether the ticket carries an inbound message at all. */
+    hasInbound: z.boolean(),
+  }),
   /**
    * Where this should end up, if the corpus is what it was when this was
    * written.
@@ -90,18 +125,26 @@ export const autoReplyCasesSchema = z
 /**
  * The body of `POST /api/evals/runs`.
  *
- * Slice 1 answers **one** case, once, against the frozen corpus, so a request
- * says which case and nothing else. The corpus choice (R4) and the repeat count
- * (R3) arrive in slice 2; they are absent here rather than accepted and
- * ignored, so a caller cannot believe it asked for something it did not get.
+ * Two knobs, and the count of repeats is deliberately not one of them. Five is
+ * fixed in code (`EVAL_REPEATS`) because a configurable count makes runs
+ * incomparable — a 3-repeat run and a 5-repeat run produce rates that look like
+ * the same number and are not, and the whole value of storing a run is reading
+ * it against the ones before it.
  *
- * The id is not checked against the case set here: a schema in `@ticket/core`
- * that imported the data would make every consumer of any schema in this
- * package carry it. The route resolves it and answers 400 for an id nothing
- * names.
+ * - `corpus` decides which knowledge base answers (R4). Absent means frozen,
+ *   which is the one whose trend line moves only when the code does.
+ * - `caseIds` pins the run to a subset. It exists for the E2E suite, which must
+ *   exercise the real runner without paying for the whole set on every push
+ *   (R11), and for an admin re-running the one case that moved. Absent means
+ *   every case.
+ *
+ * Ids are not checked against the case set here: a schema in `@ticket/core` that
+ * imported the data would make every consumer of any schema in this package
+ * carry it. The route resolves them and answers 400 for an id nothing names.
  */
 export const startEvalRunSchema = z.object({
-  caseId: z.string().min(1).optional(),
+  corpus: z.enum(EVAL_CORPUS).optional(),
+  caseIds: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export type StartEvalRunValues = z.infer<typeof startEvalRunSchema>;
