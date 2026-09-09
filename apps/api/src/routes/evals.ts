@@ -76,49 +76,65 @@ function asPipelineOutcome(value: unknown): PipelineOutcome {
 }
 
 /**
- * The five repeats, collapsed into the distinct places the case landed.
+ * A case's stored repeats, collapsed into distinct rows with counts.
  *
- * Five identical rows say one thing and take five lines to say it; the
- * interesting case is the one that went two different ways, and what a reader
- * needs then is *which* way and how often. Sorted by count, so the first entry
- * is what the case usually does.
+ * The shape both breakdowns on this page need, and the reason it is one
+ * function: "five repeats" is never what a reader wants to see. Five identical
+ * rows say one thing and take five lines to say it; the interesting case is the
+ * one that went two different ways, and what is wanted then is *which* way and
+ * how often. Sorted by count, so the first entry is what the case usually does.
  *
- * Reads the stored `verdicts` array defensively — it is `Json`, so Postgres
- * makes no promise about its shape, and a row written by an older build (or by
- * the backfill in this slice's migration) is a shape this code did not write.
- * Anything unreadable becomes `notOffered`, the same way an unknown decline
- * becomes null, rather than throwing on a page whose whole job is to say what
- * happened.
+ * `rowOf` decides what a repeat counts as: a key to group on and the row to
+ * carry, or `null` to leave the repeat out of the tally entirely. `count` is
+ * added here rather than by the caller, which is what stops the two callers
+ * disagreeing about whether a skipped repeat is a zero or an absence.
+ *
+ * Every caller reads the stored `verdicts` array **defensively**, and that is
+ * not optional: it is `Json`, so Postgres makes no promise about its shape, and
+ * rows written by older builds are shapes this code did not write — a run from
+ * before slice 4 carries no `category` on any repeat. Narrowing belongs in
+ * `rowOf`, where each caller can say what an unreadable value means to it.
  */
-function reachedFrom(verdicts: unknown): EvalReachedRow[] {
-  const rows = new Map<string, EvalReachedRow>();
+function tally<T>(
+  verdicts: unknown,
+  rowOf: (verdict: Record<string, unknown>) => { key: string; row: T } | null,
+): (T & { count: number })[] {
+  const rows = new Map<string, T & { count: number }>();
 
   for (const entry of Array.isArray(verdicts) ? verdicts : []) {
-    const verdict = entry as {
-      outcome?: unknown;
-      decline?: unknown;
-      matched?: unknown;
-    };
-    const outcome = asPipelineOutcome(verdict.outcome);
-    const decline = asAutoReplyDecline(
-      typeof verdict.decline === "string" ? verdict.decline : null,
-    );
-    const key = `${outcome}:${decline ?? ""}`;
+    const made = rowOf(entry as Record<string, unknown>);
+    if (made === null) continue;
 
-    const existing = rows.get(key);
+    const existing = rows.get(made.key);
     if (existing) {
       existing.count += 1;
       continue;
     }
-    rows.set(key, {
-      outcome,
-      decline,
-      count: 1,
-      matched: verdict.matched === true,
-    });
+    rows.set(made.key, { ...made.row, count: 1 });
   }
 
   return [...rows.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
+ * The distinct places a case landed, and how often.
+ *
+ * An outcome this build has no wording for becomes `notOffered`, the same way
+ * an unknown decline becomes null, rather than throwing on a page whose whole
+ * job is to say what happened.
+ */
+function reachedFrom(verdicts: unknown): EvalReachedRow[] {
+  return tally(verdicts, (verdict) => {
+    const outcome = asPipelineOutcome(verdict.outcome);
+    const decline = asAutoReplyDecline(
+      typeof verdict.decline === "string" ? verdict.decline : null,
+    );
+
+    return {
+      key: `${outcome}:${decline ?? ""}`,
+      row: { outcome, decline, matched: verdict.matched === true },
+    };
+  });
 }
 
 /**
@@ -193,31 +209,24 @@ function filedFrom(
   verdicts: unknown,
   expected: TicketCategory | null,
 ): EvalFiledRow[] {
-  const rows = new Map<string, EvalFiledRow>();
-
-  for (const entry of Array.isArray(verdicts) ? verdicts : []) {
-    const verdict = entry as { category?: unknown };
+  return tally(verdicts, (verdict) => {
     const category = asTicketCategory(verdict.category);
-    // Nothing was asked, so there is nothing to report. Distinct from a null
-    // *answer*, which is a repeat the provider could not answer and is worth
-    // showing — but the two are indistinguishable on the row, so the honest
-    // reading is the quieter one: a case with no expectation reports no filings.
-    if (category === null && expected === null) continue;
+    // Nothing was asked, so there is nothing to report — the `null` return is
+    // what keeps the repeat out of the tally rather than counting it as a
+    // filing of nowhere. Distinct from a null *answer*, which is a repeat the
+    // provider could not answer and is worth showing; the two are
+    // indistinguishable on the row, so the honest reading is the quieter one: a
+    // case with no expectation reports no filings at all.
+    if (category === null && expected === null) return null;
 
-    const key = category ?? "";
-    const existing = rows.get(key);
-    if (existing) {
-      existing.count += 1;
-      continue;
-    }
-    rows.set(key, {
-      category,
-      count: 1,
-      matched: category !== null && category === expected,
-    });
-  }
-
-  return [...rows.values()].sort((a, b) => b.count - a.count);
+    return {
+      key: category ?? "",
+      row: {
+        category,
+        matched: category !== null && category === expected,
+      },
+    };
+  });
 }
 
 /**
@@ -402,7 +411,7 @@ evalsRouter.get(
                   run.attempts,
                   thresholds,
                 ),
-                // Last, and over its own denominator: `classified` is repeats
+                // Last, and over its own denominator: `classifiedRepeats` is
                 // the classifier answered, which is neither `attempts` nor the
                 // case count. A run from before this metric existed has both
                 // halves at zero and reports no accuracy rather than a zero —
@@ -410,7 +419,7 @@ evalsRouter.get(
                 metricRow(
                   EVAL_METRIC.classifierAccuracy,
                   run.classifyMatches,
-                  run.classified,
+                  run.classifiedRepeats,
                   thresholds,
                 ),
               ]
@@ -440,7 +449,7 @@ evalsRouter.get(
           caught: run.caught,
           escaped: run.escaped,
           checks: checksFrom(run.results),
-          classified: run.classified,
+          classifiedRepeats: run.classifiedRepeats,
           classifyMatches: run.classifyMatches,
           categories: categoriesFrom(run.results),
           metrics,
@@ -464,7 +473,7 @@ evalsRouter.get(
             caught: result.caught,
             escaped: result.escaped,
             expectedCategory: asTicketCategory(result.expectedCategory),
-            classified: result.classified,
+            classifiedRepeats: result.classifiedRepeats,
             classifyMatches: result.classifyMatches,
             filed: filedFrom(
               result.verdicts,

@@ -2017,13 +2017,17 @@ export interface EvalCaseResultRow {
   /**
    * Repeats the classifier answered, and how many it filed as expected.
    *
-   * `classified` is the denominator and it is **not** `repeats`: a repeat the
-   * provider could not answer is left out rather than counted as a miss, and a
-   * case that is not classifiable at all reports zero of zero. Same split the
-   * auto-reply half draws with `abandoned`, and for the same reason — an outage
-   * is not the model getting things wrong.
+   * `classifiedRepeats` is the denominator and it is **not** `repeats`: a
+   * repeat the provider could not answer is left out rather than counted as a
+   * miss, and a case that is not classifiable at all reports zero of zero. Same
+   * split the auto-reply half draws with `abandoned`, and for the same reason —
+   * an outage is not the model getting things wrong.
+   *
+   * Named for the count it is, beside `cachedRepeats` which counts the same way.
+   * A bare `classified` reads as a flag, and this package already has a
+   * different one: `PipelineFunnel.classified` is tickets, not repeats.
    */
-  classified: number;
+  classifiedRepeats: number;
   classifyMatches: number;
   /**
    * Which categories this case was actually filed under, counted.
@@ -2091,7 +2095,7 @@ export interface EvalCheckRow {
  * One distinct category a case was filed under, and how often.
  *
  * `category` is null for a repeat the classifier could not answer. Those are
- * outside `classified` and therefore outside the rate — they are here so a
+ * outside `classifiedRepeats` and therefore outside the rate — they are here so a
  * reader can see that the denominator shrank rather than wondering why five
  * repeats add up to three.
  */
@@ -2111,8 +2115,13 @@ export interface EvalFiledRow {
  * about a desk whose category gate is the only control standing between a
  * refund request and an unattended reply.
  *
- * Matching pairs are included as well as mismatched ones: the shape of what the
- * classifier gets right is what makes the shape of what it gets wrong readable.
+ * **The whole matrix travels, matched pairs included** — this is what was filed
+ * where, not what is worth drawing. `EvalsPage` renders only the pairs that
+ * disagree, deliberately: on a healthy run every pair matches, and a list that
+ * opened with "General → General ×60" would bury the one line that matters
+ * under the sixty that do not. Which rows to draw is a decision for a reader of
+ * this type, and a different reader — a trend line across runs, say — wants the
+ * half the page discards.
  */
 export interface EvalCategoryRow {
   expected: TicketCategory;
@@ -2190,13 +2199,13 @@ export interface EvalRunRow {
   /**
    * Repeats the classifier answered, and how many it filed as expected (R15).
    *
-   * `classifyMatches / classified` is classifier accuracy. The denominator is
-   * neither the repeats nor the cases: two cases are not classifiable at all
-   * (one expects classification to have *failed*, the other carries no inbound
-   * message), and a repeat the provider could not answer is left out rather
-   * than counted against the model.
+   * `classifyMatches / classifiedRepeats` is classifier accuracy. The
+   * denominator is neither the repeats nor the cases: two cases are not
+   * classifiable at all (one expects classification to have *failed*, the other
+   * carries no inbound message), and a repeat the provider could not answer is
+   * left out rather than counted against the model.
    */
-  classified: number;
+  classifiedRepeats: number;
   classifyMatches: number;
   /**
    * What was filed where, most frequent first. Empty when nothing was

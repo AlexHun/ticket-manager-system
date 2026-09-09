@@ -1040,7 +1040,7 @@ model EvalRun {
   /// Repeats the classifier answered, and how many it filed under the category
   /// its case expected (R15).
   ///
-  /// `classifyMatches / classified` is classifier accuracy, and `classified` is
+  /// `classifyMatches / classifiedRepeats` is classifier accuracy, and it is
   /// deliberately neither `attempts` nor `cases × repeats`: two cases cannot be
   /// scored at all — one expects classification to have *failed*, the other
   /// carries no inbound message to read — and a repeat the provider could not
@@ -1050,7 +1050,7 @@ model EvalRun {
   /// The one metric here that no knowledge-base article can move: the classifier
   /// never sees the corpus, so this number is measured the same way on a frozen
   /// run and a live one.
-  classified      Int  @default(0)
+  classifiedRepeats Int @default(0)
   classifyMatches Int  @default(0)
 
   /// What this run was judged against, stamped when it started (R8).
@@ -1134,7 +1134,7 @@ model EvalCaseResult {
   expectedCategory String?
   /// This case's share of classifier accuracy: repeats the classifier answered,
   /// and repeats it filed as expected. See the notes on `EvalRun`.
-  classified      Int      @default(0)
+  classifiedRepeats Int      @default(0)
   classifyMatches Int      @default(0)
   /// One entry per repeat: `{ outcome, decline, matched, caught, escaped,
   /// category }`, in the order they were answered.

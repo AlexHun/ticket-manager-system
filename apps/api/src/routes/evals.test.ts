@@ -260,7 +260,7 @@ async function classifiedRun(
   expectedCategory: TicketCategory | null,
   filed: (TicketCategory | null)[],
 ) {
-  const classified = filed.filter((c) => c !== null).length;
+  const classifiedRepeats = filed.filter((c) => c !== null).length;
   const classifyMatches = filed.filter((c) => c === expectedCategory).length;
 
   return prisma.evalRun.create({
@@ -272,14 +272,14 @@ async function classifiedRun(
       attempts: filed.length,
       matches: filed.length,
       thresholds: EVAL_THRESHOLD,
-      classified,
+      classifiedRepeats,
       classifyMatches,
       results: {
         create: caseResult({
           repeats: filed.length,
           matches: filed.length,
           expectedCategory,
-          classified,
+          classifiedRepeats,
           classifyMatches,
           verdicts: filed.map((category) => ({
             outcome: PIPELINE_OUTCOME.declined,

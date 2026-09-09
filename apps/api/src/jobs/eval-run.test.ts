@@ -55,7 +55,7 @@ function cleanRun(repeats: number): EvalCaseOutcome {
     cachedRepeats: repeats - 1,
     caught: 0,
     escaped: 0,
-    classified: repeats,
+    classifiedRepeats: repeats,
     classifyMatches: repeats,
   };
 }
@@ -78,7 +78,7 @@ function misfiledRun(repeats: number): EvalCaseOutcome {
   return {
     ...clean,
     verdicts,
-    classified: verdicts.filter((v) => v.category !== null).length,
+    classifiedRepeats: verdicts.filter((v) => v.category !== null).length,
     classifyMatches: verdicts.filter((v) => v.classifyMatched).length,
   };
 }
@@ -340,7 +340,7 @@ describe("handle", () => {
     const result = await prisma.evalCaseResult.findFirstOrThrow({
       where: { runId },
     });
-    expect(result.classified).toBe(REPEATS);
+    expect(result.classifiedRepeats).toBe(REPEATS);
     expect(result.classifyMatches).toBe(REPEATS - 1);
     expect(
       (result.verdicts as { category: string | null }[]).map((v) => v.category),
@@ -355,7 +355,7 @@ describe("handle", () => {
     const run = await prisma.evalRun.findUniqueOrThrow({
       where: { id: runId },
     });
-    expect(run.classified).toBe(REPEATS);
+    expect(run.classifiedRepeats).toBe(REPEATS);
     expect(run.classifyMatches).toBe(REPEATS - 1);
   });
 

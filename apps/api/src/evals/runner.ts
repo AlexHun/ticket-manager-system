@@ -163,13 +163,13 @@ export interface EvalCaseOutcome {
    * Repeats the classifier answered, and how many of those it filed where the
    * case said (R15).
    *
-   * `classified` is the denominator, and it is neither `repeats` nor a
+   * `classifiedRepeats` is the denominator, and it is neither `repeats` nor a
    * constant: a case the classifier is not scored against contributes zero of
    * zero, and a repeat the provider could not answer is left out rather than
    * counted as a miss — the same split `abandoned` draws on the other half, for
    * the same reason.
    */
-  classified: number;
+  classifiedRepeats: number;
   classifyMatches: number;
 }
 
@@ -302,10 +302,10 @@ export async function answerCase(
   // classifier agreed with the case — the gates below are handed the case's own
   // declared category regardless, which is what keeps the two metrics
   // independent. See the header.
-  const classified = await classifyCase(evalCase, signal);
+  const classification = await classifyCase(evalCase, signal);
   const classifyMatched =
-    classified.category !== null &&
-    classified.category === evalCase.preflight.category;
+    classification.category !== null &&
+    classification.category === evalCase.preflight.category;
 
   const gated = gateDecline({
     category: evalCase.preflight.category,
@@ -324,13 +324,13 @@ export async function answerCase(
       // No reply was drafted, so the expensive call was never made — but the
       // classification above was, and a run that dropped its cost here would
       // under-report what it spent by five calls on every gated case.
-      usd: classified.usd,
+      usd: classification.usd,
       cached: false,
       // A gate answers from three values, before any prompt is built. Nothing
       // was drafted, so nothing was caught and nothing got out.
       caught: false,
       escaped: false,
-      category: classified.category,
+      category: classification.category,
       classifyMatched,
     };
   }
@@ -364,7 +364,7 @@ export async function answerCase(
     // priced only its successes would understate itself by however often the
     // safety checks fired — which is most of the time, by design. The
     // classifier's call is in here too: one figure for what the repeat spent.
-    usd: usdFor(result.usage) + classified.usd,
+    usd: usdFor(result.usage) + classification.usd,
     cached: (result.usage?.cachedInputTokens ?? 0) > 0,
     // Both are about the payloads and only the payloads (R9). An ordinary case
     // declined by the money check is a decline-accuracy miss worth reading, but
@@ -385,7 +385,7 @@ export async function answerCase(
       evalCase.adversarial &&
       result.ok &&
       payloadIn(evalCase, result.reply, articles),
-    category: classified.category,
+    category: classification.category,
     classifyMatched,
   };
 }
@@ -428,7 +428,7 @@ export async function runCase(
     escaped: verdicts.filter((v) => v.escaped).length,
     // A repeat with no category was either never asked or could not be
     // answered. Neither is a miss, so neither is in the denominator.
-    classified: verdicts.filter((v) => v.category !== null).length,
+    classifiedRepeats: verdicts.filter((v) => v.category !== null).length,
     classifyMatches: verdicts.filter((v) => v.classifyMatched).length,
   };
 }
@@ -439,7 +439,7 @@ export async function runCase(
  *
  * Lives here rather than being inlined at the one call site because
  * `../jobs/eval-run.ts` denormalises it onto the stored row, and a row reading
- * "expected General, classified 0 of 0" would be carrying an expectation
+ * "expected General, 0 of 0 classified" would be carrying an expectation
  * nothing was ever measured against.
  */
 export function expectedCategoryOf(

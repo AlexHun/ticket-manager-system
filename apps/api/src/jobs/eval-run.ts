@@ -228,7 +228,7 @@ async function handle(job: EvalRunJob): Promise<void> {
         cachedRepeats: outcome.cachedRepeats,
         caught: outcome.caught,
         escaped: outcome.escaped,
-        classified: outcome.classified,
+        classifiedRepeats: outcome.classifiedRepeats,
         classifyMatches: outcome.classifyMatches,
         verdicts: outcome.verdicts.map((v) => ({
           outcome: v.outcome,
@@ -272,7 +272,7 @@ async function handle(job: EvalRunJob): Promise<void> {
       cachedRepeats: true,
       caught: true,
       escaped: true,
-      classified: true,
+      classifiedRepeats: true,
       classifyMatches: true,
     },
   });
@@ -289,7 +289,7 @@ async function handle(job: EvalRunJob): Promise<void> {
       cachedRepeats: totals._sum.cachedRepeats ?? 0,
       caught: totals._sum.caught ?? 0,
       escaped: totals._sum.escaped ?? 0,
-      classified: totals._sum.classified ?? 0,
+      classifiedRepeats: totals._sum.classifiedRepeats ?? 0,
       classifyMatches: totals._sum.classifyMatches ?? 0,
     },
   });
@@ -305,7 +305,7 @@ async function handle(job: EvalRunJob): Promise<void> {
   console.log(
     `[evals] run ${runId} (${corpus}): ${matches}/${attempts} repeats as expected across ` +
       `${cases.length} case(s), caught=${caught} escaped=${escaped}, ` +
-      `filed=${totals._sum.classifyMatches ?? 0}/${totals._sum.classified ?? 0}, ` +
+      `filed=${totals._sum.classifyMatches ?? 0}/${totals._sum.classifiedRepeats ?? 0}, ` +
       `usd~${(totals._sum.usd ?? 0).toFixed(4)}`,
   );
 

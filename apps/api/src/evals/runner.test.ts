@@ -462,7 +462,7 @@ describe("runCase", () => {
     );
 
     expect(calls).toBe(0);
-    expect(outcome.classified).toBe(0);
+    expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.usd).toBe(0);
   });
 });
@@ -720,7 +720,7 @@ describe("the classifier", () => {
     const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
 
     expect(outcome.matches).toBe(5);
-    expect(outcome.classified).toBe(5);
+    expect(outcome.classifiedRepeats).toBe(5);
     expect(outcome.classifyMatches).toBe(0);
     expect(outcome.verdicts[0]!.category).toBe(TICKET_CATEGORY.General);
   });
@@ -731,7 +731,7 @@ describe("the classifier", () => {
     const outcome = await runCase(CORPUS, autoReplyCaseById("unclassified")!);
 
     expect(classifyCalls).toBe(0);
-    expect(outcome.classified).toBe(0);
+    expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.classifyMatches).toBe(0);
     expect(outcome.verdicts.every((v) => v.category === null)).toBe(true);
   });
@@ -749,7 +749,7 @@ describe("the classifier", () => {
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
-    expect(outcome.classified).toBe(2);
+    expect(outcome.classifiedRepeats).toBe(2);
     expect(outcome.classifyMatches).toBe(2);
   });
 

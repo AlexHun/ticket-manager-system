@@ -253,12 +253,12 @@ function Filed({ result }: { result: EvalCaseResultRow }) {
       <span
         className={cn(
           "tabular-nums",
-          result.classifyMatches === result.classified
+          result.classifyMatches === result.classifiedRepeats
             ? "text-foreground"
             : "text-muted-foreground",
         )}
       >
-        {result.classifyMatches}/{result.classified}
+        {result.classifyMatches}/{result.classifiedRepeats}
       </span>
       <div className="text-xs text-muted-foreground">
         expected {result.expectedCategory}

@@ -61,14 +61,23 @@ tickets, messages, activity rows or outbound email created or modified by a run.
 | R14 | The screen shows how each metric moved against the previous run on the same corpus.                                                                                                  | Should   |
 | R15 | Classifier accuracy — the share of repeats filed under the expected category — is reported as an additional metric.                                                                  | Should   |
 
-Shipped R15 with two properties worth stating here rather than only in the
-plan. The classifier's answer is **scored and not consumed** — the gates keep
-reading each case's declared category — so a classifier flake cannot move
-decline accuracy. And the metric's denominator is repeats the classifier
-_answered_, on the 33 of 35 cases it can be scored against at all: two cases
-have no right answer (`unclassified` expects classification to have failed,
-`no-inbound-message` carries no message), and a repeat the provider could not
-answer shrinks the denominator rather than counting as a miss.
+**R15 as shipped — and one reading of it that was chosen rather than given.**
+R15 says "the share of repeats filed under the expected category". It does not
+say which repeats are in the share, and the implementation had to decide. It
+counts repeats the classifier **answered**, on the 33 of 35 cases that declare
+an expected category at all — two cases are excluded because no answer could be
+right (`unclassified` expects classification to have _failed_;
+`no-inbound-message` carries no message to read), and a repeat the provider
+could not answer shrinks the denominator rather than counting as a miss, which
+is the same split `abandoned` already draws on decline accuracy. **That is a
+narrowing of the requirement, made after the fact, and a reviewer is entitled
+to reject it** — the honest alternative is a share taken over all 175 repeats,
+which would report a permanent ~6% shortfall that no prompt change could ever
+close.
+
+The other shipped property is not a reading of R15 but a constraint on it: the
+classifier's answer is **scored and not consumed**. The gates keep reading each
+case's declared category, so a classifier flake cannot move decline accuracy.
 
 ### Non-goals
 

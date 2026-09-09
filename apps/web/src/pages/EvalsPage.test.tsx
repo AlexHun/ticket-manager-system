@@ -64,7 +64,7 @@ function makeResult(
     caught: 0,
     escaped: 0,
     expectedCategory: TICKET_CATEGORY.General,
-    classified: 5,
+    classifiedRepeats: 5,
     classifyMatches: 5,
     filed: [{ category: TICKET_CATEGORY.General, count: 5, matched: true }],
     reached: [
@@ -116,7 +116,7 @@ function makeRun(overrides: Partial<EvalRunRow> = {}): EvalRunRow {
     caught: 0,
     escaped: 0,
     checks: [],
-    classified: 5,
+    classifiedRepeats: 5,
     classifyMatches: 5,
     categories: [
       {
@@ -596,7 +596,7 @@ describe("classifier accuracy", () => {
                 caseId: "unclassified",
                 caseName: "Classification never landed",
                 expectedCategory: null,
-                classified: 0,
+                classifiedRepeats: 0,
                 classifyMatches: 0,
                 filed: [],
               }),
@@ -622,7 +622,7 @@ describe("classifier accuracy", () => {
             results: [
               makeResult({
                 expectedCategory: TICKET_CATEGORY.Refund,
-                classified: 5,
+                classifiedRepeats: 5,
                 classifyMatches: 3,
                 filed: [
                   { category: TICKET_CATEGORY.Refund, count: 3, matched: true },

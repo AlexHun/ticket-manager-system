@@ -79,17 +79,24 @@ test.describe("the evals screen", () => {
     await expect(page.getByRole("button", { name: "Run" })).toBeDisabled();
   });
 
-  test("a run below its threshold is drawn as failing, with the check that held", async ({
+  test("a run below its threshold is drawn as failing, with all three metrics and the check that held", async ({
     page,
   }) => {
-    // R8 and R9 on the screen. The row is **seeded** rather than produced by a
-    // run, and that is the point of doing it here: a payload escaping is the
-    // one state the harness cannot be asked to reproduce on demand — it means
-    // the safety checks stopped working — so the only way to see what the page
-    // does about it is to write the numbers down and look.
+    // R8, R9 and R15 on the screen. The row is **seeded** rather than produced
+    // by a run, and that is the point of doing it here: a payload escaping is
+    // the one state the harness cannot be asked to reproduce on demand — it
+    // means the safety checks stopped working — so the only way to see what the
+    // page does about it is to write the numbers down and look. The classifier
+    // half rides along for the same reason, and because the plan asks this spec
+    // for the *summary showing three metrics*, which no request-level assertion
+    // can prove.
     //
     // The declared threshold for the catch rate is 100% (ADR-0004 makes a
     // check that catches 96% a bug rather than a score), so 3 of 4 is below it.
+    //
+    // Every percentage here is deliberately distinct — 75% catch, 100% decline,
+    // 60% classifier — because `getByText` matches a substring, and two metrics
+    // sharing a figure would make each other's assertion ambiguous.
     const run = await testDb.evalRun.create({
       data: {
         corpus: EVAL_CORPUS.frozen,
@@ -100,6 +107,8 @@ test.describe("the evals screen", () => {
         matches: 5,
         caught: 3,
         escaped: 1,
+        classifiedRepeats: 5,
+        classifyMatches: 3,
         thresholds: EVAL_THRESHOLD,
         results: {
           create: {
@@ -108,10 +117,16 @@ test.describe("the evals screen", () => {
             adversarial: true,
             expectedOutcome: PIPELINE_OUTCOME.declined,
             expectedDecline: AUTO_REPLY_DECLINE.unbackedReference,
+            expectedCategory: TICKET_CATEGORY.General,
             repeats: 5,
             matches: 4,
             caught: 3,
             escaped: 1,
+            classifiedRepeats: 5,
+            classifyMatches: 3,
+            // Five entries, one per repeat. It was four before this slice, which
+            // did not matter while nothing read the array's length — the
+            // classifier breakdown does.
             verdicts: [
               ...Array.from({ length: 3 }, () => ({
                 outcome: PIPELINE_OUTCOME.declined,
@@ -119,6 +134,7 @@ test.describe("the evals screen", () => {
                 matched: true,
                 caught: true,
                 escaped: false,
+                category: TICKET_CATEGORY.General,
               })),
               {
                 outcome: PIPELINE_OUTCOME.resolved,
@@ -126,6 +142,18 @@ test.describe("the evals screen", () => {
                 matched: false,
                 caught: false,
                 escaped: true,
+                category: TICKET_CATEGORY.Other,
+              },
+              // The model ignored the payload on this one, so it is on neither
+              // side of the catch rate — and it is still a classifier miss,
+              // which is the independence of the two metrics drawn on a screen.
+              {
+                outcome: PIPELINE_OUTCOME.declined,
+                decline: AUTO_REPLY_DECLINE.unbackedReference,
+                matched: true,
+                caught: false,
+                escaped: false,
+                category: TICKET_CATEGORY.Other,
               },
             ],
           },
@@ -149,6 +177,28 @@ test.describe("the evals screen", () => {
       await expect(card.getByText("75%")).toBeVisible();
       await expect(
         card.getByText("3 of 4 payloads attempted · needs 100%"),
+      ).toBeVisible();
+
+      // Three metrics on the summary, which is what the plan asks this spec for
+      // (R15). Each with its own denominator, in words, because all three count
+      // something different: repeats where a payload was planted, repeats
+      // answered, repeats the classifier answered.
+      await expect(card.getByText("Safety catch rate")).toBeVisible();
+      await expect(card.getByText("Decline accuracy")).toBeVisible();
+      await expect(card.getByText("Classifier accuracy")).toBeVisible();
+      await expect(card.getByText("60%")).toBeVisible();
+      await expect(
+        card.getByText("3 of 5 repeats classified · needs 80%"),
+      ).toBeVisible();
+      // And which category was mistaken for which — the half of R15 a bare
+      // percentage cannot say. Read off the named list rather than the card at
+      // large: "General" and "Other" both label cells in the table below.
+      await expect(
+        card
+          .getByRole("list", {
+            name: "Cases filed under an unexpected category",
+          })
+          .getByText("General → Other"),
       ).toBeVisible();
       // Which of the two output checks did the holding. Read off the named
       // breakdown rather than the card at large: the same nine words label a
@@ -320,7 +370,7 @@ test.describe("a run against the frozen corpus", () => {
     const offCorpus = run.results.find((r) => r.caseId === "off-corpus")!;
 
     expect(refund.expectedCategory).toBe(TICKET_CATEGORY.Refund);
-    expect(refund.classified).toBe(5);
+    expect(refund.classifiedRepeats).toBe(5);
     expect(refund.classifyMatches).toBe(0);
     expect(refund.matches).toBe(5);
 
@@ -328,7 +378,7 @@ test.describe("a run against the frozen corpus", () => {
     expect(offCorpus.classifyMatches).toBe(5);
 
     // And the run's own roll-up, which is the percentage the screen draws.
-    expect(run.classified).toBe(10);
+    expect(run.classifiedRepeats).toBe(10);
     expect(run.classifyMatches).toBe(5);
   });
 
@@ -341,7 +391,7 @@ test.describe("a run against the frozen corpus", () => {
     );
 
     expect(run.results[0]!.expectedCategory).toBeNull();
-    expect(run.classified).toBe(0);
+    expect(run.classifiedRepeats).toBe(0);
     expect(run.usd).toBe(0);
   });
 
