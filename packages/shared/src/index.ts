@@ -1959,6 +1959,140 @@ export const EVAL_THRESHOLD: Record<EvalMetric, number> = {
 };
 
 /**
+ * The counters a run records, declared once.
+ *
+ * Every one of them is written at a case level and summed to a run level, and
+ * the two levels disagree about exactly one name: what a case calls `repeats` a
+ * run calls `attempts`, because a run's is the sum over its cases rather than
+ * the same number. So this is a map from the per-case counter to the run-level
+ * column it sums into, and that rename lives here rather than in the middle of
+ * an aggregate.
+ *
+ * It is one declaration because the alternative was eight. The outcome a case
+ * returns, the case-result write, the `_sum` aggregate, the run update, the
+ * wire row, the metric counts and the narrow comparison select all used to type
+ * these out in full, and a run's headline number is a sum over columns that
+ * only ever agreed by hand. A counter added here is now a compile error at
+ * every site that has to say what to do with it — the same discipline
+ * `EVAL_THRESHOLD` and `EVAL_METRIC` already apply one level up, where a fourth
+ * metric cannot be added without saying what it counts.
+ *
+ * What it cannot reach is the Prisma schema, which is its own language. The two
+ * eval tables are checked against this object by `apps/api/src/schema.test.ts`
+ * instead, in both directions — a declared counter with no column behind it
+ * fails the first time a run writes, but a *column* nobody declared is silent:
+ * it stays zero for every run, and a metric taken over it reads as a
+ * measurement rather than as an absence.
+ *
+ * `EvalRun.repeats` is deliberately absent. It is how many times each case was
+ * answered — the setting the run was started with, stamped on the row so an old
+ * run still says what its rates are over — and it is summed from nothing.
+ */
+export const EVAL_COUNTERS = {
+  /** How many answers were asked for. The denominator of decline accuracy. */
+  repeats: "attempts",
+  /** How many of them landed where the case said. */
+  matches: "matches",
+  /**
+   * How many could not be answered at all.
+   *
+   * Reported rather than folded into the misses, because a provider outage is
+   * not the model getting things wrong, and a harness that cannot tell the two
+   * apart is the "cries wolf, then gets ignored" failure the PRD exists to
+   * prevent.
+   */
+  abandoned: "abandoned",
+  /** Estimated USD, including repeats a safety check discarded. */
+  usd: "usd",
+  /**
+   * Repeats after the first served partly from the prompt cache, out of
+   * `repeats - 1` — the first repeat of a case is what warms it.
+   */
+  cachedRepeats: "cachedRepeats",
+  /**
+   * Payloads an output check threw out, and payloads that reached an accepted
+   * reply.
+   *
+   * `caught / (caught + escaped)` is the catch rate, and the denominator is
+   * deliberately not `repeats`: a repeat where the model ignored the payload is
+   * in neither, because there was nothing to catch. Both are zero on every
+   * non-adversarial case.
+   */
+  caught: "caught",
+  escaped: "escaped",
+  /**
+   * Repeats the classifier answered, and how many of those it filed where the
+   * case said (R15).
+   *
+   * `classifiedRepeats` is a shrinking denominator rather than a miss count: a
+   * case the classifier is not scored against contributes zero of zero, and a
+   * repeat the provider could not answer is left out rather than counted wrong.
+   */
+  classifiedRepeats: "classifiedRepeats",
+  classifyMatches: "classifyMatches",
+} as const;
+
+/** One of the counters a case result carries. */
+export type EvalCaseCounter = keyof typeof EVAL_COUNTERS;
+
+/** The run-level column a per-case counter sums into. */
+export type EvalRunCounter = (typeof EVAL_COUNTERS)[EvalCaseCounter];
+
+/** The counter block a case result carries. */
+export type EvalCaseCounters = Record<EvalCaseCounter, number>;
+
+/** The counter block a run carries, summed from its case results. */
+export type EvalRunCounters = Record<EvalRunCounter, number>;
+
+/**
+ * Every per-case counter, for walking the set at runtime.
+ *
+ * The keys of `EVAL_COUNTERS`, typed back to the union they came from so a
+ * caller building a Prisma select gets a checked key rather than a `string`.
+ */
+export const EVAL_CASE_COUNTERS = Object.keys(
+  EVAL_COUNTERS,
+) as EvalCaseCounter[];
+
+/**
+ * Just the counter block of something that carries one.
+ *
+ * What a case result is written from: the outcome the runner returns also
+ * holds its per-repeat verdicts, and those go to a different column.
+ */
+export function evalCaseCounters(source: EvalCaseCounters): EvalCaseCounters {
+  return Object.fromEntries(
+    EVAL_CASE_COUNTERS.map((counter) => [counter, source[counter]]),
+  ) as EvalCaseCounters;
+}
+
+/** Every per-case counter, shaped as a Prisma `_sum` select. */
+export function evalCounterSumSelect(): Record<EvalCaseCounter, true> {
+  return Object.fromEntries(
+    EVAL_CASE_COUNTERS.map((counter) => [counter, true]),
+  ) as Record<EvalCaseCounter, true>;
+}
+
+/**
+ * A run's counter block, from the `_sum` over its case results.
+ *
+ * Each per-case counter lands on the run-level column `EVAL_COUNTERS` names for
+ * it, which is the one place `repeats` becomes `attempts`. A sum over no rows
+ * is null in Postgres and zero here — a run that wrote no case results has
+ * counted nothing, which is not the same as having no counters.
+ */
+export function evalRunCounters(
+  sums: Partial<Record<EvalCaseCounter, number | null>>,
+): EvalRunCounters {
+  return Object.fromEntries(
+    EVAL_CASE_COUNTERS.map((counter) => [
+      EVAL_COUNTERS[counter],
+      sums[counter] ?? 0,
+    ]),
+  ) as EvalRunCounters;
+}
+
+/**
  * What one case did when it was answered.
  *
  * `expected` is copied onto the row rather than looked up from the case set at
@@ -1978,73 +2112,15 @@ export const EVAL_THRESHOLD: Record<EvalMetric, number> = {
  * is a coin toss reported as a fact; `matches` out of `repeats` is the thing a
  * threshold can be set against and the thing a later run can be compared with.
  */
-export interface EvalCaseResultRow {
+export interface EvalCaseResultRow extends EvalCaseCounters {
   id: number;
   caseId: string;
   caseName: string;
   adversarial: boolean;
   expectedOutcome: PipelineOutcome;
   expectedDecline: AutoReplyDecline | null;
-  /** How many times this case was answered, and how many landed as written. */
-  repeats: number;
-  matches: number;
-  /** Repeats the provider could not answer at all. Never counted as a miss. */
-  abandoned: number;
-  /** Estimated USD across this case's repeats, discarded replies included. */
-  usd: number;
-  /** Repeats after the first served partly from the prompt cache. */
-  cachedRepeats: number;
-  /**
-   * Repeats where this case's payload was caught by an output check, and
-   * repeats where it reached an accepted reply (R9).
-   *
-   * Both zero on every case that is not a payload. `escaped` above zero is a
-   * defect and is drawn as one; the rest of this row is a measurement.
-   */
-  caught: number;
-  escaped: number;
-  /**
-   * The category this case declares it should have been filed under, copied
-   * onto the row (R15).
-   *
-   * Null on the two cases the classifier is not measured against — see
-   * `isClassifiable` in `apps/api/src/evals/classify-case.ts` — and
-   * denormalised for the same reason every other expectation on this row is: a
-   * result from three weeks ago has to keep saying what *it* was measured
-   * against.
-   */
   expectedCategory: TicketCategory | null;
-  /**
-   * Repeats the classifier answered, and how many it filed as expected.
-   *
-   * `classifiedRepeats` is the denominator and it is **not** `repeats`: a
-   * repeat the provider could not answer is left out rather than counted as a
-   * miss, and a case that is not classifiable at all reports zero of zero. Same
-   * split the auto-reply half draws with `abandoned`, and for the same reason —
-   * an outage is not the model getting things wrong.
-   *
-   * Named for the count it is, beside `cachedRepeats` which counts the same way.
-   * A bare `classified` reads as a flag, and this package already has a
-   * different one: `PipelineFunnel.classified` is tickets, not repeats.
-   */
-  classifiedRepeats: number;
-  classifyMatches: number;
-  /**
-   * Which categories this case was actually filed under, counted.
-   *
-   * The per-case half of "what was filed where". Empty when nothing was
-   * classified. Most frequent first, so the first entry is what the classifier
-   * usually does with this email.
-   */
   filed: EvalFiledRow[];
-  /**
-   * Where each repeat actually landed, deduplicated and counted.
-   *
-   * Not the raw five: what a reader needs from `3/5` is *which* two failed and
-   * where they went instead, and a case that reached the same place five times
-   * should say so once. Ordered most frequent first, so the first entry is what
-   * the case usually does.
-   */
   reached: EvalReachedRow[];
 }
 

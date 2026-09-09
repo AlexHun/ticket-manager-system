@@ -1,5 +1,12 @@
 import type { PgBoss, Db } from "pg-boss";
-import { EVAL_CORPUS, EVAL_RUN_STATUS, type EvalCorpus } from "@ticket/shared";
+import {
+  EVAL_CORPUS,
+  EVAL_RUN_STATUS,
+  evalCaseCounters,
+  evalCounterSumSelect,
+  evalRunCounters,
+  type EvalCorpus,
+} from "@ticket/shared";
 import { autoReplyCaseById, AUTO_REPLY_CASES } from "@ticket/core";
 import { autoReplyArticles, type KbArticle } from "../ai/knowledge-base";
 import { prisma } from "../db";
@@ -221,15 +228,9 @@ async function handle(job: EvalRunJob): Promise<void> {
         // than the category they happen to declare: a row reading "expected
         // General, 0 of 0 classified" claims a measurement nobody made.
         expectedCategory: expectedCategoryOf(evalCase),
-        repeats: outcome.repeats,
-        matches: outcome.matches,
-        abandoned: outcome.abandoned,
-        usd: outcome.usd,
-        cachedRepeats: outcome.cachedRepeats,
-        caught: outcome.caught,
-        escaped: outcome.escaped,
-        classifiedRepeats: outcome.classifiedRepeats,
-        classifyMatches: outcome.classifyMatches,
+        // Every counter `EVAL_COUNTERS` declares, taken off the outcome by
+        // name. The outcome carries its verdicts too, and those go below.
+        ...evalCaseCounters(outcome),
         verdicts: outcome.verdicts.map((v) => ({
           outcome: v.outcome,
           decline: v.decline,
@@ -264,17 +265,7 @@ async function handle(job: EvalRunJob): Promise<void> {
   // whole run rather than this attempt's share of it.
   const totals = await prisma.evalCaseResult.aggregate({
     where: { runId },
-    _sum: {
-      repeats: true,
-      matches: true,
-      abandoned: true,
-      usd: true,
-      cachedRepeats: true,
-      caught: true,
-      escaped: true,
-      classifiedRepeats: true,
-      classifyMatches: true,
-    },
+    _sum: evalCounterSumSelect(),
   });
 
   const closed = await prisma.evalRun.updateMany({
@@ -282,15 +273,10 @@ async function handle(job: EvalRunJob): Promise<void> {
     data: {
       status: EVAL_RUN_STATUS.completed,
       finishedAt: new Date(),
-      attempts: totals._sum.repeats ?? 0,
-      matches: totals._sum.matches ?? 0,
-      abandoned: totals._sum.abandoned ?? 0,
-      usd: totals._sum.usd ?? 0,
-      cachedRepeats: totals._sum.cachedRepeats ?? 0,
-      caught: totals._sum.caught ?? 0,
-      escaped: totals._sum.escaped ?? 0,
-      classifiedRepeats: totals._sum.classifiedRepeats ?? 0,
-      classifyMatches: totals._sum.classifyMatches ?? 0,
+      // Each per-case counter onto the run column `EVAL_COUNTERS` names for it
+      // — the one place `repeats` becomes `attempts`, because a run's is the
+      // sum over its cases and not the same number.
+      ...evalRunCounters(totals._sum),
     },
   });
 
