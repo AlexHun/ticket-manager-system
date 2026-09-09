@@ -12,6 +12,10 @@
         "--screenshotFormat=webp",
         "--screenshotMaxWidth=1280"
       ]
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
     }
   }
 }
