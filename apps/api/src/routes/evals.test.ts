@@ -34,6 +34,7 @@ import {
   EVAL_RUN_STATUS,
   EVAL_METRIC,
   EVAL_THRESHOLD,
+  AUTO_REPLY_DECLINE,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
   type EvalCorpus,
@@ -47,6 +48,7 @@ import {
 import { AUTO_REPLY_CASES } from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
+import type { StoredVerdict } from "../evals/stored-verdict";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -111,7 +113,13 @@ mock.module("../jobs/eval-run", () => ({
   },
 }));
 
-const { createEvalsRouter } = await import("./evals");
+const {
+  categoriesFrom,
+  checksFrom,
+  createEvalsRouter,
+  filedFrom,
+  reachedFrom,
+} = await import("./evals");
 
 const url = serveRouter("/api/evals", createEvalsRouter(config));
 
@@ -430,55 +438,6 @@ describe("GET /runs", () => {
     });
   });
 
-  test("collapses the repeats into the distinct places the case landed", async () => {
-    // Five identical rows say one thing five times; a case that split 3/2 is
-    // the interesting one, and what a reader needs is which way and how often.
-    await prisma.evalRun.create({
-      data: {
-        corpus: EVAL_CORPUS.frozen,
-        status: EVAL_RUN_STATUS.completed,
-        finishedAt: new Date(),
-        repeats: 5,
-        results: {
-          create: caseResult({
-            matches: 3,
-            verdicts: [
-              ...Array.from({ length: 3 }, () => ({
-                outcome: PIPELINE_OUTCOME.declined,
-                decline: "notCovered",
-                matched: true,
-              })),
-              ...Array.from({ length: 2 }, () => ({
-                outcome: PIPELINE_OUTCOME.resolved,
-                decline: null,
-                matched: false,
-              })),
-            ],
-          }),
-        },
-      },
-    });
-
-    const res = await fetch(url("/runs"));
-    const body = (await res.json()) as EvalRunsResponse;
-
-    // Most frequent first, so the head of the list is what the case usually does.
-    expect(body.runs[0]?.results[0]?.reached).toEqual([
-      {
-        outcome: PIPELINE_OUTCOME.declined,
-        decline: "notCovered",
-        count: 3,
-        matched: true,
-      },
-      {
-        outcome: PIPELINE_OUTCOME.resolved,
-        decline: null,
-        count: 2,
-        matched: false,
-      },
-    ]);
-  });
-
   test("reports the catch rate over payloads attempted, not over repeats", async () => {
     // R9, and the denominator is the whole argument. A repeat where the model
     // ignored the payload is on neither side of this — there was nothing to
@@ -634,41 +593,63 @@ describe("GET /runs", () => {
     expect(body.runs[0]?.results[0]?.expectedCategory).toBeNull();
   });
 
-  test("says which check caught each payload", async () => {
-    // R9's second half. A bare catch rate cannot say which of the two string
-    // comparisons is carrying the load, which is exactly what it would cost
-    // most to weaken.
-    await finishedRun({
-      caught: 3,
-      escaped: 0,
-      verdicts: [
-        ...Array.from({ length: 2 }, () => ({
-          outcome: PIPELINE_OUTCOME.declined,
-          decline: "unbackedReference",
-          matched: true,
-          caught: true,
-        })),
-        {
-          outcome: PIPELINE_OUTCOME.declined,
-          decline: "unbackedCommitment",
-          matched: true,
-          caught: true,
+  test("a run recorded before the classifier metric still reads the same", async () => {
+    // The literal shape every repeat written before slice 4 is in: three keys,
+    // no `category` at all — not a null one. It has to reach the screen as a
+    // filing nobody measured, which is a row whose category is null and whose
+    // `matched` is false, and never as a zero on a rate or a case that went
+    // wrong. Asserted through the route rather than only against the parse
+    // because this is the criterion the change was allowed to be judged on: an
+    // old run draws what it drew before.
+    await prisma.evalRun.create({
+      data: {
+        corpus: EVAL_CORPUS.frozen,
+        status: EVAL_RUN_STATUS.completed,
+        finishedAt: new Date(),
+        repeats: 5,
+        attempts: 5,
+        matches: 5,
+        thresholds: EVAL_THRESHOLD,
+        results: {
+          create: caseResult({
+            expectedCategory: TICKET_CATEGORY.General,
+            verdicts: Array.from({ length: 5 }, () => ({
+              outcome: PIPELINE_OUTCOME.declined,
+              decline: "notCovered",
+              matched: true,
+            })),
+          }),
         },
-        {
-          outcome: PIPELINE_OUTCOME.declined,
-          decline: "notCovered",
-          matched: false,
-          caught: false,
-        },
-      ],
+      },
     });
 
     const body = await runs();
 
-    expect(body.runs[0]?.checks).toEqual([
-      { decline: "unbackedReference", count: 2 },
-      { decline: "unbackedCommitment", count: 1 },
+    expect(body.runs[0]?.results[0]?.filed).toEqual([
+      { category: null, count: 5, matched: false },
     ]);
+    expect(body.runs[0]?.categories).toEqual([
+      {
+        expected: TICKET_CATEGORY.General,
+        actual: null,
+        count: 5,
+        matched: false,
+      },
+    ]);
+    // The repeats still land where they always did, and the case is still
+    // outside the classifier rate rather than at the bottom of it.
+    expect(body.runs[0]?.results[0]?.reached).toEqual([
+      {
+        outcome: PIPELINE_OUTCOME.declined,
+        decline: "notCovered",
+        matched: true,
+        count: 5,
+      },
+    ]);
+    expect(metricOf(body, EVAL_METRIC.classifierAccuracy)).toMatchObject({
+      value: null,
+      denominator: 0,
+    });
   });
 
   test("draws no metrics on a run that has not finished", async () => {
@@ -739,6 +720,10 @@ describe("GET /runs", () => {
     // keeps, so the type on the wire is a promise this route makes rather than
     // one Postgres keeps for it. Rendering a raw column at an admin is worse
     // than saying nothing.
+    // At the route seam deliberately: `expectedDecline` is a text column the
+    // parse never sees, and what an unreadable verdict parses to is asserted
+    // against values in `evals/stored-verdict.test.ts`. This is the wire
+    // contract over both.
     await prisma.evalRun.create({
       data: {
         corpus: EVAL_CORPUS.frozen,
@@ -772,6 +757,8 @@ describe("GET /runs", () => {
     // `Json` makes no promise about its contents, and the migration that
     // introduced it backfilled rows written by an older build. A page whose
     // whole job is saying what happened must not 500 on one of them.
+    // The 200 is the claim only this seam can make; that such a column parses
+    // to no repeats is asserted against values in `evals/stored-verdict.test.ts`.
     await prisma.evalRun.create({
       data: {
         corpus: EVAL_CORPUS.frozen,
@@ -957,5 +944,310 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
       0.8,
       6,
     );
+  });
+});
+
+/* ── The breakdowns, as values ───────────────────────────────────────────── */
+
+/**
+ * The rules the evals page is made of, asked directly (#212).
+ *
+ * These four used to be private, so the only way to state a rule about an
+ * array — which repeats collapse together, which way a tie sorts, which pairs a
+ * category matrix draws — was to write a run into Postgres and read it back
+ * through the router. That is slow, and it is misleading: a failure could be
+ * the router's, the aggregate's or the rule's, and nothing in the test said
+ * which. They take parsed repeats now, so the input is a value.
+ *
+ * The route tests above keep what genuinely needs the seam: the status code,
+ * the wire shape, and that a run recorded before the classifier metric still
+ * draws what it drew.
+ */
+
+/** One parsed repeat, with whatever this test wants to say about it. */
+function repeat(overrides: Partial<StoredVerdict> = {}): StoredVerdict {
+  return {
+    outcome: PIPELINE_OUTCOME.declined,
+    decline: AUTO_REPLY_DECLINE.notCovered,
+    matched: true,
+    caught: false,
+    escaped: false,
+    category: null,
+    ...overrides,
+  };
+}
+
+describe("reachedFrom", () => {
+  test("collapses the repeats into the distinct places the case landed", () => {
+    // Five identical rows say one thing five times; a case that split 3/2 is
+    // the interesting one, and what a reader needs is which way and how often.
+    const reached = reachedFrom([
+      ...Array.from({ length: 3 }, () => repeat()),
+      ...Array.from({ length: 2 }, () =>
+        repeat({
+          outcome: PIPELINE_OUTCOME.resolved,
+          decline: null,
+          matched: false,
+        }),
+      ),
+    ]);
+
+    // Most frequent first, so the head of the list is what the case usually does.
+    expect(reached).toEqual([
+      {
+        outcome: PIPELINE_OUTCOME.declined,
+        decline: AUTO_REPLY_DECLINE.notCovered,
+        matched: true,
+        count: 3,
+      },
+      {
+        outcome: PIPELINE_OUTCOME.resolved,
+        decline: null,
+        matched: false,
+        count: 2,
+      },
+    ]);
+  });
+
+  test("two declines for different reasons are two rows", () => {
+    // The distinction the whole breakdown exists for: "expected declined, got
+    // declined for a completely different reason" is the finding, and a tally
+    // keyed on the outcome alone could not draw it.
+    expect(
+      reachedFrom([
+        repeat({ decline: AUTO_REPLY_DECLINE.notCovered }),
+        repeat({ decline: AUTO_REPLY_DECLINE.unbackedCommitment }),
+      ]).map((row) => row.decline),
+    ).toEqual([
+      AUTO_REPLY_DECLINE.notCovered,
+      AUTO_REPLY_DECLINE.unbackedCommitment,
+    ]);
+  });
+
+  test("no repeats is no rows, not a row of nothing", () => {
+    expect(reachedFrom([])).toEqual([]);
+  });
+});
+
+describe("filedFrom", () => {
+  test("counts where the repeats actually went, most frequent first", () => {
+    // R15. "4 of 5 as expected" is the rate; which category the fifth went to
+    // is the finding.
+    expect(
+      filedFrom(
+        [
+          ...Array.from({ length: 4 }, () =>
+            repeat({ category: TICKET_CATEGORY.Refund }),
+          ),
+          repeat({ category: TICKET_CATEGORY.General }),
+        ],
+        TICKET_CATEGORY.Refund,
+      ),
+    ).toEqual([
+      { category: TICKET_CATEGORY.Refund, matched: true, count: 4 },
+      { category: TICKET_CATEGORY.General, matched: false, count: 1 },
+    ]);
+  });
+
+  test("a repeat the classifier could not answer shrinks the denominator", () => {
+    // Shown as a null rather than dropped, so a reader can see why five repeats
+    // add up to four instead of wondering.
+    expect(
+      filedFrom(
+        [repeat({ category: TICKET_CATEGORY.General }), repeat()],
+        TICKET_CATEGORY.General,
+      ),
+    ).toEqual([
+      { category: TICKET_CATEGORY.General, matched: true, count: 1 },
+      { category: null, matched: false, count: 1 },
+    ]);
+  });
+
+  test("a case with no expectation reports no filings at all", () => {
+    // The quieter of the two honest readings: a repeat with no category and a
+    // case that is not scored are indistinguishable on the row, so a case that
+    // was never asked claims no measurement rather than inventing one.
+    expect(filedFrom([repeat(), repeat()], null)).toEqual([]);
+  });
+
+  test("a filing against no expectation is never matched", () => {
+    // It can never be a numerator with no denominator behind it — the same rule
+    // `classifyMatched` keeps one module up.
+    expect(
+      filedFrom([repeat({ category: TICKET_CATEGORY.Other })], null),
+    ).toEqual([{ category: TICKET_CATEGORY.Other, matched: false, count: 1 }]);
+  });
+});
+
+describe("categoriesFrom", () => {
+  test("draws which category is being mistaken for which", () => {
+    // "Refund → General ×4" is the single most alarming line this page can
+    // draw, and a bare per-category count could not draw it: the category gate
+    // is the only control between a refund request and an unattended reply.
+    expect(
+      categoriesFrom([
+        {
+          expectedCategory: TICKET_CATEGORY.Refund,
+          verdicts: Array.from({ length: 4 }, () =>
+            repeat({ category: TICKET_CATEGORY.General }),
+          ),
+        },
+        {
+          expectedCategory: TICKET_CATEGORY.General,
+          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
+        },
+      ]),
+    ).toEqual([
+      {
+        expected: TICKET_CATEGORY.Refund,
+        actual: TICKET_CATEGORY.General,
+        count: 4,
+        matched: false,
+      },
+      {
+        expected: TICKET_CATEGORY.General,
+        actual: TICKET_CATEGORY.General,
+        count: 1,
+        matched: true,
+      },
+    ]);
+  });
+
+  test("sums one pair across the cases that reached it", () => {
+    // Built from the per-case rows, so it can never disagree with them.
+    expect(
+      categoriesFrom([
+        {
+          expectedCategory: TICKET_CATEGORY.Refund,
+          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
+        },
+        {
+          expectedCategory: TICKET_CATEGORY.Refund,
+          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
+        },
+      ]),
+    ).toEqual([
+      {
+        expected: TICKET_CATEGORY.Refund,
+        actual: TICKET_CATEGORY.General,
+        count: 2,
+        matched: false,
+      },
+    ]);
+  });
+
+  test("a result with no expectation is not in the matrix", () => {
+    // Including a stored row this build cannot narrow: `expectedCategory` is a
+    // text column, so an unrecognised one is the same as an absent one.
+    expect(
+      categoriesFrom([
+        {
+          expectedCategory: null,
+          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
+        },
+        {
+          expectedCategory: "somethingFromTheFuture",
+          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
+        },
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("checksFrom", () => {
+  test("says which check caught each payload, most frequent first", () => {
+    // R9's second half. A bare catch rate cannot say which of the two string
+    // comparisons is carrying the load, which is exactly what it would cost
+    // most to weaken.
+    expect(
+      checksFrom([
+        {
+          verdicts: [
+            ...Array.from({ length: 2 }, () =>
+              repeat({
+                decline: AUTO_REPLY_DECLINE.unbackedReference,
+                caught: true,
+              }),
+            ),
+            repeat({
+              decline: AUTO_REPLY_DECLINE.unbackedCommitment,
+              caught: true,
+            }),
+            repeat({ matched: false }),
+          ],
+        },
+      ]),
+    ).toEqual([
+      { decline: AUTO_REPLY_DECLINE.unbackedReference, count: 2 },
+      { decline: AUTO_REPLY_DECLINE.unbackedCommitment, count: 1 },
+    ]);
+  });
+
+  test("a decline that is not an output check cannot inflate a bar", () => {
+    // A payload declined because the model refused to answer at all was never
+    // in a draft to be caught, so it is on neither side of the catch rate — and
+    // a build with no wording for the reason cannot label a bar with it either.
+    expect(
+      checksFrom([
+        {
+          verdicts: [
+            repeat({ decline: AUTO_REPLY_DECLINE.notCovered, caught: true }),
+            repeat({ decline: AUTO_REPLY_DECLINE.unavailable, caught: true }),
+            repeat({ decline: null, caught: true }),
+          ],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("an output-check decline that was not caught is not a catch", () => {
+    // `caught` is narrower than "declined by an output check", and this is the
+    // pair that proves it: an ordinary case thrown out by the money check is a
+    // decline-accuracy miss worth reading, and it is not a payload being
+    // caught. Letting it count would move the safety number for a reason that
+    // has nothing to do with safety.
+    //
+    // The other test in this block cannot reach that — its uncaught repeats all
+    // carry declines the output-check filter drops anyway, so it stays green
+    // with the `caught` guard removed entirely. Measured, not assumed.
+    expect(
+      checksFrom([
+        {
+          verdicts: [
+            repeat({
+              decline: AUTO_REPLY_DECLINE.unbackedCommitment,
+              caught: false,
+            }),
+            repeat({
+              decline: AUTO_REPLY_DECLINE.unbackedReference,
+              caught: true,
+            }),
+          ],
+        },
+      ]),
+    ).toEqual([{ decline: AUTO_REPLY_DECLINE.unbackedReference, count: 1 }]);
+  });
+
+  test("counts across every case in the run", () => {
+    expect(
+      checksFrom([
+        {
+          verdicts: [
+            repeat({
+              decline: AUTO_REPLY_DECLINE.unbackedReference,
+              caught: true,
+            }),
+          ],
+        },
+        {
+          verdicts: [
+            repeat({
+              decline: AUTO_REPLY_DECLINE.unbackedReference,
+              caught: true,
+            }),
+          ],
+        },
+      ]),
+    ).toEqual([{ decline: AUTO_REPLY_DECLINE.unbackedReference, count: 2 }]);
   });
 });

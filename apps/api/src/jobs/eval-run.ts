@@ -13,6 +13,7 @@ import { prisma } from "../db";
 import { isEvalConfigured } from "../evals/config";
 import { frozenCorpus } from "../evals/frozen-corpus";
 import { expectedCategoryOf, EVAL_REPEATS, runCase } from "../evals/runner";
+import { storedVerdict } from "../evals/stored-verdict";
 import { publishEvalRunChanged } from "../events/ticket-events";
 import { getBoss, registerWorker, type WorkerSpec } from "./boss";
 
@@ -231,22 +232,11 @@ async function handle(job: EvalRunJob): Promise<void> {
         // Every counter `EVAL_COUNTERS` declares, taken off the outcome by
         // name. The outcome carries its verdicts too, and those go below.
         ...evalCaseCounters(outcome),
-        verdicts: outcome.verdicts.map((v) => ({
-          outcome: v.outcome,
-          decline: v.decline,
-          matched: v.matched,
-          // Per repeat, not only as a total, because the per-check breakdown
-          // (R9) is read out of this array: `caught` says a check held and
-          // `decline` beside it says *which* one, which is the distinction the
-          // 7-of-9 and 10-of-10 measurements already drew.
-          caught: v.caught,
-          escaped: v.escaped,
-          // Per repeat for the same reason `caught` is: the run's totals say
-          // four of five were filed as expected, and only the array can say
-          // where the fifth one went — which is the whole of the per-category
-          // breakdown (R15).
-          category: v.category,
-        })),
+        // The one place a verdict is projected into the column, and the same
+        // module is the only place it is read back — `evals/stored-verdict.ts`
+        // is where the six fields are chosen, and where the older shapes those
+        // rows can be in are accounted for.
+        verdicts: outcome.verdicts.map(storedVerdict),
       },
     });
 

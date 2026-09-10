@@ -132,8 +132,10 @@ export interface EvalVerdict {
  *
  * The counters are `EVAL_COUNTERS` (`@ticket/shared`), where each one is named
  * and argued for once — including the two whose denominators are not `repeats`.
- * What this adds is the per-repeat verdicts, which are stored whole in a column
- * of their own rather than summed into anything.
+ * What this adds is the per-repeat verdicts, which go to a column of their own
+ * rather than being summed into anything — `./stored-verdict.ts` is what
+ * decides which of a verdict's fields that column carries, and the only thing
+ * that reads them back.
  */
 export interface EvalCaseOutcome extends EvalCaseCounters {
   /** Every repeat's verdict, in the order they were answered. */

@@ -1696,6 +1696,26 @@ export const PIPELINE_OUTCOME = {
 export type PipelineOutcome =
   (typeof PIPELINE_OUTCOME)[keyof typeof PIPELINE_OUTCOME];
 
+/**
+ * A stored outcome, narrowed to one this build has wording for.
+ *
+ * The third sibling of `asAutoReplyDecline` and `asTicketCategory`, and it
+ * exists for the reason they do: `EvalCaseResult.expectedOutcome` is plain text
+ * and the `outcome` inside a stored verdict is `Json`, so the type on the wire
+ * is a promise the API keeps rather than one Postgres keeps for it.
+ *
+ * `notOffered` is the fallback rather than null, unlike both siblings, because
+ * an outcome is not nullable on the wire and "nothing is scheduled and nothing
+ * happened" is the honest reading of a value this build cannot name — the same
+ * choice `/pipeline` makes for its one known blind spot.
+ */
+export function asPipelineOutcome(value: unknown): PipelineOutcome {
+  return (
+    Object.values(PIPELINE_OUTCOME).find((outcome) => outcome === value) ??
+    PIPELINE_OUTCOME.notOffered
+  );
+}
+
 /** What happened at one stop, for one ticket. */
 export const PIPELINE_STAGE_STATE = {
   /** Reached and passed. */
