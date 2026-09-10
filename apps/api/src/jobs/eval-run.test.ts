@@ -31,6 +31,7 @@ import {
 import { prisma, resetDb } from "../test/pg";
 import { subscribe } from "../events/hub";
 import type { EvalCaseOutcome } from "../evals/runner";
+import { parseStoredVerdicts } from "../evals/stored-verdict";
 
 /* ── The measuring half, replaced ────────────────────────────────────────── */
 
@@ -277,8 +278,10 @@ describe("handle", () => {
     const result = await prisma.evalCaseResult.findFirstOrThrow({
       where: { runId },
     });
-    const verdicts = result.verdicts as { caught?: boolean }[];
-    expect(verdicts.filter((v) => v.caught === true)).toHaveLength(REPEATS - 1);
+    // Through the parse the read model uses, not a cast: the column is `Json`
+    // and `evals/stored-verdict.ts` is the one place that says what is in it.
+    const verdicts = parseStoredVerdicts(result.verdicts);
+    expect(verdicts.filter((v) => v.caught)).toHaveLength(REPEATS - 1);
   });
 
   test("copies the expectation onto the row rather than pointing at the case", async () => {
@@ -342,15 +345,15 @@ describe("handle", () => {
     });
     expect(result.classifiedRepeats).toBe(REPEATS);
     expect(result.classifyMatches).toBe(REPEATS - 1);
-    expect(
-      (result.verdicts as { category: string | null }[]).map((v) => v.category),
-    ).toEqual([
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.Other,
-    ]);
+    expect(parseStoredVerdicts(result.verdicts).map((v) => v.category)).toEqual(
+      [
+        TICKET_CATEGORY.General,
+        TICKET_CATEGORY.General,
+        TICKET_CATEGORY.General,
+        TICKET_CATEGORY.General,
+        TICKET_CATEGORY.Other,
+      ],
+    );
 
     const run = await prisma.evalRun.findUniqueOrThrow({
       where: { id: runId },

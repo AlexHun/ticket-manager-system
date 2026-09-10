@@ -127,6 +127,19 @@ describe("rows written by earlier builds", () => {
     ).toMatchObject({ outcome: PIPELINE_OUTCOME.notOffered });
   });
 
+  test.each(Object.values(PIPELINE_OUTCOME))(
+    "%s survives the column unchanged",
+    (outcome) => {
+      // Every member, not two of them. `notOffered` is also the fallback for a
+      // value this build cannot name, so a narrowing that quietly stopped
+      // recognising one of the real outcomes would still answer with something
+      // plausible — and the two spot-checks above are exactly the pair on which
+      // that would be invisible. This is the same "and what about the other
+      // four" question `runner.test.ts` asks of `AI_FAILURE` (docs/adr/0018).
+      expect(parseStoredVerdicts([{ outcome }])[0]).toMatchObject({ outcome });
+    },
+  );
+
   test("a category this build has no wording for reads as not classified", () => {
     expect(
       parseStoredVerdicts([{ category: "cryptocurrency" }])[0],

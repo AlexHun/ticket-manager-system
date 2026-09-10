@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import {
   asAutoReplyDecline,
+  asPipelineOutcome,
   asTicketCategory,
   EVAL_CORPUS,
   EVAL_METRIC,
@@ -30,7 +31,6 @@ import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
 import { startEvalRun } from "../evals/start-run";
 import {
-  asPipelineOutcome,
   parseStoredVerdicts,
   type StoredVerdict,
 } from "../evals/stored-verdict";

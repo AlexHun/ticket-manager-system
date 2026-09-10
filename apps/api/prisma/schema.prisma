@@ -1137,8 +1137,9 @@ model EvalCaseResult {
   classifiedRepeats Int      @default(0)
   classifyMatches Int      @default(0)
   /// One entry per repeat, in the order they were answered. `StoredVerdict` in
-  /// `src/evals/stored-verdict.ts` is the shape, and that module is the only
-  /// thing that writes this column or reads it back — a `Json` column makes no
+  /// `src/evals/stored-verdict.ts` is the shape, and no application code writes
+  /// this column or reads it back except through that module — test fixtures
+  /// hand-build old shapes on purpose. A `Json` column makes no
   /// promise about what is in it, and rows written by older builds really are
   /// shapes the current code did not write, so the one story about that is told
   /// there rather than at each reader.

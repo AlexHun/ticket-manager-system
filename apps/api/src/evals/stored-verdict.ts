@@ -1,8 +1,7 @@
 import {
   asAutoReplyDecline,
+  asPipelineOutcome,
   asTicketCategory,
-  PIPELINE_OUTCOME,
-  type PipelineOutcome,
 } from "@ticket/shared";
 import type { EvalVerdict } from "./runner";
 
@@ -53,34 +52,6 @@ export type StoredVerdict = Pick<
   EvalVerdict,
   "outcome" | "decline" | "matched" | "caught" | "escaped" | "category"
 >;
-
-/**
- * A stored outcome string, narrowed to one this build has wording for.
- *
- * The mirror of `asAutoReplyDecline` and `asTicketCategory` for the third of
- * the three enums a stored eval row carries as text (see the note on
- * `EvalCaseResult`): the type on the wire is a promise this code keeps rather
- * than one Postgres keeps for it.
- *
- * `notOffered` is the fallback rather than null, because an outcome is not
- * nullable on the wire and "nothing is scheduled and nothing happened" is the
- * honest reading of a value this build cannot name — the same choice
- * `/pipeline` makes for its one known blind spot.
- *
- * It lives here rather than in the read model because the stored `verdicts`
- * array is the shape that needs it most, and one home is what
- * [#215](https://github.com/AlexHun/ticket-manager-system/issues/215) is meant
- * to grill: three modules derive a Stage from three different kinds of
- * evidence, and this is the only one of the three that falls back to a default.
- * The read model still calls it for the `expectedOutcome` column, which is the
- * same question asked of the same table.
- */
-export function asPipelineOutcome(value: unknown): PipelineOutcome {
-  return (
-    Object.values(PIPELINE_OUTCOME).find((outcome) => outcome === value) ??
-    PIPELINE_OUTCOME.notOffered
-  );
-}
 
 /**
  * One repeat's verdict, as the column holds it.

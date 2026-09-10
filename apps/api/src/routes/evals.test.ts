@@ -798,6 +798,10 @@ describe("GET /runs", () => {
     // keeps, so the type on the wire is a promise this route makes rather than
     // one Postgres keeps for it. Rendering a raw column at an admin is worse
     // than saying nothing.
+    // At the route seam deliberately: `expectedDecline` is a text column the
+    // parse never sees, and what an unreadable verdict parses to is asserted
+    // against values in `evals/stored-verdict.test.ts`. This is the wire
+    // contract over both.
     await prisma.evalRun.create({
       data: {
         corpus: EVAL_CORPUS.frozen,
@@ -831,6 +835,8 @@ describe("GET /runs", () => {
     // `Json` makes no promise about its contents, and the migration that
     // introduced it backfilled rows written by an older build. A page whose
     // whole job is saying what happened must not 500 on one of them.
+    // The 200 is the claim only this seam can make; that such a column parses
+    // to no repeats is asserted against values in `evals/stored-verdict.test.ts`.
     await prisma.evalRun.create({
       data: {
         corpus: EVAL_CORPUS.frozen,
