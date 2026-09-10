@@ -203,5 +203,15 @@
     "version": "0.1.90",
     "date": "2026-09-10",
     "title": "Re-run the gates inside the resolving transaction"
+  },
+  {
+    "version": "0.1.91",
+    "date": "2026-09-10",
+    "title": "The prompt cache's denominator is a counter (#223)"
+  },
+  {
+    "version": "0.1.91",
+    "date": "2026-09-10",
+    "title": "Assert the run-level cache denominator, and name the slice"
   }
 ]
