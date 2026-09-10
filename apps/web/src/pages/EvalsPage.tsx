@@ -68,7 +68,11 @@ import { cn } from "@/lib/utils";
 const OUTCOME_LABEL: Record<PipelineOutcome, string> = {
   [PIPELINE_OUTCOME.resolved]: "Answered",
   [PIPELINE_OUTCOME.declined]: "Declined",
-  [PIPELINE_OUTCOME.abandoned]: "Provider unreachable",
+  // Four causes, one word, and the label has to be true of all of them: the
+  // classifier out of retries, a provider that could not be reached, an
+  // emptied corpus, and a call whose budget went on reasoning. It said
+  // "Provider unreachable", which is true of one (`docs/adr/0019`).
+  [PIPELINE_OUTCOME.abandoned]: "No verdict reached",
   [PIPELINE_OUTCOME.pending]: "Still running",
   [PIPELINE_OUTCOME.notOffered]: "Not offered",
 };
@@ -527,8 +531,8 @@ function RunCard({ run }: { run: EvalRunRow }) {
               value={`${run.abandoned}`}
               detail={
                 run.abandoned === 0
-                  ? "the provider answered everything"
-                  : "the provider could not be reached"
+                  ? "every repeat reached a verdict"
+                  : "repeats where nothing was decided"
               }
             />
           </div>

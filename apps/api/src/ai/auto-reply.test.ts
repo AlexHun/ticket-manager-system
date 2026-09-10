@@ -45,9 +45,14 @@ import * as ai from "ai";
 import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
 import {
   AUTO_REPLY_DECLINE,
+  DECLINE_OUTCOME,
   MAX_MESSAGE_BODY_LENGTH,
+  PIPELINE_OUTCOME,
   TICKET_CATEGORY,
 } from "@ticket/shared";
+// Type-only, so it is erased rather than hoisted above the key set below —
+// the module itself still comes in through the dynamic import.
+import type { AutoReplyResult } from "./auto-reply";
 import type { KbArticle } from "./knowledge-base";
 
 /** Set before `./auto-reply` is imported below — the provider reads it at import. */
@@ -93,6 +98,13 @@ const generateText = mock((options: GenerateTextOptions) => respond(options));
 mock.module("ai", () => ({ ...ai, generateText }));
 
 const { AUTO_REPLY_FAILURE, autoReply } = await import("./auto-reply");
+
+/**
+ * The membership question, imported the same way and for the same reason: a
+ * static import would be hoisted above the key set at the top of this file, and
+ * `provider.ts` reads that into a module-level `const` at import.
+ */
+const { isProviderFailure } = await import("./provider");
 type AutoReplyContext = Parameters<typeof autoReply>[1];
 
 /**
@@ -1089,5 +1101,138 @@ describe("autoReply — declining and failing", () => {
       reason: AUTO_REPLY_FAILURE.provider,
       decline: AUTO_REPLY_DECLINE.unavailable,
     });
+  });
+});
+
+/**
+ * The equivalence two other modules quietly depend on.
+ *
+ * `evals/runner.ts` decides a repeat's Outcome from `isProviderFailure(reason)`
+ * — the unpersisted taxonomy it has in hand, which ADR-0018 says a measuring
+ * module must read rather than the convenient neighbour. `routes/pipeline.ts`
+ * decides a ticket's Outcome from `DECLINE_OUTCOME[decline]`, because the
+ * column is all a route ever has. Neither reads the other, and ADR-0019 keeps
+ * it that way deliberately — what makes the two answer alike is that this
+ * module stamps both from the same event, and that is a property of these nine
+ * returns and of nothing else.
+ *
+ * So it is pinned here, at the one place where both halves exist at once. If a
+ * tenth return ever pairs a provider fault with a decline that is a verdict, or
+ * the reverse, this file goes red rather than `/pipeline` and `/evals` quietly
+ * disagreeing about the same ticket on two screens.
+ */
+describe("autoReply — the reason and the decline draw the same line", () => {
+  /** Every `ok: false` return in the module, one arrangement each. */
+  const failures: [string, () => Promise<AutoReplyResult>][] = [
+    ["an empty corpus", () => autoReply([], CONTEXT)],
+    [
+      "a budget that went on reasoning",
+      () => {
+        failWith(noObjectGenerated());
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+    [
+      "a provider that could not be reached",
+      () => {
+        failWith(apiError(500, "internal error"));
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+    [
+      "the model saying no",
+      () => {
+        answerWith({ answered: false, articleIds: [], paragraphs: null });
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+    [
+      "the model saying yes and writing nothing",
+      () => {
+        answerWith({ paragraphs: [], steps: [] });
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+    [
+      "check 4, no citation that resolves",
+      () => {
+        answerWith({ articleIds: ["KB-404"] });
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+    [
+      "check 5, money no cited article states",
+      () => {
+        answerWith({
+          paragraphs: [
+            "As a goodwill gesture we have credited 50 EUR to your account.",
+          ],
+        });
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+    [
+      "check 6, a link no cited article contains",
+      () => {
+        answerWith({
+          paragraphs: ["Try https://portal.evil.example/fix instead."],
+        });
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+    [
+      "the reply being longer than a message may be",
+      () => {
+        answerWith({ paragraphs: ["x".repeat(MAX_MESSAGE_BODY_LENGTH)] });
+        return autoReply(ARTICLES, CONTEXT);
+      },
+    ],
+  ];
+
+  test.each(failures)(
+    "%s: a provider fault is `unavailable`, and nothing else is",
+    async (_name, run) => {
+      const result = await run();
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(isProviderFailure(result.reason)).toBe(
+        result.decline === AUTO_REPLY_DECLINE.unavailable,
+      );
+
+      // The same equivalence carried the one step that matters, and in the same
+      // test rather than a second pass over these nine arrangements: whichever
+      // taxonomy a reader holds, the verdict it reports about this event is the
+      // one the other would report.
+      expect(DECLINE_OUTCOME[result.decline]).toBe(
+        isProviderFailure(result.reason)
+          ? PIPELINE_OUTCOME.abandoned
+          : PIPELINE_OUTCOME.declined,
+      );
+    },
+  );
+
+  test("between them they reach every decline this module can stamp", async () => {
+    // The table above is only worth what it covers, and `test.each` over a list
+    // somebody maintains by hand proves nothing about the returns nobody added
+    // to it. These six are every `decline` reachable from `autoReply`; the other
+    // four are the gates, which `gateDecline` answers before this module is
+    // called at all.
+    const reached = new Set<string>();
+    for (const [, run] of failures) {
+      const result = await run();
+      if (!result.ok) reached.add(result.decline);
+    }
+
+    expect([...reached].sort()).toEqual(
+      [
+        AUTO_REPLY_DECLINE.unavailable,
+        AUTO_REPLY_DECLINE.notCovered,
+        AUTO_REPLY_DECLINE.noCitation,
+        AUTO_REPLY_DECLINE.unbackedCommitment,
+        AUTO_REPLY_DECLINE.unbackedReference,
+        AUTO_REPLY_DECLINE.tooLong,
+      ].sort(),
+    );
   });
 });

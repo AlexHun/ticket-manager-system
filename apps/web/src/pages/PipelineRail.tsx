@@ -86,12 +86,20 @@ function declineTone(decline: AutoReplyDecline): string {
   return "text-ember-1";
 }
 
-/** The four exits where a reply existed and was thrown away. */
+/**
+ * The four exits where a reply existed and was thrown away.
+ *
+ * One clause, because the stage is the whole question. This used to carry a
+ * second — `decline !== "unavailable"` — which could never fire:
+ * `DECLINE_STAGE[unavailable]` is `drafted`, so the first clause had already
+ * excluded it. It was one of nine hand-kept reminders about that one member,
+ * and it went with the change that replaced the guessing with
+ * `DECLINE_OUTCOME` (`docs/adr/0019`) — a guard that cannot fire, sitting
+ * beside a table that makes the same distinction correctly, teaches the next
+ * reader to distrust both.
+ */
 function isOutputCheck(decline: AutoReplyDecline): boolean {
-  return (
-    DECLINE_STAGE[decline] === PIPELINE_STAGE.checked &&
-    decline !== "unavailable"
-  );
+  return DECLINE_STAGE[decline] === PIPELINE_STAGE.checked;
 }
 
 /** A stub peeling off the rail. Everything that leaves does so through one. */
