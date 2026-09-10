@@ -7,10 +7,12 @@ share; the rule that maps an exit onto a stop already lives in one place
 
 What the grilling found instead is a defect one level along, in the type the
 issue mistook for _Stage_. **`Outcome` has two derivations, they encode one
-rule, and one of them applies it wrongly**: `/pipeline` reports a provider
-outage as a `declined` ticket — the model getting the answer wrong — on the one
-screen built to teach that those are different things, and against the same
-rule stated verbatim in three other places. Filed as
+rule, and one of them applies it wrongly**: `/pipeline` reports an outage as a
+`declined` ticket — the model getting the answer wrong — on the one screen built
+to teach that those are different things, and against the same rule four other
+places in this repo state in prose. The same wrong inference has already spread
+to a second site, where it inflates a published rate
+(`routes/ticket-effectiveness.ts`). Filed as
 [#226](https://github.com/AlexHun/ticket-manager-system/issues/226).
 
 Answered from a grilling ([#215](https://github.com/AlexHun/ticket-manager-system/issues/215)),
@@ -97,13 +99,13 @@ less evidence and having to guess.
 
 It is not. Read the nine `ok: false` returns in `apps/api/src/ai/auto-reply.ts`:
 
-| `reason`                                      | `decline`                                                          | provider failure? |
-| --------------------------------------------- | ------------------------------------------------------------------ | ----------------- |
-| `config` — empty corpus (`:646`)              | `unavailable`                                                      | yes               |
-| `empty` — budget went on reasoning (`:706`)   | `unavailable`                                                      | yes               |
-| `classifyFailure(err)` (`:713`)               | `unavailable`                                                      | yes               |
-| `declined` (`:721`, `:738`)                   | `notCovered`                                                       | no                |
-| `ungrounded` (`:749`, `:781`, `:816`, `:829`) | `tooLong`, `noCitation`, `unbackedCommitment`, `unbackedReference` | no                |
+| `reason`                                      | what the call site means by it        | `decline`                                                          | `isProviderFailure` |
+| --------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------ | ------------------- |
+| `config` (`:646`)                             | the corpus is empty                   | `unavailable`                                                      | true                |
+| `empty` (`:706`)                              | the output budget went on reasoning   | `unavailable`                                                      | true                |
+| `classifyFailure(err)` (`:713`)               | the provider could not be reached     | `unavailable`                                                      | true                |
+| `declined` (`:721`, `:738`)                   | the model read the corpus and said no | `notCovered`                                                       | false               |
+| `ungrounded` (`:749`, `:781`, `:816`, `:829`) | a reply was written and destroyed     | `tooLong`, `noCitation`, `unbackedCommitment`, `unbackedReference` | false               |
 
 `isProviderFailure(reason)` and `decline === unavailable` agree at every one of
 them, and the three gate reasons (`category`, `answered`, `noText`) never reach
@@ -112,7 +114,18 @@ as `declined` (`runner.ts:302`) exactly as the column does. **The persisted
 taxonomy carries the whole distinction the unpersisted one draws.** `toRun` has
 the evidence. It does not read it.
 
-So the rule both sites are stating, in the glossary's own words:
+Read the middle column, though, because **`unavailable` is not only an outage**.
+It is the one decline three unrelated causes share: an emptied corpus, a call
+whose budget went on reasoning, and a provider that could not be reached. All
+three satisfy `isProviderFailure` — `config` and `empty` are members of
+`AI_FAILURE`, whatever the call site means by them — and all three are the same
+fact at the level of the rule below: nothing was decided about this ticket. That
+is what makes one table over the persisted taxonomy sufficient. It is also why
+the wording on the screen cannot say "the provider could not be reached", which
+is true of one cause in three.
+
+So the rule both sites are reaching for, which `CONTEXT.md` now states as the
+definition of _Outcome_:
 
 > An **Outcome** says whether a verdict was reached about the ticket, and what
 > it was. _Resolved_ and _declined_ are verdicts. _Abandoned_ is the absence of
@@ -121,6 +134,21 @@ So the rule both sites are stating, in the glossary's own words:
 
 One rule, read from two kinds of evidence, which is the first of the two answers
 #215 offered. Not "different rules that happen to share an enum".
+
+### `abandoned` and `notOffered` on an empty corpus, which is not a third rule
+
+An emptied knowledge base can produce either, and it is worth saying why that is
+the rule working rather than a seam in it. A ticket the job **already picked up**
+before the corpus went empty is stamped `unavailable` and reads `abandoned`: it
+was offered, and no verdict came back. A ticket sitting there **while** the
+corpus is empty is never enqueued at all, and `toRun`'s `autoReplyArticleCount`
+gate reads it `notOffered`: nothing is scheduled, which is true.
+
+Same operator mistake, two tickets, two different true statements — "this one
+was tried and got nowhere" and "this one will not be tried". The rule asks
+whether a verdict was reached, and only the first ticket ever went looking for
+one. What would be wrong is the third reading, the one in place today: that
+either ticket was _declined_.
 
 ### Where it is applied wrongly
 
@@ -155,6 +183,22 @@ declares it unexpectable, for the reason quoted above. The disagreement is
 reachable the moment a simulated ticket meets a real outage — which is precisely
 when an admin is on `/pipeline` trying to find out what broke.
 
+### And it is not only `/pipeline`
+
+`routes/ticket-effectiveness.ts:72` counts `autoReplyDecline IS NOT NULL` as
+`declined` in the same scan that produces `classified`, and `:142` divides it
+by `classified` and publishes it as `decline.rate`. So an outage does not merely
+mislabel one ticket on one screen — it **inflates a published rate**, the number
+an admin would read to decide whether the knowledge base needs work. The
+`groupBy` beside it (`:82`) is fine: it breaks the column down by reason and a
+reason is what the column honestly holds.
+
+That is the second site, it was found by reviewing this ADR rather than by
+writing it, and it is the strongest argument in the record for a shared table
+over the one-line conditional weighed below. Two sites already infer "declined"
+from `decline !== null`; the inference is the defect, and it has spread once
+before anyone noticed it was wrong.
+
 ## Considered Options
 
 **A `Stage` module.** Rejected: nothing to own. One derivation, and the two
@@ -172,14 +216,22 @@ function with two bodies behind one name.
 
 **A hand-kept `decline !== "unavailable"` guard in `toRun`.** The one-line fix,
 and rejected as the _form_ of the fix even though it is the right behaviour.
-Three such guards already exist by hand, all in `PipelineRail.tsx` (`:82`,
-`:93`, `:383`), beside four prose statements of the same rule — and **one of the
-three is already dead**: `isOutputCheck` (`PipelineRail.tsx:90`) tests
+Nine sites already carry a hand-kept guard, comment or special-cased label about
+this one enum member. Three are guards, all in `PipelineRail.tsx` — `:82`
+(`declineTone` gives it the neutral), `:93` (`isOutputCheck`), `:383` (the stub
+renders muted). Four are prose: `DECLINE_STAGE`'s comment
+(`shared/src/index.ts:1521`), `onExhausted`'s (`auto-reply-ticket.ts:551`),
+`verdictOf`'s (`runner.ts:181`), and the case set's coverage entry
+(`auto-reply-cases.ts:974`). Two are labels written to avoid the word "decline"
+(`pipeline-labels.ts:53`, `:73` — "The assistant could not be reached").
+
+**And one of the three guards is already dead.** `isOutputCheck`
+(`PipelineRail.tsx:90`) tests
 `DECLINE_STAGE[decline] === checked && decline !== "unavailable"`, but
 `DECLINE_STAGE[unavailable]` is `drafted`, so the second clause can never fire.
-Seven sites in all carry a comment or a guard about one enum member, and one of
-the seven has quietly stopped meaning anything. That is the argument against
-adding a fourth guard by hand rather than a table that asks the question once.
+Nine hand-kept reminders about one value, one of which has quietly stopped
+meaning anything, is the argument against adding a tenth by hand rather than a
+table that asks the question once.
 
 **A `DECLINE_OUTCOME: Record<AutoReplyDecline, PipelineOutcome>` in
 `@ticket/shared`, beside `DECLINE_STAGE`. Chosen.** Not a module — a table, and
@@ -203,7 +255,7 @@ depending on the other.
 fix, and deferred rather than rejected. `CONTEXT.md` defines _Decline_ as "the
 auto-reply's **decision** not to answer a ticket… a normal outcome, not a
 failure", and `unavailable` is neither a decision nor normal — the definition
-excludes the member. That mis-modelling is the cause of everything above: seven
+excludes the member. That mis-modelling is the cause of everything above: nine
 sites carry a comment or a guard about this one value. But it is a persisted
 column value with nine read sites, a `Record` in `@ticket/shared`, two label
 maps, a coverage table and an eval schema over it, and the migration would
@@ -215,22 +267,28 @@ member needs.
 ## Consequences
 
 **`/pipeline` will report an outage as `abandoned`, and `abandoned` will mean
-two things there.** The classifier exhausting its retries and the auto-reply
-provider being unreachable both become `abandoned` — and they should, because
-the rule is about whether a verdict was reached and neither reached one.
-`EvalsPage` already labels the member "Provider unreachable"; `/pipeline` needs
-wording that covers both halves without claiming the classifier failed when it
-did not. Named in
+more than one thing there.** The classifier exhausting its retries, a provider
+that could not be reached, an emptied corpus and a call whose budget went on
+reasoning all become `abandoned` — and they should, because the rule is about
+whether a verdict was reached and none of them reached one. But four causes
+behind one word need wording that is true of all four: `EvalsPage` labels the
+member "Provider unreachable", which is true of one. Named in
 [#226](https://github.com/AlexHun/ticket-manager-system/issues/226) as part of
 the fix, because a correct number under a label that says the wrong thing is not
 a fix.
 
-**The decline breakdown on the rail loses its `unavailable` stub, and gains
-nothing.** `PipelineCounts.declines` is a `Record` over all nine and every
-reader iterates `AUTO_REPLY_DECLINES`, so the count stays available and stays
-zero-visible — the rail already renders it muted (`PipelineRail.tsx:383`). What
-changes is that the ticket carrying it is no longer counted as declined in the
-same breath.
+**`decline.rate` on the effectiveness screen will fall.** That is the point of
+it — the rate stops counting outages as the knowledge base failing to cover
+things — but it is a published number changing value on a screen an admin may
+already be reading trends off, so it belongs in the record rather than only in
+the diff.
+
+**The per-reason decline breakdowns do not change at all.** Both the rail's
+(`PipelineCounts.declines`) and the effectiveness screen's (`:82`'s `groupBy`)
+are `Record`s over all nine reasons, and a reason is what the column honestly
+holds; `unavailable` keeps its own count and the rail keeps rendering it muted
+(`PipelineRail.tsx:383`). What changes is only the **aggregate** that folded it
+in with the eight verdicts.
 
 **`isOutputCheck`'s dead clause goes with it.** One line, in the same change,
 because leaving a guard that cannot fire next to a new table that makes the same
@@ -253,6 +311,15 @@ reachable only through an HTTP route against a live database. #226 exports it
 and pins the nine declines against `DECLINE_OUTCOME` as values, which is the
 same move [#212](https://github.com/AlexHun/ticket-manager-system/issues/212)
 made for the evals read model, for the same reason.
+
+**[#218](https://github.com/AlexHun/ticket-manager-system/issues/218) closes
+unbuilt, on its own instruction.** It was filed to act on this verdict — "one
+module owning the Stage and its derivations" — and its last criterion says "if
+#215 concluded this is not a module, close with that reasoning rather than
+building it". This is that reasoning. Two of its criteria are answered
+elsewhere rather than dropped: "the fallback is decided in one place" is settled
+above (it already is, and it is a parse), and "no caller re-derives the Stage
+for itself" was already true before the ticket was written.
 
 **Reversing this costs one file.** If a third derivation of `Outcome` ever
 arrives with evidence resembling either existing one, the table of three above

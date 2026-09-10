@@ -112,12 +112,11 @@ _Avoid_: step, phase, status
 
 **Outcome**:
 Whether a verdict was reached about a ticket on the pipeline, and what it was.
-Resolved and declined are verdicts; abandoned is the absence of one — the
-machinery failed, so nothing was decided. Pending is not yet, and not-offered
-is never. Every reader derives it from the evidence it holds, so an outage is
-never an outcome about the ticket. See `docs/adr/0019`.
-_Avoid_: result, verdict (a verdict is only the two that decided something),
-state, disposition
+Resolved and declined are verdicts; abandoned is the absence of one — nothing
+was decided, so an outage is never a decline. Pending is not yet offered;
+not-offered never will be. See `docs/adr/0019`.
+_Avoid_: result, state, disposition. _Verdict_ is narrower, not a synonym —
+only the two outcomes that decided something.
 
 **Simulated ticket**:
 A ticket an admin injected through the real ingestion path in order to watch it
