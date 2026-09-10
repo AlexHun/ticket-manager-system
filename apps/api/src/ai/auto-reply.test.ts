@@ -392,6 +392,38 @@ describe("autoReply — the email it was asked about", () => {
     expect(prompt).not.toContain("<<<customer_email");
   });
 
+  test("reads an empty or blank body as no body at all", async () => {
+    // The rule four call sites write out for themselves — `?.trim() || null`
+    // in `jobs/auto-reply-ticket.ts`, `jobs/classify-ticket.ts`,
+    // `evals/runner.ts` and `evals/classify-case.ts` — and the reason #210
+    // did not turn them into a module: it is enforced two modules down, here,
+    // where it is the ternary above that actually changes the prompt. This is
+    // what makes the eval harness structurally unable to drift from the
+    // pipeline on it, and it is asserted rather than argued so that a builder
+    // that stopped normalising would be red instead of subtly different.
+    // `docs/adr/0017` is the whole account.
+    await autoReply(ARTICLES, { ...CONTEXT, text: null });
+    const absent = lastCall().prompt;
+
+    for (const text of ["", "   ", "\n\t  \n"]) {
+      await autoReply(ARTICLES, { ...CONTEXT, text });
+
+      expect(lastCall().prompt).toBe(absent);
+    }
+  });
+
+  test("sends a body its caller did not trim as though it had", async () => {
+    await autoReply(ARTICLES, { ...CONTEXT, text: CONTEXT.text });
+    const trimmed = lastCall().prompt;
+
+    await autoReply(ARTICLES, {
+      ...CONTEXT,
+      text: `\n  ${CONTEXT.text}  \n`,
+    });
+
+    expect(lastCall().prompt).toBe(trimmed);
+  });
+
   test("bounds a call that holds a ticket invisible while it runs", async () => {
     const abort = new AbortController();
 
