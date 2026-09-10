@@ -46,14 +46,29 @@ beforeEach(async () => {
   await resetDb();
 });
 
-/** A classified ticket the auto-reply handed back with one reason. */
+/**
+ * A classified ticket the auto-reply handed back with one reason.
+ *
+ * **`createdAt` is pinned an hour back, and that is not decoration.** The
+ * handler slices on `createdAt < to`, where `to` is a JS `Date` — millisecond
+ * precision — while the column is stamped by Postgres `now()`, which keeps
+ * microseconds. A row seeded in the *same millisecond* the request is served in
+ * therefore sorts *after* `to` and drops out of the slice: measured on CI, where
+ * a two-ticket test seeded and read inside one millisecond and the newer ticket
+ * came back missing from the per-reason breakdown while the older one did not.
+ * Every row this file asserts on has to be unambiguously inside the window, so
+ * none of them may be `now`.
+ */
+const SEEDED_AT = new Date(Date.now() - 60 * 60 * 1000);
+
 function seedDeclined(decline: AutoReplyDecline) {
   return seedTicket({
     status: TICKET_STATUS.Open,
     category: TICKET_CATEGORY.Technical,
-    classifiedAt: new Date(),
+    createdAt: SEEDED_AT,
+    classifiedAt: SEEDED_AT,
     autoReplyDecline: decline,
-    autoReplyDeclinedAt: new Date(),
+    autoReplyDeclinedAt: SEEDED_AT,
   });
 }
 
