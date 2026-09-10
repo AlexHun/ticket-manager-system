@@ -57,6 +57,23 @@ import { requireAdmin } from "../middleware/auth";
  * outbox. That is not restraint, it is the shape of the thing (R12): the runner
  * hands a synthesized input straight to `autoReply`, which cannot reach those
  * tables. `eval_run` and `eval_case_result` are the only rows a run writes.
+ *
+ * **The four breakdown builders are exported, and that is a testability
+ * decision rather than an interface anybody calls** (#212). `reachedFrom`,
+ * `filedFrom`, `categoriesFrom` and `checksFrom` are the rules this page is
+ * really made of — which repeats collapse together, which way a tie sorts,
+ * which pairs a category matrix draws — and while they were private the only
+ * way to ask them anything was to write a run into Postgres and fetch it back
+ * through the router. That is a slow way to state a rule about an array, and
+ * it is a *misleading* one: a test that fails could be failing for the
+ * router's reasons or the aggregate's, and nothing in it says which.
+ *
+ * Since they take parsed repeats (`evals/stored-verdict.ts`) rather than the
+ * `Json` column, a caller can now build their input as a value, so the rules
+ * are asserted as values in `evals.test.ts` and the route tests keep only what
+ * needs the seam: the status code, the wire shape, and that an old run still
+ * draws what it drew. Nothing outside this file and its test imports them, and
+ * nothing should — `createEvalsRouter` is still the module's interface.
  */
 
 /**
@@ -137,7 +154,7 @@ function tally<T>(
  * disagree with the other readers of the same column about what an unreadable
  * repeat means.
  */
-function reachedFrom(verdicts: StoredVerdict[]): EvalReachedRow[] {
+export function reachedFrom(verdicts: StoredVerdict[]): EvalReachedRow[] {
   return tally(verdicts, (verdict) => ({
     key: `${verdict.outcome}:${verdict.decline ?? ""}`,
     row: {
@@ -403,7 +420,7 @@ function thresholdsFrom(value: unknown): Record<string, number> {
  * expectation rather than recomputed against the case set, which is the whole
  * point of denormalising it.
  */
-function filedFrom(
+export function filedFrom(
   verdicts: StoredVerdict[],
   expected: TicketCategory | null,
 ): EvalFiledRow[] {
@@ -438,7 +455,7 @@ function filedFrom(
  *
  * Built from the per-case rows so it never disagrees with them.
  */
-function categoriesFrom(
+export function categoriesFrom(
   results: { expectedCategory: string | null; verdicts: StoredVerdict[] }[],
 ): EvalCategoryRow[] {
   const rows = new Map<string, EvalCategoryRow>();
@@ -479,7 +496,9 @@ function categoriesFrom(
  * other reason — the model refusing to answer at all — cannot inflate a check's
  * tally with a decline that read no reply.
  */
-function checksFrom(results: { verdicts: StoredVerdict[] }[]): EvalCheckRow[] {
+export function checksFrom(
+  results: { verdicts: StoredVerdict[] }[],
+): EvalCheckRow[] {
   const counts = new Map<AutoReplyDecline, number>();
 
   for (const result of results) {
