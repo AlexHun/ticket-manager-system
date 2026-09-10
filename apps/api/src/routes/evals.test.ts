@@ -634,6 +634,65 @@ describe("GET /runs", () => {
     expect(body.runs[0]?.results[0]?.expectedCategory).toBeNull();
   });
 
+  test("a run recorded before the classifier metric still reads the same", async () => {
+    // The literal shape every repeat written before slice 4 is in: three keys,
+    // no `category` at all — not a null one. It has to reach the screen as a
+    // filing nobody measured, which is a row whose category is null and whose
+    // `matched` is false, and never as a zero on a rate or a case that went
+    // wrong. Asserted through the route rather than only against the parse
+    // because this is the criterion the change was allowed to be judged on: an
+    // old run draws what it drew before.
+    await prisma.evalRun.create({
+      data: {
+        corpus: EVAL_CORPUS.frozen,
+        status: EVAL_RUN_STATUS.completed,
+        finishedAt: new Date(),
+        repeats: 5,
+        attempts: 5,
+        matches: 5,
+        thresholds: EVAL_THRESHOLD,
+        results: {
+          create: caseResult({
+            expectedCategory: TICKET_CATEGORY.General,
+            verdicts: Array.from({ length: 5 }, () => ({
+              outcome: PIPELINE_OUTCOME.declined,
+              decline: "notCovered",
+              matched: true,
+            })),
+          }),
+        },
+      },
+    });
+
+    const body = await runs();
+
+    expect(body.runs[0]?.results[0]?.filed).toEqual([
+      { category: null, count: 5, matched: false },
+    ]);
+    expect(body.runs[0]?.categories).toEqual([
+      {
+        expected: TICKET_CATEGORY.General,
+        actual: null,
+        count: 5,
+        matched: false,
+      },
+    ]);
+    // The repeats still land where they always did, and the case is still
+    // outside the classifier rate rather than at the bottom of it.
+    expect(body.runs[0]?.results[0]?.reached).toEqual([
+      {
+        outcome: PIPELINE_OUTCOME.declined,
+        decline: "notCovered",
+        matched: true,
+        count: 5,
+      },
+    ]);
+    expect(metricOf(body, EVAL_METRIC.classifierAccuracy)).toMatchObject({
+      value: null,
+      denominator: 0,
+    });
+  });
+
   test("says which check caught each payload", async () => {
     // R9's second half. A bare catch rate cannot say which of the two string
     // comparisons is carrying the load, which is exactly what it would cost

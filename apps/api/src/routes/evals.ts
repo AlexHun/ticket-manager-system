@@ -9,7 +9,6 @@ import {
   EVAL_RUN_STATUS,
   EVAL_THRESHOLD,
   isOutputCheckDecline,
-  PIPELINE_OUTCOME,
   type AutoReplyDecline,
   type EvalCaseResultRow,
   type EvalCategoryRow,
@@ -25,12 +24,16 @@ import {
   type EvalRunsResponse,
   type EvalRunStatus,
   type EvalRunStartedResponse,
-  type PipelineOutcome,
   type TicketCategory,
 } from "@ticket/shared";
 import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
 import { startEvalRun } from "../evals/start-run";
+import {
+  asPipelineOutcome,
+  parseStoredVerdicts,
+  type StoredVerdict,
+} from "../evals/stored-verdict";
 import { ALL_EVAL_CASE_IDS } from "../jobs/eval-run";
 import { requireAdmin } from "../middleware/auth";
 
@@ -87,26 +90,6 @@ export interface EvalsConfig {
 }
 
 /**
- * A stored outcome, narrowed to one this build has wording for.
- *
- * The mirror of `asAutoReplyDecline` for the other pair of text columns, and it
- * exists for the same reason: they are plain text (see the note on
- * `EvalCaseResult`), so the type on the wire is a promise this route keeps
- * rather than one Postgres keeps for it.
- *
- * `notOffered` is the fallback rather than null, because an outcome is not
- * nullable on the wire and "nothing is scheduled and nothing happened" is the
- * honest reading of a value this build cannot name — the same choice
- * `/pipeline` makes for its one known blind spot.
- */
-function asPipelineOutcome(value: unknown): PipelineOutcome {
-  return (
-    Object.values(PIPELINE_OUTCOME).find((outcome) => outcome === value) ??
-    PIPELINE_OUTCOME.notOffered
-  );
-}
-
-/**
  * A case's stored repeats, collapsed into distinct rows with counts.
  *
  * The shape both breakdowns on this page need, and the reason it is one
@@ -120,20 +103,19 @@ function asPipelineOutcome(value: unknown): PipelineOutcome {
  * added here rather than by the caller, which is what stops the two callers
  * disagreeing about whether a skipped repeat is a zero or an absence.
  *
- * Every caller reads the stored `verdicts` array **defensively**, and that is
- * not optional: it is `Json`, so Postgres makes no promise about its shape, and
- * rows written by older builds are shapes this code did not write — a run from
- * before slice 4 carries no `category` on any repeat. Narrowing belongs in
- * `rowOf`, where each caller can say what an unreadable value means to it.
+ * It takes **parsed** repeats. The defensive reading the stored column needs is
+ * not gone — it is in `evals/stored-verdict.ts`, beside the projection that
+ * writes the column, where the one story about older shapes is told once
+ * instead of at each `rowOf` in this file. What is left here is the grouping.
  */
 function tally<T>(
-  verdicts: unknown,
-  rowOf: (verdict: Record<string, unknown>) => { key: string; row: T } | null,
+  verdicts: StoredVerdict[],
+  rowOf: (verdict: StoredVerdict) => { key: string; row: T } | null,
 ): (T & { count: number })[] {
   const rows = new Map<string, T & { count: number }>();
 
-  for (const entry of Array.isArray(verdicts) ? verdicts : []) {
-    const made = rowOf(entry as Record<string, unknown>);
+  for (const verdict of verdicts) {
+    const made = rowOf(verdict);
     if (made === null) continue;
 
     const existing = rows.get(made.key);
@@ -150,22 +132,20 @@ function tally<T>(
 /**
  * The distinct places a case landed, and how often.
  *
- * An outcome this build has no wording for becomes `notOffered`, the same way
- * an unknown decline becomes null, rather than throwing on a page whose whole
- * job is to say what happened.
+ * An outcome this build has no wording for arrives as `notOffered` and an
+ * unknown decline as null — decided by the parse, not here, so this page cannot
+ * disagree with the other readers of the same column about what an unreadable
+ * repeat means.
  */
-function reachedFrom(verdicts: unknown): EvalReachedRow[] {
-  return tally(verdicts, (verdict) => {
-    const outcome = asPipelineOutcome(verdict.outcome);
-    const decline = asAutoReplyDecline(
-      typeof verdict.decline === "string" ? verdict.decline : null,
-    );
-
-    return {
-      key: `${outcome}:${decline ?? ""}`,
-      row: { outcome, decline, matched: verdict.matched === true },
-    };
-  });
+function reachedFrom(verdicts: StoredVerdict[]): EvalReachedRow[] {
+  return tally(verdicts, (verdict) => ({
+    key: `${verdict.outcome}:${verdict.decline ?? ""}`,
+    row: {
+      outcome: verdict.outcome,
+      decline: verdict.decline,
+      matched: verdict.matched,
+    },
+  }));
 }
 
 /**
@@ -416,18 +396,18 @@ function thresholdsFrom(value: unknown): Record<string, number> {
  * is the finding. Sorted by count, so the first entry is what the classifier
  * usually does with this email.
  *
- * A repeat with no category was one the classifier could not answer, or one on
- * a case it is not scored against; it appears here as a null so a reader can
- * see the denominator shrink rather than wonder why five repeats add to three.
- * `matched` is read from the row's own expectation rather than recomputed
- * against the case set, which is the whole point of denormalising it.
+ * A repeat with no category was one the classifier could not answer, one on a
+ * case it is not scored against, or one written before slice 4 existed; it
+ * appears here as a null so a reader can see the denominator shrink rather than
+ * wonder why five repeats add to three. `matched` is read from the row's own
+ * expectation rather than recomputed against the case set, which is the whole
+ * point of denormalising it.
  */
 function filedFrom(
-  verdicts: unknown,
+  verdicts: StoredVerdict[],
   expected: TicketCategory | null,
 ): EvalFiledRow[] {
-  return tally(verdicts, (verdict) => {
-    const category = asTicketCategory(verdict.category);
+  return tally(verdicts, ({ category }) => {
     // Nothing was asked, so there is nothing to report — the `null` return is
     // what keeps the repeat out of the tally rather than counting it as a
     // filing of nowhere. Distinct from a null *answer*, which is a repeat the
@@ -459,7 +439,7 @@ function filedFrom(
  * Built from the per-case rows so it never disagrees with them.
  */
 function categoriesFrom(
-  results: { expectedCategory: string | null; verdicts: unknown }[],
+  results: { expectedCategory: string | null; verdicts: StoredVerdict[] }[],
 ): EvalCategoryRow[] {
   const rows = new Map<string, EvalCategoryRow>();
 
@@ -499,17 +479,13 @@ function categoriesFrom(
  * other reason — the model refusing to answer at all — cannot inflate a check's
  * tally with a decline that read no reply.
  */
-function checksFrom(results: { verdicts: unknown }[]): EvalCheckRow[] {
+function checksFrom(results: { verdicts: StoredVerdict[] }[]): EvalCheckRow[] {
   const counts = new Map<AutoReplyDecline, number>();
 
   for (const result of results) {
-    for (const entry of Array.isArray(result.verdicts) ? result.verdicts : []) {
-      const verdict = entry as { decline?: unknown; caught?: unknown };
-      if (verdict.caught !== true) continue;
+    for (const { caught, decline } of result.verdicts) {
+      if (!caught) continue;
 
-      const decline = asAutoReplyDecline(
-        typeof verdict.decline === "string" ? verdict.decline : null,
-      );
       // A build that has no wording for the reason cannot label a bar with it,
       // and an unlabelled bar in a safety breakdown is worse than a missing one.
       if (decline === null || !isOutputCheckDecline(decline)) continue;
@@ -614,6 +590,14 @@ export function createEvalsRouter(config: EvalsConfig): Router {
         evalConfigured: config.evalConfigured(),
         runs: runs.map((run): EvalRunRow => {
           const thresholds = thresholdsFrom(run.thresholds);
+          // The `Json` column read back through the module that also writes it,
+          // once per row rather than once per breakdown: the three below all
+          // read the same repeats, and three parses would be three chances to
+          // disagree about what an older row says.
+          const results = run.results.map((result) => ({
+            ...result,
+            verdicts: parseStoredVerdicts(result.verdicts),
+          }));
           // Null on every run that is not `completed`, because `previousRuns`
           // skips those — the same gate `metrics` is behind, and for the same
           // reason: there is nothing yet to compare.
@@ -671,16 +655,16 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             // so the denominator is not `attempts`. Derived from the rows that exist
             // rather than from `cases × (repeats - 1)`, so a run still filling in
             // reports the fraction it has actually measured.
-            cacheable: run.results.reduce(
+            cacheable: results.reduce(
               (total, result) => total + Math.max(result.repeats - 1, 0),
               0,
             ),
             caught: run.caught,
             escaped: run.escaped,
-            checks: checksFrom(run.results),
+            checks: checksFrom(results),
             classifiedRepeats: run.classifiedRepeats,
             classifyMatches: run.classifyMatches,
-            categories: categoriesFrom(run.results),
+            categories: categoriesFrom(results),
             metrics,
             // Which run those deltas are against, said once for the card rather
             // than three times over (R14). Non-null on exactly the runs whose
@@ -697,7 +681,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             // red. A slow statistical suite wired to a gate is a suite somebody
             // switches off, which is the failure this is written to avoid.
             failing: metrics.some((metric) => !metric.meets),
-            results: run.results.map((result): EvalCaseResultRow => ({
+            results: results.map((result): EvalCaseResultRow => ({
               id: result.id,
               caseId: result.caseId,
               caseName: result.caseName,

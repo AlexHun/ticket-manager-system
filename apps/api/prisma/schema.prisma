@@ -1136,8 +1136,12 @@ model EvalCaseResult {
   /// and repeats it filed as expected. See the notes on `EvalRun`.
   classifiedRepeats Int      @default(0)
   classifyMatches Int      @default(0)
-  /// One entry per repeat: `{ outcome, decline, matched, caught, escaped,
-  /// category }`, in the order they were answered.
+  /// One entry per repeat, in the order they were answered. `StoredVerdict` in
+  /// `src/evals/stored-verdict.ts` is the shape, and that module is the only
+  /// thing that writes this column or reads it back — a `Json` column makes no
+  /// promise about what is in it, and rows written by older builds really are
+  /// shapes the current code did not write, so the one story about that is told
+  /// there rather than at each reader.
   ///
   /// `Json` rather than a child table, for the reason `DashboardLayout.panels`
   /// is: it is written once, read whole, and never queried by its contents.
