@@ -188,5 +188,10 @@
     "version": "0.1.81",
     "date": "2026-09-09",
     "title": "Enable github plugin in settings.json"
+  },
+  {
+    "version": "0.1.86",
+    "date": "2026-09-10",
+    "title": "A measuring module reads the taxonomy, not the retry table (#211)"
   }
 ]
