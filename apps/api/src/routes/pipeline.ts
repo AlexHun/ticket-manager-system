@@ -7,6 +7,7 @@ import {
   AUTO_REPLY_DECLINES,
   DASHBOARD_RANGE,
   DASHBOARD_RANGE_DAYS,
+  DECLINE_OUTCOME,
   DECLINE_STAGE,
   DEFAULT_DASHBOARD_RANGE,
   MAX_TICKET_ID,
@@ -198,8 +199,15 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
  * ticket reads here exactly like one the machine never answered. That is a
  * limitation of the columns and it is stated on the page rather than papered
  * over with an inference.
+ *
+ * **Exported for its test, and that is the point of exporting it.** This is the
+ * one module that derives both a Stage and an Outcome from a ticket row, and
+ * while it was private the only way to ask it anything was an HTTP route
+ * against a live database — which is why the defect `docs/adr/0019` records was
+ * found by reading rather than by a failure. `pipeline.test.ts` pins every
+ * decline reason against `DECLINE_OUTCOME` as values.
  */
-function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
+export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = row.classifiedAt !== null && row.category !== null;
   const abandoned = row.classifiedAt !== null && row.category === null;
@@ -231,10 +239,16 @@ function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
   const answeredAlready =
     row.messages.length > 0 && row.status !== TICKET_STATUS.Processing;
 
+  // A decline's outcome comes out of `DECLINE_OUTCOME`, never from
+  // `decline !== null`. Nine of the ten reasons are verdicts and `unavailable`
+  // is not — nothing was decided about the ticket — and inferring "declined"
+  // from the column being set reported an outage as the knowledge base having
+  // been consulted and found wanting, on the one screen built to teach that
+  // those are different things (`docs/adr/0019`).
   const outcome = resolved
     ? PIPELINE_OUTCOME.resolved
     : decline !== null
-      ? PIPELINE_OUTCOME.declined
+      ? DECLINE_OUTCOME[decline]
       : abandoned
         ? PIPELINE_OUTCOME.abandoned
         : !machineClassified

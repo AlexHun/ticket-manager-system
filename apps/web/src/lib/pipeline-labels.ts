@@ -27,8 +27,11 @@ import {
  * mean *it never wrote anything* — the ticket was ineligible, already answered,
  * unreadable, or overtaken by a second email. Four mean *it wrote a reply and
  * the safety checks destroyed it*, which is a different event entirely and is
- * what an injection attempt looks like from the outside. And one means the
- * assistant was simply unreachable, which is no verdict on the ticket at all.
+ * what an injection attempt looks like from the outside. And one — the only
+ * one `DECLINE_OUTCOME` does not call a verdict — means the assistant never
+ * got as far as an opinion, which is no claim about the ticket at all. Its
+ * wording has to survive all three things that stamp it: an unreachable
+ * provider, an emptied corpus, and a call whose budget went on reasoning.
  *
  * None of it is an error state. Declining is the designed, common outcome, so
  * the ticket card draws this as another field and not as a warning — the ticket
@@ -52,7 +55,8 @@ export const DECLINE_LABEL: Record<AutoReplyDecline, string> = {
     "Draft discarded — it carried a link or address no cited article contains",
   [AUTO_REPLY_DECLINE.tooLong]:
     "Draft discarded — too long to be a knowledge-base answer",
-  [AUTO_REPLY_DECLINE.unavailable]: "The assistant could not be reached",
+  [AUTO_REPLY_DECLINE.unavailable]:
+    "No answer — the assistant was unavailable, so nothing was decided",
 };
 
 /**
@@ -73,7 +77,7 @@ export const DECLINE_SHORT: Record<AutoReplyDecline, string> = {
   [AUTO_REPLY_DECLINE.unbackedCommitment]: "Promised money no article states",
   [AUTO_REPLY_DECLINE.unbackedReference]: "Carried a link no article contains",
   [AUTO_REPLY_DECLINE.tooLong]: "Longer than an answer should be",
-  [AUTO_REPLY_DECLINE.unavailable]: "The assistant could not be reached",
+  [AUTO_REPLY_DECLINE.unavailable]: "The assistant was unavailable",
 };
 
 /** The six stops, named for the rail. */

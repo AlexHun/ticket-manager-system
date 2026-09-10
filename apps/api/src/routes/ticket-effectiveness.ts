@@ -4,7 +4,9 @@ import {
   asAutoReplyDecline,
   AUTO_REPLY_DECLINES,
   DASHBOARD_RANGE_DAYS,
+  DECLINE_OUTCOME,
   MESSAGE_DIRECTION,
+  PIPELINE_OUTCOME,
   TICKET_ACTIVITY_ACTION,
   TICKET_ACTOR_KIND,
   type AssistantEffectivenessResponse,
@@ -22,6 +24,24 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *  into one another, and this is three lines. */
 const ts = (d: Date) =>
   Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+
+/**
+ * The decline reasons that are a verdict about the ticket.
+ *
+ * Read off `DECLINE_OUTCOME` rather than written out, so an eleventh reason
+ * joins this number the moment somebody says it is a verdict, and stays out of
+ * it when they say it is not. What it excludes is `unavailable`: an outage, an
+ * emptied corpus or a call whose budget went on reasoning decided nothing about
+ * the ticket, and counting one into `decline.rate` inflates the published
+ * number an admin reads to decide whether the knowledge base needs work
+ * (`docs/adr/0019`).
+ *
+ * The `groupBy` below is deliberately not filtered this way: it breaks the
+ * column down by reason, and a reason is what the column honestly holds.
+ */
+const VERDICT_DECLINES = AUTO_REPLY_DECLINES.filter(
+  (d) => DECLINE_OUTCOME[d] === PIPELINE_OUTCOME.declined,
+);
 
 interface FactsRow {
   classified: number;
@@ -69,7 +89,9 @@ export async function ticketEffectivenessHandler(
         WHERE t."classifiedAt" IS NOT NULL AND t.category IS NOT NULL
       )::int AS classified,
       COUNT(*) FILTER (WHERE u.automated = true)::int AS "resolvedByAssistant",
-      COUNT(*) FILTER (WHERE t."autoReplyDecline" IS NOT NULL)::int AS declined
+      COUNT(*) FILTER (
+        WHERE t."autoReplyDecline" IN (${Prisma.join(VERDICT_DECLINES)})
+      )::int AS declined
     FROM "ticket" t
     LEFT JOIN "user" u ON u.id = t."assignedToId"
     WHERE ${slice}

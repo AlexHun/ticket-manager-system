@@ -1437,9 +1437,21 @@ export interface AssistantEffectivenessResponse {
     rate: number | null;
   };
   decline: {
+    /**
+     * Tickets the auto-reply reached a verdict on and that verdict was "no" —
+     * `DECLINE_OUTCOME`'s nine, not every ticket carrying a reason. An
+     * `unavailable` ticket decided nothing, and folding it in here inflated the
+     * rate below with outages (`docs/adr/0019`).
+     */
     count: number;
+    /** `count / classified`. Null, not 0, when nothing was classified. */
     rate: number | null;
-    /** Every reason, including the zeroes — a zero is information, same as on `/pipeline`. */
+    /**
+     * Every reason, including the zeroes — a zero is information, same as on
+     * `/pipeline`. Unfiltered on purpose: this breaks the column down by reason,
+     * and a reason is what the column honestly holds, so `unavailable` keeps its
+     * own count here while staying out of `count` and `rate`.
+     */
     reasons: Record<AutoReplyDecline, number>;
   };
   categoryOverride: {
@@ -1506,6 +1518,33 @@ export const PIPELINE_STAGES = [
 ] as const;
 
 /**
+ * How far one ticket got, as a verdict.
+ *
+ * `notOffered` is the honest answer for a ticket nothing will ever pick up —
+ * no API key, the switch off, an empty corpus — and it exists so the page never
+ * draws a ticket as "still thinking" about work that is not scheduled.
+ */
+export const PIPELINE_OUTCOME = {
+  pending: "pending",
+  resolved: "resolved",
+  declined: "declined",
+  /**
+   * No verdict was reached — the machinery gave up before anything was
+   * decided about the ticket. Four causes land here and they are one fact:
+   * the classifier exhausting its retries, a provider that could not be
+   * reached, an emptied corpus, and a call whose output budget went on
+   * reasoning. Every word this is rendered under has to be true of all four
+   * (`docs/adr/0019`).
+   */
+  abandoned: "abandoned",
+  /** Nothing will run: the feature is off, unkeyed, or has no corpus. */
+  notOffered: "notOffered",
+} as const;
+
+export type PipelineOutcome =
+  (typeof PIPELINE_OUTCOME)[keyof typeof PIPELINE_OUTCOME];
+
+/**
  * Where each decline reason leaves the rail.
  *
  * A `Record` over the whole union rather than a lookup with a fallback, and that
@@ -1526,8 +1565,9 @@ export const PIPELINE_STAGES = [
  *   7-of-9 and 10-of-10 in the measurements recorded in `ai/auto-reply.ts`.
  *
  * `unavailable` sits at `drafted` because that is where the attempt died, but it
- * is the one entry here that is **not a verdict about the ticket** — the
- * provider could not be reached, so nothing was ever decided. Its label says so.
+ * is the one entry here that is **not a verdict about the ticket** — the model
+ * was never usefully asked, so nothing was ever decided. `DECLINE_OUTCOME`
+ * below is where that is now said in a type rather than only in this comment.
  */
 export const DECLINE_STAGE: Record<AutoReplyDecline, PipelineStage> = {
   [AUTO_REPLY_DECLINE.category]: PIPELINE_STAGE.eligible,
@@ -1540,6 +1580,44 @@ export const DECLINE_STAGE: Record<AutoReplyDecline, PipelineStage> = {
   [AUTO_REPLY_DECLINE.unbackedCommitment]: PIPELINE_STAGE.checked,
   [AUTO_REPLY_DECLINE.unbackedReference]: PIPELINE_STAGE.checked,
   [AUTO_REPLY_DECLINE.tooLong]: PIPELINE_STAGE.checked,
+};
+
+/**
+ * Whether each decline reason is a verdict about the ticket, or the absence of
+ * one.
+ *
+ * `DECLINE_STAGE`'s sibling, and deliberately beside it: the two questions a
+ * new decline reason has to answer are where it leaves the diagram and whether
+ * anybody decided anything, and they are one line apart so neither can be
+ * answered without the other. A `Record` for the same reason again — an
+ * eleventh reason is a compile error here until somebody says which it is.
+ *
+ * Nine say `declined`. **`unavailable` says `abandoned`**, and that one entry
+ * is the whole point of the table: three unrelated things stamp it — an
+ * emptied corpus, a call whose output budget went on reasoning, and a provider
+ * that could not be reached — and none of them is the knowledge base being
+ * consulted and found wanting. Reading `decline !== null` as `declined`, which
+ * is what `toRun` and the effectiveness route both did, reported an outage as
+ * a verdict on one screen and inflated a published rate on another
+ * (`docs/adr/0019`).
+ *
+ * `evals/runner.ts` does **not** read this: it holds an `AutoReplyResult` and
+ * asks `isProviderFailure` instead, which is ADR-0018's rule that a measuring
+ * module reads the taxonomy rather than the convenient neighbour. The two are
+ * kept in step by a test that pins the equivalence rather than by either site
+ * depending on the other — `ai/auto-reply.test.ts`.
+ */
+export const DECLINE_OUTCOME: Record<AutoReplyDecline, PipelineOutcome> = {
+  [AUTO_REPLY_DECLINE.category]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.answered]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.noText]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.followUp]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.notCovered]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.unavailable]: PIPELINE_OUTCOME.abandoned,
+  [AUTO_REPLY_DECLINE.noCitation]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.unbackedCommitment]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.unbackedReference]: PIPELINE_OUTCOME.declined,
+  [AUTO_REPLY_DECLINE.tooLong]: PIPELINE_OUTCOME.declined,
 };
 
 /**
@@ -1684,26 +1762,6 @@ export function pipelineStageCounts(
     [PIPELINE_STAGE.resolved]: counts.autoResolved,
   };
 }
-
-/**
- * How far one ticket got, as a verdict.
- *
- * `notOffered` is the honest answer for a ticket nothing will ever pick up —
- * no API key, the switch off, an empty corpus — and it exists so the page never
- * draws a ticket as "still thinking" about work that is not scheduled.
- */
-export const PIPELINE_OUTCOME = {
-  pending: "pending",
-  resolved: "resolved",
-  declined: "declined",
-  /** The classifier exhausted its retries. Nothing downstream was ever asked. */
-  abandoned: "abandoned",
-  /** Nothing will run: the feature is off, unkeyed, or has no corpus. */
-  notOffered: "notOffered",
-} as const;
-
-export type PipelineOutcome =
-  (typeof PIPELINE_OUTCOME)[keyof typeof PIPELINE_OUTCOME];
 
 /**
  * A stored outcome, narrowed to one this build has wording for.
