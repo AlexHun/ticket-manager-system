@@ -210,7 +210,11 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = row.classifiedAt !== null && row.category !== null;
-  const abandoned = row.classifiedAt !== null && row.category === null;
+  // The classifier's own terminal path: it stamped a time and never filed a
+  // category. Named for which half of the pipeline gave up — the same word
+  // `PipelineCounts.classifyAbandoned` uses — because `abandoned` is now an
+  // outcome two different exits reach.
+  const classifyAbandoned = row.classifiedAt !== null && row.category === null;
   const resolved = row.autoResolvedAt !== null;
 
   // Is anything still going to happen to this ticket? Two different answers,
@@ -249,7 +253,7 @@ export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
     ? PIPELINE_OUTCOME.resolved
     : decline !== null
       ? DECLINE_OUTCOME[decline]
-      : abandoned
+      : classifyAbandoned
         ? PIPELINE_OUTCOME.abandoned
         : !machineClassified
           ? classifierWillRun
@@ -261,7 +265,7 @@ export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
 
   // Where the ticket left the rail, if it did. `undefined` means it is still on
   // it — either finished at the bottom or somewhere in the middle right now.
-  const exitStage = abandoned
+  const exitStage = classifyAbandoned
     ? PIPELINE_STAGE.classified
     : decline !== null
       ? DECLINE_STAGE[decline]
