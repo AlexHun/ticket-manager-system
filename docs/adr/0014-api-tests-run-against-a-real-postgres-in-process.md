@@ -8,7 +8,7 @@ the `bun test` process. `apps/api/src/test/pg.ts` owns the whole arrangement:
 it replays the repo's own migrations, exports the client, and exports
 `resetDb()` for a `beforeEach`.
 
-This reverses the sentence in [testing.md](../standards/testing.md) that said
+This reverses the sentence in [testing-api.md](../standards/testing-api.md) that said
 the database is mocked. That sentence was worth reopening because the standard
 itself recorded the cost of it: `mock.module`'s registry is one process wide and
 nothing resets it between files, so two files that mock the same specifier are

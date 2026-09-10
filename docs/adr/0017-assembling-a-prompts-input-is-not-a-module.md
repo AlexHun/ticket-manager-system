@@ -223,7 +223,7 @@ pass / 0 fail to 52 / 1, naming the right test.
 **`ai/classify.ts` keeps the rule and gains no test, deliberately.** It has no test
 file, and giving it one means a third `mock.module("ai", ...)` registration beside
 `auto-reply.test.ts`'s and `polish.test.ts`'s, each holding a **stateful**
-`respond` — the registry hazard [testing.md](../standards/testing.md) documents and
+`respond` — the registry hazard [testing-api.md](../standards/testing-api.md) documents and
 #174 measured. The classify half of the measurement is on record here and on the
 pull request rather than in the suite; the builder is four lines from
 `auto-reply.ts`'s and a change to one is a change a reviewer reads against the
