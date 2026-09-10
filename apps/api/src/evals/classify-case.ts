@@ -83,6 +83,15 @@ export function isClassifiable(evalCase: AutoReplyCase): boolean {
  * `declined`, for the same reason: an outage is not the model getting things
  * wrong, and a metric that cannot tell them apart is one nobody trusts twice.
  *
+ * "The same split" is now literally true, and it was not until #211. The
+ * auto-reply half asked `isRetryable`, which agrees with this on five of the
+ * eight reasons and files `quota`, `auth` and `config` as declines — so this
+ * comment asserted a symmetry the other half was not keeping. It reads
+ * `isProviderFailure` in `../ai/provider` now, which is the membership test this
+ * side gets for free — `ClassifyResult`'s failure type *is* `AiFailure`, with no
+ * feature-level members to tell apart, so `result.ok` already answers it.
+ * `docs/adr/0018` is the account.
+ *
  * The end of that thread is `EvalMetricRow.value`, which is null on a zero
  * denominator: a run where the classifier answered nothing reports no
  * classifier accuracy rather than a catastrophic zero.

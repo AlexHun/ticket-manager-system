@@ -43,7 +43,14 @@ import type { AiUsage } from "./provider";
  */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
 
-const { logUsage, toAiUsage, usdFor } = await import("./provider");
+const {
+  AI_FAILURE,
+  isProviderFailure,
+  logUsage,
+  toAiUsage,
+  usdFor,
+  wasCached,
+} = await import("./provider");
 
 /** What `@ai-sdk/openai` v4 actually hands back, via `convertOpenAIChatUsage`. */
 function sdkUsage(over: Partial<LanguageModelUsage> = {}): LanguageModelUsage {
@@ -129,6 +136,73 @@ describe("usdFor", () => {
     const expected = (1_000 * 0.05 + 3_000 * 0.005 + 500 * 0.4) / 1_000_000;
 
     expect(usdFor(mapped())).toBeCloseTo(expected, 12);
+  });
+});
+
+describe("wasCached", () => {
+  test("reads the SDK's own shape, end to end", () => {
+    // The assertion this function exists for, and the one the eval runner could
+    // not make while it was reading the field itself: the alarm has to survive
+    // the SDK moving `cacheReadTokens` again, and it survives it because
+    // `toAiUsage` is between them. `sdkUsage` reports 3_000 cached.
+    expect(wasCached(mapped())).toBe(true);
+  });
+
+  test("is false when the call reported no cache read", () => {
+    expect(
+      wasCached(
+        mapped({
+          inputTokenDetails: {
+            noCacheTokens: 4_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  test("is false for a call that reported no usage at all", () => {
+    // Same reading `usdFor` takes of the same absence — nothing known to be
+    // cached, rather than a hole every caller has to decide about.
+    expect(wasCached(undefined)).toBe(false);
+  });
+});
+
+describe("isProviderFailure", () => {
+  test.each(Object.values(AI_FAILURE))(
+    "`%s` is the provider's, not a feature's",
+    (failure) => {
+      // Every member, walked from the object rather than listed here, so a
+      // failure mode added to the taxonomy joins this the moment it exists.
+      expect(isProviderFailure(failure)).toBe(true);
+    },
+  );
+
+  test.each(["declined", "ungrounded", "invented"])(
+    "`%s` is a feature's verdict on an answer it received",
+    (failure) => {
+      // The three a feature adds by spreading `AI_FAILURE` — two on
+      // `AUTO_REPLY_FAILURE`, one on `POLISH_FAILURE`. Named as strings on
+      // purpose: importing either union here would make this a test about a
+      // spread rather than about membership.
+      expect(isProviderFailure(failure)).toBe(false);
+    },
+  );
+
+  test("does not agree with the retry table, and that is the point", async () => {
+    // `docs/adr/0018`. Both split the same six reasons and they split them
+    // differently: retryability is about whether asking again could help,
+    // membership is about whether the model was asked. Three of the six differ,
+    // and the eval runner reading the wrong one is what the ADR is about — so
+    // the disagreement is asserted rather than left to a comment that could
+    // quietly stop being true.
+    const { isRetryable } = await import("../jobs/ai-retry");
+    const differ = Object.values(AI_FAILURE).filter(
+      (failure) => isRetryable(failure) !== isProviderFailure(failure),
+    );
+
+    expect(differ.sort()).toEqual(["auth", "config", "quota"]);
   });
 });
 

@@ -25,7 +25,6 @@ import {
   AUTO_REPLY_DECLINE,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
-  type AutoReplyDecline,
   type TicketCategory,
 } from "@ticket/shared";
 import {
@@ -34,19 +33,26 @@ import {
   type AutoReplyCase,
 } from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
-import type { AiUsage } from "../ai/provider";
+import { AI_FAILURE, type AiFailure, type AiUsage } from "../ai/provider";
+import { AUTO_REPLY_FAILURE, type AutoReplyResult } from "../ai/auto-reply";
 import type { KbArticle } from "../ai/knowledge-base";
 
 /* ── The model, replaced by whatever this file wants it to say ───────────── */
 
-type AutoReplyOutcome = { usage?: AiUsage } & (
-  | { ok: true; reply: string; articleIds: string[] }
-  | { ok: false; reason: string; decline: AutoReplyDecline }
-);
-
-const DECLINED: AutoReplyOutcome = {
+/**
+ * The stub answers in `AutoReplyResult`, not in a local copy of it.
+ *
+ * It used to be a structural twin declared here whose one difference was a
+ * widened `reason: string`, and nothing in this file ever needed the widening:
+ * every reason scripted below is a real `AutoReplyFailure`. What the copy cost
+ * is what `docs/adr/0018` is about — with `reason` a `string`, no test could
+ * walk `AUTO_REPLY_FAILURE` and have a wrong member fail to compile, so nothing
+ * ever asked what the runner did with the three of them it was filing wrongly.
+ * A type a test re-declares is a type a test cannot be exhaustive over.
+ */
+const DECLINED: AutoReplyResult = {
   ok: false,
-  reason: "declined",
+  reason: AUTO_REPLY_FAILURE.declined,
   decline: AUTO_REPLY_DECLINE.notCovered,
 };
 
@@ -70,7 +76,7 @@ function usage(over: Partial<AiUsage>): AiUsage {
 }
 
 /** Answers, in order. The last one is repeated once the list runs out. */
-let script: AutoReplyOutcome[] = [DECLINED];
+let script: AutoReplyResult[] = [DECLINED];
 let calls = 0;
 
 /** What `autoReply` was handed, so the synthesized context can be asserted. */
@@ -267,7 +273,7 @@ describe("the verdict", () => {
     script = [
       {
         ok: false,
-        reason: "provider",
+        reason: AUTO_REPLY_FAILURE.provider,
         decline: AUTO_REPLY_DECLINE.unavailable,
       },
     ];
@@ -277,6 +283,73 @@ describe("the verdict", () => {
     expect(result.outcome).toBe(PIPELINE_OUTCOME.abandoned);
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.unavailable);
   });
+});
+
+/* ── Which failures are the model's answer, and which are its absence ────── */
+
+/**
+ * The whole taxonomy, one member at a time, because the interesting half of it
+ * was never asked (`docs/adr/0018`).
+ *
+ * `Object.values(AI_FAILURE)` rather than a list written out here: a failure
+ * mode added to the taxonomy joins this loop the moment it exists, exactly as
+ * it becomes a compile error in `jobs/ai-retry.ts`. That is the same
+ * `Record<AiFailure, boolean>` trick one level up, and it is the property the
+ * locally re-declared result type used to make impossible.
+ */
+describe("a failure the provider decided", () => {
+  test.each(Object.values(AI_FAILURE))(
+    "`%s` is abandoned — the model never answered",
+    async (reason: AiFailure) => {
+      // Every one of these is the call not happening or not arriving: refused,
+      // rate-limited, out of credit, key rejected, request malformed, or a
+      // response with nothing in it. None of them is the model reading a corpus
+      // and saying no, so none may land in a rate that claims to measure that.
+      script = [{ ok: false, reason, decline: AUTO_REPLY_DECLINE.unavailable }];
+
+      const result = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
+
+      expect(result.outcome).toBe(PIPELINE_OUTCOME.abandoned);
+    },
+  );
+
+  test("an empty corpus is abandoned too, though nothing was ever asked", async () => {
+    // `autoReply` answers `config`/`unavailable` before it builds a prompt when
+    // the knowledge base has nothing auto-replyable left in it
+    // (`ai/auto-reply.test.ts` pins that). It is a property of the deployment on
+    // the day rather than of any case — which is exactly what `DECLINE_COVERAGE`
+    // in `@ticket/core` says about `unavailable`, and what it was not getting.
+    script = [
+      {
+        ok: false,
+        reason: AUTO_REPLY_FAILURE.config,
+        decline: AUTO_REPLY_DECLINE.unavailable,
+      },
+    ];
+
+    const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
+
+    expect(outcome.abandoned).toBe(EVAL_REPEATS);
+    expect(outcome.matches).toBe(0);
+  });
+});
+
+/* ── ...and which are the model's own verdict ────────────────────────────── */
+
+describe("a failure the auto-reply decided", () => {
+  test.each([AUTO_REPLY_FAILURE.declined, AUTO_REPLY_FAILURE.ungrounded])(
+    "`%s` is declined — the model answered and the answer was the outcome",
+    async (reason) => {
+      // The two `AUTO_REPLY_FAILURE` adds on top of the shared taxonomy, and the
+      // only two that belong on this side. Both mean a model read the corpus and
+      // a verdict was reached about what it produced.
+      script = [{ ok: false, reason, decline: AUTO_REPLY_DECLINE.notCovered }];
+
+      const result = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
+
+      expect(result.outcome).toBe(PIPELINE_OUTCOME.declined);
+    },
+  );
 });
 
 /* ── What it cost ────────────────────────────────────────────────────────── */
