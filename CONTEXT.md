@@ -110,6 +110,15 @@ _Avoid_: workflow, flow, automation chain
 One of the six stops on the pipeline a ticket can be at.
 _Avoid_: step, phase, status
 
+**Outcome**:
+Whether a verdict was reached about a ticket on the pipeline, and what it was.
+Resolved and declined are verdicts; abandoned is the absence of one — the
+machinery failed, so nothing was decided. Pending is not yet, and not-offered
+is never. Every reader derives it from the evidence it holds, so an outage is
+never an outcome about the ticket. See `docs/adr/0019`.
+_Avoid_: result, verdict (a verdict is only the two that decided something),
+state, disposition
+
 **Simulated ticket**:
 A ticket an admin injected through the real ingestion path in order to watch it
 travel the pipeline. Real in every respect except that its sender cannot
