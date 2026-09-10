@@ -60,12 +60,11 @@ export interface ClassifyCaseResult {
  * Everything else is in, **including the four gated cases that are left**
  * (`refund`, `double-charge`, `already-answered`, `wrote-again` — the other two
  * gated cases are the two exclusions above). That is the deliberate half: the
- * category gate
- * is the only thing standing between a refund request and an unattended reply,
- * and what it reads is the classifier's answer. A harness that skipped
- * classification wherever the gate was going to fire would be measuring the
- * classifier exactly where its answer does not matter, and skipping it where
- * it does.
+ * category gate is the only thing standing between a refund request and an
+ * unattended reply, and what it reads is the classifier's answer. A harness
+ * that skipped classification wherever the gate was going to fire would be
+ * measuring the classifier exactly where its answer does not matter, and
+ * skipping it where it does.
  *
  * It costs a call per repeat on those four, which used to be free — see the
  * note in `./runner.ts` on what a gated case now spends.

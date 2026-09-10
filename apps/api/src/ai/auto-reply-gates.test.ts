@@ -116,7 +116,7 @@ describe("the wrote-again gate", () => {
     ).toBe(AUTO_REPLY_DECLINE.followUp);
   });
 
-  test("refuses however many there are", () => {
+  test("refuses a thread of any length, not just two", () => {
     expect(
       gateDecline({
         category: TICKET_CATEGORY.General,

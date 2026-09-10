@@ -44,7 +44,7 @@ describe("the set covers what the PRD asked for", () => {
   });
 
   test("every decline reason is either covered or has a written reason it cannot be", () => {
-    // R2 asks for a case per reason and six of the nine have one. The other
+    // R2 asks for a case per reason and seven of the ten have one. The other
     // three are recorded as unreachable *in prose*, deliberately: a case
     // designed never to match is the "cries wolf, then gets ignored" failure the
     // PRD names as the thing this harness exists to prevent. What this test

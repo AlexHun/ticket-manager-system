@@ -203,11 +203,11 @@ export interface AutoReplyContext {
   /**
    * The inbound message's plain text, or null when the email was HTML-only.
    *
-   * Singular, and that is now enforced rather than assumed: the `followUp` gate
-   * in `auto-reply-gates.ts` declines every ticket carrying a second unread
-   * email, so what reaches this field is the whole of what the customer has
-   * said. It used to read "the first inbound message's plain text", which was an
-   * accurate description of a bug — #221 and `docs/adr/0020`.
+   * Singular, and the `followUp` gate in `auto-reply-gates.ts` is what makes it
+   * so: it declines every ticket carrying a second unread email, both before
+   * the model is asked and again inside the transaction that resolves. This
+   * field used to be documented as "the first inbound message's plain text",
+   * which was an accurate description of a bug — #221 and `docs/adr/0020`.
    *
    * Callers write `?.trim() || null`, but the normalisation that decides
    * anything is `userPrompt`'s below: an empty string, a blank one and null

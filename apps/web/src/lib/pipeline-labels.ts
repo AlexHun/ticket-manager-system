@@ -26,10 +26,9 @@ import {
  * The wording separates two things an agent must not confuse. Four of these
  * mean *it never wrote anything* — the ticket was ineligible, already answered,
  * unreadable, or overtaken by a second email. Four mean *it wrote a reply and
- * the safety checks destroyed
- * it*, which is a different event entirely and is what an injection attempt
- * looks like from the outside. And one means the assistant was simply
- * unreachable, which is no verdict on the ticket at all.
+ * the safety checks destroyed it*, which is a different event entirely and is
+ * what an injection attempt looks like from the outside. And one means the
+ * assistant was simply unreachable, which is no verdict on the ticket at all.
  *
  * None of it is an error state. Declining is the designed, common outcome, so
  * the ticket card draws this as another field and not as a warning — the ticket

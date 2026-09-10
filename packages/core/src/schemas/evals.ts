@@ -40,8 +40,7 @@ export const autoReplyCaseSchema = z.object({
    * gates — `category`, `answered`, `noText`, `followUp` — are decided from
    * these and never by the model, so without them here the harness could not
    * cover four of the ten decline reasons at all: it hands a synthesized input
-   * straight to
-   * `autoReply`, which those gates sit in front of.
+   * straight to `autoReply`, which those gates sit in front of.
    *
    * `/pipeline` does not read this. It posts the case through real ingestion and
    * lets the classifier and the thread decide, which is the point of having two
@@ -70,13 +69,12 @@ export const autoReplyCaseSchema = z.object({
      * How many inbound messages the ticket carries.
      *
      * A count rather than the boolean it was until #221, because the pipeline
-     * reaches three states here and a boolean can name two. `0` is the ticket
-     * ingestion cannot produce; `1` is an opening; **`2` is a customer who
-     * wrote again inside the 4-17s the classifier takes**, which threads onto
-     * the same ticket and is what the `followUp` gate now turns back. The
-     * harness could not express that third state at all, so nothing measured
-     * whether it was still the behaviour we wanted — which is how answering the
-     * older of two unread emails survived as long as it did.
+     * reaches three states here and a boolean can name two: `0` is the ticket
+     * ingestion cannot produce, `1` is an opening, and `2` is a customer who
+     * wrote again before anything answered. The third is the one a boolean hid,
+     * so nothing measured whether answering the older of two unread emails was
+     * still the behaviour we wanted — it was not. `docs/adr/0020` is the
+     * argument; the `followUp` gate is what turns that ticket back now.
      */
     inboundCount: z.int().min(0),
   }),

@@ -95,6 +95,26 @@ sometimes and report the gate as broken the rest of the time. It joins the
 harness-only set for a reason of its own, stated at `SIMULATABLE_CASES`.
 
 **`AutoReplyContext.text` stopped saying "the first inbound message".** That
-wording was an accurate description of the bug. The field now carries the whole
-of what the customer has said, because the gate in front of it guarantees there
-is only one message to carry.
+wording was an accurate description of the bug.
+
+## The gate runs twice, and the second time is the one that matters
+
+A gate that reads the thread before the model call narrows the window; it does
+not close it. Appending a message does not move a ticket's status — `ingest.ts`
+reopens only what carries `autoResolvedAt`, which a ticket still being answered
+does not — so a customer who writes again _during_ the model call leaves
+`Processing` intact, and the resolve's `where` would have matched and closed the
+thread over the new email exactly as before, with the window narrowed from the
+classifier's 4-17s to the length of one model call.
+
+So `gateDecline` is called a second time, inside the resolving transaction, on
+what is true then. The whole predicate rather than a re-count: a model call is
+long enough for an agent to reply in, and long enough for one to file the ticket
+as `Refund`, and whichever gate now fires is the reason the ticket is handed back
+with. The drafted reply is discarded, which is the same trade every check in this
+feature makes — it answers a thread that has moved.
+
+What remains is one statement wide: a message committing between that read and
+the update. Closing that needs row locking, and it is not worth it here — the
+outcome is one ticket resolved over a message that arrived in the same instant,
+and the customer's reply to an auto-resolved ticket reopens it.

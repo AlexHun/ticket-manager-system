@@ -405,6 +405,40 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // transaction rather than opening its own, which is what makes the reply and
   // the claim it was written under commit together or not at all.
   const written = await prisma.$transaction(async (tx) => {
+    // The gates again, on what is true *now* rather than what was true before
+    // the model was asked.
+    //
+    // The claim on `Processing` is not enough on its own, and that is the point
+    // of re-reading here. Appending a message does not move a ticket's status —
+    // `ingest.ts` reopens only what carries `autoResolvedAt`, which a ticket
+    // still being answered does not — so a customer who writes again while the
+    // model is thinking leaves `Processing` intact, and the `where` below would
+    // still match and resolve the thread over an email nobody has read. That is
+    // the same failure `followUp` exists to stop (`docs/adr/0020`) with the
+    // window narrowed from the classifier's 4-17s to the model call, and a
+    // narrower window is not a closed one.
+    //
+    // The whole predicate rather than a count, because the model call is long
+    // enough for any of its facts to have moved: an agent can reply in it, and
+    // an agent can file the ticket as `Refund` in it. Whichever gate now fires
+    // is the reason the ticket is handed back with.
+    const now = await tx.ticket.findUnique({
+      where: { id: ticketId },
+      select: { category: true, messages: { select: { direction: true } } },
+    });
+    const overtaken = now
+      ? gateDecline({
+          category: now.category,
+          hasOutbound: now.messages.some(
+            (m) => m.direction === MESSAGE_DIRECTION.outbound,
+          ),
+          inboundCount: now.messages.filter(
+            (m) => m.direction === MESSAGE_DIRECTION.inbound,
+          ).length,
+        })
+      : null;
+    if (overtaken) return overtaken;
+
     const resolved = await tx.ticket.updateMany({
       where: { id: ticketId, status: TICKET_STATUS.Processing },
       data: {
@@ -456,6 +490,20 @@ async function handle(job: AutoReplyJob): Promise<void> {
     }
     return true;
   });
+
+  // Overtaken while the model was thinking. The transaction wrote nothing — the
+  // read above returned before the resolve — so this is an ordinary hand-back,
+  // and the reply is discarded rather than held: it answers a thread that has
+  // moved, which is the whole reason the gate that just fired exists. Logged at
+  // `error` because a drafted reply being thrown away is worth noticing, the
+  // same way `ungrounded` is.
+  if (typeof written === "string") {
+    console.error(
+      `[auto-reply] ticket ${ticketId} changed while it was being answered (${written}); reply discarded`,
+    );
+    await release(ticketId, TICKET_STATUS.Open, written);
+    return;
+  }
 
   if (written) {
     // File it under the assistant. Outside the transaction because it is not

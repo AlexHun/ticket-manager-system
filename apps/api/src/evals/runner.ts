@@ -72,7 +72,7 @@ import { classifyCase, isClassifiable } from "./classify-case";
  * standing between a refund request and an unattended reply having failed.
  *
  * The cost of measuring it is a call on every classifiable repeat, **including
- * the three gated cases the classifier can be scored on**, which used to be
+ * the four gated cases the classifier can be scored on**, which used to be
  * free. `isClassifiable` in `./classify-case` carries that argument. Interleaving a second prompt does
  * not disturb the auto-reply's cache: the provider keys its cache on the prefix,
  * not on what the previous request was.

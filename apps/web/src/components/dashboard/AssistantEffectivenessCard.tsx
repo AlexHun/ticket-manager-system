@@ -37,7 +37,7 @@ export function AssistantEffectivenessCard({
   const { classified, autoReply, decline, categoryOverride, avgEditDistance } =
     data;
 
-  // Only the reasons that actually fired — a zero-filled row for all nine
+  // Only the reasons that actually fired — a zero-filled row for all ten
   // would crowd a card whose job is a glance, not the full pipeline diagram
   // `/pipeline` already draws.
   const reasons = AUTO_REPLY_DECLINES.map((reason) => ({
