@@ -193,5 +193,15 @@
     "version": "0.1.86",
     "date": "2026-09-10",
     "title": "A measuring module reads the taxonomy, not the retry table (#211)"
+  },
+  {
+    "version": "0.1.90",
+    "date": "2026-09-10",
+    "title": "Decline a ticket carrying a second unread email"
+  },
+  {
+    "version": "0.1.90",
+    "date": "2026-09-10",
+    "title": "Re-run the gates inside the resolving transaction"
   }
 ]
