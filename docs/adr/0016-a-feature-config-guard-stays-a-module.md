@@ -4,7 +4,7 @@
 stay where they are: a one-line export in a leaf module, read by the callers
 that need it. Configuration is **not** threaded in as a value.
 
-This settles a question [testing.md](../standards/testing.md) invited by
+This settles a question [testing-api.md](../standards/testing-api.md) invited by
 recording the reason those modules exist and nothing about the alternative. The
 reason is not a domain one — there is one key behind every AI feature
 ([ADR-0003](0003-every-ai-feature-runs-on-one-provider.md)), so "can polish" and
@@ -109,7 +109,7 @@ one.
 
 ## Consequences
 
-**`docs/standards/testing.md` keeps its #174 rule and gains a pointer here**, so
+**`docs/standards/testing-api.md` keeps its #174 rule and gains a pointer here**, so
 the next architecture review finds the measurement rather than re-suggesting the
 losing option.
 

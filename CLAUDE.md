@@ -6,6 +6,8 @@ AI-Powered Ticket Management System — a support desk that ingests email, class
 
 **Invoke the `coding-standards` skill before implementing, reviewing, or answering a question about how anything is done in this repo.** It routes to `docs/standards/` — backend, frontend, security, AI features, testing, deployment, cross-cutting conventions, and the ticket domain model. Nearly every rule there was measured; several record a case where the obvious approach lost.
 
+Take the skill's _narrowest_ matching row and read that file in full; a question reads one file, a code change reads every matching row, and a file already read this session is not read again. The rules are dense on purpose — never summarise a standards file in place of reading it.
+
 ## Agent skills
 
 Configuration the `mattpocock-skills` engineering skills read. Written by

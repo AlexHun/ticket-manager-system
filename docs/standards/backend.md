@@ -1,6 +1,6 @@
 # Backend standards (`apps/api`)
 
-Server-side conventions: database, HTTP, auth, background jobs, ingestion, outbound mail. Testing lives in [testing.md](testing.md); the reasoning behind the security invariants lives in [security.md](security.md).
+Server-side conventions: database, HTTP, auth, background jobs, ingestion, outbound mail. API testing lives in [testing-api.md](testing-api.md); the reasoning behind the security invariants lives in [security.md](security.md).
 
 ## Database, HTTP, jobs, ingestion
 
