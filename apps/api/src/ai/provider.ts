@@ -296,22 +296,20 @@ export type AiFailure = (typeof AI_FAILURE)[keyof typeof AI_FAILURE];
  * The other half of the split `AI_FAILURE` exists to draw, and the half nothing
  * had a name for until #211. A feature that can fail its own way spreads this
  * object and adds to it (`AUTO_REPLY_FAILURE`, `POLISH_FAILURE`), so "is this
- * reason the provider's or the feature's" is a question about **membership**,
- * and every caller that needs the answer was working it out some other way.
+ * reason the provider's or the feature's" is a question about **membership**.
  *
- * The other way was `isRetryable` in `../jobs/ai-retry`, and it is not the same
- * question — which is the whole of `docs/adr/0018`. Retryability splits these
- * six *again*, into transient (`provider`, `busy`, `empty`) and terminal
- * (`quota`, `auth`, `config`), because a queue has to decide whether asking
- * again could help. Nothing about "was the model asked" turns on that. The two
- * agree on five of the eight `AutoReplyFailure` values and disagree on three,
- * and an eval run reporting an expired key as five cases the model got wrong is
- * what the disagreement looked like.
+ * **Not `isRetryable` in `../jobs/ai-retry`, which is a different question.**
+ * That one splits these six *again*, by whether asking a second time could help,
+ * because a queue has to decide that; nothing about whose failure this is turns
+ * on it. The two disagree on `quota`, `auth` and `config`, and `evals/runner.ts`
+ * reading the retry table for a question about measurement is what that cost.
+ * `docs/adr/0018` has the measurement; `provider.test.ts` asserts the
+ * disagreement, so making the two agree fails a test rather than repeating it.
  *
- * Takes a `string` rather than an `AiFailure` on purpose: every caller is
- * holding a widened reason off a feature's own union and asking which side of
- * this line it falls on. Narrowing the parameter would put the cast at each of
- * them.
+ * Takes a `string` rather than an `AiFailure` on purpose, exactly as
+ * `isRetryable` does: a caller is holding a widened reason off a feature's own
+ * union and asking which side of this line it falls on. Narrowing the parameter
+ * would put the cast at the call site instead.
  */
 export function isProviderFailure(reason: string): boolean {
   return Object.values(AI_FAILURE).some((failure) => failure === reason);

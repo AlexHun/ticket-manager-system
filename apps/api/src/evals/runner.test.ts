@@ -313,12 +313,18 @@ describe("a failure the provider decided", () => {
     },
   );
 
-  test("an empty corpus is abandoned too, though nothing was ever asked", async () => {
-    // `autoReply` answers `config`/`unavailable` before it builds a prompt when
-    // the knowledge base has nothing auto-replyable left in it
-    // (`ai/auto-reply.test.ts` pins that). It is a property of the deployment on
-    // the day rather than of any case — which is exactly what `DECLINE_COVERAGE`
-    // in `@ticket/core` says about `unavailable`, and what it was not getting.
+  test("tallies as unanswered for the whole case, not as five misses", async () => {
+    // The run-level half: the loop above is about one verdict, this is about
+    // what five of them add up to on the row an admin reads.
+    //
+    // Scripted as `config` because that is the reason with a path to it that
+    // involves no provider at all — `autoReply` answers `config`/`unavailable`
+    // before it builds a prompt when the knowledge base has nothing
+    // auto-replyable left in it (`ai/auto-reply.test.ts` pins that), and
+    // `jobs/eval-run.ts` puts no guard in front of it. A property of the
+    // deployment on the day rather than of any case, which is exactly what
+    // `DECLINE_COVERAGE` in `@ticket/core` says about `unavailable` and exactly
+    // what it was not getting.
     script = [
       {
         ok: false,

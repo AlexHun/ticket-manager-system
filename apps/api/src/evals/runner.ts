@@ -169,16 +169,12 @@ export const EVAL_REPEATS = 5;
  * `isProviderFailure` is the membership test, so a failure mode added to
  * `AI_FAILURE` lands on the right side of this the moment it exists.
  *
- * **It used to ask `isRetryable`, and that is a different question**
- * (`docs/adr/0018`). Retryability splits the provider's six again, by whether
- * asking a second time could help; "was the model asked" does not turn on that.
- * The two agree on five of the eight reasons and disagree on `quota`, `auth`
- * and `config` — so an expired key, an empty account, or a knowledge base with
+ * **It used to ask `isRetryable`, which is a different question**
+ * (`docs/adr/0018`): an expired key, an empty account, or a knowledge base with
  * nothing auto-replyable left in it produced five `declined` repeats a case
- * could not match, `abandoned: 0` beside them, and a board reporting a
- * deployment fault as the model getting everything wrong. It is the same split
+ * could not match, with `abandoned: 0` beside them. This is the same split
  * `categoryOf` in `./classify-case` draws for the classifier half, which had it
- * right: **every** way the call did not produce an answer, the key included.
+ * right — **every** way the call did not produce an answer, the key included.
  *
  * `unavailable` is still reported as the reason, because "the provider failed"
  * is the useful thing to see beside a repeat that went nowhere.

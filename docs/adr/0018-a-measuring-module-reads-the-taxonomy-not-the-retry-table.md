@@ -51,15 +51,16 @@ interface has.
 
 ### `answerCase` is a seam, and it stays exported
 
-One production caller, in the same file, twelve lines down. Twenty-six call sites
-in `runner.test.ts`. On the numbers it is a test-only export, and the narrowing
-is mechanical — `await answerCase(A, c)` becomes
-`(await runCase(A, c, 1)).verdicts[0]!` at every one of them.
+One production caller, in the same file, twenty-three lines below where it ends.
+Twenty-nine call
+sites in `runner.test.ts` (twenty-seven before this branch). On the numbers it is
+a test-only export, and the narrowing is mechanical — `await answerCase(A, c)`
+becomes `(await runCase(A, c, 1)).verdicts[0]!` at every one of them.
 
 Rejected, for a reason worth writing down rather than the tidiness one. What
 `runner.test.ts` is about is the **translation** — an `AutoReplyResult` into an
 outcome, an outcome into a match — and `answerCase` is that translation, one
-repeat at a time. Routing twenty-six single-repeat assertions through a
+repeat at a time. Routing twenty-nine single-repeat assertions through a
 five-repeat tally to reach `verdicts[0]` does not make the interface narrower for
 anybody who is not already reading this file; it makes every assertion in it
 indirect and buys one export. The genuine gain would be invariants 1 and 2 below
@@ -107,7 +108,7 @@ column of their own precisely so a run can be read back repeat by repeat.
 module's invariant, and the one of the four the issue miscounted. It is a fact
 about what the counter _means_, it is written down once where the counter is
 defined — `EVAL_COUNTERS` in `@ticket/shared`, which is where every consumer meets
-it — and `runner.ts:126` already points a reader there rather than restating it
+it — and `runner.ts:134` already points a reader there rather than restating it
 ("each one is named and argued for once — including the two whose denominators
 are not `repeats`"). Prose, in the right module, and nothing to move. The one
 line in the runner is a comment on the expression that computes it, which is
@@ -119,18 +120,25 @@ where a comment about `filter(v => v.category !== null)` belongs.
 `isRetryable(result.reason)`. Every value of `AutoReplyFailure`, measured against
 the runner as it stood:
 
-| reason       | `isRetryable` | the model was asked?           | outcome it got |
-| ------------ | ------------- | ------------------------------ | -------------- |
-| `provider`   | yes           | no                             | `abandoned`    |
-| `busy`       | yes           | no                             | `abandoned`    |
-| `empty`      | yes           | asked, answered nothing usable | `abandoned`    |
-| `quota`      | **no**        | **no**                         | **`declined`** |
-| `auth`       | **no**        | **no**                         | **`declined`** |
-| `config`     | **no**        | **no**                         | **`declined`** |
-| `declined`   | no            | yes, and it said no            | `declined`     |
-| `ungrounded` | no            | yes, and a check threw it out  | `declined`     |
+| reason       | in `AI_FAILURE`? | `isRetryable` | what happened                       | outcome it got |
+| ------------ | ---------------- | ------------- | ----------------------------------- | -------------- |
+| `provider`   | yes              | yes           | refused, or the network was         | `abandoned`    |
+| `busy`       | yes              | yes           | rate-limited or overloaded          | `abandoned`    |
+| `empty`      | yes              | yes           | answered, carrying nothing usable   | `abandoned`    |
+| `quota`      | **yes**          | **no**        | **out of credit**                   | **`declined`** |
+| `auth`       | **yes**          | **no**        | **the key was rejected**            | **`declined`** |
+| `config`     | **yes**          | **no**        | **bad request, or an empty corpus** | **`declined`** |
+| `declined`   | no               | no            | read the corpus and said no         | `declined`     |
+| `ungrounded` | no               | no            | answered, and a check threw it out  | `declined`     |
 
-Five agree and three do not, and the three are not an edge. `isRetryable` splits
+The `AI_FAILURE` column is the split the runner wants and the `isRetryable` column
+is the one it was reading. Five agree and three do not, and the three are not an
+edge. `empty` is the row that shows the two columns are asking different things
+rather than the same thing loosely: the call was made and the model did answer, so
+it is not "the model was never asked" — it is in `AI_FAILURE` because the
+**provider** is what reports it, and it is retryable because another roll of the
+dice is a real remedy. Both columns happen to say `abandoned` there, for
+unrelated reasons. `isRetryable` splits
 the provider's six by **whether asking again could help** — that is what a queue
 needs and `ai-features.md` says so in as many words: throw on
 `provider`/`busy`/`empty`, return on `quota`/`auth`/`config`, "which will fail
@@ -191,12 +199,14 @@ the shape on. A module that has to report what a run cost is entitled to what a
 call cost.
 
 One line of it moved anyway, and for a sharper reason than tidiness.
-`runner.ts:328` read `(result.usage?.cachedInputTokens ?? 0) > 0`, and a grep for
-the fields of `AiUsage` across `apps/` and `packages/` returns exactly two
-modules: `ai/provider.ts`, and that line. It was the **only** read of an `AiUsage`
-field outside the module that owns the interface — which put the harness's one
-cache alarm on the far side of the seam that exists to keep an SDK shape change
-loud. `toAiUsage` is the single place `LanguageModelUsage` is named so that a
+`evals/runner.ts` read `(result.usage?.cachedInputTokens ?? 0) > 0` inline, and a
+grep for the fields of `AiUsage` across `apps/` and `packages/` returns two
+production modules: `ai/provider.ts`, and that line. (Test files also read them —
+`ai/auto-reply.test.ts` asserts an `inputTokens` it scripted itself, which is a
+fixture checking its own arithmetic rather than a caller depending on the shape.)
+It was the **only** production read of an `AiUsage` field outside the module that
+owns the interface — which put the harness's one cache alarm on the far side of
+the seam that exists to keep an SDK shape change loud. `toAiUsage` is the single place `LanguageModelUsage` is named so that a
 release moving a field breaks a compile instead of zeroing a number; a field read
 that never passes through `provider.ts` is a field read that protection does not
 cover. It would have gone on returning `false`, `cachedRepeats` would have read
@@ -228,7 +238,7 @@ construction: every member of `AI_FAILURE`, walked from the object, must be
 `abandoned`; `declined` and `ungrounded` must be `declined`. A seventh failure
 mode joins the loop the moment somebody adds it.
 
-## Considered options
+## Considered Options
 
 **Extract the outcome mapping into a module of its own** — a `verdictOf` that
 `jobs/auto-reply-ticket.ts` and `evals/runner.ts` could share. Rejected: they do
@@ -247,8 +257,8 @@ what it buys and for the wrong module: `reason` is documented as coarse _on
 purpose_ ("it must stay coarse, because four of the checks below all mean exactly
 'never try this again'"), both queue workers branch on it as one union, and
 `ClassifyResult` and `PolishResult` would have to follow or the four features stop
-looking alike. The membership test gets the same answer at the two call sites that
-need it.
+looking alike. The membership test gets the same answer at the one call site that
+needs it, and would keep getting it at a second.
 
 **Answer the issue's question with "no" and stop.** Rejected the way ADR-0015 and
 ADR-0017 rejected it: the comparison found a real defect, and a spike that reports
@@ -276,7 +286,8 @@ than quietly deleted.
 **The interface is unchanged**, and reversing the rest of this costs two
 one-line functions. Nothing was extracted, nothing moved out of the module, and
 `answerCase` and `runCase` are exported exactly as they were. The evidence for
-revisiting the question is a second production caller: today `runCase` has one and
-`answerCase` has none, and a replay tool or a second harness arriving with a source
-shape of its own is what would make the count of vocabularies worth measuring
-again.
+revisiting the question is a caller from **outside this directory**: today
+`runCase` has one and `answerCase` has none — its single caller is `runCase`,
+twenty-three lines below it in the same file. A replay tool, a second harness or a
+"what would the desk have said" screen would arrive with a source shape of its
+own, and that is what would make the count of vocabularies worth measuring again.
