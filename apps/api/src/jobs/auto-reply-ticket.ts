@@ -330,11 +330,13 @@ async function handle(job: AutoReplyJob): Promise<void> {
 
   // Gate 1: money. Gate 2: somebody already replied, so this is a conversation
   // and not a new question — the knowledge base answers openings, not threads.
-  // Gate 3: nothing to answer from.
+  // Gate 3: nothing to answer from. Gate 4: the customer wrote again before this
+  // job ran, which is gate 2's principle from the other side and the reason
+  // `inbound[0]` below is safe to read — see the argument in the gates module.
   //
-  // The three conditions and their order are unchanged; they now live in
+  // The conditions and their order live in
   // `../ai/auto-reply-gates` as a predicate over three values, which is what
-  // makes them reachable from the eval harness. Those three reasons are decided
+  // makes them reachable from the eval harness. Those four reasons are decided
   // here and never by the model, so until the extraction a case set could not
   // cover them at all — see the header there.
   const gated = gateDecline({
@@ -361,8 +363,12 @@ async function handle(job: AutoReplyJob): Promise<void> {
 
   const result = await autoReply(articles, {
     subject: ticket.subject,
-    // Null when the first email was HTML-only. The prompt has a branch for it,
-    // and that branch declines: there is nothing to answer.
+    // The one inbound message: the `followUp` gate above has already turned back
+    // every ticket carrying more than one, so this index is the whole thread
+    // rather than the oldest slice of it.
+    //
+    // Null when that email was HTML-only. The prompt has a branch for it, and
+    // that branch declines: there is nothing to answer.
     text: inbound[0]?.textBody?.trim() || null,
     customerName: ticket.customerName,
   });

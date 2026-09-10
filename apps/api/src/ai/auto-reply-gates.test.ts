@@ -1,8 +1,8 @@
 /**
  * Unit tests for `apps/api/src/ai/auto-reply-gates.ts`.
  *
- * These three conditions have decided whether the desk answers a customer since
- * the auto-reply shipped, and until now nothing tested them: they were a nested
+ * These four conditions decide whether the desk answers a customer, and until
+ * the extraction nothing tested them: they were a nested
  * ternary inside a job handler, downstream of a claim, a database read and a
  * model call. Extracting them into a predicate is what makes them a table of
  * rows, and the row that matters most is the first one — `Refund` is one of the
@@ -99,6 +99,46 @@ describe("the nothing-to-read gate", () => {
   });
 });
 
+describe("the wrote-again gate", () => {
+  test("refuses a ticket carrying a second unread email", () => {
+    // The whole of #221 in one row. This state is reachable — the classifier
+    // takes 4-17s and a customer who writes twice inside that window threads
+    // onto the same ticket — and until this gate existed it passed, after which
+    // the job answered the *older* email and resolved the ticket on top of the
+    // newer one. Everything else in this feature fails closed; this was the one
+    // place it failed open.
+    expect(
+      gateDecline({
+        category: TICKET_CATEGORY.Technical,
+        hasOutbound: false,
+        inboundCount: 2,
+      }),
+    ).toBe(AUTO_REPLY_DECLINE.followUp);
+  });
+
+  test("refuses however many there are", () => {
+    expect(
+      gateDecline({
+        category: TICKET_CATEGORY.General,
+        hasOutbound: false,
+        inboundCount: 7,
+      }),
+    ).toBe(AUTO_REPLY_DECLINE.followUp);
+  });
+
+  test("one inbound message is still an opening", () => {
+    // The boundary, pinned from the other side: the ordinary ticket this
+    // feature exists to answer must not be caught by a gate aimed at threads.
+    expect(
+      gateDecline({
+        category: TICKET_CATEGORY.General,
+        hasOutbound: false,
+        inboundCount: 1,
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("order", () => {
   test("a ticket tripping every gate reports the money one", () => {
     // Same precedence the nested ternary had. It is the one that must never be
@@ -110,6 +150,18 @@ describe("order", () => {
         inboundCount: 0,
       }),
     ).toBe(AUTO_REPLY_DECLINE.category);
+  });
+
+  test("a replied-to thread with a second unread email reports `answered`", () => {
+    // Both gates describe the same principle — this is not an opening — and a
+    // human reply is the more useful half to tell an agent about.
+    expect(
+      gateDecline({
+        category: TICKET_CATEGORY.General,
+        hasOutbound: true,
+        inboundCount: 2,
+      }),
+    ).toBe(AUTO_REPLY_DECLINE.answered);
   });
 
   test("a replied-to ticket with nothing to read reports `answered`", () => {

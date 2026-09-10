@@ -6,21 +6,22 @@ import {
 } from "@ticket/shared";
 
 /**
- * The three questions asked before a ticket is worth a model call.
+ * The four questions asked before a ticket is worth a model call.
  *
  * Lifted out of `../jobs/auto-reply-ticket.ts`, where they were a nested ternary
- * over rows that had just been read from the database. The behaviour is byte for
- * byte what it was — same three conditions, same order, same reasons — and the
- * only thing that changed is that the decision is now reachable **from values**.
+ * over rows that had just been read from the database; the extraction changed no
+ * behaviour, and the only thing it changed is that the decision is now reachable
+ * **from values**. The fourth gate (`followUp`) is newer than the extraction and
+ * is argued below.
  *
- * That matters for one specific reason. Three of the nine `AUTO_REPLY_DECLINE`
- * reasons — `category`, `answered` and `noText` — are decided here and never by
- * the model, so before this module existed they were unreachable from the eval
- * harness's seam (`../evals/runner.ts` hands a synthesized input straight to
- * `autoReply`) and a case set claiming to cover all nine would have been quietly
- * lying about three of them. Now both callers ask the same function the same
- * question: the job passes what it read off the ticket, the harness passes what
- * the case declares.
+ * That matters for one specific reason. Four of the ten `AUTO_REPLY_DECLINE`
+ * reasons — `category`, `answered`, `noText` and `followUp` — are decided here
+ * and never by the model, so before this module existed they were unreachable
+ * from the eval harness's seam (`../evals/runner.ts` hands a synthesized input
+ * straight to `autoReply`) and a case set claiming to cover all ten would have
+ * been quietly lying about four of them. Now both callers ask the same function
+ * the same question: the job passes what it read off the ticket, the harness
+ * passes what the case declares.
  *
  * A leaf on purpose — one import, of constants — so nothing has to mock it and
  * nothing it reaches can drift. It touches no database, which is also what keeps
@@ -81,6 +82,36 @@ export interface AutoReplyGateFacts {
  * 2. **somebody already replied** — the corpus answers openings, not threads. A
  *    conversation with a human in it is a conversation with a human in it.
  * 3. **nothing to read** — no inbound message at all.
+ * 4. **the customer wrote again** — two or more inbound messages and nothing
+ *    outbound, which is the same principle as gate 2 approached from the other
+ *    side: nobody has replied, and it is still not an opening.
+ *
+ * Gate 4 is the answer to #221, and the answer is that the old behaviour was a
+ * bug. It is reachable rather than theoretical: this queue is fed by the
+ * classifier, categories land 4-17s after the webhook answers, and a customer
+ * who writes twice inside that window threads onto the same ticket instead of
+ * opening a second one. Until this gate existed such a ticket passed — nothing
+ * outbound, `inboundCount` 2 — and `auto-reply-ticket.ts` sent the model
+ * `inbound[0]`, the **older** email, after which an accepted reply resolved the
+ * ticket on top of a message nobody had read. Three reasons that is wrong and
+ * not merely narrow:
+ *
+ * - the reply answers a question the customer may have already withdrawn or
+ *   corrected, and then closes the ticket, so the correction is buried under a
+ *   `Resolved` row rather than sitting in a queue;
+ * - the category gate above reads a classification made from the **first**
+ *   email alone — classification runs once, on arrival — so a second message
+ *   that turns the thread into a refund request routes straight past the one
+ *   control between somebody's money and an unattended reply;
+ * - every other ambiguity in this feature fails closed, and this was the single
+ *   place it failed open.
+ *
+ * What declining costs is one rare ticket left `Open` for an agent, which is the
+ * designed, common outcome of this feature and not an error path. That trade is
+ * why this is a gate and not a widening of the prompt to carry both emails:
+ * answering a thread from a corpus written to answer openings is a different
+ * feature, and it would need its own argument, its own prompt and its own
+ * measurements (see `docs/adr/0020`).
  *
  * Reported one at a time rather than as a single boolean, because the reason is
  * what an agent opening the ticket afterwards actually needs, and it is what the
@@ -109,5 +140,6 @@ export function gateDecline({
   }
   if (hasOutbound) return AUTO_REPLY_DECLINE.answered;
   if (inboundCount === 0) return AUTO_REPLY_DECLINE.noText;
+  if (inboundCount > 1) return AUTO_REPLY_DECLINE.followUp;
   return null;
 }

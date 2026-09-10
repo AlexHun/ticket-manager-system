@@ -36,10 +36,10 @@ import { autoReplyCasesSchema, type AutoReplyCase } from "../schemas/evals";
  * Every case is written by hand against `apps/api/knowledge-base.md`, which is
  * the frozen corpus a run answers from by default. Four groups:
  *
- * 1. **Gate cases.** Their `preflight` trips one of the auto-reply job's three
+ * 1. **Gate cases.** Their `preflight` trips one of the auto-reply job's four
  *    preflight gates, so they never reach the model and cost nothing. They are
- *    what makes `category`, `answered` and `noText` coverable at all — those
- *    three reasons are decided by `gateDecline` and never by a prompt.
+ *    what makes `category`, `answered`, `noText` and `followUp` coverable at all
+ *    — those four reasons are decided by `gateDecline` and never by a prompt.
  * 2. **Covered questions.** Each one is squarely answered by an article marked
  *    `Auto-reply: yes`, so the expected landing is a reply.
  * 3. **Withheld questions.** Each one is answered by an article marked
@@ -72,7 +72,7 @@ import { autoReplyCasesSchema, type AutoReplyCase } from "../schemas/evals";
  */
 
 /** The ordinary state of a freshly classified ticket: one email, nobody has replied. */
-const OPENING = { answered: false, hasInbound: true } as const;
+const OPENING = { answered: false, inboundCount: 1 } as const;
 
 /** Written out and parsed below, so the schema is what says this is well-formed. */
 const CASES: unknown[] = [
@@ -150,7 +150,7 @@ const CASES: unknown[] = [
     preflight: {
       category: TICKET_CATEGORY.Technical,
       answered: true,
-      hasInbound: true,
+      inboundCount: 1,
     },
     expected: {
       outcome: PIPELINE_OUTCOME.declined,
@@ -175,7 +175,7 @@ const CASES: unknown[] = [
     preflight: {
       category: TICKET_CATEGORY.General,
       answered: false,
-      hasInbound: false,
+      inboundCount: 0,
     },
     expected: {
       outcome: PIPELINE_OUTCOME.declined,
@@ -191,6 +191,42 @@ const CASES: unknown[] = [
       senderName: "Karel Dvořák",
       subject: "Account question",
       textBody: "(this ticket carries no inbound message)",
+      htmlBody: "",
+    },
+  },
+
+  {
+    id: "wrote-again",
+    name: "The customer wrote again first",
+    note: "Two inbound messages, nothing outbound — the state the harness could not name until #221. Answering the older of the two and resolving the ticket was the behaviour; the `followUp` gate is the fix.",
+    preflight: {
+      category: TICKET_CATEGORY.Technical,
+      answered: false,
+      inboundCount: 2,
+    },
+    expected: {
+      outcome: PIPELINE_OUTCOME.declined,
+      decline: AUTO_REPLY_DECLINE.followUp,
+    },
+    // The generic reading — "your knowledge base has moved" — is wrong here in
+    // the most expensive direction available. This email is squarely covered by
+    // KB-001, deliberately: the corpus would answer it, so the gate is the only
+    // thing standing between a second unread message and a resolved ticket. A
+    // `resolved` here is that gate gone, not an article edited.
+    mismatchNote:
+      "This case resolving means the `followUp` gate is no longer firing — the corpus answers this email on purpose. Read `ai/auto-reply-gates.ts` and `docs/adr/0020` before touching anything in the knowledge base.",
+    adversarial: false,
+    // The *first* of the two emails, which is what the old behaviour sent the
+    // model. The second is a fact the preflight declares rather than a body this
+    // set can carry: a case is one email, which is also why the simulator cannot
+    // reproduce this one (see `SIMULATABLE_CASES`).
+    values: {
+      localPart: "p.novotny",
+      senderName: "Petr Novotný",
+      subject: "Reset link expired again",
+      textBody:
+        "Hi,\n\nThe password reset link you sent me had expired by the time I " +
+        "clicked it. Could you send another one?\n\nPetr",
       htmlBody: "",
     },
   },
@@ -876,13 +912,18 @@ export const DEFAULT_AUTO_REPLY_CASE_ID = "password-reset";
 /**
  * The cases `/pipeline` can actually reproduce.
  *
- * A case declares the ticket state the auto-reply job would find, and two of
+ * A case declares the ticket state the auto-reply job would find, and three of
  * those states cannot be reached by posting an email: a thread somebody has
- * already replied on, and a ticket carrying no inbound message at all — a ticket
- * is created *by* an inbound email. The harness reaches them from values, which
- * is the whole reason `gateDecline` was extracted; the simulator cannot, so it
- * does not offer them rather than offering a scenario that would land somewhere
- * other than where the case says.
+ * already replied on; a ticket carrying no inbound message at all — a ticket is
+ * created *by* an inbound email; and a ticket carrying two, which needs a second
+ * email delivered into the same thread inside the seconds the classifier takes.
+ * The simulator posts one email and follows one ticket, so the third is not a
+ * scenario it declines to offer but one it has no way to stage: the state
+ * depends on winning a race, and a picker entry that reproduced it only
+ * sometimes would report the gate as broken on the runs where it lost. The
+ * harness reaches all three from values, which is the whole reason `gateDecline`
+ * was extracted; the simulator cannot, so it does not offer them rather than
+ * offering a scenario that would land somewhere other than where the case says.
  *
  * Note what is *not* filtered: `preflight.category`. The simulator lets the real
  * classifier decide, and a case whose classification comes back differently has
@@ -891,7 +932,7 @@ export const DEFAULT_AUTO_REPLY_CASE_ID = "password-reset";
  */
 export const SIMULATABLE_CASES: readonly AutoReplyCase[] =
   AUTO_REPLY_CASES.filter(
-    (c) => !c.preflight.answered && c.preflight.hasInbound,
+    (c) => !c.preflight.answered && c.preflight.inboundCount === 1,
   );
 
 /**
@@ -911,12 +952,12 @@ export const SMOKE_CASE_IDS = ["refund", "off-corpus"] as const;
  * Which cases expect each decline reason, and — for the three that have none —
  * why no case can.
  *
- * A `Record<AutoReplyDecline, …>`, so a tenth reason added to
+ * A `Record<AutoReplyDecline, …>`, so an eleventh reason added to
  * `AUTO_REPLY_DECLINE` is a compile error here until somebody says whether the
  * harness can measure it. Same shape and same purpose as `RETRYABLE_AI_FAILURE`
  * and `EVENT_AUDIENCE`: the list that must not be quietly incomplete.
  *
- * PRD R2 asks for at least one case per reason. Six of the nine have one — three
+ * PRD R2 asks for at least one case per reason. Seven of the ten have one — four
  * of them only because `gateDecline` was extracted. **Three cannot, and saying
  * so here is better than three cases that are red forever**: a case designed
  * never to match is exactly the "cries wolf, then gets ignored" failure the PRD
@@ -937,6 +978,10 @@ export const DECLINE_COVERAGE: Record<
   },
   [AUTO_REPLY_DECLINE.noText]: {
     caseIds: ["no-inbound-message"],
+    unreachable: null,
+  },
+  [AUTO_REPLY_DECLINE.followUp]: {
+    caseIds: ["wrote-again"],
     unreachable: null,
   },
   [AUTO_REPLY_DECLINE.notCovered]: {

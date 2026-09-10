@@ -269,9 +269,9 @@ function matches(
  *
  * The **gates come first, and they come first here for the same reason they come
  * first in the job**: a ticket a machine may not answer must not cost a model
- * call. Three of the nine decline reasons are decided by them and by nothing
+ * call. Four of the ten decline reasons are decided by them and by nothing
  * else, so before the extraction they were unreachable from this seam and a case
- * set claiming to cover all nine would have been lying about three of them.
+ * set claiming to cover all ten would have been lying about four of them.
  */
 export async function answerCase(
   articles: KbArticle[],
@@ -291,10 +291,15 @@ export async function answerCase(
   const gated = gateDecline({
     category: evalCase.preflight.category,
     hasOutbound: evalCase.preflight.answered,
-    // A case is one email. `hasInbound: false` is the state a ticket cannot
-    // reach through ingestion and the only way the `noText` gate is observable
-    // at all — see the note on `no-inbound-message` in the case set.
-    inboundCount: evalCase.preflight.hasInbound ? 1 : 0,
+    // Declared, not derived. A case is one email, so the count is the one fact
+    // about the thread the values cannot carry: `0` is the state ingestion
+    // cannot reach and the only way the `noText` gate is observable at all, and
+    // `2` is the customer who wrote again inside the classifier's window, which
+    // the `followUp` gate turns back. Rounding this to `1` — which is what a
+    // boolean `hasInbound` forced, until #221 — is what left the second of
+    // those unmeasured while the job answered the older email and resolved the
+    // ticket. See the notes on `no-inbound-message` and `wrote-again`.
+    inboundCount: evalCase.preflight.inboundCount,
   });
 
   if (gated !== null) {
