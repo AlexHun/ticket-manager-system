@@ -1199,19 +1199,11 @@ describe("autoReply — the reason and the decline draw the same line", () => {
       expect(isProviderFailure(result.reason)).toBe(
         result.decline === AUTO_REPLY_DECLINE.unavailable,
       );
-    },
-  );
 
-  test.each(failures)(
-    "%s: both readings of it answer the same Outcome",
-    async (_name, run) => {
-      // The equivalence above, carried the one step that matters: whichever
+      // The same equivalence carried the one step that matters, and in the same
+      // test rather than a second pass over these nine arrangements: whichever
       // taxonomy a reader holds, the verdict it reports about this event is the
-      // same one.
-      const result = await run();
-
-      expect(result.ok).toBe(false);
-      if (result.ok) return;
+      // one the other would report.
       expect(DECLINE_OUTCOME[result.decline]).toBe(
         isProviderFailure(result.reason)
           ? PIPELINE_OUTCOME.abandoned

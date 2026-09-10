@@ -19,9 +19,11 @@
  * factory binds the same client now. What is left is the plainer reason — the
  * two modules above are pure functions over plain rows and need no database to
  * exercise, so this file mocks nothing and imports neither. The handler's own
- * raw SQL is *now* testable the way `routes/activity.ts`'s `UNION ALL` is
- * (#171), against real rows in a real Postgres; nobody has written that yet,
- * and it would be its own file rather than an extension of this one.
+ * raw SQL is testable the way `routes/activity.ts`'s `UNION ALL` is (#171),
+ * against real rows in a real Postgres — and since #226 it *is* tested, in
+ * `ticket-effectiveness-handler.test.ts`, which is its own file for the reason
+ * this paragraph gave when it was still a plan: what that one needs is a
+ * database and this one needs nothing at all.
  */
 
 import { describe, expect, test } from "bun:test";
