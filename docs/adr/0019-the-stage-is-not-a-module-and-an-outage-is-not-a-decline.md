@@ -29,9 +29,14 @@ question:
 - **`PipelineStage`** — the six stops. Derived from evidence at **one** site:
   `toRun` in `apps/api/src/routes/pipeline.ts:202`, which computes an exit stop
   and a furthest-reached index and hands `/pipeline` a `PipelineStageResult`
-  per stop. Every other reader — `PipelineRail.tsx`, `pipeline-labels.ts` —
-  consumes `PIPELINE_STAGES` and `DECLINE_STAGE` for render order, labels and
-  grouping. None of them derives a stage from anything.
+  per stop. Every other reader — `PipelineRail.tsx`, `pipeline-labels.ts`, and
+  `pipelineStageCounts` in `@ticket/shared` — consumes `PIPELINE_STAGES` and
+  `DECLINE_STAGE` for render order, labels, grouping and arithmetic. None of
+  them derives a stage from evidence. `pipelineStageCounts` is the near miss
+  worth naming, since `docs/standards/domain.md` lists it beside `DECLINE_STAGE`
+  as the page's other type-enforced invariant: it derives **how many tickets**
+  were still on the rail at each stop, which is a different question from which
+  stop **this** ticket is at, and it is already the sole owner of its own.
 - **`PipelineOutcome`** — five verdicts about one ticket. This is the type with
   more than one derivation, and the one the issue's argument is actually about.
 
@@ -69,14 +74,16 @@ this is the writing.** It survives because the three are not three of a kind:
   because neither has anywhere to put one.
 - The parse has an input the type system cannot vouch for, and
   `parseStoredVerdicts`' rule for all six of its fields is that **an unreadable
-  value must read as an absence rather than as a measurement**. `notOffered` is
-  the only member of `PipelineOutcome` that `verdictOf` can never return, so a
-  row this build cannot read reads as a value no eval run could have produced.
-  That is the absence the rule asks for, arrived at through the type rather than
-  through a comment.
+  value must read as an absence rather than as a measurement**. Two members
+  qualify as absences — `verdictOf` returns only `resolved`, `declined` and
+  `abandoned`, so neither `pending` nor `notOffered` can name a repeat that was
+  actually measured. `notOffered` is the right one of the two because it is the
+  only one that asserts nothing: `pending` would claim a finished run's repeat is
+  still in flight, which is a false statement about a row rather than an absence
+  of one.
 - `null` — the fallback its two siblings `asAutoReplyDecline` and
   `asTicketCategory` take — is not available: `PipelineRun.outcome` and
-  `EvalCaseResult.expectedOutcome` are both non-nullable on the wire, and
+  `EvalCaseResultRow.expectedOutcome` are both non-nullable on the wire, and
   widening them so one parse can express doubt would make every reader handle a
   case no writer produces. `asPipelineOutcome`'s own comment already says this;
   what was missing was the reason it does not make the two derivations
@@ -99,13 +106,13 @@ less evidence and having to guess.
 
 It is not. Read the nine `ok: false` returns in `apps/api/src/ai/auto-reply.ts`:
 
-| `reason`                                      | what the call site means by it        | `decline`                                                          | `isProviderFailure` |
-| --------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------ | ------------------- |
-| `config` (`:646`)                             | the corpus is empty                   | `unavailable`                                                      | true                |
-| `empty` (`:706`)                              | the output budget went on reasoning   | `unavailable`                                                      | true                |
-| `classifyFailure(err)` (`:713`)               | the provider could not be reached     | `unavailable`                                                      | true                |
-| `declined` (`:721`, `:738`)                   | the model read the corpus and said no | `notCovered`                                                       | false               |
-| `ungrounded` (`:749`, `:781`, `:816`, `:829`) | a reply was written and destroyed     | `tooLong`, `noCitation`, `unbackedCommitment`, `unbackedReference` | false               |
+| `reason`                                      | what the call site means by it                           | `decline`                                                          | `isProviderFailure` |
+| --------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------ | ------------------- |
+| `config` (`:646`)                             | the corpus is empty                                      | `unavailable`                                                      | true                |
+| `empty` (`:706`)                              | the output budget went on reasoning                      | `unavailable`                                                      | true                |
+| `classifyFailure(err)` (`:713`)               | the provider could not be reached                        | `unavailable`                                                      | true                |
+| `declined` (`:721`, `:738`)                   | said no (`:721`), or said yes and wrote nothing (`:738`) | `notCovered`                                                       | false               |
+| `ungrounded` (`:749`, `:781`, `:816`, `:829`) | a reply was written and destroyed                        | `tooLong`, `noCitation`, `unbackedCommitment`, `unbackedReference` | false               |
 
 `isProviderFailure(reason)` and `decline === unavailable` agree at every one of
 them, and the three gate reasons (`category`, `answered`, `noText`) never reach
@@ -139,10 +146,12 @@ One rule, read from two kinds of evidence, which is the first of the two answers
 
 An emptied knowledge base can produce either, and it is worth saying why that is
 the rule working rather than a seam in it. A ticket the job **already picked up**
-before the corpus went empty is stamped `unavailable` and reads `abandoned`: it
-was offered, and no verdict came back. A ticket sitting there **while** the
-corpus is empty is never enqueued at all, and `toRun`'s `autoReplyArticleCount`
-gate reads it `notOffered`: nothing is scheduled, which is true.
+before the corpus went empty is stamped `unavailable`, and **should** read
+`abandoned` — it was offered, and no verdict came back. (Today it reads
+`declined`; that is the defect below, and this section is describing the rule,
+not the current behaviour.) A ticket sitting there **while** the corpus is empty
+is never enqueued at all, and `toRun`'s `autoReplyArticleCount` gate already
+reads it `notOffered`: nothing is scheduled, which is true.
 
 Same operator mistake, two tickets, two different true statements — "this one
 was tried and got nowhere" and "this one will not be tried". The rule asks
@@ -158,13 +167,17 @@ back and stamps `autoReplyDecline: "unavailable"`. `toRun` then reads
 in `/pipeline`'s decline breakdown, colours a stub on the rail, and reads to an
 admin as the knowledge base having been consulted and found wanting.
 
-Three places in this repo already say it must not:
+Four places in this repo already say it must not:
 
 - `DECLINE_STAGE`'s comment (`packages/shared/src/index.ts:1521`) — "it is the
   one entry here that is **not a verdict about the ticket** — the provider could
   not be reached, so nothing was ever decided".
-- `onExhausted`'s own comment — "`unavailable`, not a judgement about the
-  ticket… 'not covered by the knowledge base' would be a claim nobody made".
+- `onExhausted`'s own comment (`apps/api/src/jobs/auto-reply-ticket.ts:551`) —
+  "`unavailable`, not a judgement about the ticket… 'not covered by the
+  knowledge base' would be a claim nobody made".
+- `verdictOf`'s comment (`apps/api/src/evals/runner.ts:181`) — "`unavailable` is
+  still reported as the reason, because 'the provider failed' is the useful
+  thing to see beside a repeat that went nowhere".
 - The case set's coverage entry
   (`packages/core/src/cases/auto-reply-cases.ts:974`) — "a run during an outage
   records every repeat as `abandoned`, which is reported separately for exactly
@@ -190,7 +203,7 @@ when an admin is on `/pipeline` trying to find out what broke.
 by `classified` and publishes it as `decline.rate`. So an outage does not merely
 mislabel one ticket on one screen — it **inflates a published rate**, the number
 an admin would read to decide whether the knowledge base needs work. The
-`groupBy` beside it (`:82`) is fine: it breaks the column down by reason and a
+`groupBy` beside it (`:83`) is fine: it breaks the column down by reason and a
 reason is what the column honestly holds.
 
 That is the second site, it was found by reviewing this ADR rather than by
@@ -284,7 +297,7 @@ already be reading trends off, so it belongs in the record rather than only in
 the diff.
 
 **The per-reason decline breakdowns do not change at all.** Both the rail's
-(`PipelineCounts.declines`) and the effectiveness screen's (`:82`'s `groupBy`)
+(`PipelineCounts.declines`) and the effectiveness screen's (`:83`'s `groupBy`)
 are `Record`s over all nine reasons, and a reason is what the column honestly
 holds; `unavailable` keeps its own count and the rail keeps rendering it muted
 (`PipelineRail.tsx:383`). What changes is only the **aggregate** that folded it
