@@ -205,6 +205,13 @@ one. Filed as [#221](https://github.com/AlexHun/ticket-manager-system/issues/221
 which asks first whether answering the older of two unread emails is what we want
 at all.
 
+**Answered, and the answer was no** —
+[ADR-0020](0020-a-second-unread-email-is-not-an-opening.md). The behaviour this
+section describes as designed was a bug: a fourth preflight gate now declines
+that ticket as `followUp`, and `preflight.hasInbound` is a count. What stands
+unchanged is the finding above it — a shared assembler would have reproduced
+`inbound[0]` on both paths and closed nothing.
+
 ## Consequences
 
 **The four `|| null` expressions stay where they are, and so do the comments that

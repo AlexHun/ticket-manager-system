@@ -36,11 +36,11 @@ export const autoReplyCaseSchema = z.object({
    * The state the ticket would be in when the auto-reply job picks it up.
    *
    * Three facts and no more, because they are exactly what `gateDecline` reads
-   * (`apps/api/src/ai/auto-reply-gates.ts`). The auto-reply's three preflight
-   * gates — `category`, `answered`, `noText` — are decided from these and never
-   * by the model, so without them here the harness could not cover three of the
-   * nine decline reasons at all: it hands a synthesized input straight to
-   * `autoReply`, which those gates sit in front of.
+   * (`apps/api/src/ai/auto-reply-gates.ts`). The auto-reply's four preflight
+   * gates — `category`, `answered`, `noText`, `followUp` — are decided from
+   * these and never by the model, so without them here the harness could not
+   * cover four of the ten decline reasons at all: it hands a synthesized input
+   * straight to `autoReply`, which those gates sit in front of.
    *
    * `/pipeline` does not read this. It posts the case through real ingestion and
    * lets the classifier and the thread decide, which is the point of having two
@@ -54,18 +54,29 @@ export const autoReplyCaseSchema = z.object({
    * scored are named and argued.
    *
    * Not every combination is something ingestion can produce — a ticket with no
-   * inbound message is not, since a ticket is created *by* an inbound email — so
-   * the cases that declare one are harness-only and `SIMULATABLE_CASES` leaves
-   * them out of the simulator's picker rather than offering a scenario the page
-   * cannot reproduce.
+   * inbound message is not, since a ticket is created *by* an inbound email, and
+   * a ticket with two needs a second email delivered inside the seconds the
+   * classifier takes — so the cases that declare one are harness-only and
+   * `SIMULATABLE_CASES` leaves them out of the simulator's picker rather than
+   * offering a scenario the page cannot reproduce.
    */
   preflight: z.object({
     /** What the classifier is expected to have filed this under. Null means it failed. */
     category: z.enum(TICKET_CATEGORY).nullable(),
     /** Whether somebody has already replied — the corpus answers openings, not threads. */
     answered: z.boolean(),
-    /** Whether the ticket carries an inbound message at all. */
-    hasInbound: z.boolean(),
+    /**
+     * How many inbound messages the ticket carries.
+     *
+     * A count rather than the boolean it was until #221, because the pipeline
+     * reaches three states here and a boolean can name two: `0` is the ticket
+     * ingestion cannot produce, `1` is an opening, and `2` is a customer who
+     * wrote again before anything answered. The third is the one a boolean hid,
+     * so nothing measured whether answering the older of two unread emails was
+     * still the behaviour we wanted — it was not. `docs/adr/0020` is the
+     * argument; the `followUp` gate is what turns that ticket back now.
+     */
+    inboundCount: z.int().min(0),
   }),
   /**
    * Where this should end up, if the corpus is what it was when this was

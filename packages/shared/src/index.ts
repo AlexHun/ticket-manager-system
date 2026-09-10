@@ -130,7 +130,7 @@ export type UserRole = (typeof USER_ROLE)[keyof typeof USER_ROLE];
  * pg-boss and four different things to a person reading the ticket. The two
  * travel together and neither replaces the other.
  *
- * The ordering below is the order they occur in: three gates before the model is
+ * The ordering below is the order they occur in: four gates before the model is
  * called, then its own verdict, then the checks over what it wrote.
  */
 export const AUTO_REPLY_DECLINE = {
@@ -140,6 +140,13 @@ export const AUTO_REPLY_DECLINE = {
   answered: "answered",
   /** The opening email had no plain text to read. */
   noText: "noText",
+  /**
+   * The customer wrote again before anything answered, so the machine would be
+   * replying to the older of two unread emails and resolving the ticket on top
+   * of the newer one. Same principle as `answered` from the other side: nobody
+   * has replied, but this is no longer an opening.
+   */
+  followUp: "followUp",
   /** It read the corpus and said this is not covered. The common one. */
   notCovered: "notCovered",
   /** It answered, but cited nothing that resolves against the corpus. */
@@ -1464,7 +1471,7 @@ export interface AssistantEffectivenessResponse {
  * This is the pipeline `/pipeline` draws, and it is not a new idea about the
  * system — it is the existing one written down. Every stop corresponds to a
  * decision already made in code: `jobs/classify-ticket.ts` reaches `classified`,
- * the three gates at the top of `jobs/auto-reply-ticket.ts` decide `eligible`,
+ * the four gates at the top of `jobs/auto-reply-ticket.ts` decide `eligible`,
  * `ai/auto-reply.ts` produces `drafted` and then runs the checks that decide
  * `checked`, and the transaction at the bottom of the job writes `resolved`.
  *
@@ -1475,7 +1482,7 @@ export const PIPELINE_STAGE = {
   received: "received",
   /** The classifier reached a verdict and filed a category. */
   classified: "classified",
-  /** It passed the three gates that run before the model is called. */
+  /** It passed the four gates that run before the model is called. */
   eligible: "eligible",
   /** The model was asked, and returned something. */
   drafted: "drafted",
@@ -1502,7 +1509,7 @@ export const PIPELINE_STAGES = [
  * Where each decline reason leaves the rail.
  *
  * A `Record` over the whole union rather than a lookup with a fallback, and that
- * is the point of it: adding a tenth reason to `AUTO_REPLY_DECLINE` is a
+ * is the point of it: adding an eleventh reason to `AUTO_REPLY_DECLINE` is a
  * compile error here until somebody says where it belongs on the diagram. The
  * same trick `RETRYABLE` plays in `jobs/ai-retry.ts`, for the same reason — a
  * picture of the pipeline that quietly stops matching the pipeline is worse than
@@ -1510,7 +1517,7 @@ export const PIPELINE_STAGES = [
  *
  * Read the groupings, because they are the interesting part:
  *
- * - Three at `eligible` are the gates that run **before** the model is called.
+ * - Four at `eligible` are the gates that run **before** the model is called.
  *   They cost nothing and they are structural.
  * - One at `drafted` is the model's own verdict — the common, correct decline.
  * - **Four at `checked` are the ones where a reply was written and destroyed.**
@@ -1526,6 +1533,7 @@ export const DECLINE_STAGE: Record<AutoReplyDecline, PipelineStage> = {
   [AUTO_REPLY_DECLINE.category]: PIPELINE_STAGE.eligible,
   [AUTO_REPLY_DECLINE.answered]: PIPELINE_STAGE.eligible,
   [AUTO_REPLY_DECLINE.noText]: PIPELINE_STAGE.eligible,
+  [AUTO_REPLY_DECLINE.followUp]: PIPELINE_STAGE.eligible,
   [AUTO_REPLY_DECLINE.notCovered]: PIPELINE_STAGE.drafted,
   [AUTO_REPLY_DECLINE.unavailable]: PIPELINE_STAGE.drafted,
   [AUTO_REPLY_DECLINE.noCitation]: PIPELINE_STAGE.checked,
@@ -1545,6 +1553,7 @@ export const AUTO_REPLY_DECLINES = [
   AUTO_REPLY_DECLINE.category,
   AUTO_REPLY_DECLINE.answered,
   AUTO_REPLY_DECLINE.noText,
+  AUTO_REPLY_DECLINE.followUp,
   AUTO_REPLY_DECLINE.notCovered,
   AUTO_REPLY_DECLINE.unavailable,
   AUTO_REPLY_DECLINE.noCitation,

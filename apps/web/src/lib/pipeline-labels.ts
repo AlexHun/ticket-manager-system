@@ -10,10 +10,10 @@ import {
  *
  * Two screens say these things now — the ticket detail card, which reports one
  * verdict to the agent looking at one ticket, and `/pipeline`, which draws all
- * nine of them on a diagram. The wording is the whole product here: it is what
+ * ten of them on a diagram. The wording is the whole product here: it is what
  * separates "the machine chose not to answer" from "the machine wrote an answer
- * and we destroyed it", and nine carefully-argued sentences maintained in two
- * files are nine sentences that will eventually disagree.
+ * and we destroyed it", and ten carefully-argued sentences maintained in two
+ * files are ten sentences that will eventually disagree.
  *
  * (This is `pipeline-labels` rather than `auto-reply-labels` because it grew the
  * stage names too. Same reason: the rail and any future consumer must name the
@@ -23,12 +23,12 @@ import {
 /**
  * What the auto-reply concluded, in words rather than in a key.
  *
- * The wording separates two things an agent must not confuse. Three of these
+ * The wording separates two things an agent must not confuse. Four of these
  * mean *it never wrote anything* — the ticket was ineligible, already answered,
- * or unreadable. Four mean *it wrote a reply and the safety checks destroyed
- * it*, which is a different event entirely and is what an injection attempt
- * looks like from the outside. And one means the assistant was simply
- * unreachable, which is no verdict on the ticket at all.
+ * unreadable, or overtaken by a second email. Four mean *it wrote a reply and
+ * the safety checks destroyed it*, which is a different event entirely and is
+ * what an injection attempt looks like from the outside. And one means the
+ * assistant was simply unreachable, which is no verdict on the ticket at all.
  *
  * None of it is an error state. Declining is the designed, common outcome, so
  * the ticket card draws this as another field and not as a warning — the ticket
@@ -41,6 +41,8 @@ export const DECLINE_LABEL: Record<AutoReplyDecline, string> = {
     "Already answered — only opening messages are auto-answered",
   [AUTO_REPLY_DECLINE.noText]:
     "Nothing to read — the email carried no plain text",
+  [AUTO_REPLY_DECLINE.followUp]:
+    "The customer wrote again before this ran — the whole thread needs a person",
   [AUTO_REPLY_DECLINE.notCovered]: "Not covered by the knowledge base",
   [AUTO_REPLY_DECLINE.noCitation]:
     "Draft discarded — it cited no article that exists",
@@ -54,7 +56,7 @@ export const DECLINE_LABEL: Record<AutoReplyDecline, string> = {
 };
 
 /**
- * The same nine, short enough to sit at the end of a line on the rail.
+ * The same ten, short enough to sit at the end of a line on the rail.
  *
  * A second set rather than a truncation of the first: the diagram already groups
  * these by the stop they leave from, so "Draft discarded" is said once by the
@@ -65,6 +67,7 @@ export const DECLINE_SHORT: Record<AutoReplyDecline, string> = {
   [AUTO_REPLY_DECLINE.category]: "Refund, or still unfiled",
   [AUTO_REPLY_DECLINE.answered]: "Somebody had already replied",
   [AUTO_REPLY_DECLINE.noText]: "No plain text to read",
+  [AUTO_REPLY_DECLINE.followUp]: "The customer wrote again first",
   [AUTO_REPLY_DECLINE.notCovered]: "Not covered by the knowledge base",
   [AUTO_REPLY_DECLINE.noCitation]: "Cited nothing that resolves",
   [AUTO_REPLY_DECLINE.unbackedCommitment]: "Promised money no article states",
@@ -96,7 +99,7 @@ export const STAGE_DESCRIPTION: Record<PipelineStage, string> = {
   [PIPELINE_STAGE.classified]:
     "A model picks one of four categories. Its output is an enum, so total prompt failure is one mis-filed ticket and nothing else.",
   [PIPELINE_STAGE.eligible]:
-    "Three gates run before any model is asked: the category, whether anyone has already replied, and whether there is plain text to read.",
+    "Four gates run before any model is asked: the category, whether anyone has already replied, whether there is plain text to read, and whether the customer wrote again in the meantime.",
   [PIPELINE_STAGE.drafted]:
     "The ticket is claimed as Processing — invisible to every agent — and answered from the auto-replyable articles alone.",
   [PIPELINE_STAGE.checked]:

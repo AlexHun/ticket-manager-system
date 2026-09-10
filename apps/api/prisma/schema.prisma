@@ -429,7 +429,7 @@ enum MessageDirection {
 /// database; tickets have not, and they need one more, because **three of the
 /// writers are machines**. The classifier files a category with nobody watching,
 /// and the auto-reply either resolves a ticket under the assistant's account or
-/// hands it back `Open` for one of nine reasons. Until this table, the answer to
+/// hands it back `Open` for one of ten reasons. Until this table, the answer to
 /// "why is this Resolved and filed under the assistant?" was a log line nobody
 /// kept, read weeks later by someone who does not have the logs.
 ///

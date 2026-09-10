@@ -202,7 +202,7 @@ test.describe("the evals screen", () => {
           .getByText("General → Other"),
       ).toBeVisible();
       // Which of the two output checks did the holding. Read off the named
-      // breakdown rather than the card at large: the same nine words label a
+      // breakdown rather than the card at large: the same ten words label a
       // decline in the Expected and Reached columns of the table below, and an
       // unscoped match would be satisfied by either of those instead.
       await expect(
@@ -435,7 +435,7 @@ test.describe("a run against the frozen corpus", () => {
 
   test("a case decided by the gates pays for its classification and nothing else", async () => {
     // `refund` never reaches the *auto-reply* — `gateDecline` answers it from
-    // three values, which is what makes three of the nine decline reasons
+    // three values, which is what makes four of the ten decline reasons
     // measurable at all and what stops a run paying to re-derive a constant.
     //
     // Since slice 4 it is no longer free, deliberately: the gate reads what the

@@ -124,7 +124,7 @@ function categoryLabel(category: TicketCategory | null): string {
  * An outcome with its reason, the way a result row reads it.
  *
  * `DECLINE_SHORT` rather than a second set of words: the rail already says
- * these nine things, and two files' worth of carefully-argued wording is two
+ * these ten things, and two files' worth of carefully-argued wording is two
  * files' worth that will eventually disagree — which is the whole reason
  * `pipeline-labels.ts` exists.
  */
@@ -543,7 +543,7 @@ function RunCard({ run }: { run: EvalRunRow }) {
             <span className="text-muted-foreground">Caught by:</span>{" "}
             {/* A named list rather than a run of spans. It reads as one to a
                 screen reader, which it is — and it gives the breakdown a handle
-                of its own, which it needs: the same nine words label a decline
+                of its own, which it needs: the same ten words label a decline
                 in the Expected and Reached columns of the table below, so a
                 locator that only knew the wording would be pointing at three
                 different claims. */}

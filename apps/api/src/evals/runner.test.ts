@@ -3,7 +3,7 @@
  *
  * What slice 1 of the eval harness existed to retire and this slice extends:
  * that handing a hand-built `AutoReplyContext` to `autoReply` reproduces a
- * verdict the pipeline would have reached, that the three preflight gates are
+ * verdict the pipeline would have reached, that the four preflight gates are
  * now reachable from values, and that a run writes nothing a customer or an
  * agent would see (PRD R12).
  *

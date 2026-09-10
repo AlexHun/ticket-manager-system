@@ -44,7 +44,7 @@ describe("the set covers what the PRD asked for", () => {
   });
 
   test("every decline reason is either covered or has a written reason it cannot be", () => {
-    // R2 asks for a case per reason and six of the nine have one. The other
+    // R2 asks for a case per reason and seven of the ten have one. The other
     // three are recorded as unreachable *in prose*, deliberately: a case
     // designed never to match is the "cries wolf, then gets ignored" failure the
     // PRD names as the thing this harness exists to prevent. What this test
@@ -127,7 +127,7 @@ describe("preflight and the gates agree", () => {
       const gated = gateDecline({
         category: evalCase.preflight.category,
         hasOutbound: evalCase.preflight.answered,
-        inboundCount: evalCase.preflight.hasInbound ? 1 : 0,
+        inboundCount: evalCase.preflight.inboundCount,
       });
       if (gated === null) continue;
 
@@ -146,6 +146,7 @@ describe("preflight and the gates agree", () => {
       AUTO_REPLY_DECLINE.category,
       AUTO_REPLY_DECLINE.answered,
       AUTO_REPLY_DECLINE.noText,
+      AUTO_REPLY_DECLINE.followUp,
     ];
 
     for (const evalCase of AUTO_REPLY_CASES) {
@@ -155,7 +156,7 @@ describe("preflight and the gates agree", () => {
         gateDecline({
           category: evalCase.preflight.category,
           hasOutbound: evalCase.preflight.answered,
-          inboundCount: evalCase.preflight.hasInbound ? 1 : 0,
+          inboundCount: evalCase.preflight.inboundCount,
         }),
         evalCase.id,
       ).toBe(evalCase.expected.decline);
@@ -249,14 +250,20 @@ describe("what the simulator is offered", () => {
   test("excludes exactly the cases ingestion cannot reproduce", () => {
     // A ticket is created *by* an inbound email, so a thread already replied to
     // and a ticket with no inbound message are states `/pipeline` cannot post
-    // its way into. Offering them would be offering a scenario that lands
-    // somewhere other than where the case says — which is the one thing sharing
-    // a case set between two readers is supposed to make impossible.
+    // its way into; a ticket carrying two inbound messages needs a second email
+    // delivered inside the seconds the classifier takes, which is a race rather
+    // than a scenario. Offering any of them would be offering something that
+    // lands somewhere other than where the case says — which is the one thing
+    // sharing a case set between two readers is supposed to make impossible.
     const excluded = AUTO_REPLY_CASES.filter(
       (c) => !SIMULATABLE_CASES.includes(c),
     ).map((c) => c.id);
 
-    expect(excluded.sort()).toEqual(["already-answered", "no-inbound-message"]);
+    expect(excluded.sort()).toEqual([
+      "already-answered",
+      "no-inbound-message",
+      "wrote-again",
+    ]);
   });
 });
 
@@ -274,7 +281,7 @@ describe("the smoke subset", () => {
           gateDecline({
             category: c.preflight.category,
             hasOutbound: c.preflight.answered,
-            inboundCount: c.preflight.hasInbound ? 1 : 0,
+            inboundCount: c.preflight.inboundCount,
           }) !== null,
       ),
     ).toBe(true);
@@ -284,7 +291,7 @@ describe("the smoke subset", () => {
           gateDecline({
             category: c.preflight.category,
             hasOutbound: c.preflight.answered,
-            inboundCount: c.preflight.hasInbound ? 1 : 0,
+            inboundCount: c.preflight.inboundCount,
           }) === null,
       ),
     ).toBe(true);

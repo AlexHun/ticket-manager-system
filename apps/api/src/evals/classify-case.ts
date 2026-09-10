@@ -52,25 +52,27 @@ export interface ClassifyCaseResult {
  * - **`category: null`** is the `unclassified` case, whose whole expectation is
  *   that classification *failed*. Nothing the classifier could say would be
  *   right, and scoring it would mean asking the model to reproduce an outage.
- * - **`hasInbound: false`** is the `no-inbound-message` case, which carries a
+ * - **`inboundCount: 0`** is the `no-inbound-message` case, which carries a
  *   placeholder body precisely because nothing reads it. There is no email to
  *   classify, and on the real path there is no ticket either — classification
  *   runs off an inbound email arriving.
  *
- * Everything else is in, **including the three gated cases that are left**
- * (`refund`, `double-charge`, `already-answered` — the other two gated cases
- * are the two exclusions above). That is the deliberate half: the category gate
- * is the only thing standing between a refund request and an unattended reply,
- * and what it reads is the classifier's answer. A harness that skipped
- * classification wherever the gate was going to fire would be measuring the
- * classifier exactly where its answer does not matter, and skipping it where
- * it does.
+ * Everything else is in, **including the four gated cases that are left**
+ * (`refund`, `double-charge`, `already-answered`, `wrote-again` — the other two
+ * gated cases are the two exclusions above). That is the deliberate half: the
+ * category gate is the only thing standing between a refund request and an
+ * unattended reply, and what it reads is the classifier's answer. A harness
+ * that skipped classification wherever the gate was going to fire would be
+ * measuring the classifier exactly where its answer does not matter, and
+ * skipping it where it does.
  *
- * It costs a call per repeat on those three, which used to be free — see the
+ * It costs a call per repeat on those four, which used to be free — see the
  * note in `./runner.ts` on what a gated case now spends.
  */
 export function isClassifiable(evalCase: AutoReplyCase): boolean {
-  return evalCase.preflight.category !== null && evalCase.preflight.hasInbound;
+  return (
+    evalCase.preflight.category !== null && evalCase.preflight.inboundCount > 0
+  );
 }
 
 /**

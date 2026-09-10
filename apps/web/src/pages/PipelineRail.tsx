@@ -459,7 +459,7 @@ function TraceRail({ run }: { run: PipelineRun }) {
             railStyle={{ width: RAIL_MIN_W + 1 }}
           >
             {/* One stub, and only where the ticket actually left. Drawing all
-                nine on a single trace would be a legend, not a trace. */}
+                ten on a single trace would be a legend, not a trace. */}
             {exitedHere && run.decline && (
               <Exit
                 label={DECLINE_SHORT[run.decline]}
