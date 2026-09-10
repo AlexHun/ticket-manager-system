@@ -61,6 +61,7 @@ function makeResult(
     abandoned: 0,
     usd: 0.0012,
     cachedRepeats: 4,
+    cacheable: 4,
     caught: 0,
     escaped: 0,
     expectedCategory: TICKET_CATEGORY.General,

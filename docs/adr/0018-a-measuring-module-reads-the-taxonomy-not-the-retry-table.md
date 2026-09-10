@@ -99,6 +99,21 @@ the runner emits per case, which is a change to `EVAL_COUNTERS` and a migration,
 not a change to a function. Filed as
 [#223](https://github.com/AlexHun/ticket-manager-system/issues/223).
 
+**Closed by #223, as predicted and by that route.** `cacheable` is a counter in
+`EVAL_COUNTERS`, written per case by `runCase` off the same `verdicts.slice(1)`
+its `cachedRepeats` is filtered from — one slice, two numbers, so the rate's
+halves cannot be computed by two expressions again — summed to the run by the
+aggregate every other counter goes through, and read by `routes/evals.ts`, which
+now computes nothing. Existing rows were backfilled from `repeats` rather than
+left at zero, which is the opposite of what the classifier-accuracy migration
+did and for a reason worth keeping straight: the classifier had measured
+nothing before its column existed, so zero was true, whereas every historical
+run _did_ count its cache hits and only its denominator lived elsewhere. The
+migration's header carries that argument. One thing fell out that the issue did
+not ask for: the old derivation filled in while `cachedRepeats` stayed zero
+until the run closed, so a run halfway through reported 0% cached — the shape of
+the regression — where it now reports nothing.
+
 The second half of it — `EvalCaseOutcome` carrying both `cachedRepeats` and the
 raw `verdicts[].cached` a reader could re-tally wrongly — is deliberate and
 stays. The per-repeat flag is diagnostic and the verdicts are stored whole in a

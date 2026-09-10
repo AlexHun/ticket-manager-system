@@ -670,14 +670,12 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             abandoned: run.abandoned,
             usd: run.usd,
             cachedRepeats: run.cachedRepeats,
-            // One repeat per case is what warms the cache and can never be a hit,
-            // so the denominator is not `attempts`. Derived from the rows that exist
-            // rather than from `cases × (repeats - 1)`, so a run still filling in
-            // reports the fraction it has actually measured.
-            cacheable: results.reduce(
-              (total, result) => total + Math.max(result.repeats - 1, 0),
-              0,
-            ),
+            // Read, not re-derived (#223). This used to be
+            // `Σ max(repeats - 1, 0)` over `results` — a second expression of
+            // the rule `EVAL_COUNTERS` argues and `runCase` applies, with a
+            // database between the two and nothing keeping them in step, on the
+            // one rate here that makes a stopped prompt cache visible.
+            cacheable: run.cacheable,
             caught: run.caught,
             escaped: run.escaped,
             checks: checksFrom(results),
@@ -712,6 +710,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
               abandoned: result.abandoned,
               usd: result.usd,
               cachedRepeats: result.cachedRepeats,
+              cacheable: result.cacheable,
               caught: result.caught,
               escaped: result.escaped,
               expectedCategory: asTicketCategory(result.expectedCategory),

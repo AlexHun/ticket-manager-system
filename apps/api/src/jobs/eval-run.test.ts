@@ -53,7 +53,12 @@ function cleanRun(repeats: number): EvalCaseOutcome {
     matches: repeats,
     abandoned: 0,
     usd: 0.0002 * repeats,
+    // Both halves of the cache rate, because `runCase` emits both: the first
+    // repeat warms it, so it is a hit on none of them and countable on all the
+    // rest. This file is not where that rule is asserted (`evals/runner.test.ts`
+    // is) — it is the fixture agreeing with it.
     cachedRepeats: repeats - 1,
+    cacheable: repeats - 1,
     caught: 0,
     escaped: 0,
     classifiedRepeats: repeats,
@@ -231,8 +236,14 @@ describe("handle", () => {
     expect(run.abandoned).toBe(0);
     // R10: an estimate, recorded rather than only logged.
     expect(run.usd).toBeCloseTo(PAIR.length * REPEATS * 0.0002, 6);
-    // One repeat per case is what warms the cache and can never be a hit.
+    // One repeat per case is what warms the cache and can never be a hit —
+    // which is why both halves of that rate are summed here, and why the
+    // denominator is asserted beside the numerator. It used to be re-derived at
+    // the route from `repeats`, so nothing checked that the run's own column was
+    // ever written; drop it from the aggregate and `/evals` would draw a dash
+    // where the cache figure goes (#223).
     expect(run.cachedRepeats).toBe(PAIR.length * (REPEATS - 1));
+    expect(run.cacheable).toBe(PAIR.length * (REPEATS - 1));
   });
 
   test("records what each case's payload did, and rolls that up too", async () => {
