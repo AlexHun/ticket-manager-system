@@ -670,17 +670,11 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             abandoned: run.abandoned,
             usd: run.usd,
             cachedRepeats: run.cachedRepeats,
-            // Read, not re-derived (#223). One repeat per case is what warms the
-            // cache and can never be a hit, so the denominator is not
-            // `attempts` — but that rule is applied once, by `runCase`, and
-            // summed here like every other counter. This used to be
-            // `Σ max(repeats - 1, 0)` over `results`, a second expression of the
-            // same rule that nothing kept in step with the first, on the one
-            // rate in this codebase that makes a stopped prompt cache visible.
-            // Summing it with the rest also fixes a smaller thing: the
-            // derivation filled in while `cachedRepeats` stayed zero until the
-            // run closed, so a run halfway through drew 0%, which is what the
-            // regression looks like.
+            // Read, not re-derived (#223). This used to be
+            // `Σ max(repeats - 1, 0)` over `results` — a second expression of
+            // the rule `EVAL_COUNTERS` argues and `runCase` applies, with a
+            // database between the two and nothing keeping them in step, on the
+            // one rate here that makes a stopped prompt cache visible.
             cacheable: run.cacheable,
             caught: run.caught,
             escaped: run.escaped,

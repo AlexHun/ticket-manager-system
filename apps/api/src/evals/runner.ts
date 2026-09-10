@@ -409,7 +409,7 @@ export async function runCase(
   // to agree: that is what it was until `routes/evals.ts` stopped re-deriving
   // `Σ max(repeats - 1, 0)` over the stored rows. `EVAL_COUNTERS` is where the
   // rule is argued; this is where it lives.
-  const cacheable = verdicts.slice(1);
+  const cacheableVerdicts = verdicts.slice(1);
 
   return {
     verdicts,
@@ -418,8 +418,8 @@ export async function runCase(
     abandoned: verdicts.filter((v) => v.outcome === PIPELINE_OUTCOME.abandoned)
       .length,
     usd: verdicts.reduce((total, v) => total + v.usd, 0),
-    cacheable: cacheable.length,
-    cachedRepeats: cacheable.filter((v) => v.cached).length,
+    cacheable: cacheableVerdicts.length,
+    cachedRepeats: cacheableVerdicts.filter((v) => v.cached).length,
     caught: verdicts.filter((v) => v.caught).length,
     escaped: verdicts.filter((v) => v.escaped).length,
     // A repeat with no category was either never asked or could not be

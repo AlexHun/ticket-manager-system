@@ -1022,12 +1022,9 @@ model EvalRun {
   /// on a full run is the prompt-caching regression that nothing else in this
   /// app would show.
   ///
-  /// Both are summed from the case results. `cacheable` is a stored column
-  /// rather than `Σ max(repeats - 1, 0)` read back off those rows for the
-  /// reason `EVAL_COUNTERS` gives: the rule that one repeat per case warms the
-  /// cache is applied in one place, `evals/runner.ts`, and a denominator
-  /// derived by a second expression moves this rate without moving anything
-  /// beside it (#223).
+  /// Both are summed from the case results, and `cacheable` is a stored column
+  /// rather than something a reader re-derives from `repeats` — `EVAL_COUNTERS`
+  /// is where that is argued (#223).
   cachedRepeats Int   @default(0)
   cacheable     Int   @default(0)
 
