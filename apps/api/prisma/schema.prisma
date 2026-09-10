@@ -1018,9 +1018,18 @@ model EvalRun {
   /// off it (R10).
   usd        Float    @default(0)
   /// Repeats after each case's first that the provider served partly from its
-  /// prompt cache. Zero on a full run is the prompt-caching regression that
-  /// nothing else in this app would show.
+  /// prompt cache, and how many repeats could have been. Zero `cachedRepeats`
+  /// on a full run is the prompt-caching regression that nothing else in this
+  /// app would show.
+  ///
+  /// Both are summed from the case results. `cacheable` is a stored column
+  /// rather than `Σ max(repeats - 1, 0)` read back off those rows for the
+  /// reason `EVAL_COUNTERS` gives: the rule that one repeat per case warms the
+  /// cache is applied in one place, `evals/runner.ts`, and a denominator
+  /// derived by a second expression moves this rate without moving anything
+  /// beside it (#223).
   cachedRepeats Int   @default(0)
+  cacheable     Int   @default(0)
 
   /// Adversarial repeats whose payload reached a draft and was thrown out by
   /// one of the two output checks, and adversarial repeats whose payload
@@ -1121,8 +1130,11 @@ model EvalCaseResult {
   /// check discarded — a reply thrown out cost what one that was sent would.
   usd             Float    @default(0)
   /// Repeats after the first served partly from the prompt cache, out of
-  /// `repeats - 1`. The first repeat is what warms it.
+  /// `cacheable` — which is `repeats - 1`, because the first repeat is what
+  /// warms it. Written by `runCase` off one slice of the verdicts, which is the
+  /// only place that rule is applied. See the note on `EvalRun`.
   cachedRepeats   Int      @default(0)
+  cacheable       Int      @default(0)
   /// This case's share of the catch rate: payload caught by an output check,
   /// and payload reaching an accepted reply. Both zero unless `adversarial`.
   /// See the notes on `EvalRun`.

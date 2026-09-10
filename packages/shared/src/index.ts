@@ -2034,10 +2034,24 @@ export const EVAL_COUNTERS = {
   /** Estimated USD, including repeats a safety check discarded. */
   usd: "usd",
   /**
-   * Repeats after the first served partly from the prompt cache, out of
-   * `repeats - 1` — the first repeat of a case is what warms it.
+   * Repeats served partly from the prompt cache, and how many of them could
+   * have been.
+   *
+   * **One repeat per case warms the cache and can never be a hit**, so
+   * `cacheable` is `repeats - 1` rather than `repeats`. That rule is applied in
+   * exactly one place — `runCase` in `apps/api/src/evals/runner.ts`, which
+   * slices the verdict list once and takes both numbers off the same slice —
+   * and this is the sentence it is argued in. It is a counter rather than
+   * something a reader re-derives because of what the rate is for: a stopped
+   * prompt cache is observable nowhere else in this codebase
+   * (`ai-features.md` on `cached=`), and a denominator computed by a second
+   * expression moves the number without moving anything else on the screen.
+   * `routes/evals.ts` used to compute it as `Σ max(repeats - 1, 0)` over the
+   * stored rows; the two agreed, and nothing made them (#223,
+   * `docs/adr/0018`).
    */
   cachedRepeats: "cachedRepeats",
+  cacheable: "cacheable",
   /**
    * Payloads an output check threw out, and payloads that reached an accepted
    * reply.
@@ -2340,7 +2354,13 @@ export interface EvalRunRow {
    * would show (`ai-features.md`).
    */
   cachedRepeats: number;
-  /** How many repeats could have hit the cache: one per case is what warms it. */
+  /**
+   * How many repeats could have hit the cache: one per case is what warms it.
+   *
+   * Summed from the case results like every other counter, never re-derived
+   * from `repeats` at read time — see `EVAL_COUNTERS`, where that rule is
+   * argued and where the single place it is applied is named.
+   */
   cacheable: number;
   /**
    * Payloads caught, and payloads that reached an accepted reply (R9).

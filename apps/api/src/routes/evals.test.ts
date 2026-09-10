@@ -262,6 +262,7 @@ function caseResult(overrides: Record<string, unknown> = {}) {
     abandoned: 0,
     usd: 0.001,
     cachedRepeats: 4,
+    cacheable: 4,
     verdicts: Array.from({ length: 5 }, () => ({
       outcome: PIPELINE_OUTCOME.declined,
       decline: "notCovered",
@@ -689,9 +690,19 @@ describe("GET /runs", () => {
     expect(body.runs[0]?.status).toBe(EVAL_RUN_STATUS.failed);
   });
 
-  test("counts only the repeats that could have hit the prompt cache", async () => {
+  test("reports the cache denominator the run recorded, deriving nothing", async () => {
     // One repeat per case is what warms it, so the denominator is not the
-    // number of repeats — a cold run would otherwise read as 20% cached forever.
+    // number of repeats — a cold run would otherwise read as 20% cached
+    // forever. **That rule is applied by `runCase` and only there** (#223);
+    // this route reads the column, and the two numbers on the wire are the two
+    // the run wrote.
+    //
+    // The row is written so that `Σ max(repeats - 1, 0)` over its cases — the
+    // expression this route used to compute the denominator with — gives 4 and
+    // the stored counter gives 8. Nothing a worker writes looks like this; it
+    // is built this way so the assertion can only pass if the route stopped
+    // deriving. A fixture where the two agree would pass either way, which is
+    // how one rule in two modules stayed invisible for as long as it did.
     await prisma.evalRun.create({
       data: {
         corpus: EVAL_CORPUS.frozen,
@@ -699,10 +710,11 @@ describe("GET /runs", () => {
         finishedAt: new Date(),
         repeats: 5,
         cachedRepeats: 8,
+        cacheable: 8,
         results: {
           create: [
-            caseResult({ caseId: "off-corpus", cachedRepeats: 4 }),
-            caseResult({ caseId: "api-access", cachedRepeats: 4 }),
+            caseResult({ caseId: "off-corpus", repeats: 3, cachedRepeats: 4 }),
+            caseResult({ caseId: "api-access", repeats: 3, cachedRepeats: 4 }),
           ],
         },
       },
@@ -713,6 +725,9 @@ describe("GET /runs", () => {
 
     expect(body.runs[0]?.cacheable).toBe(8);
     expect(body.runs[0]?.cachedRepeats).toBe(8);
+    // And the case's own pair travels with it, so a reader can see which case
+    // stopped hitting the cache rather than only that the run did.
+    expect(body.runs[0]?.results[0]?.cacheable).toBe(4);
   });
 
   test("a stored reason this build has no wording for reads as null", async () => {

@@ -515,6 +515,49 @@ describe("runCase", () => {
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
     expect(outcome.cachedRepeats).toBe(4);
+    // And it is not in the denominator either, for the same reason and from the
+    // same slice.
+    expect(outcome.cacheable).toBe(4);
+  });
+
+  test("emits the denominator its cache hits are read against", async () => {
+    // **This is the single place the rule lives** (#223). "One repeat per case
+    // warms the cache" used to be written twice — `verdicts.slice(1)` here and
+    // `Σ max(repeats - 1, 0)` over the stored rows in `routes/evals.ts` — with
+    // a database between them and nothing making the two agree. Editing either
+    // one alone produced a plausible percentage rather than an error, on the
+    // one number in this codebase that makes a stopped prompt cache visible.
+    // `runCase` now emits both halves off one slice, `routes/evals.ts` reads
+    // the column, and this test is what fails if the rule is edited anywhere
+    // else. The rest of the route's arithmetic is asserted where it lives, in
+    // `routes/evals.test.ts`.
+    script = [
+      {
+        ...DECLINED,
+        usage: usage({ inputTokens: 1_000, cachedInputTokens: 0 }),
+      },
+    ];
+
+    const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!, 3);
+
+    expect(outcome.repeats).toBe(3);
+    expect(outcome.cacheable).toBe(2);
+    // Nothing was served from the cache, and that is a measured zero rather
+    // than an unmeasurable one: there were two repeats it could have happened
+    // on. A denominator of zero would be the other thing entirely.
+    expect(outcome.cachedRepeats).toBe(0);
+  });
+
+  test("a case answered once could have hit the cache on nothing", async () => {
+    // The edge the two expressions had to agree on and the one a `- 1` gets
+    // wrong: one repeat is the warming repeat, so there is no repeat left for a
+    // hit to happen on. Zero of zero reads as "this run says nothing about the
+    // cache" on the page, which is the honest answer — not 0%, which is what
+    // the regression looks like.
+    const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!, 1);
+
+    expect(outcome.cacheable).toBe(0);
+    expect(outcome.cachedRepeats).toBe(0);
   });
 
   test("a gated case asks no model to write a reply", async () => {

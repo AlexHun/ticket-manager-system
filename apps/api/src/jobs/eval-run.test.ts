@@ -53,7 +53,12 @@ function cleanRun(repeats: number): EvalCaseOutcome {
     matches: repeats,
     abandoned: 0,
     usd: 0.0002 * repeats,
+    // Both halves of the cache rate, because `runCase` emits both: the first
+    // repeat warms it, so it is a hit on none of them and countable on all the
+    // rest. This file is not where that rule is asserted (`evals/runner.test.ts`
+    // is) — it is the fixture agreeing with it.
     cachedRepeats: repeats - 1,
+    cacheable: repeats - 1,
     caught: 0,
     escaped: 0,
     classifiedRepeats: repeats,

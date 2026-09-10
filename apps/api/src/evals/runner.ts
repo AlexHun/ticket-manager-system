@@ -49,10 +49,11 @@ import { classifyCase, isClassifiable } from "./classify-case";
  * repeats 2..5 of a case are the only place in this codebase where a stopped
  * cache is *observable*: `cachedRepeats` below counts them, and a run reporting
  * zero on a full set is that regression, showing up on a screen for the first
- * time. Two notes on that counter. Its denominator is the run-level `cacheable`
- * in `routes/evals.ts`, which re-derives "one repeat per case warms it" rather
- * than reading it from here — one rule in two modules, filed as
- * [#223](https://github.com/AlexHun/ticket-manager-system/issues/223). And the
+ * time. Two notes on that counter. Its denominator is `cacheable`, emitted
+ * beside it by `runCase` off the same slice of the verdicts — it used to be
+ * re-derived at the route as `Σ max(repeats - 1, 0)`, which was one rule
+ * written twice across a database with nothing making the two agree (#223,
+ * `docs/adr/0018`). Now the route reads a column and computes nothing. And the
  * flag it counts comes from `wasCached` in `../ai/provider`, deliberately not
  * from a token count read here: `toAiUsage` is the one place the SDK's usage
  * shape is named, and a field read that bypasses it is one an SDK release can
@@ -400,6 +401,16 @@ export async function runCase(
     verdicts.push(await answerCase(articles, evalCase, signal));
   }
 
+  // **The one place "the first repeat warms the cache" is applied** (#223).
+  // It is never counted as a hit — including it would make a cold run look 20%
+  // cached forever — and for the same reason it is not in the denominator
+  // either. Both numbers come off this single slice, so the rate cannot be a
+  // fraction whose halves were computed by two expressions that merely happened
+  // to agree: that is what it was until `routes/evals.ts` stopped re-deriving
+  // `Σ max(repeats - 1, 0)` over the stored rows. `EVAL_COUNTERS` is where the
+  // rule is argued; this is where it lives.
+  const cacheable = verdicts.slice(1);
+
   return {
     verdicts,
     repeats,
@@ -407,9 +418,8 @@ export async function runCase(
     abandoned: verdicts.filter((v) => v.outcome === PIPELINE_OUTCOME.abandoned)
       .length,
     usd: verdicts.reduce((total, v) => total + v.usd, 0),
-    // The first repeat is what warms the cache, so it is never counted as a hit
-    // — including it would make a cold run look 20% cached forever.
-    cachedRepeats: verdicts.slice(1).filter((v) => v.cached).length,
+    cacheable: cacheable.length,
+    cachedRepeats: cacheable.filter((v) => v.cached).length,
     caught: verdicts.filter((v) => v.caught).length,
     escaped: verdicts.filter((v) => v.escaped).length,
     // A repeat with no category was either never asked or could not be
