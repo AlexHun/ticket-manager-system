@@ -83,6 +83,14 @@ export function isClassifiable(evalCase: AutoReplyCase): boolean {
  * `declined`, for the same reason: an outage is not the model getting things
  * wrong, and a metric that cannot tell them apart is one nobody trusts twice.
  *
+ * "The same split" is now literally true, and it was not until #211: the
+ * auto-reply half was reading the queue's retry table, so this comment asserted
+ * a symmetry the other half was not keeping (`docs/adr/0018`). This side gets
+ * the split for free, which is why it looks like nothing — `ClassifyResult`'s
+ * failure type *is* `AiFailure`, with no feature-level members to tell apart, so
+ * `result.ok` already answers the question `evals/runner.ts` needs
+ * `isProviderFailure` to answer.
+ *
  * The end of that thread is `EvalMetricRow.value`, which is null on a zero
  * denominator: a run where the classifier answered nothing reports no
  * classifier accuracy rather than a catastrophic zero.

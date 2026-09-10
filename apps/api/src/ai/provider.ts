@@ -179,6 +179,31 @@ export function usdFor(usage: AiUsage | undefined): number {
 }
 
 /**
+ * Whether the provider served any of this prompt from its cache.
+ *
+ * Beside `usdFor` and for the same reason it is here rather than at its caller:
+ * both are one question over `AiUsage`, and this file is where the fields of
+ * that interface are read. Until #211 it was written out in `evals/runner.ts`
+ * as `(result.usage?.cachedInputTokens ?? 0) > 0` — the **only** read of an
+ * `AiUsage` field anywhere outside this module — which put the harness's one
+ * cache alarm on the far side of the seam that exists to keep an SDK shape
+ * change loud. `toAiUsage` is what catches the shape change at compile time,
+ * and a field read that never passes through here is a field read `toAiUsage`
+ * cannot protect: it would go on returning `undefined`, this would go on
+ * returning `false`, and `cachedRepeats` would read zero on every run. That is
+ * not a hypothetical. It is what `cached=0` did across 350 calls before
+ * `provider.test.ts` was written, and the eval harness is the screen it would
+ * now be doing it on.
+ *
+ * `false` for a call that reported no usage, which is the same reading `usdFor`
+ * takes of the same absence: nothing known to charge, nothing known to be
+ * cached. The count of unreported calls is visible in the log.
+ */
+export function wasCached(usage: AiUsage | undefined): boolean {
+  return (usage?.cachedInputTokens ?? 0) > 0;
+}
+
+/**
  * One line per model call, in one format, from one place.
  *
  * Every AI feature here is a single request with no streaming and no tool loop,
@@ -263,6 +288,32 @@ export const AI_FAILURE = {
 } as const;
 
 export type AiFailure = (typeof AI_FAILURE)[keyof typeof AI_FAILURE];
+
+/**
+ * Whether a failure is one of these — the model could not be asked, or asked
+ * and produced nothing — rather than a feature's verdict on an answer it got.
+ *
+ * The other half of the split `AI_FAILURE` exists to draw, and the half nothing
+ * had a name for until #211. A feature that can fail its own way spreads this
+ * object and adds to it (`AUTO_REPLY_FAILURE`, `POLISH_FAILURE`), so "is this
+ * reason the provider's or the feature's" is a question about **membership**.
+ *
+ * **Not `isRetryable` in `../jobs/ai-retry`, which is a different question.**
+ * That one splits these six *again*, by whether asking a second time could help,
+ * because a queue has to decide that; nothing about whose failure this is turns
+ * on it. The two disagree on `quota`, `auth` and `config`, and `evals/runner.ts`
+ * reading the retry table for a question about measurement is what that cost.
+ * `docs/adr/0018` has the measurement; `provider.test.ts` asserts the
+ * disagreement, so making the two agree fails a test rather than repeating it.
+ *
+ * Takes a `string` rather than an `AiFailure` on purpose, exactly as
+ * `isRetryable` does: a caller is holding a widened reason off a feature's own
+ * union and asking which side of this line it falls on. Narrowing the parameter
+ * would put the cast at the call site instead.
+ */
+export function isProviderFailure(reason: string): boolean {
+  return Object.values(AI_FAILURE).some((failure) => failure === reason);
+}
 
 /**
  * Work out what actually went wrong, through the SDK's wrapping.

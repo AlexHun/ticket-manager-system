@@ -9,8 +9,7 @@ import type { AutoReplyCase } from "@ticket/core";
 import { autoReply, type AutoReplyResult } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
 import type { KbArticle } from "../ai/knowledge-base";
-import { usdFor } from "../ai/provider";
-import { isRetryable } from "../jobs/ai-retry";
+import { isProviderFailure, usdFor, wasCached } from "../ai/provider";
 import { classifyCase, isClassifiable } from "./classify-case";
 
 /**
@@ -50,7 +49,15 @@ import { classifyCase, isClassifiable } from "./classify-case";
  * repeats 2..5 of a case are the only place in this codebase where a stopped
  * cache is *observable*: `cachedRepeats` below counts them, and a run reporting
  * zero on a full set is that regression, showing up on a screen for the first
- * time.
+ * time. Two notes on that counter. Its denominator is the run-level `cacheable`
+ * in `routes/evals.ts`, which re-derives "one repeat per case warms it" rather
+ * than reading it from here — one rule in two modules, filed as
+ * [#223](https://github.com/AlexHun/ticket-manager-system/issues/223). And the
+ * flag it counts comes from `wasCached` in `../ai/provider`, deliberately not
+ * from a token count read here: `toAiUsage` is the one place the SDK's usage
+ * shape is named, and a field read that bypasses it is one an SDK release can
+ * silently zero — which is what `cached=0` did for 350 calls before anybody
+ * noticed (`docs/adr/0018`).
  *
  * ## Two measurements per repeat, and why they do not talk to each other
  *
@@ -149,13 +156,25 @@ export const EVAL_REPEATS = 5;
  * An `AutoReplyResult` as the rail reads it.
  *
  * Three outcomes rather than two, and the third is what keeps the numbers
- * honest. `provider`, `busy` and `empty` mean the model could not be asked —
- * the same split `../jobs/ai-retry` already draws for the retry ladder — so
- * they are `abandoned` rather than `declined`. Counting an outage as a case the
- * model got wrong is how a harness starts crying wolf, which the PRD names as
- * the exact failure it exists to prevent; and an `abandoned` repeat can never
- * match an expectation, so it is counted separately as well as excluded from
- * the matches.
+ * honest. A failure the **provider** decided means the model could not be asked,
+ * or was asked and produced nothing usable, so it is `abandoned` rather than
+ * `declined`. Counting an outage as a case the model got wrong is how a harness
+ * starts crying wolf, which the PRD names as the exact failure it exists to
+ * prevent; and an `abandoned` repeat can never match an expectation, so it is
+ * counted separately as well as excluded from the matches.
+ *
+ * That leaves exactly `declined` and `ungrounded` on the other side — the two
+ * `AUTO_REPLY_FAILURE` adds on top of the shared taxonomy, and the two that mean
+ * a model read the corpus and something was decided about what it produced.
+ * `isProviderFailure` is the membership test, so a failure mode added to
+ * `AI_FAILURE` lands on the right side of this the moment it exists.
+ *
+ * **It used to ask `isRetryable`, which is a different question**
+ * (`docs/adr/0018`): an expired key, an empty account, or a knowledge base with
+ * nothing auto-replyable left in it produced five `declined` repeats a case
+ * could not match, with `abandoned: 0` beside them. This is the same split
+ * `categoryOf` in `./classify-case` draws for the classifier half, which had it
+ * right — **every** way the call did not produce an answer, the key included.
  *
  * `unavailable` is still reported as the reason, because "the provider failed"
  * is the useful thing to see beside a repeat that went nowhere.
@@ -169,7 +188,7 @@ function verdictOf(result: AutoReplyResult): {
   }
 
   return {
-    outcome: isRetryable(result.reason)
+    outcome: isProviderFailure(result.reason)
       ? PIPELINE_OUTCOME.abandoned
       : PIPELINE_OUTCOME.declined,
     decline: result.decline,
@@ -325,7 +344,7 @@ export async function answerCase(
     // safety checks fired — which is most of the time, by design. The
     // classifier's call is in here too: one figure for what the repeat spent.
     usd: usdFor(result.usage) + classification.usd,
-    cached: (result.usage?.cachedInputTokens ?? 0) > 0,
+    cached: wasCached(result.usage),
     // Both are about the payloads and only the payloads (R9). An ordinary case
     // declined by the money check is a decline-accuracy miss worth reading, but
     // it is not a payload being caught — and letting it count would move the
