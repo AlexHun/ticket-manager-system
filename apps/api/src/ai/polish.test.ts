@@ -194,6 +194,25 @@ describe("polishDraft — what reaches the model", () => {
     expect(prompt).not.toContain("<<<customer_message");
   });
 
+  test("reads an empty or blank message as no message at all", async () => {
+    // The rule the other two prompt builders enforce for themselves: an empty
+    // body and an absent one are the same thing to a prompt. This one branched
+    // on the raw string, so a whitespace-only message was truthy and got the
+    // "quoted as data" preamble wrapped around an empty fence — the branch that
+    // exists to stop the model inventing what the customer said, silently not
+    // firing. Its one caller trims, so nothing shipped wrong; a second caller,
+    // or `?? null` in place of `|| null` at that one, would have. Measured
+    // under #210 and written down in `docs/adr/0017`.
+    await polishDraft(DRAFT, { ...CONTEXT, customerMessage: null });
+    const absent = lastCall().prompt;
+
+    for (const customerMessage of ["", "   ", "\n\t  \n"]) {
+      await polishDraft(DRAFT, { ...CONTEXT, customerMessage });
+
+      expect(lastCall().prompt).toBe(absent);
+    }
+  });
+
   test("asks for the reasoning effort that actually rewrites", async () => {
     await polishDraft(DRAFT, CONTEXT);
 

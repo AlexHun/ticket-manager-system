@@ -102,7 +102,16 @@ const BODY_LIMIT = 2_000;
  */
 export interface ClassifyContext {
   subject: string;
-  /** The first inbound message's plain text, or null when the email was HTML-only. */
+  /**
+   * The first inbound message's plain text, or null when the email was HTML-only.
+   *
+   * Callers write `?.trim() || null`, but the normalisation that decides
+   * anything is `userPrompt`'s below: an empty string, a blank one and null
+   * build the identical prompt, which is what `jobs/classify-ticket.ts` and
+   * `evals/classify-case.ts` cannot drift apart on. The same two lines as
+   * `auto-reply.ts`'s, where the assertion lives — this module has no test
+   * file, for the registry reason `docs/adr/0017` gives. Argued there too.
+   */
   text: string | null;
 }
 

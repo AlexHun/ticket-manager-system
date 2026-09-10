@@ -200,7 +200,15 @@ const NAME_LIMIT = 40;
  */
 export interface AutoReplyContext {
   subject: string;
-  /** The first inbound message's plain text, or null when the email was HTML-only. */
+  /**
+   * The first inbound message's plain text, or null when the email was HTML-only.
+   *
+   * Callers write `?.trim() || null`, but the normalisation that decides
+   * anything is `userPrompt`'s below: an empty string, a blank one and null
+   * build the identical prompt, which is what the eval harness and the job
+   * cannot drift apart on. Asserted in `auto-reply.test.ts`; argued in
+   * `docs/adr/0017`.
+   */
   text: string | null;
   /**
    * The From display name, as it arrived. Untrusted, and never sent to the
