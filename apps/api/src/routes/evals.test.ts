@@ -9,21 +9,15 @@
  * recorded and enqueued — because the two must never disagree about which
  * series a run belongs to.
  *
- * **One seam now, not two — this file is spike #209's converted call site.**
- * The configuration answer is no longer read off a module at all: the router is
- * a factory, it is handed a `{ evalConfigured }` object, and this file sets a
- * field on it. So the `../evals/config` registration is gone, and with it the
- * whole reason that one-line module was written — a caller reading
- * `../ai/provider` directly would put a second *stateful* stub on a specifier
- * `jobs/sweeps.test.ts` already owns, and the registry keeps one of two
- * (testing.md, #174). Nothing here binds either specifier now.
- *
- * The seam that remains is `../jobs/eval-run`, which stands in for the enqueue
- * because `getBoss()` throws with no queue running — mocked rather than
- * `../jobs/boss`, which `jobs/sweeps.test.ts` owns under a path that resolves
- * to the same module. Its factory **spreads the real module**; see the note on
- * it for what happened when it did not. That one is not a configuration
- * question, so passing a value does not reach it.
+ * Two seams, and each is deliberately a specifier nothing else in this suite
+ * owns. `../evals/config` is the one-line guard `isEvalConfigured()` exists for
+ * — reading `../ai/provider` directly here would put a second *stateful* stub
+ * on a specifier `jobs/sweeps.test.ts` already owns, and the registry keeps one
+ * of two (testing.md, #174). `../jobs/eval-run` stands in for the enqueue,
+ * because `getBoss()` throws with no queue running — and it is mocked rather
+ * than `../jobs/boss`, which `jobs/sweeps.test.ts` owns under a path that
+ * resolves to the same module. Both factories **spread the real module**; see
+ * the note on the second one for what happened when one of them did not.
  */
 
 import type { NextFunction, Request, Response } from "express";
@@ -68,19 +62,10 @@ mock.module("../middleware/auth", () => ({
   sessionOf: (res: Response) => res.locals.session,
 }));
 
-// **The seam under test in spike #209**, second shape. No `mock.module` here:
-// the router is handed its configuration, so this file owns it outright.
-//
-// A **thunk**, after a captured `boolean` was tried and measured: `serveRouter`
-// mounts once for the whole file, so a boolean frozen at `createEvalsRouter`
-// takes this file from 34 pass / 0 fail to 32 pass / 2 fail. The thunk answers
-// per request without putting a mutable field on the config object.
-//
-// Note what this ends up being: `() => configured` is the same one-line
-// closure the `mock.module("../evals/config", ...)` factory held. The switch
-// is identical; only the registry is gone.
 let configured = true;
-const config = { evalConfigured: () => configured };
+mock.module("../evals/config", () => ({
+  isEvalConfigured: () => configured,
+}));
 
 // **Spread, and this one was measured rather than copied.** Without it, this
 // file is the first to load `../jobs/eval-run` — through a factory exporting
@@ -111,9 +96,9 @@ mock.module("../jobs/eval-run", () => ({
   },
 }));
 
-const { createEvalsRouter } = await import("./evals");
+const { evalsRouter } = await import("./evals");
 
-const url = serveRouter("/api/evals", createEvalsRouter(config));
+const url = serveRouter("/api/evals", evalsRouter);
 
 beforeEach(async () => {
   await resetDb();
