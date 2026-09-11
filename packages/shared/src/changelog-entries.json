@@ -218,5 +218,10 @@
     "version": "0.1.92",
     "date": "2026-09-10",
     "title": "An outage is not a decline (#226)"
+  },
+  {
+    "version": "0.1.94",
+    "date": "2026-09-11",
+    "title": "Band every judged value against its stored threshold (#233)"
   }
 ]
