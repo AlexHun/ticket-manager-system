@@ -380,8 +380,15 @@ async function finishedRun(
   });
 }
 
-async function runs(): Promise<EvalRunsResponse> {
-  const res = await fetch(url("/runs"));
+/**
+ * The list, of one corpus (#234).
+ *
+ * The corpus is a query parameter now, and an absent one reads as frozen — so
+ * every test above that calls this bare is asking for the frozen series, which
+ * is what they were already seeding.
+ */
+async function runs(corpus?: EvalCorpus): Promise<EvalRunsResponse> {
+  const res = await fetch(url(corpus ? `/runs?corpus=${corpus}` : "/runs"));
   return (await res.json()) as EvalRunsResponse;
 }
 
@@ -853,7 +860,10 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
       matches: 3,
     });
 
-    const body = await runs();
+    // Asked for by name since #234, which is the other half of the same rule:
+    // the frozen run is not merely skipped as a predecessor, it is not on this
+    // page at all.
+    const body = await runs(EVAL_CORPUS.live);
 
     expect(body.runs[0]?.id).toBe(live.id);
     expect(body.runs[0]?.previous).toBeNull();
@@ -924,15 +934,14 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
   });
 
   test("finds the previous run even when it has fallen off the end of the page", async () => {
-    // The nightly is frozen, so twenty of them push the previous *live* run out
-    // of the window this route reads — and the live series would then quietly
-    // stop being comparable at exactly the point somebody most wants to know
-    // whether an article edit moved anything. One anchor lookup per corpus is
-    // what stops the window deciding what is comparable.
-    // 4 of 5, where every frozen run in the way is 5 of 5: the value that comes
-    // back names which run was read, not only the id beside it.
-    const live = await finishedRun({
-      corpus: EVAL_CORPUS.live,
+    // A series longer than the window this route reads — the nightly is frozen,
+    // so this is where the frozen series lands after three weeks. Without the
+    // anchor lookup the oldest run drawn would quietly stop being comparable at
+    // exactly the point somebody most wants to know whether something moved.
+    //
+    // 4 of 5, where every run in the way is 5 of 5: the value that comes back
+    // names which run was read, not only the id beside it.
+    const oldest = await finishedRun({
       startedAt: sept(1),
       attempts: 5,
       matches: 4,
@@ -940,25 +949,99 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
     for (let day = 2; day <= EVAL_RUN_LIMIT + 1; day += 1) {
       await finishedRun({ startedAt: sept(day) });
     }
-    const newer = await finishedRun({
-      corpus: EVAL_CORPUS.live,
-      startedAt: sept(EVAL_RUN_LIMIT + 2),
-      attempts: 5,
-      matches: 3,
-    });
 
     const body = await runs();
 
-    // The older live run is nowhere on the page, which is the whole point.
+    // The oldest run is nowhere on the page, which is the whole point.
     expect(body.runs).toHaveLength(EVAL_RUN_LIMIT);
-    expect(body.runs.map((r) => r.id)).not.toContain(live.id);
+    expect(body.runs.map((r) => r.id)).not.toContain(oldest.id);
 
-    expect(body.runs[0]?.id).toBe(newer.id);
-    expect(body.runs[0]?.previous?.id).toBe(live.id);
-    expect(previousOf(body, EVAL_METRIC.declineAccuracy)?.value).toBeCloseTo(
-      0.8,
-      6,
-    );
+    const last = body.runs.at(-1)!;
+    expect(last.previous?.id).toBe(oldest.id);
+    expect(
+      last.metrics.find((m) => m.metric === EVAL_METRIC.declineAccuracy)
+        ?.previous?.value,
+    ).toBeCloseTo(0.8, 6);
+  });
+});
+
+/* ── One corpus at a time (#234) ─────────────────────────────────────────── */
+
+describe("GET /runs — the corpus filter", () => {
+  test("answers the frozen series when the caller names none", async () => {
+    // The same reading the start route gives an absent corpus, and for the same
+    // reason: a frozen run's numbers move only when the code does, so a live
+    // run is a thing to ask for on purpose rather than to get by accident.
+    const frozen = await finishedRun({ startedAt: sept(1) });
+    await finishedRun({ corpus: EVAL_CORPUS.live, startedAt: sept(2) });
+
+    const body = await runs();
+
+    expect(body.corpus).toBe(EVAL_CORPUS.frozen);
+    expect(body.runs.map((r) => r.id)).toEqual([frozen.id]);
+  });
+
+  test("answers only the series the caller asked for", async () => {
+    // R4 made structural: the two are never averaged, and a list that
+    // interleaved them invites reading a red frozen run and a red live run as
+    // one trend.
+    await finishedRun({ startedAt: sept(1) });
+    const live = await finishedRun({
+      corpus: EVAL_CORPUS.live,
+      startedAt: sept(2),
+    });
+
+    const body = await runs(EVAL_CORPUS.live);
+
+    expect(body.corpus).toBe(EVAL_CORPUS.live);
+    expect(body.runs.map((r) => r.id)).toEqual([live.id]);
+  });
+
+  test("caps the page within the corpus, not across both", async () => {
+    // The half that is easy to get wrong. The nightly is frozen, so a cap
+    // applied across both series would let twenty nights of them push the whole
+    // live series off the page — and the live series would vanish from the
+    // screen without anything saying so.
+    for (let day = 1; day <= EVAL_RUN_LIMIT; day += 1) {
+      await finishedRun({ startedAt: sept(day) });
+    }
+    const live = await finishedRun({
+      corpus: EVAL_CORPUS.live,
+      startedAt: sept(1),
+    });
+
+    expect((await runs()).runs).toHaveLength(EVAL_RUN_LIMIT);
+    expect((await runs(EVAL_CORPUS.live)).runs.map((r) => r.id)).toEqual([
+      live.id,
+    ]);
+  });
+
+  test("refuses a corpus nothing names", async () => {
+    // 400 rather than a silent fallback to frozen: a hand-typed `?corpus=fozen`
+    // answered with the frozen series would be a page captioned with a corpus
+    // nobody asked for.
+    const res = await fetch(url("/runs?corpus=fozen"));
+
+    expect(res.status).toBe(400);
+  });
+
+  test("says whether any run exists at all when this series has none", async () => {
+    // The one thing a filtered list cannot say about itself, and what separates
+    // the two empty states on screen: an admin who has only ever run live must
+    // not be told, on load, that the harness has never been used.
+    await finishedRun({ corpus: EVAL_CORPUS.live });
+
+    const empty = await runs();
+
+    expect(empty.runs).toEqual([]);
+    expect(empty.anyRuns).toBe(true);
+  });
+
+  test("says so when there is genuinely nothing anywhere", async () => {
+    const body = await runs();
+
+    expect(body.runs).toEqual([]);
+    expect(body.anyRuns).toBe(false);
   });
 });
 

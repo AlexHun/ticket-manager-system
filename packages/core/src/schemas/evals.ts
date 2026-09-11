@@ -258,3 +258,25 @@ export const startEvalRunSchema = z.object({
 });
 
 export type StartEvalRunValues = z.infer<typeof startEvalRunSchema>;
+
+/**
+ * The query string of `GET /api/evals/runs` (#234).
+ *
+ * One knob, and it is the same knob `startEvalRunSchema` carries — deliberately,
+ * because on the screen it is one control: picking a corpus filters the list and
+ * aims the Run button. There is **no "all" value**, and that is the design rather
+ * than an omission. The two are separate series that are never averaged (R4), so
+ * a list holding both invites reading a red frozen run and a red live run as one
+ * trend; and an "all" the Run button could not honour would be a control meaning
+ * two different things at once.
+ *
+ * Absent means frozen (`EVAL_CORPUS_DEFAULT`), the same reading the start route
+ * gives an absent corpus. Anything else is a 400 rather than a silent fallback:
+ * a hand-typed `?corpus=fozen` answering with the frozen series would be a page
+ * captioned with a corpus nobody asked for.
+ */
+export const evalRunsQuerySchema = z.object({
+  corpus: z.enum(EVAL_CORPUS).optional(),
+});
+
+export type EvalRunsQuery = z.infer<typeof evalRunsQuerySchema>;

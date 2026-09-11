@@ -4,7 +4,7 @@ import {
   asAutoReplyDecline,
   asPipelineOutcome,
   asTicketCategory,
-  EVAL_CORPUS,
+  EVAL_CORPUS_DEFAULT,
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
@@ -27,7 +27,11 @@ import {
   type EvalRunStartedResponse,
   type TicketCategory,
 } from "@ticket/shared";
-import { autoReplyCaseById, startEvalRunSchema } from "@ticket/core";
+import {
+  autoReplyCaseById,
+  evalRunsQuerySchema,
+  startEvalRunSchema,
+} from "@ticket/core";
 import { prisma } from "../db";
 import { startEvalRun } from "../evals/start-run";
 import {
@@ -314,27 +318,32 @@ const COMPARISON_COLUMNS = {
  * Three conditions, and each one rules out a comparison that would be worse
  * than none. **Same corpus**, because frozen and live are two series (R4) and a
  * delta across them measures an admin's article edits and calls it a prompt
- * regression. **Completed**, because a run still filling in holds a fraction of
- * the set and a rate over a fraction is a different number, not a smaller one —
- * so a run in flight is skipped rather than compared against or used as a
- * predecessor. And **before**, on the same `[startedAt, id]` ordering the page
- * itself uses, so two runs started in the same second still have one answer.
+ * regression. Since #234 that one is kept by the query rather than by this
+ * function — a page is one corpus now — so the `corpus` argument is what the
+ * anchor lookup is aimed with, and nothing here has to re-check a row's series.
+ * **Completed**, because a run still filling in holds a fraction of the set and
+ * a rate over a fraction is a different number, not a smaller one — so a run in
+ * flight is skipped rather than compared against or used as a predecessor. And
+ * **before**, on the same `[startedAt, id]` ordering the page itself uses, so
+ * two runs started in the same second still have one answer.
  *
- * The page is walked oldest-first and each corpus's last seen run is carried
- * forward, which is one pass and no per-run query. The one thing that pass
- * cannot see is a predecessor that fell off the end of the page — and it will:
- * the nightly is frozen, so twenty nights of them push the previous *live* run
- * out of the window and the whole live series would quietly stop being
- * comparable. So each corpus gets one anchor lookup for the run immediately
- * older than the page, which is two queries whatever the history holds.
+ * The page is walked oldest-first and the last seen run is carried forward,
+ * which is one pass and no per-run query. The one thing that pass cannot see is
+ * a predecessor that fell off the end of the page — and it will, once a series
+ * is more than `EVAL_RUN_LIMIT` runs long: the oldest run drawn would then
+ * quietly stop being comparable at exactly the point somebody most wants to
+ * know whether something moved. So there is one anchor lookup for the run
+ * immediately older than the page, which is one extra query whatever the
+ * history holds.
  */
 async function previousRuns(
-  page: (PriorRun & { corpus: EvalCorpus; status: EvalRunStatus })[],
+  corpus: EvalCorpus,
+  page: (PriorRun & { status: EvalRunStatus })[],
 ): Promise<Map<number, PriorRun>> {
   const previous = new Map<number, PriorRun>();
-  // "The newest completed run of this corpus seen so far", walking oldest-first
-  // — which starts out as the run immediately older than the page itself.
-  const newestSeen = await anchorRuns(page.at(-1));
+  // "The newest completed run seen so far", walking oldest-first — which starts
+  // out as the run immediately older than the page itself.
+  let newestSeen = await anchorRun(corpus, page.at(-1));
 
   for (const run of [...page].reverse()) {
     // Skipped both ways: a run in flight or one that fell over is neither
@@ -342,48 +351,40 @@ async function previousRuns(
     // stops a half-finished run anchoring the series it interrupted.
     if (run.status !== EVAL_RUN_STATUS.completed) continue;
 
-    const prior = newestSeen.get(run.corpus);
-    if (prior) previous.set(run.id, prior);
-    newestSeen.set(run.corpus, run);
+    if (newestSeen) previous.set(run.id, newestSeen);
+    newestSeen = run;
   }
 
   return previous;
 }
 
 /**
- * The completed run immediately older than the page, one per corpus.
+ * The completed run of this corpus immediately older than the page.
  *
- * Two queries whatever the history holds, and they are what keep the answer
+ * One query whatever the history holds, and it is what keeps the answer
  * independent of `EVAL_RUN_LIMIT` — see the note on `previousRuns`. The
  * `[startedAt, id]` tie-break mirrors the page's own `orderBy` exactly; a
  * lookup that compared `startedAt` alone would skip a run started in the same
  * second and hand back the one before it.
  */
-async function anchorRuns(
+async function anchorRun(
+  corpus: EvalCorpus,
   oldest: { id: number; startedAt: Date } | undefined,
-): Promise<Map<EvalCorpus, PriorRun>> {
-  const anchors = new Map<EvalCorpus, PriorRun>();
-  if (!oldest) return anchors;
+): Promise<PriorRun | null> {
+  if (!oldest) return null;
 
-  await Promise.all(
-    Object.values(EVAL_CORPUS).map(async (corpus) => {
-      const run = await prisma.evalRun.findFirst({
-        where: {
-          corpus,
-          status: EVAL_RUN_STATUS.completed,
-          OR: [
-            { startedAt: { lt: oldest.startedAt } },
-            { startedAt: oldest.startedAt, id: { lt: oldest.id } },
-          ],
-        },
-        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-        select: COMPARISON_COLUMNS,
-      });
-      if (run) anchors.set(corpus, run);
-    }),
-  );
-
-  return anchors;
+  return prisma.evalRun.findFirst({
+    where: {
+      corpus,
+      status: EVAL_RUN_STATUS.completed,
+      OR: [
+        { startedAt: { lt: oldest.startedAt } },
+        { startedAt: oldest.startedAt, id: { lt: oldest.id } },
+      ],
+    },
+    orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+    select: COMPARISON_COLUMNS,
+  });
 }
 
 /**
@@ -558,7 +559,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
         return;
       }
 
-      const corpus = parsed.data.corpus ?? EVAL_CORPUS.frozen;
+      const corpus = parsed.data.corpus ?? EVAL_CORPUS_DEFAULT;
 
       // Ids are resolved *here* rather than in the worker's schema, because the
       // case set is data in `@ticket/core` and a schema that imported it would
@@ -583,7 +584,19 @@ export function createEvalsRouter(config: EvalsConfig): Router {
   );
 
   /**
-   * Every run, newest first, with the cases each one answered.
+   * One corpus's runs, newest first, with the cases each one answered (#234).
+   *
+   * **One series at a time, and never both.** Frozen and live are two series
+   * that are never averaged (R4), and a list that interleaved them invited
+   * exactly the reading the harness exists to prevent — a red frozen run and a
+   * red live run stacked in one column read as one trend, when the first is a
+   * prompt regression and the second might be an admin rewording an article.
+   * So the corpus is a filter here, the same value the caller's next `POST`
+   * carries, and there is no way to ask for both.
+   *
+   * The cap follows the filter, which is the half that is easy to get wrong:
+   * `take` inside the `where` means twenty nightly frozen runs can no longer
+   * push the live series off the end of the page.
    *
    * Results come back nested rather than through a second request: a run is
    * ~35 rows, which is a page either way, and the screen shows the run and its
@@ -592,17 +605,36 @@ export function createEvalsRouter(config: EvalsConfig): Router {
   router.get(
     "/runs",
     requireAdmin,
-    async (_req: Request, res: Response<EvalRunsResponse>) => {
+    async (
+      req: Request,
+      res: Response<EvalRunsResponse | { error: string }>,
+    ) => {
+      const parsed = evalRunsQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid request" });
+        return;
+      }
+
+      const corpus = parsed.data.corpus ?? EVAL_CORPUS_DEFAULT;
+
       const runs = await prisma.evalRun.findMany({
+        where: { corpus },
         orderBy: [{ startedAt: "desc" }, { id: "desc" }],
         take: EVAL_RUN_LIMIT,
         include: { results: { orderBy: { id: "asc" } } },
       });
 
-      // R14, and it is two queries rather than one per run — see `previousRuns`.
-      const previousByRun = await previousRuns(runs);
+      // R14, and it is one extra query rather than one per run — see
+      // `previousRuns`.
+      const previousByRun = await previousRuns(corpus, runs);
 
       res.json({
+        corpus,
+        // Asked only when the answer could be anything else — a page with runs
+        // on it has already settled it — so the extra read happens on the one
+        // request that needs it: the empty one, which has to tell "nothing on
+        // this series" apart from "nobody has ever run one".
+        anyRuns: runs.length > 0 || (await prisma.evalRun.count()) > 0,
         // A presence boolean, never the value or a prefix of it — the rule the
         // pipeline config block keeps. It is what lets the page say "no key"
         // rather than drawing a Run button that always fails.

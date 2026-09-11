@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   EVAL_CORPUS,
   EVAL_METRIC,
+  EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
   USER_ROLE,
   type EvalCaseResultRow,
+  type EvalCorpus,
   type EvalMetric,
   type EvalMetricRow,
   type EvalRunRow,
@@ -29,6 +31,11 @@ import { EvalsPage } from "./EvalsPage";
  * because frozen and live are two series that are never averaged; and a Run
  * button that is unavailable on a deployment with no key rather than one that
  * always fails.
+ *
+ * Since #234 there is a fourth: the corpus selector is **one** control doing
+ * two jobs — it filters the list and aims the Run button — so what is asserted
+ * below is that the two halves can never disagree about which series is on
+ * screen.
  */
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
@@ -150,9 +157,32 @@ function response(overrides: Partial<EvalRunsResponse> = {}): {
   data: EvalRunsResponse;
 } {
   return {
-    data: { evalConfigured: true, runs: [makeRun()], ...overrides },
+    data: {
+      evalConfigured: true,
+      // Echoed by the route, because the list is one corpus and a page that
+      // guessed which one would caption it from the control rather than from
+      // what it was actually sent (#234).
+      corpus: EVAL_CORPUS.frozen,
+      anyRuns: true,
+      runs: [makeRun()],
+      ...overrides,
+    },
   };
 }
+
+/** The query params the nth (0-indexed) `GET /api/evals/runs` was sent with. */
+function paramsOfCall(index: number): unknown {
+  const config = runsGet.mock.calls[index]?.[1] as
+    { params?: unknown } | undefined;
+  return config?.params;
+}
+
+/** The Run button, which names the corpus it will run (#234). */
+const runButton = (corpus: EvalCorpus = EVAL_CORPUS.frozen) =>
+  screen.getByRole("button", {
+    name:
+      corpus === EVAL_CORPUS.frozen ? "Run frozen corpus" : "Run live articles",
+  });
 
 function render() {
   return renderRoutes([{ path: "/", element: <EvalsPage /> }]);
@@ -628,13 +658,157 @@ describe("a run in flight", () => {
   });
 });
 
+describe("the corpus control", () => {
+  /**
+   * Pick a corpus the way the repo's other Radix Select tests do — click the
+   * trigger, click the option. It is a floating layer, not a native `<select>`,
+   * so `selectOptions` does not work on it (frontend.md).
+   */
+  async function pick(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(screen.getByRole("combobox", { name: "Corpus" }));
+    await user.click(screen.getByRole("option", { name }));
+  }
+
+  test("asks the server for one corpus, and for the frozen one on load", async () => {
+    // The filter is the server's, which is what puts the list's cap inside the
+    // series: twenty nightly frozen runs must not push the live ones off the
+    // page.
+    render();
+
+    await screen.findByText("Nothing in the corpus covers it");
+    expect(paramsOfCall(0)).toEqual({
+      corpus: EVAL_CORPUS.frozen,
+    });
+  });
+
+  test("re-asks for the corpus the admin picked, and the list follows it", async () => {
+    const user = userEvent.setup();
+    render();
+    await screen.findByText("Nothing in the corpus covers it");
+
+    runsGet.mockResolvedValue(
+      response({
+        corpus: EVAL_CORPUS.live,
+        runs: [
+          makeRun({
+            id: 11,
+            corpus: EVAL_CORPUS.live,
+            results: [makeResult({ caseName: "A live-corpus case" })],
+          }),
+        ],
+      }),
+    );
+
+    await pick(user, "Live articles");
+
+    // The value is read off the trigger, not with `toHaveValue` — there is no
+    // native select underneath it.
+    expect(screen.getByRole("combobox", { name: "Corpus" })).toHaveTextContent(
+      "Live articles",
+    );
+    expect(await screen.findByText("A live-corpus case")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Nothing in the corpus covers it"),
+    ).not.toBeInTheDocument();
+    expect(paramsOfCall(1)).toEqual({
+      corpus: EVAL_CORPUS.live,
+    });
+  });
+
+  test("offers the two series and no way to ask for both", async () => {
+    // There is deliberately no "all": the two are never averaged, and an "all"
+    // the Run button could not honour would be a control meaning two different
+    // things depending on which half of the page you were looking at.
+    const user = userEvent.setup();
+    render();
+    await screen.findByText("Nothing in the corpus covers it");
+
+    await user.click(screen.getByRole("combobox", { name: "Corpus" }));
+
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Frozen corpus",
+      "Live articles",
+    ]);
+  });
+
+  test("names the corpus the Run button will run", async () => {
+    // Rather than a bare "Run" beside a selector the eye has already left.
+    const user = userEvent.setup();
+    render();
+    await screen.findByText("Nothing in the corpus covers it");
+
+    expect(runButton(EVAL_CORPUS.frozen)).toBeInTheDocument();
+
+    runsGet.mockResolvedValue(response({ corpus: EVAL_CORPUS.live, runs: [] }));
+    await pick(user, "Live articles");
+
+    expect(runButton(EVAL_CORPUS.live)).toBeInTheDocument();
+  });
+
+  test("stays usable on a deployment with no key, though the Run button does not", async () => {
+    // The history is still worth reading — both series of it — on a deployment
+    // that can start nothing.
+    runsGet.mockResolvedValue(response({ evalConfigured: false }));
+
+    render();
+
+    await screen.findByText("Nothing in the corpus covers it");
+    expect(screen.getByRole("combobox", { name: "Corpus" })).toBeEnabled();
+    expect(runButton()).toBeDisabled();
+  });
+
+  test("says the list is capped, and says which series it is capped within", async () => {
+    // A page that silently stopped at twenty would draw its oldest card as the
+    // first run ever made — and the count has to stay true under the filter,
+    // which is what the corpus in the sentence is for.
+    runsGet.mockResolvedValue(
+      response({
+        runs: Array.from({ length: EVAL_RUN_LIMIT }, (_, i) =>
+          makeRun({ id: i + 1 }),
+        ),
+      }),
+    );
+
+    render();
+
+    expect(
+      await screen.findByText(
+        `The ${EVAL_RUN_LIMIT} most recent runs on the frozen corpus.`,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("an empty list", () => {
+  test("says nobody has run one when nobody has", async () => {
+    runsGet.mockResolvedValue(response({ runs: [], anyRuns: false }));
+
+    render();
+
+    expect(await screen.findByText(/^No runs yet\./)).toBeInTheDocument();
+  });
+
+  test("says the runs are on the other series when they are", async () => {
+    // The two are different pieces of news, and "No runs yet" said to an admin
+    // who has run twenty live ones would be a lie about their own history.
+    runsGet.mockResolvedValue(response({ runs: [], anyRuns: true }));
+
+    render();
+
+    expect(
+      await screen.findByText(/No runs against the frozen corpus yet\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^No runs yet\./)).not.toBeInTheDocument();
+  });
+});
+
 describe("starting a run", () => {
   test("posts once and refetches", async () => {
     const user = userEvent.setup();
     render();
     await screen.findByText("Nothing in the corpus covers it");
 
-    await user.click(screen.getByRole("button", { name: "Run" }));
+    await user.click(runButton());
 
     await waitFor(() => expect(runsPost).toHaveBeenCalledTimes(1));
     // The list is re-read rather than patched from the response: the reply is
@@ -649,7 +823,7 @@ describe("starting a run", () => {
     render();
     await screen.findByText("Nothing in the corpus covers it");
 
-    await user.click(screen.getByRole("button", { name: "Run" }));
+    await user.click(runButton());
 
     await waitFor(() => expect(runsPost).toHaveBeenCalledTimes(1));
     expect(runsPost.mock.calls[0]?.[1]).toEqual({
@@ -666,7 +840,8 @@ describe("starting a run", () => {
     // trigger, then the option (frontend.md).
     await user.click(screen.getByRole("combobox", { name: "Corpus" }));
     await user.click(screen.getByRole("option", { name: "Live articles" }));
-    await user.click(screen.getByRole("button", { name: "Run" }));
+    // And the button is now the live one — picking a corpus aims it (#234).
+    await user.click(runButton(EVAL_CORPUS.live));
 
     await waitFor(() => expect(runsPost).toHaveBeenCalledTimes(1));
     expect(runsPost.mock.calls[0]?.[1]).toEqual({ corpus: EVAL_CORPUS.live });
@@ -680,7 +855,7 @@ describe("starting a run", () => {
     expect(
       await screen.findByText("No AI provider is configured"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+    expect(runButton()).toBeDisabled();
   });
 });
 
