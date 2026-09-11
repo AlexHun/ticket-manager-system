@@ -223,5 +223,10 @@
     "version": "0.1.94",
     "date": "2026-09-11",
     "title": "Band every judged value against its stored threshold (#233)"
+  },
+  {
+    "version": "0.1.95",
+    "date": "2026-09-11",
+    "title": "One corpus control that filters the list and aims the Run button (#234)"
   }
 ]
