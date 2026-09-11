@@ -1379,6 +1379,34 @@ describe("folding a run", () => {
     expect(screen.queryByText("Estimated cost")).not.toBeInTheDocument();
   });
 
+  test("leaves a run still filling in with its cases on screen", async () => {
+    // The one run whose table is the interesting part. A run in flight has no
+    // metrics yet and the rows arriving one at a time *are* the progress, so a
+    // run you started and then had to open a second disclosure to watch would
+    // be a worse screen than the one folding is fixing.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            status: EVAL_RUN_STATUS.running,
+            finishedAt: null,
+            metrics: [],
+            previous: null,
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    expect(
+      await screen.findByRole("button", { name: CASES_TOGGLE }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByText("Nothing in the corpus covers it"),
+    ).toBeInTheDocument();
+  });
+
   test("folds the case table separately, inside an open run", async () => {
     // The bulk of the card. An admin reading the metrics rarely wants all
     // thirty-six rows with them, so the run being open is not the table being

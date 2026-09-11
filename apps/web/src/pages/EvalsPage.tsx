@@ -520,11 +520,15 @@ function RunCard({
   // list — a run filling in over `/api/events` does one per case — cannot fold
   // a card the admin has just opened.
   const [open, setOpen] = useState(defaultOpen);
-  // Closed on every run, including the open one. The table is the other
-  // thirty-six rows of the card, and the metrics above it are what an admin
-  // came for.
-  const [casesOpen, setCasesOpen] = useState(false);
   const running = run.status === EVAL_RUN_STATUS.running;
+  // Closed on a finished run — the table is the other thirty-six rows of the
+  // card, and the metrics above it are what an admin came for. Open on one
+  // still filling in, because there are no metrics yet and the rows arriving
+  // one at a time *are* the progress: a run you started and then had to open a
+  // second disclosure to watch would be a worse screen than the one this fold
+  // is fixing. It is seeded once, so the table an admin watched fill stays open
+  // when the run closes.
+  const [casesOpen, setCasesOpen] = useState(running);
   const answered = run.results.reduce((n, r) => n + r.repeats, 0);
   // Only the pairs that disagree. A run where everything landed where it should
   // has said so in the rate, and listing the matches beside the misses is how a
