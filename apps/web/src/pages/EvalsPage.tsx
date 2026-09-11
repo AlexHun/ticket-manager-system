@@ -882,21 +882,27 @@ export function EvalsPage() {
           </p>
         )}
 
-        {/* Only once the list is actually capped, and the cap is inside the
-            corpus: twenty nightly frozen runs no longer push the live series
-            off the page. Said out loud because a page that silently stops at
-            twenty is a page whose oldest card looks like the first run ever
-            made. */}
-        {data && data.runs.length === EVAL_RUN_LIMIT && (
-          <p className="text-sm text-muted-foreground">
-            The {EVAL_RUN_LIMIT} most recent runs on the{" "}
-            {CORPUS_LABEL[data.corpus].toLowerCase()}.
-          </p>
-        )}
-
         {data?.runs.map((run) => (
           <RunCard key={run.id} run={run} />
         ))}
+
+        {/* Under the last card, because it is about where the list stops. Said
+            out loud because a page that silently stopped at twenty would draw
+            its oldest card as the first run ever made — and the cap is inside
+            the corpus, which is what keeps the count true under the filter:
+            twenty nightly frozen runs no longer push the live series off the
+            page.
+
+            A claim about the *list*, never about runs that exist beyond it. A
+            series holding exactly twenty is not truncated, and nothing here can
+            tell that case from a truncated one — so the sentence says what is
+            certain, which is where this list ends. */}
+        {data && data.runs.length === EVAL_RUN_LIMIT && (
+          <p className="text-sm text-muted-foreground">
+            This list is capped at the {EVAL_RUN_LIMIT} most recent runs on the{" "}
+            {CORPUS_LABEL[data.corpus].toLowerCase()}.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1945,7 +1945,7 @@ export type EvalCorpus = (typeof EVAL_CORPUS)[keyof typeof EVAL_CORPUS];
  * morning. A live run is a thing to ask for on purpose, never to get by
  * accident.
  */
-export const EVAL_CORPUS_DEFAULT: EvalCorpus = EVAL_CORPUS.frozen;
+export const EVAL_CORPUS_DEFAULT = EVAL_CORPUS.frozen;
 
 /**
  * Where one run got to. Mirrors the `EvalRunStatus` enum in the schema.

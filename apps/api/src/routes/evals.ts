@@ -595,8 +595,8 @@ export function createEvalsRouter(config: EvalsConfig): Router {
    * carries, and there is no way to ask for both.
    *
    * The cap follows the filter, which is the half that is easy to get wrong:
-   * `take` inside the `where` means twenty nightly frozen runs can no longer
-   * push the live series off the end of the page.
+   * `take` applies to the filtered query, so it counts within the series, and
+   * twenty nightly frozen runs can no longer push the live series off the page.
    *
    * Results come back nested rather than through a second request: a run is
    * ~35 rows, which is a page either way, and the screen shows the run and its

@@ -177,12 +177,21 @@ function paramsOfCall(index: number): unknown {
   return config?.params;
 }
 
-/** The Run button, which names the corpus it will run (#234). */
+/**
+ * The Run button, which names the corpus it will run (#234).
+ *
+ * The wording is written out rather than composed from the page's own label
+ * map — which the page does not export, and should not: an assertion that built
+ * the string the same way the component does would pass however the component
+ * worded it.
+ */
+const RUN_BUTTON: Record<EvalCorpus, string> = {
+  [EVAL_CORPUS.frozen]: "Run frozen corpus",
+  [EVAL_CORPUS.live]: "Run live articles",
+};
+
 const runButton = (corpus: EvalCorpus = EVAL_CORPUS.frozen) =>
-  screen.getByRole("button", {
-    name:
-      corpus === EVAL_CORPUS.frozen ? "Run frozen corpus" : "Run live articles",
-  });
+  screen.getByRole("button", { name: RUN_BUTTON[corpus] });
 
 function render() {
   return renderRoutes([{ path: "/", element: <EvalsPage /> }]);
@@ -760,7 +769,9 @@ describe("the corpus control", () => {
   test("says the list is capped, and says which series it is capped within", async () => {
     // A page that silently stopped at twenty would draw its oldest card as the
     // first run ever made — and the count has to stay true under the filter,
-    // which is what the corpus in the sentence is for.
+    // which is what the corpus in the sentence is for. It is a claim about
+    // where this list stops, not about runs beyond it: a series holding exactly
+    // twenty is not truncated, and nothing on screen can tell the two apart.
     runsGet.mockResolvedValue(
       response({
         runs: Array.from({ length: EVAL_RUN_LIMIT }, (_, i) =>
@@ -773,7 +784,7 @@ describe("the corpus control", () => {
 
     expect(
       await screen.findByText(
-        `The ${EVAL_RUN_LIMIT} most recent runs on the frozen corpus.`,
+        `This list is capped at the ${EVAL_RUN_LIMIT} most recent runs on the frozen corpus.`,
       ),
     ).toBeInTheDocument();
   });

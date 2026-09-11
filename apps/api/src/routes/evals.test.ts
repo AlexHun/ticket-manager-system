@@ -392,8 +392,19 @@ async function runs(corpus?: EvalCorpus): Promise<EvalRunsResponse> {
   return (await res.json()) as EvalRunsResponse;
 }
 
-function metricOf(body: EvalRunsResponse, metric: EvalMetric): EvalMetricRow {
-  const row = body.runs[0]?.metrics.find((m) => m.metric === metric);
+/**
+ * One metric off a run on the page — the newest unless a test says otherwise.
+ *
+ * `at` is a signed index into `runs`, so `-1` is the oldest run drawn: the
+ * comparison tests care about the newest, and the one about a predecessor that
+ * fell off the end of the page cares about the last card on it.
+ */
+function metricOf(
+  body: EvalRunsResponse,
+  metric: EvalMetric,
+  at = 0,
+): EvalMetricRow {
+  const row = body.runs.at(at)?.metrics.find((m) => m.metric === metric);
   if (!row) throw new Error(`No ${metric} on the run`);
   return row;
 }
@@ -805,9 +816,9 @@ function sept(day: number): Date {
   return new Date(`2026-09-${String(day).padStart(2, "0")}T10:00:00Z`);
 }
 
-/** What the newest run says the run before it made of `metric`. */
-function previousOf(body: EvalRunsResponse, metric: EvalMetric) {
-  return metricOf(body, metric).previous;
+/** What a run on the page says the run before it made of `metric`. */
+function previousOf(body: EvalRunsResponse, metric: EvalMetric, at = 0) {
+  return metricOf(body, metric, at).previous;
 }
 
 describe("GET /runs — comparison against the previous run (R14)", () => {
@@ -956,11 +967,10 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
     expect(body.runs).toHaveLength(EVAL_RUN_LIMIT);
     expect(body.runs.map((r) => r.id)).not.toContain(oldest.id);
 
-    const last = body.runs.at(-1)!;
-    expect(last.previous?.id).toBe(oldest.id);
+    // The oldest run *drawn*, which is the one whose predecessor is off-page.
+    expect(body.runs.at(-1)?.previous?.id).toBe(oldest.id);
     expect(
-      last.metrics.find((m) => m.metric === EVAL_METRIC.declineAccuracy)
-        ?.previous?.value,
+      previousOf(body, EVAL_METRIC.declineAccuracy, -1)?.value,
     ).toBeCloseTo(0.8, 6);
   });
 });
