@@ -1930,6 +1930,24 @@ export const EVAL_CORPUS = {
 export type EvalCorpus = (typeof EVAL_CORPUS)[keyof typeof EVAL_CORPUS];
 
 /**
+ * The corpus everything falls back to — the screen on load, a start request
+ * that names none, and the list `GET /api/evals/runs` answers with (#234).
+ *
+ * Named once rather than spelled `?? EVAL_CORPUS.frozen` at each of them,
+ * because the three are one decision: the control that picks a corpus aims the
+ * Run button *and* filters the list, so a default that drifted apart between
+ * the two halves would be a control meaning two different things depending on
+ * which half of the page you were looking at.
+ *
+ * Frozen, for the reason it has always been: a frozen run's numbers move only
+ * when the code does, so its trend is attributable, while a red live run is
+ * ambiguous between a prompt regression and an admin rewording an article that
+ * morning. A live run is a thing to ask for on purpose, never to get by
+ * accident.
+ */
+export const EVAL_CORPUS_DEFAULT = EVAL_CORPUS.frozen;
+
+/**
  * Where one run got to. Mirrors the `EvalRunStatus` enum in the schema.
  *
  * `failed` is the run itself falling over — the provider was unreachable, or
@@ -2486,7 +2504,27 @@ export interface EvalRunsResponse {
    * boolean, never the value: same rule the pipeline config block keeps.
    */
   evalConfigured: boolean;
-  /** Newest first. */
+  /**
+   * Which series these runs are, echoed back from the request (#234).
+   *
+   * The page shows one corpus at a time and never both, so a response that did
+   * not say which one it is would be a list nobody could caption. Echoed rather
+   * than assumed, because the request may name none and the default lives on
+   * the server too (`EVAL_CORPUS_DEFAULT`).
+   */
+  corpus: EvalCorpus;
+  /**
+   * Whether this deployment has ever recorded a run, **in any corpus**.
+   *
+   * The one thing a filtered list cannot say about itself, and what separates
+   * the two empty states: "nobody has run one yet" wants the sentence that
+   * explains what a run is, and "nothing on this series" wants the sentence
+   * that says the other series is one control away. Without it an admin who
+   * has only ever run live would be told, on load, that the harness has never
+   * been used.
+   */
+  anyRuns: boolean;
+  /** Newest first, and all of one corpus. */
   runs: EvalRunRow[];
 }
 
@@ -2495,7 +2533,13 @@ export interface EvalRunStartedResponse {
   runId: number;
 }
 
-/** How many runs `GET /api/evals/runs` carries. Named here because the heading quotes it. */
+/**
+ * How many runs `GET /api/evals/runs` carries — **per corpus** (#234).
+ *
+ * The cap is applied inside the series the request asked for, not across both,
+ * which is what stops twenty nightly frozen runs pushing the whole live series
+ * off the page. Named here because the page quotes it when the list is full.
+ */
 export const EVAL_RUN_LIMIT = 20;
 
 /**

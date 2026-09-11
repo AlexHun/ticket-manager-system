@@ -1,3 +1,5 @@
+import type { EvalCorpus } from "@ticket/shared";
+
 /**
  * Query keys for the evals page.
  *
@@ -15,5 +17,14 @@
  */
 export const evalKeys = {
   all: ["evals"] as const,
-  runs: () => ["evals", "runs"] as const,
+  /**
+   * One corpus's runs (#234).
+   *
+   * The corpus is in the key because it is in the request: the page shows one
+   * series at a time, so frozen and live are two lists and two cache entries.
+   * Nested under `all`, so a pushed `eval_run_changed` still invalidates both
+   * with one call — a run that finishes while an admin is reading the other
+   * series must not leave a stale list behind it.
+   */
+  runs: (corpus: EvalCorpus) => ["evals", "runs", corpus] as const,
 };

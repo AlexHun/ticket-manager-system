@@ -77,7 +77,14 @@ test.describe("the evals screen", () => {
     // Said out loud rather than left to be inferred. From this screen, "no
     // key" and "nobody has run one yet" are otherwise identical.
     await expect(page.getByText("No AI provider is configured")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Run" })).toBeDisabled();
+    // The button names the corpus it will run, which is the corpus the list
+    // below it is filtered to — one control, both halves (#234).
+    await expect(
+      page.getByRole("button", { name: "Run frozen corpus" }),
+    ).toBeDisabled();
+    // And the selector is still usable: a deployment that can start nothing
+    // still has a history worth reading, on both series.
+    await expect(page.getByRole("combobox", { name: "Corpus" })).toBeEnabled();
   });
 
   test("a run below its threshold is drawn as failing, with all three metrics and the check that held", async ({
@@ -289,7 +296,21 @@ test.describe("the evals screen", () => {
       // percent, and this page has to mean the first.
       await expect(card(newer.id).getByText("-8pp")).toBeVisible();
 
-      // And the live run in between is compared against neither of them. Which
+      // The live run in between is not even on this page: one corpus at a time,
+      // and the control that says which is the same one that aims the Run
+      // button (#234).
+      await expect(card(live.id)).toHaveCount(0);
+
+      await page.getByRole("combobox", { name: "Corpus" }).click();
+      await page.getByRole("option", { name: "Live articles" }).click();
+      await expect(
+        page.getByRole("button", { name: "Run live articles" }),
+      ).toBeVisible();
+      // And the frozen runs step aside for it, rather than the two series
+      // interleaving in one column.
+      await expect(card(newer.id)).toHaveCount(0);
+
+      // And the live run is compared against neither of the frozen ones. Which
       // run it *is* compared against is deliberately not asserted — that is
       // whatever live run an earlier pass of this suite left behind, and the
       // claim here is only that a frozen run is never the answer.

@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, Play } from "lucide-react";
 import {
   EVAL_CORPUS,
+  EVAL_CORPUS_DEFAULT,
   EVAL_METRIC,
+  EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
@@ -71,6 +73,15 @@ import { cn } from "@/lib/utils";
  * screen too: a run says which corpus it answered, because a frozen run and a
  * live run are two series and averaging them makes a red result unattributable
  * between a prompt regression and somebody editing an article.
+ *
+ * **One corpus on screen at a time, chosen by one control** (#234). The
+ * selector filters the list *and* aims the Run button, and there is no "all":
+ * the two series are never averaged, so stacking them in one column invites
+ * reading a red frozen run and a red live run as one trend, and an "all" the
+ * Run button could not honour would be a control meaning two different things
+ * depending on which half of the page you were looking at. The filter is the
+ * server's — `GET /api/evals/runs?corpus=…` — which is what puts the list's cap
+ * inside the series rather than across both.
  */
 
 /** What a case did, in words. `notOffered` never reaches a run's own row. */
@@ -731,20 +742,29 @@ function RunCard({ run }: { run: EvalRunRow }) {
 export function EvalsPage() {
   const queryClient = useQueryClient();
   /**
-   * Frozen by default, and it is the default for a reason worth keeping.
+   * The one control on this page, and it does two things on purpose (#234).
    *
-   * A frozen run's numbers move only when the code does, so its trend line is
+   * It filters the list *and* aims the Run button, because the alternative is a
+   * screen where the runs you are reading and the run you are about to start
+   * belong to different series. There is deliberately no "all" — frozen and
+   * live are never averaged (R4), so a column holding both invites reading two
+   * unrelated trends as one, and an "all" the Run button could not honour would
+   * be a control meaning two different things at once.
+   *
+   * Frozen by default, and it is the default for a reason worth keeping: a
+   * frozen run's numbers move only when the code does, so its trend line is
    * attributable. A live run answers from the articles an admin is editing, and
    * a red result on one is ambiguous between a prompt regression and somebody
    * rewording KB-014 that morning — which is a useful thing to ask for on
    * purpose and a terrible thing to get by accident.
    */
-  const [corpus, setCorpus] = useState<EvalCorpus>(EVAL_CORPUS.frozen);
+  const [corpus, setCorpus] = useState<EvalCorpus>(EVAL_CORPUS_DEFAULT);
 
   const { data, isPending, error } = useQuery({
-    queryKey: evalKeys.runs(),
+    queryKey: evalKeys.runs(corpus),
     queryFn: async ({ signal }) => {
       const { data } = await api.get<EvalRunsResponse>("/api/evals/runs", {
+        params: { corpus },
         signal,
       });
       return data;
@@ -771,7 +791,14 @@ export function EvalsPage() {
     },
   });
 
-  const disabled = start.isPending || data?.evalConfigured === false;
+  // The button's gate and the selector's are not the same gate, since #234. A
+  // deployment with no key can start nothing, and its history is still worth
+  // reading — both series of it — so the control that filters the list stays
+  // usable where the one that spends money does not. What the selector is held
+  // for is the request in flight: the button names a corpus while it is
+  // starting that corpus, and a selector that moved under it would leave the
+  // two disagreeing about what was just enqueued.
+  const canRun = data?.evalConfigured !== false;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -783,7 +810,7 @@ export function EvalsPage() {
           <Select
             value={corpus}
             onValueChange={(value) => setCorpus(value as EvalCorpus)}
-            disabled={disabled}
+            disabled={start.isPending}
           >
             <SelectTrigger aria-label="Corpus" className="w-44">
               <SelectValue />
@@ -796,13 +823,21 @@ export function EvalsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={() => start.mutate()} disabled={disabled}>
+          {/* The button says which corpus it will run, rather than a bare "Run"
+              beside a selector the eye has already left. It is the same value
+              the list beside it is filtered by, which is the whole point of
+              there being one control: what you are reading and what you are
+              about to start can never be two different series. */}
+          <Button
+            onClick={() => start.mutate()}
+            disabled={start.isPending || !canRun}
+          >
             {start.isPending ? (
               <Loader2 className="size-4 animate-spin" aria-hidden />
             ) : (
               <Play className="size-4" aria-hidden />
             )}
-            Run
+            Run {CORPUS_LABEL[corpus].toLowerCase()}
           </Button>
         </PageHeader>
 
@@ -835,16 +870,39 @@ export function EvalsPage() {
           </p>
         )}
 
+        {/* Two empty states, because they are two different pieces of news and
+            a screen that said "No runs yet" to an admin who has run twenty live
+            ones would be lying. The second one points at the control that fixes
+            it, which is the same control that filtered this list. */}
         {data?.runs.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No runs yet. Starting one answers every case five times against the
-            corpus you pick.
+            {data.anyRuns
+              ? `No runs against the ${CORPUS_LABEL[data.corpus].toLowerCase()} yet. The other corpus is one selection away — this list only ever shows one series.`
+              : "No runs yet. Starting one answers every case five times against the corpus you pick."}
           </p>
         )}
 
         {data?.runs.map((run) => (
           <RunCard key={run.id} run={run} />
         ))}
+
+        {/* Under the last card, because it is about where the list stops. Said
+            out loud because a page that silently stopped at twenty would draw
+            its oldest card as the first run ever made — and the cap is inside
+            the corpus, which is what keeps the count true under the filter:
+            twenty nightly frozen runs no longer push the live series off the
+            page.
+
+            A claim about the *list*, never about runs that exist beyond it. A
+            series holding exactly twenty is not truncated, and nothing here can
+            tell that case from a truncated one — so the sentence says what is
+            certain, which is where this list ends. */}
+        {data && data.runs.length === EVAL_RUN_LIMIT && (
+          <p className="text-sm text-muted-foreground">
+            This list is capped at the {EVAL_RUN_LIMIT} most recent runs on the{" "}
+            {CORPUS_LABEL[data.corpus].toLowerCase()}.
+          </p>
+        )}
       </div>
     </div>
   );
