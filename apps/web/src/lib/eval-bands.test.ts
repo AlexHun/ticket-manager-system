@@ -7,9 +7,9 @@ import {
 } from "@ticket/shared";
 import {
   EVAL_BAND,
-  abandonedVerdict,
-  cacheVerdict,
-  metricVerdict,
+  judgeAbandoned,
+  judgeCache,
+  judgeMetric,
 } from "./eval-bands";
 
 /**
@@ -18,7 +18,7 @@ import {
  * The claims worth pinning are the ones a future edit would break silently: the
  * band comes from the threshold **on the row** rather than from this build's
  * constant, the catch rate has no marginal band, and a number that measured
- * nothing gets no verdict at all rather than a flattering one.
+ * nothing is left unjudged rather than given a flattering band.
  */
 
 function metricRow(
@@ -50,7 +50,7 @@ describe("a judged metric", () => {
       meets: true,
     });
 
-    expect(metricVerdict(row)).toEqual({
+    expect(judgeMetric(row)).toEqual({
       band: EVAL_BAND.good,
       label: "clear",
     });
@@ -66,10 +66,14 @@ describe("a judged metric", () => {
       threshold: 0.8,
     });
 
-    expect(metricVerdict(row)?.band).toBe(EVAL_BAND.marginal);
+    expect(judgeMetric(row)?.band).toBe(EVAL_BAND.marginal);
   });
 
-  test("is clear once it is five points above", () => {
+  test("is still marginal at exactly five points above", () => {
+    // "Within five points above it" includes the fifth, so 85% over a stored
+    // 80% is the last marginal value rather than the first clear one. Written
+    // down because floating point makes this edge easy to get wrong twice:
+    // `0.8 + 0.05` is `0.8500000000000001`.
     const row = metricRow(EVAL_METRIC.classifierAccuracy, {
       value: 0.85,
       numerator: 85,
@@ -77,10 +81,21 @@ describe("a judged metric", () => {
       threshold: 0.8,
     });
 
-    expect(metricVerdict(row)?.band).toBe(EVAL_BAND.good);
+    expect(judgeMetric(row)?.band).toBe(EVAL_BAND.marginal);
   });
 
-  test("takes the bad band from the run's own verdict, not a comparison of its own", () => {
+  test("is clear once it is past five points", () => {
+    const row = metricRow(EVAL_METRIC.classifierAccuracy, {
+      value: 0.86,
+      numerator: 86,
+      denominator: 100,
+      threshold: 0.8,
+    });
+
+    expect(judgeMetric(row)?.band).toBe(EVAL_BAND.good);
+  });
+
+  test("takes the bad band from the run's own `meets`, not a comparison of its own", () => {
     // `meets` is what puts the Failing badge on the card. A tile that
     // recomputed the same question from a rounded rate could disagree with it.
     const row = metricRow(EVAL_METRIC.declineAccuracy, {
@@ -90,7 +105,7 @@ describe("a judged metric", () => {
       meets: false,
     });
 
-    expect(metricVerdict(row)).toEqual({
+    expect(judgeMetric(row)).toEqual({
       band: EVAL_BAND.bad,
       label: "missed",
     });
@@ -111,11 +126,11 @@ describe("a judged metric", () => {
       meets: false,
     });
 
-    expect(metricVerdict(met)).toEqual({ band: EVAL_BAND.good, label: "met" });
-    expect(metricVerdict(missed)?.band).toBe(EVAL_BAND.bad);
+    expect(judgeMetric(met)).toEqual({ band: EVAL_BAND.good, label: "met" });
+    expect(judgeMetric(missed)?.band).toBe(EVAL_BAND.bad);
   });
 
-  test("has no verdict at all when it measured nothing", () => {
+  test("is left unjudged when it measured nothing", () => {
     // A green 100% over a run where the model planted no payload would be the
     // most misleading thing this page could say.
     const row = metricRow(EVAL_METRIC.catchRate, {
@@ -124,7 +139,7 @@ describe("a judged metric", () => {
       denominator: 0,
     });
 
-    expect(metricVerdict(row)).toBeNull();
+    expect(judgeMetric(row)).toBeNull();
   });
 });
 
@@ -132,19 +147,19 @@ describe("the prompt cache", () => {
   test("is bad only when it never engaged", () => {
     // `ai-features.md`: caching engages silently and stops just as silently, and
     // a run of zero is the regression. A partial hit rate is a warm cache.
-    expect(cacheVerdict({ cachedRepeats: 0, cacheable: 4 })?.band).toBe(
+    expect(judgeCache({ cachedRepeats: 0, cacheable: 4 })?.band).toBe(
       EVAL_BAND.bad,
     );
-    expect(cacheVerdict({ cachedRepeats: 1, cacheable: 4 })?.band).toBe(
+    expect(judgeCache({ cachedRepeats: 1, cacheable: 4 })?.band).toBe(
       EVAL_BAND.good,
     );
   });
 
-  test("has no verdict when no repeat could have hit it", () => {
+  test("is left unjudged when no repeat could have hit it", () => {
     // One repeat per case is what warms the cache, so `cacheable` of zero says
     // nothing either way — which is also what an old run stored before the
     // counters existed looks like.
-    expect(cacheVerdict({ cachedRepeats: 0, cacheable: 0 })).toBeNull();
+    expect(judgeCache({ cachedRepeats: 0, cacheable: 0 })).toBeNull();
   });
 });
 
@@ -152,15 +167,15 @@ describe("unanswered repeats", () => {
   test("are marginal rather than bad", () => {
     // An outage is not the model getting things wrong, and drawing it in the
     // same red as a missed threshold would say it was.
-    expect(abandonedVerdict({ abandoned: 3, attempts: 60 })?.band).toBe(
+    expect(judgeAbandoned({ abandoned: 3, attempts: 60 })?.band).toBe(
       EVAL_BAND.marginal,
     );
-    expect(abandonedVerdict({ abandoned: 0, attempts: 60 })?.band).toBe(
+    expect(judgeAbandoned({ abandoned: 0, attempts: 60 })?.band).toBe(
       EVAL_BAND.good,
     );
   });
 
-  test("have no verdict on a run that attempted nothing", () => {
-    expect(abandonedVerdict({ abandoned: 0, attempts: 0 })).toBeNull();
+  test("are left unjudged on a run that attempted nothing", () => {
+    expect(judgeAbandoned({ abandoned: 0, attempts: 0 })).toBeNull();
   });
 });

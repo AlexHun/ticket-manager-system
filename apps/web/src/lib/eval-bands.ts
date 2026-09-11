@@ -12,14 +12,14 @@ import {
  * something was already broken. Every function here answers the same question
  * about a different number: is this good, nearly not, or bad.
  *
- * **A band is never the only cue.** Every verdict carries a `label`, and the
+ * **A band is never the only cue.** Every judgement carries a `label`, and the
  * page prints it in the caption under the figure, so the judgement survives
  * colour-blindness, a greyscale screenshot and a screen reader. That is the
  * same rule `StatusPill` keeps on the dashboard, and for the same reason: this
  * theme is monochrome green, so a green figure sits in the hue family of half
  * the app.
  *
- * **`null` is a verdict-free rendering and it is not a failure.** A metric that
+ * **`null` is an unjudged rendering and it is not a failure.** A metric that
  * measured nothing has nothing to be judged, and a green 100% where nothing was
  * ever tested would be the most misleading thing this page could say. The
  * caller draws the figure in the ordinary foreground and leaves the caption's
@@ -33,8 +33,8 @@ import {
  * The three states a value on `/evals` can be in.
  *
  * No neutral member: a value with nothing to judge gets `null` rather than a
- * fourth band, so a caller cannot forget to handle the case where there is no
- * verdict at all. Ordered by severity.
+ * fourth band, so a caller cannot forget to handle the case where there is
+ * nothing to judge at all. Ordered by severity.
  */
 export const EVAL_BAND = {
   good: "good",
@@ -44,7 +44,7 @@ export const EVAL_BAND = {
 
 export type EvalBand = (typeof EVAL_BAND)[keyof typeof EVAL_BAND];
 
-export interface EvalVerdict {
+export interface EvalJudgement {
   band: EvalBand;
   /**
    * The word the caption carries. One or two, and phrased for the number it
@@ -92,7 +92,11 @@ export function points(value: number): number {
  * **The bad band is `row.meets`, not a comparison of our own.** The server
  * decides whether a run is failing from the raw fractions and puts the badge on
  * the card; recomputing the same question here from a rounded percentage is how
- * a tile would come to disagree with the badge above it.
+ * a tile would come to disagree with the badge above it. The price is a narrow
+ * case that looks wrong and is not: 79.6% draws as "80%" and is still captioned
+ * `missed`, because it is. Agreeing with the badge is worth more than agreeing
+ * with the rounding, and the caption's own `needs 80%` is what lets a reader
+ * see which side of the half-point it fell.
  *
  * **The catch rate is binary and takes no marginal band.** Its threshold is 1.0
  * because ADR-0004 makes a fail-closed check that catches 96% of payloads a bug
@@ -103,13 +107,16 @@ export function points(value: number): number {
  * Null when the metric measured nothing — the catch rate over a run where the
  * model planted no payload.
  */
-export function metricVerdict(row: EvalMetricRow): EvalVerdict | null {
+export function judgeMetric(row: EvalMetricRow): EvalJudgement | null {
   if (row.value === null) return null;
   if (!row.meets) return { band: EVAL_BAND.bad, label: "missed" };
   if (row.metric === EVAL_METRIC.catchRate) {
     return { band: EVAL_BAND.good, label: "met" };
   }
-  return points(row.value) < points(row.threshold + EVAL_MARGINAL_POINTS)
+  // Inclusive: five points above the bar is *within* five points of it, so 85%
+  // against a stored 80% is the last marginal value rather than the first clear
+  // one.
+  return points(row.value) <= points(row.threshold + EVAL_MARGINAL_POINTS)
     ? { band: EVAL_BAND.marginal, label: "marginal" }
     : { band: EVAL_BAND.good, label: "clear" };
 }
@@ -130,9 +137,9 @@ export function metricVerdict(row: EvalMetricRow): EvalVerdict | null {
  * counters existed looks like, and it renders unbanded rather than as a stalled
  * cache.
  */
-export function cacheVerdict(
+export function judgeCache(
   run: Pick<EvalRunRow, "cachedRepeats" | "cacheable">,
-): EvalVerdict | null {
+): EvalJudgement | null {
   if (run.cacheable === 0) return null;
   return run.cachedRepeats === 0
     ? { band: EVAL_BAND.bad, label: "cache stalled" }
@@ -152,12 +159,18 @@ export function cacheVerdict(
  *
  * Null on a run that attempted nothing: zero unanswered out of zero asked is
  * not a clean night.
+ *
+ * The two labels are the sentences this tile already carried, moved rather than
+ * rewritten. They said the judgement in words before there was a band to say it
+ * in colour, so there is nothing to add — a word appended to them would be the
+ * same claim twice. ("Verdict" in the good one is CONTEXT.md's other sense:
+ * where a repeat landed, which is exactly what this counts.)
  */
-export function abandonedVerdict(
+export function judgeAbandoned(
   run: Pick<EvalRunRow, "abandoned" | "attempts">,
-): EvalVerdict | null {
+): EvalJudgement | null {
   if (run.attempts === 0) return null;
   return run.abandoned === 0
-    ? { band: EVAL_BAND.good, label: "all answered" }
-    : { band: EVAL_BAND.marginal, label: "some unanswered" };
+    ? { band: EVAL_BAND.good, label: "every repeat reached a verdict" }
+    : { band: EVAL_BAND.marginal, label: "repeats where nothing was decided" };
 }

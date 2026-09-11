@@ -37,12 +37,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import {
   EVAL_BAND,
-  abandonedVerdict,
-  cacheVerdict,
-  metricVerdict,
+  judgeAbandoned,
+  judgeCache,
+  judgeMetric,
   points,
   type EvalBand,
-  type EvalVerdict,
+  type EvalJudgement,
 } from "@/lib/eval-bands";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
@@ -224,15 +224,24 @@ function Metric({
   value,
   detail,
   delta,
-  verdict,
+  judgement,
 }: {
   label: string;
   value: string;
-  detail: string;
+  /**
+   * The denominator, in words. Omitted by the one tile whose whole caption is
+   * its judgement — see `judgeAbandoned`, where the sentence that used to sit
+   * here now travels as the label so it is not said twice.
+   */
+  detail?: string;
   /** How far this moved since the last run on the same corpus (R14). */
   delta?: string;
   /**
    * How this number reads against what it had to clear, from `eval-bands.ts`.
+   *
+   * Named for the act rather than for `verdict` above, which is CONTEXT.md's
+   * word for where a repeat landed — judging is what a threshold does to a
+   * rate, and the two are different acts on the same card.
    *
    * One prop carrying both the colour and the word, so neither can be supplied
    * without the other: colour is never the only cue on this page, and a `band`
@@ -240,7 +249,7 @@ function Metric({
    * there is nothing to judge — the tile then draws in the ordinary foreground
    * and its detail line says why.
    */
-  verdict?: EvalVerdict | null;
+  judgement?: EvalJudgement | null;
 }) {
   return (
     <div>
@@ -250,24 +259,22 @@ function Metric({
       <div
         className={cn(
           "text-2xl font-semibold tabular-nums",
-          verdict && BAND_CLASS[verdict.band],
+          judgement && BAND_CLASS[judgement.band],
         )}
       >
         {value}
       </div>
-      {/* The verdict word rides in the caption rather than in a badge of its
+      {/* The judgement rides in the caption as a word rather than in a badge of its
           own, and it is what makes the colour redundant: a greyscale
           screenshot, a colour-blind reader and a screen reader all get the
           judgement in the same place they already get the denominator. */}
       <div className="text-xs text-muted-foreground">
         {detail}
-        {verdict && (
-          <>
-            {" · "}
-            <span className={cn("font-medium", BAND_CLASS[verdict.band])}>
-              {verdict.label}
-            </span>
-          </>
+        {detail && judgement && " · "}
+        {judgement && (
+          <span className={cn("font-medium", BAND_CLASS[judgement.band])}>
+            {judgement.label}
+          </span>
         )}
       </div>
       {/* Muted whichever way it went, deliberately, and it stayed muted when
@@ -302,14 +309,14 @@ function Metric({
  * zero nor a hundred percent: a green 100% there would be the most misleading
  * thing this page could say, since nothing was ever tested. Which band a
  * measured one lands in — and the word that says so without colour — is
- * `metricVerdict`'s call, in `eval-bands.ts`.
+ * `judgeMetric`'s call, in `eval-bands.ts`.
  */
 function MetricCell({ row }: { row: EvalMetricRow }) {
   return (
     <Metric
       label={METRIC_LABEL[row.metric]}
       value={row.value === null ? "—" : percent(row.numerator, row.denominator)}
-      verdict={metricVerdict(row)}
+      judgement={judgeMetric(row)}
       delta={
         row.previous === null ? undefined : deltaLabel(row.value, row.previous)
       }
@@ -588,17 +595,15 @@ function RunCard({ run }: { run: EvalRunRow }) {
               label="Prompt cache"
               value={percent(run.cachedRepeats, run.cacheable)}
               detail={`${run.cachedRepeats} of ${run.cacheable} repeats`}
-              verdict={cacheVerdict(run)}
+              judgement={judgeCache(run)}
             />
+            {/* No `detail`: the two sentences this tile has always carried are
+                now the judgement itself, in the band's colour, so they are said
+                once rather than followed by a word repeating them. */}
             <Metric
               label="Unanswered"
               value={`${run.abandoned}`}
-              // The denominator, for the reason every other figure here carries
-              // one: 3 unanswered out of 15 and 3 out of 175 are different
-              // claims. What the count *means* is the verdict word beside it,
-              // which is where "every repeat reached a verdict" went.
-              detail={`of ${run.attempts} repeats`}
-              verdict={abandonedVerdict(run)}
+              judgement={judgeAbandoned(run)}
             />
           </div>
         )}
