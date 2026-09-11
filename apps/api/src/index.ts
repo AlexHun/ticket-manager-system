@@ -21,6 +21,7 @@ import { aiRouter } from "./routes/ai";
 import { automationRouter } from "./routes/automation";
 import { changelogRouter } from "./routes/changelog";
 import { dashboardLayoutRouter } from "./routes/dashboard-layout";
+import { createEvalScheduleRouter } from "./routes/eval-schedule";
 import { createEvalsRouter } from "./routes/evals";
 import { eventsRouter } from "./routes/events";
 import { knowledgeRouter } from "./routes/knowledge";
@@ -158,6 +159,14 @@ app.use("/api/pipeline", pipelineRouter);
 // AI feature (ADR-0003), so this is `isAiConfigured()` and nothing else — the
 // auto-reply switch is deliberately not consulted; see `EvalsConfig`.
 app.use("/api/evals", createEvalsRouter({ evalConfigured: isAiConfigured }));
+// The same mount, and a second router: when runs happen is a different
+// question from what one measured (#236). Same guard, same one-line answer
+// about the key — a schedule on a keyless deployment would fire into a queue
+// with no worker registered on it.
+app.use(
+  "/api/evals",
+  createEvalScheduleRouter({ evalConfigured: isAiConfigured }),
+);
 // Admin-only as well: it decides where every ticket the assistant hands back
 // lands, which is a staffing decision rather than something an agent picks.
 app.use("/api/automation", automationRouter);

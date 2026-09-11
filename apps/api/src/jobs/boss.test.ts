@@ -3,6 +3,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { PgBoss, Queue, WorkOptions } from "pg-boss";
 import {
+  applySweepSchedule,
   registerSweep,
   registerWorker,
   type SweepSpec,
@@ -42,6 +43,7 @@ function fakeBoss() {
   const created = new Map<string, Omit<Queue, "name">>();
   const updated = new Map<string, Partial<Queue>>();
   const scheduled = new Map<string, string>();
+  const unscheduled: string[] = [];
   const workers = new Map<
     string,
     {
@@ -72,9 +74,14 @@ function fakeBoss() {
       calls.push(`schedule:${name}`);
       scheduled.set(name, cron);
     },
+    unschedule: async (name: string) => {
+      calls.push(`unschedule:${name}`);
+      unscheduled.push(name);
+      scheduled.delete(name);
+    },
   } as unknown as PgBoss;
 
-  return { boss, calls, created, updated, scheduled, workers };
+  return { boss, calls, created, updated, scheduled, unscheduled, workers };
 }
 
 /** A worker that records what it was handed and needs nothing to run. */
@@ -279,6 +286,33 @@ test("a tick reaches the sweep", async () => {
   await workers.get("sweep")!.handler([{ data: {} }]);
 
   expect(ticks).toEqual([1]);
+});
+
+test("applySweepSchedule puts a sweep on the clock", async () => {
+  const { boss, calls, scheduled } = fakeBoss();
+
+  await applySweepSchedule(boss, "sweep", "23 * * * *", false);
+
+  // The same upsert `registerSweep` ends with, reachable on its own because one
+  // sweep's cron is a row an admin edits rather than a constant a deploy
+  // changes (#236). Idempotent, so a boot and a PATCH need no coordination.
+  expect(calls).toEqual(["schedule:sweep"]);
+  expect(scheduled.get("sweep")).toBe("23 * * * *");
+});
+
+test("applySweepSchedule takes a paused sweep off the clock", async () => {
+  const { boss, calls, scheduled, unscheduled } = fakeBoss();
+
+  await applySweepSchedule(boss, "sweep", "23 * * * *", true);
+
+  // Unscheduled rather than given a cron that never matches: the time is kept
+  // on the row, so an arrangement that is off is still the arrangement and
+  // resuming it needs no memory of what it used to say. A cron nobody can read
+  // as "off" is the kind of setting somebody later ties themselves in knots
+  // decoding.
+  expect(calls).toEqual(["unschedule:sweep"]);
+  expect(unscheduled).toEqual(["sweep"]);
+  expect(scheduled.has("sweep")).toBe(false);
 });
 
 test("no job module calls pg-boss's own registration functions", async () => {

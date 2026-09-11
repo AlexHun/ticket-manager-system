@@ -4,6 +4,7 @@ import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
 import { registerEvalNightly } from "./eval-nightly";
+import { registerEvalPlannedRun } from "./eval-planned-run";
 import { registerEvalRun } from "./eval-run";
 import { registerPruneActivityTrails } from "./prune-activity-trails";
 import { registerPruneOutbox } from "./prune-outbox";
@@ -50,6 +51,10 @@ export async function startJobs(): Promise<void> {
   // up a job it cannot answer.
   if (isEvalConfigured()) {
     await registerEvalRun(boss);
+    // And the plans an admin has made for a specific afternoon (#236). Gated
+    // with the run worker rather than beside the sweeps: a plan that fired on a
+    // keyless deployment would open a run row nothing could ever answer.
+    await registerEvalPlannedRun(boss);
     // And the clock that opens one a night (R13). Gated with the worker rather
     // than beside the two pruning sweeps, because a nightly on a keyless
     // deployment would write a run row every night that nothing could ever

@@ -42,6 +42,15 @@ vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
 const runsGet = apiStub.get("/api/evals/runs");
 const runsPost = apiStub.post("/api/evals/runs");
+/**
+ * The schedule panel's own request, given a resting value here (#236).
+ *
+ * Declaring an endpoint this file has no opinion about is part of the setup: an
+ * unrecognised request throws by name, and the panel this page now mounts
+ * fetches one. What it *makes* of the answer is
+ * `EvalSchedulePanel.test.tsx`'s subject, not this file's.
+ */
+const scheduleGet = apiStub.get("/api/evals/schedule");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -222,6 +231,19 @@ beforeEach(() => {
   apiStub.reset();
   runsGet.mockResolvedValue(response());
   runsPost.mockResolvedValue({ data: { runId: 8 } });
+  scheduleGet.mockResolvedValue({
+    data: {
+      evalConfigured: true,
+      schedule: {
+        hour: 3,
+        minute: 47,
+        paused: false,
+        updatedAt: "2026-09-11T09:00:00.000Z",
+        updatedByName: null,
+      },
+      plannedRuns: [],
+    },
+  });
 });
 
 // --- Tests ------------------------------------------------------------------

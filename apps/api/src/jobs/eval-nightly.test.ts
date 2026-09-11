@@ -28,8 +28,11 @@
  */
 
 import { beforeEach, expect, mock, test } from "bun:test";
+import type { PgBoss } from "pg-boss";
 import { EVAL_CORPUS, type EvalCorpus } from "@ticket/shared";
 import { AUTO_REPLY_CASES } from "@ticket/core";
+import { prisma, resetDb } from "../test/pg";
+import { EVAL_SCHEDULE_ID } from "../evals/schedule";
 
 let started: { corpus: EvalCorpus; caseIds: string[] }[] = [];
 /** Set by `watchRuns()` for one test, cleared in `beforeEach`. */
@@ -50,16 +53,20 @@ mock.module("../evals/start-run", () => ({
   },
 }));
 
-const { EVAL_NIGHTLY_SWEEP } = await import("./eval-nightly");
+const { EVAL_NIGHTLY_SWEEP, registerEvalNightly } =
+  await import("./eval-nightly");
 
 /** Record what the sweep opens, instead of writing a row and enqueueing it. */
 function watchRuns(): void {
   watching = true;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   started = [];
   watching = false;
+  // The boot tests below read a stored schedule, so the table has to start
+  // empty — `resetDb` is also what makes "no row" a state this file can test.
+  await resetDb();
 });
 
 test("opens one run a night against the frozen corpus", async () => {
@@ -83,6 +90,66 @@ test("answers the whole set, not a subset", async () => {
   await EVAL_NIGHTLY_SWEEP.run();
 
   expect(started[0]?.caseIds).toEqual(AUTO_REPLY_CASES.map((c) => c.id));
+});
+
+/** Everything `registerEvalNightly` asks of a queue, and no database. */
+function fakeBoss() {
+  const scheduled = new Map<string, string>();
+  const unscheduled: string[] = [];
+
+  const boss = {
+    createQueue: async () => {},
+    updateQueue: async () => {},
+    work: async () => "eval-nightly",
+    schedule: async (name: string, cron: string) => {
+      scheduled.set(name, cron);
+    },
+    unschedule: async (name: string) => {
+      unscheduled.push(name);
+      scheduled.delete(name);
+    },
+  } as unknown as PgBoss;
+
+  return { boss, scheduled, unscheduled };
+}
+
+test("boots at the stored time, not the one it was written with", async () => {
+  // The whole point of #236, and the half a deploy would otherwise undo:
+  // `registerSweep` re-asserts a spec's cron on every boot, which is what makes
+  // an edited *constant* take effect — and here it is exactly the behaviour to
+  // avoid, because an admin retimed this and the next deploy would quietly put
+  // it back to 03:47.
+  await prisma.evalSchedule.create({
+    data: { id: EVAL_SCHEDULE_ID, hour: 5, minute: 15, paused: false },
+  });
+
+  const { boss, scheduled, unscheduled } = fakeBoss();
+  await registerEvalNightly(boss);
+
+  expect(scheduled.get("eval-nightly")).toBe("15 5 * * *");
+  expect(unscheduled).toEqual([]);
+});
+
+test("a paused schedule boots off the clock, keeping its time", async () => {
+  await prisma.evalSchedule.create({
+    data: { id: EVAL_SCHEDULE_ID, hour: 5, minute: 15, paused: true },
+  });
+
+  const { boss, scheduled, unscheduled } = fakeBoss();
+  await registerEvalNightly(boss);
+
+  // Off the clock, and the queue is still created and worked — pausing is about
+  // when it fires, not about tearing the queue down. The time lives on the row
+  // this boot just read, so resuming needs no memory of what it used to say.
+  expect(unscheduled).toEqual(["eval-nightly"]);
+  expect(scheduled.has("eval-nightly")).toBe(false);
+});
+
+test("with no stored row it boots at the time it was written with", async () => {
+  const { boss, scheduled } = fakeBoss();
+  await registerEvalNightly(boss);
+
+  expect(scheduled.get("eval-nightly")).toBe(EVAL_NIGHTLY_SWEEP.cron);
 });
 
 test("is a spec, so a tick is a function call and the cron is readable", () => {

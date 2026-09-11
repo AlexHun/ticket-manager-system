@@ -51,11 +51,13 @@ import {
   type EvalBand,
   type EvalJudgement,
 } from "@/lib/eval-bands";
+import { CORPUS_LABEL } from "@/lib/eval-labels";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
 import { DECLINE_SHORT } from "@/lib/pipeline-labels";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
+import { EvalSchedulePanel } from "./EvalSchedulePanel";
 
 /**
  * Whether the unattended path still does what we think it does.
@@ -104,11 +106,6 @@ const OUTCOME_LABEL: Record<PipelineOutcome, string> = {
   [PIPELINE_OUTCOME.abandoned]: "No verdict reached",
   [PIPELINE_OUTCOME.pending]: "Still running",
   [PIPELINE_OUTCOME.notOffered]: "Not offered",
-};
-
-const CORPUS_LABEL: Record<EvalCorpus, string> = {
-  [EVAL_CORPUS.frozen]: "Frozen corpus",
-  [EVAL_CORPUS.live]: "Live articles",
 };
 
 /**
@@ -974,6 +971,12 @@ export function EvalsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* When runs happen, above the runs themselves (#236). Two things that
+            are not runs — a schedule and the plans made against it — and
+            keeping them out of the list below is what lets that list go on
+            meaning "measurements that happened" (`docs/adr/0021`). */}
+        <EvalSchedulePanel />
 
         {isPending && <Skeleton className="h-40 w-full" />}
 

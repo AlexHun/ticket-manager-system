@@ -280,3 +280,60 @@ export const evalRunsQuerySchema = z.object({
 });
 
 export type EvalRunsQuery = z.infer<typeof evalRunsQuerySchema>;
+
+/**
+ * The body of `PATCH /api/evals/schedule` (#236).
+ *
+ * An hour and a minute, never a cron expression. Four of cron's five fields
+ * have exactly one legal value for a daily schedule and the fifth is the
+ * every-few-hours run the PRD priced out, so what is offered here is what can
+ * be honoured — the cron string is assembled on the server from these two.
+ *
+ * There is no `corpus`. The schedule is frozen-corpus only, because an
+ * unattended trend line has to be attributable and a live-corpus run moves when
+ * an admin edits an article. A planned run may name either corpus; this cannot,
+ * and an absent field is a rule nobody can get wrong.
+ *
+ * `paused` travels with the time rather than on a route of its own. Pausing
+ * keeps the time — there is no delete — so "pause" and "retime" are two edits
+ * to one arrangement, and one write path is what stops the row and the queue
+ * disagreeing about which of them happened last.
+ */
+export const evalScheduleSchema = z.object({
+  hour: z.int().min(0).max(23),
+  minute: z.int().min(0).max(59),
+  paused: z.boolean(),
+});
+
+export type EvalScheduleValues = z.infer<typeof evalScheduleSchema>;
+
+/**
+ * The body of `POST /api/evals/planned-runs` (#236).
+ *
+ * `corpus` is **required**, unlike `startEvalRunSchema`'s, and the absence of a
+ * default is the decision: a run somebody schedules for an afternoon they will
+ * not be watching is exactly the run whose corpus should have been chosen
+ * rather than inherited. Either is allowed — the objection to unattended live
+ * runs is about a red result appearing in a trend nobody chose to start, and a
+ * named person picking Live for a specific afternoon has chosen it.
+ *
+ * `caseIds` is deliberately not a knob. The subset exists for the E2E suite and
+ * for an admin re-running the one case that moved, and both of those are
+ * somebody sitting at the page pressing Run; a plan made this morning for
+ * tonight is the unattended shape, where a subset produces rates that are not
+ * comparable with anything.
+ *
+ * The time is checked for being in the future here as well as at the route,
+ * because the form and the route should refuse the same thing — a plan for a
+ * moment that has passed is a plan that is born missed.
+ */
+export const planEvalRunSchema = z.object({
+  corpus: z.enum(EVAL_CORPUS),
+  runAt: z.coerce
+    .date({ error: "Invalid time" })
+    .refine((value) => value.getTime() > Date.now(), {
+      error: "A planned run has to be in the future",
+    }),
+});
+
+export type PlanEvalRunValues = z.infer<typeof planEvalRunSchema>;
