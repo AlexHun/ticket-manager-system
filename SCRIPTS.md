@@ -242,7 +242,7 @@ Every deploy after the first is step 1 alone.
 | `bun run test`        | both unit suites, `@ticket/api` then `@ticket/web` — what `.husky/pre-push` runs. ~5.5 min on Windows |
 | `bun run format`      | Prettier `--write` over the repo, minus `.prettierignore`            |
 | `bun run format:check`| Prettier `--check`; CI runs this, and it is the only one of these that touches nothing |
-| `bun run tokens`      | forecast vs. actual token spend per ticket, from the local Claude Code transcripts — reads nothing in this repo and writes nothing anywhere. `CLAUDE_TRANSCRIPT_DIR` overrides which transcript directory it reads; the join itself lives in `apps/web/dev/usage.ts`, shared with the dev-tools Usage page |
+| `bun run tokens`      | forecast vs. actual token spend per ticket, from the local Claude Code transcripts — reads nothing in this repo and writes nothing anywhere. `CLAUDE_TRANSCRIPT_DIR` overrides which transcript directory it reads; the join itself lives in `apps/web/dev/usage.ts`, where the dev-tools Usage page will share it |
 | `prepare`             | not typed by hand — `bun install` runs it, and it is what points `core.hooksPath` at `.husky/_` |
 | `bun run test:e2e`    | Playwright; starts its own API and web on :3002/:4001 from `.env.test` |
 | `bun run test:e2e:ui` | the same, in Playwright's UI mode                                   |

@@ -20,10 +20,11 @@
 //     written). It belongs to no ticket, so it is only counted (`unattributed`).
 //   - Sessions from any other machine. These transcripts are local.
 //
-// This module is the single copy of the join: `scripts/ticket-tokens.ts` prints
-// it at the terminal, and the dev-tools Vite plugin serves it to `/__dev`. It
-// reads the filesystem and nothing else — no `gh`, no formatting, no process
-// exit — so both callers can decide those for themselves.
+// This module is the single copy of the join. `scripts/ticket-tokens.ts` prints
+// it at the terminal today; the dev-tools Vite plugin will serve it to `/__dev`
+// (#248), which is why it lives here rather than under `scripts/`. It reads the
+// filesystem and nothing else — no `gh`, no formatting, no process exit — so
+// both callers can decide those for themselves.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -89,7 +90,18 @@ export function resolveTranscriptDir(
   return join(home, ".claude", "projects", cwd.replace(/[\\/:]/g, "-"));
 }
 
-/** The fields this reads off a transcript record; everything else is ignored. */
+/**
+ * The fields this reads off a transcript record; everything else is ignored.
+ *
+ * Optional throughout because that is genuinely what a JSONL line offers —
+ * there is no vendor type for a Claude Code transcript record to adapt from, so
+ * [conventions.md](../../../docs/standards/conventions.md)'s "take the library's
+ * type by name" has nothing to take. The failure mode it warns about still
+ * applies: if Claude Code renames `output_tokens`, every `?? 0` below turns into
+ * a confident zero and every ticket reads as bucket `S`. Nothing here can catch
+ * that, so the check is the `unattributed` and total figures in the output — a
+ * total that collapses to near-zero is the rename, not a quiet month.
+ */
 interface TranscriptRecord {
   sessionId?: string;
   gitBranch?: string;
@@ -98,10 +110,8 @@ interface TranscriptRecord {
   };
 }
 
-interface BranchAccumulator {
-  turns: number;
-  out: number;
-  cacheRead: number;
+/** A branch's running total. Distinct sessions are counted, so it holds a set. */
+interface BranchAccumulator extends Omit<Spend, "sessions"> {
   sessions: Set<string>;
 }
 
