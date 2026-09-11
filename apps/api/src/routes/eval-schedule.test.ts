@@ -67,7 +67,9 @@ mock.module("../evals/schedule-queue", () => ({
   },
 }));
 
-const plannedRunModule = await import("../jobs/eval-planned-run");
+const plannedRunModule = {
+  ...(await import("../jobs/eval-planned-run")),
+};
 
 let enqueued: { plannedRunId: number; runAt: Date }[] = [];
 let cancelledJobs: string[] = [];
@@ -366,6 +368,52 @@ test("keeps a recently missed plan in the list and drops the rest", async () => 
 
   expect(panel.plannedRuns).toHaveLength(1);
   expect(panel.plannedRuns[0]?.status).toBe(EVAL_PLANNED_RUN_STATUS.missed);
+});
+
+test("an overdue plan nothing came for is marked missed on the way out", async () => {
+  // The worker marks a plan missed when its job is *delivered* late. A job that
+  // never arrives at all — a queue reset, a deployment that lost its key —
+  // leaves nothing to deliver, and without this the row would sit `planned`
+  // with a date in the past forever, drawn as "Upcoming" on a panel whose whole
+  // job is saying what is coming.
+  const { id } = await prisma.evalPlannedRun.create({
+    data: {
+      corpus: EVAL_CORPUS.frozen,
+      runAt: new Date(Date.now() - 6 * 60 * MINUTE),
+      plannedByName: COLLEAGUE.admin.name,
+    },
+    select: { id: true },
+  });
+
+  const panel = await getPanel();
+
+  expect(panel.plannedRuns[0]?.id).toBe(id);
+  expect(panel.plannedRuns[0]?.status).toBe(EVAL_PLANNED_RUN_STATUS.missed);
+  // Written, not merely rendered: the next reader and the worker have to agree
+  // with the panel about what became of this plan.
+  expect(
+    (await prisma.evalPlannedRun.findUniqueOrThrow({ where: { id } })).status,
+  ).toBe(EVAL_PLANNED_RUN_STATUS.missed);
+});
+
+test("a plan still inside its grace window is left alone", async () => {
+  // The window is what absorbs an ordinary restart, and a panel loaded during
+  // one must not be the thing that decides the run is not happening.
+  const { id } = await prisma.evalPlannedRun.create({
+    data: {
+      corpus: EVAL_CORPUS.frozen,
+      runAt: new Date(Date.now() - MINUTE),
+      plannedByName: COLLEAGUE.admin.name,
+    },
+    select: { id: true },
+  });
+
+  const panel = await getPanel();
+
+  expect(panel.plannedRuns[0]?.status).toBe(EVAL_PLANNED_RUN_STATUS.planned);
+  expect(
+    (await prisma.evalPlannedRun.findUniqueOrThrow({ where: { id } })).status,
+  ).toBe(EVAL_PLANNED_RUN_STATUS.planned);
 });
 
 test("cancelling a plan releases its queued job", async () => {

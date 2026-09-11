@@ -662,33 +662,84 @@ test.describe("the eval schedule", () => {
     await signIn(page, "admin");
     await page.goto("/evals");
 
-    const time = page.getByLabel("Time (server clock)");
-    await expect(time).toHaveValue("03:47");
+    try {
+      const time = page.getByLabel("Time (server clock)");
+      await expect(time).toHaveValue("03:47");
 
-    await time.fill("05:15");
-    await page.getByRole("button", { name: "Save time" }).click();
+      await time.fill("05:15");
+      await page.getByRole("button", { name: "Save time" }).click();
 
-    // The row, which is the half a screenshot cannot prove: the time an admin
-    // owns is stored rather than compiled in, and the deploy that made it
-    // editable did not change the arrangement in force.
-    await expect
-      .poll(
-        async () =>
-          (await testDb.evalSchedule.findUnique({ where: { id: 1 } }))?.hour,
-      )
-      .toBe(5);
+      // The row, which is the half a screenshot cannot prove: the time an admin
+      // owns is stored rather than compiled in, and the deploy that made it
+      // editable did not change the arrangement in force.
+      await expect
+        .poll(
+          async () =>
+            (await testDb.evalSchedule.findUnique({ where: { id: 1 } }))?.hour,
+        )
+        .toBe(5);
 
-    // And it survives a reload, with who changed it beside it — the panel says
-    // who last changed the schedule and when.
-    await page.reload();
-    await expect(page.getByLabel("Time (server clock)")).toHaveValue("05:15");
-    await expect(page.getByText(/Last changed by/)).toBeVisible();
+      // And it survives a reload, with who changed it beside it — the panel
+      // says who last changed the schedule and when.
+      await page.reload();
+      await expect(page.getByLabel("Time (server clock)")).toHaveValue("05:15");
+      await expect(page.getByText(/Last changed by/)).toBeVisible();
+    } finally {
+      // In a `finally`, because this row is shared state: a failure above
+      // would otherwise leave every later run of this suite reading 05:15 and
+      // failing its first assertion for a reason that has nothing to do with
+      // whatever broke.
+      await testDb.evalSchedule.update({
+        where: { id: 1 },
+        data: { hour: 3, minute: 47, updatedById: null, updatedByName: null },
+      });
+    }
+  });
 
-    // Put it back, so the rest of the suite reads the seeded arrangement.
-    await testDb.evalSchedule.update({
-      where: { id: 1 },
-      data: { hour: 3, minute: 47, updatedById: null, updatedByName: null },
+  test("a planned run is drawn as upcoming, and cancelled from the list", async ({
+    page,
+  }) => {
+    // Seeded rather than planned through the screen, for the reason the failing
+    // run above is seeded: this server has no key, so it refuses to *plan* a
+    // run — and what is being asserted is how the list draws one, which is a
+    // different claim from whether the route accepts it (that is asserted
+    // against the AI-enabled server below).
+    const plan = await testDb.evalPlannedRun.create({
+      data: {
+        corpus: EVAL_CORPUS.live,
+        runAt: new Date(Date.now() + 3 * 60 * 60 * 1000),
+        plannedByName: "Ada Admin",
+      },
     });
+
+    try {
+      await signIn(page, "admin");
+      await page.goto("/evals");
+
+      const row = page.getByRole("listitem").filter({ hasText: "Ada Admin" });
+      // Visibly not a run: "Upcoming" is a claim about the future, where every
+      // badge on a run card is a claim about a measurement (`docs/adr/0021`).
+      await expect(row.getByText("Upcoming")).toBeVisible();
+      await expect(row.getByText("Live articles")).toBeVisible();
+
+      await row.getByRole("button", { name: "Cancel" }).click();
+
+      // Gone from what is coming, and cancelled on the row — it never becomes
+      // a run.
+      await expect(row).toHaveCount(0);
+      await expect
+        .poll(
+          async () =>
+            (
+              await testDb.evalPlannedRun.findUniqueOrThrow({
+                where: { id: plan.id },
+              })
+            ).status,
+        )
+        .toBe("cancelled");
+    } finally {
+      await testDb.evalPlannedRun.deleteMany({ where: { id: plan.id } });
+    }
   });
 });
 

@@ -4,6 +4,7 @@ import { fromPrisma } from "pg-boss";
 import {
   EVAL_MISSED_PLAN_WINDOW_HOURS,
   EVAL_PLAN_HORIZON_DAYS,
+  EVAL_PLANNED_RUN_GRACE_MINUTES,
   EVAL_PLANNED_RUN_LIMIT,
   EVAL_PLANNED_RUN_STATUS,
   type EvalCorpus,
@@ -14,7 +15,7 @@ import {
 } from "@ticket/shared";
 import { evalScheduleSchema, planEvalRunSchema } from "@ticket/core";
 import { prisma } from "../db";
-import { EVAL_SCHEDULE_ID, readEvalSchedule } from "../evals/schedule";
+import { EVAL_SCHEDULE_DEFAULT, EVAL_SCHEDULE_ID } from "../evals/schedule";
 import { applyEvalSchedule } from "../evals/schedule-queue";
 import {
   cancelPlannedRunJob,
@@ -66,20 +67,27 @@ function scheduleRowOf(row: {
   };
 }
 
-/** The row shape the panel reads a planned run as. */
+/**
+ * The row shape the panel reads a planned run as.
+ *
+ * Typed on the enums rather than on `string`, so nothing here casts: Prisma's
+ * generated enums are the same string unions `@ticket/shared` declares, and a
+ * widened parameter is what would force a cast that a later divergence could
+ * then hide.
+ */
 function plannedRowOf(row: {
   id: number;
-  corpus: string;
+  corpus: EvalCorpus;
   runAt: Date;
-  status: string;
+  status: EvalPlannedRunStatus;
   plannedByName: string | null;
   runId: number | null;
 }): EvalPlannedRunRow {
   return {
     id: row.id,
-    corpus: row.corpus as EvalCorpus,
+    corpus: row.corpus,
     runAt: row.runAt.toISOString(),
-    status: row.status as EvalPlannedRunStatus,
+    status: row.status,
     plannedByName: row.plannedByName,
     runId: row.runId,
   };
@@ -94,11 +102,33 @@ function plannedRowOf(row: {
  * as a plan that fired. Cancelled plans are absent: that is a decision already
  * taken. Fired plans are absent too, because what they became is a run, and the
  * runs list above draws those.
+ *
+ * **It marks an overdue plan missed before reading**, and that write in a read
+ * path is deliberate. `jobs/eval-planned-run.ts` marks a plan missed when its
+ * job is *delivered* late — but a job that never arrives at all (a queue reset,
+ * a deployment that lost its key, a job swept away) leaves nothing to deliver,
+ * and the row would sit `planned` with a date in the past forever, drawn as
+ * "Upcoming" on a panel whose whole job is saying what is coming. It is the
+ * pairing `recoverStuck` is: a claim and the thing that undoes it are one
+ * design, not two. A sweep would be the other shape, and it would be a
+ * scheduled queue whose entire body is this one `updateMany` — so the read that
+ * would notice does it instead, idempotently, in the same statement shape the
+ * worker uses.
  */
 async function plannedRuns(): Promise<EvalPlannedRunRow[]> {
   const since = new Date(
     Date.now() - EVAL_MISSED_PLAN_WINDOW_HOURS * 60 * 60 * 1000,
   );
+
+  await prisma.evalPlannedRun.updateMany({
+    where: {
+      status: EVAL_PLANNED_RUN_STATUS.planned,
+      runAt: {
+        lt: new Date(Date.now() - EVAL_PLANNED_RUN_GRACE_MINUTES * 60 * 1000),
+      },
+    },
+    data: { status: EVAL_PLANNED_RUN_STATUS.missed },
+  });
 
   const rows = await prisma.evalPlannedRun.findMany({
     where: {
@@ -141,18 +171,20 @@ export function createEvalScheduleRouter(config: EvalsConfig): Router {
         },
       });
 
-      // The seeded row is what a migrated database has, so this branch is the
-      // one a deployment reaches only after somebody deleted it by hand — and
-      // the honest answer there is the time the sweep is actually keeping,
-      // which is the same fallback `readEvalSchedule` gives the boot path.
-      const fallback = await readEvalSchedule();
-
       res.json({
         evalConfigured: config.evalConfigured(),
+        // The seeded row is what a migrated database has, so the second branch
+        // is one a deployment reaches only after somebody deleted it by hand —
+        // and the honest answer there is the time the sweep is actually
+        // keeping, which is the constant the boot path falls back to as well.
+        // Read off `EVAL_SCHEDULE_DEFAULT` rather than through
+        // `readEvalSchedule()`, which would re-query the row this handler has
+        // already read, on every request, to answer a question it can only ask
+        // when that row is absent.
         schedule: stored
           ? scheduleRowOf(stored)
           : {
-              ...fallback,
+              ...EVAL_SCHEDULE_DEFAULT,
               updatedAt: new Date(0).toISOString(),
               updatedByName: null,
             },

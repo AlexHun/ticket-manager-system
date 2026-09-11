@@ -51,6 +51,7 @@ import {
   type EvalBand,
   type EvalJudgement,
 } from "@/lib/eval-bands";
+import { CORPUS_LABEL } from "@/lib/eval-labels";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
 import { DECLINE_SHORT } from "@/lib/pipeline-labels";
@@ -105,11 +106,6 @@ const OUTCOME_LABEL: Record<PipelineOutcome, string> = {
   [PIPELINE_OUTCOME.abandoned]: "No verdict reached",
   [PIPELINE_OUTCOME.pending]: "Still running",
   [PIPELINE_OUTCOME.notOffered]: "Not offered",
-};
-
-const CORPUS_LABEL: Record<EvalCorpus, string> = {
-  [EVAL_CORPUS.frozen]: "Frozen corpus",
-  [EVAL_CORPUS.live]: "Live articles",
 };
 
 /**

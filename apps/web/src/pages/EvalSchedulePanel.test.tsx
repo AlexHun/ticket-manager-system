@@ -153,6 +153,35 @@ test("pausing is confirmed, and the confirmation says a run in flight is unaffec
   });
 });
 
+test("pausing does not commit a time somebody was still typing", async () => {
+  const user = userEvent.setup();
+  renderPanel();
+
+  // Type a new time and pause *without* saving it. "Pausing keeps the time" is
+  // the whole promise of the verb, and a Pause that carried the uncommitted
+  // edit would retime the schedule as a side effect of turning it off.
+  const field = await screen.findByLabelText(/time \(server clock\)/i);
+  await user.clear(field);
+  await user.type(field, "05:15");
+
+  await user.click(screen.getByRole("button", { name: /^pause$/i }));
+  const dialog = await screen.findByRole("dialog");
+  // And the dialog names the time in force, not the one in the field — the
+  // sentence is about what pausing keeps.
+  expect(within(dialog).getByText(/keeps 03:47/i)).toBeVisible();
+
+  await user.click(
+    within(dialog).getByRole("button", { name: /pause schedule/i }),
+  );
+
+  await waitFor(() => expect(schedulePatch).toHaveBeenCalledTimes(1));
+  expect(schedulePatch.mock.calls[0]?.[1]).toEqual({
+    hour: 3,
+    minute: 47,
+    paused: true,
+  });
+});
+
 test("resuming needs no confirmation", async () => {
   const user = userEvent.setup();
   scheduleGet.mockResolvedValue(response({ schedule: { paused: true } }));
@@ -179,7 +208,7 @@ test("draws a planned run as upcoming, not as a run", async () => {
   // measurement: "Upcoming" is a claim about the future, where every badge on a
   // run card is a claim about what was measured (`docs/adr/0021`).
   expect(within(row).getByText(/upcoming/i)).toBeVisible();
-  expect(within(row).getByText(/Live corpus/i)).toBeVisible();
+  expect(within(row).getByText(/Live articles/i)).toBeVisible();
   expect(within(row).getByText(/planned by Ada Admin/i)).toBeVisible();
 });
 
@@ -249,7 +278,7 @@ test("plans a run at a picked time, against the chosen corpus", async () => {
   await user.type(screen.getByLabelText(/^time$/i), "14:30");
 
   await user.click(screen.getByLabelText(/corpus for this run/i));
-  await user.click(screen.getByRole("option", { name: /live corpus/i }));
+  await user.click(screen.getByRole("option", { name: /live articles/i }));
 
   await user.click(screen.getByRole("button", { name: /plan run/i }));
 

@@ -10,6 +10,7 @@ import {
   type EvalPlannedRunRow,
   type EvalScheduleResponse,
 } from "@ticket/shared";
+import { type EvalScheduleValues, type PlanEvalRunValues } from "@ticket/core";
 import { api } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
+import { CORPUS_LABEL } from "@/lib/eval-labels";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
 
@@ -58,13 +60,17 @@ import { extractErrorMessage } from "@/lib/errors";
  * (`docs/adr/0021`). The pause confirmation says so outright rather than
  * leaving it to be assumed, and it deliberately does not point at another
  * control — there isn't one.
+ *
+ * **Plain state rather than react-hook-form**, which is the shape the other
+ * control bars here take (`ActivityFilters`, `TicketsFilters`) while the
+ * genuine forms — the dialogs, the sign-in pages, the pipeline simulator — use
+ * RHF. Nothing here submits a form: there are four independent controls and
+ * three buttons, each firing its own mutation, and no field displays an error
+ * of its own. What the schemas in `@ticket/core` are still good for is the
+ * *shape* each mutation sends, so the client and the route cannot drift about
+ * what a schedule or a plan is — hence `EvalScheduleValues` and
+ * `PlanEvalRunValues` below rather than two inline object types.
  */
-
-/** The two series, as the runs list above labels them. */
-const CORPUS_LABEL: Record<EvalCorpus, string> = {
-  [EVAL_CORPUS.frozen]: "Frozen corpus",
-  [EVAL_CORPUS.live]: "Live corpus",
-};
 
 /** `05:15` from the stored pair, which is what an `<input type="time">` reads. */
 function toTimeValue(hour: number, minute: number): string {
@@ -128,21 +134,23 @@ export function EvalSchedulePanel() {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   const schedule = data?.schedule;
+  /** The time in force: what pausing and resuming keep, whatever is typed. */
+  const storedTime = schedule
+    ? { hour: schedule.hour, minute: schedule.minute }
+    : null;
   const timeValue =
-    editedTime ?? (schedule ? toTimeValue(schedule.hour, schedule.minute) : "");
-  const parsedTime = fromTimeValue(timeValue);
+    editedTime ??
+    (storedTime ? toTimeValue(storedTime.hour, storedTime.minute) : "");
+  /** The typed time — only ever sent by Save, never by Pause or Resume. */
+  const typedTime = fromTimeValue(timeValue);
   const timeChanged =
-    schedule !== undefined &&
-    parsedTime !== null &&
-    (parsedTime.hour !== schedule.hour ||
-      parsedTime.minute !== schedule.minute);
+    storedTime !== null &&
+    typedTime !== null &&
+    (typedTime.hour !== storedTime.hour ||
+      typedTime.minute !== storedTime.minute);
 
   const saveSchedule = useMutation({
-    mutationFn: async (values: {
-      hour: number;
-      minute: number;
-      paused: boolean;
-    }) => {
+    mutationFn: async (values: EvalScheduleValues) => {
       await api.patch("/api/evals/schedule", values);
     },
     onSuccess: (_result, values) => {
@@ -161,7 +169,7 @@ export function EvalSchedulePanel() {
   });
 
   const planRun = useMutation({
-    mutationFn: async (values: { corpus: EvalCorpus; runAt: Date }) => {
+    mutationFn: async (values: PlanEvalRunValues) => {
       await api.post("/api/evals/planned-runs", {
         corpus: values.corpus,
         runAt: values.runAt.toISOString(),
@@ -248,8 +256,11 @@ export function EvalSchedulePanel() {
 
             <Button
               onClick={() =>
-                parsedTime &&
-                saveSchedule.mutate({ ...parsedTime, paused: schedule!.paused })
+                typedTime &&
+                saveSchedule.mutate({
+                  ...typedTime,
+                  paused: data.schedule.paused,
+                })
               }
               disabled={!timeChanged || saveSchedule.isPending}
             >
@@ -261,13 +272,19 @@ export function EvalSchedulePanel() {
 
             {/* Resuming needs no confirmation — it starts nothing now, it only
                 lets the next night happen. Pausing does, because of what an
-                admin might reasonably think it reaches. */}
+                admin might reasonably think it reaches.
+
+                **Both send the stored time, never the typed one.** Save is the
+                only control that commits what is in the field; a Pause that
+                carried an uncommitted edit would retime the schedule as a side
+                effect of turning it off, which is the one thing "pausing keeps
+                the time" promises it does not do. */}
             {data.schedule.paused ? (
               <Button
                 variant="outline"
                 onClick={() =>
-                  parsedTime &&
-                  saveSchedule.mutate({ ...parsedTime, paused: false })
+                  storedTime &&
+                  saveSchedule.mutate({ ...storedTime, paused: false })
                 }
                 disabled={saveSchedule.isPending}
               >
@@ -305,9 +322,11 @@ export function EvalSchedulePanel() {
                 is that nothing reaches it — so this says so and points at no
                 other control, because there is no other control. */}
             <DialogDescription>
-              The schedule keeps {timeValue} and stops firing until you resume
-              it. A run already under way is unaffected — an eval run always
-              runs to completion, and nothing ends one early.
+              The schedule keeps{" "}
+              {storedTime && toTimeValue(storedTime.hour, storedTime.minute)}{" "}
+              and stops firing until you resume it. A run already under way is
+              unaffected — an eval run always runs to completion, and nothing
+              ends one early.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -316,8 +335,8 @@ export function EvalSchedulePanel() {
             </DialogClose>
             <Button
               onClick={() =>
-                parsedTime &&
-                saveSchedule.mutate({ ...parsedTime, paused: true })
+                storedTime &&
+                saveSchedule.mutate({ ...storedTime, paused: true })
               }
               disabled={saveSchedule.isPending}
             >
