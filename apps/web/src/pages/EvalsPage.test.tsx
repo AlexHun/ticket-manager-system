@@ -273,7 +273,8 @@ describe("a finished run", () => {
     render();
 
     await screen.findByText("Nothing in the corpus covers it");
-    expect(screen.getByText("4 of 4 repeats")).toBeInTheDocument();
+    // A substring: the caption also carries the verdict word now.
+    expect(screen.getByText(/4 of 4 repeats/)).toBeInTheDocument();
   });
 });
 
@@ -324,7 +325,7 @@ describe("the safety numbers", () => {
     expect(await screen.findByText("Safety catch rate")).toBeInTheDocument();
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(
-      screen.getByText("3 of 4 payloads attempted · needs 100%"),
+      screen.getByText(/3 of 4 payloads attempted · needs 100%/),
     ).toBeInTheDocument();
   });
 
@@ -371,8 +372,8 @@ describe("the safety numbers", () => {
     await screen.findByText("Safety catch rate");
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(
-      screen.getByText("no payloads attempted in this run"),
-    ).toBeInTheDocument();
+      screen.getByText(/^no payloads attempted in this run/),
+    ).toHaveTextContent(/^no payloads attempted in this run$/);
     expect(screen.queryByText("Failing")).not.toBeInTheDocument();
   });
 
@@ -401,6 +402,181 @@ describe("the safety numbers", () => {
     await screen.findByText("Planted portal link");
     expect(screen.getByText("1 escaped")).toBeInTheDocument();
     expect(screen.getByText("3 caught")).toBeInTheDocument();
+  });
+});
+
+describe("how a number reads against its bar", () => {
+  /**
+   * Every assertion here reads a **whole caption**, exactly.
+   *
+   * Not a class — a test that matched `text-status-critical` would pass on a
+   * tile whose only cue was colour, which is the rendering this feature exists
+   * to prevent. And not a bare word either: an exact caption pins the verdict
+   * to the denominator it belongs under, and it is the only way to assert the
+   * neutral case, where the proof is that nothing was appended at all.
+   */
+
+  test("captions a metric that missed its bar with the word, not only the colour", async () => {
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            failing: true,
+            metrics: [
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.6,
+                numerator: 3,
+                denominator: 5,
+                meets: false,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    // The caption element, found by its denominator, then read whole: the
+    // verdict is a coloured span inside it, so the assertion has to cross the
+    // element boundary the colour introduces.
+    expect(await screen.findByText(/^3 of 5 repeats/)).toHaveTextContent(
+      /^3 of 5 repeats · needs 80% · missed$/,
+    );
+  });
+
+  test("says when a metric only just cleared its bar", async () => {
+    // 83% against a stored 80%: passing, and three points from not being. The
+    // point of the middle band is that this is not the same news as 95%.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.classifierAccuracy, {
+                value: 0.83,
+                numerator: 83,
+                denominator: 100,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    expect(
+      await screen.findByText(/^83 of 100 repeats classified/),
+    ).toHaveTextContent(
+      /^83 of 100 repeats classified · needs 80% · marginal$/,
+    );
+  });
+
+  test("bands an old run against the threshold it was stored with", async () => {
+    // The whole reason the threshold travels on the row. This run was judged
+    // against 60% and is clear of it; the constant this build carries is 80%,
+    // against which the same figure would be below the bar entirely.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.7,
+                numerator: 70,
+                denominator: 100,
+                threshold: 0.6,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    expect(await screen.findByText(/^70 of 100 repeats/)).toHaveTextContent(
+      /^70 of 100 repeats · needs 60% · clear$/,
+    );
+  });
+
+  test("leaves a metric that measured nothing with no verdict at all", async () => {
+    // The default run planted no payload. A green "met" here would be a clean
+    // bill of health for a safety check nothing exercised — so the caption is
+    // the reason and nothing else, which is what an exact match asserts.
+    render();
+
+    await screen.findByText("Safety catch rate");
+    expect(
+      screen.getByText("no payloads attempted in this run"),
+    ).toBeInTheDocument();
+  });
+
+  test("says the prompt cache stalled when nothing came off it", async () => {
+    // The one prompt-caching alarm this codebase has a screen for.
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ cachedRepeats: 0, cacheable: 4 })] }),
+    );
+
+    render();
+
+    expect(await screen.findByText(/^0 of 4 repeats/)).toHaveTextContent(
+      /^0 of 4 repeats · cache stalled$/,
+    );
+  });
+
+  test("leaves the prompt cache unjudged when no repeat could have hit it", async () => {
+    // An old run stored before the counters existed looks exactly like this,
+    // and it must not read as a stalled cache.
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ cachedRepeats: 0, cacheable: 0 })] }),
+    );
+
+    render();
+
+    await screen.findByText("Prompt cache");
+    expect(screen.getByText(/^0 of 0 repeats/)).toHaveTextContent(
+      /^0 of 0 repeats$/,
+    );
+  });
+
+  test("calls unanswered repeats out without calling them a failure", async () => {
+    // An outage is not the model getting things wrong, so the caption is the
+    // sentence this tile always carried rather than the word a missed
+    // threshold gets.
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ abandoned: 2, attempts: 5 })] }),
+    );
+
+    render();
+
+    expect(
+      await screen.findByText("repeats where nothing was decided"),
+    ).toBeInTheDocument();
+  });
+
+  test("leaves the cost unjudged", async () => {
+    // No amount of dollars is bad in a way the harness can know, so this
+    // caption is its denominator and nothing else.
+    render();
+
+    await screen.findByText("Estimated cost");
+    expect(screen.getByText(/^1 cases × 5/)).toHaveTextContent(/^1 cases × 5$/);
+  });
+
+  test("names an escaped payload a defect, not another number below its bar", async () => {
+    // Every other value on the card is a measurement. This one is a break, and
+    // the word says so where colour alone could not.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [makeRun({ escaped: 1, caught: 3, failing: true })],
+      }),
+    );
+
+    render();
+
+    expect(await screen.findByText(/^Defect —/)).toBeInTheDocument();
   });
 });
 

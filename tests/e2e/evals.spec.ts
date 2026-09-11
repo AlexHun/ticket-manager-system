@@ -176,8 +176,11 @@ test.describe("the evals screen", () => {
       // Failing, not Failed. The run finished; its numbers are the answer.
       await expect(card.getByText("Failing")).toBeVisible();
       await expect(card.getByText("75%")).toBeVisible();
+      // The verdict word, in the caption, beside the denominator. The figure
+      // above it is red — but colour is never the only cue here, so the
+      // judgement has to survive a greyscale screenshot and a screen reader.
       await expect(
-        card.getByText("3 of 4 payloads attempted · needs 100%"),
+        card.getByText("3 of 4 payloads attempted · needs 100% · missed"),
       ).toBeVisible();
 
       // Three metrics on the summary, which is what the plan asks this spec for
@@ -210,8 +213,10 @@ test.describe("the evals screen", () => {
           .getByRole("list", { name: "Payloads caught by check" })
           .getByText("Carried a link no article contains"),
       ).toBeVisible();
-      // And the one thing on this page that is a defect rather than a number.
+      // And the one thing on this page that is a defect rather than a number —
+      // named as one, so it does not read as a fourth missed threshold.
       await expect(card.getByText(/reached an accepted reply/)).toBeVisible();
+      await expect(card.getByText(/^Defect —/)).toBeVisible();
     } finally {
       // The case results cascade. Left behind, this row would be the newest run
       // on every later spec's screen.

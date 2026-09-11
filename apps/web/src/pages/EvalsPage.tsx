@@ -35,6 +35,15 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
+import {
+  EVAL_BAND,
+  judgeAbandoned,
+  judgeCache,
+  judgeMetric,
+  points,
+  type EvalBand,
+  type EvalJudgement,
+} from "@/lib/eval-bands";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
 import { DECLINE_SHORT } from "@/lib/pipeline-labels";
@@ -141,17 +150,21 @@ function verdict(
 }
 
 /**
- * A rate as the whole number this page prints for it.
+ * How a band draws. Text only — the figure is the loudest thing in the tile
+ * already, and a filled chip on six tiles would leave the card no quiet state.
  *
- * The single rounding rule, and it is a function rather than an inline
- * `Math.round` at each site for one reason: the delta beneath a metric is a
- * subtraction between two of these, and a second rounding rule would let the
- * caption disagree with the figures above it — 89.6% and 84.4% draw as "90%"
- * and "84%", six points apart on screen and five in the raw fractions.
+ * `good` is tinted here, unlike the dashboard's `StatTile`, and the difference
+ * is deliberate. A dashboard tile is one of many and mostly unremarkable, so
+ * colouring its healthy state spends the contrast; every number on this card is
+ * a measurement somebody came here to judge, and "passing" is the answer they
+ * came for. Leaving it in the foreground colour is what made this page silent
+ * until something broke.
  */
-function points(value: number): number {
-  return Math.round(value * 100);
-}
+const BAND_CLASS: Record<EvalBand, string> = {
+  [EVAL_BAND.good]: "text-status-good",
+  [EVAL_BAND.marginal]: "text-status-warning",
+  [EVAL_BAND.bad]: "text-status-critical",
+};
 
 /** A share, as a whole-number percentage. Nothing here deserves a decimal. */
 function percent(numerator: number, denominator: number): string {
@@ -211,15 +224,32 @@ function Metric({
   value,
   detail,
   delta,
-  failing = false,
+  judgement,
 }: {
   label: string;
   value: string;
-  detail: string;
+  /**
+   * The denominator, in words. Omitted by the one tile whose whole caption is
+   * its judgement — see `judgeAbandoned`, where the sentence that used to sit
+   * here now travels as the label so it is not said twice.
+   */
+  detail?: string;
   /** How far this moved since the last run on the same corpus (R14). */
   delta?: string;
-  /** Below its declared threshold, so the number is drawn as the finding. */
-  failing?: boolean;
+  /**
+   * How this number reads against what it had to clear, from `eval-bands.ts`.
+   *
+   * Named for the act rather than for `verdict` above, which is CONTEXT.md's
+   * word for where a repeat landed — judging is what a threshold does to a
+   * rate, and the two are different acts on the same card.
+   *
+   * One prop carrying both the colour and the word, so neither can be supplied
+   * without the other: colour is never the only cue on this page, and a `band`
+   * without a `label` is exactly the tile that would break that. Omitted where
+   * there is nothing to judge — the tile then draws in the ordinary foreground
+   * and its detail line says why.
+   */
+  judgement?: EvalJudgement | null;
 }) {
   return (
     <div>
@@ -229,19 +259,33 @@ function Metric({
       <div
         className={cn(
           "text-2xl font-semibold tabular-nums",
-          failing && "text-destructive",
+          judgement && BAND_CLASS[judgement.band],
         )}
       >
         {value}
       </div>
-      <div className="text-xs text-muted-foreground">{detail}</div>
-      {/* Muted whichever way it went, deliberately. `text-destructive` on this
-          page means "this fell below the bar it was declared to need" — it is
-          on the figure above, and on the sentence about a payload that got out.
-          Colouring every downward drift the same red would spend that signal on
-          run-to-run noise, which is the PRD's opening risk: a harness that
-          cries wolf is a harness nobody reads. A move that matters has already
-          turned the number itself red. */}
+      {/* The judgement rides in the caption as a word rather than in a badge of its
+          own, and it is what makes the colour redundant: a greyscale
+          screenshot, a colour-blind reader and a screen reader all get the
+          judgement in the same place they already get the denominator. */}
+      <div className="text-xs text-muted-foreground">
+        {detail}
+        {detail && judgement && " · "}
+        {judgement && (
+          <span className={cn("font-medium", BAND_CLASS[judgement.band])}>
+            {judgement.label}
+          </span>
+        )}
+      </div>
+      {/* Muted whichever way it went, deliberately, and it stayed muted when
+          the rest of the card learned to colour itself. A band on this page
+          says where a number stands against the bar it was declared to need;
+          a delta says which way it moved, and the two are not the same claim —
+          a metric can fall six points and still be clear. Colouring every
+          downward drift would spend the band's signal on run-to-run noise,
+          which is the PRD's opening risk: a harness that cries wolf is a
+          harness nobody reads. A move that matters has already changed the
+          band on the figure above. */}
       {delta && (
         <div className="text-xs tabular-nums text-muted-foreground">
           {delta}
@@ -260,19 +304,19 @@ function Metric({
  * sort that want arguing about. It comes from the **run**, not from this
  * build's constant, so an old run keeps saying what it was judged against.
  *
- * An unmeasured metric draws "—" and the reason. That is the catch rate on a
- * run where the model planted no payload, and it is neither a zero nor a
- * hundred percent: a green 100% there would be the most misleading thing this
- * page could say, since nothing was ever tested.
+ * An unmeasured metric draws "—" and the reason, **and no band**. That is the
+ * catch rate on a run where the model planted no payload, and it is neither a
+ * zero nor a hundred percent: a green 100% there would be the most misleading
+ * thing this page could say, since nothing was ever tested. Which band a
+ * measured one lands in — and the word that says so without colour — is
+ * `judgeMetric`'s call, in `eval-bands.ts`.
  */
 function MetricCell({ row }: { row: EvalMetricRow }) {
-  const failing = !row.meets;
-
   return (
     <Metric
       label={METRIC_LABEL[row.metric]}
       value={row.value === null ? "—" : percent(row.numerator, row.denominator)}
-      failing={failing}
+      judgement={judgeMetric(row)}
       delta={
         row.previous === null ? undefined : deltaLabel(row.value, row.previous)
       }
@@ -399,8 +443,14 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             not the safety question. `hostile-display-name` expects a clean
             reply and gets one; whether the link in that From name reached it is
             a different fact, and one a 5/5 would hide entirely. */}
+        {/* The one coloured thing in this table, and it stays: the per-case
+            *rates* are deliberately unbanded — thirty-six coloured rows would
+            spend the signal the six headline numbers need — but an escape is
+            not a rate, it is the defect, and the row it happened on is the only
+            place that says which case it was. `status-critical` rather than
+            `destructive`, so red means one thing on this page. */}
         {result.escaped > 0 && (
-          <div className="text-xs font-medium text-destructive">
+          <div className="text-xs font-medium text-status-critical">
             {result.escaped} escaped
           </div>
         )}
@@ -468,11 +518,25 @@ function RunCard({ run }: { run: EvalRunRow }) {
         {/* Above the numbers, and in words rather than as a red figure among
             black ones. Every other value on this card is a measurement; this
             one is a defect — a payload reached a reply the desk was willing to
-            send, which is ADR-0004's claim failing. */}
+            send, which is ADR-0004's claim failing.
+
+            Now that the numbers below are coloured too, saying it in red is no
+            longer enough to say it is different in kind: a missed threshold and
+            an escaped payload would be the same critical red, one of them a
+            score and the other a break. So this one is the only thing on the
+            card with a filled, bordered ground — the loudest treatment on the
+            page, held in reserve for the one value that is not a measurement.
+            The word "defect" carries the same distinction without colour. */}
         {run.escaped > 0 && (
-          <p className="mb-3 flex items-start gap-2 text-sm text-destructive">
+          <p
+            className={cn(
+              "mb-3 flex items-start gap-2 rounded-md border p-3 text-sm",
+              "border-status-critical/40 bg-status-critical-soft text-status-critical",
+            )}
+          >
             <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>
+              <span className="font-semibold">Defect — </span>
               {run.escaped} adversarial{" "}
               {run.escaped === 1 ? "repeat" : "repeats"} reached an accepted
               reply still carrying the planted payload. The output checks did
@@ -516,6 +580,12 @@ function RunCard({ run }: { run: EvalRunRow }) {
             {run.metrics.map((metric) => (
               <MetricCell key={metric.metric} row={metric} />
             ))}
+            {/* The one figure on this card with no band, and it is an absence
+                rather than an omission: no amount of dollars is "bad" in a way
+                the harness can know. A run that cost more than the last one
+                answered more cases, or answered them against a longer corpus,
+                or hit the cache less — three different facts, and colouring
+                the total would assert one of them. */}
             <Metric
               label="Estimated cost"
               value={`$${run.usd.toFixed(4)}`}
@@ -525,15 +595,15 @@ function RunCard({ run }: { run: EvalRunRow }) {
               label="Prompt cache"
               value={percent(run.cachedRepeats, run.cacheable)}
               detail={`${run.cachedRepeats} of ${run.cacheable} repeats`}
+              judgement={judgeCache(run)}
             />
+            {/* No `detail`: the two sentences this tile has always carried are
+                now the judgement itself, in the band's colour, so they are said
+                once rather than followed by a word repeating them. */}
             <Metric
               label="Unanswered"
               value={`${run.abandoned}`}
-              detail={
-                run.abandoned === 0
-                  ? "every repeat reached a verdict"
-                  : "repeats where nothing was decided"
-              }
+              judgement={judgeAbandoned(run)}
             />
           </div>
         )}
