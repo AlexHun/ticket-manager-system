@@ -8,6 +8,23 @@ AI-Powered Ticket Management System — a support desk that ingests email, class
 
 Take the skill's _narrowest_ matching row and read that file in full; a question reads one file, a code change reads every matching row, and a file already read this session is not read again. The rules are dense on purpose — never summarise a standards file in place of reading it.
 
+## Workflow
+
+Feature work runs in this order, unbroken in one context up to the tickets:
+`/write-a-prd` → `/prd-to-plan` → `/mattpocock-skills:to-tickets`, then one
+`/mattpocock-skills:implement` per ticket. `write-a-prd` and `prd-to-plan` are
+this repo's tuned spec pair and fill the slot `/mattpocock-skills:to-spec`
+holds elsewhere.
+
+**One ticket per session.** A ticket ends at `/mattpocock-skills:code-review`;
+report it done and stop there rather than opening the next one, so the next
+ticket starts in a fresh context. Context cost per turn climbs steeply with
+session length, and past roughly 150k tokens reasoning degrades — a ticket that
+outgrows its window wants splitting, not compacting.
+
+A bug, a flake, or a regression starts at `/mattpocock-skills:diagnosing-bugs`,
+which earns a red feedback loop before it theorises.
+
 ## Agent skills
 
 Configuration the `mattpocock-skills` engineering skills read. Written by
