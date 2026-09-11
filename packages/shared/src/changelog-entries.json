@@ -228,5 +228,15 @@
     "version": "0.1.95",
     "date": "2026-09-11",
     "title": "One corpus control that filters the list and aims the Run button (#234)"
+  },
+  {
+    "version": "0.1.97",
+    "date": "2026-09-11",
+    "title": "Fold a run to its headline numbers (#237)"
+  },
+  {
+    "version": "0.1.97",
+    "date": "2026-09-11",
+    "title": "Keep a run in flight showing its cases"
   }
 ]
