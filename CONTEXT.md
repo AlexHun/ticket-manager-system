@@ -55,7 +55,8 @@ _Avoid_: log, history, event, audit entry
 
 **Status**:
 Where a ticket stands: New, Processing, Open, Resolved or Closed.
-_Avoid_: state, stage (stage belongs to the pipeline)
+_Avoid_: state, stage (stage belongs to the pipeline), a run's own status (that
+belongs to a Run)
 
 **Backlog**:
 New and Open together — every ticket nobody has dealt with. The New ones have
@@ -114,7 +115,8 @@ _Avoid_: step, phase, status
 Whether a verdict was reached about a ticket on the pipeline, and what it was.
 Resolved and declined are verdicts; abandoned is the absence of one, so an
 outage is never a decline. Pending means a verdict is still coming;
-not-offered means none ever will be. See `docs/adr/0019`.
+not-offered means none ever will be. See `docs/adr/0019`. In a run, the outcome
+one repeat reached is recorded as its Verdict.
 _Avoid_: result, state, disposition
 
 **Simulated ticket**:
@@ -143,6 +145,70 @@ _Avoid_: private note, comment, remark
 The articles a particular auto-reply was built from, recorded on the reply
 itself.
 _Avoid_: source, reference, link
+
+### Measuring
+
+**Case**:
+One written-down expectation about what the unattended path should do with a
+given input. Reviewed like code, and not a Simulated ticket: nothing is
+ingested and no ticket exists.
+_Avoid_: test, scenario, fixture, example
+
+**Repeat**:
+One of the answers to a case. A case is answered several times because one
+answer from a model is not a measurement.
+_Avoid_: trial, iteration, pass, go
+
+**Run**:
+A set of cases answered and recorded — a measurement that happened. It ends
+completed, stopped, or failed; failed is the run itself falling over, never a
+number coming in low.
+_Avoid_: test run, suite, build, execution
+
+**Corpus**:
+Which knowledge base a run answered from — the frozen one in the repository or
+the live articles. Frozen and live are independent series, never averaged.
+_Avoid_: dataset, source, corpus of tickets
+
+**Threshold**:
+What a run was judged against, fixed when it started. Judging is what a
+threshold does to a run's rates, and it is a different act from reaching a
+Verdict.
+_Avoid_: target, goal, limit, benchmark
+
+**Verdict**:
+Where one repeat actually landed — the Outcome it reached, recorded with its
+reason. The word does double duty and the two senses are worth holding apart:
+under Outcome, "a verdict was reached" means something was decided about the
+ticket, and a repeat where nothing was lands on abandoned. A verdict in this
+sense is recorded either way, because a run has to say where every repeat went.
+_Avoid_: result, score, pass, judgement (judging belongs to a Threshold)
+
+**Schedule**:
+The standing arrangement that opens a run unattended. Frozen corpus only, so
+the trend it draws stays attributable.
+_Avoid_: cron, nightly job, timer, automation
+
+**Planned run**:
+A run somebody has asked for at a future time, which has measured nothing yet.
+Not a run — a run says what was measured. One whose time passes unfired is
+missed: it starts nothing and spends nothing. See `docs/adr/0021`.
+_Avoid_: scheduled run, pending run, queued run, future run
+
+**Pause**:
+What is done to a schedule: it keeps its time and stops firing. Never done to a
+run, and it does not touch one already in flight.
+_Avoid_: stop, disable, turn off, suspend
+
+**Cancel**:
+What is done to a planned run: it never becomes a run. Never done to a run in
+flight, which has already measured something.
+_Avoid_: stop, delete, abort, drop
+
+**Stop**:
+What is done to a run in flight: it ends early and keeps everything it has
+already measured. Never done to a schedule or a planned run.
+_Avoid_: cancel, abort, kill, pause
 
 ### Assisted work
 
