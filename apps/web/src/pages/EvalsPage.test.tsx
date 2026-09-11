@@ -193,6 +193,27 @@ const RUN_BUTTON: Record<EvalCorpus, string> = {
 const runButton = (corpus: EvalCorpus = EVAL_CORPUS.frozen) =>
   screen.getByRole("button", { name: RUN_BUTTON[corpus] });
 
+/**
+ * The case table's own toggle, which is closed on load (#237).
+ *
+ * Matched by its tail rather than written out, because the label counts what
+ * the run holds — "1 case, 5 repeats each" on a finished run, "5 repeats
+ * answered so far" on one still filling in — and a test about the rows behind
+ * it should not have to restate the arithmetic.
+ */
+const CASES_TOGGLE = /repeats (each|answered so far)$/;
+
+/**
+ * Reveal the case table of the run that is open on load.
+ *
+ * Every assertion about a result row goes through this since #237: the table is
+ * the bulk of the card and folds separately from the run, so a row is one click
+ * away rather than on screen.
+ */
+async function showCases(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: CASES_TOGGLE }));
+}
+
 function render() {
   return renderRoutes([{ path: "/", element: <EvalsPage /> }]);
 }
@@ -210,9 +231,10 @@ describe("a finished run", () => {
     // Both, not just the verdict. "Expected declined, got declined for a
     // completely different reason" is the finding this page exists to surface,
     // and a row that reported only a boolean would hide it.
+    const user = userEvent.setup();
     render();
 
-    await screen.findByText("Nothing in the corpus covers it");
+    await showCases(user);
     expect(
       screen.getAllByText("Declined — Not covered by the knowledge base"),
     ).toHaveLength(2);
@@ -220,11 +242,13 @@ describe("a finished run", () => {
   });
 
   test("reports a rate per case rather than a pass", async () => {
+    const user = userEvent.setup();
     render();
 
-    const row = (
-      await screen.findByText("Nothing in the corpus covers it")
-    ).closest("tr")!;
+    await showCases(user);
+    const row = screen
+      .getByText("Nothing in the corpus covers it")
+      .closest("tr")!;
     // Both of the row's rate cells since slice 4 — how often it landed where it
     // said, and how often the classifier filed it where it said. Neither is a
     // tick, which is the claim this test is making.
@@ -279,9 +303,11 @@ describe("a finished run", () => {
       }),
     );
 
+    const user = userEvent.setup();
     render();
 
-    expect(await screen.findByText("3/5")).toBeInTheDocument();
+    await showCases(user);
+    expect(screen.getByText("3/5")).toBeInTheDocument();
     expect(screen.getByText("3×")).toBeInTheDocument();
     expect(screen.getByText("2×")).toBeInTheDocument();
     expect(screen.getByText("Answered")).toBeInTheDocument();
@@ -311,9 +337,8 @@ describe("a finished run", () => {
     // app would show — repeats of one case are the only place it is observable.
     render();
 
-    await screen.findByText("Nothing in the corpus covers it");
     // A substring: the caption also carries the verdict word now.
-    expect(screen.getByText(/4 of 4 repeats/)).toBeInTheDocument();
+    expect(await screen.findByText(/4 of 4 repeats/)).toBeInTheDocument();
   });
 });
 
@@ -436,9 +461,11 @@ describe("the safety numbers", () => {
       }),
     );
 
+    const user = userEvent.setup();
     render();
 
-    await screen.findByText("Planted portal link");
+    await showCases(user);
+    expect(screen.getByText("Planted portal link")).toBeInTheDocument();
     expect(screen.getByText("1 escaped")).toBeInTheDocument();
     expect(screen.getByText("3 caught")).toBeInTheDocument();
   });
@@ -684,7 +711,7 @@ describe("the corpus control", () => {
     // page.
     render();
 
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
     expect(paramsOfCall(0)).toEqual({
       corpus: EVAL_CORPUS.frozen,
     });
@@ -693,7 +720,7 @@ describe("the corpus control", () => {
   test("re-asks for the corpus the admin picked, and the list follows it", async () => {
     const user = userEvent.setup();
     render();
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
 
     runsGet.mockResolvedValue(
       response({
@@ -715,9 +742,13 @@ describe("the corpus control", () => {
     expect(screen.getByRole("combobox", { name: "Corpus" })).toHaveTextContent(
       "Live articles",
     );
-    expect(await screen.findByText("A live-corpus case")).toBeInTheDocument();
+    // The cards themselves, by the run each one names: the case rows behind
+    // them are folded away (#237), and which runs are on screen is the claim.
     expect(
-      screen.queryByText("Nothing in the corpus covers it"),
+      await screen.findByRole("button", { name: "Run 11" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Run 7" }),
     ).not.toBeInTheDocument();
     expect(paramsOfCall(1)).toEqual({
       corpus: EVAL_CORPUS.live,
@@ -730,7 +761,7 @@ describe("the corpus control", () => {
     // things depending on which half of the page you were looking at.
     const user = userEvent.setup();
     render();
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
 
     await user.click(screen.getByRole("combobox", { name: "Corpus" }));
 
@@ -744,7 +775,7 @@ describe("the corpus control", () => {
     // Rather than a bare "Run" beside a selector the eye has already left.
     const user = userEvent.setup();
     render();
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
 
     expect(runButton(EVAL_CORPUS.frozen)).toBeInTheDocument();
 
@@ -761,7 +792,7 @@ describe("the corpus control", () => {
 
     render();
 
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
     expect(screen.getByRole("combobox", { name: "Corpus" })).toBeEnabled();
     expect(runButton()).toBeDisabled();
   });
@@ -817,7 +848,7 @@ describe("starting a run", () => {
   test("posts once and refetches", async () => {
     const user = userEvent.setup();
     render();
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
 
     await user.click(runButton());
 
@@ -832,7 +863,7 @@ describe("starting a run", () => {
     // run is a thing to ask for on purpose, not to get by accident.
     const user = userEvent.setup();
     render();
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
 
     await user.click(runButton());
 
@@ -845,7 +876,7 @@ describe("starting a run", () => {
   test("sends the corpus the admin picked", async () => {
     const user = userEvent.setup();
     render();
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
 
     // Radix's Select is a floating layer, not a native `<select>` — click the
     // trigger, then the option (frontend.md).
@@ -943,7 +974,7 @@ describe("classifier accuracy", () => {
   test("draws no breakdown at all when everything landed where it should", async () => {
     render();
 
-    await screen.findByText("Nothing in the corpus covers it");
+    await screen.findByRole("button", { name: "Run 7" });
     expect(
       screen.queryByRole("list", {
         name: "Cases filed under an unexpected category",
@@ -972,11 +1003,11 @@ describe("classifier accuracy", () => {
         ],
       }),
     );
+    const user = userEvent.setup();
     render();
 
-    const row = (
-      await screen.findByText("Classification never landed")
-    ).closest("tr")!;
+    await showCases(user);
+    const row = screen.getByText("Classification never landed").closest("tr")!;
     expect(within(row).getByText("—")).toBeInTheDocument();
     expect(within(row).queryByText("0/0")).not.toBeInTheDocument();
   });
@@ -1005,11 +1036,13 @@ describe("classifier accuracy", () => {
         ],
       }),
     );
+    const user = userEvent.setup();
     render();
 
-    const row = (
-      await screen.findByText("Nothing in the corpus covers it")
-    ).closest("tr")!;
+    await showCases(user);
+    const row = screen
+      .getByText("Nothing in the corpus covers it")
+      .closest("tr")!;
     expect(within(row).getByText("3/5")).toBeInTheDocument();
     expect(within(row).getByText("expected Refund")).toBeInTheDocument();
     expect(within(row).getByText("General")).toBeInTheDocument();
@@ -1211,5 +1244,185 @@ describe("what moved since last time", () => {
     expect(
       screen.queryByText(/First run on the frozen corpus/),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("folding a run", () => {
+  /**
+   * The page draws twenty runs. A card that is a screenful of metrics, cost,
+   * two breakdowns and a 36-row table is a page nobody scrolls, so a run folds
+   * to the part that decides whether to open it — and what that header still
+   * has to report is what every assertion here pins.
+   *
+   * The toggles are asserted through `aria-expanded` and through what is in the
+   * DOM, never through a class or a `data-state`: a collapsed run whose content
+   * is merely hidden would satisfy a class assertion and still be the page this
+   * ticket exists to fix.
+   */
+
+  test("opens the newest run and leaves the older ones closed", async () => {
+    // Not remembered between visits, and not "all open" either: the newest run
+    // is the one an admin came to read, and the twenty behind it are history.
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ id: 9 }), makeRun({ id: 8 })] }),
+    );
+
+    render();
+
+    expect(
+      await screen.findByRole("button", { name: "Run 9" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Run 8" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  test("keeps the headline numbers on a collapsed run, and folds the rest away", async () => {
+    // The whole trade: which run, which corpus, when, and the judged metrics
+    // with their verdict words and deltas stay; cost, the cache figure and the
+    // case table are what folding buys back.
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            previous: { id: 6, startedAt: "2026-09-03T10:00:00.000Z" },
+            metrics: [
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.84,
+                numerator: 21,
+                denominator: 25,
+                previous: { value: 0.9 },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await user.click(await screen.findByRole("button", { name: "Run 7" }));
+
+    const trigger = screen.getByRole("button", { name: "Run 7" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    // Scoped to the card, because the corpus selector in the page header says
+    // "Frozen corpus" too and an unscoped query would be satisfied by the
+    // control rather than by the run.
+    const card = within(trigger.closest("[data-slot='card']")!);
+    expect(card.getByText("Frozen corpus")).toBeInTheDocument();
+    // Formatted rather than written out: the wording is the platform's, not the
+    // page's, and a literal would pin the test to one timezone.
+    expect(
+      card.getByText(new Date("2026-09-09T10:00:00.000Z").toLocaleString()),
+    ).toBeInTheDocument();
+    expect(screen.getByText("84%")).toBeInTheDocument();
+    expect(screen.getByText(/^21 of 25 repeats/)).toHaveTextContent(
+      /^21 of 25 repeats · needs 80% · marginal$/,
+    );
+    expect(screen.getByText("-6pp")).toBeInTheDocument();
+    // The line that makes that delta mean anything travels with it.
+    expect(screen.getByText(/Compared with run 6/)).toBeInTheDocument();
+
+    // Audited monthly, not scanned — so it is body, not header.
+    expect(screen.queryByText("Estimated cost")).not.toBeInTheDocument();
+    expect(screen.queryByText("Prompt cache")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unanswered")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: CASES_TOGGLE }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("still says a payload escaped when the run is folded shut", async () => {
+    // The one value on this card that is a defect rather than a measurement.
+    // A fold that hid it would be a fold that hides the only thing on the page
+    // nobody may miss.
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ escaped: 1, caught: 3, failing: true })] }),
+    );
+
+    render();
+
+    await user.click(await screen.findByRole("button", { name: "Run 7" }));
+
+    expect(screen.getByText(/^Defect —/)).toBeInTheDocument();
+    expect(screen.getByText("Failing")).toBeInTheDocument();
+  });
+
+  test("a failed run folds to a header that says so and claims no metrics", async () => {
+    // A run that fell over has no rates worth banding, so the header is the
+    // status and nothing that would read as a measurement.
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            status: EVAL_RUN_STATUS.failed,
+            finishedAt: null,
+            error: "The provider could not be reached.",
+            metrics: [],
+            results: [],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await user.click(await screen.findByRole("button", { name: "Run 7" }));
+
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.queryByText("Decline accuracy")).not.toBeInTheDocument();
+    expect(screen.queryByText("Safety catch rate")).not.toBeInTheDocument();
+    expect(screen.queryByText("Estimated cost")).not.toBeInTheDocument();
+  });
+
+  test("folds the case table separately, inside an open run", async () => {
+    // The bulk of the card. An admin reading the metrics rarely wants all
+    // thirty-six rows with them, so the run being open is not the table being
+    // open.
+    const user = userEvent.setup();
+    render();
+
+    const toggle = await screen.findByRole("button", { name: CASES_TOGGLE });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // The run itself is open — this is the second toggle, not the first.
+    expect(screen.getByRole("button", { name: "Run 7" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(
+      screen.queryByText("Nothing in the corpus covers it"),
+    ).not.toBeInTheDocument();
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByText("Nothing in the corpus covers it"),
+    ).toBeInTheDocument();
+  });
+
+  test("forgets what was open when the page is left and come back to", async () => {
+    // Deliberately not remembered: which runs you had open goes stale as runs
+    // age off the page, and it is state nobody asked for.
+    const user = userEvent.setup();
+    const { unmount } = render();
+
+    await user.click(await screen.findByRole("button", { name: CASES_TOGGLE }));
+    await user.click(screen.getByRole("button", { name: "Run 7" }));
+    unmount();
+
+    render();
+
+    expect(
+      await screen.findByRole("button", { name: "Run 7" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: CASES_TOGGLE })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });

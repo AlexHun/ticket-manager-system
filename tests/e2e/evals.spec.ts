@@ -3,6 +3,7 @@ import {
   request as pwRequest,
   test,
   type APIRequestContext,
+  type Locator,
 } from "@playwright/test";
 import {
   AUTO_REPLY_DECLINE,
@@ -59,6 +60,23 @@ import { API_URL } from "./helpers/env";
 
 const AI_API_URL = "http://localhost:3003";
 const ADMIN = CREDENTIALS.admin;
+
+/**
+ * Make sure a disclosure is open, whatever it was on load (#237).
+ *
+ * Only the newest run on the page is expanded when it arrives, and the case
+ * table inside a run is closed regardless — so an assertion about a run's
+ * *body* has to say so rather than rely on where this spec's seeded row
+ * happened to sort. A plain `click()` would be a toggle, which is exactly the
+ * flake this avoids: it would close the very card the assertions below read.
+ */
+async function expand(toggle: Locator) {
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute("aria-expanded")) === "false") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
 
 /* ── The screen, and the guards, on the ordinary AI-disabled server ──────── */
 
@@ -180,7 +198,9 @@ test.describe("the evals screen", () => {
         hasText: `Run ${run.id}`,
       });
 
-      // Failing, not Failed. The run finished; its numbers are the answer.
+      // Failing, not Failed. The run finished; its numbers are the answer. It
+      // is on the header, so it survives the fold — as do the three metrics
+      // and the escaped-payload defect asserted below.
       await expect(card.getByText("Failing")).toBeVisible();
       await expect(card.getByText("75%")).toBeVisible();
       // The verdict word, in the caption, beside the denominator. The figure
@@ -201,6 +221,12 @@ test.describe("the evals screen", () => {
       await expect(
         card.getByText("3 of 5 repeats classified · needs 80%"),
       ).toBeVisible();
+      // The two breakdowns live in the run's body, which folds (#237). Opened
+      // explicitly rather than assumed: this row is the newest run on the page
+      // while this test holds the database, but an assertion that depended on
+      // that would be one stray seeded row away from failing.
+      await expand(card.getByRole("button", { name: `Run ${run.id}` }));
+
       // And which category was mistaken for which — the half of R15 a bare
       // percentage cannot say. Read off the named list rather than the card at
       // large: "General" and "Other" both label cells in the table below.
