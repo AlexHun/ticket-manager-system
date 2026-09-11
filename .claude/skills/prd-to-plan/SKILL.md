@@ -96,6 +96,6 @@ reshape it.
 
 ## After it merges
 
-Offer an epic issue plus one child per slice, wired with native dependencies so
-the unblocked ones are easy to find (`docs/agents/issue-tracker.md`). Never
-create them unasked.
+Offer `/mattpocock-skills:to-tickets` on the finished plan: it cuts one ticket
+per slice with native blocking edges, so the unblocked ones are easy to find
+(`docs/agents/issue-tracker.md`). Never create them unasked.

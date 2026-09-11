@@ -18,6 +18,7 @@
     "test": "bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "tokens": "node scripts/ticket-tokens.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",

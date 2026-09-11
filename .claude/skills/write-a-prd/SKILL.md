@@ -90,6 +90,6 @@ Never commit a PRD straight to `main` — it is a proposal until someone reviews
 
 ## After it merges
 
-The PRD is the input to tickets, not a substitute for them. Offer to split it
-into issues — one per `Must` requirement, each citing its `R<n>` — per
-`docs/agents/issue-tracker.md`. Don't create them unasked.
+The PRD is the input to the plan, not a substitute for it. Offer `prd-to-plan`
+next: it turns each `Must` into a tracer-bullet slice, and tickets are cut from
+those slices rather than straight from the PRD. Don't run it unasked.

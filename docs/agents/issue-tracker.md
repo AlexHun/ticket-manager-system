@@ -13,6 +13,24 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+## Forecasting a ticket's size
+
+Every ticket carries one `forecast/S|M|L` label, applied when it is cut. The
+bands are **output tokens**, from this repo's own measured per-ticket
+distribution (90 branches): `S` <60k, `M` 60-150k (the median ticket is 92k),
+`L` 150-250k. Anything forecast above `L` is a ticket to split, not a bigger
+label — which is why no `forecast/XL` exists.
+
+Forecast **turns**, then read the band off them: output runs at a near-constant
+~745 tokens per turn, so a ticket you expect to take ~120 tool-call round trips
+is an `M`. Estimating tokens directly is estimating a number nobody has an
+intuition for.
+
+`bun run tokens` scores the forecasts against what was actually spent, joining
+transcripts to issues through the branch name — so `<type>/<issue>-<slug>` is
+what makes a ticket measurable at all. Work done straight on `main` belongs to
+no ticket and is invisible to it.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
