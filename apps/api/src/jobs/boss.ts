@@ -418,7 +418,51 @@ export async function registerSweep(
     await spec.run();
   });
 
-  await boss.schedule(spec.name, spec.cron);
+  await applySweepSchedule(boss, spec.name, spec.cron, false);
+}
+
+/**
+ * Put a sweep on the clock, or take it off.
+ *
+ * The one piece of the scheduler's own API that is reachable from outside a
+ * `register*` call, and it is exported for a single consumer: the eval
+ * harness's schedule is a row an admin edits, so re-asserting it has to happen
+ * on a `PATCH` rather than only on a boot (#236). Every other sweep's cron is a
+ * constant, and a constant only ever changes on a deploy, which is exactly what
+ * `registerSweep` above already covers.
+ *
+ * It stays here — and callers reach it through a narrow module of their own
+ * rather than importing this file — because this module is where a queue's
+ * settings live, and `boss.test.ts` reads the directory to keep it that way.
+ * What a caller is trusted with is *which* sweep and *whether*, never how.
+ *
+ * **Pausing unschedules rather than writing a cron that never matches.** The
+ * time is kept on the row, not in the queue, so an arrangement that is off is
+ * still the arrangement and resuming it needs no memory of what it used to say.
+ * A cron nobody can read as "off" would be the kind of setting somebody later
+ * ties themselves in knots decoding.
+ *
+ * Both halves are idempotent: pg-boss upserts a schedule rather than stacking
+ * them, and unscheduling a queue that is not scheduled is a no-op — which is
+ * what lets a boot and a `PATCH` call this with no coordination between them.
+ *
+ * **It does not touch a run already in flight, and nothing does.** Pausing
+ * stops the next tick; a run that has started runs to completion
+ * (`docs/adr/0021`). The confirmation on the page says so, because that is the
+ * thing an admin would otherwise assume this button did.
+ */
+export async function applySweepSchedule(
+  boss: PgBoss,
+  name: string,
+  cron: string,
+  paused: boolean,
+): Promise<void> {
+  if (paused) {
+    await boss.unschedule(name);
+    return;
+  }
+
+  await boss.schedule(name, cron);
 }
 
 /** Stop polling, let in-flight work finish, and release the pool. */

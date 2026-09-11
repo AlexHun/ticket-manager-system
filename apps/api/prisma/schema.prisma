@@ -53,6 +53,8 @@ model User {
   adminActivityOn      AdminActivity[]              @relation("AdminActivityTarget")
   handoffRevisionsFrom AutomationSettingsRevision[] @relation("AutomationRevisionFromUser")
   handoffRevisionsTo   AutomationSettingsRevision[] @relation("AutomationRevisionToUser")
+  evalScheduleEdits    EvalSchedule[]               @relation("EvalScheduleEditor")
+  evalPlannedRuns      EvalPlannedRun[]             @relation("EvalPlanner")
   handoffRevisionsMade AutomationSettingsRevision[] @relation("AutomationRevisionChangedBy")
   tutorialEdits        TutorialContent[]            @relation("TutorialContentEditor")
   tutorialProgress     TutorialProgress[]
@@ -979,20 +981,20 @@ model ChangelogSeen {
 /// against three weeks ago (R7), and a handful of rows per night is not a
 /// retention problem the way `outbound_email` is.
 model EvalRun {
-  id      Int         @id @default(autoincrement())
+  id         Int           @id @default(autoincrement())
   /// Which knowledge base this run answered from. Results from the two are
   /// never averaged into one number (R4) — a live-corpus run makes a red result
   /// ambiguous between a prompt regression and an admin's article edit, so the
   /// two form independent series.
-  corpus  EvalCorpus
-  status  EvalRunStatus @default(running)
+  corpus     EvalCorpus
+  status     EvalRunStatus @default(running)
   /// Why the run itself fell over — the provider was unreachable, or the queue
   /// ran out of retries. Prose, shown to an admin and read by nothing.
   ///
   /// Distinct from a run whose *numbers* are bad: that run completed, and its
   /// numbers are the answer this harness exists to give.
-  error   String?
-  startedAt  DateTime @default(now())
+  error      String?
+  startedAt  DateTime      @default(now())
   /// Null while the run is in flight. The worker's idempotency guard is a
   /// conditional write on this column, so a job delivered twice can only
   /// finish a run once.
@@ -1001,22 +1003,22 @@ model EvalRun {
   /// How many times each case was answered. Fixed at five in code, recorded
   /// here anyway: a stored rate means nothing without the denominator it was
   /// taken over, and a run kept for months has to keep saying what it measured.
-  repeats    Int      @default(1)
+  repeats       Int   @default(1)
   /// Repeats actually answered across every case: cases × `repeats`. Written
   /// when the run closes, so a run in flight reads zero rather than a fraction
   /// of a number nobody can interpret.
-  attempts   Int      @default(0)
+  attempts      Int   @default(0)
   /// Repeats that landed where their case said they would. `matches/attempts`
   /// is the decline-accuracy rate the PRD is missing a baseline for.
-  matches    Int      @default(0)
+  matches       Int   @default(0)
   /// Repeats the provider could not answer. Counted apart from the misses,
   /// because an outage is not the model getting things wrong and a number that
   /// cannot tell them apart is a number nobody will trust twice.
-  abandoned  Int      @default(0)
+  abandoned     Int   @default(0)
   /// Estimated USD, priced off `USD_PER_MTOK` at the time of the call. An
   /// estimate against a printed price list that will go stale; nothing bills
   /// off it (R10).
-  usd        Float    @default(0)
+  usd           Float @default(0)
   /// Repeats after each case's first that the provider served partly from its
   /// prompt cache, and how many repeats could have been. Zero `cachedRepeats`
   /// on a full run is the prompt-caching regression that nothing else in this
@@ -1040,8 +1042,8 @@ model EvalRun {
   ///
   /// `escaped` above zero is the only number here that is a defect rather than
   /// a measurement — it is ADR-0004's claim failing.
-  caught     Int      @default(0)
-  escaped    Int      @default(0)
+  caught  Int @default(0)
+  escaped Int @default(0)
 
   /// Repeats the classifier answered, and how many it filed under the category
   /// its case expected (R15).
@@ -1057,7 +1059,7 @@ model EvalRun {
   /// never sees the corpus, so this number is measured the same way on a frozen
   /// run and a live one.
   classifiedRepeats Int @default(0)
-  classifyMatches Int  @default(0)
+  classifyMatches   Int @default(0)
 
   /// What this run was judged against, stamped when it started (R8).
   ///
@@ -1074,9 +1076,10 @@ model EvalRun {
   /// rather than a zero that reads as one. A key this build has no metric for is ignored; a metric with no key
   /// falls back to the current constant, which is the honest reading for the
   /// rows written before this column existed.
-  thresholds Json     @default("{}")
+  thresholds Json @default("{}")
 
-  results EvalCaseResult[]
+  results         EvalCaseResult[]
+  evalPlannedRuns EvalPlannedRun[]
 
   /// The page lists newest first.
   @@index([startedAt])
@@ -1098,53 +1101,53 @@ model EvalRun {
 /// those. `PIPELINE_OUTCOME` and `AUTO_REPLY_DECLINE` in `@ticket/shared` are
 /// the authority, and the API validates against them on the way out.
 model EvalCaseResult {
-  id              Int      @id @default(autoincrement())
-  runId           Int
-  run             EvalRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id                Int      @id @default(autoincrement())
+  runId             Int
+  run               EvalRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
   /// The case's stable id, e.g. `off-corpus`. A run names the case rather than
   /// pointing at a row, because the case set lives in `@ticket/core` and is
   /// reviewed in a pull request — see the note on `AUTO_REPLY_CASES`.
-  caseId          String
+  caseId            String
   /// Denormalised so a result stays readable after a case is renamed, the same
   /// reasoning `KnowledgeArticleRevision.editorName` uses.
-  caseName        String
+  caseName          String
   /// Whether this case is one of the planted payloads. Copied for the same
   /// reason the expectations are: the catch rate is reported separately from
   /// decline accuracy (R9), and re-deriving which rows counted would make an
   /// old run's numbers move when the case set changes.
-  adversarial     Boolean
-  expectedOutcome String
-  expectedDecline String?
+  adversarial       Boolean
+  expectedOutcome   String
+  expectedDecline   String?
   /// How many times this case was answered in this run, and how many of those
   /// landed where it said. A rate, never a pass — one answer from a model is
   /// not a measurement (R3), and a case result that said true or false would be
   /// reporting a coin toss as a verdict.
-  repeats         Int      @default(1)
-  matches         Int      @default(0)
+  repeats           Int      @default(1)
+  matches           Int      @default(0)
   /// Repeats the provider could not answer. See the note on `EvalRun`.
-  abandoned       Int      @default(0)
+  abandoned         Int      @default(0)
   /// Estimated USD across this case's repeats, including the ones a safety
   /// check discarded — a reply thrown out cost what one that was sent would.
-  usd             Float    @default(0)
+  usd               Float    @default(0)
   /// Repeats after the first served partly from the prompt cache, out of
   /// `cacheable` — which is `repeats - 1`, because the first repeat is what
   /// warms it. Written by `runCase` off one slice of the verdicts, which is the
   /// only place that rule is applied. See the note on `EvalRun`.
-  cachedRepeats   Int      @default(0)
-  cacheable       Int      @default(0)
+  cachedRepeats     Int      @default(0)
+  cacheable         Int      @default(0)
   /// This case's share of the catch rate: payload caught by an output check,
   /// and payload reaching an accepted reply. Both zero unless `adversarial`.
   /// See the notes on `EvalRun`.
-  caught          Int      @default(0)
-  escaped         Int      @default(0)
+  caught            Int      @default(0)
+  escaped           Int      @default(0)
   /// The category this case declared it should be filed under, copied onto the
   /// row like every other expectation here. Null on the two cases the classifier
   /// is not scored against.
-  expectedCategory String?
+  expectedCategory  String?
   /// This case's share of classifier accuracy: repeats the classifier answered,
   /// and repeats it filed as expected. See the notes on `EvalRun`.
   classifiedRepeats Int      @default(0)
-  classifyMatches Int      @default(0)
+  classifyMatches   Int      @default(0)
   /// One entry per repeat, in the order they were answered. `StoredVerdict` in
   /// `src/evals/stored-verdict.ts` is the shape, and no application code writes
   /// this column or reads it back except through that module — test fixtures
@@ -1158,15 +1161,15 @@ model EvalCaseResult {
   /// Five small objects per case, and what they buy is the thing a bare
   /// `3/5` cannot say — *which* two failed and where they went instead. Slice
   /// 3's per-check breakdown reads them; nothing joins on them.
-  verdicts        Json
-  createdAt       DateTime @default(now())
+  verdicts          Json
+  createdAt         DateTime @default(now())
 
-  @@index([runId])
   /// One row per case per run. The worker writes a case result the moment that
   /// case finishes, so an admin can watch a run fill in — which means a job
   /// re-delivered mid-run would otherwise write a second row for a case it had
   /// already answered and double it in every rate taken off these.
   @@unique([runId, caseId])
+  @@index([runId])
   @@map("eval_case_result")
 }
 
@@ -1192,4 +1195,117 @@ enum EvalRunStatus {
   /// that is a `completed` run with bad numbers, which is the answer, not an
   /// error.
   failed
+}
+
+/// The standing arrangement that opens a run unattended (#236).
+///
+/// **One row, and the code keeps it that way** — `id` is fixed at
+/// `EVAL_SCHEDULE_ID` and the row is seeded by the migration that created this
+/// table, from the time the nightly sweep was hard-coded to before it. A
+/// deployment is one desk with one nightly; a table that could hold two would
+/// be a second cron nobody asked for, and the read path would need a rule for
+/// choosing between them.
+///
+/// **Frozen corpus only, and that is an absence rather than a column.** An
+/// unattended trend line has to be attributable: a live-corpus run moves when
+/// an admin edits an article at `/knowledge`, so a move in it is ambiguous
+/// between a prompt regression and somebody rewording KB-014 that morning. A
+/// planned run may name either corpus — a named person picking Live for a
+/// specific afternoon has chosen it — and this cannot.
+///
+/// The time is an hour and a minute rather than the cron expression pg-boss is
+/// handed. Four of cron's five fields have exactly one legal value for a daily
+/// schedule, so storing the string would be storing four fields that can only
+/// be wrong; `evalScheduleCron` assembles it on the way out.
+model EvalSchedule {
+  /// Always `1`. See the note above on why this table holds one row.
+  id     Int     @id
+  /// Local hour of the run, 0–23.
+  hour   Int
+  /// Minute past the hour, 0–59.
+  minute Int
+  /// Paused keeps the time, and there is no delete: an arrangement that is off
+  /// is still the arrangement. Pausing does not touch a run already in flight —
+  /// nothing does (`docs/adr/0021`).
+  paused Boolean @default(false)
+
+  updatedAt     DateTime @updatedAt
+  /// Who last retimed, paused or resumed it. `SetNull` rather than a cascade,
+  /// because deleting a colleague must not delete the deployment's schedule.
+  updatedById   String?
+  updatedBy     User?    @relation("EvalScheduleEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+  /// Denormalised the way `KnowledgeArticleRevision.editorName` is: the panel
+  /// says who last changed the schedule, and it has to keep saying so after
+  /// that account is gone. Null only on the seeded row, which nobody changed.
+  updatedByName String?
+
+  @@map("eval_schedule")
+}
+
+/// A run somebody has asked for at a future time (#236, `docs/adr/0021`).
+///
+/// **Not an `EvalRun` in a waiting state, and that is the decision the ADR
+/// argues.** A plan has measured nothing: `startedAt` would be a lie, `repeats`
+/// a guess at whatever constant the deploy before tonight carries, ten counters
+/// zeros that are not a fraction of anything, and `thresholds` a snapshot taken
+/// hours before the run it is supposed to have judged. The runs list means
+/// measurements that happened, which is what makes its newest-first ordering
+/// and #237's newest-open rule safe.
+///
+/// **Re-timing is cancel-and-plan-again, not an edit**, so `runAt` is never
+/// updated after the row is written. One write path, one queued job, and no
+/// window where the row and the queue disagree about when this fires.
+model EvalPlannedRun {
+  id     Int                  @id @default(autoincrement())
+  /// Either corpus, unlike the schedule above.
+  corpus EvalCorpus
+  /// When it is due. Written once — see the note on re-timing.
+  runAt  DateTime
+  status EvalPlannedRunStatus @default(planned)
+
+  /// The queue's id for the deferred job, so cancelling the plan releases it.
+  /// Null on a row whose deployment had no key when it was planned, which
+  /// enqueues nothing for the same reason `enqueueEvalRun` does not.
+  jobId String?
+
+  /// The run it opened, once it fired. Null in every other state, and the
+  /// reason this is a relation at all: it is the one place a plan and a
+  /// measurement are linked, and the link is written after the measurement
+  /// exists rather than before.
+  runId Int?
+  run   EvalRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime @default(now())
+  /// Who asked for it. `SetNull` for the reason the schedule's editor is.
+  plannedById   String?
+  plannedBy     User?    @relation("EvalPlanner", fields: [plannedById], references: [id], onDelete: SetNull)
+  /// Denormalised, same rule as `EvalSchedule.updatedByName`.
+  plannedByName String?
+
+  /// The list reads "what is coming, soonest first", and the sweep-like read
+  /// that marks a plan missed asks the same question.
+  @@index([status, runAt])
+  @@map("eval_planned_run")
+}
+
+/// Where a planned run got to. Mirrors `EVAL_PLANNED_RUN_STATUS` in
+/// `@ticket/shared`.
+///
+/// Deliberately **not** `EvalRunStatus`. A planned run has measured nothing, so
+/// the words that fit it are about whether it happened rather than about how it
+/// went — and `cancelled` belongs to a plan alone, never to a run, which cannot
+/// be ended early by anyone (`docs/adr/0021`).
+enum EvalPlannedRunStatus {
+  /// Asked for, not yet fired. The only cancellable state.
+  planned
+  /// An admin cancelled it; it never becomes a run. Also what the first half of
+  /// a re-time leaves behind.
+  cancelled
+  /// Its time came and it opened a run. `runId` names it.
+  fired
+  /// Its time passed with nothing there to fire it, by more than the grace
+  /// window. It started nothing and spent nothing, because firing hours late
+  /// charges money at a moment nobody chose and stamps a trend point whose date
+  /// means nothing.
+  missed
 }

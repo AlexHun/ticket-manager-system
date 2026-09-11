@@ -102,7 +102,14 @@ test.describe("the evals screen", () => {
     ).toBeDisabled();
     // And the selector is still usable: a deployment that can start nothing
     // still has a history worth reading, on both series.
-    await expect(page.getByRole("combobox", { name: "Corpus" })).toBeEnabled();
+    //
+    // `exact` because the schedule panel below has a corpus control of its own
+    // ("Corpus for this run"), and Playwright matches an accessible name as a
+    // substring by default — the two controls are for two different things and
+    // an assertion that could land on either is one that proves neither.
+    await expect(
+      page.getByRole("combobox", { name: "Corpus", exact: true }),
+    ).toBeEnabled();
   });
 
   test("a run below its threshold is drawn as failing, with all three metrics and the check that held", async ({
@@ -327,7 +334,7 @@ test.describe("the evals screen", () => {
       // button (#234).
       await expect(card(live.id)).toHaveCount(0);
 
-      await page.getByRole("combobox", { name: "Corpus" }).click();
+      await page.getByRole("combobox", { name: "Corpus", exact: true }).click();
       await page.getByRole("option", { name: "Live articles" }).click();
       await expect(
         page.getByRole("button", { name: "Run live articles" }),
@@ -637,3 +644,120 @@ async function waitForRun(runId: number, timeoutMs = 60_000) {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
 }
+
+/* ── When runs happen: the schedule, and planned runs (#236) ─────────────── */
+
+/**
+ * **The stored arrangement, never a cron actually firing.** What is asserted
+ * here is that an admin's edit reaches the row and comes back on the screen,
+ * and that a planned run is listed as coming and can be released again. A test
+ * that waited for a nightly to fire would be a test that waits a day, and a
+ * test that wound the clock forward would be asserting pg-boss's cron parser
+ * rather than anything this repo wrote.
+ */
+test.describe("the eval schedule", () => {
+  test("an admin retimes it, and the new time is what comes back", async ({
+    page,
+  }) => {
+    await signIn(page, "admin");
+    await page.goto("/evals");
+
+    const time = page.getByLabel("Time (server clock)");
+    await expect(time).toHaveValue("03:47");
+
+    await time.fill("05:15");
+    await page.getByRole("button", { name: "Save time" }).click();
+
+    // The row, which is the half a screenshot cannot prove: the time an admin
+    // owns is stored rather than compiled in, and the deploy that made it
+    // editable did not change the arrangement in force.
+    await expect
+      .poll(
+        async () =>
+          (await testDb.evalSchedule.findUnique({ where: { id: 1 } }))?.hour,
+      )
+      .toBe(5);
+
+    // And it survives a reload, with who changed it beside it — the panel says
+    // who last changed the schedule and when.
+    await page.reload();
+    await expect(page.getByLabel("Time (server clock)")).toHaveValue("05:15");
+    await expect(page.getByText(/Last changed by/)).toBeVisible();
+
+    // Put it back, so the rest of the suite reads the seeded arrangement.
+    await testDb.evalSchedule.update({
+      where: { id: 1 },
+      data: { hour: 3, minute: 47, updatedById: null, updatedByName: null },
+    });
+  });
+});
+
+test.describe("planned runs", () => {
+  let ctx: APIRequestContext;
+
+  test.beforeAll(async () => {
+    ctx = await pwRequest.newContext();
+    const res = await ctx.post(`${AI_API_URL}/api/auth/sign-in/email`, {
+      data: { email: ADMIN.email, password: ADMIN.password },
+    });
+    if (!res.ok()) {
+      throw new Error(
+        `Sign-in failed on the AI server: ${res.status()} ${await res.text()}`,
+      );
+    }
+  });
+
+  test.afterAll(async () => {
+    await ctx.dispose();
+  });
+
+  test("a planned run is listed as coming, is not a run, and can be cancelled", async () => {
+    const runsBefore = await testDb.evalRun.count();
+
+    const planned = await ctx.post(`${AI_API_URL}/api/evals/planned-runs`, {
+      data: {
+        corpus: EVAL_CORPUS.live,
+        // Two hours out: far enough that nothing fires inside this test, close
+        // enough to be well inside the horizon the route enforces.
+        runAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+    expect(planned.status()).toBe(201);
+    const { id } = (await planned.json()) as { id: number };
+
+    const panel = await ctx.get(`${AI_API_URL}/api/evals/schedule`);
+    expect(panel.status()).toBe(200);
+    const listed = (
+      (await panel.json()) as { plannedRuns: { id: number; status: string }[] }
+    ).plannedRuns;
+    expect(listed.map((row) => row.id)).toContain(id);
+
+    // **Not a run**, and this is the assertion `docs/adr/0021` is for: a plan
+    // has measured nothing, so nothing is written to the table that says what
+    // was measured.
+    expect(await testDb.evalRun.count()).toBe(runsBefore);
+
+    const cancelled = await ctx.delete(
+      `${AI_API_URL}/api/evals/planned-runs/${id}`,
+    );
+    expect(cancelled.status()).toBe(200);
+
+    const after = await ctx.get(`${AI_API_URL}/api/evals/schedule`);
+    const remaining = (
+      (await after.json()) as { plannedRuns: { id: number }[] }
+    ).plannedRuns;
+    // It never becomes a run, and it is gone from what is coming.
+    expect(remaining.map((row) => row.id)).not.toContain(id);
+  });
+
+  test("refuses a plan for a moment that has passed", async () => {
+    const res = await ctx.post(`${AI_API_URL}/api/evals/planned-runs`, {
+      data: {
+        corpus: EVAL_CORPUS.frozen,
+        runAt: new Date(Date.now() - 60_000).toISOString(),
+      },
+    });
+
+    expect(res.status()).toBe(400);
+  });
+});

@@ -1,7 +1,12 @@
 import type { PgBoss } from "pg-boss";
 import { EVAL_CORPUS } from "@ticket/shared";
 import { startEvalRun } from "../evals/start-run";
-import { registerSweep, type SweepSpec } from "./boss";
+import {
+  EVAL_SCHEDULE_DEFAULT,
+  evalScheduleCron,
+  readEvalSchedule,
+} from "../evals/schedule";
+import { applySweepSchedule, registerSweep, type SweepSpec } from "./boss";
 import { ALL_EVAL_CASE_IDS } from "./eval-run";
 
 /**
@@ -47,18 +52,31 @@ import { ALL_EVAL_CASE_IDS } from "./eval-run";
 const NIGHTLY_QUEUE = "eval-nightly";
 
 /**
- * 03:47, and the two halves of that are chosen rather than default.
+ * The time to sweep at when nothing has been stored — 03:47.
  *
- * **Nightly**, not hourly and not every few hours: a full set is ~175 calls
- * against a real provider and somebody pays for every one of them (R10 records
- * the figure and the PRD deliberately sets no ceiling). One point a day is also
- * the granularity the trend is read at.
+ * **The time is a row now, not this constant** (#236). What the constant
+ * became is the seed and the fallback: the migration wrote it into
+ * `eval_schedule`, `EVAL_SCHEDULE_DEFAULT` is what a read falls back to, and
+ * this is what the spec below carries so a `SweepSpec` is still a complete
+ * value that a test can read without a database.
  *
- * **A minute nobody else uses**, the same rule `prune-outbox` follows. The two
- * pruning sweeps sit at :23 and 03:41; a run holds one worker for minutes, and
- * there is no reason to start it in the same second as anything else.
+ * The reasoning behind those two numbers has not moved and is still the
+ * reasoning. **Nightly**, not hourly and not every few hours: a full set is
+ * ~175 calls against a real provider and somebody pays for every one of them
+ * (R10 records the figure and the PRD deliberately sets no ceiling). One point
+ * a day is also the granularity the trend is read at. **A minute nobody else
+ * uses**, the same rule `prune-outbox` follows: the two pruning sweeps sit at
+ * :23 and 03:41, and a run holds one worker for minutes.
+ *
+ * An admin may now retime it to something that breaks the second half. That is
+ * the trade the ticket makes on purpose — the first half is the expensive one,
+ * and an hourly nightly is not offered at all, because the control takes an
+ * hour and a minute rather than a cron expression.
  */
-const NIGHTLY_CRON = "47 3 * * *";
+const NIGHTLY_CRON = evalScheduleCron(
+  EVAL_SCHEDULE_DEFAULT.hour,
+  EVAL_SCHEDULE_DEFAULT.minute,
+);
 
 /**
  * How long one tick may be active before pg-boss assumes the process died.
@@ -98,7 +116,33 @@ export const EVAL_NIGHTLY_SWEEP: SweepSpec = {
   run: startNightlyRun,
 };
 
-/** Create the queue and start the sweep. Called once, from `./index`. */
+/**
+ * Create the queue and start the sweep, at the time the deployment says.
+ * Called once, from `./index`.
+ *
+ * **The stored schedule wins over the constant, and that is the whole point of
+ * the boot path being different from the other four sweeps'** (#236).
+ * `registerSweep` re-asserts a spec's cron on every boot — which is what makes
+ * an edited constant take effect on deploy — and here that is precisely the
+ * behaviour to avoid: an admin retimed this to 05:00 and the next deploy would
+ * quietly put it back to 03:47. So the spec is registered carrying the time in
+ * force rather than the default it was written with.
+ *
+ * The second call is not redundant with the first. `registerSweep` schedules
+ * unconditionally, because no other sweep can be paused; this is where a paused
+ * schedule is taken back off the clock, and both halves are idempotent, so
+ * asserting a cron and then unscheduling it costs one statement on a boot that
+ * happens once.
+ */
 export async function registerEvalNightly(boss: PgBoss): Promise<void> {
-  await registerSweep(boss, EVAL_NIGHTLY_SWEEP);
+  const schedule = await readEvalSchedule();
+  const cron = evalScheduleCron(schedule.hour, schedule.minute);
+
+  await registerSweep(boss, { ...EVAL_NIGHTLY_SWEEP, cron });
+  await applySweepSchedule(
+    boss,
+    EVAL_NIGHTLY_SWEEP.name,
+    cron,
+    schedule.paused,
+  );
 }

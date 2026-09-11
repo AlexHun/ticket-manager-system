@@ -27,4 +27,14 @@ export const evalKeys = {
    * series must not leave a stale list behind it.
    */
   runs: (corpus: EvalCorpus) => ["evals", "runs", corpus] as const,
+  /**
+   * When runs happen — the standing schedule and what is planned (#236).
+   *
+   * **Not under a corpus**, unlike the list: the schedule is frozen-corpus only
+   * and a planned run may be either, so this is one panel for both series and
+   * switching the selector must not refetch it. Still nested under `all`, so a
+   * pushed `eval_run_changed` invalidates it too — a plan that fires becomes a
+   * run, and the panel it leaves is one row shorter.
+   */
+  schedule: () => ["evals", "schedule"] as const,
 };

@@ -56,6 +56,7 @@ import { extractErrorMessage } from "@/lib/errors";
 import { DECLINE_SHORT } from "@/lib/pipeline-labels";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
+import { EvalSchedulePanel } from "./EvalSchedulePanel";
 
 /**
  * Whether the unattended path still does what we think it does.
@@ -974,6 +975,12 @@ export function EvalsPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* When runs happen, above the runs themselves (#236). Two things that
+            are not runs — a schedule and the plans made against it — and
+            keeping them out of the list below is what lets that list go on
+            meaning "measurements that happened" (`docs/adr/0021`). */}
+        <EvalSchedulePanel />
 
         {isPending && <Skeleton className="h-40 w-full" />}
 
