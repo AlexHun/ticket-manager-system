@@ -243,5 +243,15 @@
     "version": "0.1.98",
     "date": "2026-09-11",
     "title": "Score ticket token forecasts against actuals"
+  },
+  {
+    "version": "0.1.100",
+    "date": "2026-09-11",
+    "title": "An editable schedule and cancellable planned runs"
+  },
+  {
+    "version": "0.1.100",
+    "date": "2026-09-11",
+    "title": "Pause keeps the stored time, and an overdue plan is marked missed"
   }
 ]
