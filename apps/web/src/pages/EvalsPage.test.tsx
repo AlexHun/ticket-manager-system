@@ -273,7 +273,8 @@ describe("a finished run", () => {
     render();
 
     await screen.findByText("Nothing in the corpus covers it");
-    expect(screen.getByText("4 of 4 repeats")).toBeInTheDocument();
+    // A substring: the caption also carries the verdict word now.
+    expect(screen.getByText(/4 of 4 repeats/)).toBeInTheDocument();
   });
 });
 
@@ -324,7 +325,7 @@ describe("the safety numbers", () => {
     expect(await screen.findByText("Safety catch rate")).toBeInTheDocument();
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(
-      screen.getByText("3 of 4 payloads attempted · needs 100%"),
+      screen.getByText(/3 of 4 payloads attempted · needs 100%/),
     ).toBeInTheDocument();
   });
 
@@ -401,6 +402,188 @@ describe("the safety numbers", () => {
     await screen.findByText("Planted portal link");
     expect(screen.getByText("1 escaped")).toBeInTheDocument();
     expect(screen.getByText("3 caught")).toBeInTheDocument();
+  });
+});
+
+describe("how a number reads against its bar", () => {
+  /**
+   * The tile a headline number lives in, found by its heading.
+   *
+   * The assertions below are about the **word** in each caption, never about a
+   * class: a test that read `text-status-critical` would pass on a tile whose
+   * only cue was colour, which is the one rendering this feature exists to
+   * prevent.
+   */
+  function tile(label: string): HTMLElement {
+    return screen.getByText(label).parentElement!;
+  }
+
+  test("captions a metric that missed its bar with the word, not only the colour", async () => {
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            failing: true,
+            metrics: [
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.6,
+                numerator: 3,
+                denominator: 5,
+                meets: false,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText("Decline accuracy");
+    expect(
+      within(tile("Decline accuracy")).getByText("missed"),
+    ).toBeInTheDocument();
+  });
+
+  test("says when a metric only just cleared its bar", async () => {
+    // 83% against a stored 80%: passing, and three points from not being. The
+    // point of the middle band is that this is not the same news as 95%.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.classifierAccuracy, {
+                value: 0.83,
+                numerator: 83,
+                denominator: 100,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText("Classifier accuracy");
+    expect(
+      within(tile("Classifier accuracy")).getByText("marginal"),
+    ).toBeInTheDocument();
+  });
+
+  test("bands an old run against the threshold it was stored with", async () => {
+    // The whole reason the threshold travels on the row. This run was judged
+    // against 60% and cleared it; the constant this build carries is higher,
+    // and re-judging the history against it is what a stored threshold exists
+    // to prevent.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.7,
+                numerator: 70,
+                denominator: 100,
+                threshold: 0.6,
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    await screen.findByText("Decline accuracy");
+    const cell = tile("Decline accuracy");
+    expect(within(cell).getByText(/needs 60%/)).toBeInTheDocument();
+    expect(within(cell).getByText("clear")).toBeInTheDocument();
+  });
+
+  test("leaves a metric that measured nothing with no verdict at all", async () => {
+    // The default run planted no payload. A green "met" here would be a clean
+    // bill of health for a safety check nothing exercised.
+    render();
+
+    await screen.findByText("Safety catch rate");
+    const cell = tile("Safety catch rate");
+    expect(
+      within(cell).getByText("no payloads attempted in this run"),
+    ).toBeInTheDocument();
+    for (const word of ["met", "missed", "marginal", "clear"]) {
+      expect(within(cell).queryByText(word)).not.toBeInTheDocument();
+    }
+  });
+
+  test("says the prompt cache stalled when nothing came off it", async () => {
+    // The one prompt-caching alarm this codebase has a screen for.
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ cachedRepeats: 0, cacheable: 4 })] }),
+    );
+
+    render();
+
+    await screen.findByText("Prompt cache");
+    expect(
+      within(tile("Prompt cache")).getByText("cache stalled"),
+    ).toBeInTheDocument();
+  });
+
+  test("leaves the prompt cache unjudged when no repeat could have hit it", async () => {
+    // An old run stored before the counters existed looks exactly like this,
+    // and it must not read as a stalled cache.
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ cachedRepeats: 0, cacheable: 0 })] }),
+    );
+
+    render();
+
+    await screen.findByText("Prompt cache");
+    const cell = tile("Prompt cache");
+    expect(within(cell).queryByText("cache stalled")).not.toBeInTheDocument();
+    expect(within(cell).queryByText("cache engaged")).not.toBeInTheDocument();
+  });
+
+  test("calls unanswered repeats out without calling them a failure", async () => {
+    // An outage is not the model getting things wrong, so the word is not the
+    // one a missed threshold gets.
+    runsGet.mockResolvedValue(
+      response({ runs: [makeRun({ abandoned: 2, attempts: 5 })] }),
+    );
+
+    render();
+
+    await screen.findByText("Unanswered");
+    const cell = tile("Unanswered");
+    expect(within(cell).getByText("some unanswered")).toBeInTheDocument();
+    expect(within(cell).queryByText("missed")).not.toBeInTheDocument();
+  });
+
+  test("leaves the cost unjudged", async () => {
+    // No amount of dollars is bad in a way the harness can know.
+    render();
+
+    await screen.findByText("Estimated cost");
+    const cell = tile("Estimated cost");
+    for (const word of ["missed", "marginal", "clear"]) {
+      expect(within(cell).queryByText(word)).not.toBeInTheDocument();
+    }
+  });
+
+  test("names an escaped payload a defect, not another number below its bar", async () => {
+    // Every other value on the card is a measurement. This one is a break, and
+    // the word says so where colour alone could not.
+    runsGet.mockResolvedValue(
+      response({
+        runs: [makeRun({ escaped: 1, caught: 3, failing: true })],
+      }),
+    );
+
+    render();
+
+    expect(await screen.findByText(/Defect/)).toBeInTheDocument();
   });
 });
 
