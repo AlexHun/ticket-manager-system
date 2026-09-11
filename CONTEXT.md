@@ -160,9 +160,11 @@ answer from a model is not a measurement.
 _Avoid_: trial, iteration, pass, go
 
 **Run**:
-A set of cases answered and recorded — a measurement that happened. It ends
-completed, stopped, or failed; failed is the run itself falling over, never a
-number coming in low.
+A set of cases answered and recorded — a measurement that happened. Once
+started it runs to the end: it ends completed or failed, and failed is the run
+itself falling over, never a number coming in low. Nothing ends one early — see
+`docs/adr/0021`, which argued for a third ending and records why it was
+reversed.
 _Avoid_: test run, suite, build, execution
 
 **Corpus**:
@@ -201,14 +203,14 @@ run, and it does not touch one already in flight.
 _Avoid_: stop, disable, turn off, suspend
 
 **Cancel**:
-What is done to a planned run: it never becomes a run. Never done to a run in
-flight, which has already measured something.
+What is done to a planned run: it never becomes a run. Never done to a run,
+which has already started measuring and cannot be ended early by anyone.
 _Avoid_: stop, delete, abort, drop
 
-**Stop**:
-What is done to a run in flight: it ends early and keeps everything it has
-already measured. Never done to a schedule or a planned run.
-_Avoid_: cancel, abort, kill, pause
+There is deliberately no verb for ending a run in flight, because there is no
+such act: a run that has started runs to completion. The two verbs above take
+the two objects that are not runs — a schedule and a planned run — and neither
+reaches a measurement already under way.
 
 ### Assisted work
 
