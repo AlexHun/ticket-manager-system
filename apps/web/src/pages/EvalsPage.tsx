@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Loader2, Play } from "lucide-react";
+import { AlertTriangle, ChevronRight, Loader2, Play } from "lucide-react";
 import {
   EVAL_CORPUS,
   EVAL_CORPUS_DEFAULT,
@@ -28,6 +28,11 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -82,6 +87,10 @@ import { cn } from "@/lib/utils";
  * depending on which half of the page you were looking at. The filter is the
  * server's — `GET /api/evals/runs?corpus=…` — which is what puts the list's cap
  * inside the series rather than across both.
+ *
+ * **A run folds to its headline numbers** (#237). Twenty full cards is a page
+ * nobody scrolls, so only the newest is open on arrival and a closed one keeps
+ * exactly what decides whether to open it — see `RunCard`.
  */
 
 /** What a case did, in words. `notOffered` never reaches a run's own row. */
@@ -478,8 +487,48 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
   );
 }
 
-function RunCard({ run }: { run: EvalRunRow }) {
+/**
+ * One run, folded to its headline numbers unless you open it (#237).
+ *
+ * Twenty of these stack on the page and each one used to draw a screenful:
+ * six metrics, two breakdowns and a 36-row table. What survives the fold is
+ * exactly what decides whether to open a card — which run, which corpus, when,
+ * how it ended, and the three judged rates with their bands, verdict words and
+ * run-to-run deltas. Cost is the one number that reads like a headline and is
+ * not one: it is audited monthly rather than scanned, so it folds away with the
+ * cache figure, the unanswered count and the breakdowns.
+ *
+ * **The escaped-payload warning never folds.** Every other value here is a
+ * measurement; that one is a defect, and a fold that hid it would hide the one
+ * thing on this page nobody may miss.
+ *
+ * **Two toggles, not one**, because the table is the bulk of an open card and
+ * an admin reading the metrics rarely wants all thirty-six rows with them.
+ *
+ * Open state is `useState` and stays that way: which runs you had open goes
+ * stale as runs age off the page, so remembering it between visits would be
+ * restoring a layout that no longer describes the list.
+ */
+function RunCard({
+  run,
+  defaultOpen,
+}: {
+  run: EvalRunRow;
+  defaultOpen: boolean;
+}) {
+  // Seeded from the prop and owned from there on, so a refetch that redraws the
+  // list — a run filling in over `/api/events` does one per case — cannot fold
+  // a card the admin has just opened.
+  const [open, setOpen] = useState(defaultOpen);
   const running = run.status === EVAL_RUN_STATUS.running;
+  // Closed on a finished run — the table is the other thirty-six rows of the
+  // card, and the metrics above it are what an admin came for. Open on one
+  // still filling in, because there are no metrics yet and the rows arriving
+  // one at a time *are* the progress: a run you started and then had to open a
+  // second disclosure to watch would be a worse screen than the one this fold
+  // is fixing. It is seeded once, so the table an admin watched fill stays open
+  // when the run closes.
+  const [casesOpen, setCasesOpen] = useState(running);
   const answered = run.results.reduce((n, r) => n + r.repeats, 0);
   // Only the pairs that disagree. A run where everything landed where it should
   // has said so in the rate, and listing the matches beside the misses is how a
@@ -489,44 +538,60 @@ function RunCard({ run }: { run: EvalRunRow }) {
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-3 text-base">
-          <span>Run {run.id}</span>
-          {/* The corpus is on every run and is never averaged across — a live
+    /* The Collapsible wraps the Card rather than being it (`asChild`), the same
+     * way `TestRunnerPage` does it: Radix stamps `data-slot="collapsible"` on
+     * whatever it renders, and on the Card that would overwrite the
+     * `data-slot="card"` its own child selectors read. */
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-3 text-base">
+            {/* Only the run's name is the trigger. The badges beside it are the
+              status, not controls, and a header row that was one button would
+              read as a single unlabelled target to a screen reader. */}
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-1.5 text-base font-semibold"
+              >
+                <ChevronRight
+                  aria-hidden
+                  className={cn("transition-transform", open && "rotate-90")}
+                />
+                Run {run.id}
+              </Button>
+            </CollapsibleTrigger>
+            {/* The corpus is on every run and is never averaged across — a live
               run and a frozen run are two series, not one. Saying so on the
               card is what stops somebody reading them as one. */}
-          <Badge variant="outline">{CORPUS_LABEL[run.corpus]}</Badge>
-          {running && (
-            <span className="inline-flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-              {run.results.length === 0
-                ? "Running"
-                : `Running — ${run.results.length} ${
-                    run.results.length === 1 ? "case" : "cases"
-                  } answered`}
-            </span>
-          )}
-          {run.status === EVAL_RUN_STATUS.failed && (
-            <Badge variant="outline">Failed</Badge>
-          )}
-          {/* Two different pieces of news, and the badges are deliberately not
+            <Badge variant="outline">{CORPUS_LABEL[run.corpus]}</Badge>
+            {running && (
+              <span className="inline-flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                {run.results.length === 0
+                  ? "Running"
+                  : `Running — ${run.results.length} ${
+                      run.results.length === 1 ? "case" : "cases"
+                    } answered`}
+              </span>
+            )}
+            {run.status === EVAL_RUN_STATUS.failed && (
+              <Badge variant="outline">Failed</Badge>
+            )}
+            {/* Two different pieces of news, and the badges are deliberately not
               the same one. "Failed" is the run falling over — the provider was
               unreachable, the queue gave up — and it has no numbers. "Failing"
               is a run that finished and whose numbers are below what they were
               declared to need, which is the answer this page exists to give. */}
-          {run.failing && <Badge variant="destructive">Failing</Badge>}
-          <span className="ml-auto text-sm font-normal text-muted-foreground">
-            {new Date(run.startedAt).toLocaleString()}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {run.error && (
-          <p className="mb-3 text-sm text-muted-foreground">{run.error}</p>
-        )}
-
-        {/* Above the numbers, and in words rather than as a red figure among
+            {run.failing && <Badge variant="destructive">Failing</Badge>}
+            <span className="ml-auto text-sm font-normal text-muted-foreground">
+              {new Date(run.startedAt).toLocaleString()}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Above the numbers, and in words rather than as a red figure among
             black ones. Every other value on this card is a measurement; this
             one is a defect — a payload reached a reply the desk was willing to
             send, which is ADR-0004's claim failing.
@@ -538,25 +603,25 @@ function RunCard({ run }: { run: EvalRunRow }) {
             card with a filled, bordered ground — the loudest treatment on the
             page, held in reserve for the one value that is not a measurement.
             The word "defect" carries the same distinction without colour. */}
-        {run.escaped > 0 && (
-          <p
-            className={cn(
-              "mb-3 flex items-start gap-2 rounded-md border p-3 text-sm",
-              "border-status-critical/40 bg-status-critical-soft text-status-critical",
-            )}
-          >
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span>
-              <span className="font-semibold">Defect — </span>
-              {run.escaped} adversarial{" "}
-              {run.escaped === 1 ? "repeat" : "repeats"} reached an accepted
-              reply still carrying the planted payload. The output checks did
-              not hold.
-            </span>
-          </p>
-        )}
+          {run.escaped > 0 && (
+            <p
+              className={cn(
+                "mb-3 flex items-start gap-2 rounded-md border p-3 text-sm",
+                "border-status-critical/40 bg-status-critical-soft text-status-critical",
+              )}
+            >
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                <span className="font-semibold">Defect — </span>
+                {run.escaped} adversarial{" "}
+                {run.escaped === 1 ? "repeat" : "repeats"} reached an accepted
+                reply still carrying the planted payload. The output checks did
+                not hold.
+              </span>
+            </p>
+          )}
 
-        {/* Which run the deltas below are against, said once (R14).
+          {/* Which run the deltas below are against, said once (R14).
             Per-metric it would be the same sentence three times; on the card it
             is one line, and it is the line that makes a "-6pp" mean something —
             a delta whose other end is unnamed is a number nobody can go and
@@ -566,89 +631,112 @@ function RunCard({ run }: { run: EvalRunRow }) {
             measuring an admin's article edit and calling it a prompt
             regression. Drawn only on a completed run, which is the same gate
             the metrics are behind. */}
-        {run.metrics.length > 0 && (
-          <p className="mb-3 text-xs text-muted-foreground">
-            {run.previous
-              ? `Compared with run ${run.previous.id}, ${new Date(
-                  run.previous.startedAt,
-                ).toLocaleDateString()}.`
-              : `First run on the ${CORPUS_LABEL[
-                  run.corpus
-                ].toLowerCase()} — nothing to compare against yet.`}
-          </p>
-        )}
+          {run.metrics.length > 0 && (
+            <p className="mb-3 text-xs text-muted-foreground">
+              {run.previous
+                ? `Compared with run ${run.previous.id}, ${new Date(
+                    run.previous.startedAt,
+                  ).toLocaleDateString()}.`
+                : `First run on the ${CORPUS_LABEL[
+                    run.corpus
+                  ].toLowerCase()} — nothing to compare against yet.`}
+            </p>
+          )}
 
-        {/* Only once the run has closed. A percentage taken over the third of
-            the set that has finished is not a smaller version of the answer,
-            it is a different number, and drawing one invites reading it. */}
-        {/* Three across and two rows deep, not six across. The sixth figure
-            arrived with classifier accuracy, and at six columns inside a
-            max-w-5xl card every label wraps to two lines and every detail to
-            three — a row of numbers nobody can scan is worse than a second row
-            of numbers they can. */}
-        {!running && (
-          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-            {run.metrics.map((metric) => (
-              <MetricCell key={metric.metric} row={metric} />
-            ))}
-            {/* The one figure on this card with no band, and it is an absence
-                rather than an omission: no amount of dollars is "bad" in a way
-                the harness can know. A run that cost more than the last one
-                answered more cases, or answered them against a longer corpus,
-                or hit the cache less — three different facts, and colouring
-                the total would assert one of them. */}
-            <Metric
-              label="Estimated cost"
-              value={`$${run.usd.toFixed(4)}`}
-              detail={`${run.results.length} cases × ${run.repeats}`}
-            />
-            <Metric
-              label="Prompt cache"
-              value={percent(run.cachedRepeats, run.cacheable)}
-              detail={`${run.cachedRepeats} of ${run.cacheable} repeats`}
-              judgement={judgeCache(run)}
-            />
-            {/* No `detail`: the two sentences this tile has always carried are
-                now the judgement itself, in the band's colour, so they are said
-                once rather than followed by a word repeating them. */}
-            <Metric
-              label="Unanswered"
-              value={`${run.abandoned}`}
-              judgement={judgeAbandoned(run)}
-            />
-          </div>
-        )}
+          {/* The judged three, and the half of the old six-tile grid that stays
+              above the fold: they are the answer this page exists to give, and a
+              collapsed run reporting only its id and its status would be a row
+              nobody could triage from. The other three are in the body below.
 
-        {/* R9's second half, and the reason the catch rate is not one number.
+              Three across, never six — the sixth figure arrived with classifier
+              accuracy, and at six columns inside a max-w-5xl card every label
+              wrapped to two lines and every detail to three. The fold turns that
+              old two-row compromise into the split it always wanted to be.
+
+              Only once the run has closed. A percentage taken over the third of
+              the set that has finished is not a smaller version of the answer,
+              it is a different number, and drawing one invites reading it. */}
+          {!running && run.metrics.length > 0 && (
+            <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+              {run.metrics.map((metric) => (
+                <MetricCell key={metric.metric} row={metric} />
+              ))}
+            </div>
+          )}
+
+          <CollapsibleContent>
+            {/* Why a run fell over, rather than that it did — the badge above
+              carries the news, this carries the detail, so it belongs with the
+              rest of the detail. */}
+            {run.error && (
+              <p className="mb-3 text-sm text-muted-foreground">{run.error}</p>
+            )}
+
+            {/* The three figures that are measurements of the run rather than
+              judgements of the desk. Cost is the one that reads like a headline
+              and is not: it is a number audited monthly, not scanned, and a
+              collapsed card carrying it would be spending the header's room on
+              the question nobody opened the page to ask. */}
+            {!running && (
+              <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {/* The one figure on this card with no band, and it is an absence
+                  rather than an omission: no amount of dollars is "bad" in a way
+                  the harness can know. A run that cost more than the last one
+                  answered more cases, or answered them against a longer corpus,
+                  or hit the cache less — three different facts, and colouring
+                  the total would assert one of them. */}
+                <Metric
+                  label="Estimated cost"
+                  value={`$${run.usd.toFixed(4)}`}
+                  detail={`${run.results.length} cases × ${run.repeats}`}
+                />
+                <Metric
+                  label="Prompt cache"
+                  value={percent(run.cachedRepeats, run.cacheable)}
+                  detail={`${run.cachedRepeats} of ${run.cacheable} repeats`}
+                  judgement={judgeCache(run)}
+                />
+                {/* No `detail`: the two sentences this tile has always carried are
+                  now the judgement itself, in the band's colour, so they are said
+                  once rather than followed by a word repeating them. */}
+                <Metric
+                  label="Unanswered"
+                  value={`${run.abandoned}`}
+                  judgement={judgeAbandoned(run)}
+                />
+              </div>
+            )}
+
+            {/* R9's second half, and the reason the catch rate is not one number.
             A rate says the checks held; this says *which* of the two string
             comparisons did the holding — which is the thing worth knowing
             before anybody proposes relaxing one of them. */}
-        {!running && run.checks.length > 0 && (
-          <div className="mb-4 text-sm">
-            <span className="text-muted-foreground">Caught by:</span>{" "}
-            {/* A named list rather than a run of spans. It reads as one to a
+            {!running && run.checks.length > 0 && (
+              <div className="mb-4 text-sm">
+                <span className="text-muted-foreground">Caught by:</span>{" "}
+                {/* A named list rather than a run of spans. It reads as one to a
                 screen reader, which it is — and it gives the breakdown a handle
                 of its own, which it needs: the same ten words label a decline
                 in the Expected and Reached columns of the table below, so a
                 locator that only knew the wording would be pointing at three
                 different claims. */}
-            <ul
-              aria-label="Payloads caught by check"
-              className="mt-1 flex flex-wrap gap-x-4 gap-y-1"
-            >
-              {run.checks.map((check) => (
-                <li key={check.decline} className="flex gap-2">
-                  <span>{DECLINE_SHORT[check.decline]}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    ×{check.count}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+                <ul
+                  aria-label="Payloads caught by check"
+                  className="mt-1 flex flex-wrap gap-x-4 gap-y-1"
+                >
+                  {run.checks.map((check) => (
+                    <li key={check.decline} className="flex gap-2">
+                      <span>{DECLINE_SHORT[check.decline]}</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        ×{check.count}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-        {/* R15's second half, and the reason classifier accuracy is not one
+            {/* R15's second half, and the reason classifier accuracy is not one
             number either. A rate says how often the classifier agreed; this
             says *which* category is being mistaken for which — and on this desk
             that is not academic, because the category gate is the only control
@@ -659,83 +747,108 @@ function RunCard({ run }: { run: EvalRunRow }) {
             outage is not the model getting things wrong — but it is worth
             drawing, because the rate alone cannot say *which* cases went
             unanswered. */}
-        {!running && misfilings.length > 0 && (
-          <div className="mb-4 text-sm">
-            <span className="text-muted-foreground">Filed elsewhere:</span>{" "}
-            {/* Named, for the reason the check breakdown is: the same four
+            {!running && misfilings.length > 0 && (
+              <div className="mb-4 text-sm">
+                <span className="text-muted-foreground">Filed elsewhere:</span>{" "}
+                {/* Named, for the reason the check breakdown is: the same four
                 words label a category in the table below, so a locator that
                 only knew the wording would be pointing at two claims. */}
-            <ul
-              aria-label="Cases filed under an unexpected category"
-              className="mt-1 flex flex-wrap gap-x-4 gap-y-1"
-            >
-              {misfilings.map((row) => (
-                <li
-                  key={`${row.expected}:${row.actual ?? ""}`}
-                  className="flex gap-2"
+                <ul
+                  aria-label="Cases filed under an unexpected category"
+                  className="mt-1 flex flex-wrap gap-x-4 gap-y-1"
                 >
-                  <span>
-                    {row.expected} → {categoryLabel(row.actual)}
-                  </span>
-                  <span className="tabular-nums text-muted-foreground">
-                    ×{row.count}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+                  {misfilings.map((row) => (
+                    <li
+                      key={`${row.expected}:${row.actual ?? ""}`}
+                      className="flex gap-2"
+                    >
+                      <span>
+                        {row.expected} → {categoryLabel(row.actual)}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">
+                        ×{row.count}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-        {run.results.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {running
-              ? "Answering the first case. Each one is asked five times, so a full set takes a few minutes."
-              : "This run recorded no cases."}
-          </p>
-        ) : (
-          <>
-            <p className="mb-2 text-xs text-muted-foreground">
-              {running
-                ? `${answered} repeats answered so far.`
-                : `${run.results.length} cases, ${run.repeats} repeats each.`}
-            </p>
-            <TableFrame label={`Cases answered by run ${run.id}`}>
-              <table className="w-full min-w-2xl text-left text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Case
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Expected
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Reached
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      As expected
-                    </th>
-                    {/* Last, and set apart on purpose: the three columns to its
+            {run.results.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {running
+                  ? "Answering the first case. Each one is asked five times, so a full set takes a few minutes."
+                  : "This run recorded no cases."}
+              </p>
+            ) : (
+              /* The card's second fold, and the one that pays for the first: the
+             table is thirty-six rows of the forty on an open card, and an admin
+             reading the metrics rarely wants them with it. The sentence that
+             used to caption it is the trigger's label rather than a line above
+             it — it counts what is behind the fold, which is exactly what a
+             closed disclosure has to say for itself. */
+              <Collapsible open={casesOpen} onOpenChange={setCasesOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-1.5 mb-1 h-auto py-1 text-xs font-normal text-muted-foreground"
+                  >
+                    <ChevronRight
+                      aria-hidden
+                      className={cn(
+                        "transition-transform",
+                        casesOpen && "rotate-90",
+                      )}
+                    />
+                    {running
+                      ? `${answered} repeats answered so far`
+                      : `${run.results.length} ${
+                          run.results.length === 1 ? "case" : "cases"
+                        }, ${run.repeats} repeats each`}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <TableFrame label={`Cases answered by run ${run.id}`}>
+                    <table className="w-full min-w-2xl text-left text-sm">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Case
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Expected
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Reached
+                          </th>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            As expected
+                          </th>
+                          {/* Last, and set apart on purpose: the three columns to its
                         left are the auto-reply, this one is the classifier —
                         a different model answering a different question, which
                         is why it is a metric of its own rather than a column
                         blended into the rate beside it. */}
-                    <th scope="col" className="px-3 py-2 font-medium">
-                      Filed
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {run.results.map((result) => (
-                    <ResultRow key={result.id} result={result} />
-                  ))}
-                </tbody>
-              </table>
-            </TableFrame>
-          </>
-        )}
-      </CardContent>
-    </Card>
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Filed
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {run.results.map((result) => (
+                          <ResultRow key={result.id} result={result} />
+                        ))}
+                      </tbody>
+                    </table>
+                  </TableFrame>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </CollapsibleContent>
+        </CardContent>
+      </Card>
+    </Collapsible>
   );
 }
 
@@ -882,8 +995,13 @@ export function EvalsPage() {
           </p>
         )}
 
-        {data?.runs.map((run) => (
-          <RunCard key={run.id} run={run} />
+        {/* The newest open, the rest closed (#237). The list is newest-first,
+            so the first card is the run an admin came to read; the nineteen
+            behind it are history and stay folded until asked for. Deliberately
+            not remembered between visits — which runs you had open goes stale
+            as runs age off the page. */}
+        {data?.runs.map((run, index) => (
+          <RunCard key={run.id} run={run} defaultOpen={index === 0} />
         ))}
 
         {/* Under the last card, because it is about where the list stops. Said
