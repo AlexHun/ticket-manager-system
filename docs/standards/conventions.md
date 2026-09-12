@@ -28,6 +28,24 @@ Rules that bind in both workspaces.
 
 The whole-repo reformat is one commit, listed in `.git-blame-ignore-revs`. GitHub's blame view reads that file automatically; locally it is `git config blame.ignoreRevsFile .git-blame-ignore-revs`, once per clone.
 
+## Shunting work to a worker model
+
+Two subagents in `.claude/agents/` run on a cheap model and exist to absorb bulk work: **`bulk-reader`** (read-only extraction across many files) and **`boilerplate-scribe`** (scaffolds a file from a template you name). Reach for them by name through the Agent tool.
+
+**Two separate savings, and the second is the larger one.** The obvious win is price — a worker model costs roughly a fifteenth of the top tier per token. The bigger win is that a subagent's tool output never enters the calling session's context: forty files read by `bulk-reader` come back as a thirty-line digest, so they are not re-read on that turn and, because the caller's context is re-sent every turn, not re-billed on any later one either. Delegating is worth doing for the isolation alone, even at the same model tier. (This split is cost-model arithmetic plus the context mechanics, not a figure measured against this repo — treat the ratio as indicative and the direction as certain.)
+
+**Shunt only work that is all three of: high token volume, low reasoning depth, and cheaply verifiable.** Drop any one and it stops paying:
+
+- Not verifiable in one command → you will burn more expensive tokens auditing the result than you saved producing it. `bulk-reader` is checkable by spot-grepping a citation; `boilerplate-scribe` is checkable by `bun run typecheck`, which runs on `pre-commit` anyway.
+- Needs reasoning depth → a worker model returns _plausible_ output, which is the expensive failure. It does not read as wrong.
+- Low volume → the round trip costs more than doing it inline.
+
+So: route inventories, usage sweeps, config comparisons, scaffolding from a named template, fixture generation. **Not** debugging, not design decisions, not anything that turns on a caveat in `docs/standards/` — the rules here are dense and measured precisely because the obvious reading of them is often wrong, which is the worst possible input for a cheap model.
+
+**Write the worker a contract, not a goal.** Four things, every time: an exact scope (a glob or file list, never "the relevant files"); an exact output shape, given as a filled-in example; explicit prohibitions, including permission to say "I don't know" rather than guess; and a budget, with instructions to report the overflow rather than silently truncate. That escape hatch is load-bearing — a worker that is allowed to fail honestly is worth far more than one that isn't.
+
+**Enforce the contract with `tools:`, not with trust.** Both agents' frontmatter narrows their tool list: `bulk-reader` has no write tool at all, and `boilerplate-scribe` has `Write` but not `Edit`, so it can add files and not alter existing ones. A worker model's mistake should cost a wrong sentence, never a wrong commit.
+
 ## Fetching documentation
 
 Use the **context7** MCP server for any library, framework, SDK, API, or CLI question — React, Vite, Express, Prisma/Drizzle, Tailwind, shadcn/ui, Anthropic SDK, Postmark, `express-session`, `connect-pg-simple`, Bun, etc. Use it even for libraries you think you know; training data may lag behind current versions.
