@@ -253,5 +253,10 @@
     "version": "0.1.100",
     "date": "2026-09-11",
     "title": "Pause keeps the stored time, and an overdue plan is marked missed"
+  },
+  {
+    "version": "0.1.102",
+    "date": "2026-09-13",
+    "title": "Add worker-model subagents for bulk reads and scaffolding"
   }
 ]
