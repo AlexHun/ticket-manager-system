@@ -258,5 +258,10 @@
     "version": "0.1.102",
     "date": "2026-09-13",
     "title": "Add worker-model subagents for bulk reads and scaffolding"
+  },
+  {
+    "version": "0.1.103",
+    "date": "2026-09-13",
+    "title": "Drop memory: so the worker tool allowlists actually bind"
   }
 ]
