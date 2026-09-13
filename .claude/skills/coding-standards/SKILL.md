@@ -30,7 +30,7 @@ Done when every matching file has been read and every rule in it either applied 
 | [testing.md](../../../docs/standards/testing.md) | Test commands, any `apps/web` component test, or a script/env question |
 | [testing-api.md](../../../docs/standards/testing-api.md) | Any `apps/api` test — `bun test`, the in-process Postgres, `resetDb`, `mock.module` and the registry hazard, route tests, shared stubs, `dbCalls` |
 | [deployment.md](../../../docs/standards/deployment.md) | Railway, Dockerfiles, migrations, `COOKIE_DOMAIN`, `VITE_API_URL`, anything build-time |
-| [conventions.md](../../../docs/standards/conventions.md) | TypeScript strictness, `@ticket/shared` types and `USER_ROLE`, zod in `@ticket/core`, new dependencies, context7 and chrome-devtools MCP usage |
+| [conventions.md](../../../docs/standards/conventions.md) | TypeScript strictness, `@ticket/shared` types and `USER_ROLE`, zod in `@ticket/core`, new dependencies, delegating bulk work to a worker-model subagent, context7 and chrome-devtools MCP usage |
 
 ## Always
 
