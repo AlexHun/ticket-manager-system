@@ -11,6 +11,9 @@ import { ProjectMapPage } from "./ProjectMapPage";
 import { TestRunnerPage } from "./TestRunnerPage";
 import { UsagePage } from "./UsagePage";
 
+/** `"/__dev/"` — `ROUTE.dev.path` is the splat `"/__dev/*"`, less its `*`. */
+const DEV_PREFIX = ROUTE.dev.path.replace(/\*$/, "");
+
 /**
  * A dev route's own segment, taken off the path the record declares.
  *
@@ -21,7 +24,7 @@ import { UsagePage } from "./UsagePage";
  * and the route together, instead of leaving a link pointing at the catch-all.
  */
 const segment = (route: { readonly path: string }): string =>
-  route.path.slice(ROUTE.dev.path.length - 1);
+  route.path.slice(DEV_PREFIX.length);
 
 /**
  * The dev tools' own shell, and everything under `/__dev`.

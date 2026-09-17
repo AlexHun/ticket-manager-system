@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
-import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcripts";
+import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
  * Slice 1 of `docs/plans/dev-tools-usage-page.md` (#248), end to end: page →

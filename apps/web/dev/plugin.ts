@@ -280,14 +280,11 @@ export function devToolsPlugin(): Plugin {
 
       server.middlewares.use(
         DEVTOOLS_API.usage,
-        // `POST`, and there is no `GET` beside it. Reading the transcripts is
-        // the thing the developer asked for by pressing Scan (R5), so the verb
-        // that says "do it now" is the honest one — and it is what keeps a
-        // browser, a proxy or a service worker from ever answering this from a
-        // copy. The plugin holds nothing between presses: unlike a test run,
-        // which is a process worth surviving a page reload, a scan is ~100ms of
-        // reading that is cheaper to repeat than to invalidate, and a held copy
-        // is the one answer this page must not give.
+        // `POST`, no `GET`, and nothing held between presses — `UsageReport` in
+        // `../src/dev/protocol.ts` carries the reasoning, beside the shape it
+        // governs. Note what it costs here: this is the one dev-tools route
+        // that keeps no state at all, which is why there is nothing above this
+        // handler the way `runs` sits above the test runner's.
         //
         // The directory is resolved per request rather than at plugin setup, so
         // `CLAUDE_TRANSCRIPT_DIR` is read from the environment the dev server is

@@ -348,6 +348,12 @@ export type DevStreamMessage =
  * Every figure here is an *actual*: nothing on this shape is a forecast, a
  * title or a verdict. Those need `gh`, which the middleware does not call yet
  * (slice 2 of `docs/plans/dev-tools-usage-page.md`).
+ *
+ * Its four figures are the fields of `Spend` in `apps/web/dev/usage.ts`, keyed
+ * by issue. They are declared again rather than derived from it, and that is
+ * the direction the dependency has to run: this file is the contract the
+ * browser half reads, and `usage.ts` imports *it*. Fusing them would let a
+ * change made for the wire quietly retype the CLI's domain figure.
  */
 export interface IssueUsage {
   /** The GitHub issue number the branch name carries. */

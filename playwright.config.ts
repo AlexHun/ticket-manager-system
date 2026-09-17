@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TRANSCRIPT_FIXTURE_DIR } from "./tests/e2e/fixtures/transcripts";
+import { TRANSCRIPT_FIXTURE_DIR } from "./tests/e2e/fixtures/transcript-fixture";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

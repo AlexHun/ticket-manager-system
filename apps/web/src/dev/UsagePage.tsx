@@ -1,6 +1,7 @@
 import { AlertTriangle, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/sonner";
 import { TableFrame } from "@/lib/table-frame";
 import { extractErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -17,8 +18,9 @@ import type { IssueUsage, UsageReport } from "./protocol";
  * holds, which on a long-lived project is tens of thousands of JSONL lines. So
  * the page opens empty and says so, and the figures on screen are always one
  * named moment's reading rather than "whatever the machine has been doing"
- * (R5). Pressing Scan again re-reads — nothing is cached in the page, in the
- * hook or in the middleware.
+ * (R5). Pressing Scan again re-reads — `UsageReport` in `./protocol` is where
+ * the reason nothing on either side of the wire caches the answer is written
+ * down.
  *
  * **Actuals only, for now.** No titles, no links out, no forecast band and no
  * verdict: all four need `gh`, which slice 2 of
@@ -31,8 +33,10 @@ import type { IssueUsage, UsageReport } from "./protocol";
  * carries the measurements behind both.
  */
 
+const SCAN_FAILED = "The dev middleware could not read the transcripts.";
+
 /**
- * Token counts, exact and grouped.
+ * A whole number, grouped for reading.
  *
  * The terminal table rounds (`120k`) because it is budgeting column widths; this
  * page has room, and the PRD's complaint about the CLI is that the numbers are
@@ -40,55 +44,72 @@ import type { IssueUsage, UsageReport } from "./protocol";
  * rather than left to the machine, so the figure a test asserts is the figure
  * every developer sees.
  */
-const tokens = (n: number): string => n.toLocaleString("en-US");
+const formatNumber = (n: number): string => n.toLocaleString("en-US");
 
-interface Column {
-  key: keyof IssueUsage;
+/**
+ * One numeric column, and what it reads off a row.
+ *
+ * The accessor is what lets this one list drive the header *and* the body. As
+ * two parallel literals — a column array for the `<thead>` and four
+ * hand-written cells beneath it — adding or reordering a column is two edits
+ * that can silently disagree about order or alignment, which is the shape of
+ * bug a table ships quietly.
+ *
+ * The issue number is deliberately not in here: it is the row's identity rather
+ * than one of its figures, and it is marked up as a header cell on both axes.
+ */
+interface Figure {
   label: string;
-  /** Right-aligned tabular figures — everything except the issue number. */
-  numeric: boolean;
   /** What the column means, on hover. */
   title: string;
+  value: (row: IssueUsage) => number;
+  /** The column this page exists for. */
+  lead?: boolean;
+  /** Muted — the figure that is not comparable to a forecast band. */
+  muted?: boolean;
 }
 
-const COLUMNS: Column[] = [
+const FIGURES: Figure[] = [
   {
-    key: "issue",
-    label: "Issue",
-    numeric: false,
-    title: "GitHub issue number, taken from the branch name",
-  },
-  {
-    key: "out",
     label: "Output tokens",
-    numeric: true,
     title:
       "Actual output tokens — the unit the forecast bands are denominated in",
+    value: (row) => row.out,
+    lead: true,
   },
   {
-    key: "turns",
     label: "Turns",
-    numeric: true,
     title: "Assistant turns recorded against this issue's branches",
+    value: (row) => row.turns,
   },
   {
-    key: "sessions",
     label: "Sessions",
-    numeric: true,
     title: "Distinct sittings the work was split across",
+    value: (row) => row.sessions,
   },
   {
-    key: "cacheRead",
     label: "Cache read",
-    numeric: true,
     title:
       "Cache-read tokens — a measure of session hygiene, never part of the forecast",
+    value: (row) => row.cacheRead,
+    muted: true,
   },
 ];
 
 export function UsagePage() {
   const scan = useUsageScan();
   const report = scan.data ?? null;
+  const problem = scan.error
+    ? extractErrorMessage(scan.error, SCAN_FAILED)
+    : null;
+
+  // The toast is `frontend.md`'s rule for a failed mutation, and this is the
+  // first one under `/__dev`. Fired from the call rather than from a render, so
+  // a re-render of an already-failed page does not announce it again.
+  const runScan = () =>
+    scan.mutate(undefined, {
+      onError: (err) => toast.error(extractErrorMessage(err, SCAN_FAILED)),
+    });
 
   return (
     /* Block layout with `space-y`, for the reason spelled out on
@@ -106,7 +127,7 @@ export function UsagePage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">dev only</Badge>
-          <Button onClick={() => scan.mutate()} disabled={scan.isPending}>
+          <Button onClick={runScan} disabled={scan.isPending}>
             {scan.isPending ? (
               <Loader2 aria-hidden="true" className="animate-spin" />
             ) : (
@@ -134,12 +155,11 @@ export function UsagePage() {
         )}
       </p>
 
-      {scan.error && (
+      {/* Inline as well as in the toast: a toast is gone in seconds, and this is
+          the copy you are still looking at while you fix the cause. */}
+      {problem && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {extractErrorMessage(
-            scan.error,
-            "The dev middleware could not read the transcripts.",
-          )}
+          {problem}
         </p>
       )}
 
@@ -210,9 +230,16 @@ function Gathered({ report }: { report: UsageReport }) {
  * something to scroll and the sticky header something to stick to.
  *
  * The ranking is the server's: rows arrive in output-token order with the issue
- * number as a tie-break, so this page and `bun run tokens` order a directory the
- * same way. Sortable headers belong here eventually — `ModuleTable` next door is
- * the shape to copy — but not while there is one column anybody ranks by.
+ * number as a tie-break, so two scans of an unchanged directory agree. That is a
+ * claim about *this* page and not about the terminal — `bun run tokens` sorts on
+ * `out` alone, so two issues that spent exactly the same fall out in whatever
+ * order the filesystem handed the files over, and the two can rank them
+ * differently. R8 is about the figures, which are one module's and do agree;
+ * giving the CLI the same tie-break belongs with the rest of slice 6's pass over
+ * that script, not here.
+ *
+ * Sortable headers belong here eventually — `ModuleTable` next door is the shape
+ * to copy — but not while there is one column anybody ranks by.
  */
 function SpendTable({ issues }: { issues: IssueUsage[] }) {
   if (issues.length === 0) {
@@ -232,17 +259,21 @@ function SpendTable({ issues }: { issues: IssueUsage[] }) {
       <table className="w-full text-sm">
         <thead className="text-muted-foreground">
           <tr>
-            {COLUMNS.map((column) => (
+            <th
+              scope="col"
+              title="GitHub issue number, taken from the branch name"
+              className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium"
+            >
+              Issue
+            </th>
+            {FIGURES.map((figure) => (
               <th
-                key={column.key}
+                key={figure.label}
                 scope="col"
-                title={column.title}
-                className={cn(
-                  "sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium",
-                  column.numeric && "text-right",
-                )}
+                title={figure.title}
+                className="sticky top-0 z-10 bg-muted px-3 py-2 text-right font-medium"
               >
-                {column.label}
+                {figure.label}
               </th>
             ))}
           </tr>
@@ -259,18 +290,18 @@ function SpendTable({ issues }: { issues: IssueUsage[] }) {
               >
                 #{row.issue}
               </th>
-              <td className="px-3 py-1.5 text-right font-medium tabular-nums">
-                {tokens(row.out)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {tokens(row.turns)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums">
-                {tokens(row.sessions)}
-              </td>
-              <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
-                {tokens(row.cacheRead)}
-              </td>
+              {FIGURES.map((figure) => (
+                <td
+                  key={figure.label}
+                  className={cn(
+                    "px-3 py-1.5 text-right tabular-nums",
+                    figure.lead && "font-medium",
+                    figure.muted && "text-muted-foreground",
+                  )}
+                >
+                  {formatNumber(figure.value(row))}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

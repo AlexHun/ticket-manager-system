@@ -68,10 +68,9 @@ export function useSuites() {
  * mutation runs exactly when `mutate()` is called and holds its `data` until
  * the next call, which is "press Scan, keep the figures until the next press"
  * stated in the library's own terms. `useQuery({ enabled: false })` would be
- * the same behaviour spelled as a suppression of the default one.
- *
- * Nothing is cached on either side of the wire — no query key here, no held
- * copy in the plugin — so a second press cannot answer from a stale read.
+ * the same behaviour spelled as a suppression of the default one — and it would
+ * still take a query key, which is a cache entry, which is the thing
+ * `UsageReport` in `./protocol` explains this feature must not have.
  */
 export function useUsageScan() {
   return useMutation({
