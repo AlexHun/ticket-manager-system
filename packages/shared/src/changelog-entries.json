@@ -273,5 +273,10 @@
     "version": "0.1.105",
     "date": "2026-09-17",
     "title": "Resolve the transcript directory from the repo root, not cwd"
+  },
+  {
+    "version": "0.1.106",
+    "date": "2026-09-17",
+    "title": "Give each Usage row a title, a link, its band and a verdict"
   }
 ]
