@@ -189,7 +189,10 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
 
       expect(report.transcriptDir).toBe(dir);
       expect(report.issues).toMatchObject([
-        { issue: 101, out: 4200, turns: 1, sessions: 1, cacheRead: 0 },
+        {
+          issue: 101,
+          spend: { out: 4200, turns: 1, sessions: 1, cacheRead: 0 },
+        },
       ]);
       expect(report.warnings).toEqual([]);
     } finally {
@@ -203,7 +206,10 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
 
     const report = await scanUsage();
 
-    expect(report.issues).toEqual([]);
+    // Not empty, since #251: the listing still names an open issue, and what it
+    // was forecast to cost is knowable with no transcripts at all. Every figure
+    // is absent rather than zero, and the warning says why there are none.
+    expect(report.issues).toMatchObject([{ issue: 101, spend: null }]);
     expect(report.warnings[0]).toContain(missing);
   });
 
@@ -227,10 +233,7 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
 
       expect(row).toEqual({
         issue: 101,
-        out: 200_000,
-        turns: 1,
-        sessions: 1,
-        cacheRead: 0,
+        spend: { out: 200_000, turns: 1, sessions: 1, cacheRead: 0 },
         title: "The issue the fixture transcripts spent on",
         url: "https://github.com/AlexHun/ticket-manager-system/issues/101",
         forecast: "M",
@@ -263,7 +266,7 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
       const report = await scanUsage();
 
       expect(report.issues[0]).toMatchObject({
-        out: 4200,
+        spend: { out: 4200 },
         title: null,
         url: null,
         forecast: null,

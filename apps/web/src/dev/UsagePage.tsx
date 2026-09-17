@@ -13,6 +13,7 @@ import {
   USAGE_COLUMNS,
   VERDICT,
   type Bucket,
+  type IssueSpend,
   type IssueUsage,
   type UsageColumn,
   type UsageReport,
@@ -34,21 +35,23 @@ import {
  * down.
  *
  * **Two sources per row, and the page never lets them be confused.** The
- * figures are read off the filesystem and are always there; the title, the link
- * and the forecast band come from `gh` and may not be. Anything `gh` could not
- * supply renders as an em dash meaning *unknown* — never a zero, never a
- * default band, and never a verdict, because a verdict on work nobody forecast
- * is a score invented by the page. With `gh` missing or unauthenticated every
- * figure still lands and only those columns go quiet, which is the state CI is
- * in by default.
+ * figures are read off the filesystem; the title, the link and the forecast
+ * band come from `gh`, which may be absent. Anything `gh` could not supply
+ * renders as an em dash meaning *unknown* — never a zero, never a default band,
+ * and never a verdict, because a verdict on work nobody forecast is a score
+ * invented by the page. With `gh` missing or unauthenticated every figure a row
+ * has still lands and only those columns go quiet, which is the state CI is in
+ * by default.
  *
  * Output tokens are the column this exists for; cache-read sits beside it and
  * is deliberately not comparable to a forecast band. `apps/web/dev/usage.ts`
  * carries the measurements behind both.
  *
- * Still absent, per slice 3 of `docs/plans/dev-tools-usage-page.md`: issues
- * with a forecast and no recorded work. The row set here is "branches that
- * spent something", not "issues".
+ * **A row is not proof that work happened** (#251). Every open issue gets one,
+ * so the page answers "what is this forecast to cost?" before the work as well
+ * as after it, and a missing `forecast/S|M|L` label is a row you can see rather
+ * than an absence you have to know to look for. Those rows carry no figures at
+ * all, which is a third thing an em dash can mean here — see `NotStarted`.
  */
 
 const SCAN_FAILED = "The dev middleware could not read the transcripts.";
@@ -80,6 +83,28 @@ const Unknown = () => (
   </Hint>
 );
 
+/**
+ * Stands in for a figure there is no work to report.
+ *
+ * The same dash as `Unknown` above and deliberately a different component,
+ * because it is a different claim: `Unknown` means the question could not be
+ * asked, this means it was asked and the answer is *nothing yet*. The
+ * transcripts were read and they name no branch for this issue.
+ *
+ * What it must never be is a zero. `bucketFor(0)` is `S` and a forecast of `L`
+ * read against it is "under", so an unstarted ticket rendered as zeroes would
+ * sit in the table claiming to have come in comfortably under budget — and
+ * would take the accuracy figure and the percentile distribution down with it.
+ * The two markers are told apart on hover rather than by sight, which is enough
+ * because the *pattern* of dashes already differs: a `gh` that failed leaves the
+ * figures standing, an issue nobody has started leaves only its title.
+ */
+const NotStarted = () => (
+  <Hint content="No recorded work — these transcripts name no branch for this issue">
+    <span className="text-muted-foreground">&mdash;</span>
+  </Hint>
+);
+
 /** A band, as its letter and the range that letter means. Both, because the
  *  letter alone is jargon and the range alone does not match the label on the
  *  issue. */
@@ -89,6 +114,20 @@ const Band = ({ band }: { band: Bucket }) => (
     <span className="text-xs text-muted-foreground">{BUCKETS[band].label}</span>
   </span>
 );
+
+/**
+ * A numeric cell, from the figure it reads off a row's spend.
+ *
+ * One definition rather than four, because the branch is the same one every
+ * time and it is the branch that carries this slice's rule: a row with no spend
+ * has no figures, and each of the four is absent exactly when the others are —
+ * which is why `IssueSpend` is one nullable object on the wire rather than four
+ * nullable numbers.
+ */
+const figure =
+  (pick: (spend: IssueSpend) => number) =>
+  (row: IssueUsage): ReactNode =>
+    row.spend ? formatNumber(pick(row.spend)) : <NotStarted />;
 
 /** Colour carries the same three verdicts the word does, and adds nothing: over
  *  is the one worth catching an eye. */
@@ -171,43 +210,48 @@ const COLUMNS: Record<UsageColumn, Column> = {
     label: "Output tokens",
     title:
       "Actual output tokens — the unit the forecast bands are denominated in",
-    render: (row) => formatNumber(row.out),
+    render: figure((spend) => spend.out),
     numeric: true,
     lead: true,
   },
   bucket: {
     label: "Bucket",
     title: "The band the actual spend lands in",
-    render: (row) => <Band band={row.bucket} />,
+    render: (row) => (row.bucket ? <Band band={row.bucket} /> : <NotStarted />),
   },
   verdict: {
     label: "Verdict",
     title:
-      "The actual read against the forecast — unknown when nothing was forecast",
+      "The actual read against the forecast — nothing to score until an issue has both",
     render: (row) =>
       row.verdict ? (
         <Badge variant={VERDICT_VARIANT[row.verdict]}>{row.verdict}</Badge>
-      ) : (
+      ) : // Which absence it is: nothing spent yet, or spent but never
+      // forecast. The first is a row waiting for work, the second is the
+      // coverage gap the page's second metric is about.
+      row.spend ? (
         <Unknown />
+      ) : (
+        <NotStarted />
       ),
   },
   turns: {
     label: "Turns",
     title: "Assistant turns recorded against this issue's branches",
-    render: (row) => formatNumber(row.turns),
+    render: figure((spend) => spend.turns),
     numeric: true,
   },
   sessions: {
     label: "Sessions",
     title: "Distinct sittings the work was split across",
-    render: (row) => formatNumber(row.sessions),
+    render: figure((spend) => spend.sessions),
     numeric: true,
   },
   cacheRead: {
     label: "Cache read",
     title:
       "Cache-read tokens — a measure of session hygiene, never part of the forecast",
-    render: (row) => formatNumber(row.cacheRead),
+    render: figure((spend) => spend.cacheRead),
     numeric: true,
     muted: true,
   },
@@ -308,7 +352,9 @@ export function UsagePage() {
         terminal and this page cannot disagree about what an issue cost or
         whether it came in on target. Titles, links and forecast bands come from{" "}
         <code className="font-mono">gh</code>; without it the figures still land
-        and those columns read as unknown. Work that ran on{" "}
+        and those columns read as unknown. Every open issue is listed, so an
+        issue nobody has started appears with its band and no figures rather
+        than not at all. Work that ran on{" "}
         <code className="font-mono">main</code> or on no branch belongs to no
         issue and is not shown here, and neither is work done on any other
         machine: these transcripts are local.
@@ -345,7 +391,8 @@ function Gathered({ report }: { report: UsageReport }) {
 }
 
 /**
- * Every issue with recorded spend, biggest first.
+ * Every issue worth looking at, biggest spend first — and, after them, the open
+ * issues nobody has started, which carry a forecast and no figures at all.
  *
  * A plain `<table>` rather than a component, matching `ModuleTable` and
  * `TicketsTable` — this repo has no shadcn table, and a table is markup, not a
@@ -356,7 +403,10 @@ function Gathered({ report }: { report: UsageReport }) {
  * The ranking is the server's: rows arrive in output-token order with the issue
  * number as a tie-break, so two scans of an unchanged directory agree — and so
  * does `bun run tokens`, which since slice 2 prints these same rows rather than
- * ordering the scan itself.
+ * ordering the scan itself. The unstarted issues are a block at the end rather
+ * than rows sorted at zero, because an empty actual is not a small one and
+ * filing them among the cheapest tickets is where they would read as work that
+ * cost almost nothing.
  *
  * Sortable headers belong here eventually — `ModuleTable` next door is the shape
  * to copy — but not while there is one column anybody ranks by.
@@ -366,7 +416,8 @@ function SpendTable({ issues }: { issues: IssueUsage[] }) {
     return (
       <TableFrame label="Issue spend" className="grid place-items-center p-6">
         <p className="max-w-prose text-center text-sm text-muted-foreground">
-          No issue spend in these transcripts. Only a branch named{" "}
+          No issue spend in these transcripts, and no open issue to list beside
+          it. Only a branch named{" "}
           <code className="font-mono">{"<type>/<issue>-<slug>"}</code> can be
           attributed to an issue.
         </p>

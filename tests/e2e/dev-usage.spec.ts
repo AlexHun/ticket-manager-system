@@ -12,8 +12,8 @@ import {
 import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
- * Slices 1 and 2 of `docs/plans/dev-tools-usage-page.md` (#248, #250), end to
- * end: page → dev middleware → `apps/web/dev/usage.ts` and `issues.ts` → the
+ * Slices 1 to 3 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251), end
+ * to end: page → dev middleware → `apps/web/dev/usage.ts` and `issues.ts` → the
  * filesystem, all real.
  *
  * It is the whole reason both sources got a resolver with an environment
@@ -61,10 +61,11 @@ const CELL = Object.fromEntries(
   USAGE_COLUMNS.map((name, i) => [name, i]),
 ) as Record<UsageColumn, number>;
 
-/** The em dash the page renders for anything `gh` could not supply. */
+/** The em dash the page renders for anything it has no value for \u2014 `gh` could
+ *  not supply it, or no work has been recorded against the issue yet. */
 const UNKNOWN = "\u2014";
 
-const [FIXTURE_101, FIXTURE_102] = GH_ISSUES;
+const [FIXTURE_101, FIXTURE_102, FIXTURE_103, FIXTURE_104] = GH_ISSUES;
 
 test.describe("dev tools: Usage", () => {
   // Written before each test rather than once, because one test below removes
@@ -119,9 +120,11 @@ test.describe("dev tools: Usage", () => {
     await expect(table).toBeVisible();
 
     const rows = table.getByRole("row");
-    // Header, #101, #102 — and nothing else. The `main` turn, the turn on a
-    // branch naming no issue, and the truncated line are all excluded.
-    await expect(rows).toHaveCount(3);
+    // Header, #101, #102, and the open issue nobody has started — and nothing
+    // else. The `main` turn, the turn on a branch naming no issue and the
+    // truncated line are all excluded, and so is the *closed* issue the listing
+    // carries with no work against it.
+    await expect(rows).toHaveCount(4);
 
     const first = rows.nth(1);
     await expect(first.getByRole("rowheader")).toHaveText("#101");
@@ -189,6 +192,61 @@ test.describe("dev tools: Usage", () => {
   });
 
   /**
+   * R4, slice 3 (#251): the row set is every issue worth looking at, not only
+   * the ones a branch spent something on.
+   *
+   * `#103` has no branch anywhere in `fixtures/transcripts`, so everything in
+   * this row comes from the listing and everything else is empty. The empty
+   * half is the part worth holding: a zero would put it in band `S`, and `S`
+   * read against its `forecast/M` would print "under" — an unstarted ticket
+   * scored as having beaten its estimate.
+   */
+  test("lists an open issue nobody has started, with its band and no figures", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    // Last, not third: the issues with spend come first whatever they cost, so
+    // an empty actual is never read as a small one.
+    const row = table.getByRole("row").nth(3);
+    await expect(row.getByRole("rowheader")).toHaveText(
+      `#${FIXTURE_103!.number}`,
+    );
+    await expect(
+      row.getByRole("link", { name: FIXTURE_103!.title }),
+    ).toBeVisible();
+
+    const cells = row.getByRole("cell");
+    await expect(cells.nth(CELL.forecast)).toContainText("M");
+    await expect(cells.nth(CELL.forecast)).toContainText("60-150k");
+    for (const column of ["out", "turns", "sessions", "cacheRead"] as const) {
+      await expect(cells.nth(CELL[column])).toHaveText(UNKNOWN);
+    }
+    // No band landed in, and above all no verdict.
+    await expect(cells.nth(CELL.bucket)).toHaveText(UNKNOWN);
+    await expect(cells.nth(CELL.verdict)).toHaveText(UNKNOWN);
+  });
+
+  /**
+   * The other half of the same rule. `#104` is as absent from the transcripts
+   * as `#103` and carries a forecast just like it; the only difference is that
+   * it is closed, and that is what decides whether an empty row is worth
+   * drawing. Work finished on another machine, or before these transcripts
+   * began, must not be reported as work that cost nothing.
+   */
+  test("leaves out a closed issue with no recorded work", async ({ page }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    await expect(table).toBeVisible();
+    await expect(
+      table.getByRole("rowheader", { name: `#${FIXTURE_104!.number}` }),
+    ).toHaveCount(0);
+    await expect(table).not.toContainText(FIXTURE_104!.title);
+  });
+
+  /**
    * The degraded path, reached the honest way: the middleware really does fail
    * to read a listing, because the file `GH_ISSUES_FILE` names is not there.
    *
@@ -210,6 +268,11 @@ test.describe("dev tools: Usage", () => {
     const table = page.getByRole("region", { name: "Issue spend" });
     const first = table.getByRole("row").nth(1);
     const cells = first.getByRole("cell");
+
+    // Header, #101, #102 — the unstarted row goes with the listing, since
+    // "open" is something only the listing can say. The transcripts are all
+    // there is to go on.
+    await expect(table.getByRole("row")).toHaveCount(3);
 
     // Every actual survives: they are filesystem work and owe `gh` nothing.
     await expect(first.getByRole("rowheader")).toHaveText("#101");

@@ -418,27 +418,22 @@ export const USAGE_COLUMNS = [
 export type UsageColumn = (typeof USAGE_COLUMNS)[number];
 
 /**
- * What one issue's branches cost, read off this machine's transcripts, beside
- * what it was forecast to cost.
+ * What one issue's branches actually cost, as this machine's transcripts
+ * recorded it.
  *
- * **Two sources, and which is which decides what a missing value means.** The
- * figures are actuals read off the filesystem, and are always present. The
- * title, the link and the forecast band come from `gh`, which can be absent,
- * unauthenticated, or simply not know this issue — so each is `T | null`, and
- * `null` means *unknown*: never zero, never a default. The one crossover is
- * `bucket`, derived from `out` alone and so surviving a `gh` that does not —
- * the page can always say which band the spend landed in, even when it cannot
- * say which one it was aimed at.
+ * The four figures travel together in one nullable object rather than as four
+ * nullable fields, and that is the whole guard: since #251 a row can exist with
+ * no recorded work at all, and every one of these is absent exactly when the
+ * others are. Flat and nullable, a row could carry turns with no output tokens
+ * — a state nothing produces and every reader would have to branch for anyway.
  *
- * Its four figures are the fields of `Spend` in `apps/web/dev/usage.ts`, keyed
- * by issue. They are declared again rather than derived from it, and that is
- * the direction the dependency has to run: this file is the contract the
- * browser half reads, and `usage.ts` imports *it*. Fusing them would let a
- * change made for the wire quietly retype the CLI's domain figure.
+ * These are the fields of `Spend` in `apps/web/dev/usage.ts`. They are declared
+ * again rather than derived from it, and that is the direction the dependency
+ * has to run: this file is the contract the browser half reads, and `usage.ts`
+ * imports *it*. Fusing them would let a change made for the wire quietly retype
+ * the CLI's domain figure.
  */
-export interface IssueUsage {
-  /** The GitHub issue number the branch name carries. */
-  issue: number;
+export interface IssueSpend {
   /**
    * Actual output tokens — the unit the `forecast/S|M|L` bands are denominated
    * in, and the column this page exists to show. See `apps/web/dev/usage.ts`
@@ -450,6 +445,37 @@ export interface IssueUsage {
   sessions: number;
   /** Cache-read tokens, carried *beside* the forecast and never inside it. */
   cacheRead: number;
+}
+
+/**
+ * What one issue cost, read off this machine's transcripts, beside what it was
+ * forecast to cost.
+ *
+ * **Two sources, and which is which decides what a missing value means.** The
+ * figures are actuals read off the filesystem; the title, the link and the
+ * forecast band come from `gh`, which can be absent, unauthenticated, or simply
+ * not know this issue. Both halves are `T | null` and in both halves `null`
+ * means *unknown or nothing recorded*: never zero, never a default band, never
+ * a verdict.
+ *
+ * **A row is no longer proof that work happened** (#251). Every open issue the
+ * listing names gets one, so a ticket nobody has started appears with its band,
+ * an empty actual and no verdict — which is the question "what is this forecast
+ * to cost?" answered before the work rather than only after it. `spend` null is
+ * what says so, and it is why `bucket` is nullable beside it: there is no band
+ * to land in until something has been spent, and calling that `S` would score
+ * unstarted work as coming in under its forecast.
+ */
+export interface IssueUsage {
+  /** The GitHub issue number — off the branch name for a row with spend, off
+   *  the listing for one without. */
+  issue: number;
+  /**
+   * What the transcripts recorded against this issue's branches, or null when
+   * they hold nothing for it: an issue nobody has started, or one whose work
+   * happened on another machine.
+   */
+  spend: IssueSpend | null;
   /** The issue's title, from `gh`. Null when it could not be asked. */
   title: string | null;
   /**
@@ -465,10 +491,14 @@ export interface IssueUsage {
    * renders both as unknown.
    */
   forecast: Bucket | null;
-  /** The band `out` actually falls in. Derived from the figures, so it is known
-   *  whenever the row is. */
-  bucket: Bucket;
-  /** `forecast` read against `bucket`. Null exactly when `forecast` is. */
+  /**
+   * The band the actual spend falls in. Derived from `spend.out` alone, so it
+   * survives a `gh` that says nothing — and is null exactly when `spend` is,
+   * since an issue nobody has started has landed in no band at all.
+   */
+  bucket: Bucket | null;
+  /** `forecast` read against `bucket`. Null unless *both* are known — no
+   *  forecast, or no spend to read against it, means no score. */
   verdict: Verdict | null;
 }
 
@@ -499,8 +529,14 @@ export interface UsageReport {
   transcriptDir: string;
   /** `.jsonl` files read out of it. */
   transcripts: number;
-  /** One row per issue with recorded spend, output tokens descending. Each
-   *  carries its forecast band and verdict when `gh` could supply one. */
+  /**
+   * One row per issue worth looking at — every issue with recorded spend, and
+   * every issue the listing reports as open, whether or not anybody has started
+   * it. Output tokens descending, with the issues that have spent nothing in a
+   * block of their own at the end rather than interleaved at zero. Each carries
+   * its forecast band, and its verdict when there is both a band and a spend to
+   * read against it.
+   */
   issues: IssueUsage[];
   /** Anything that stopped the scan seeing everything. Shown, not swallowed. */
   warnings: string[];

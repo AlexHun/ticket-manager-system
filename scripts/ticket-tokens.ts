@@ -27,6 +27,12 @@
 //
 // `gh` supplies titles and forecast labels. Without it (offline, unauthed) the
 // actuals still print, the forecast columns read "-" and the title is blank.
+//
+// Since #251 the rows are not only what was spent: every *open* issue prints
+// too, with its band and no figures, so what is forecast and not yet started
+// reads beside what it cost. Those rows are excluded from the percentiles and
+// from the accuracy figure — an issue nobody has worked on is neither a
+// measurement of the distribution nor a forecast that has been tested.
 
 import { readdirSync } from "node:fs";
 import { ISSUE_STATE, fetchIssueMetadata } from "../apps/web/dev/issues.ts";
@@ -85,6 +91,11 @@ async function main() {
     return;
   }
 
+  /** An empty cell, for a row there is no work to report on. Never a zero: the
+   *  page's rule, for the same reason — `bucketFor(0)` is `S`, so zeroes would
+   *  have every unstarted ticket printing as comfortably under its band. */
+  const EMPTY = "-";
+
   const head = [
     "issue".padEnd(6),
     "forecast".padEnd(10),
@@ -102,7 +113,11 @@ async function main() {
   let hits = 0;
   let scored = 0;
   for (const r of rows) {
-    if (r.forecast) {
+    // Gated on the verdict rather than on the forecast: since #251 a row can
+    // carry a band and no spend to read it against, and counting those as
+    // scored-and-missed would drive the accuracy figure toward zero as the
+    // backlog grows.
+    if (r.verdict) {
       scored++;
       if (r.verdict === VERDICT.onTarget) hits++;
     }
@@ -111,24 +126,28 @@ async function main() {
         `#${r.issue}`.padEnd(6),
         (r.forecast
           ? `${r.forecast} ${BUCKETS[r.forecast].label}`
-          : "-"
+          : EMPTY
         ).padEnd(10),
-        fmt(r.out).padStart(7),
-        r.bucket.padEnd(6),
-        (r.verdict ?? "-").padEnd(9),
-        String(r.turns).padStart(6),
-        String(r.sessions).padStart(5),
-        fmt(r.cacheRead).padStart(7),
+        (r.spend ? fmt(r.spend.out) : EMPTY).padStart(7),
+        (r.bucket ?? EMPTY).padEnd(6),
+        (r.verdict ?? EMPTY).padEnd(9),
+        (r.spend ? String(r.spend.turns) : EMPTY).padStart(6),
+        (r.spend ? String(r.spend.sessions) : EMPTY).padStart(5),
+        (r.spend ? fmt(r.spend.cacheRead) : EMPTY).padStart(7),
         (r.title ?? "").slice(0, 44),
       ].join(" "),
     );
   }
 
-  const { p25, p50, p75 } = percentiles(rows.map((r) => r.out));
-  const totalOut = rows.reduce((s, r) => s + r.out, 0);
+  // The spend rows only. An issue nobody has started is not a zero-token
+  // measurement of how big this repo's tickets are, and letting it into the
+  // percentiles would drag the very bands this table exists to re-check.
+  const spent = rows.flatMap((r) => (r.spend ? [r.spend.out] : []));
+  const { p25, p50, p75 } = percentiles(spent);
+  const totalOut = spent.reduce((s, out) => s + out, 0);
   console.log("-".repeat(head.length));
   console.log(
-    `${rows.length} tickets | output p25 ${fmt(p25)} median ${fmt(p50)} p75 ${fmt(p75)} | total ${fmt(totalOut)}`,
+    `${rows.length} tickets, ${spent.length} with recorded spend | output p25 ${fmt(p25)} median ${fmt(p50)} p75 ${fmt(p75)} | total ${fmt(totalOut)}`,
   );
   if (scored) {
     console.log(

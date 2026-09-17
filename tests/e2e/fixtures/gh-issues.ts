@@ -31,16 +31,21 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  *  are not. */
 export const GH_ISSUES_FIXTURE_PATH = path.join(HERE, "gh-issues.local.json");
 
-const issue = (number: number, title: string, labels: string[]) => ({
+const issue = (
+  number: number,
+  title: string,
+  labels: string[],
+  state: "OPEN" | "CLOSED" = "OPEN",
+) => ({
   number,
   title,
-  state: "OPEN",
+  state,
   url: `https://github.com/AlexHun/ticket-manager-system/issues/${number}`,
   labels: labels.map((name) => ({ name })),
 });
 
 /**
- * The two issues the transcript fixture spends on, and what they cost to state.
+ * Four issues: the two the transcript fixture spends on, and two it does not.
  *
  * `#101` spent 20,000 output tokens against a `forecast/S` band (<60k), so it
  * is **on target** — the enriched row the spec reads a title, an `href` and a
@@ -48,7 +53,16 @@ const issue = (number: number, title: string, labels: string[]) => ({
  * worth holding: it must render with its figures and *no* verdict, rather than
  * a default one.
  *
- * The titles say "fixture" on purpose. Both numbers are real issues in this
+ * The last two have no branch anywhere in the transcripts, and they are the
+ * pair #251 turns on. `#103` is **open**, so it earns a row with its band and
+ * an empty actual — an issue nobody has started, which the page reports rather
+ * than omits. `#104` is **closed** with the same absence of work, and must
+ * *not* appear: an issue finished somewhere this scan cannot see (another
+ * machine, or before these transcripts began) would otherwise be reported as
+ * having cost nothing. Both carry a forecast, so what separates them in the
+ * table is their state and nothing else.
+ *
+ * The titles say "fixture" on purpose. All four numbers are real issues in this
  * repository, so a run that adopted a leftover dev server started without
  * `GH_ISSUES_FILE` would quietly show their real titles instead — and the
  * assertion that fails should say which listing it read, not merely that some
@@ -60,6 +74,13 @@ export const GH_ISSUES = [
     "forecast/S",
   ]),
   issue(102, "Fixture: an issue nobody forecast", ["ready-for-agent"]),
+  issue(103, "Fixture: an open issue nobody has started", ["forecast/M"]),
+  issue(
+    104,
+    "Fixture: a closed issue with no recorded work",
+    ["forecast/L"],
+    "CLOSED",
+  ),
 ];
 
 export function writeGhIssuesFixture(): void {
