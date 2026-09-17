@@ -289,8 +289,22 @@ export function devToolsPlugin(): Plugin {
         // The directory is resolved per request rather than at plugin setup, so
         // `CLAUDE_TRANSCRIPT_DIR` is read from the environment the dev server is
         // actually running in — which is how Playwright points this at a fixture.
+        //
+        // **`REPO_ROOT`, not `process.cwd()`, and that is the whole bug this
+        // argument exists to prevent.** Claude Code keys its transcript
+        // directory on the *project* root, and the resolver's default is
+        // `process.cwd()` because its other caller — `bun run tokens` — is run
+        // from the repo root and so cannot tell the two apart. The Vite dev
+        // server's cwd is `apps/web`, so the default sent the page looking in
+        // `…/projects/<repo-slug>-apps-web`, which exists on no machine; it
+        // shipped because the E2E sets the override and never reaches this
+        // branch at all. `plugin.test.ts` is what covers it now.
         only("POST", (_req, res) =>
-          sendJson(res, 200, gatherUsage(resolveTranscriptDir())),
+          sendJson(
+            res,
+            200,
+            gatherUsage(resolveTranscriptDir(process.env, { cwd: REPO_ROOT })),
+          ),
         ),
       );
 
