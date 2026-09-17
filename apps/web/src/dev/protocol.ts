@@ -23,6 +23,9 @@ export const DEVTOOLS_API = {
   start: "/__devtools/start",
   cancel: "/__devtools/cancel",
   clear: "/__devtools/clear",
+  /** `POST` gathers a fresh reading of the local transcripts; see below for why
+   *  there is no `GET` beside it. */
+  usage: "/__devtools/usage",
 } as const;
 
 /* ── The project map ─────────────────────────────────────────────────────── */
@@ -336,3 +339,58 @@ export type DevStreamMessage =
   /** Sent on connect and whenever either changes, so a fresh page learns what is
    *  already in flight without a second request. */
   | { kind: "state"; active: string | null; queued: string[] };
+
+/* ── Usage ──────────────────────────────────────────────────────────────── */
+
+/**
+ * What one issue's branches cost, read off this machine's transcripts.
+ *
+ * Every figure here is an *actual*: nothing on this shape is a forecast, a
+ * title or a verdict. Those need `gh`, which the middleware does not call yet
+ * (slice 2 of `docs/plans/dev-tools-usage-page.md`).
+ */
+export interface IssueUsage {
+  /** The GitHub issue number the branch name carries. */
+  issue: number;
+  /**
+   * Actual output tokens — the unit the `forecast/S|M|L` bands are denominated
+   * in, and the column this page exists to show. See `apps/web/dev/usage.ts`
+   * for why it is output rather than total.
+   */
+  out: number;
+  turns: number;
+  /** Distinct sittings. Work on one issue is often split across several. */
+  sessions: number;
+  /** Cache-read tokens, carried *beside* the forecast and never inside it. */
+  cacheRead: number;
+}
+
+/**
+ * One reading of the local transcripts, taken when the developer pressed Scan.
+ *
+ * There is no `GET` half and the middleware caches nothing: a held copy is the
+ * one thing this page must not serve, since its whole claim is that the figures
+ * on screen were gathered at `gatheredAt` from the directory named here. The
+ * page holds the last result until the next press; the dev server holds none.
+ * That is the opposite of the test runner next door, and deliberately so — a
+ * run is a long-lived process worth surviving a reload, a scan is ~100ms of
+ * reading that is cheaper to repeat than to invalidate.
+ */
+export interface UsageReport {
+  /** ISO 8601, stamped when the read finished. */
+  gatheredAt: string;
+  /** How long the read took, so the page can say whether it is cheap. */
+  scanMs: number;
+  /**
+   * The directory that was read, absolute. On screen because it is the only
+   * thing that distinguishes "this machine has done no work" from "the override
+   * is pointed somewhere else" — and it is what a failing E2E names.
+   */
+  transcriptDir: string;
+  /** `.jsonl` files read out of it. */
+  transcripts: number;
+  /** One row per issue with recorded spend, output tokens descending. */
+  issues: IssueUsage[];
+  /** Anything that stopped the scan seeing everything. Shown, not swallowed. */
+  warnings: string[];
+}

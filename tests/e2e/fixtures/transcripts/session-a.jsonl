@@ -1,0 +1,5 @@
+{"sessionId":"a","gitBranch":"feat/101-a","message":{"usage":{"output_tokens":12000,"cache_read_input_tokens":300000}}}
+{"sessionId":"a","gitBranch":"main","message":{"usage":{"output_tokens":5000,"cache_read_input_tokens":50000}}}
+{"sessionId":"a","gitBranch":"feat/101-a","message":{"usage":{"output_tokens":8000,"cache_read_input_tokens":100000}}}
+{"sessionId":"a","gitBranch":"chore/no-issue-here","message":{"usage":{"output_tokens":7000,"cache_read_input_tokens":0}}}
+{"sessionId":"a","gitBranch":"feat/101-a","message":{"usa

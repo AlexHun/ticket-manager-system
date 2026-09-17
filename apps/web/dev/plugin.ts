@@ -28,6 +28,7 @@ import {
   suiteDescriptors,
   type RunHandle,
 } from "./suites.ts";
+import { gatherUsage, resolveTranscriptDir } from "./usage.ts";
 import {
   DEVTOOLS_API,
   type DevStreamMessage,
@@ -277,6 +278,25 @@ export function devToolsPlugin(): Plugin {
         }),
       );
 
+      server.middlewares.use(
+        DEVTOOLS_API.usage,
+        // `POST`, and there is no `GET` beside it. Reading the transcripts is
+        // the thing the developer asked for by pressing Scan (R5), so the verb
+        // that says "do it now" is the honest one — and it is what keeps a
+        // browser, a proxy or a service worker from ever answering this from a
+        // copy. The plugin holds nothing between presses: unlike a test run,
+        // which is a process worth surviving a page reload, a scan is ~100ms of
+        // reading that is cheaper to repeat than to invalidate, and a held copy
+        // is the one answer this page must not give.
+        //
+        // The directory is resolved per request rather than at plugin setup, so
+        // `CLAUDE_TRANSCRIPT_DIR` is read from the environment the dev server is
+        // actually running in — which is how Playwright points this at a fixture.
+        only("POST", (_req, res) =>
+          sendJson(res, 200, gatherUsage(resolveTranscriptDir())),
+        ),
+      );
+
       // A dev-server restart (editing this file, or vite.config.ts) must not
       // leave a Playwright run holding ports 3002 and 4001.
       server.httpServer?.once("close", () => {
@@ -286,7 +306,9 @@ export function devToolsPlugin(): Plugin {
 
       // Printed plainly rather than dressed up in Vite's colours: this is the
       // only hint the two pages exist, so it should survive a piped log.
-      server.config.logger.info("  dev tools:  /__dev/map  /__dev/tests");
+      server.config.logger.info(
+        "  dev tools:  /__dev/map  /__dev/tests  /__dev/usage",
+      );
     },
   };
 }

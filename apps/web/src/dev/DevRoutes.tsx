@@ -5,9 +5,23 @@ import { Separator } from "@/components/ui/separator";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LogoMark } from "@/components/layout/Logo";
 import { cn } from "@/lib/utils";
+import { ROUTE } from "@/lib/routes";
 import { DEV_NAV_ITEMS } from "@/components/layout/nav-items";
 import { ProjectMapPage } from "./ProjectMapPage";
 import { TestRunnerPage } from "./TestRunnerPage";
+import { UsagePage } from "./UsagePage";
+
+/**
+ * A dev route's own segment, taken off the path the record declares.
+ *
+ * The children of a splat route are matched relative to it, so React Router
+ * wants `"map"` where `ROUTE.devMap.path` says `"/__dev/map"`. Deriving the
+ * segment rather than retyping it is what keeps `routes.ts` the single
+ * declaration these paths have (#151): renaming one there moves the nav item
+ * and the route together, instead of leaving a link pointing at the catch-all.
+ */
+const segment = (route: { readonly path: string }): string =>
+  route.path.slice(ROUTE.dev.path.length - 1);
 
 /**
  * The dev tools' own shell, and everything under `/__dev`.
@@ -37,7 +51,7 @@ export function DevRoutes() {
     <TooltipProvider delayDuration={2000} skipDelayDuration={0}>
       <div className="flex h-dvh flex-col overflow-hidden">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-          <Link to="/__dev/map" className="flex items-center gap-2">
+          <Link to={ROUTE.devMap.path} className="flex items-center gap-2">
             <LogoMark className="size-4 shrink-0" />
             <span className="text-sm font-semibold">Dev tools</span>
           </Link>
@@ -77,11 +91,15 @@ export function DevRoutes() {
         <Routes>
           {/* Paths are relative to the `/__dev/*` route that mounts this. */}
           <Route index element={<ProjectMapPage />} />
-          <Route path="map" element={<ProjectMapPage />} />
-          <Route path="tests" element={<TestRunnerPage />} />
+          <Route path={segment(ROUTE.devMap)} element={<ProjectMapPage />} />
+          <Route path={segment(ROUTE.devTests)} element={<TestRunnerPage />} />
+          <Route path={segment(ROUTE.devUsage)} element={<UsagePage />} />
           {/* Absolute rather than relative: a relative target inside a splat
               route resolves against the matched splat, not the parent path. */}
-          <Route path="*" element={<Navigate to="/__dev/map" replace />} />
+          <Route
+            path="*"
+            element={<Navigate to={ROUTE.devMap.path} replace />}
+          />
         </Routes>
       </div>
     </TooltipProvider>

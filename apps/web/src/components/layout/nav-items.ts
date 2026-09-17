@@ -1,5 +1,6 @@
 import {
   BookTextIcon,
+  CoinsIcon,
   FlaskConicalIcon,
   GaugeIcon,
   GraduationCapIcon,
@@ -105,7 +106,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
  *
  * Empty in a production build, and empty by construction rather than by a check
  * at render time: Vite replaces `import.meta.env.DEV` with the literal `false`,
- * so Rollup drops the array *and* the two icon imports it is the only user of.
+ * so Rollup drops the array *and* the icon imports it is the only user of.
  * Everything that consumes this — the sidebar group, the dev shell's own nav —
  * therefore renders nothing without needing to know why.
  *
@@ -126,6 +127,12 @@ export const DEV_NAV_ITEMS: readonly NavItem[] = import.meta.env.DEV
         to: ROUTE.devTests.path,
         label: "Tests",
         icon: FlaskConicalIcon,
+        end: true,
+      },
+      {
+        to: ROUTE.devUsage.path,
+        label: "Usage",
+        icon: CoinsIcon,
         end: true,
       },
     ] as const)
