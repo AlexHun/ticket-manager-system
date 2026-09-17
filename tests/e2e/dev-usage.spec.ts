@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
+  USAGE_COLUMNS,
+  type UsageColumn,
+} from "../../apps/web/src/dev/protocol";
+import {
   GH_ISSUES,
   removeGhIssuesFixture,
   writeGhIssuesFixture,
@@ -48,19 +52,14 @@ const EXPECTED = {
   issue102: { out: "3,000" },
 } as const;
 
-/** The columns, in the order `COLUMNS` in `UsagePage.tsx` declares them. Named
- *  rather than counted at each assertion: a bare index into an eight-column row
- *  is the literal that goes stale silently when a column is inserted. */
-const CELL = {
-  title: 0,
-  forecast: 1,
-  out: 2,
-  bucket: 3,
-  verdict: 4,
-  turns: 5,
-  sessions: 6,
-  cacheRead: 7,
-} as const;
+/** Where a named column sits in a row. Read off `USAGE_COLUMNS` — the same list
+ *  `UsagePage.tsx` renders from — rather than counted here, for the reason
+ *  `route-timing.spec.ts` imports its mark names instead of retyping them: a
+ *  bare index goes stale silently when a column is inserted, and these
+ *  assertions would then be checking a neighbouring cell. */
+const CELL = Object.fromEntries(
+  USAGE_COLUMNS.map((name, i) => [name, i]),
+) as Record<UsageColumn, number>;
 
 /** The em dash the page renders for anything `gh` could not supply. */
 const UNKNOWN = "\u2014";

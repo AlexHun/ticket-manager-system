@@ -387,6 +387,37 @@ export const VERDICT = {
 export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
 
 /**
+ * The Usage table's columns, left to right — the issue number excepted, which
+ * is the row's identity rather than one of its columns.
+ *
+ * Here, in the import-free contract, for the reason `ROUTE` is in an
+ * import-free `routes.ts`: two tests index a row by position, and a column
+ * inserted in `UsagePage.tsx` would otherwise leave each of them asserting
+ * against a neighbouring cell with nothing failing. `UsagePage.tsx` keys its
+ * column definitions by these names and renders them in this order, so the
+ * order the page prints and the order a test counts are one list; a name added
+ * here without a definition, or a definition without a name, does not compile.
+ * `tests/e2e/dev-usage.spec.ts` reaches in here the same way
+ * `route-timing.spec.ts` reaches into `routes.ts`.
+ *
+ * Forecast sits immediately left of the actual and the bucket immediately
+ * right, so the comparison the verdict states is legible without it: band aimed
+ * at, tokens spent, band landed in, and only then the word.
+ */
+export const USAGE_COLUMNS = [
+  "title",
+  "forecast",
+  "out",
+  "bucket",
+  "verdict",
+  "turns",
+  "sessions",
+  "cacheRead",
+] as const;
+
+export type UsageColumn = (typeof USAGE_COLUMNS)[number];
+
+/**
  * What one issue's branches cost, read off this machine's transcripts, beside
  * what it was forecast to cost.
  *
@@ -456,7 +487,9 @@ export interface IssueUsage {
 export interface UsageReport {
   /** ISO 8601, stamped when the read finished. */
   gatheredAt: string;
-  /** How long the read took, so the page can say whether it is cheap. */
+  /** How long the read took, so the page can say whether it is cheap. Covers
+   *  the whole reading — the `gh` call as well as the filesystem sweep — since
+   *  what it answers is "how long did pressing Scan take". */
   scanMs: number;
   /**
    * The directory that was read, absolute. On screen because it is the only

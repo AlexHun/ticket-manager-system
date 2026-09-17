@@ -54,15 +54,27 @@ const execFileAsync = promisify(execFile);
 
 const FORECAST_PREFIX = "forecast/";
 
+/**
+ * The two states `gh issue list --state all` reports.
+ *
+ * A const object rather than two bare strings, matching `LAYER`, `GUARD` and
+ * `VERDICT` in `protocol.ts` and for the same reason: `bun run tokens --open`
+ * filters on this word, and a comparison against a mistyped literal does not
+ * fail — it silently reports no open issues.
+ */
+export const ISSUE_STATE = { open: "OPEN", closed: "CLOSED" } as const;
+
+export type IssueState = (typeof ISSUE_STATE)[keyof typeof ISSUE_STATE];
+
 /** What GitHub knows about one issue that the transcripts cannot. */
 export interface IssueMeta {
   title: string;
   /** Straight from `gh`, rather than assembled from an owner and repo this
    *  module would otherwise have to carry a copy of. */
   url: string;
-  /** `OPEN` or `CLOSED`. Not on the wire — `bun run tokens --open` filters on
-   *  it, and the page has no column for it. */
-  state: string;
+  /** Not on the wire — `bun run tokens --open` filters on it, and the page has
+   *  no column for it. */
+  state: IssueState;
   /** The band its `forecast/S|M|L` label names, or null when it carries none. */
   forecast: Bucket | null;
 }
@@ -96,6 +108,29 @@ interface GhIssue {
 export type IssueLister = () => Promise<string>;
 
 /**
+ * What `listIssues` asks of `execFile`, narrowed to the one call it makes.
+ *
+ * Its reason for existing is that `listIssues` below is the only part of this
+ * module a test cannot otherwise reach — `fetchIssueMetadata` takes an
+ * `IssueLister`, so every test injects past it, and the argv, the `cwd` and the
+ * sanitised environment go unasserted. Those three are exactly what #249 warned
+ * is easy to break by moving the call: one `issue list` rather than a loop of
+ * `issue view`, a `cwd` inside the repo, and `childEnv` rather than the dev
+ * server's own environment.
+ */
+export type Spawn = (
+  file: string,
+  args: string[],
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    encoding: "utf8";
+    timeout: number;
+    maxBuffer: number;
+  },
+) => Promise<{ stdout: string }>;
+
+/**
  * Ask `gh` for every issue, open and closed.
  *
  * `cwd` is the repo root and that is load-bearing, not tidiness: `gh` resolves
@@ -117,9 +152,14 @@ export type IssueLister = () => Promise<string>;
  * dev server runs under `bunx --bun vite`, so the middleware executes on Bun's
  * runtime; only the synchronous spawn misbehaves there. Both problems are the
  * same fix, and the timeout below is honoured.
+ *
+ * Exported, and takes its spawn, so `issues.test.ts` can assert all of that
+ * without this machine having to be authenticated — see `Spawn`.
  */
-const listIssues: IssueLister = async () => {
-  const { stdout } = await execFileAsync(
+export const listIssues = async (
+  spawn: Spawn = execFileAsync,
+): Promise<string> => {
+  const { stdout } = await spawn(
     "gh",
     [
       "issue",
@@ -160,7 +200,13 @@ function parseListing(raw: string): Map<number, IssueMeta> {
       {
         title: issue.title,
         url: issue.url,
-        state: issue.state,
+        // Narrowed rather than trusted: `gh` prints one of two words here, and
+        // anything else is treated as not-open so a surprise cannot make
+        // `--open` list something that is closed.
+        state:
+          issue.state === ISSUE_STATE.open
+            ? ISSUE_STATE.open
+            : ISSUE_STATE.closed,
         forecast: forecastOf(issue.labels ?? []),
       },
     ]),

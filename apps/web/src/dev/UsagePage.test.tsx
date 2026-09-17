@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { renderRoutes } from "@/test/render";
 import { UsagePage } from "./UsagePage";
-import type { IssueUsage, UsageReport } from "./protocol";
+import { USAGE_COLUMNS } from "./protocol";
+import type { IssueUsage, UsageColumn, UsageReport } from "./protocol";
 
 /**
  * The page's one rule: it reads nothing until asked, and what it shows
@@ -119,21 +120,14 @@ describe("UsagePage", () => {
   });
 
   /**
-   * The columns, in the order `COLUMNS` declares them. Named rather than
-   * counted at each assertion: an index into a nine-column row is exactly the
-   * literal that goes stale silently when a column is inserted, and these are
-   * the assertions that would then be checking a neighbour.
+   * Where a named column sits in a row. Read off `USAGE_COLUMNS` rather than
+   * counted here: a bare index is exactly the literal that goes stale silently
+   * when a column is inserted, and these are the assertions that would then be
+   * checking a neighbour.
    */
-  const CELL = {
-    title: 0,
-    forecast: 1,
-    out: 2,
-    bucket: 3,
-    verdict: 4,
-    turns: 5,
-    sessions: 6,
-    cacheRead: 7,
-  } as const;
+  const CELL = Object.fromEntries(
+    USAGE_COLUMNS.map((name, i) => [name, i]),
+  ) as Record<UsageColumn, number>;
 
   const cellsOf = async (n: number) =>
     within((await screen.findAllByRole("row"))[n]!).getAllByRole("cell");

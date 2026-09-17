@@ -50,11 +50,13 @@ import {
 } from "../src/dev/protocol.ts";
 import { fetchIssueMetadata, type IssueMetadata } from "./issues.ts";
 
-// Re-exported so the two consumers of this join have one import between them:
-// `scripts/ticket-tokens.ts` prints a band's label, and asking it to reach into
-// the browser half's protocol file for that would be a worse seam than this
-// line.
-export { BUCKETS, type Bucket };
+// Re-exported because `scripts/ticket-tokens.ts` prints a band's label and
+// counts how many rows came in on target, and reaching into the browser half's
+// protocol file from a script under `scripts/` would be a worse seam than this
+// line. The words especially: the CLI comparing against a literal `"on target"`
+// is how a rename in `protocol.ts` would leave its accuracy figure reading 0/N
+// with nothing failing.
+export { BUCKETS, VERDICT, type Bucket, type Verdict };
 
 /**
  * Environment variable that overrides where transcripts are read from.
@@ -303,8 +305,10 @@ export async function gatherUsage(
   dir: string,
   metadata?: IssueMetadata,
 ): Promise<UsageReport> {
-  const listing = metadata ?? (await fetchIssueMetadata());
+  // Before the listing, not after: `scanMs` answers "how long did pressing
+  // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
   const startedAt = Date.now();
+  const listing = metadata ?? (await fetchIssueMetadata());
   const warnings: string[] = [];
 
   let scan: ScanResult = {

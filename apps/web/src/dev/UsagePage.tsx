@@ -3,15 +3,18 @@ import { AlertTriangle, ExternalLink, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
+import { Hint } from "@/components/Hint";
 import { TableFrame } from "@/lib/table-frame";
 import { extractErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useUsageScan } from "./dev-api";
 import {
   BUCKETS,
+  USAGE_COLUMNS,
   VERDICT,
   type Bucket,
   type IssueUsage,
+  type UsageColumn,
   type UsageReport,
   type Verdict,
 } from "./protocol";
@@ -65,18 +68,16 @@ const formatNumber = (n: number): string => n.toLocaleString("en-US");
  * Stands in for a value `gh` could not supply.
  *
  * One marker for all three columns that can lack one, because they fail
- * together and mean the same thing: *unknown*. The distinction it protects is the page's only real claim —
- * an empty forecast column is not a forecast of zero, and an empty verdict is
- * not a passing grade. The `title` is where that is said in words, since a bare
- * dash is not self-explanatory to anyone who has not read this file.
+ * together and mean the same thing: *unknown*. The distinction it protects is
+ * the page's only real claim — an empty forecast column is not a forecast of
+ * zero, and an empty verdict is not a passing grade. The hint is where that is
+ * said in words, since a bare dash is not self-explanatory to anyone who has
+ * not read this file.
  */
 const Unknown = () => (
-  <span
-    className="text-muted-foreground"
-    title="Unknown — gh could not supply this"
-  >
-    &mdash;
-  </span>
+  <Hint content="Unknown — gh could not supply this">
+    <span className="text-muted-foreground">&mdash;</span>
+  </Hint>
 );
 
 /** A band, as its letter and the range that letter means. Both, because the
@@ -126,14 +127,16 @@ interface Column {
 }
 
 /**
- * The columns, in the order the terminal prints them.
+ * What each column renders, keyed by name.
  *
- * Forecast sits immediately left of the actual and the bucket immediately
- * right, so the comparison the verdict states is legible without it: band
- * aimed at, tokens spent, band landed in, and only then the word.
+ * The *order* is `USAGE_COLUMNS` in `./protocol` and not this literal's key
+ * order, because two tests index a row by position and neither can import this
+ * file — so the order has to live somewhere import-free. Keying by the same
+ * names is what keeps the two in step: a column defined here and left out of
+ * that list does not compile, and neither does the reverse.
  */
-const COLUMNS: Column[] = [
-  {
+const COLUMNS: Record<UsageColumn, Column> = {
+  title: {
     label: "Title",
     title: "The issue on GitHub — the link opens it in a new tab",
     render: (row) =>
@@ -142,25 +145,29 @@ const COLUMNS: Column[] = [
       ) : row.url === null ? (
         <span className="block max-w-[26rem] truncate">{row.title}</span>
       ) : (
-        <a
-          href={row.url}
-          target="_blank"
-          rel="noreferrer"
-          title={row.title}
-          className="inline-flex max-w-[26rem] items-center gap-1 underline decoration-dotted underline-offset-4 hover:decoration-solid"
-        >
-          <span className="truncate">{row.title}</span>
-          <ExternalLink aria-hidden="true" className="size-3 shrink-0" />
-        </a>
+        // The hint carries the untruncated title, which is the one thing the
+        // cell cannot show: `max-w` plus `truncate` is what stops a long title
+        // widening the table past every figure beside it.
+        <Hint content={row.title}>
+          <a
+            href={row.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex max-w-[26rem] items-center gap-1 underline decoration-dotted underline-offset-4 hover:decoration-solid"
+          >
+            <span className="truncate">{row.title}</span>
+            <ExternalLink aria-hidden="true" className="size-3 shrink-0" />
+          </a>
+        </Hint>
       ),
   },
-  {
+  forecast: {
     label: "Forecast",
     title: "The band its forecast/S|M|L label names, applied when it was cut",
     render: (row) =>
       row.forecast ? <Band band={row.forecast} /> : <Unknown />,
   },
-  {
+  out: {
     label: "Output tokens",
     title:
       "Actual output tokens — the unit the forecast bands are denominated in",
@@ -168,12 +175,12 @@ const COLUMNS: Column[] = [
     numeric: true,
     lead: true,
   },
-  {
+  bucket: {
     label: "Bucket",
     title: "The band the actual spend lands in",
     render: (row) => <Band band={row.bucket} />,
   },
-  {
+  verdict: {
     label: "Verdict",
     title:
       "The actual read against the forecast — unknown when nothing was forecast",
@@ -184,19 +191,19 @@ const COLUMNS: Column[] = [
         <Unknown />
       ),
   },
-  {
+  turns: {
     label: "Turns",
     title: "Assistant turns recorded against this issue's branches",
     render: (row) => formatNumber(row.turns),
     numeric: true,
   },
-  {
+  sessions: {
     label: "Sessions",
     title: "Distinct sittings the work was split across",
     render: (row) => formatNumber(row.sessions),
     numeric: true,
   },
-  {
+  cacheRead: {
     label: "Cache read",
     title:
       "Cache-read tokens — a measure of session hygiene, never part of the forecast",
@@ -204,7 +211,11 @@ const COLUMNS: Column[] = [
     numeric: true,
     muted: true,
   },
-];
+};
+
+/** The columns as the table walks them: `USAGE_COLUMNS`'s order, `COLUMNS`'s
+ *  definitions. One list for the header and the body both. */
+const ORDERED = USAGE_COLUMNS.map((name) => COLUMNS[name]);
 
 export function UsagePage() {
   const scan = useUsageScan();
@@ -370,22 +381,26 @@ function SpendTable({ issues }: { issues: IssueUsage[] }) {
           <tr>
             <th
               scope="col"
-              title="GitHub issue number, taken from the branch name"
               className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium"
             >
-              Issue
+              <Hint content="GitHub issue number, taken from the branch name">
+                <span>Issue</span>
+              </Hint>
             </th>
-            {COLUMNS.map((column) => (
+            {ORDERED.map((column) => (
               <th
                 key={column.label}
                 scope="col"
-                title={column.title}
                 className={cn(
                   "sticky top-0 z-10 bg-muted px-3 py-2 font-medium",
                   column.numeric ? "text-right" : "text-left",
                 )}
               >
-                {column.label}
+                {/* `ModuleTable` next door puts the hint on the sort button;
+                    there is nothing to sort here yet, so it wraps the label. */}
+                <Hint content={column.title}>
+                  <span>{column.label}</span>
+                </Hint>
               </th>
             ))}
           </tr>
@@ -402,7 +417,7 @@ function SpendTable({ issues }: { issues: IssueUsage[] }) {
               >
                 #{row.issue}
               </th>
-              {COLUMNS.map((column) => (
+              {ORDERED.map((column) => (
                 <td
                   key={column.label}
                   className={cn(

@@ -26,12 +26,13 @@
 //   bun run tokens --open       # only issues still open
 //
 // `gh` supplies titles and forecast labels. Without it (offline, unauthed) the
-// actuals still print and the forecast columns read "-".
+// actuals still print, the forecast columns read "-" and the title is blank.
 
 import { readdirSync } from "node:fs";
-import { fetchIssueMetadata } from "../apps/web/dev/issues.ts";
+import { ISSUE_STATE, fetchIssueMetadata } from "../apps/web/dev/issues.ts";
 import {
   BUCKETS,
+  VERDICT,
   joinIssues,
   percentiles,
   resolveTranscriptDir,
@@ -74,7 +75,9 @@ async function main() {
   // The issue's state is the one thing the page has no column for, so it comes
   // off the listing rather than off the row.
   if (openOnly) {
-    rows = rows.filter((r) => meta.byIssue?.get(r.issue)?.state === "OPEN");
+    rows = rows.filter(
+      (r) => meta.byIssue?.get(r.issue)?.state === ISSUE_STATE.open,
+    );
   }
 
   if (!rows.length) {
@@ -101,7 +104,7 @@ async function main() {
   for (const r of rows) {
     if (r.forecast) {
       scored++;
-      if (r.verdict === "on target") hits++;
+      if (r.verdict === VERDICT.onTarget) hits++;
     }
     console.log(
       [

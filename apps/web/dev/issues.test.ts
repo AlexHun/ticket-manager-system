@@ -2,7 +2,13 @@ import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ISSUES_FILE_ENV, fetchIssueMetadata } from "./issues.ts";
+import {
+  ISSUES_FILE_ENV,
+  fetchIssueMetadata,
+  listIssues,
+  type Spawn,
+} from "./issues.ts";
+import { REPO_ROOT } from "./child-env.ts";
 
 /**
  * The `gh` half of the Usage page, and the two ways it is allowed to fail.
@@ -38,6 +44,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
+  vi.unstubAllEnvs();
 });
 
 /** A fixture file holding what `gh` would have printed. */
@@ -46,6 +53,79 @@ function fixture(body: string): string {
   writeFileSync(file, body, "utf8");
   return file;
 }
+
+/**
+ * The spawn itself — the one part of this module `fetchIssueMetadata`'s
+ * injected lister hides, and the part #249 warned is easy to break by moving.
+ * The runner is stood in for, so nothing here needs `gh` on the PATH.
+ */
+describe("listIssues", () => {
+  const capture = () => {
+    const calls: Parameters<Spawn>[] = [];
+    const spawn: Spawn = (...args) => {
+      calls.push(args);
+      return Promise.resolve({ stdout: "[]" });
+    };
+    return { calls, spawn };
+  };
+
+  it("asks gh once for every issue, rather than once per issue", async () => {
+    const { calls, spawn } = capture();
+
+    await listIssues(spawn);
+
+    expect(calls).toHaveLength(1);
+    const [file, args] = calls[0]!;
+    expect(file).toBe("gh");
+    expect(args.slice(0, 2)).toEqual(["issue", "list"]);
+    expect(args).not.toContain("view");
+    // Closed issues carry most of the spend; a default listing would leave
+    // every finished ticket unnamed.
+    expect(args).toContain("all");
+    // Every field the join reads, and no more.
+    expect(args).toContain("number,title,state,url,labels");
+  });
+
+  it("runs from the repo root, since gh reads the repo off the git remote", async () => {
+    const { calls, spawn } = capture();
+
+    await listIssues(spawn);
+
+    // Not `apps/web`, which is the dev server's own cwd.
+    expect(calls[0]![2].cwd).toBe(REPO_ROOT);
+  });
+
+  it("sanitises the environment first, the way every dev-server spawn does", async () => {
+    const { calls, spawn } = capture();
+    vi.stubEnv("npm_lifecycle_script", "vite");
+    vi.stubEnv("NODE", "C:/bun/node.exe");
+
+    await listIssues(spawn);
+
+    const { env } = calls[0]![2];
+    expect(env.npm_lifecycle_script).toBeUndefined();
+    expect(env.NODE).toBeUndefined();
+    // Still an environment, not an empty one — `gh` reads PATH and the OS
+    // credential store's own variables out of it.
+    expect(env.PATH ?? env.Path).toBeTruthy();
+  });
+
+  it("gives gh a deadline, so a hung child cannot be a Scan that never ends", async () => {
+    const { calls, spawn } = capture();
+
+    await listIssues(spawn);
+
+    expect(calls[0]![2].timeout).toBeGreaterThan(0);
+    // The default 1MB truncates this repo's listing into a JSON parse error.
+    expect(calls[0]![2].maxBuffer).toBeGreaterThan(1_000_000);
+  });
+
+  it("resolves with what gh printed", async () => {
+    const spawn: Spawn = () => Promise.resolve({ stdout: "[{}]" });
+
+    expect(await listIssues(spawn)).toBe("[{}]");
+  });
+});
 
 describe("fetchIssueMetadata", () => {
   it("reads titles, links and the forecast band off the listing", async () => {
