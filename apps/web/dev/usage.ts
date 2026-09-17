@@ -44,6 +44,7 @@ import {
   BUCKETS,
   VERDICT,
   type Bucket,
+  type IssueSpend,
   type IssueUsage,
   type UsageReport,
   type Verdict,
@@ -60,7 +61,7 @@ import {
 // line. The words especially: the CLI comparing against a literal `"on target"`
 // is how a rename in `protocol.ts` would leave its accuracy figure reading 0/N
 // with nothing failing.
-export { BUCKETS, VERDICT, type Bucket, type Verdict };
+export { BUCKETS, VERDICT, type Bucket, type IssueSpend, type Verdict };
 
 /**
  * Environment variable that overrides where transcripts are read from.

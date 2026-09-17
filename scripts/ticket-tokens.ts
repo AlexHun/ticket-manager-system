@@ -6,7 +6,7 @@
 // shared with the dev-tools Usage page, so the terminal and the page cannot
 // disagree about what a ticket cost or whether it came in on target. Read those
 // files for what the numbers mean and why output tokens are the unit. This one
-// decides argv, column widths and the exit code, and nothing else.
+// decides argv and column widths, and nothing else.
 //
 // It scans the transcripts itself rather than calling `gatherUsage`, and that
 // is not a second copy of the join: `joinIssues` builds the rows both sides
@@ -43,6 +43,8 @@ import {
   percentiles,
   resolveTranscriptDir,
   scanSpend,
+  type IssueSpend,
+  type Spend,
 } from "../apps/web/dev/usage.ts";
 
 const fmt = (n: number) =>
@@ -58,19 +60,23 @@ async function main() {
   const only = new Set(argv.filter((a) => /^\d+$/.test(a)).map(Number));
 
   const dir = resolveTranscriptDir();
-  let files: string[];
+  // Warned rather than fatal, and that changed with #251: the issue listing on
+  // its own is enough to report what is forecast and not yet started, which is
+  // exactly what the page shows in this state. Exiting here would make R8 —
+  // "the page and `bun run tokens` never report different figures for the same
+  // issue" — false on any machine whose transcripts cannot be read, which is
+  // the ordinary state of a fresh clone and of CI. An unreadable directory
+  // costs the actuals, not the command.
+  let scan = { byIssue: new Map<number, Spend>(), unattributed: 0 };
   try {
-    files = readdirSync(dir);
+    const files = readdirSync(dir);
+    if (files.some((f) => f.endsWith(".jsonl"))) scan = scanSpend(dir);
+    else console.error(`No .jsonl transcripts in ${dir}.\n`);
   } catch {
-    console.error(`No transcripts at ${dir} — run this from the repo root.`);
-    process.exit(1);
+    console.error(`No transcripts at ${dir} — run this from the repo root.\n`);
   }
-  if (!files.some((f) => f.endsWith(".jsonl"))) {
-    console.error(`No .jsonl transcripts in ${dir}.`);
-    process.exit(1);
-  }
+  const { byIssue, unattributed } = scan;
 
-  const { byIssue, unattributed } = scanSpend(dir);
   const meta = await fetchIssueMetadata();
   // The warning names what is now unknown; every figure below is unaffected.
   if (meta.warning) console.error(`${meta.warning}\n`);
@@ -95,6 +101,14 @@ async function main() {
    *  page's rule, for the same reason — `bucketFor(0)` is `S`, so zeroes would
    *  have every unstarted ticket printing as comfortably under its band. */
   const EMPTY = "-";
+
+  /** One figure off a row's spend, or `EMPTY` when there is none. The branch
+   *  said once, the way `figure` says it once on the page. */
+  const figure = (
+    spend: IssueSpend | null,
+    pick: (s: IssueSpend) => number,
+    format: (n: number) => string = String,
+  ) => (spend ? format(pick(spend)) : EMPTY);
 
   const head = [
     "issue".padEnd(6),
@@ -128,12 +142,12 @@ async function main() {
           ? `${r.forecast} ${BUCKETS[r.forecast].label}`
           : EMPTY
         ).padEnd(10),
-        (r.spend ? fmt(r.spend.out) : EMPTY).padStart(7),
+        figure(r.spend, (s) => s.out, fmt).padStart(7),
         (r.bucket ?? EMPTY).padEnd(6),
         (r.verdict ?? EMPTY).padEnd(9),
-        (r.spend ? String(r.spend.turns) : EMPTY).padStart(6),
-        (r.spend ? String(r.spend.sessions) : EMPTY).padStart(5),
-        (r.spend ? fmt(r.spend.cacheRead) : EMPTY).padStart(7),
+        figure(r.spend, (s) => s.turns).padStart(6),
+        figure(r.spend, (s) => s.sessions).padStart(5),
+        figure(r.spend, (s) => s.cacheRead, fmt).padStart(7),
         (r.title ?? "").slice(0, 44),
       ].join(" "),
     );
@@ -143,12 +157,23 @@ async function main() {
   // measurement of how big this repo's tickets are, and letting it into the
   // percentiles would drag the very bands this table exists to re-check.
   const spent = rows.flatMap((r) => (r.spend ? [r.spend.out] : []));
-  const { p25, p50, p75 } = percentiles(spent);
-  const totalOut = spent.reduce((s, out) => s + out, 0);
   console.log("-".repeat(head.length));
-  console.log(
-    `${rows.length} tickets, ${spent.length} with recorded spend | output p25 ${fmt(p25)} median ${fmt(p50)} p75 ${fmt(p75)} | total ${fmt(totalOut)}`,
-  );
+  // The quartiles are dropped rather than printed as zeroes when nothing in the
+  // selection has spend — `bun run tokens --open` on a machine with no matching
+  // transcripts is exactly that case, and `percentiles([])` answers 0/0/0,
+  // which reads as a measurement of very cheap tickets rather than as no
+  // measurement at all. The same rule `EMPTY` carries in the rows above.
+  if (spent.length) {
+    const { p25, p50, p75 } = percentiles(spent);
+    const totalOut = spent.reduce((sum, out) => sum + out, 0);
+    console.log(
+      `${rows.length} tickets, ${spent.length} with recorded spend | output p25 ${fmt(p25)} median ${fmt(p50)} p75 ${fmt(p75)} | total ${fmt(totalOut)}`,
+    );
+  } else {
+    console.log(
+      `${rows.length} tickets, none with recorded spend — no distribution to report.`,
+    );
+  }
   if (scored) {
     console.log(
       `forecast accuracy: ${hits}/${scored} on target (${Math.round((hits / scored) * 100)}%)`,

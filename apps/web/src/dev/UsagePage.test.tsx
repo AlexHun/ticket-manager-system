@@ -254,24 +254,52 @@ describe("UsagePage", () => {
     expect(cells[CELL.verdict]).not.toHaveTextContent(/target|over|under/);
   });
 
-  // The two absences render as the same dash, so the words behind them are the
-  // only thing that tells a reader which one they are looking at.
-  test("says a figure is unrecorded rather than unknown", async () => {
+  /**
+   * The two absences render as the same em dash, so the words behind them are
+   * the only thing that tells a reader which one they are looking at.
+   *
+   * One row carries both, which is what makes this an assertion about the
+   * *distinction* rather than about one marker: nothing has been spent on it
+   * (so every figure is `NotStarted`) and `gh` supplied no band for it (so the
+   * forecast is `Unknown`). Asserting only the first would pass just as well if
+   * the page rendered one marker everywhere.
+   */
+  const hoverDash = async (column: UsageColumn) => {
     const user = userEvent.setup();
     post.mockResolvedValue({
       data: makeReport({
-        issues: [makeIssue({ spend: null, bucket: null, verdict: null })],
+        issues: [
+          makeIssue({
+            spend: null,
+            forecast: null,
+            bucket: null,
+            verdict: null,
+          }),
+        ],
       }),
     });
     renderPage();
 
     await user.click(scanButton());
-
     const cells = await cellsOf(1);
-    await user.hover(cells[CELL.out]!.firstElementChild as Element);
+    // The dash itself is the tooltip's trigger, so it is what a pointer lands
+    // on — and reaching it by its text keeps the test off `Hint`'s internals.
+    await user.hover(within(cells[CELL[column]]!).getByText("—"));
+  };
+
+  // Two tests rather than two hovers in one: Radix keeps the open tooltip's
+  // state on its provider, so a second trigger hovered in the same render does
+  // not open. A fresh render per marker is the honest way to ask.
+  test("says a figure nobody has spent is unrecorded", async () => {
+    await hoverDash("out");
 
     expect(await screen.findByText(/no recorded work/i)).toBeInTheDocument();
-    expect(screen.queryByText(/gh could not supply/i)).toBeNull();
+  });
+
+  test("says a band gh could not supply is unknown", async () => {
+    await hoverDash("forecast");
+
+    expect(await screen.findByText(/gh could not supply/i)).toBeInTheDocument();
   });
 
   test("states when the figures were gathered and what was read", async () => {
