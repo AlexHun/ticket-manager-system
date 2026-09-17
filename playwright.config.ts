@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { GH_ISSUES_FIXTURE_PATH } from "./tests/e2e/fixtures/gh-issues";
 import { TRANSCRIPT_FIXTURE_DIR } from "./tests/e2e/fixtures/transcript-fixture";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -108,16 +109,24 @@ export default defineConfig({
       //
       // `CLAUDE_TRANSCRIPT_DIR` points the dev-tools Usage page at a fixture
       // directory instead of `~/.claude/projects/<slug>` (see
-      // `apps/web/dev/usage.ts`). It belongs here rather than in the spec
-      // because the middleware that reads it runs inside *this* process, not in
-      // the browser — which is also the one thing to check first when
-      // `dev-usage.spec.ts` fails: `reuseExistingServer` will happily adopt a
-      // leftover Vite on 4001 that was started without it, and the page then
-      // reports this machine's real spend. The spec asserts on the directory the
-      // page names for exactly that reason.
+      // `apps/web/dev/usage.ts`), and `GH_ISSUES_FILE` points it at a fixture
+      // issue listing instead of spawning `gh` (see `apps/web/dev/issues.ts`).
+      // Both belong here rather than in the spec because the middleware that
+      // reads them runs inside *this* process, not in the browser — which is
+      // also the one thing to check first when `dev-usage.spec.ts` fails:
+      // `reuseExistingServer` will happily adopt a leftover Vite on 4001 that
+      // was started without them, and the page then reports this machine's real
+      // spend against GitHub's real titles. The spec asserts on the directory
+      // the page names, and on a title carrying the word Fixture, for
+      // exactly that reason.
+      //
+      // The listing file is written by the spec rather than checked in: it has
+      // to be removable, because a missing one is how the degraded no-`gh`
+      // path is reached through the real middleware.
       env: {
         VITE_API_URL: API_URL,
         CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_FIXTURE_DIR,
+        GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
       },
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,

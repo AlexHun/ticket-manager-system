@@ -1,17 +1,29 @@
 import { test, expect } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
+import {
+  USAGE_COLUMNS,
+  type UsageColumn,
+} from "../../apps/web/src/dev/protocol";
+import {
+  GH_ISSUES,
+  removeGhIssuesFixture,
+  writeGhIssuesFixture,
+} from "./fixtures/gh-issues";
 import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
- * Slice 1 of `docs/plans/dev-tools-usage-page.md` (#248), end to end: page →
- * dev middleware → `apps/web/dev/usage.ts` → the filesystem, all real.
+ * Slices 1 and 2 of `docs/plans/dev-tools-usage-page.md` (#248, #250), end to
+ * end: page → dev middleware → `apps/web/dev/usage.ts` and `issues.ts` → the
+ * filesystem, all real.
  *
- * It is the whole reason the transcript directory got a resolver with an
- * environment override. A machine's actual spend is not something an assertion
- * can name, so `playwright.config.ts` points `CLAUDE_TRANSCRIPT_DIR` at
- * `fixtures/transcripts` — two files whose totals are written down in that
- * directory's README and restated here as literals. Recomputing them with
- * `scanSpend` would make this spec agree with the code under test about
+ * It is the whole reason both sources got a resolver with an environment
+ * override. Neither is something an assertion can name — a machine's spend is
+ * its own, and what this repository's issues are titled changes every time
+ * somebody files one — so `playwright.config.ts` points
+ * `CLAUDE_TRANSCRIPT_DIR` at `fixtures/transcripts`, two files whose totals are
+ * written down in that directory's README and restated here as literals, and
+ * `GH_ISSUES_FILE` at the listing in `fixtures/gh-issues.ts`. Recomputing
+ * either with the code under test would make this spec agree with it about
  * anything, including a wrong answer.
  *
  * **No sign-in, no database, no API.** `/__dev` sits outside `ProtectedRoute`
@@ -22,24 +34,49 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
  *
  * The directory assertion is deliberate and is the first thing to read on a red
  * run. Locally, `reuseExistingServer` will adopt a Vite already on 4001 —
- * started before this config existed, or by hand — and that process has no
- * `CLAUDE_TRANSCRIPT_DIR`, so the page reports the developer's own transcripts
- * and every row assertion below fails for a reason that has nothing to do with
- * the code. Check the port owner before believing anything else here.
+ * started before this config existed, or by hand — and that process has neither
+ * override, so the page reports the developer's own transcripts against
+ * GitHub's real titles, and every assertion below fails for a reason that has
+ * nothing to do with the code. The fixture titles carry the word "Fixture" so
+ * that failure names itself. Check the port owner before believing anything
+ * else here.
  */
 
 /** The fixture's arithmetic, from `fixtures/transcripts/README.md`. */
 const EXPECTED = {
-  // 12,000 + 8,000 across two turns of `feat/101-a`, in one session.
+  // 12,000 + 8,000 across two turns of `feat/101-a`, in one session. 20,000
+  // against the `forecast/S` band (<60k) in `fixtures/gh-issues.ts` is on
+  // target.
   issue101: { out: "20,000", turns: "2", sessions: "1", cacheRead: "400,000" },
-  // One turn of `fix/102-b`.
+  // One turn of `fix/102-b`, on an issue the listing carries no band for.
   issue102: { out: "3,000" },
 } as const;
 
+/** Where a named column sits in a row. Read off `USAGE_COLUMNS` — the same list
+ *  `UsagePage.tsx` renders from — rather than counted here, for the reason
+ *  `route-timing.spec.ts` imports its mark names instead of retyping them: a
+ *  bare index goes stale silently when a column is inserted, and these
+ *  assertions would then be checking a neighbouring cell. */
+const CELL = Object.fromEntries(
+  USAGE_COLUMNS.map((name, i) => [name, i]),
+) as Record<UsageColumn, number>;
+
+/** The em dash the page renders for anything `gh` could not supply. */
+const UNKNOWN = "\u2014";
+
+const [FIXTURE_101, FIXTURE_102] = GH_ISSUES;
+
 test.describe("dev tools: Usage", () => {
+  // Written before each test rather than once, because one test below removes
+  // it on purpose and everything after would otherwise inherit that state.
   test.beforeEach(async ({ page }) => {
+    writeGhIssuesFixture();
     await page.goto(ROUTE.devUsage.path);
   });
+
+  // The file is generated and gitignored, but a stale one is still something to
+  // be confused by later.
+  test.afterAll(() => removeGhIssuesFixture());
 
   test("reaches the page from the dev-tools nav, beside Map and Tests", async ({
     page,
@@ -89,17 +126,111 @@ test.describe("dev tools: Usage", () => {
     const first = rows.nth(1);
     await expect(first.getByRole("rowheader")).toHaveText("#101");
     const cells = first.getByRole("cell");
-    await expect(cells.nth(0)).toHaveText(EXPECTED.issue101.out);
-    await expect(cells.nth(1)).toHaveText(EXPECTED.issue101.turns);
-    await expect(cells.nth(2)).toHaveText(EXPECTED.issue101.sessions);
-    await expect(cells.nth(3)).toHaveText(EXPECTED.issue101.cacheRead);
+    await expect(cells.nth(CELL.out)).toHaveText(EXPECTED.issue101.out);
+    await expect(cells.nth(CELL.turns)).toHaveText(EXPECTED.issue101.turns);
+    await expect(cells.nth(CELL.sessions)).toHaveText(
+      EXPECTED.issue101.sessions,
+    );
+    await expect(cells.nth(CELL.cacheRead)).toHaveText(
+      EXPECTED.issue101.cacheRead,
+    );
 
     // Sorted by spend descending, so the smaller issue is second.
     const second = rows.nth(2);
     await expect(second.getByRole("rowheader")).toHaveText("#102");
-    await expect(second.getByRole("cell").nth(0)).toHaveText(
+    await expect(second.getByRole("cell").nth(CELL.out)).toHaveText(
       EXPECTED.issue102.out,
     );
+  });
+
+  test("names each issue, links it to GitHub, and scores it against its band", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    const first = table.getByRole("row").nth(1);
+
+    // The title is the link, and the href is `gh`'s own `url` rather than one
+    // assembled from an owner and repo the page would have to know. The title
+    // says "Fixture" for a reason: #101 is a real issue in this repository, so
+    // a run that adopted a dev server started without `GH_ISSUES_FILE` would
+    // show its real title, and this is the assertion that says so.
+    const link = first.getByRole("link", { name: FIXTURE_101!.title });
+    await expect(link).toHaveAttribute("href", FIXTURE_101!.url);
+    await expect(link).toHaveAttribute("target", "_blank");
+
+    const cells = first.getByRole("cell");
+    // Band aimed at, band landed in, and the word comparing them.
+    await expect(cells.nth(CELL.forecast)).toContainText("S");
+    await expect(cells.nth(CELL.forecast)).toContainText("<60k");
+    await expect(cells.nth(CELL.bucket)).toContainText("S");
+    await expect(cells.nth(CELL.verdict)).toHaveText("on target");
+  });
+
+  test("leaves an issue nobody forecast unscored rather than scoring it", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    const second = table.getByRole("row").nth(2);
+
+    // `gh` answered for this one, so it has a title; it simply carries no
+    // `forecast/` label. No band, and above all no verdict.
+    await expect(
+      second.getByRole("link", { name: FIXTURE_102!.title }),
+    ).toBeVisible();
+    const cells = second.getByRole("cell");
+    await expect(cells.nth(CELL.forecast)).toHaveText(UNKNOWN);
+    await expect(cells.nth(CELL.verdict)).toHaveText(UNKNOWN);
+    // The bucket is the row's own arithmetic, so it is there regardless.
+    await expect(cells.nth(CELL.bucket)).toContainText("S");
+  });
+
+  /**
+   * The degraded path, reached the honest way: the middleware really does fail
+   * to read a listing, because the file `GH_ISSUES_FILE` names is not there.
+   *
+   * This is why the fixture is written by the spec instead of checked in. The
+   * web server's environment is fixed when it starts and cannot vary per
+   * request, and the override deliberately never falls back to `gh` — a
+   * fallback would have this test read live GitHub and pass or fail depending
+   * on whose machine it ran on. Removing the file is the one lever that reaches
+   * the branch through the real middleware, and the state it produces is the
+   * state CI is in by default.
+   */
+  test("keeps every figure, and says what is unknown, with no issue listing", async ({
+    page,
+  }) => {
+    removeGhIssuesFixture();
+
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    const first = table.getByRole("row").nth(1);
+    const cells = first.getByRole("cell");
+
+    // Every actual survives: they are filesystem work and owe `gh` nothing.
+    await expect(first.getByRole("rowheader")).toHaveText("#101");
+    await expect(cells.nth(CELL.out)).toHaveText(EXPECTED.issue101.out);
+    await expect(cells.nth(CELL.turns)).toHaveText(EXPECTED.issue101.turns);
+    await expect(cells.nth(CELL.cacheRead)).toHaveText(
+      EXPECTED.issue101.cacheRead,
+    );
+    await expect(cells.nth(CELL.bucket)).toContainText("S");
+
+    // The three `gh` columns read as unknown rather than as a default.
+    await expect(cells.nth(CELL.title)).toHaveText(UNKNOWN);
+    await expect(cells.nth(CELL.forecast)).toHaveText(UNKNOWN);
+    await expect(cells.nth(CELL.verdict)).toHaveText(UNKNOWN);
+    await expect(table.getByRole("link")).toHaveCount(0);
+
+    // And the page says why, rather than leaving three quiet columns to be read
+    // as "nothing was forecast".
+    await expect(
+      page.getByText(/could not read the issue listing/i),
+    ).toBeVisible();
   });
 
   test("re-reads on a second press rather than answering from the first", async ({

@@ -17,10 +17,9 @@
  * cancelled by editing the runner.
  */
 
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { REPO_ROOT } from "./child-env.ts";
 import { scanProject } from "./scan.ts";
 import {
   findSuite,
@@ -34,10 +33,6 @@ import {
   type DevStreamMessage,
   type RunEvent,
 } from "../src/dev/protocol.ts";
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-/** `apps/web/dev` → the repo root. */
-const REPO_ROOT = path.resolve(HERE, "../../..");
 
 /**
  * Events retained per suite for replay.
@@ -72,19 +67,31 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
  *  down on a throw. */
 function only(
   method: "GET" | "POST",
-  handler: (req: IncomingMessage, res: ServerResponse, url: URL) => void,
+  handler: (
+    req: IncomingMessage,
+    res: ServerResponse,
+    url: URL,
+  ) => void | Promise<void>,
 ): Connect.NextHandleFunction {
   return (req, res, next) => {
     if (req.method !== method) {
       next();
       return;
     }
-    try {
-      handler(req, res, new URL(req.url ?? "/", "http://localhost"));
-    } catch (err) {
+    const fail = (err: unknown) =>
       sendJson(res, 500, {
         error: err instanceof Error ? err.message : String(err),
       });
+    try {
+      // A handler may answer asynchronously — the usage route waits on `gh`.
+      // Both failure shapes end the same way: a rejection that nothing caught
+      // would leave the request open until the browser gave up, with only an
+      // unhandled-rejection line in a log nobody is watching to say why.
+      void Promise.resolve(
+        handler(req, res, new URL(req.url ?? "/", "http://localhost")),
+      ).catch(fail);
+    } catch (err) {
+      fail(err);
     }
   };
 }
@@ -299,11 +306,13 @@ export function devToolsPlugin(): Plugin {
         // `…/projects/<repo-slug>-apps-web`, which exists on no machine; it
         // shipped because the E2E sets the override and never reaches this
         // branch at all. `plugin.test.ts` is what covers it now.
-        only("POST", (_req, res) =>
+        only("POST", async (_req, res) =>
           sendJson(
             res,
             200,
-            gatherUsage(resolveTranscriptDir(process.env, { cwd: REPO_ROOT })),
+            await gatherUsage(
+              resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+            ),
           ),
         ),
       );

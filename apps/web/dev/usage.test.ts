@@ -10,7 +10,43 @@ import {
   percentiles,
   resolveTranscriptDir,
   scanSpend,
+  verdictFor,
 } from "./usage.ts";
+import type { IssueMeta, IssueMetadata } from "./issues.ts";
+
+/**
+ * An issue listing, without asking `gh` for one.
+ *
+ * Every `gatherUsage` call here passes one, and not only for speed: the second
+ * parameter defaults to a real `gh` spawn, so a call that omitted it would make
+ * this suite depend on the machine being authenticated and on what this
+ * repository's issues happen to be titled today.
+ */
+const known = (
+  entries: Record<number, Partial<IssueMeta>> = {},
+): IssueMetadata => ({
+  byIssue: new Map(
+    Object.entries(entries).map(([number, meta]) => [
+      Number(number),
+      {
+        title: `Issue ${number}`,
+        url: `https://github.com/o/r/issues/${number}`,
+        state: "OPEN",
+        forecast: null,
+        ...meta,
+      },
+    ]),
+  ),
+  warning: null,
+});
+
+/** What `fetchIssueMetadata` returns when `gh` could not be asked. */
+const noListing = (
+  warning = "`gh` could not list this repository's issues",
+): IssueMetadata => ({
+  byIssue: null,
+  warning,
+});
 
 /** One transcript record, in the shape Claude Code writes. */
 const turn = (
@@ -133,18 +169,40 @@ describe("scanSpend", () => {
 });
 
 describe("gatherUsage", () => {
-  it("reports one row per issue, output tokens descending", () => {
+  it("reports one row per issue, output tokens descending", async () => {
     write("s1.jsonl", [
       turn("s1", "fix/102-b", 3000, 20_000),
       turn("s1", "feat/101-a", 12_000, 300_000),
       turn("s2", "feat/101-a", 8000, 100_000),
     ]);
 
-    const report = gatherUsage(dir);
+    const report = await gatherUsage(dir, known());
 
     expect(report.issues).toEqual([
-      { issue: 101, out: 20_000, turns: 2, sessions: 2, cacheRead: 400_000 },
-      { issue: 102, out: 3000, turns: 1, sessions: 1, cacheRead: 20_000 },
+      {
+        issue: 101,
+        out: 20_000,
+        turns: 2,
+        sessions: 2,
+        cacheRead: 400_000,
+        title: null,
+        url: null,
+        forecast: null,
+        bucket: "S",
+        verdict: null,
+      },
+      {
+        issue: 102,
+        out: 3000,
+        turns: 1,
+        sessions: 1,
+        cacheRead: 20_000,
+        title: null,
+        url: null,
+        forecast: null,
+        bucket: "S",
+        verdict: null,
+      },
     ]);
     expect(report.transcriptDir).toBe(dir);
     expect(report.transcripts).toBe(1);
@@ -154,20 +212,22 @@ describe("gatherUsage", () => {
   // Ties are not hypothetical: two issues that both spent nothing attributable
   // sort equal on `out`, and an unstable order would make the page's rows jump
   // between two scans of an unchanged directory.
-  it("breaks a tie on the issue number, so two scans agree", () => {
+  it("breaks a tie on the issue number, so two scans agree", async () => {
     write("s1.jsonl", [
       turn("s1", "feat/202-b", 500),
       turn("s1", "feat/101-a", 500),
     ]);
 
-    expect(gatherUsage(dir).issues.map((row) => row.issue)).toEqual([101, 202]);
+    expect(
+      (await gatherUsage(dir, known())).issues.map((row) => row.issue),
+    ).toEqual([101, 202]);
   });
 
-  it("stamps the reading with when it was gathered", () => {
+  it("stamps the reading with when it was gathered", async () => {
     write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
     const before = Date.now();
 
-    const { gatheredAt, scanMs } = gatherUsage(dir);
+    const { gatheredAt, scanMs } = await gatherUsage(dir, known());
 
     expect(Date.parse(gatheredAt)).toBeGreaterThanOrEqual(before);
     expect(Date.parse(gatheredAt)).toBeLessThanOrEqual(Date.now());
@@ -176,10 +236,10 @@ describe("gatherUsage", () => {
 
   // The ordinary state of a machine that has never run Claude Code here, and of
   // CI. A 500 from the middleware would read as the page being broken.
-  it("warns rather than throwing when the directory is not there", () => {
+  it("warns rather than throwing when the directory is not there", async () => {
     const missing = join(dir, "nope");
 
-    const report = gatherUsage(missing);
+    const report = await gatherUsage(missing, known());
 
     expect(report.issues).toEqual([]);
     expect(report.transcripts).toBe(0);
@@ -188,10 +248,10 @@ describe("gatherUsage", () => {
     expect(report.warnings[0]).toContain(missing);
   });
 
-  it("says so when the directory holds no transcripts", () => {
+  it("says so when the directory holds no transcripts", async () => {
     write("notes.txt", ["nothing to see"]);
 
-    const report = gatherUsage(dir);
+    const report = await gatherUsage(dir, known());
 
     expect(report.issues).toEqual([]);
     expect(report.transcripts).toBe(0);
@@ -200,16 +260,102 @@ describe("gatherUsage", () => {
 
   // R8: the page and `bun run tokens` read the same join, so a row here is the
   // same row the terminal prints.
-  it("carries the same figures as scanSpend", () => {
+  it("carries the same figures as scanSpend", async () => {
     write("s1.jsonl", [
       turn("s1", "feat/101-a", 12_000, 300_000),
       turn("s1", "main", 5000, 50_000),
     ]);
 
-    const [row] = gatherUsage(dir).issues;
+    const [row] = (await gatherUsage(dir, known())).issues;
     const spend = scanSpend(dir).byIssue.get(101);
 
-    expect(row).toEqual({ issue: 101, ...spend });
+    // `toMatchObject`, because the row now carries what GitHub knows as well:
+    // the claim is that every *figure* is the scan's, unchanged by the join.
+    expect(row).toMatchObject({ issue: 101, ...spend });
+  });
+
+  // R2/R3, at the seam where the two sources meet.
+  it("joins the listing's title, link and band onto the row", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 200_000)]);
+
+    const [row] = (
+      await gatherUsage(
+        dir,
+        known({
+          101: {
+            title: "Usage page: titles, links, forecast bands and verdicts",
+            url: "https://github.com/AlexHun/ticket-manager-system/issues/101",
+            forecast: "M",
+          },
+        }),
+      )
+    ).issues;
+
+    expect(row).toMatchObject({
+      title: "Usage page: titles, links, forecast bands and verdicts",
+      url: "https://github.com/AlexHun/ticket-manager-system/issues/101",
+      forecast: "M",
+      // 200k against a band that tops out at 150k.
+      bucket: "L",
+      verdict: "over",
+    });
+  });
+
+  it("scores an issue the listing knows but nobody forecast as no verdict", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 200_000)]);
+
+    const [row] = (await gatherUsage(dir, known({ 101: { forecast: null } })))
+      .issues;
+
+    expect(row?.forecast).toBeNull();
+    expect(row?.verdict).toBeNull();
+    // The bucket is the row's own arithmetic, so it survives having no forecast.
+    expect(row?.bucket).toBe("L");
+  });
+
+  it("leaves an issue the listing does not mention unknown, not wrong", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
+
+    const [row] = (await gatherUsage(dir, known({ 999: {} }))).issues;
+
+    expect(row).toMatchObject({ title: null, url: null, forecast: null });
+  });
+
+  // The acceptance criterion the degraded path is written for: the figures are
+  // filesystem work and owe `gh` nothing.
+  it("keeps every actual, and says what is unknown, when there is no listing", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 12_000, 300_000)]);
+
+    const report = await gatherUsage(dir, noListing("gh is not on PATH"));
+
+    expect(report.issues).toEqual([
+      {
+        issue: 101,
+        out: 12_000,
+        turns: 1,
+        sessions: 1,
+        cacheRead: 300_000,
+        title: null,
+        url: null,
+        forecast: null,
+        bucket: "S",
+        verdict: null,
+      },
+    ]);
+    expect(report.warnings).toEqual(["gh is not on PATH"]);
+  });
+
+  // Two independent failures, and the page shows both: a machine with no
+  // transcripts *and* no `gh` should not have to discover the second one after
+  // fixing the first.
+  it("stacks the listing's warning beside the scan's", async () => {
+    const report = await gatherUsage(
+      join(dir, "nope"),
+      noListing("no gh here"),
+    );
+
+    expect(report.warnings).toHaveLength(2);
+    expect(report.warnings[1]).toBe("no gh here");
   });
 });
 
@@ -252,6 +398,31 @@ describe("bucketFor", () => {
     expect(bucketFor(BUCKETS.M.max)).toBe("L");
     expect(bucketFor(BUCKETS.L.max)).toBe("XL");
     expect(bucketFor(10_000_000)).toBe("XL");
+  });
+});
+
+describe("verdictFor", () => {
+  it("is on target when the spend lands in the band it was forecast into", () => {
+    expect(verdictFor("M", 90_000)).toBe("on target");
+    expect(verdictFor("S", 0)).toBe("on target");
+    expect(verdictFor("XL", 400_000)).toBe("on target");
+  });
+
+  it("is over at the forecast band's own boundary, not one token later", () => {
+    expect(verdictFor("S", BUCKETS.S.max)).toBe("over");
+    expect(verdictFor("S", BUCKETS.S.max - 1)).toBe("on target");
+    expect(verdictFor("M", 250_000)).toBe("over");
+  });
+
+  it("is under when the spend falls short of the band", () => {
+    expect(verdictFor("L", 10_000)).toBe("under");
+    expect(verdictFor("M", BUCKETS.S.max - 1)).toBe("under");
+  });
+
+  // The rule R3 is explicit about: no forecast, no score — not a default one.
+  it("has no verdict for an issue that was never forecast", () => {
+    expect(verdictFor(null, 0)).toBeNull();
+    expect(verdictFor(null, 10_000_000)).toBeNull();
   });
 });
 

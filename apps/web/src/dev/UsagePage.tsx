@@ -1,12 +1,23 @@
-import { AlertTriangle, Loader2, Search } from "lucide-react";
+import type { ReactNode } from "react";
+import { AlertTriangle, ExternalLink, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
+import { Hint } from "@/components/Hint";
 import { TableFrame } from "@/lib/table-frame";
 import { extractErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useUsageScan } from "./dev-api";
-import type { IssueUsage, UsageReport } from "./protocol";
+import {
+  BUCKETS,
+  USAGE_COLUMNS,
+  VERDICT,
+  type Bucket,
+  type IssueUsage,
+  type UsageColumn,
+  type UsageReport,
+  type Verdict,
+} from "./protocol";
 
 /**
  * What each issue actually cost, read off this machine's Claude Code
@@ -22,15 +33,22 @@ import type { IssueUsage, UsageReport } from "./protocol";
  * the reason nothing on either side of the wire caches the answer is written
  * down.
  *
- * **Actuals only, for now.** No titles, no links out, no forecast band and no
- * verdict: all four need `gh`, which slice 2 of
- * `docs/plans/dev-tools-usage-page.md` adds to the middleware. Issues with a
- * forecast and no recorded work are absent for the same reason — the row set
- * here is "branches that spent something", not "issues".
+ * **Two sources per row, and the page never lets them be confused.** The
+ * figures are read off the filesystem and are always there; the title, the link
+ * and the forecast band come from `gh` and may not be. Anything `gh` could not
+ * supply renders as an em dash meaning *unknown* — never a zero, never a
+ * default band, and never a verdict, because a verdict on work nobody forecast
+ * is a score invented by the page. With `gh` missing or unauthenticated every
+ * figure still lands and only those columns go quiet, which is the state CI is
+ * in by default.
  *
  * Output tokens are the column this exists for; cache-read sits beside it and
  * is deliberately not comparable to a forecast band. `apps/web/dev/usage.ts`
  * carries the measurements behind both.
+ *
+ * Still absent, per slice 3 of `docs/plans/dev-tools-usage-page.md`: issues
+ * with a forecast and no recorded work. The row set here is "branches that
+ * spent something", not "issues".
  */
 
 const SCAN_FAILED = "The dev middleware could not read the transcripts.";
@@ -47,54 +65,157 @@ const SCAN_FAILED = "The dev middleware could not read the transcripts.";
 const formatNumber = (n: number): string => n.toLocaleString("en-US");
 
 /**
- * One numeric column, and what it reads off a row.
+ * Stands in for a value `gh` could not supply.
  *
- * The accessor is what lets this one list drive the header *and* the body. As
- * two parallel literals — a column array for the `<thead>` and four
- * hand-written cells beneath it — adding or reordering a column is two edits
- * that can silently disagree about order or alignment, which is the shape of
- * bug a table ships quietly.
+ * One marker for all three columns that can lack one, because they fail
+ * together and mean the same thing: *unknown*. The distinction it protects is
+ * the page's only real claim — an empty forecast column is not a forecast of
+ * zero, and an empty verdict is not a passing grade. The hint is where that is
+ * said in words, since a bare dash is not self-explanatory to anyone who has
+ * not read this file.
+ */
+const Unknown = () => (
+  <Hint content="Unknown — gh could not supply this">
+    <span className="text-muted-foreground">&mdash;</span>
+  </Hint>
+);
+
+/** A band, as its letter and the range that letter means. Both, because the
+ *  letter alone is jargon and the range alone does not match the label on the
+ *  issue. */
+const Band = ({ band }: { band: Bucket }) => (
+  <span className="whitespace-nowrap">
+    <span className="font-medium">{band}</span>{" "}
+    <span className="text-xs text-muted-foreground">{BUCKETS[band].label}</span>
+  </span>
+);
+
+/** Colour carries the same three verdicts the word does, and adds nothing: over
+ *  is the one worth catching an eye. */
+const VERDICT_VARIANT: Record<Verdict, "default" | "outline" | "destructive"> =
+  {
+    [VERDICT.onTarget]: "default",
+    [VERDICT.over]: "destructive",
+    [VERDICT.under]: "outline",
+  };
+
+/**
+ * One column, and what it renders from a row.
+ *
+ * The renderer is what lets this one list drive the header *and* the body. As
+ * two parallel literals — a column array for the `<thead>` and hand-written
+ * cells beneath it — adding or reordering a column is two edits that can
+ * silently disagree about order or alignment, which is the shape of bug a table
+ * ships quietly. It started as a list of numeric accessors and generalised the
+ * moment words arrived beside the figures; `numeric` is what still separates
+ * the two, and it decides alignment for the header and the cell together.
  *
  * The issue number is deliberately not in here: it is the row's identity rather
- * than one of its figures, and it is marked up as a header cell on both axes.
+ * than one of its columns, and it is marked up as a header cell on both axes.
  */
-interface Figure {
+interface Column {
   label: string;
   /** What the column means, on hover. */
   title: string;
-  value: (row: IssueUsage) => number;
+  render: (row: IssueUsage) => ReactNode;
+  /** Right-aligned and tabular — a figure rather than a word. */
+  numeric?: boolean;
   /** The column this page exists for. */
   lead?: boolean;
   /** Muted — the figure that is not comparable to a forecast band. */
   muted?: boolean;
 }
 
-const FIGURES: Figure[] = [
-  {
+/**
+ * What each column renders, keyed by name.
+ *
+ * The *order* is `USAGE_COLUMNS` in `./protocol` and not this literal's key
+ * order, because two tests index a row by position and neither can import this
+ * file — so the order has to live somewhere import-free. Keying by the same
+ * names is what keeps the two in step: a column defined here and left out of
+ * that list does not compile, and neither does the reverse.
+ */
+const COLUMNS: Record<UsageColumn, Column> = {
+  title: {
+    label: "Title",
+    title: "The issue on GitHub — the link opens it in a new tab",
+    render: (row) =>
+      row.title === null ? (
+        <Unknown />
+      ) : row.url === null ? (
+        <span className="block max-w-[26rem] truncate">{row.title}</span>
+      ) : (
+        // The hint carries the untruncated title, which is the one thing the
+        // cell cannot show: `max-w` plus `truncate` is what stops a long title
+        // widening the table past every figure beside it.
+        <Hint content={row.title}>
+          <a
+            href={row.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex max-w-[26rem] items-center gap-1 underline decoration-dotted underline-offset-4 hover:decoration-solid"
+          >
+            <span className="truncate">{row.title}</span>
+            <ExternalLink aria-hidden="true" className="size-3 shrink-0" />
+          </a>
+        </Hint>
+      ),
+  },
+  forecast: {
+    label: "Forecast",
+    title: "The band its forecast/S|M|L label names, applied when it was cut",
+    render: (row) =>
+      row.forecast ? <Band band={row.forecast} /> : <Unknown />,
+  },
+  out: {
     label: "Output tokens",
     title:
       "Actual output tokens — the unit the forecast bands are denominated in",
-    value: (row) => row.out,
+    render: (row) => formatNumber(row.out),
+    numeric: true,
     lead: true,
   },
-  {
+  bucket: {
+    label: "Bucket",
+    title: "The band the actual spend lands in",
+    render: (row) => <Band band={row.bucket} />,
+  },
+  verdict: {
+    label: "Verdict",
+    title:
+      "The actual read against the forecast — unknown when nothing was forecast",
+    render: (row) =>
+      row.verdict ? (
+        <Badge variant={VERDICT_VARIANT[row.verdict]}>{row.verdict}</Badge>
+      ) : (
+        <Unknown />
+      ),
+  },
+  turns: {
     label: "Turns",
     title: "Assistant turns recorded against this issue's branches",
-    value: (row) => row.turns,
+    render: (row) => formatNumber(row.turns),
+    numeric: true,
   },
-  {
+  sessions: {
     label: "Sessions",
     title: "Distinct sittings the work was split across",
-    value: (row) => row.sessions,
+    render: (row) => formatNumber(row.sessions),
+    numeric: true,
   },
-  {
+  cacheRead: {
     label: "Cache read",
     title:
       "Cache-read tokens — a measure of session hygiene, never part of the forecast",
-    value: (row) => row.cacheRead,
+    render: (row) => formatNumber(row.cacheRead),
+    numeric: true,
     muted: true,
   },
-];
+};
+
+/** The columns as the table walks them: `USAGE_COLUMNS`'s order, `COLUMNS`'s
+ *  definitions. One list for the header and the body both. */
+const ORDERED = USAGE_COLUMNS.map((name) => COLUMNS[name]);
 
 export function UsagePage() {
   const scan = useUsageScan();
@@ -120,9 +241,9 @@ export function UsagePage() {
         <div>
           <h1 className="text-lg font-semibold">Usage</h1>
           <p className="max-w-prose text-sm text-muted-foreground">
-            What each issue actually cost, in output tokens, read off this
-            machine&rsquo;s Claude Code transcripts. Nothing is read until you
-            press Scan.
+            What each issue was forecast to cost and what it actually cost, in
+            output tokens, read off this machine&rsquo;s Claude Code
+            transcripts. Nothing is read until you press Scan.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -184,10 +305,13 @@ export function UsagePage() {
         The same join <code className="font-mono">bun run tokens</code> prints,
         served by the Vite dev plugin out of{" "}
         <code className="font-mono">apps/web/dev/usage.ts</code> — so the
-        terminal and this page cannot disagree about what an issue cost. Work
-        that ran on <code className="font-mono">main</code> or on no branch
-        belongs to no issue and is not shown here, and neither is work done on
-        any other machine: these transcripts are local.
+        terminal and this page cannot disagree about what an issue cost or
+        whether it came in on target. Titles, links and forecast bands come from{" "}
+        <code className="font-mono">gh</code>; without it the figures still land
+        and those columns read as unknown. Work that ran on{" "}
+        <code className="font-mono">main</code> or on no branch belongs to no
+        issue and is not shown here, and neither is work done on any other
+        machine: these transcripts are local.
       </p>
     </div>
   );
@@ -230,13 +354,9 @@ function Gathered({ report }: { report: UsageReport }) {
  * something to scroll and the sticky header something to stick to.
  *
  * The ranking is the server's: rows arrive in output-token order with the issue
- * number as a tie-break, so two scans of an unchanged directory agree. That is a
- * claim about *this* page and not about the terminal — `bun run tokens` sorts on
- * `out` alone, so two issues that spent exactly the same fall out in whatever
- * order the filesystem handed the files over, and the two can rank them
- * differently. R8 is about the figures, which are one module's and do agree;
- * giving the CLI the same tie-break belongs with the rest of slice 6's pass over
- * that script, not here.
+ * number as a tie-break, so two scans of an unchanged directory agree — and so
+ * does `bun run tokens`, which since slice 2 prints these same rows rather than
+ * ordering the scan itself.
  *
  * Sortable headers belong here eventually — `ModuleTable` next door is the shape
  * to copy — but not while there is one column anybody ranks by.
@@ -261,19 +381,26 @@ function SpendTable({ issues }: { issues: IssueUsage[] }) {
           <tr>
             <th
               scope="col"
-              title="GitHub issue number, taken from the branch name"
               className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium"
             >
-              Issue
+              <Hint content="GitHub issue number, taken from the branch name">
+                <span>Issue</span>
+              </Hint>
             </th>
-            {FIGURES.map((figure) => (
+            {ORDERED.map((column) => (
               <th
-                key={figure.label}
+                key={column.label}
                 scope="col"
-                title={figure.title}
-                className="sticky top-0 z-10 bg-muted px-3 py-2 text-right font-medium"
+                className={cn(
+                  "sticky top-0 z-10 bg-muted px-3 py-2 font-medium",
+                  column.numeric ? "text-right" : "text-left",
+                )}
               >
-                {figure.label}
+                {/* `ModuleTable` next door puts the hint on the sort button;
+                    there is nothing to sort here yet, so it wraps the label. */}
+                <Hint content={column.title}>
+                  <span>{column.label}</span>
+                </Hint>
               </th>
             ))}
           </tr>
@@ -290,16 +417,17 @@ function SpendTable({ issues }: { issues: IssueUsage[] }) {
               >
                 #{row.issue}
               </th>
-              {FIGURES.map((figure) => (
+              {ORDERED.map((column) => (
                 <td
-                  key={figure.label}
+                  key={column.label}
                   className={cn(
-                    "px-3 py-1.5 text-right tabular-nums",
-                    figure.lead && "font-medium",
-                    figure.muted && "text-muted-foreground",
+                    "px-3 py-1.5",
+                    column.numeric && "text-right tabular-nums",
+                    column.lead && "font-medium",
+                    column.muted && "text-muted-foreground",
                   )}
                 >
-                  {formatNumber(figure.value(row))}
+                  {column.render(row)}
                 </td>
               ))}
             </tr>

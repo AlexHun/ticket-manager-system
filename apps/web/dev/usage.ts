@@ -23,17 +23,40 @@
 // This module is the single copy of the join. `scripts/ticket-tokens.ts` prints
 // it at the terminal; the dev-tools Vite plugin serves `gatherUsage` to the
 // Usage page under `/__dev` (#248), which is why it lives here rather than
-// under `scripts/`. It reads the filesystem and nothing else — no `gh`, no
-// terminal formatting, no process exit — so both callers can decide those for
-// themselves.
+// under `scripts/`. Both callers take the *same rows*, forecast band and
+// verdict included, rather than each scoring the scan themselves — that is
+// what makes "the page and `bun run tokens` cannot disagree" a property of one
+// function instead of a promise two of them keep.
+//
+// What it still leaves to its callers is presentation and process: no column
+// widths, no colours, no `process.exit`. The one thing it reaches out of the
+// filesystem for is the issue listing, and that is an optional parameter
+// (see `gatherUsage`) rather than a call buried in the scan.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-// Type-only, so nothing of the protocol reaches this module at runtime — it is
-// the same file the Vite plugin and the pages under `/__dev` import, and the
-// reason the report this builds cannot drift from what the page reads.
-import type { UsageReport } from "../src/dev/protocol.ts";
+// The same file the Vite plugin and the pages under `/__dev` import, and the
+// reason the report this builds cannot drift from what the page reads. The
+// bands and the verdict words come from it too: they are vocabulary both ends
+// spend, not an implementation detail of the scan.
+import {
+  BUCKETS,
+  VERDICT,
+  type Bucket,
+  type IssueUsage,
+  type UsageReport,
+  type Verdict,
+} from "../src/dev/protocol.ts";
+import { fetchIssueMetadata, type IssueMetadata } from "./issues.ts";
+
+// Re-exported because `scripts/ticket-tokens.ts` prints a band's label and
+// counts how many rows came in on target, and reaching into the browser half's
+// protocol file from a script under `scripts/` would be a worse seam than this
+// line. The words especially: the CLI comparing against a literal `"on target"`
+// is how a rename in `protocol.ts` would leave its accuracy figure reading 0/N
+// with nothing failing.
+export { BUCKETS, VERDICT, type Bucket, type Verdict };
 
 /**
  * Environment variable that overrides where transcripts are read from.
@@ -44,24 +67,30 @@ import type { UsageReport } from "../src/dev/protocol.ts";
  */
 export const TRANSCRIPT_DIR_ENV = "CLAUDE_TRANSCRIPT_DIR";
 
-/**
- * Output-token bands. `max` is exclusive; XL is the open-ended top bucket and
- * is a split signal rather than a size — nothing should be forecast into it.
- *
- * These are this repo's own measured per-ticket distribution over 90
- * issue-numbered branches: p25 55k, median 90k, p75 154k.
- */
-export const BUCKETS = {
-  S: { max: 60_000, label: "<60k" },
-  M: { max: 150_000, label: "60-150k" },
-  L: { max: 250_000, label: "150-250k" },
-  XL: { max: Infinity, label: ">250k" },
-} as const;
-
-export type Bucket = keyof typeof BUCKETS;
-
 export const bucketFor = (out: number): Bucket =>
   (Object.keys(BUCKETS) as Bucket[]).find((b) => out < BUCKETS[b].max) ?? "XL";
+
+/**
+ * A forecast band read against what was actually spent.
+ *
+ * Null in, null out, and that is the rule rather than a convenience: an issue
+ * carrying no `forecast/S|M|L` label was never estimated, so there is nothing
+ * to be on target with. Defaulting it to *anything* — "on target", the median
+ * band, `S` — would put a score on work nobody predicted and quietly move the
+ * accuracy figure the whole page exists to report.
+ *
+ * `over` and `under` are decided against the forecast band's own boundary
+ * rather than against `bucketFor(out)`, which is the same answer said once:
+ * landing in a higher band *is* spending at or past that band's exclusive max.
+ */
+export function verdictFor(
+  forecast: Bucket | null,
+  out: number,
+): Verdict | null {
+  if (!forecast) return null;
+  if (forecast === bucketFor(out)) return VERDICT.onTarget;
+  return out >= BUCKETS[forecast].max ? VERDICT.over : VERDICT.under;
+}
 
 /** What one branch, or one issue, cost. `sessions` counts distinct sittings. */
 export interface Spend {
@@ -204,21 +233,82 @@ export function scanSpend(dir: string): ScanResult {
 }
 
 /**
- * One reading of `dir`, in the shape the wire carries.
+ * The rows themselves: one per issue with spend, joined to what GitHub knows.
+ *
+ * Exported, and the reason is the whole of R8. `gatherUsage` below is the Vite
+ * plugin's entry point and reads the transcripts itself; `bun run tokens`
+ * cannot use it, because it also prints a figure the wire does not carry
+ * (turns that ran on `main`) and a second sweep to recover that costs seconds,
+ * not milliseconds — 2-3s warm and 28s cold over the 136 transcripts on the
+ * machine this was measured on. So the *scan* is the CLI's and the *join* is
+ * this, shared — rather than the CLI assembling rows of its own that agree
+ * with these by inspection.
+ *
+ * Sorted spend-descending, which is the order the question is asked in. The
+ * tie-break on the issue number is what makes two readings of an unchanged
+ * directory agree: `Array.prototype.sort` is stable, but `Map` iteration order
+ * is insertion order, which is the order the filesystem happened to hand the
+ * files over.
+ */
+export function joinIssues(
+  byIssue: Map<number, Spend>,
+  metadata: IssueMetadata,
+): IssueUsage[] {
+  return [...byIssue.entries()]
+    .map(([issue, spend]) => {
+      // `?? null` rather than a branch on `metadata.byIssue`: an issue the
+      // listing does not mention is unknown in exactly the way every issue is
+      // unknown when there is no listing, and both render the same.
+      const meta = metadata.byIssue?.get(issue) ?? null;
+      const forecast = meta?.forecast ?? null;
+      return {
+        issue,
+        ...spend,
+        title: meta?.title ?? null,
+        url: meta?.url ?? null,
+        forecast,
+        bucket: bucketFor(spend.out),
+        verdict: verdictFor(forecast, spend.out),
+      };
+    })
+    .sort((a, b) => b.out - a.out || a.issue - b.issue);
+}
+
+/**
+ * One reading of `dir`, joined to what GitHub knows, in the shape the wire
+ * carries.
  *
  * The composition lives here rather than in the plugin so that R8 — the page
  * and `bun run tokens` never report different figures for the same issue — is a
  * property of one module rather than of two callers agreeing to be careful. The
- * plugin's job is reduced to resolving the directory and serialising this.
+ * plugin's job is reduced to resolving the directory and serialising this; the
+ * CLI shares the half that matters through `joinIssues` above.
+ *
+ * **The listing is optional, and that it has a default is the point.** Written
+ * as a bare `fetchIssueMetadata()` inside, a test would shell out to `gh` and
+ * no caller could substitute a fixture; taken as a required argument, every
+ * caller would decide separately where metadata comes from, which is the
+ * divergence this module exists to prevent. Optional-with-a-fallback is both:
+ * the plugin cannot get it wrong, and tests pass their own. It is a `??` rather
+ * than a parameter default only because fetching one is asynchronous — see
+ * `listIssues` in `./issues.ts` for why it has to be.
  *
  * **Nothing here throws.** A missing directory is the ordinary state of a
  * machine that has never run Claude Code in this project, and of CI; a 500 from
  * the middleware would read as the page being broken rather than as the honest
- * "there is nothing here". So the failure is reported as a warning beside an
- * empty table, the way the project map surfaces what its scan could not parse.
+ * "there is nothing here". A `gh` that cannot answer is smaller still: it costs
+ * three columns, not the page. Both are reported as warnings beside whatever
+ * could be read, the way the project map surfaces what its scan could not
+ * parse.
  */
-export function gatherUsage(dir: string): UsageReport {
+export async function gatherUsage(
+  dir: string,
+  metadata?: IssueMetadata,
+): Promise<UsageReport> {
+  // Before the listing, not after: `scanMs` answers "how long did pressing
+  // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
   const startedAt = Date.now();
+  const listing = metadata ?? (await fetchIssueMetadata());
   const warnings: string[] = [];
 
   let scan: ScanResult = {
@@ -236,21 +326,17 @@ export function gatherUsage(dir: string): UsageReport {
   if (warnings.length === 0 && scan.transcripts === 0) {
     warnings.push(`No .jsonl transcripts in ${dir}.`);
   }
-
-  const issues = [...scan.byIssue.entries()]
-    .map(([issue, spend]) => ({ issue, ...spend }))
-    // Spend descending is the order the question is asked in. The tie-break on
-    // the issue number is what makes two scans of an unchanged directory agree:
-    // `Array.prototype.sort` is stable, but `Map` iteration order is insertion
-    // order, which is the order the filesystem happened to hand the files over.
-    .sort((a, b) => b.out - a.out || a.issue - b.issue);
+  // Second, and separately: the transcripts can be perfectly readable while the
+  // issue listing is not. The page shows every warning it is given, so the two
+  // failures stack rather than masking one another.
+  if (listing.warning) warnings.push(listing.warning);
 
   return {
     gatheredAt: new Date().toISOString(),
     scanMs: Date.now() - startedAt,
     transcriptDir: dir,
     transcripts: scan.transcripts,
-    issues,
+    issues: joinIssues(scan.byIssue, listing),
     warnings,
   };
 }
