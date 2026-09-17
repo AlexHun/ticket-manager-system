@@ -28,6 +28,7 @@ import {
   suiteDescriptors,
   type RunHandle,
 } from "./suites.ts";
+import { gatherUsage, resolveTranscriptDir } from "./usage.ts";
 import {
   DEVTOOLS_API,
   type DevStreamMessage,
@@ -277,6 +278,36 @@ export function devToolsPlugin(): Plugin {
         }),
       );
 
+      server.middlewares.use(
+        DEVTOOLS_API.usage,
+        // `POST`, no `GET`, and nothing held between presses — `UsageReport` in
+        // `../src/dev/protocol.ts` carries the reasoning, beside the shape it
+        // governs. Note what it costs here: this is the one dev-tools route
+        // that keeps no state at all, which is why there is nothing above this
+        // handler the way `runs` sits above the test runner's.
+        //
+        // The directory is resolved per request rather than at plugin setup, so
+        // `CLAUDE_TRANSCRIPT_DIR` is read from the environment the dev server is
+        // actually running in — which is how Playwright points this at a fixture.
+        //
+        // **`REPO_ROOT`, not `process.cwd()`, and that is the whole bug this
+        // argument exists to prevent.** Claude Code keys its transcript
+        // directory on the *project* root, and the resolver's default is
+        // `process.cwd()` because its other caller — `bun run tokens` — is run
+        // from the repo root and so cannot tell the two apart. The Vite dev
+        // server's cwd is `apps/web`, so the default sent the page looking in
+        // `…/projects/<repo-slug>-apps-web`, which exists on no machine; it
+        // shipped because the E2E sets the override and never reaches this
+        // branch at all. `plugin.test.ts` is what covers it now.
+        only("POST", (_req, res) =>
+          sendJson(
+            res,
+            200,
+            gatherUsage(resolveTranscriptDir(process.env, { cwd: REPO_ROOT })),
+          ),
+        ),
+      );
+
       // A dev-server restart (editing this file, or vite.config.ts) must not
       // leave a Playwright run holding ports 3002 and 4001.
       server.httpServer?.once("close", () => {
@@ -286,7 +317,9 @@ export function devToolsPlugin(): Plugin {
 
       // Printed plainly rather than dressed up in Vite's colours: this is the
       // only hint the two pages exist, so it should survive a piped log.
-      server.config.logger.info("  dev tools:  /__dev/map  /__dev/tests");
+      server.config.logger.info(
+        "  dev tools:  /__dev/map  /__dev/tests  /__dev/usage",
+      );
     },
   };
 }

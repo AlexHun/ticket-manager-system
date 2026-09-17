@@ -11,11 +11,12 @@
  */
 
 import axios from "axios";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   DEVTOOLS_API,
   type ProjectGraph,
   type SuiteDescriptor,
+  type UsageReport,
 } from "./protocol";
 
 const devApi = axios.create({ baseURL: "" });
@@ -54,6 +55,28 @@ export function useSuites() {
         { signal },
       );
       return data.suites;
+    },
+  });
+}
+
+/**
+ * One reading of this machine's transcripts, taken on demand.
+ *
+ * A mutation rather than a query, and the choice is the feature: R5 says the
+ * page gathers nothing until asked, and a query is a thing react-query is
+ * entitled to run for you — on mount, on window focus, on a reconnect. A
+ * mutation runs exactly when `mutate()` is called and holds its `data` until
+ * the next call, which is "press Scan, keep the figures until the next press"
+ * stated in the library's own terms. `useQuery({ enabled: false })` would be
+ * the same behaviour spelled as a suppression of the default one — and it would
+ * still take a query key, which is a cache entry, which is the thing
+ * `UsageReport` in `./protocol` explains this feature must not have.
+ */
+export function useUsageScan() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await devApi.post<UsageReport>(DEVTOOLS_API.usage);
+      return data;
     },
   });
 }

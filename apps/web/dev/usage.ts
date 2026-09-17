@@ -21,14 +21,19 @@
 //   - Sessions from any other machine. These transcripts are local.
 //
 // This module is the single copy of the join. `scripts/ticket-tokens.ts` prints
-// it at the terminal today; the dev-tools Vite plugin will serve it to `/__dev`
-// (#248), which is why it lives here rather than under `scripts/`. It reads the
-// filesystem and nothing else — no `gh`, no formatting, no process exit — so
-// both callers can decide those for themselves.
+// it at the terminal; the dev-tools Vite plugin serves `gatherUsage` to the
+// Usage page under `/__dev` (#248), which is why it lives here rather than
+// under `scripts/`. It reads the filesystem and nothing else — no `gh`, no
+// terminal formatting, no process exit — so both callers can decide those for
+// themselves.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+// Type-only, so nothing of the protocol reaches this module at runtime — it is
+// the same file the Vite plugin and the pages under `/__dev` import, and the
+// reason the report this builds cannot drift from what the page reads.
+import type { UsageReport } from "../src/dev/protocol.ts";
 
 /**
  * Environment variable that overrides where transcripts are read from.
@@ -70,6 +75,10 @@ export interface ScanResult {
   byIssue: Map<number, Spend>;
   /** Turns that ran on `main` or with no branch, and so belong to no issue. */
   unattributed: number;
+  /** `.jsonl` files actually read. Zero is the honest answer for a machine that
+   *  has never run Claude Code in this project, and is not the same thing as
+   *  "nobody spent anything". */
+  transcripts: number;
 }
 
 /**
@@ -123,10 +132,12 @@ interface BranchAccumulator extends Omit<Spend, "sessions"> {
 function spendByBranch(dir: string): {
   byBranch: Map<string, BranchAccumulator>;
   unattributed: number;
+  transcripts: number;
 } {
   const byBranch = new Map<string, BranchAccumulator>();
   let unattributed = 0;
-  for (const file of readdirSync(dir).filter((f) => f.endsWith(".jsonl"))) {
+  const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+  for (const file of files) {
     for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
       if (!line.trim()) continue;
       let rec: TranscriptRecord;
@@ -155,7 +166,7 @@ function spendByBranch(dir: string): {
       byBranch.set(branch, acc);
     }
   }
-  return { byBranch, unattributed };
+  return { byBranch, unattributed, transcripts: files.length };
 }
 
 /**
@@ -188,8 +199,60 @@ function spendByIssue(
 
 /** Read every transcript in `dir` and attribute its spend to issues. */
 export function scanSpend(dir: string): ScanResult {
-  const { byBranch, unattributed } = spendByBranch(dir);
-  return { byIssue: spendByIssue(byBranch), unattributed };
+  const { byBranch, unattributed, transcripts } = spendByBranch(dir);
+  return { byIssue: spendByIssue(byBranch), unattributed, transcripts };
+}
+
+/**
+ * One reading of `dir`, in the shape the wire carries.
+ *
+ * The composition lives here rather than in the plugin so that R8 — the page
+ * and `bun run tokens` never report different figures for the same issue — is a
+ * property of one module rather than of two callers agreeing to be careful. The
+ * plugin's job is reduced to resolving the directory and serialising this.
+ *
+ * **Nothing here throws.** A missing directory is the ordinary state of a
+ * machine that has never run Claude Code in this project, and of CI; a 500 from
+ * the middleware would read as the page being broken rather than as the honest
+ * "there is nothing here". So the failure is reported as a warning beside an
+ * empty table, the way the project map surfaces what its scan could not parse.
+ */
+export function gatherUsage(dir: string): UsageReport {
+  const startedAt = Date.now();
+  const warnings: string[] = [];
+
+  let scan: ScanResult = {
+    byIssue: new Map(),
+    unattributed: 0,
+    transcripts: 0,
+  };
+  try {
+    scan = scanSpend(dir);
+  } catch (err) {
+    warnings.push(
+      `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  if (warnings.length === 0 && scan.transcripts === 0) {
+    warnings.push(`No .jsonl transcripts in ${dir}.`);
+  }
+
+  const issues = [...scan.byIssue.entries()]
+    .map(([issue, spend]) => ({ issue, ...spend }))
+    // Spend descending is the order the question is asked in. The tie-break on
+    // the issue number is what makes two scans of an unchanged directory agree:
+    // `Array.prototype.sort` is stable, but `Map` iteration order is insertion
+    // order, which is the order the filesystem happened to hand the files over.
+    .sort((a, b) => b.out - a.out || a.issue - b.issue);
+
+  return {
+    gatheredAt: new Date().toISOString(),
+    scanMs: Date.now() - startedAt,
+    transcriptDir: dir,
+    transcripts: scan.transcripts,
+    issues,
+    warnings,
+  };
 }
 
 /**

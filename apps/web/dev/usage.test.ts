@@ -6,6 +6,7 @@ import {
   BUCKETS,
   TRANSCRIPT_DIR_ENV,
   bucketFor,
+  gatherUsage,
   percentiles,
   resolveTranscriptDir,
   scanSpend,
@@ -128,6 +129,87 @@ describe("scanSpend", () => {
 
     expect(scanSpend(dir).byIssue.size).toBe(0);
     expect(scanSpend(dir).unattributed).toBe(0);
+  });
+});
+
+describe("gatherUsage", () => {
+  it("reports one row per issue, output tokens descending", () => {
+    write("s1.jsonl", [
+      turn("s1", "fix/102-b", 3000, 20_000),
+      turn("s1", "feat/101-a", 12_000, 300_000),
+      turn("s2", "feat/101-a", 8000, 100_000),
+    ]);
+
+    const report = gatherUsage(dir);
+
+    expect(report.issues).toEqual([
+      { issue: 101, out: 20_000, turns: 2, sessions: 2, cacheRead: 400_000 },
+      { issue: 102, out: 3000, turns: 1, sessions: 1, cacheRead: 20_000 },
+    ]);
+    expect(report.transcriptDir).toBe(dir);
+    expect(report.transcripts).toBe(1);
+    expect(report.warnings).toEqual([]);
+  });
+
+  // Ties are not hypothetical: two issues that both spent nothing attributable
+  // sort equal on `out`, and an unstable order would make the page's rows jump
+  // between two scans of an unchanged directory.
+  it("breaks a tie on the issue number, so two scans agree", () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/202-b", 500),
+      turn("s1", "feat/101-a", 500),
+    ]);
+
+    expect(gatherUsage(dir).issues.map((row) => row.issue)).toEqual([101, 202]);
+  });
+
+  it("stamps the reading with when it was gathered", () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
+    const before = Date.now();
+
+    const { gatheredAt, scanMs } = gatherUsage(dir);
+
+    expect(Date.parse(gatheredAt)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(gatheredAt)).toBeLessThanOrEqual(Date.now());
+    expect(scanMs).toBeGreaterThanOrEqual(0);
+  });
+
+  // The ordinary state of a machine that has never run Claude Code here, and of
+  // CI. A 500 from the middleware would read as the page being broken.
+  it("warns rather than throwing when the directory is not there", () => {
+    const missing = join(dir, "nope");
+
+    const report = gatherUsage(missing);
+
+    expect(report.issues).toEqual([]);
+    expect(report.transcripts).toBe(0);
+    expect(report.transcriptDir).toBe(missing);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]).toContain(missing);
+  });
+
+  it("says so when the directory holds no transcripts", () => {
+    write("notes.txt", ["nothing to see"]);
+
+    const report = gatherUsage(dir);
+
+    expect(report.issues).toEqual([]);
+    expect(report.transcripts).toBe(0);
+    expect(report.warnings[0]).toContain(".jsonl");
+  });
+
+  // R8: the page and `bun run tokens` read the same join, so a row here is the
+  // same row the terminal prints.
+  it("carries the same figures as scanSpend", () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/101-a", 12_000, 300_000),
+      turn("s1", "main", 5000, 50_000),
+    ]);
+
+    const [row] = gatherUsage(dir).issues;
+    const spend = scanSpend(dir).byIssue.get(101);
+
+    expect(row).toEqual({ issue: 101, ...spend });
   });
 });
 

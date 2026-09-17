@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { TRANSCRIPT_FIXTURE_DIR } from "./tests/e2e/fixtures/transcript-fixture";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -104,7 +105,20 @@ export default defineConfig({
       // then never becomes ready at all. Measured — a warm run with its own cache
       // is ready in ~4s; the same run sharing the dev server's cache while
       // `bun run dev` is up hangs past 420s.
-      env: { VITE_API_URL: API_URL },
+      //
+      // `CLAUDE_TRANSCRIPT_DIR` points the dev-tools Usage page at a fixture
+      // directory instead of `~/.claude/projects/<slug>` (see
+      // `apps/web/dev/usage.ts`). It belongs here rather than in the spec
+      // because the middleware that reads it runs inside *this* process, not in
+      // the browser — which is also the one thing to check first when
+      // `dev-usage.spec.ts` fails: `reuseExistingServer` will happily adopt a
+      // leftover Vite on 4001 that was started without it, and the page then
+      // reports this machine's real spend. The spec asserts on the directory the
+      // page names for exactly that reason.
+      env: {
+        VITE_API_URL: API_URL,
+        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_FIXTURE_DIR,
+      },
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,
       // Longer than the API's, which starts in about a second.
