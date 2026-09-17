@@ -6,6 +6,7 @@ import type { Connect, ViteDevServer } from "vite";
 import type { ServerResponse } from "node:http";
 import { devToolsPlugin } from "./plugin.ts";
 import { DEVTOOLS_API, type UsageReport } from "../src/dev/protocol.ts";
+import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./usage.ts";
 
 /**
@@ -51,17 +52,30 @@ function mountPlugin(): Map<string, Connect.NextHandleFunction[]> {
   return routes;
 }
 
-/** Drive one registered handler and return the JSON body it wrote. */
-function callRoute(
+/**
+ * Drive one registered handler and return the JSON body it wrote.
+ *
+ * Asynchronous because the usage handler is: it waits on the issue listing
+ * (`gh`, or the file the environment names). So "did this handler answer?"
+ * cannot be read off the status immediately after the call — what is read
+ * instead is whether the handler passed the request on. `only()` calls `next()`
+ * synchronously for a method it does not serve and otherwise takes ownership,
+ * which is the same signal the real middleware stack goes by.
+ */
+async function callRoute(
   routes: Map<string, Connect.NextHandleFunction[]>,
   path: string,
   method: string,
-): { status: number; body: unknown } {
+): Promise<{ status: number; body: unknown }> {
   const handlers = routes.get(path);
   if (!handlers) throw new Error(`Nothing registered on ${path}`);
 
   let status = 0;
   let payload = "";
+  let written!: () => void;
+  const answered = new Promise<void>((resolve) => {
+    written = resolve;
+  });
   const res = {
     writeHead(code: number) {
       status = code;
@@ -69,47 +83,84 @@ function callRoute(
     },
     end(chunk: string) {
       payload = chunk;
+      written();
     },
   } as unknown as ServerResponse;
 
-  // Registered in order, and `only()` calls `next()` on a method it does not
-  // answer — so walking the chain is what the real middleware stack does.
-  let answered = false;
+  let taken = false;
   for (const handler of handlers) {
-    handler({ method, url: path } as never, res, () => {});
-    if (status !== 0) {
-      answered = true;
-      break;
-    }
+    let passedOn = false;
+    handler({ method, url: path } as never, res, () => {
+      passedOn = true;
+    });
+    if (passedOn) continue;
+    await answered;
+    taken = true;
+    break;
   }
-  if (!answered) throw new Error(`No handler answered ${method} ${path}`);
+  if (!taken) throw new Error(`No handler answered ${method} ${path}`);
 
   return { status, body: JSON.parse(payload) as unknown };
 }
 
-const scanUsage = (): UsageReport => {
-  const { status, body } = callRoute(mountPlugin(), DEVTOOLS_API.usage, "POST");
+const scanUsage = async (): Promise<UsageReport> => {
+  const { status, body } = await callRoute(
+    mountPlugin(),
+    DEVTOOLS_API.usage,
+    "POST",
+  );
   expect(status).toBe(200);
   return body as UsageReport;
 };
 
-let override: string | undefined;
+/**
+ * The issue listing, pinned to a file for every test here.
+ *
+ * Not an optimisation: the route asks `gh` when nothing overrides it, so an
+ * unset `GH_ISSUES_FILE` would have this suite shelling out to GitHub — slow,
+ * dependent on the machine being authenticated, and answering with whatever
+ * this repository's issues happen to be titled today. The override is the same
+ * seam Playwright uses, driven here for the same reason.
+ */
+const LISTING = [
+  {
+    number: 101,
+    title: "The issue the fixture transcripts spent on",
+    state: "OPEN",
+    url: "https://github.com/AlexHun/ticket-manager-system/issues/101",
+    labels: [{ name: "forecast/M" }],
+  },
+];
+
+let envDir: string;
+let saved: Record<string, string | undefined>;
 
 beforeEach(() => {
-  override = process.env[TRANSCRIPT_DIR_ENV];
+  saved = {
+    [TRANSCRIPT_DIR_ENV]: process.env[TRANSCRIPT_DIR_ENV],
+    [ISSUES_FILE_ENV]: process.env[ISSUES_FILE_ENV],
+  };
   delete process.env[TRANSCRIPT_DIR_ENV];
+
+  envDir = mkdtempSync(join(tmpdir(), "plugin-listing-"));
+  const listing = join(envDir, "issues.json");
+  writeFileSync(listing, JSON.stringify(LISTING), "utf8");
+  process.env[ISSUES_FILE_ENV] = listing;
 });
 afterEach(() => {
-  if (override === undefined) delete process.env[TRANSCRIPT_DIR_ENV];
-  else process.env[TRANSCRIPT_DIR_ENV] = override;
+  for (const [key, value] of Object.entries(saved)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  rmSync(envDir, { recursive: true, force: true });
 });
 
 describe(`POST ${DEVTOOLS_API.usage}`, () => {
-  it("derives the transcript directory from the repo root, not the dev server's cwd", () => {
+  it("derives the transcript directory from the repo root, not the dev server's cwd", async () => {
     // `apps/web/dev` → the repo root, the same two steps up the plugin makes.
     const repoRoot = resolve(import.meta.dirname, "../../..");
 
-    const { transcriptDir } = scanUsage();
+    const { transcriptDir } = await scanUsage();
 
     expect(transcriptDir).toBe(resolveTranscriptDir({}, { cwd: repoRoot }));
     // The shape of the wrong answer, named so a regression is legible rather
@@ -120,7 +171,7 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
     );
   });
 
-  it("honours the override, which is how Playwright points it at a fixture", () => {
+  it("honours the override, which is how Playwright points it at a fixture", async () => {
     const dir = mkdtempSync(join(tmpdir(), "plugin-usage-"));
     writeFileSync(
       join(dir, "s.jsonl"),
@@ -134,10 +185,10 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
     process.env[TRANSCRIPT_DIR_ENV] = dir;
 
     try {
-      const report = scanUsage();
+      const report = await scanUsage();
 
       expect(report.transcriptDir).toBe(dir);
-      expect(report.issues).toEqual([
+      expect(report.issues).toMatchObject([
         { issue: 101, out: 4200, turns: 1, sessions: 1, cacheRead: 0 },
       ]);
       expect(report.warnings).toEqual([]);
@@ -146,20 +197,89 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
     }
   });
 
-  it("answers a missing directory with a warning rather than a 500", () => {
+  it("answers a missing directory with a warning rather than a 500", async () => {
     const missing = join(tmpdir(), "plugin-usage-not-here");
     process.env[TRANSCRIPT_DIR_ENV] = missing;
 
-    const report = scanUsage();
+    const report = await scanUsage();
 
     expect(report.issues).toEqual([]);
     expect(report.warnings[0]).toContain(missing);
   });
 
-  it("ignores a GET, so the SPA fallback is never shadowed by a stale read", () => {
+  // R2/R3 over the wire: the two sources are joined inside the middleware, so
+  // the page receives one row and never has to ask GitHub anything itself.
+  it("serves the listing's title, link and verdict beside the figures", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "plugin-usage-"));
+    writeFileSync(
+      join(dir, "s.jsonl"),
+      JSON.stringify({
+        sessionId: "s",
+        gitBranch: "feat/101-a",
+        message: { usage: { output_tokens: 200_000 } },
+      }),
+      "utf8",
+    );
+    process.env[TRANSCRIPT_DIR_ENV] = dir;
+
+    try {
+      const [row] = (await scanUsage()).issues;
+
+      expect(row).toEqual({
+        issue: 101,
+        out: 200_000,
+        turns: 1,
+        sessions: 1,
+        cacheRead: 0,
+        title: "The issue the fixture transcripts spent on",
+        url: "https://github.com/AlexHun/ticket-manager-system/issues/101",
+        forecast: "M",
+        bucket: "L",
+        verdict: "over",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The degraded path, through the real middleware: the listing is the one the
+  // environment names, and a missing one costs three columns rather than a 500.
+  it("answers with the figures alone when the listing cannot be read", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "plugin-usage-"));
+    writeFileSync(
+      join(dir, "s.jsonl"),
+      JSON.stringify({
+        sessionId: "s",
+        gitBranch: "feat/101-a",
+        message: { usage: { output_tokens: 4200 } },
+      }),
+      "utf8",
+    );
+    process.env[TRANSCRIPT_DIR_ENV] = dir;
+    const missingListing = join(envDir, "gone.json");
+    process.env[ISSUES_FILE_ENV] = missingListing;
+
+    try {
+      const report = await scanUsage();
+
+      expect(report.issues[0]).toMatchObject({
+        out: 4200,
+        title: null,
+        url: null,
+        forecast: null,
+        bucket: "S",
+        verdict: null,
+      });
+      expect(report.warnings.join(" ")).toContain(missingListing);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores a GET, so the SPA fallback is never shadowed by a stale read", async () => {
     const routes = mountPlugin();
 
-    expect(() => callRoute(routes, DEVTOOLS_API.usage, "GET")).toThrow(
+    await expect(callRoute(routes, DEVTOOLS_API.usage, "GET")).rejects.toThrow(
       /No handler answered/,
     );
   });

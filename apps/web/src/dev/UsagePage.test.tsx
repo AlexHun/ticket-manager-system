@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { renderRoutes } from "@/test/render";
 import { UsagePage } from "./UsagePage";
-import type { UsageReport } from "./protocol";
+import type { IssueUsage, UsageReport } from "./protocol";
 
 /**
  * The page's one rule: it reads nothing until asked, and what it shows
@@ -31,6 +31,29 @@ vi.mock("axios", async (importOriginal) => {
 
 const FIXTURE_DIR = "/fixtures/transcripts";
 
+const ISSUE_URL = "https://github.com/AlexHun/ticket-manager-system/issues/101";
+
+/**
+ * One row. The default is an issue `gh` answered for; the degraded row — every
+ * `gh`-sourced field null — is what an override of `{ title: null, url: null,
+ * forecast: null, verdict: null }` produces, and is asserted on below.
+ */
+function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
+  return {
+    issue: 101,
+    out: 20_000,
+    turns: 2,
+    sessions: 1,
+    cacheRead: 400_000,
+    title: "Usage page: titles, links, forecast bands and verdicts",
+    url: ISSUE_URL,
+    forecast: "M",
+    bucket: "S",
+    verdict: "under",
+    ...over,
+  };
+}
+
 function makeReport(over: Partial<UsageReport> = {}): UsageReport {
   return {
     gatheredAt: "2026-09-17T10:30:00.000Z",
@@ -38,8 +61,17 @@ function makeReport(over: Partial<UsageReport> = {}): UsageReport {
     transcriptDir: FIXTURE_DIR,
     transcripts: 2,
     issues: [
-      { issue: 101, out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 },
-      { issue: 102, out: 3000, turns: 1, sessions: 1, cacheRead: 12_000 },
+      makeIssue(),
+      makeIssue({
+        issue: 102,
+        out: 3000,
+        turns: 1,
+        cacheRead: 12_000,
+        title: "A second issue",
+        url: "https://github.com/AlexHun/ticket-manager-system/issues/102",
+        forecast: "S",
+        verdict: "on target",
+      }),
     ],
     warnings: [],
     ...over,
@@ -86,6 +118,105 @@ describe("UsagePage", () => {
     expect(within(rows[2]!).getByText("3,000")).toBeVisible();
   });
 
+  /**
+   * The columns, in the order `COLUMNS` declares them. Named rather than
+   * counted at each assertion: an index into a nine-column row is exactly the
+   * literal that goes stale silently when a column is inserted, and these are
+   * the assertions that would then be checking a neighbour.
+   */
+  const CELL = {
+    title: 0,
+    forecast: 1,
+    out: 2,
+    bucket: 3,
+    verdict: 4,
+    turns: 5,
+    sessions: 6,
+    cacheRead: 7,
+  } as const;
+
+  const cellsOf = async (n: number) =>
+    within((await screen.findAllByRole("row"))[n]!).getAllByRole("cell");
+
+  test("links each row's title to the issue on GitHub", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(scanButton());
+
+    const link = await screen.findByRole("link", {
+      name: /Usage page: titles, links, forecast bands and verdicts/,
+    });
+    expect(link).toHaveAttribute("href", ISSUE_URL);
+    // A new tab: the scan on screen is a named moment's reading, and navigating
+    // away from it loses figures that cost a filesystem sweep to gather.
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  test("shows the band it was forecast into, the band it landed in, and the verdict", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(scanButton());
+
+    const cells = await cellsOf(1);
+    // The letter and the range together: the letter alone is jargon, and the
+    // range alone does not match the label on the issue.
+    expect(cells[CELL.forecast]).toHaveTextContent("M");
+    expect(cells[CELL.forecast]).toHaveTextContent("60-150k");
+    expect(cells[CELL.bucket]).toHaveTextContent("S");
+    expect(cells[CELL.bucket]).toHaveTextContent("<60k");
+    expect(cells[CELL.verdict]).toHaveTextContent("under");
+  });
+
+  // R3's sharp edge: an unforecast issue is unscored, not scored generously.
+  test("shows no verdict for an issue nobody forecast", async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [makeIssue({ forecast: null, verdict: null })],
+      }),
+    });
+    renderPage();
+
+    await user.click(scanButton());
+
+    const cells = await cellsOf(1);
+    expect(cells[CELL.forecast]).toHaveTextContent("—");
+    expect(cells[CELL.verdict]).toHaveTextContent("—");
+    expect(cells[CELL.verdict]).not.toHaveTextContent(/target|over|under/);
+    // The title still came from `gh`; only the label was missing.
+    expect(cells[CELL.title]).toHaveTextContent(/Usage page/);
+  });
+
+  // The degraded path: `gh` missing or unauthenticated costs three columns, not
+  // the page. It is the state CI is in by default.
+  test("keeps every figure, and says what is unknown, when gh could not answer", async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [
+          makeIssue({ title: null, url: null, forecast: null, verdict: null }),
+        ],
+        warnings: ["`gh` could not list this repository's issues: ENOENT"],
+      }),
+    });
+    renderPage();
+
+    await user.click(scanButton());
+
+    const cells = await cellsOf(1);
+    expect(cells[CELL.out]).toHaveTextContent("20,000");
+    expect(cells[CELL.turns]).toHaveTextContent("2");
+    expect(cells[CELL.cacheRead]).toHaveTextContent("400,000");
+    // Derived from the figures, so it survives a `gh` that does not.
+    expect(cells[CELL.bucket]).toHaveTextContent("S");
+    expect(cells[CELL.title]).toHaveTextContent("—");
+    expect(cells[CELL.forecast]).toHaveTextContent("—");
+    expect(screen.queryByRole("link", { name: /Usage page/ })).toBeNull();
+    expect(await screen.findByText(/gh` could not list/)).toBeInTheDocument();
+  });
+
   test("states when the figures were gathered and what was read", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -113,9 +244,7 @@ describe("UsagePage", () => {
 
     post.mockResolvedValue({
       data: makeReport({
-        issues: [
-          { issue: 101, out: 31_500, turns: 3, sessions: 2, cacheRead: 1000 },
-        ],
+        issues: [makeIssue({ out: 31_500, turns: 3, sessions: 2 })],
       }),
     });
     await user.click(scanButton());

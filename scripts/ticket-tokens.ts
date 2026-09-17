@@ -1,11 +1,19 @@
 #!/usr/bin/env bun
 // Forecast vs. actual token spend, per ticket.
 //
-// The join, the buckets and the percentile maths live in `apps/web/dev/usage.ts`
-// — shared with the dev-tools Usage page, so the terminal and the page cannot
-// disagree about what a ticket cost. Read that file for what the numbers mean
-// and why output tokens are the unit. This one only asks `gh` for titles and
-// forecast labels, and prints the table.
+// The join, the buckets, the verdicts and the percentile maths live in
+// `apps/web/dev/usage.ts`, and the `gh` call in `apps/web/dev/issues.ts` — both
+// shared with the dev-tools Usage page, so the terminal and the page cannot
+// disagree about what a ticket cost or whether it came in on target. Read those
+// files for what the numbers mean and why output tokens are the unit. This one
+// decides argv, column widths and the exit code, and nothing else.
+//
+// It scans the transcripts itself rather than calling `gatherUsage`, and that
+// is not a second copy of the join: `joinIssues` builds the rows both sides
+// show. The scan is here because this command reports one figure the page's
+// wire shape does not carry — the turns that ran on `main` — and reading the
+// directory a second time to recover it costs seconds, not milliseconds: 2-3s
+// warm and 28s cold, over this machine's 136 transcripts.
 //
 // Run by Bun, not Node: the shared module is TypeScript (the dev-tools half is,
 // and must be), and relying on Node's type stripping would be an undeclared
@@ -21,62 +29,14 @@
 // actuals still print and the forecast columns read "-".
 
 import { readdirSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { fetchIssueMetadata } from "../apps/web/dev/issues.ts";
 import {
   BUCKETS,
-  bucketFor,
+  joinIssues,
   percentiles,
   resolveTranscriptDir,
   scanSpend,
 } from "../apps/web/dev/usage.ts";
-
-interface IssueMeta {
-  title: string;
-  state: string;
-  forecast: string | null;
-}
-
-// Titles and forecast labels, one `gh` call for the whole set.
-function issueMetadata(): Map<number, IssueMeta> | null {
-  try {
-    const raw = execFileSync(
-      "gh",
-      [
-        "issue",
-        "list",
-        "--state",
-        "all",
-        "--limit",
-        "500",
-        "--json",
-        "number,title,labels,state",
-      ],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    );
-    const issues = JSON.parse(raw) as {
-      number: number;
-      title: string;
-      state: string;
-      labels: { name: string }[];
-    }[];
-    return new Map(
-      issues.map((i) => [
-        i.number,
-        {
-          title: i.title,
-          state: i.state,
-          forecast:
-            i.labels
-              .map((l) => l.name)
-              .find((n) => n.startsWith("forecast/"))
-              ?.slice("forecast/".length) ?? null,
-        },
-      ]),
-    );
-  } catch {
-    return null;
-  }
-}
 
 const fmt = (n: number) =>
   n >= 1_000_000
@@ -85,7 +45,7 @@ const fmt = (n: number) =>
       ? `${Math.round(n / 1000)}k`
       : String(n);
 
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   const openOnly = argv.includes("--open");
   const only = new Set(argv.filter((a) => /^\d+$/.test(a)).map(Number));
@@ -104,17 +64,18 @@ function main() {
   }
 
   const { byIssue, unattributed } = scanSpend(dir);
-  const meta = issueMetadata();
-  if (!meta) console.error("gh unavailable — forecast columns read '-'.\n");
+  const meta = await fetchIssueMetadata();
+  // The warning names what is now unknown; every figure below is unaffected.
+  if (meta.warning) console.error(`${meta.warning}\n`);
 
-  let rows = [...byIssue.entries()].map(([number, s]) => ({
-    number,
-    ...s,
-    ...(meta?.get(number) ?? { title: "", state: "", forecast: null }),
-  }));
-  if (only.size) rows = rows.filter((r) => only.has(r.number));
-  if (openOnly) rows = rows.filter((r) => r.state === "OPEN");
-  rows.sort((a, b) => b.out - a.out);
+  // The same rows, in the same order, that the Usage page renders.
+  let rows = joinIssues(byIssue, meta);
+  if (only.size) rows = rows.filter((r) => only.has(r.issue));
+  // The issue's state is the one thing the page has no column for, so it comes
+  // off the listing rather than off the row.
+  if (openOnly) {
+    rows = rows.filter((r) => meta.byIssue?.get(r.issue)?.state === "OPEN");
+  }
 
   if (!rows.length) {
     console.log("No attributable tickets matched.");
@@ -138,32 +99,24 @@ function main() {
   let hits = 0;
   let scored = 0;
   for (const r of rows) {
-    const actual = bucketFor(r.out);
-    let verdict = "-";
-    const forecast =
-      r.forecast && r.forecast in BUCKETS
-        ? (r.forecast as keyof typeof BUCKETS)
-        : null;
-    if (forecast) {
+    if (r.forecast) {
       scored++;
-      if (forecast === actual) {
-        verdict = "on target";
-        hits++;
-      } else {
-        verdict = r.out >= BUCKETS[forecast].max ? "over" : "under";
-      }
+      if (r.verdict === "on target") hits++;
     }
     console.log(
       [
-        `#${r.number}`.padEnd(6),
-        (forecast ? `${forecast} ${BUCKETS[forecast].label}` : "-").padEnd(10),
+        `#${r.issue}`.padEnd(6),
+        (r.forecast
+          ? `${r.forecast} ${BUCKETS[r.forecast].label}`
+          : "-"
+        ).padEnd(10),
         fmt(r.out).padStart(7),
-        actual.padEnd(6),
-        verdict.padEnd(9),
+        r.bucket.padEnd(6),
+        (r.verdict ?? "-").padEnd(9),
         String(r.turns).padStart(6),
         String(r.sessions).padStart(5),
         fmt(r.cacheRead).padStart(7),
-        r.title.slice(0, 44),
+        (r.title ?? "").slice(0, 44),
       ].join(" "),
     );
   }
@@ -184,4 +137,4 @@ function main() {
   );
 }
 
-main();
+await main();

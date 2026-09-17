@@ -52,6 +52,10 @@ apps/web/csp.caddy
 /playwright/.cache/
 # Playwright storageState — contains live session cookies
 /playwright/.auth/
+# Fixtures a spec writes rather than checks in — dev-usage.spec.ts writes the
+# issue listing it reads so that it can also take it away, which is how the
+# no-`gh` path is reached through the real middleware.
+/tests/e2e/fixtures/*.local.json
 
 # --- Logs -------------------------------------------------------------------
 *.log

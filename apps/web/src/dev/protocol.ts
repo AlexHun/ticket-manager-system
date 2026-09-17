@@ -343,11 +343,61 @@ export type DevStreamMessage =
 /* ── Usage ──────────────────────────────────────────────────────────────── */
 
 /**
- * What one issue's branches cost, read off this machine's transcripts.
+ * Output-token bands — the vocabulary a `forecast/S|M|L` label and an actual
+ * spend are both written in. `max` is exclusive.
  *
- * Every figure here is an *actual*: nothing on this shape is a forecast, a
- * title or a verdict. Those need `gh`, which the middleware does not call yet
- * (slice 2 of `docs/plans/dev-tools-usage-page.md`).
+ * These are this repo's own measured per-ticket distribution over 90
+ * issue-numbered branches: p25 55k, median 90k, p75 154k. `XL` is the
+ * open-ended top bucket and is a split signal rather than a size — nothing
+ * should be forecast into it, and no `forecast/XL` label exists.
+ *
+ * It lives in the wire contract rather than beside the scan in
+ * `apps/web/dev/usage.ts` because both ends spend it: the middleware puts a
+ * letter on every row and the page prints that letter's range beside it. One
+ * record, imported by both, is what stops a band's printed range drifting from
+ * the boundary that decides it — they are two halves of the same fact.
+ */
+export const BUCKETS = {
+  S: { max: 60_000, label: "<60k" },
+  M: { max: 150_000, label: "60-150k" },
+  L: { max: 250_000, label: "150-250k" },
+  XL: { max: Infinity, label: ">250k" },
+} as const;
+
+export type Bucket = keyof typeof BUCKETS;
+
+/**
+ * How an actual compares with the band it was forecast into.
+ *
+ * The values are the words themselves because `bun run tokens` prints them
+ * verbatim and the page renders them verbatim — a display mapping on each side
+ * is the shape that lets the terminal and the page describe the same issue
+ * differently, which is the one thing this feature promises they cannot do.
+ *
+ * There is no fourth member for "nothing was forecast": that is the *absence*
+ * of a verdict and is carried as `null` on the row. A default would score an
+ * issue nobody estimated.
+ */
+export const VERDICT = {
+  onTarget: "on target",
+  over: "over",
+  under: "under",
+} as const;
+
+export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
+
+/**
+ * What one issue's branches cost, read off this machine's transcripts, beside
+ * what it was forecast to cost.
+ *
+ * **Two sources, and which is which decides what a missing value means.** The
+ * figures are actuals read off the filesystem, and are always present. The
+ * title, the link and the forecast band come from `gh`, which can be absent,
+ * unauthenticated, or simply not know this issue — so each is `T | null`, and
+ * `null` means *unknown*: never zero, never a default. The one crossover is
+ * `bucket`, derived from `out` alone and so surviving a `gh` that does not —
+ * the page can always say which band the spend landed in, even when it cannot
+ * say which one it was aimed at.
  *
  * Its four figures are the fields of `Spend` in `apps/web/dev/usage.ts`, keyed
  * by issue. They are declared again rather than derived from it, and that is
@@ -369,6 +419,26 @@ export interface IssueUsage {
   sessions: number;
   /** Cache-read tokens, carried *beside* the forecast and never inside it. */
   cacheRead: number;
+  /** The issue's title, from `gh`. Null when it could not be asked. */
+  title: string | null;
+  /**
+   * The issue on GitHub, as `gh` itself reports it rather than assembled here
+   * from an owner and repo this code would have to carry a copy of. Null when
+   * unknown — which is why the link and the title appear and vanish together.
+   */
+  url: string | null;
+  /**
+   * The band its `forecast/S|M|L` label names. Null both when `gh` is
+   * unavailable and when the issue carries no such label: in either case
+   * nothing was forecast that this row could be scored against, and the page
+   * renders both as unknown.
+   */
+  forecast: Bucket | null;
+  /** The band `out` actually falls in. Derived from the figures, so it is known
+   *  whenever the row is. */
+  bucket: Bucket;
+  /** `forecast` read against `bucket`. Null exactly when `forecast` is. */
+  verdict: Verdict | null;
 }
 
 /**
@@ -379,8 +449,9 @@ export interface IssueUsage {
  * on screen were gathered at `gatheredAt` from the directory named here. The
  * page holds the last result until the next press; the dev server holds none.
  * That is the opposite of the test runner next door, and deliberately so — a
- * run is a long-lived process worth surviving a reload, a scan is ~100ms of
- * reading that is cheaper to repeat than to invalidate.
+ * run is a long-lived process worth surviving a reload, a scan is a few seconds
+ * of reading that is cheaper to repeat than to invalidate (2-5s over this
+ * machine's 136 transcripts, plus ~2s of `gh`).
  */
 export interface UsageReport {
   /** ISO 8601, stamped when the read finished. */
@@ -395,7 +466,8 @@ export interface UsageReport {
   transcriptDir: string;
   /** `.jsonl` files read out of it. */
   transcripts: number;
-  /** One row per issue with recorded spend, output tokens descending. */
+  /** One row per issue with recorded spend, output tokens descending. Each
+   *  carries its forecast band and verdict when `gh` could supply one. */
   issues: IssueUsage[];
   /** Anything that stopped the scan seeing everything. Shown, not swallowed. */
   warnings: string[];
