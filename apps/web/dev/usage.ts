@@ -271,6 +271,23 @@ function spendByIssue(
   return byIssue;
 }
 
+/**
+ * A reading that found nothing, for the two callers that need one before they
+ * know whether the directory can be read at all.
+ *
+ * A function rather than a shared constant because `unattributed` is an object:
+ * a single frozen-by-convention literal is one `scan.unattributed.turns++` away
+ * from being poisoned for every later caller in the process. And it is here
+ * rather than written out twice so that a figure added to `ScanResult` has to be
+ * given a value in one place instead of arriving as an `undefined` that
+ * `bun run tokens` would print in the middle of a sentence.
+ */
+export const emptyScan = (): ScanResult => ({
+  byIssue: new Map(),
+  unattributed: { turns: 0, out: 0 },
+  transcripts: 0,
+});
+
 /** Read every transcript in `dir` and attribute its spend to issues. */
 export function scanSpend(dir: string): ScanResult {
   const { byBranch, unattributed, transcripts } = spendByBranch(dir);
@@ -394,11 +411,7 @@ export async function gatherUsage(
   const listing = metadata ?? (await fetchIssueMetadata());
   const warnings: string[] = [];
 
-  let scan: ScanResult = {
-    byIssue: new Map(),
-    unattributed: { turns: 0, out: 0 },
-    transcripts: 0,
-  };
+  let scan = emptyScan();
   try {
     scan = scanSpend(dir);
   } catch (err) {

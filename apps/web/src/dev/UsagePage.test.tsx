@@ -91,6 +91,21 @@ const scanButton = () => screen.getByRole("button", { name: "Scan" });
 /** The frame `TableFrame` puts round the spend table, once one has been read. */
 const spendTable = () => screen.findByRole("region", { name: "Issue spend" });
 
+/** Any of the page's named regions — the two chart panels and the unattributed
+ *  total. All three are addressed by name for the same reason: the region is
+ *  what a reader lands on, and it is what the E2E asks for too. */
+const panel = (name: string) => screen.findByRole("region", { name });
+
+/** Render, press Scan, and hand back the `user` for whatever comes next. Shared
+ *  rather than written once per describe: the blocks below all begin this way,
+ *  and a second copy is a second thing to keep in step with `renderPage`. */
+const scanned = async () => {
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(scanButton());
+  return user;
+};
+
 beforeEach(() => {
   post.mockReset();
   post.mockResolvedValue({ data: makeReport() });
@@ -402,15 +417,7 @@ describe("UsagePage", () => {
  * them.
  */
 describe("UsagePage unattributed work", () => {
-  const unattributed = () =>
-    screen.findByRole("region", { name: "Unattributed work" });
-
-  const scanned = async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await user.click(scanButton());
-    return user;
-  };
+  const unattributed = () => panel("Unattributed work");
 
   test("reports nothing about it until a scan has been read", () => {
     renderPage();
@@ -500,15 +507,6 @@ describe("UsagePage unattributed work", () => {
  * arithmetic is `usage-charts.test.ts`'s.
  */
 describe("UsagePage charts", () => {
-  const panel = (name: string) => screen.findByRole("region", { name });
-
-  const scanned = async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await user.click(scanButton());
-    return user;
-  };
-
   test("draws neither chart until a scan has been read", async () => {
     renderPage();
 

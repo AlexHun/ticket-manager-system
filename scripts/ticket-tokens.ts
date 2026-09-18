@@ -8,13 +8,16 @@
 // files for what the numbers mean and why output tokens are the unit. This one
 // decides argv and column widths, and nothing else.
 //
-// It scans the transcripts itself rather than calling `gatherUsage`, and that
-// is not a second copy of the join: `joinIssues` builds the rows both sides
-// show and `scanSpend` totals what ran on `main`, so the two ends read the same
-// figures from the same functions. The scan is here because reading the
-// directory a second time costs seconds, not milliseconds — 2-3s warm and 28s
-// cold, over this machine's 136 transcripts — and `gatherUsage` would do
-// exactly that on top of the sweep this command already makes.
+// It scans the transcripts itself rather than calling `gatherUsage`, and #253
+// removed the reason it had to: the report carries the unattributed total now,
+// so `gatherUsage(dir, meta)` would serve every figure below in a single sweep.
+// What is left is not a figure. This command reports its own diagnostics at the
+// terminal — naming the directory and saying "run this from the repo root",
+// rather than handing a page a warning string — and `--open` filters on the
+// issue *state*, which no row carries. Consolidating would trade those away and
+// is a change to this command's output, not to its numbers. Either way R8
+// holds: `joinIssues` builds the rows both sides show and `scanSpend` totals
+// what ran on `main`, so nothing here is a second copy of the join.
 //
 // Run by Bun, not Node: the shared module is TypeScript (the dev-tools half is,
 // and must be), and relying on Node's type stripping would be an undeclared
@@ -45,8 +48,8 @@ import {
   recordedSpend,
   resolveTranscriptDir,
   scanSpend,
+  emptyScan,
   type IssueSpend,
-  type ScanResult,
 } from "../apps/web/dev/usage.ts";
 
 const fmt = (n: number) =>
@@ -70,13 +73,11 @@ async function main() {
   // the ordinary state of a fresh clone and of CI. An unreadable directory
   // costs the actuals, not the command.
   //
-  // Typed off `ScanResult` rather than left to inference, so a figure added to
-  // the scan has to be given a value here too rather than arriving as an
+  // `emptyScan()` rather than a literal written out here: it is the same "found
+  // nothing" reading `gatherUsage` starts from, and sharing it is what makes a
+  // figure added to `ScanResult` a value somebody has to supply rather than an
   // `undefined` this command would print in the middle of a sentence.
-  let scan: Pick<ScanResult, "byIssue" | "unattributed"> = {
-    byIssue: new Map(),
-    unattributed: { turns: 0, out: 0 },
-  };
+  let scan = emptyScan();
   try {
     const files = readdirSync(dir);
     if (files.some((f) => f.endsWith(".jsonl"))) scan = scanSpend(dir);

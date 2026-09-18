@@ -396,11 +396,16 @@ export function UsagePage() {
  * happened here and never what it cost — and a total that omits a quarter of the
  * spend reads as complete when it is not.
  *
- * **Zero is rendered, not hidden**, which is the one place this page's "never a
- * zero" rule does not bite. Nothing scores this figure — no band, no verdict, no
- * quartile — so zero turns is the honest answer for transcripts holding no work
- * on `main`, and a panel that vanished would read as the page not asking rather
- * than as an answer.
+ * **Zero is rendered here, where a row would render an em dash.** That is not
+ * an exception to `NotStarted` so much as the other side of it: a row's figures
+ * are dashed because `bucketFor(0)` is `S`, so a zero there gets banded, scored
+ * and counted in the quartiles. Nothing scores these two, so there is no score
+ * for a zero to invent — and a panel that vanished on one would read as the page
+ * not asking rather than as an answer.
+ *
+ * The strip is deliberately the same `bg-card` / `ring-border` shape as the
+ * "Gathered at" line at the top: both are one reading's own words about itself,
+ * neither is a row, and looking alike is what says so.
  */
 function Unattributed({ work }: { work: UnattributedWork }) {
   const titleId = useId();
@@ -410,18 +415,23 @@ function Unattributed({ work }: { work: UnattributedWork }) {
       className="rounded-lg bg-card px-3 py-2 ring-1 ring-border"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <h2 id={titleId} className="text-sm font-medium">
+        {/* Not an `<h2>`, matching `ChartPanel`'s `CardTitle` next door, which
+            is a `div`. A heading here would be the only one on the page below
+            the `<h1>` — putting the smallest panel alone in the document
+            outline and implying it outranks the two charts. `aria-labelledby`
+            names the region either way. */}
+        <p id={titleId} className="text-sm font-medium">
           Unattributed work
-        </h2>
+        </p>
         <p className="text-sm">
-          <Figure
+          <Quantity
             value={work.turns}
             unit={work.turns === 1 ? "turn" : "turns"}
           />
           <span aria-hidden="true" className="px-2 text-muted-foreground">
             &middot;
           </span>
-          <Figure value={work.out} unit="output tokens" />
+          <Quantity value={work.out} unit="output tokens" />
         </p>
       </div>
       <p className="max-w-prose pt-1 text-xs text-muted-foreground">
@@ -435,8 +445,9 @@ function Unattributed({ work }: { work: UnattributedWork }) {
 }
 
 /** A figure and the unit it is in, kept in one element so the two cannot wrap
- *  apart — a lone "turns" on the next line names nothing. */
-const Figure = ({ value, unit }: { value: number; unit: string }) => (
+ *  apart — a lone "turns" on the next line names nothing. Named away from the
+ *  `figure` helper above, which is the table's cell renderer and unrelated. */
+const Quantity = ({ value, unit }: { value: number; unit: string }) => (
   <span className="whitespace-nowrap">
     <span className="font-medium tabular-nums">{formatTokens(value)}</span>{" "}
     <span className="text-muted-foreground">{unit}</span>

@@ -569,11 +569,13 @@ export interface IssueUsage {
  * nothing to ask it against. A field on the wire is a promise that something
  * reads it.
  *
- * **Zero here is a measurement, not an absence**, which is the one place this
- * page's "never substitute a zero" rule does not bite. Nothing derives a band, a
- * verdict or a quartile from these figures — they are scored against nothing —
- * so a reading of zero turns says the transcripts that *were* read hold no work
- * on `main`, and `transcripts` beside it says how many that was.
+ * **Zero here is a measurement, not an absence.** The rule it looks like it
+ * breaks is `IssueSpend`'s: a row with no recorded work carries `null` and
+ * renders an em dash, because `bucketFor(0)` is `S` and a zero there would be
+ * banded, scored and counted in the quartiles. Nothing derives a band, a verdict
+ * or a quartile from *these* two figures, so there is no score for a zero to
+ * invent — it says the transcripts that were read hold no work on `main`, and
+ * `transcripts` beside it says how many that was.
  */
 export interface UnattributedWork {
   /** Turns that ran on `main` or with no branch recorded. */
