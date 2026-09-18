@@ -10,10 +10,11 @@
 //
 // It scans the transcripts itself rather than calling `gatherUsage`, and that
 // is not a second copy of the join: `joinIssues` builds the rows both sides
-// show. The scan is here because this command reports one figure the page's
-// wire shape does not carry — the turns that ran on `main` — and reading the
-// directory a second time to recover it costs seconds, not milliseconds: 2-3s
-// warm and 28s cold, over this machine's 136 transcripts.
+// show and `scanSpend` totals what ran on `main`, so the two ends read the same
+// figures from the same functions. The scan is here because reading the
+// directory a second time costs seconds, not milliseconds — 2-3s warm and 28s
+// cold, over this machine's 136 transcripts — and `gatherUsage` would do
+// exactly that on top of the sweep this command already makes.
 //
 // Run by Bun, not Node: the shared module is TypeScript (the dev-tools half is,
 // and must be), and relying on Node's type stripping would be an undeclared
@@ -45,7 +46,7 @@ import {
   resolveTranscriptDir,
   scanSpend,
   type IssueSpend,
-  type Spend,
+  type ScanResult,
 } from "../apps/web/dev/usage.ts";
 
 const fmt = (n: number) =>
@@ -68,7 +69,14 @@ async function main() {
   // issue" — false on any machine whose transcripts cannot be read, which is
   // the ordinary state of a fresh clone and of CI. An unreadable directory
   // costs the actuals, not the command.
-  let scan = { byIssue: new Map<number, Spend>(), unattributed: 0 };
+  //
+  // Typed off `ScanResult` rather than left to inference, so a figure added to
+  // the scan has to be given a value here too rather than arriving as an
+  // `undefined` this command would print in the middle of a sentence.
+  let scan: Pick<ScanResult, "byIssue" | "unattributed"> = {
+    byIssue: new Map(),
+    unattributed: { turns: 0, out: 0 },
+  };
   try {
     const files = readdirSync(dir);
     if (files.some((f) => f.endsWith(".jsonl"))) scan = scanSpend(dir);
@@ -181,8 +189,14 @@ async function main() {
       `forecast accuracy: ${onTarget}/${scored} on target (${Math.round((onTarget / scored) * 100)}%)`,
     );
   }
+  // The last line, and since #253 it carries the tokens as well as the turns —
+  // the scan used to count these turns and discard their output, so this said
+  // how much work happened off-ticket and never what it cost. The figures are
+  // `scanSpend`'s, which is what the Usage page is served, so R8 holds for the
+  // one total that is not a row.
+  const turns = `${unattributed.turns} ${unattributed.turns === 1 ? "turn" : "turns"}`;
   console.log(
-    `unattributed: ${unattributed} turns ran on main or with no branch and belong to no ticket.`,
+    `unattributed: ${turns} and ${fmt(unattributed.out)} output tokens ran on main or with no branch, belonging to no ticket.`,
   );
 }
 

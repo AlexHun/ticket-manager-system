@@ -554,6 +554,36 @@ export interface IssueUsage {
 }
 
 /**
+ * What ran on `main`, or on no branch at all — the work that belongs to no
+ * issue.
+ *
+ * It is a large share of everything this machine has done (28% of all turns when
+ * the scan was written), and until #253 the join counted those turns and threw
+ * their tokens away. That is why this is a shape rather than a number: a total
+ * that quietly omits a quarter of the work reads as complete when it is not, so
+ * the figure has to be reported in the same two units an issue's row is read in.
+ *
+ * **Turns and output tokens, and deliberately not the other two.** `sessions`
+ * and `cacheRead` are on `IssueSpend` because a ticket is a thing you can ask
+ * "how many sittings did this take" about; `main` is not a ticket and there is
+ * nothing to ask it against. A field on the wire is a promise that something
+ * reads it.
+ *
+ * **Zero here is a measurement, not an absence**, which is the one place this
+ * page's "never substitute a zero" rule does not bite. Nothing derives a band, a
+ * verdict or a quartile from these figures — they are scored against nothing —
+ * so a reading of zero turns says the transcripts that *were* read hold no work
+ * on `main`, and `transcripts` beside it says how many that was.
+ */
+export interface UnattributedWork {
+  /** Turns that ran on `main` or with no branch recorded. */
+  turns: number;
+  /** Output tokens those turns spent — the same unit every issue row is read
+   *  in, so the two figures are comparable without being added together. */
+  out: number;
+}
+
+/**
  * One reading of the local transcripts, taken when the developer pressed Scan.
  *
  * There is no `GET` half and the middleware caches nothing: a held copy is the
@@ -589,6 +619,12 @@ export interface UsageReport {
    * read against it.
    */
   issues: IssueUsage[];
+  /**
+   * What ran on `main` or on no branch, as its own total (#253). Never folded
+   * into `issues`: it belongs to no issue, and every figure on every row above
+   * excludes it.
+   */
+  unattributed: UnattributedWork;
   /** Anything that stopped the scan seeing everything. Shown, not swallowed. */
   warnings: string[];
 }

@@ -119,7 +119,10 @@ describe("scanSpend", () => {
     });
   });
 
-  it("counts turns on main and on no branch as unattributed", () => {
+  // #253: the tokens as well as the turns. Counting the turns and throwing
+  // their output away was the whole of the old behaviour, and it is what made a
+  // total that omits a large share of the work read as complete.
+  it("totals turns on main and on no branch as unattributed, tokens included", () => {
     write("s1.jsonl", [
       turn("s1", "main", 100),
       turn("s1", "", 30),
@@ -128,9 +131,28 @@ describe("scanSpend", () => {
 
     const { byIssue, unattributed } = scanSpend(dir);
 
-    expect(unattributed).toBe(2);
+    expect(unattributed).toEqual({ turns: 2, out: 130 });
     expect([...byIssue.keys()]).toEqual([101]);
     expect(byIssue.get(101)?.out).toBe(10);
+  });
+
+  // The other half of the same claim, and the one an issue's row would be wrong
+  // about: what ran on `main` is reported beside the issues, never inside one.
+  it("keeps unattributed tokens out of every issue's figures", () => {
+    write("s1.jsonl", [
+      turn("s1", "main", 5000, 50_000),
+      turn("s1", "feat/101-a", 10, 200),
+    ]);
+
+    const { byIssue, unattributed } = scanSpend(dir);
+
+    expect(unattributed).toEqual({ turns: 1, out: 5000 });
+    expect(byIssue.get(101)).toEqual({
+      turns: 1,
+      out: 10,
+      cacheRead: 200,
+      sessions: 1,
+    });
   });
 
   it("skips a malformed line without losing the rest of the file", () => {
@@ -166,11 +188,15 @@ describe("scanSpend", () => {
     });
   });
 
-  it("drops a branch that names no issue", () => {
+  // A named branch carrying no issue number is a third case, and it is neither
+  // attributed nor unattributed. `unattributed` means what ran on `main` or on
+  // nothing; widening it to "everything outside an issue" would put a figure
+  // under a label that does not describe it.
+  it("drops a branch that names no issue, without calling it unattributed", () => {
     write("s1.jsonl", [turn("s1", "chore/tidy-up", 100)]);
 
     expect(scanSpend(dir).byIssue.size).toBe(0);
-    expect(scanSpend(dir).unattributed).toBe(0);
+    expect(scanSpend(dir).unattributed).toEqual({ turns: 0, out: 0 });
   });
 });
 
@@ -244,6 +270,10 @@ describe("gatherUsage", () => {
     expect(report.issues).toEqual([]);
     expect(report.transcripts).toBe(0);
     expect(report.transcriptDir).toBe(missing);
+    // Zeroes rather than a 500 or a missing field, for the reason the row set is
+    // empty rather than absent: nothing was read, so nothing was counted, and
+    // the warning beside it is what says why.
+    expect(report.unattributed).toEqual({ turns: 0, out: 0 });
     expect(report.warnings).toHaveLength(1);
     expect(report.warnings[0]).toContain(missing);
   });
@@ -256,6 +286,52 @@ describe("gatherUsage", () => {
     expect(report.issues).toEqual([]);
     expect(report.transcripts).toBe(0);
     expect(report.warnings[0]).toContain(".jsonl");
+  });
+
+  /**
+   * R7 (#253): what ran on `main` reaches the page as its own total.
+   *
+   * The wire is where this had to change, not the page — the join counted these
+   * turns and discarded their tokens, so there was no figure to send. The two
+   * assertions are one claim said from both ends: the total is reported, and no
+   * issue's row absorbed any of it.
+   */
+  it("reports what ran on main as its own total, in turns and tokens", async () => {
+    write("s1.jsonl", [
+      turn("s1", "main", 5000, 50_000),
+      turn("s1", "", 1200),
+      turn("s1", "feat/101-a", 12_000, 300_000),
+    ]);
+
+    const report = await gatherUsage(dir, known());
+
+    expect(report.unattributed).toEqual({ turns: 2, out: 6200 });
+    expect(report.issues).toHaveLength(1);
+    expect(report.issues[0]).toMatchObject({
+      issue: 101,
+      spend: { out: 12_000, turns: 1, sessions: 1, cacheRead: 300_000 },
+    });
+  });
+
+  // A reading of zero is a measurement here, unlike an empty row: nothing scores
+  // it, so it says the transcripts that were read hold no work on `main`.
+  it("reports zero rather than nothing when every turn was on a branch", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
+
+    expect((await gatherUsage(dir, known())).unattributed).toEqual({
+      turns: 0,
+      out: 0,
+    });
+  });
+
+  // R8 at the one figure the page carries that no row does: the CLI reads it off
+  // `scanSpend` directly, so the two must be the same object's worth of work.
+  it("carries the scan's unattributed total unchanged", async () => {
+    write("s1.jsonl", [turn("s1", "main", 5000), turn("s1", "feat/101-a", 10)]);
+
+    expect((await gatherUsage(dir, known())).unattributed).toEqual(
+      scanSpend(dir).unattributed,
+    );
   });
 
   // R8: the page and `bun run tokens` read the same join, so a row here is the

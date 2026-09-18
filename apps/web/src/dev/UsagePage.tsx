@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { AlertTriangle, ExternalLink, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   type Bucket,
   type IssueSpend,
   type IssueUsage,
+  type UnattributedWork,
   type UsageColumn,
   type UsageReport,
   type Verdict,
@@ -59,6 +60,12 @@ import {
  * as after it, and a missing `forecast/S|M|L` label is a row you can see rather
  * than an absence you have to know to look for. Those rows carry no figures at
  * all, which is a third thing an em dash can mean here — see `NotStarted`.
+ *
+ * **And below the table, the work that is in none of it** (#253). Turns that ran
+ * on `main` or on no branch belong to no issue, and they are a large share of
+ * everything this machine has done — so a page that listed only issues would
+ * read as complete while omitting a quarter of the work. It is a total rather
+ * than a row, for the reason `Unattributed` gives below.
  */
 
 const SCAN_FAILED = "The dev middleware could not read the transcripts.";
@@ -348,6 +355,10 @@ export function UsagePage() {
 
       {report && <SpendTable issues={report.issues} />}
 
+      {/* Below the table rather than inside it: the same reading, and the one
+          part of it that is not an issue. */}
+      {report && <Unattributed work={report.unattributed} />}
+
       <p className="max-w-prose text-xs text-muted-foreground">
         The same join <code className="font-mono">bun run tokens</code> prints,
         served by the Vite dev plugin out of{" "}
@@ -359,12 +370,78 @@ export function UsagePage() {
         issue nobody has started appears with its band and no figures rather
         than not at all. Work that ran on{" "}
         <code className="font-mono">main</code> or on no branch belongs to no
-        issue and is not shown here, and neither is work done on any other
-        machine: these transcripts are local.
+        issue and is totalled on its own below the table. Two things are in
+        neither place: work done on any other machine, since these transcripts
+        are local, and a branch whose name carries no issue number, which the
+        join has nothing to attribute and does not call unattributed either.
       </p>
     </div>
   );
 }
+
+/**
+ * What ran on `main`, or on no branch at all — the work that is in none of the
+ * rows above.
+ *
+ * **A total, deliberately not a row** (#253), and the acceptance criterion is
+ * the design. A row is the obvious place for it and the one place it cannot go:
+ * it has no issue number to be identified by, no title and no link, nothing
+ * forecast it, and `bucketFor` would file its tokens in a band as though
+ * somebody had — which the distribution would then count and the accuracy figure
+ * would score. Sitting outside the table, it competes with nothing and reads as
+ * what it is.
+ *
+ * **Both figures, because the turns alone were the bug.** The join counted these
+ * turns and threw their output tokens away, so the page could say how much work
+ * happened here and never what it cost — and a total that omits a quarter of the
+ * spend reads as complete when it is not.
+ *
+ * **Zero is rendered, not hidden**, which is the one place this page's "never a
+ * zero" rule does not bite. Nothing scores this figure — no band, no verdict, no
+ * quartile — so zero turns is the honest answer for transcripts holding no work
+ * on `main`, and a panel that vanished would read as the page not asking rather
+ * than as an answer.
+ */
+function Unattributed({ work }: { work: UnattributedWork }) {
+  const titleId = useId();
+  return (
+    <section
+      aria-labelledby={titleId}
+      className="rounded-lg bg-card px-3 py-2 ring-1 ring-border"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h2 id={titleId} className="text-sm font-medium">
+          Unattributed work
+        </h2>
+        <p className="text-sm">
+          <Figure
+            value={work.turns}
+            unit={work.turns === 1 ? "turn" : "turns"}
+          />
+          <span aria-hidden="true" className="px-2 text-muted-foreground">
+            &middot;
+          </span>
+          <Figure value={work.out} unit="output tokens" />
+        </p>
+      </div>
+      <p className="max-w-prose pt-1 text-xs text-muted-foreground">
+        Turns that ran on <code className="font-mono">main</code> or on no
+        branch at all. They belong to no issue, so nothing above includes them
+        &mdash; and they are a total rather than a row because there is no issue
+        number to carry, nothing forecast them, and no band for them to land in.
+      </p>
+    </section>
+  );
+}
+
+/** A figure and the unit it is in, kept in one element so the two cannot wrap
+ *  apart — a lone "turns" on the next line names nothing. */
+const Figure = ({ value, unit }: { value: number; unit: string }) => (
+  <span className="whitespace-nowrap">
+    <span className="font-medium tabular-nums">{formatTokens(value)}</span>{" "}
+    <span className="text-muted-foreground">{unit}</span>
+  </span>
+);
 
 /**
  * When this reading was taken, and what it was taken from.

@@ -12,8 +12,8 @@ import {
 import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
- * Slices 1 to 4 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
- * #252), end to end: page → dev middleware → `apps/web/dev/usage.ts` and
+ * Slices 1 to 5 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
+ * #252, #253), end to end: page → dev middleware → `apps/web/dev/usage.ts` and
  * `issues.ts` → the filesystem, all real.
  *
  * It is the whole reason both sources got a resolver with an environment
@@ -50,6 +50,10 @@ const EXPECTED = {
   issue101: { out: "20,000", turns: "2", sessions: "1", cacheRead: "400,000" },
   // One turn of `fix/102-b`, on an issue the listing carries no band for.
   issue102: { out: "3,000" },
+  // The one `main` turn in `session-a.jsonl`, which belongs to no issue and is
+  // in neither row above. Singular on purpose — the fixture holds exactly one,
+  // so this also holds the page's "turn" / "turns" branch.
+  unattributed: { turns: "1 turn", out: "5,000 output tokens" },
 } as const;
 
 /**
@@ -448,6 +452,61 @@ test.describe("dev tools: Usage", () => {
     await expect(distribution).toHaveCount(1);
     await expect(accuracy).toContainText(CHARTS.accuracy);
     await expect(distribution).toContainText(CHARTS.quartiles);
+  });
+
+  /**
+   * R7, slice 5 (#253): what ran on `main` is reported, as its own total.
+   *
+   * The fixture's `main` turn spends 5,000 output tokens, and until this slice
+   * the join counted the turn and threw the tokens away — so a page that showed
+   * every issue still omitted this, and the totals read as complete. The second
+   * half of the assertion is the one that would catch the tempting fix: it must
+   * not have become a row, because a row would give it a band, a place in the
+   * distribution and a score in the accuracy figure.
+   */
+  test("reports the turns that ran on main as their own total", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const total = page.getByRole("region", { name: "Unattributed work" });
+    await expect(total).toBeVisible();
+    await expect(total).toContainText(EXPECTED.unattributed.turns);
+    await expect(total).toContainText(EXPECTED.unattributed.out);
+
+    // Not an issue: no number, no link, and no row of its own in the table.
+    await expect(total.getByRole("link")).toHaveCount(0);
+    const table = page.getByRole("region", { name: "Issue spend" });
+    await expect(table.getByRole("row")).toHaveCount(4);
+    await expect(table).not.toContainText("5,000");
+  });
+
+  /**
+   * And no issue's figures absorbed it. `#101`'s output is the two turns of
+   * `feat/101-a` and nothing else — the `main` turn sits between them in
+   * `session-a.jsonl`, in the same session, which is exactly the arrangement a
+   * scan that attributed by session rather than by branch would get wrong.
+   */
+  test("leaves the main turn out of every issue's figures", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const rows = page
+      .getByRole("region", { name: "Issue spend" })
+      .getByRole("row");
+    await expect(rows.nth(1).getByRole("cell").nth(CELL.out)).toHaveText(
+      EXPECTED.issue101.out,
+    );
+    await expect(rows.nth(1).getByRole("cell").nth(CELL.turns)).toHaveText(
+      EXPECTED.issue101.turns,
+    );
+    // 20,000 + 5,000 is what a row that swallowed it would read.
+    await expect(rows.nth(1)).not.toContainText("25,000");
+    // And the distribution is quartiles of the two issues, not of three figures.
+    await expect(
+      page.getByRole("region", { name: "Output distribution" }),
+    ).toContainText(CHARTS.measured);
   });
 
   test("puts the scrollable table where a keyboard can reach it", async ({

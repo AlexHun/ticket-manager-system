@@ -15,9 +15,12 @@
 // ~218k at 1343), which makes it a measure of session hygiene rather than of
 // the ticket — so it is carried beside the forecast, never inside it.
 //
-// Two things this cannot see, both by construction:
-//   - Work done on `main` with no branch (28% of all turns when this was
-//     written). It belongs to no ticket, so it is only counted (`unattributed`).
+// Two things this cannot attribute, both by construction:
+//   - Work done on `main` or with no branch (28% of all turns when this was
+//     written). It belongs to no ticket, so it is totalled on its own
+//     (`unattributed`) rather than folded into one — in turns *and* output
+//     tokens since #253, because a figure that omits a quarter of the work
+//     reads as complete when it is not.
 //   - Sessions from any other machine. These transcripts are local.
 //
 // This module is the single copy of the join. `scripts/ticket-tokens.ts` prints
@@ -50,6 +53,7 @@ import {
   type Bucket,
   type IssueSpend,
   type IssueUsage,
+  type UnattributedWork,
   type UsageReport,
   type Verdict,
 } from "../src/dev/protocol.ts";
@@ -86,6 +90,7 @@ export {
   recordedSpend,
   type Bucket,
   type IssueSpend,
+  type UnattributedWork,
   type Verdict,
 };
 
@@ -130,8 +135,15 @@ export interface Spend {
 
 export interface ScanResult {
   byIssue: Map<number, Spend>;
-  /** Turns that ran on `main` or with no branch, and so belong to no issue. */
-  unattributed: number;
+  /**
+   * What ran on `main` or with no branch, and so belongs to no issue — turns
+   * and the output tokens they spent.
+   *
+   * A total rather than a count since #253. The tokens were being accumulated
+   * nowhere and discarded, which is why this is a change to what the scan holds
+   * and not only to what its callers print.
+   */
+  unattributed: UnattributedWork;
   /** `.jsonl` files actually read. Zero is the honest answer for a machine that
    *  has never run Claude Code in this project, and is not the same thing as
    *  "nobody spent anything". */
@@ -188,11 +200,11 @@ interface BranchAccumulator extends Omit<Spend, "sessions"> {
  */
 function spendByBranch(dir: string): {
   byBranch: Map<string, BranchAccumulator>;
-  unattributed: number;
+  unattributed: UnattributedWork;
   transcripts: number;
 } {
   const byBranch = new Map<string, BranchAccumulator>();
-  let unattributed = 0;
+  const unattributed: UnattributedWork = { turns: 0, out: 0 };
   const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
   for (const file of files) {
     for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
@@ -207,7 +219,12 @@ function spendByBranch(dir: string): {
       if (!usage) continue;
       const branch = rec.gitBranch;
       if (!branch || branch === "main") {
-        unattributed++;
+        // Totalled here rather than counted, and deliberately not given a
+        // `BranchAccumulator` of its own: `sessions` and `cacheRead` are
+        // questions about a ticket, and `main` is not one. See
+        // `UnattributedWork` in the protocol for why the shape stops at two.
+        unattributed.turns++;
+        unattributed.out += usage.output_tokens ?? 0;
         continue;
       }
       const acc = byBranch.get(branch) ?? {
@@ -379,7 +396,7 @@ export async function gatherUsage(
 
   let scan: ScanResult = {
     byIssue: new Map(),
-    unattributed: 0,
+    unattributed: { turns: 0, out: 0 },
     transcripts: 0,
   };
   try {
@@ -403,6 +420,10 @@ export async function gatherUsage(
     transcriptDir: dir,
     transcripts: scan.transcripts,
     issues: joinIssues(scan.byIssue, listing),
+    // Beside the rows, never among them (#253): it has no issue number, nothing
+    // forecast it, and there is no band for it to land in — which is also why
+    // the page draws it as a total rather than a row.
+    unattributed: scan.unattributed,
     warnings,
   };
 }
