@@ -12,7 +12,7 @@ import {
   scanSpend,
   verdictFor,
 } from "./usage.ts";
-import type { IssueMeta, IssueMetadata } from "./issues.ts";
+import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
 
 /**
  * An issue listing, without asking `gh` for one.
@@ -21,6 +21,12 @@ import type { IssueMeta, IssueMetadata } from "./issues.ts";
  * parameter defaults to a real `gh` spawn, so a call that omitted it would make
  * this suite depend on the machine being authenticated and on what this
  * repository's issues happen to be titled today.
+ *
+ * Since #251 it decides the row *set* as well as what a row says: an entry left
+ * at the default `OPEN` earns a row whether or not the transcripts mention it.
+ * `ISSUE_STATE` rather than a bare `"OPEN"`, because that is now load-bearing
+ * here and a mistyped literal would simply produce fewer rows than the test
+ * describes.
  */
 const known = (
   entries: Record<number, Partial<IssueMeta>> = {},
@@ -31,7 +37,7 @@ const known = (
       {
         title: `Issue ${number}`,
         url: `https://github.com/o/r/issues/${number}`,
-        state: "OPEN",
+        state: ISSUE_STATE.open,
         forecast: null,
         ...meta,
       },
@@ -181,10 +187,7 @@ describe("gatherUsage", () => {
     expect(report.issues).toEqual([
       {
         issue: 101,
-        out: 20_000,
-        turns: 2,
-        sessions: 2,
-        cacheRead: 400_000,
+        spend: { out: 20_000, turns: 2, sessions: 2, cacheRead: 400_000 },
         title: null,
         url: null,
         forecast: null,
@@ -193,10 +196,7 @@ describe("gatherUsage", () => {
       },
       {
         issue: 102,
-        out: 3000,
-        turns: 1,
-        sessions: 1,
-        cacheRead: 20_000,
+        spend: { out: 3000, turns: 1, sessions: 1, cacheRead: 20_000 },
         title: null,
         url: null,
         forecast: null,
@@ -271,7 +271,7 @@ describe("gatherUsage", () => {
 
     // `toMatchObject`, because the row now carries what GitHub knows as well:
     // the claim is that every *figure* is the scan's, unchanged by the join.
-    expect(row).toMatchObject({ issue: 101, ...spend });
+    expect(row).toMatchObject({ issue: 101, spend });
   });
 
   // R2/R3, at the seam where the two sources meet.
@@ -316,9 +316,18 @@ describe("gatherUsage", () => {
   it("leaves an issue the listing does not mention unknown, not wrong", async () => {
     write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
 
-    const [row] = (await gatherUsage(dir, known({ 999: {} }))).issues;
+    // Closed, so the listing's own issue earns no row of its own here and this
+    // stays a test about the *join* rather than about the row set below.
+    const listing = known({ 999: { state: ISSUE_STATE.closed } });
+    const { issues } = await gatherUsage(dir, listing);
 
-    expect(row).toMatchObject({ title: null, url: null, forecast: null });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      issue: 101,
+      title: null,
+      url: null,
+      forecast: null,
+    });
   });
 
   // The acceptance criterion the degraded path is written for: the figures are
@@ -331,10 +340,7 @@ describe("gatherUsage", () => {
     expect(report.issues).toEqual([
       {
         issue: 101,
-        out: 12_000,
-        turns: 1,
-        sessions: 1,
-        cacheRead: 300_000,
+        spend: { out: 12_000, turns: 1, sessions: 1, cacheRead: 300_000 },
         title: null,
         url: null,
         forecast: null,
@@ -356,6 +362,153 @@ describe("gatherUsage", () => {
 
     expect(report.warnings).toHaveLength(2);
     expect(report.warnings[1]).toBe("no gh here");
+  });
+});
+
+/**
+ * R4, and the slice that changes where rows come from (#251): the set is no
+ * longer "issues the transcripts mention", it is every issue worth looking at —
+ * those, plus every issue the listing reports as **open**.
+ *
+ * Open is the line, and it is drawn there deliberately. An open issue with
+ * nothing spent on it is work this repository still intends to do, and what it
+ * was forecast to cost is the question the page exists to ask. A *closed* issue
+ * with nothing spent on it is the opposite: it was finished somewhere this scan
+ * cannot see — on another machine, or before these transcripts began — so a row
+ * for it would report an absence as a fact about the work.
+ */
+describe("gatherUsage: issues nobody has started", () => {
+  it("lists an open issue with a forecast and no recorded work", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
+
+    const { issues } = await gatherUsage(
+      dir,
+      known({
+        101: {},
+        300: { title: "Not started yet", forecast: "M" },
+      }),
+    );
+
+    expect(issues.map((row) => row.issue)).toEqual([101, 300]);
+    expect(issues[1]).toEqual({
+      issue: 300,
+      // The band it was aimed at is known; what it cost is not, and an empty
+      // actual says so where a zero would claim the work was free.
+      spend: null,
+      title: "Not started yet",
+      url: "https://github.com/o/r/issues/300",
+      forecast: "M",
+      // No band landed in, and above all no verdict: scoring unstarted work
+      // against its forecast would report every backlog item as coming in
+      // under, and move the accuracy figure this page exists to report.
+      bucket: null,
+      verdict: null,
+    });
+  });
+
+  it("lists an open issue nobody forecast either, rather than only labelled ones", async () => {
+    const { issues } = await gatherUsage(dir, known({ 300: {} }));
+
+    // The page's second metric is forecast *coverage*, so an open issue
+    // carrying no band is exactly the row that reports the gap.
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      issue: 300,
+      spend: null,
+      forecast: null,
+      bucket: null,
+      verdict: null,
+    });
+  });
+
+  it("gives an issue with spend one row, not a second empty one", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 12_000, 300_000)]);
+
+    const { issues } = await gatherUsage(
+      dir,
+      known({ 101: { forecast: "S" } }),
+    );
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      issue: 101,
+      spend: { out: 12_000, turns: 1, sessions: 1, cacheRead: 300_000 },
+      bucket: "S",
+      verdict: "on target",
+    });
+  });
+
+  it("leaves a closed issue nobody spent anything on out", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
+
+    const { issues } = await gatherUsage(
+      dir,
+      known({
+        101: {},
+        300: { state: ISSUE_STATE.closed, forecast: "L" },
+      }),
+    );
+
+    expect(issues.map((row) => row.issue)).toEqual([101]);
+  });
+
+  it("keeps a closed issue that does have spend", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
+
+    const { issues } = await gatherUsage(
+      dir,
+      known({ 101: { state: ISSUE_STATE.closed } }),
+    );
+
+    // Closed only decides whether an issue *without* spend earns a row. Work
+    // that happened is reported whatever became of the issue afterwards.
+    expect(issues.map((row) => row.issue)).toEqual([101]);
+    expect(issues[0]?.spend).not.toBeNull();
+  });
+
+  // Criterion 3: an empty actual is not a small one. Sorting the two together
+  // on a zero would file every unstarted issue between the cheapest tickets,
+  // which is where they read as work that cost almost nothing.
+  it("puts every issue with spend above every issue without", async () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/101-a", 5000),
+      turn("s1", "feat/102-b", 50),
+    ]);
+
+    const { issues } = await gatherUsage(
+      dir,
+      known({ 300: {}, 200: {}, 101: {}, 102: {} }),
+    );
+
+    expect(issues.map((row) => row.issue)).toEqual([101, 102, 200, 300]);
+    expect(issues.map((row) => row.spend === null)).toEqual([
+      false,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  // A turn can record no output tokens at all, which is a spend of zero rather
+  // than an absence — so the sort cannot collapse the two onto one key.
+  it("keeps an issue that spent nothing measurable above one that spent at all", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 0)]);
+
+    const { issues } = await gatherUsage(dir, known({ 101: {}, 300: {} }));
+
+    expect(issues.map((row) => row.issue)).toEqual([101, 300]);
+    expect(issues[0]?.spend).toMatchObject({ out: 0, turns: 1 });
+    expect(issues[1]?.spend).toBeNull();
+  });
+
+  // The degraded path decides the row set too: with no listing there is no
+  // "open", so the transcripts are all there is to go on.
+  it("adds no unstarted rows when the listing could not be read", async () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 10)]);
+
+    const { issues } = await gatherUsage(dir, noListing());
+
+    expect(issues.map((row) => row.issue)).toEqual([101]);
   });
 });
 

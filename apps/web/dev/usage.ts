@@ -44,11 +44,16 @@ import {
   BUCKETS,
   VERDICT,
   type Bucket,
+  type IssueSpend,
   type IssueUsage,
   type UsageReport,
   type Verdict,
 } from "../src/dev/protocol.ts";
-import { fetchIssueMetadata, type IssueMetadata } from "./issues.ts";
+import {
+  ISSUE_STATE,
+  fetchIssueMetadata,
+  type IssueMetadata,
+} from "./issues.ts";
 
 // Re-exported because `scripts/ticket-tokens.ts` prints a band's label and
 // counts how many rows came in on target, and reaching into the browser half's
@@ -56,7 +61,7 @@ import { fetchIssueMetadata, type IssueMetadata } from "./issues.ts";
 // line. The words especially: the CLI comparing against a literal `"on target"`
 // is how a rename in `protocol.ts` would leave its accuracy figure reading 0/N
 // with nothing failing.
-export { BUCKETS, VERDICT, type Bucket, type Verdict };
+export { BUCKETS, VERDICT, type Bucket, type IssueSpend, type Verdict };
 
 /**
  * Environment variable that overrides where transcripts are read from.
@@ -233,7 +238,19 @@ export function scanSpend(dir: string): ScanResult {
 }
 
 /**
- * The rows themselves: one per issue with spend, joined to what GitHub knows.
+ * Where a row sorts: its output tokens, or below every one of them.
+ *
+ * `-1` rather than `0`, and the difference is not hypothetical — a turn can
+ * record no output tokens at all, so an issue really can have spent zero. That
+ * is a measurement; an issue nobody has started is an absence, and the two must
+ * not share a key or the empty rows file themselves among the cheapest tickets,
+ * where they read as work that cost almost nothing.
+ */
+const rank = (row: IssueUsage) => row.spend?.out ?? -1;
+
+/**
+ * The rows themselves: every issue worth looking at, joined to what GitHub
+ * knows.
  *
  * Exported, and the reason is the whole of R8. `gatherUsage` below is the Vite
  * plugin's entry point and reads the transcripts itself; `bun run tokens`
@@ -244,34 +261,60 @@ export function scanSpend(dir: string): ScanResult {
  * this, shared — rather than the CLI assembling rows of its own that agree
  * with these by inspection.
  *
- * Sorted spend-descending, which is the order the question is asked in. The
+ * **Two sources of rows, not one** (#251, R4). The transcripts contribute every
+ * issue they recorded work against; the listing contributes every issue it
+ * reports as **open**, whether or not anything has been spent on it. So a
+ * ticket nobody has started appears with its band and an empty actual, which is
+ * the forecast asked about *before* the work rather than only after it — and
+ * the forecast-coverage gap the PRD's second metric is about becomes a row you
+ * can see rather than an absence you have to know to look for.
+ *
+ * Open is the line, deliberately. A closed issue with no recorded spend was
+ * finished somewhere this scan cannot reach — another machine, or before these
+ * transcripts began — so a row for it would report the limits of the scan as a
+ * fact about the work. A closed issue that *does* have spend keeps its row:
+ * closed decides only whether an empty row is worth drawing.
+ *
+ * Sorted spend-descending, which is the order the question is asked in, with
+ * the unstarted issues in a block of their own at the end (see `rank`). The
  * tie-break on the issue number is what makes two readings of an unchanged
  * directory agree: `Array.prototype.sort` is stable, but `Map` iteration order
  * is insertion order, which is the order the filesystem happened to hand the
- * files over.
+ * files over — and it is also what orders that trailing block, since every row
+ * in it ranks the same.
  */
 export function joinIssues(
   byIssue: Map<number, Spend>,
   metadata: IssueMetadata,
 ): IssueUsage[] {
-  return [...byIssue.entries()]
-    .map(([issue, spend]) => {
+  const numbers = new Set(byIssue.keys());
+  for (const [issue, meta] of metadata.byIssue ?? []) {
+    if (meta.state === ISSUE_STATE.open) numbers.add(issue);
+  }
+
+  return [...numbers]
+    .map((issue) => {
       // `?? null` rather than a branch on `metadata.byIssue`: an issue the
       // listing does not mention is unknown in exactly the way every issue is
       // unknown when there is no listing, and both render the same.
       const meta = metadata.byIssue?.get(issue) ?? null;
       const forecast = meta?.forecast ?? null;
+      const spend = byIssue.get(issue) ?? null;
       return {
         issue,
-        ...spend,
+        spend,
         title: meta?.title ?? null,
         url: meta?.url ?? null,
         forecast,
-        bucket: bucketFor(spend.out),
-        verdict: verdictFor(forecast, spend.out),
+        // Both null together, and not merely because there is no arithmetic to
+        // do: `bucketFor(0)` is `S` and `verdictFor("L", 0)` is "under", so a
+        // row defaulted to zero would score every unstarted ticket as having
+        // come in comfortably under budget.
+        bucket: spend ? bucketFor(spend.out) : null,
+        verdict: spend ? verdictFor(forecast, spend.out) : null,
       };
     })
-    .sort((a, b) => b.out - a.out || a.issue - b.issue);
+    .sort((a, b) => rank(b) - rank(a) || a.issue - b.issue);
 }
 
 /**

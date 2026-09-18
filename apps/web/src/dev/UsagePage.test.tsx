@@ -34,18 +34,21 @@ const FIXTURE_DIR = "/fixtures/transcripts";
 
 const ISSUE_URL = "https://github.com/AlexHun/ticket-manager-system/issues/101";
 
+/** The default row's figures, so a test that changes one can say which. */
+const SPEND = { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 };
+
 /**
- * One row. The default is an issue `gh` answered for; the degraded row — every
- * `gh`-sourced field null — is what an override of `{ title: null, url: null,
- * forecast: null, verdict: null }` produces, and is asserted on below.
+ * One row. The default is an issue `gh` answered for and the transcripts
+ * recorded work against; the two absences the page distinguishes are overrides
+ * of it. `{ title: null, url: null, forecast: null, verdict: null }` is the
+ * degraded row — `gh` could not answer — and `{ spend: null, bucket: null,
+ * verdict: null }` is an issue nobody has started. Both are asserted on below,
+ * and the page must not render them the same way.
  */
 function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
   return {
     issue: 101,
-    out: 20_000,
-    turns: 2,
-    sessions: 1,
-    cacheRead: 400_000,
+    spend: { ...SPEND },
     title: "Usage page: titles, links, forecast bands and verdicts",
     url: ISSUE_URL,
     forecast: "M",
@@ -65,9 +68,7 @@ function makeReport(over: Partial<UsageReport> = {}): UsageReport {
       makeIssue(),
       makeIssue({
         issue: 102,
-        out: 3000,
-        turns: 1,
-        cacheRead: 12_000,
+        spend: { out: 3000, turns: 1, sessions: 1, cacheRead: 12_000 },
         title: "A second issue",
         url: "https://github.com/AlexHun/ticket-manager-system/issues/102",
         forecast: "S",
@@ -211,6 +212,96 @@ describe("UsagePage", () => {
     expect(await screen.findByText(/gh` could not list/)).toBeInTheDocument();
   });
 
+  /**
+   * R4: a row is no longer proof that work happened. An open issue nobody has
+   * started carries its band and nothing else — and above all no verdict, since
+   * `bucketFor(0)` is `S` and a forecast of `L` read against it would print as
+   * "under" on every untouched ticket in the backlog.
+   */
+  test("shows an issue nobody has started with its band and no figures", async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [
+          makeIssue({
+            issue: 300,
+            spend: null,
+            title: "Not started yet",
+            url: "https://github.com/AlexHun/ticket-manager-system/issues/300",
+            forecast: "L",
+            bucket: null,
+            verdict: null,
+          }),
+        ],
+      }),
+    });
+    renderPage();
+
+    await user.click(scanButton());
+
+    const cells = await cellsOf(1);
+    // What `gh` knows is all there is, and it is all shown.
+    expect(cells[CELL.forecast]).toHaveTextContent("L");
+    expect(cells[CELL.forecast]).toHaveTextContent("150-250k");
+    expect(
+      await screen.findByRole("link", { name: /Not started yet/ }),
+    ).toBeVisible();
+    // Every figure is empty rather than zero, the bucket with them: there is no
+    // band to land in until something has been spent.
+    for (const column of ["out", "turns", "sessions", "cacheRead", "bucket"])
+      expect(cells[CELL[column as UsageColumn]]).toHaveTextContent("—");
+    expect(cells[CELL.verdict]).toHaveTextContent("—");
+    expect(cells[CELL.verdict]).not.toHaveTextContent(/target|over|under/);
+  });
+
+  /**
+   * The two absences render as the same em dash, so the words behind them are
+   * the only thing that tells a reader which one they are looking at.
+   *
+   * One row carries both, which is what makes this an assertion about the
+   * *distinction* rather than about one marker: nothing has been spent on it
+   * (so every figure is `NotStarted`) and `gh` supplied no band for it (so the
+   * forecast is `Unknown`). Asserting only the first would pass just as well if
+   * the page rendered one marker everywhere.
+   */
+  const hoverDash = async (column: UsageColumn) => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [
+          makeIssue({
+            spend: null,
+            forecast: null,
+            bucket: null,
+            verdict: null,
+          }),
+        ],
+      }),
+    });
+    renderPage();
+
+    await user.click(scanButton());
+    const cells = await cellsOf(1);
+    // The dash itself is the tooltip's trigger, so it is what a pointer lands
+    // on — and reaching it by its text keeps the test off `Hint`'s internals.
+    await user.hover(within(cells[CELL[column]]!).getByText("—"));
+  };
+
+  // Two tests rather than two hovers in one: Radix keeps the open tooltip's
+  // state on its provider, so a second trigger hovered in the same render does
+  // not open. A fresh render per marker is the honest way to ask.
+  test("says a figure nobody has spent is unrecorded", async () => {
+    await hoverDash("out");
+
+    expect(await screen.findByText(/no recorded work/i)).toBeInTheDocument();
+  });
+
+  test("says a band gh could not supply is unknown", async () => {
+    await hoverDash("forecast");
+
+    expect(await screen.findByText(/gh could not supply/i)).toBeInTheDocument();
+  });
+
   test("states when the figures were gathered and what was read", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -238,7 +329,11 @@ describe("UsagePage", () => {
 
     post.mockResolvedValue({
       data: makeReport({
-        issues: [makeIssue({ out: 31_500, turns: 3, sessions: 2 })],
+        issues: [
+          makeIssue({
+            spend: { ...SPEND, out: 31_500, turns: 3, sessions: 2 },
+          }),
+        ],
       }),
     });
     await user.click(scanButton());
