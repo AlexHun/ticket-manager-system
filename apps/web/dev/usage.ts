@@ -43,6 +43,10 @@ import { join } from "node:path";
 import {
   BUCKETS,
   VERDICT,
+  bucketFor,
+  forecastAccuracy,
+  percentiles,
+  recordedSpend,
   type Bucket,
   type IssueSpend,
   type IssueUsage,
@@ -55,13 +59,35 @@ import {
   type IssueMetadata,
 } from "./issues.ts";
 
-// Re-exported because `scripts/ticket-tokens.ts` prints a band's label and
-// counts how many rows came in on target, and reaching into the browser half's
-// protocol file from a script under `scripts/` would be a worse seam than this
-// line. The words especially: the CLI comparing against a literal `"on target"`
-// is how a rename in `protocol.ts` would leave its accuracy figure reading 0/N
-// with nothing failing.
-export { BUCKETS, VERDICT, type Bucket, type IssueSpend, type Verdict };
+// Re-exported because `scripts/ticket-tokens.ts` prints a band's label, counts
+// how many rows came in on target and prints the quartiles, and reaching into
+// the browser half's protocol file from a script under `scripts/` would be a
+// worse seam than this line. The words especially: the CLI comparing against a
+// literal `"on target"` is how a rename in `protocol.ts` would leave its
+// accuracy figure reading 0/N with nothing failing.
+//
+// `bucketFor`, `percentiles`, `forecastAccuracy` and `recordedSpend` moved
+// *into* that file in #252 and are re-sent from here unchanged. They went
+// because the page's charts need them and cannot import this module — it reads
+// the filesystem — and they are re-exported because this module is the join's
+// public face: the CLI and this file's own tests name them here, and a move is
+// not a reason to make every caller learn where the arithmetic sleeps.
+//
+// The last two are the ones that were genuinely duplicated. `ticket-tokens.ts`
+// tallied its own `hits`/`scored` and wrote its own "rows with spend" flatMap,
+// beside a page that did both again — two readings of the same rows, agreeing
+// until one of them changed.
+export {
+  BUCKETS,
+  VERDICT,
+  bucketFor,
+  forecastAccuracy,
+  percentiles,
+  recordedSpend,
+  type Bucket,
+  type IssueSpend,
+  type Verdict,
+};
 
 /**
  * Environment variable that overrides where transcripts are read from.
@@ -71,9 +97,6 @@ export { BUCKETS, VERDICT, type Bucket, type IssueSpend, type Verdict };
  * actual spend is not something an assertion can be written against.
  */
 export const TRANSCRIPT_DIR_ENV = "CLAUDE_TRANSCRIPT_DIR";
-
-export const bucketFor = (out: number): Bucket =>
-  (Object.keys(BUCKETS) as Bucket[]).find((b) => out < BUCKETS[b].max) ?? "XL";
 
 /**
  * A forecast band read against what was actually spent.
@@ -382,22 +405,4 @@ export async function gatherUsage(
     issues: joinIssues(scan.byIssue, listing),
     warnings,
   };
-}
-
-/**
- * The quartiles of a set of output-token totals.
- *
- * Nearest-rank on the sorted values — the same arithmetic the CLI has always
- * printed, kept here so the page and the terminal cannot disagree. An empty set
- * reports zeroes rather than `undefined`, so a caller formatting the result does
- * not have to branch.
- */
-export function percentiles(values: number[]): {
-  p25: number;
-  p50: number;
-  p75: number;
-} {
-  const sorted = [...values].sort((a, b) => a - b);
-  const at = (q: number) => sorted[Math.floor(sorted.length * q)] ?? 0;
-  return { p25: at(0.25), p50: at(0.5), p75: at(0.75) };
 }

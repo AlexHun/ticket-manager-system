@@ -4,9 +4,18 @@
  *
  * It lives under `src/` rather than beside the plugin so the browser half can
  * reach it through the `@/` alias; the node half imports it with a relative
- * path (see `apps/web/dev/plugin.ts`). Types only, so nothing here reaches
- * either bundle, and `apps/web/tsconfig.node.json` lists `dev` precisely so the
- * two ends are typechecked against the same declarations.
+ * path (see `apps/web/dev/plugin.ts`), and `apps/web/tsconfig.node.json` lists
+ * `dev` precisely so the two ends are typechecked against the same
+ * declarations.
+ *
+ * Mostly types, and the exceptions are deliberate: a handful of records and the
+ * two small functions that read them (`bucketFor`, `percentiles`). Vocabulary
+ * both halves spend belongs in the file both halves import — a band's printed
+ * range and the boundary that decides it are two halves of one fact, and so are
+ * the median the terminal prints and the median the page marks. This file has
+ * no imports of its own and must keep none: `apps/web/dev/usage.ts` reaches it
+ * by relative path under Vite's native config loader, which resolves the way
+ * Node does.
  *
  * None of this ships: the plugin is registered `apply: "serve"` and every
  * importer of these types sits behind `import.meta.env.DEV`.
@@ -367,6 +376,48 @@ export const BUCKETS = {
 export type Bucket = keyof typeof BUCKETS;
 
 /**
+ * The band an actual spend lands in. `max` is exclusive, so a figure sitting
+ * exactly on a boundary belongs to the band above it.
+ *
+ * Beside `BUCKETS` rather than in the scan, for the same reason the record
+ * itself is here: this is the arithmetic that turns those boundaries into a
+ * letter, and since #252 both halves do it. The scan puts a letter on every
+ * row; the page's distribution chart has to place a *percentile* in the same
+ * bands, and a percentile is a figure no row carries. A second `find` over the
+ * same record, written in the browser, is exactly the drift one record exists
+ * to stop. `apps/web/dev/usage.ts` re-exports it, so the scan and
+ * `bun run tokens` are unchanged.
+ */
+export const bucketFor = (out: number): Bucket =>
+  (Object.keys(BUCKETS) as Bucket[]).find((b) => out < BUCKETS[b].max) ?? "XL";
+
+/**
+ * The quartiles of a set of output-token totals.
+ *
+ * Nearest-rank on the sorted values — the arithmetic `bun run tokens` has
+ * always printed, and since #252 what the Usage page marks on its distribution
+ * chart. One copy, for the reason `BUCKETS` is one copy: a terminal and a page
+ * each computing their own median would disagree about this repository's own
+ * size eventually, and nothing would fail when they did.
+ *
+ * An empty set reports zeroes rather than `undefined`, so a caller formatting
+ * the result need not branch. But a caller deciding whether there is a
+ * distribution *at all* must ask how many values it was given, not whether
+ * these came back zero — three marks at the origin read as very cheap tickets
+ * rather than as no measurement. Both callers ask: the CLI prints "no
+ * distribution to report", and the chart says the same in its own words.
+ */
+export function percentiles(values: number[]): {
+  p25: number;
+  p50: number;
+  p75: number;
+} {
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (q: number) => sorted[Math.floor(sorted.length * q)] ?? 0;
+  return { p25: at(0.25), p50: at(0.5), p75: at(0.75) };
+}
+
+/**
  * How an actual compares with the band it was forecast into.
  *
  * The values are the words themselves because `bun run tokens` prints them
@@ -541,3 +592,86 @@ export interface UsageReport {
   /** Anything that stopped the scan seeing everything. Shown, not swallowed. */
   warnings: string[];
 }
+
+/* ── Readings over the rows ───────────────────────────────────────────── */
+
+/**
+ * The verdicts in reading order: what was overestimated, what was right, what
+ * was underestimated.
+ *
+ * Not `Object.values(VERDICT)`, whose order is the record's and means nothing.
+ * This one is an axis — the two misses sit either side of the hit, so the shape
+ * of the accuracy chart's columns is the shape of the error, and a reader sees
+ * which way the bands are wrong before reading a single label.
+ */
+export const ACCURACY_ORDER = [
+  VERDICT.under,
+  VERDICT.onTarget,
+  VERDICT.over,
+] as const;
+
+export interface AccuracyBin {
+  verdict: Verdict;
+  count: number;
+}
+
+export interface ForecastAccuracy {
+  /** All three, always, in `ACCURACY_ORDER` — a zero is a result, and only the
+   *  chart spends this. */
+  bins: AccuracyBin[];
+  /** Rows carrying a verdict: the denominator, and what "nothing to score"
+   *  means when it is zero. */
+  scored: number;
+  onTarget: number;
+}
+
+/**
+ * How often the band an issue was cut with matched what it actually cost.
+ *
+ * Here rather than beside either caller because there are two, and the figure is
+ * the page's headline claim: `bun run tokens` prints `hits/scored on target` at
+ * the foot of its table and the Usage page prints the same words in a card
+ * corner. Those were two tallies of the same rows until #252 — the kind of pair
+ * that agrees right up until somebody changes one, with nothing failing when
+ * they stop.
+ *
+ * **Gated on the verdict, not on the forecast**, and that is the whole rule. A
+ * row can carry a band and no spend to read it against — since #251 every open
+ * issue gets one — and counting those as scored-and-missed would walk the figure
+ * toward zero every time somebody files a ticket. The verdict is already null
+ * unless both halves are present (see `verdictFor`), so asking for it is asking
+ * the question once.
+ */
+export function forecastAccuracy(issues: IssueUsage[]): ForecastAccuracy {
+  const counts = new Map<Verdict, number>(ACCURACY_ORDER.map((v) => [v, 0]));
+  for (const row of issues) {
+    if (!row.verdict) continue;
+    counts.set(row.verdict, (counts.get(row.verdict) ?? 0) + 1);
+  }
+  const bins = ACCURACY_ORDER.map((verdict) => ({
+    verdict,
+    count: counts.get(verdict) ?? 0,
+  }));
+  return {
+    bins,
+    scored: bins.reduce((sum, b) => sum + b.count, 0),
+    onTarget: counts.get(VERDICT.onTarget) ?? 0,
+  };
+}
+
+/**
+ * The output-token totals of the rows that recorded any, in row order.
+ *
+ * The distribution's sample, and the one line that decides what is in it. Shared
+ * for the same reason `forecastAccuracy` is: the CLI's percentiles and the
+ * page's quartile marks must be quartiles *of the same set*, and both had
+ * written this `flatMap` out for themselves.
+ *
+ * A row with no spend is an absence, not a zero. `bucketFor(0)` is `S`, so
+ * substituting one would file every unstarted ticket in the smallest band and
+ * drag all three quartiles down with it as the backlog grows — and a
+ * `forecast/L` read against that zero prints "under", which is the same bug
+ * arriving at the accuracy figure by the other road.
+ */
+export const recordedSpend = (issues: IssueUsage[]): number[] =>
+  issues.flatMap((row) => (row.spend ? [row.spend.out] : []));

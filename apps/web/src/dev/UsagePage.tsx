@@ -8,6 +8,8 @@ import { TableFrame } from "@/lib/table-frame";
 import { extractErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useUsageScan } from "./dev-api";
+import { UsageCharts } from "./UsageCharts";
+import { formatTokens } from "./usage-charts";
 import {
   BUCKETS,
   USAGE_COLUMNS,
@@ -47,6 +49,11 @@ import {
  * is deliberately not comparable to a forecast band. `apps/web/dev/usage.ts`
  * carries the measurements behind both.
  *
+ * **Two charts sit above the table** (#252), answering the questions it
+ * otherwise makes you compute by eye: how often a forecast band matched, and
+ * whether the bands still fit the work. They read the same rows and are derived
+ * in `./usage-charts.ts`; what they refuse to read is the subject of that file.
+ *
  * **A row is not proof that work happened** (#251). Every open issue gets one,
  * so the page answers "what is this forecast to cost?" before the work as well
  * as after it, and a missing `forecast/S|M|L` label is a row you can see rather
@@ -55,17 +62,6 @@ import {
  */
 
 const SCAN_FAILED = "The dev middleware could not read the transcripts.";
-
-/**
- * A whole number, grouped for reading.
- *
- * The terminal table rounds (`120k`) because it is budgeting column widths; this
- * page has room, and the PRD's complaint about the CLI is that the numbers are
- * hard to read rather than that they are too precise. The locale is pinned
- * rather than left to the machine, so the figure a test asserts is the figure
- * every developer sees.
- */
-const formatNumber = (n: number): string => n.toLocaleString("en-US");
 
 /**
  * Stands in for a value `gh` could not supply.
@@ -127,7 +123,7 @@ const Band = ({ band }: { band: Bucket }) => (
 const figure =
   (pick: (spend: IssueSpend) => number) =>
   (row: IssueUsage): ReactNode =>
-    row.spend ? formatNumber(pick(row.spend)) : <NotStarted />;
+    row.spend ? formatTokens(pick(row.spend)) : <NotStarted />;
 
 /** Colour carries the same three verdicts the word does, and adds nothing: over
  *  is the one worth catching an eye. */
@@ -342,6 +338,13 @@ export function UsagePage() {
           {warning}
         </p>
       ))}
+
+      {/* Above the table, not below it: the charts are the page's answer and
+          the table is the evidence for it — and the table is also the charts'
+          accessibility-relief path, which reads better after the thing it
+          relieves. Both are gated on the same `report`, so nothing survives
+          into the next press. */}
+      {report && <UsageCharts issues={report.issues} />}
 
       {report && <SpendTable issues={report.issues} />}
 
