@@ -485,13 +485,20 @@ async function dragHandle(
   // And wait for it to say the drag *finished*, for the mirror-image reason.
   // `mouse.up()` resolves when Chrome has dispatched the event, not when React
   // has committed the render it caused, so a width read on the next line can
-  // legitimately be one frame stale. Reading the same attribute at both ends is
-  // what lets every caller assert with a bare `expect` instead of remembering
-  // an `expect.poll` — which only two of the five drag tests used to do, an
-  // asymmetry that made the #263 flake look like a polling problem when it was
-  // not one. That flake was real and lived in the component (see the note on
-  // `columnSizing` in `TicketsTable.tsx`); this is the smaller race beside it,
-  // and the two are worth keeping separate.
+  // legitimately be one frame stale.
+  //
+  // This is where #263's "why does the keyboard test poll and these don't?"
+  // lands. The answer is that the two `expect.poll`s in this file are not drag
+  // assertions at all — they follow a `dblclick()` and a `keyboard.press()`,
+  // neither of which has a resize gesture to bracket — so the fix is not to
+  // sprinkle polls over the drag tests but to make the end of a drag as
+  // observable as its start, once, here. A bare `expect` after `dragHandle` is
+  // then correct by construction.
+  //
+  // Worth keeping separate from the bug this issue was really about: that one
+  // was in the component and no amount of waiting would have caught it (see
+  // the note on `columnSizing` in `TicketsTable.tsx`). This is the smaller,
+  // genuine race beside it.
   await expect(handle).toHaveAttribute("data-resizing", "false");
 }
 
