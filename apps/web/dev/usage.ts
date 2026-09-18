@@ -320,7 +320,7 @@ const rank = (row: IssueUsage) => row.spend?.out ?? -1;
  *
  * **Two sources of rows, not one** (#251, R4). The transcripts contribute every
  * issue they recorded work against; the listing contributes every issue it
- * reports as **open**, whether or not anything has been spent on it. So a
+ * reports as **open**, whether or not anything has been spent on it. So an
  * issue nobody has started appears with its band and an empty actual, which is
  * the forecast asked about *before* the work rather than only after it — and
  * the forecast-coverage gap the PRD's second metric is about becomes a row you

@@ -53,7 +53,7 @@ Run `gh issue view <number> --comments`.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues.
+Used by `/wayfinder`. The **map** is a single issue, and the work under it is its **child** issues (what the skill calls tickets).
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
 - **Child issue**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the issue is assigned to the driving dev.
