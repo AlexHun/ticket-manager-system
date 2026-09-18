@@ -293,5 +293,10 @@
     "version": "0.1.109",
     "date": "2026-09-18",
     "title": "Report what ran on main as its own total (#253)"
+  },
+  {
+    "version": "0.1.111",
+    "date": "2026-09-18",
+    "title": "A column drag under load applied nothing at all (#263)"
   }
 ]
