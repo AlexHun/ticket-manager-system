@@ -38,9 +38,10 @@ import { readdirSync } from "node:fs";
 import { ISSUE_STATE, fetchIssueMetadata } from "../apps/web/dev/issues.ts";
 import {
   BUCKETS,
-  VERDICT,
+  forecastAccuracy,
   joinIssues,
   percentiles,
+  recordedSpend,
   resolveTranscriptDir,
   scanSpend,
   type IssueSpend,
@@ -124,17 +125,16 @@ async function main() {
   console.log(head);
   console.log("-".repeat(head.length));
 
-  let hits = 0;
-  let scored = 0;
+  // Tallied by `forecastAccuracy` rather than here (#252). It is gated on the
+  // verdict rather than on the forecast — since #251 a row can carry a band and
+  // no spend to read it against, and counting those as scored-and-missed would
+  // drive the figure toward zero as the backlog grows — and the reason it is not
+  // four lines of local arithmetic is that the Usage page prints this same
+  // fraction in a card corner. Two tallies of the same rows agree until one of
+  // them changes, and nothing fails when they stop.
+  const { scored, onTarget } = forecastAccuracy(rows);
+
   for (const r of rows) {
-    // Gated on the verdict rather than on the forecast: since #251 a row can
-    // carry a band and no spend to read it against, and counting those as
-    // scored-and-missed would drive the accuracy figure toward zero as the
-    // backlog grows.
-    if (r.verdict) {
-      scored++;
-      if (r.verdict === VERDICT.onTarget) hits++;
-    }
     console.log(
       [
         `#${r.issue}`.padEnd(6),
@@ -153,10 +153,12 @@ async function main() {
     );
   }
 
-  // The spend rows only. An issue nobody has started is not a zero-token
-  // measurement of how big this repo's tickets are, and letting it into the
-  // percentiles would drag the very bands this table exists to re-check.
-  const spent = rows.flatMap((r) => (r.spend ? [r.spend.out] : []));
+  // The spend rows only, through the shared rule (#252). An issue nobody has
+  // started is not a zero-token measurement of how big this repo's tickets are,
+  // and letting it into the percentiles would drag the very bands this table
+  // exists to re-check — the same exclusion the page's distribution chart makes,
+  // which is why it is one function rather than two flatMaps.
+  const spent = recordedSpend(rows);
   console.log("-".repeat(head.length));
   // The quartiles are dropped rather than printed as zeroes when nothing in the
   // selection has spend — `bun run tokens --open` on a machine with no matching
@@ -176,7 +178,7 @@ async function main() {
   }
   if (scored) {
     console.log(
-      `forecast accuracy: ${hits}/${scored} on target (${Math.round((hits / scored) * 100)}%)`,
+      `forecast accuracy: ${onTarget}/${scored} on target (${Math.round((onTarget / scored) * 100)}%)`,
     );
   }
   console.log(

@@ -592,3 +592,86 @@ export interface UsageReport {
   /** Anything that stopped the scan seeing everything. Shown, not swallowed. */
   warnings: string[];
 }
+
+/* ── Readings over the rows ───────────────────────────────────────────── */
+
+/**
+ * The verdicts in reading order: what was overestimated, what was right, what
+ * was underestimated.
+ *
+ * Not `Object.values(VERDICT)`, whose order is the record's and means nothing.
+ * This one is an axis — the two misses sit either side of the hit, so the shape
+ * of the accuracy chart's columns is the shape of the error, and a reader sees
+ * which way the bands are wrong before reading a single label.
+ */
+export const ACCURACY_ORDER = [
+  VERDICT.under,
+  VERDICT.onTarget,
+  VERDICT.over,
+] as const;
+
+export interface AccuracyBin {
+  verdict: Verdict;
+  count: number;
+}
+
+export interface ForecastAccuracy {
+  /** All three, always, in `ACCURACY_ORDER` — a zero is a result, and only the
+   *  chart spends this. */
+  bins: AccuracyBin[];
+  /** Rows carrying a verdict: the denominator, and what "nothing to score"
+   *  means when it is zero. */
+  scored: number;
+  onTarget: number;
+}
+
+/**
+ * How often the band an issue was cut with matched what it actually cost.
+ *
+ * Here rather than beside either caller because there are two, and the figure is
+ * the page's headline claim: `bun run tokens` prints `hits/scored on target` at
+ * the foot of its table and the Usage page prints the same words in a card
+ * corner. Those were two tallies of the same rows until #252 — the kind of pair
+ * that agrees right up until somebody changes one, with nothing failing when
+ * they stop.
+ *
+ * **Gated on the verdict, not on the forecast**, and that is the whole rule. A
+ * row can carry a band and no spend to read it against — since #251 every open
+ * issue gets one — and counting those as scored-and-missed would walk the figure
+ * toward zero every time somebody files a ticket. The verdict is already null
+ * unless both halves are present (see `verdictFor`), so asking for it is asking
+ * the question once.
+ */
+export function forecastAccuracy(issues: IssueUsage[]): ForecastAccuracy {
+  const counts = new Map<Verdict, number>(ACCURACY_ORDER.map((v) => [v, 0]));
+  for (const row of issues) {
+    if (!row.verdict) continue;
+    counts.set(row.verdict, (counts.get(row.verdict) ?? 0) + 1);
+  }
+  const bins = ACCURACY_ORDER.map((verdict) => ({
+    verdict,
+    count: counts.get(verdict) ?? 0,
+  }));
+  return {
+    bins,
+    scored: bins.reduce((sum, b) => sum + b.count, 0),
+    onTarget: counts.get(VERDICT.onTarget) ?? 0,
+  };
+}
+
+/**
+ * The output-token totals of the rows that recorded any, in row order.
+ *
+ * The distribution's sample, and the one line that decides what is in it. Shared
+ * for the same reason `forecastAccuracy` is: the CLI's percentiles and the
+ * page's quartile marks must be quartiles *of the same set*, and both had
+ * written this `flatMap` out for themselves.
+ *
+ * A row with no spend is an absence, not a zero. `bucketFor(0)` is `S`, so
+ * substituting one would file every unstarted ticket in the smallest band and
+ * drag all three quartiles down with it as the backlog grows — and a
+ * `forecast/L` read against that zero prints "under", which is the same bug
+ * arriving at the accuracy figure by the other road.
+ */
+export const recordedSpend = (issues: IssueUsage[]): number[] =>
+  issues.flatMap((row) => (row.spend ? [row.spend.out] : []));

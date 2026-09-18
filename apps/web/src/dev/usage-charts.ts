@@ -1,39 +1,34 @@
 /**
- * The two readings the Usage page's charts draw, derived from the rows the scan
- * already sent.
+ * The distribution the Usage page charts, shaped for an axis — and the one way
+ * this page prints a figure.
  *
- * This is the page's pure half — the two readings, and the one way it prints a
- * figure — separate from the chart components for the reason `mini-rows.ts`
- * and `kpi-status.ts` sit beside the dashboard's panels: what a chart *says* is
- * worth a unit test, and what it *looks like* is not one a unit test can hold —
- * Recharts renders nothing in jsdom, where every container measures zero. So
- * the arithmetic is tested here, the page's copy and empty states in
+ * Pure, and separate from the chart components for the reason `mini-rows.ts` and
+ * `kpi-status.ts` sit beside the dashboard's panels: what a chart *says* is worth
+ * a unit test, and what it *looks like* is not one a unit test can hold —
+ * Recharts renders nothing in jsdom, where every container measures zero. So the
+ * arithmetic is tested here, the page's copy and empty states in
  * `UsagePage.test.tsx`, and the drawn result in `tests/e2e/dev-usage.spec.ts`.
  *
- * Nothing here recomputes a figure a row already carries. The verdict on each
- * row is `verdictFor`'s, from the shared join in `apps/web/dev/usage.ts`, and
- * the bands and quartiles are `protocol.ts`'s — so the accuracy figure on the
- * page and the one `bun run tokens` prints are the same tally of the same
- * words, not two implementations that agree today.
+ * Nothing here recomputes a figure something else already owns. The verdict on
+ * each row is `verdictFor`'s; the bands, the quartiles, the accuracy tally and
+ * the rule about which rows count are all `protocol.ts`'s, where `bun run
+ * tokens` reaches them through `apps/web/dev/usage.ts`. That is not tidiness: an
+ * accuracy figure the terminal and the page each tallied for themselves would
+ * agree until somebody changed one, and nothing would fail when they stopped.
  *
- * **Both readings exclude the same rows, and that is the whole of it.** Since
- * #251 a row can exist with no recorded work at all — every open issue gets
- * one. Counting those as zeroes would score an unstarted ticket as having beaten
- * its estimate (`bucketFor(0)` is `S`, so a `forecast/L` read against it prints
- * "under") and would file it among the cheapest tickets in the distribution,
- * dragging every quartile toward zero as the backlog grows. `bun run tokens`
- * keeps them out of both figures for the same reason; this is that rule said
- * again on the other side of the wire.
+ * What is left here is what only a chart wants — bins with the band labels an
+ * axis prints, and the quartiles placed against those bands as marks. The
+ * exclusion rule they inherit is `recordedSpend`'s and is written down there: a
+ * row with no recorded work is an absence, never a zero.
  */
 
 import {
   BUCKETS,
-  VERDICT,
   bucketFor,
   percentiles,
+  recordedSpend,
   type Bucket,
   type IssueUsage,
-  type Verdict,
 } from "./protocol";
 
 /**
@@ -50,65 +45,6 @@ import {
  * everyone notices.
  */
 export const formatTokens = (n: number): string => n.toLocaleString("en-US");
-
-/**
- * The verdicts in reading order: what was overestimated, what was right, what
- * was underestimated.
- *
- * Not `Object.values(VERDICT)`, whose order is the record's and means nothing.
- * This one is an axis — the two misses sit either side of the hit, so the shape
- * of the column chart is the shape of the error, and a reader sees which way the
- * bands are wrong before reading a single label.
- */
-export const ACCURACY_ORDER = [
-  VERDICT.under,
-  VERDICT.onTarget,
-  VERDICT.over,
-] as const;
-
-export interface AccuracyBin {
-  verdict: Verdict;
-  count: number;
-}
-
-export interface ForecastAccuracy {
-  /** All three, always, in `ACCURACY_ORDER` — a zero is a result. */
-  bins: AccuracyBin[];
-  /** Rows carrying a verdict: the denominator, and what "nothing to score"
-   *  means when it is zero. */
-  scored: number;
-  onTarget: number;
-}
-
-/**
- * How often the band an issue was cut with matched what it actually cost.
- *
- * Gated on the verdict rather than on the forecast, which is the same gate
- * `bun run tokens` uses and for the same measured reason: a row can carry a
- * band and no spend to read it against, and counting those as scored-and-missed
- * would walk the accuracy figure toward zero every time somebody files a
- * ticket.
- *
- * Every bin is returned whether or not anything landed in it. A chart that drops
- * its empty columns has axes that move as the data does, and "nothing came in
- * over" is a finding, not an absence.
- */
-export function forecastAccuracy(issues: IssueUsage[]): ForecastAccuracy {
-  const counts = new Map<Verdict, number>(ACCURACY_ORDER.map((v) => [v, 0]));
-  for (const row of issues) {
-    if (!row.verdict) continue;
-    counts.set(row.verdict, (counts.get(row.verdict) ?? 0) + 1);
-  }
-  const bins = ACCURACY_ORDER.map((verdict) => ({
-    verdict,
-    count: counts.get(verdict) ?? 0,
-  }));
-  return {
-    bins,
-    scored: bins.reduce((sum, b) => sum + b.count, 0),
-    onTarget: counts.get(VERDICT.onTarget) ?? 0,
-  };
-}
 
 /** Which quartile a mark is, as the word the chart prints. */
 export type PercentileKey = "p25" | "median" | "p75";
@@ -161,7 +97,7 @@ export interface OutputDistribution {
  * on.
  */
 export function outputDistribution(issues: IssueUsage[]): OutputDistribution {
-  const spent = issues.flatMap((row) => (row.spend ? [row.spend.out] : []));
+  const spent = recordedSpend(issues);
   const counts = new Map<Bucket, number>(
     (Object.keys(BUCKETS) as Bucket[]).map((band) => [band, 0]),
   );

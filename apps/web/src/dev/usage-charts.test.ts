@@ -1,13 +1,21 @@
 import { describe, expect, test } from "vitest";
-import { BUCKETS, VERDICT, type IssueUsage } from "./protocol";
 import {
   ACCURACY_ORDER,
+  BUCKETS,
+  VERDICT,
   forecastAccuracy,
-  outputDistribution,
-} from "./usage-charts";
+  type IssueUsage,
+} from "./protocol";
+import { outputDistribution } from "./usage-charts";
 
 /**
  * The two readings the charts draw, and the rows they must refuse to read.
+ *
+ * The two live in different modules — `forecastAccuracy` in the contract, where
+ * `bun run tokens` reaches it too, and `outputDistribution` beside the chart
+ * that wants bins and marks — but they are tested together because they share
+ * the one rule worth testing, and a reader checking that rule should not have to
+ * open two files to see both halves of it.
  *
  * Everything here is about *exclusion*. Both figures are trivial arithmetic over
  * the rows; what earns a test is which rows they are allowed to see. An issue

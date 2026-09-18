@@ -31,9 +31,15 @@ import {
   ORDINAL_FILL,
 } from "@/components/dashboard/chart-tokens";
 import { cn } from "@/lib/utils";
-import { BUCKETS, VERDICT, type Bucket, type IssueUsage } from "./protocol";
 import {
+  BUCKETS,
+  VERDICT,
   forecastAccuracy,
+  type Bucket,
+  type IssueUsage,
+  type Verdict,
+} from "./protocol";
+import {
   formatTokens,
   outputDistribution,
   type PercentileMark,
@@ -63,6 +69,17 @@ import {
  * real `TableFrame` and carries every figure these two readings are derived
  * from.
  *
+ * **And not `BucketChart` either**, which is the same decision one level down
+ * and is worth naming because the plot bodies below do look like copies of it.
+ * They are: grid, two axes, a tooltip, `maxBarSize`, `StackSegmentV`, a
+ * `LabelList`. What is not shared is everything that decides anything — that
+ * component is welded to `ChartCard`, takes `{label, count}` bins with a
+ * `binColumn` for the table twin it must have, colours one way (the ordinal ramp
+ * by position), and has no notion of a reference line. Parameterising it for a
+ * diverging per-verdict palette, optional marks and no twin would leave a
+ * component that is more options than body. If a fourth bar chart arrives, that
+ * is the moment to extract one; three is not it.
+ *
  * Nothing here computes a verdict or a band. The rows arrive already scored by
  * the shared join in `apps/web/dev/usage.ts`, so the accuracy figure on this
  * page and the one `bun run tokens` prints are the same tally of the same words.
@@ -75,7 +92,7 @@ import {
  * the one worth catching an eye. Under gets the pale ordinal step rather than a
  * second alarm colour — overestimating is a miss, not a problem.
  */
-const VERDICT_FILL: Record<string, string> = {
+const VERDICT_FILL: Record<Verdict, string> = {
   [VERDICT.under]: "var(--viz-ord-2)",
   [VERDICT.onTarget]: "var(--viz-accent)",
   [VERDICT.over]: "var(--destructive)",
@@ -102,6 +119,19 @@ const BAND_TICK: Record<string, string> = Object.fromEntries(
 const issuesConfig = {
   count: { label: "Issues", color: "var(--viz-accent)" },
 } satisfies ChartConfig;
+
+/**
+ * A bin with its own colour on it, which is what the tooltip needs.
+ *
+ * Both charts colour per column rather than per series, and a `<Cell>` alone
+ * does not tell the tooltip that: `ChartTooltipContent` resolves its swatch as
+ * `color ?? item.payload?.fill ?? item.color`, and with the fill living only on
+ * the Cell it falls through to `item.color` — the *series* colour from
+ * `issuesConfig`. Hovering the red "over" column then showed an accent-green dot
+ * beside it. Carrying the fill on the datum answers both: the `<Cell>` reads it
+ * for the bar, and Recharts hands the same object to the tooltip.
+ */
+const withFill = <T,>(bin: T, fill: string) => ({ ...bin, fill });
 
 /**
  * The shell both panels share: a named region, a headline figure, and an empty
@@ -180,6 +210,7 @@ function ChartPanel({
  */
 function AccuracyChart({ issues }: { issues: IssueUsage[] }) {
   const { bins, scored, onTarget } = forecastAccuracy(issues);
+  const data = bins.map((bin) => withFill(bin, VERDICT_FILL[bin.verdict]));
 
   return (
     <ChartPanel
@@ -200,7 +231,7 @@ function AccuracyChart({ issues }: { issues: IssueUsage[] }) {
       <ChartContainer config={issuesConfig} className={CHART_BOX}>
         <BarChart
           accessibilityLayer
-          data={bins}
+          data={data}
           margin={{ top: 20, right: 8, left: -16, bottom: 0 }}
         >
           <CartesianGrid vertical={false} />
@@ -226,8 +257,8 @@ function AccuracyChart({ issues }: { issues: IssueUsage[] }) {
             maxBarSize={44}
             shape={<StackSegmentV radius={4} />}
           >
-            {bins.map((bin) => (
-              <Cell key={bin.verdict} fill={VERDICT_FILL[bin.verdict]} />
+            {data.map((bin) => (
+              <Cell key={bin.verdict} fill={bin.fill} />
             ))}
             <LabelList
               dataKey="count"
@@ -254,6 +285,16 @@ function AccuracyChart({ issues }: { issues: IssueUsage[] }) {
  *
  * `flip` turns the labels inward on the last band, where text running right
  * would leave the plot.
+ *
+ * **A mark is accurate to its band and no finer, and that is a real limit.** The
+ * x-axis is categorical, so `ReferenceLine x={band}` snaps to the band's centre:
+ * p25 3,000 and p75 20,000 draw at the same x when both land in `S`. The exact
+ * figure is on the label and in the panel's corner, and the position carries
+ * only which band — which is the question this chart asks, since the bands are
+ * what is being re-checked. Placing them truly would mean a numeric token axis,
+ * and the bands are unequal in width and open-ended at the top (`XL` is
+ * `Infinity`), so a linear axis would misstate the density it drew. Worth
+ * revisiting only if the question changes from "which band" to "where exactly".
  */
 const markLabel =
   (marks: PercentileMark[], flip: boolean) =>
@@ -290,6 +331,9 @@ const markLabel =
  */
 function DistributionChart({ issues }: { issues: IssueUsage[] }) {
   const { bins, measured, marks } = outputDistribution(issues);
+  const data = bins.map((bin, i) =>
+    withFill(bin, ORDINAL_FILL[Math.min(i, ORDINAL_FILL.length - 1)]!),
+  );
 
   /** The marks that share a band, keyed by it. */
   const byBand = new Map<Bucket, PercentileMark[]>();
@@ -323,7 +367,7 @@ function DistributionChart({ issues }: { issues: IssueUsage[] }) {
       <ChartContainer config={issuesConfig} className={CHART_BOX}>
         <BarChart
           accessibilityLayer
-          data={bins}
+          data={data}
           margin={{ top: 20, right: 8, left: -16, bottom: 0 }}
         >
           <CartesianGrid vertical={false} />
@@ -355,11 +399,8 @@ function DistributionChart({ issues }: { issues: IssueUsage[] }) {
             maxBarSize={44}
             shape={<StackSegmentV radius={4} />}
           >
-            {bins.map((bin, i) => (
-              <Cell
-                key={bin.band}
-                fill={ORDINAL_FILL[Math.min(i, ORDINAL_FILL.length - 1)]}
-              />
+            {data.map((bin) => (
+              <Cell key={bin.band} fill={bin.fill} />
             ))}
             <LabelList
               dataKey="count"

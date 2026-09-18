@@ -44,7 +44,9 @@ import {
   BUCKETS,
   VERDICT,
   bucketFor,
+  forecastAccuracy,
   percentiles,
+  recordedSpend,
   type Bucket,
   type IssueSpend,
   type IssueUsage,
@@ -64,17 +66,24 @@ import {
 // literal `"on target"` is how a rename in `protocol.ts` would leave its
 // accuracy figure reading 0/N with nothing failing.
 //
-// `bucketFor` and `percentiles` moved *into* that file in #252 and are re-sent
-// from here unchanged. They went because the page's charts need them and cannot
-// import this module — it reads the filesystem — and they are re-exported
-// because this module is the join's public face: the CLI and this file's own
-// tests name them here, and a move is not a reason to make every caller learn
-// where the arithmetic sleeps.
+// `bucketFor`, `percentiles`, `forecastAccuracy` and `recordedSpend` moved
+// *into* that file in #252 and are re-sent from here unchanged. They went
+// because the page's charts need them and cannot import this module — it reads
+// the filesystem — and they are re-exported because this module is the join's
+// public face: the CLI and this file's own tests name them here, and a move is
+// not a reason to make every caller learn where the arithmetic sleeps.
+//
+// The last two are the ones that were genuinely duplicated. `ticket-tokens.ts`
+// tallied its own `hits`/`scored` and wrote its own "rows with spend" flatMap,
+// beside a page that did both again — two readings of the same rows, agreeing
+// until one of them changed.
 export {
   BUCKETS,
   VERDICT,
   bucketFor,
+  forecastAccuracy,
   percentiles,
+  recordedSpend,
   type Bucket,
   type IssueSpend,
   type Verdict,
