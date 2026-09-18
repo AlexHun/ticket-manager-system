@@ -5,25 +5,25 @@
 // ~/.claude/projects/<slug>/*.jsonl — measured 2026-09-11 as present on 100%
 // of 28,095 turns, so nothing is lost to missing metadata. Branches here are
 // named `<type>/<issue>-<slug>`, so the issue number falls out of the branch
-// and the spend of every session that ran on it sums to that ticket, even when
-// the ticket took several sittings (the median ticket took 2).
+// and the spend of every session that ran on it sums to that issue, even when
+// the issue took several sittings (the median issue took 2).
 //
 // **Forecast in output tokens, not total.** Output is the honest unit: it runs
 // at a near-constant ~745 tokens per turn (r=0.98 across 125 sessions), so it
-// tracks how much work a ticket was and nothing else. Cache-read is ~100x
+// tracks how much work an issue was and nothing else. Cache-read is ~100x
 // larger and scales superlinearly with session length (~43k/turn at 12 turns,
 // ~218k at 1343), which makes it a measure of session hygiene rather than of
-// the ticket — so it is carried beside the forecast, never inside it.
+// the issue — so it is carried beside the forecast, never inside it.
 //
 // Two things this cannot attribute, both by construction:
 //   - Work done on `main` or with no branch (28% of all turns when this was
-//     written). It belongs to no ticket, so it is totalled on its own
+//     written). It belongs to no issue, so it is totalled on its own
 //     (`unattributed`) rather than folded into one — in turns *and* output
 //     tokens since #253, because a figure that omits a quarter of the work
 //     reads as complete when it is not.
 //   - Sessions from any other machine. These transcripts are local.
 //
-// This module is the single copy of the join. `scripts/ticket-tokens.ts` prints
+// This module is the single copy of the join. `scripts/issue-tokens.ts` prints
 // it at the terminal; the dev-tools Vite plugin serves `gatherUsage` to the
 // Usage page under `/__dev` (#248), which is why it lives here rather than
 // under `scripts/`. Both callers take the *same rows*, forecast band and
@@ -63,7 +63,7 @@ import {
   type IssueMetadata,
 } from "./issues.ts";
 
-// Re-exported because `scripts/ticket-tokens.ts` prints a band's label, counts
+// Re-exported because `scripts/issue-tokens.ts` prints a band's label, counts
 // how many rows came in on target and prints the quartiles, and reaching into
 // the browser half's protocol file from a script under `scripts/` would be a
 // worse seam than this line. The words especially: the CLI comparing against a
@@ -77,7 +77,7 @@ import {
 // public face: the CLI and this file's own tests name them here, and a move is
 // not a reason to make every caller learn where the arithmetic sleeps.
 //
-// The last two are the ones that were genuinely duplicated. `ticket-tokens.ts`
+// The last two are the ones that were genuinely duplicated. `issue-tokens.ts`
 // tallied its own `hits`/`scored` and wrote its own "rows with spend" flatMap,
 // beside a page that did both again — two readings of the same rows, agreeing
 // until one of them changed.
@@ -176,7 +176,7 @@ export function resolveTranscriptDir(
  * [conventions.md](../../../docs/standards/conventions.md)'s "take the library's
  * type by name" has nothing to take. The failure mode it warns about still
  * applies: if Claude Code renames `output_tokens`, every `?? 0` below turns into
- * a confident zero and every ticket reads as bucket `S`. Nothing here can catch
+ * a confident zero and every issue reads as bucket `S`. Nothing here can catch
  * that, so the check is the `unattributed` and total figures in the output — a
  * total that collapses to near-zero is the rename, not a quiet month.
  */
@@ -221,7 +221,7 @@ function spendByBranch(dir: string): {
       if (!branch || branch === "main") {
         // Totalled here rather than counted, and deliberately not given a
         // `BranchAccumulator` of its own: `sessions` and `cacheRead` are
-        // questions about a ticket, and `main` is not one. See
+        // questions about an issue, and `main` is not one. See
         // `UnattributedWork` in the protocol for why the shape stops at two.
         unattributed.turns++;
         unattributed.out += usage.output_tokens ?? 0;
@@ -244,8 +244,8 @@ function spendByBranch(dir: string): {
 }
 
 /**
- * Collapse branches onto the issue each one names. A ticket occasionally gets
- * a second branch (a follow-up fix); both count toward the same ticket. A
+ * Collapse branches onto the issue each one names. An issue occasionally gets
+ * a second branch (a follow-up fix); both count toward the same issue. A
  * branch naming no issue is not attributable and is dropped.
  */
 function spendByIssue(
@@ -300,7 +300,7 @@ export function scanSpend(dir: string): ScanResult {
  * `-1` rather than `0`, and the difference is not hypothetical — a turn can
  * record no output tokens at all, so an issue really can have spent zero. That
  * is a measurement; an issue nobody has started is an absence, and the two must
- * not share a key or the empty rows file themselves among the cheapest tickets,
+ * not share a key or the empty rows file themselves among the cheapest issues,
  * where they read as work that cost almost nothing.
  */
 const rank = (row: IssueUsage) => row.spend?.out ?? -1;
@@ -320,8 +320,8 @@ const rank = (row: IssueUsage) => row.spend?.out ?? -1;
  *
  * **Two sources of rows, not one** (#251, R4). The transcripts contribute every
  * issue they recorded work against; the listing contributes every issue it
- * reports as **open**, whether or not anything has been spent on it. So a
- * ticket nobody has started appears with its band and an empty actual, which is
+ * reports as **open**, whether or not anything has been spent on it. So an
+ * issue nobody has started appears with its band and an empty actual, which is
  * the forecast asked about *before* the work rather than only after it — and
  * the forecast-coverage gap the PRD's second metric is about becomes a row you
  * can see rather than an absence you have to know to look for.
@@ -365,7 +365,7 @@ export function joinIssues(
         forecast,
         // Both null together, and not merely because there is no arithmetic to
         // do: `bucketFor(0)` is `S` and `verdictFor("L", 0)` is "under", so a
-        // row defaulted to zero would score every unstarted ticket as having
+        // row defaulted to zero would score every unstarted issue as having
         // come in comfortably under budget.
         bucket: spend ? bucketFor(spend.out) : null,
         verdict: spend ? verdictFor(forecast, spend.out) : null,

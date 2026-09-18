@@ -244,7 +244,7 @@ test.describe("dev tools: Usage", () => {
    * `#103` has no branch anywhere in `fixtures/transcripts`, so everything in
    * this row comes from the listing and everything else is empty. The empty
    * half is the part worth holding: a zero would put it in band `S`, and `S`
-   * read against its `forecast/M` would print "under" — an unstarted ticket
+   * read against its `forecast/M` would print "under" — an unstarted issue
    * scored as having beaten its estimate.
    */
   test("lists an open issue nobody has started, with its band and no figures", async ({

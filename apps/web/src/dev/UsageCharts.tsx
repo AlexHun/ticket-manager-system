@@ -315,7 +315,7 @@ const markLabel =
   );
 
 /**
- * What this repository's tickets actually cost, against the bands they are
+ * What this repository's issues actually cost, against the bands they are
  * forecast in.
  *
  * The columns are the context and the quartile marks are the point: the bands

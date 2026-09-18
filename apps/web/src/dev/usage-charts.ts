@@ -92,7 +92,7 @@ export interface OutputDistribution {
  * **No marks at all when nothing has been spent**, rather than three at the
  * origin. `percentiles([])` answers 0/0/0 by design, which a caller formatting a
  * figure wants and a caller *drawing* one must not take: three lines on the S
- * column would read as a repository of very cheap tickets rather than as no
+ * column would read as a repository of very cheap issues rather than as no
  * measurement. `measured` is the honest test, and it is what the page branches
  * on.
  */

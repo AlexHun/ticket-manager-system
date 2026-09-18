@@ -235,7 +235,7 @@ describe("UsagePage", () => {
    * R4: a row is no longer proof that work happened. An open issue nobody has
    * started carries its band and nothing else — and above all no verdict, since
    * `bucketFor(0)` is `S` and a forecast of `L` read against it would print as
-   * "under" on every untouched ticket in the backlog.
+   * "under" on every untouched issue in the backlog.
    */
   test("shows an issue nobody has started with its band and no figures", async () => {
     const user = userEvent.setup();
@@ -611,7 +611,7 @@ describe("UsagePage charts", () => {
       /no recorded spend yet/i,
     );
     // Not three marks at the origin: `percentiles([])` answers 0/0/0, which
-    // would draw as a repository of very cheap tickets.
+    // would draw as a repository of very cheap issues.
     expect(distribution).not.toHaveTextContent(/p25 0/);
   });
 

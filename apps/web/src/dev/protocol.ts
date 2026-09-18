@@ -355,7 +355,7 @@ export type DevStreamMessage =
  * Output-token bands — the vocabulary a `forecast/S|M|L` label and an actual
  * spend are both written in. `max` is exclusive.
  *
- * These are this repo's own measured per-ticket distribution over 90
+ * These are this repo's own measured per-issue distribution over 90
  * issue-numbered branches: p25 55k, median 90k, p75 154k. `XL` is the
  * open-ended top bucket and is a split signal rather than a size — nothing
  * should be forecast into it, and no `forecast/XL` label exists.
@@ -403,7 +403,7 @@ export const bucketFor = (out: number): Bucket =>
  * An empty set reports zeroes rather than `undefined`, so a caller formatting
  * the result need not branch. But a caller deciding whether there is a
  * distribution *at all* must ask how many values it was given, not whether
- * these came back zero — three marks at the origin read as very cheap tickets
+ * these came back zero — three marks at the origin read as very cheap issues
  * rather than as no measurement. Both callers ask: the CLI prints "no
  * distribution to report", and the chart says the same in its own words.
  */
@@ -510,7 +510,7 @@ export interface IssueSpend {
  * a verdict.
  *
  * **A row is no longer proof that work happened** (#251). Every open issue the
- * listing names gets one, so a ticket nobody has started appears with its band,
+ * listing names gets one, so an issue nobody has started appears with its band,
  * an empty actual and no verdict — which is the question "what is this forecast
  * to cost?" answered before the work rather than only after it. `spend` null is
  * what says so, and it is why `bucket` is nullable beside it: there is no band
@@ -564,8 +564,8 @@ export interface IssueUsage {
  * the figure has to be reported in the same two units an issue's row is read in.
  *
  * **Turns and output tokens, and deliberately not the other two.** `sessions`
- * and `cacheRead` are on `IssueSpend` because a ticket is a thing you can ask
- * "how many sittings did this take" about; `main` is not a ticket and there is
+ * and `cacheRead` are on `IssueSpend` because an issue is a thing you can ask
+ * "how many sittings did this take" about; `main` is not an issue and there is
  * nothing to ask it against. A field on the wire is a promise that something
  * reads it.
  *
@@ -676,7 +676,7 @@ export interface ForecastAccuracy {
  * **Gated on the verdict, not on the forecast**, and that is the whole rule. A
  * row can carry a band and no spend to read it against — since #251 every open
  * issue gets one — and counting those as scored-and-missed would walk the figure
- * toward zero every time somebody files a ticket. The verdict is already null
+ * toward zero every time somebody files an issue. The verdict is already null
  * unless both halves are present (see `verdictFor`), so asking for it is asking
  * the question once.
  */
@@ -706,7 +706,7 @@ export function forecastAccuracy(issues: IssueUsage[]): ForecastAccuracy {
  * written this `flatMap` out for themselves.
  *
  * A row with no spend is an absence, not a zero. `bucketFor(0)` is `S`, so
- * substituting one would file every unstarted ticket in the smallest band and
+ * substituting one would file every unstarted issue in the smallest band and
  * drag all three quartiles down with it as the backlog grows — and a
  * `forecast/L` read against that zero prints "under", which is the same bug
  * arriving at the accuracy figure by the other road.
