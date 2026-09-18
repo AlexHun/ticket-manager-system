@@ -481,6 +481,18 @@ async function dragHandle(
   await page.mouse.move(x + dx / 2, y, { steps: 5 });
   await page.mouse.move(x + dx, y, { steps: 5 });
   await page.mouse.up();
+
+  // And wait for it to say the drag *finished*, for the mirror-image reason.
+  // `mouse.up()` resolves when Chrome has dispatched the event, not when React
+  // has committed the render it caused, so a width read on the next line can
+  // legitimately be one frame stale. Reading the same attribute at both ends is
+  // what lets every caller assert with a bare `expect` instead of remembering
+  // an `expect.poll` — which only two of the five drag tests used to do, an
+  // asymmetry that made the #263 flake look like a polling problem when it was
+  // not one. That flake was real and lived in the component (see the note on
+  // `columnSizing` in `TicketsTable.tsx`); this is the smaller race beside it,
+  // and the two are worth keeping separate.
+  await expect(handle).toHaveAttribute("data-resizing", "false");
 }
 
 /**
@@ -2162,10 +2174,21 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
+    const before = await columnWidths(page);
     await dragHandle(page, "Subject", -600);
+    const after = await columnWidths(page);
 
-    // minSize is 160; without it the column would collapse to nothing.
-    expect((await columnWidths(page)).Subject).toBeGreaterThanOrEqual(150);
+    // The edge actually moved. Without this the test is blind to the one
+    // failure mode this whole group has ever had (#263): a drag that does
+    // nothing leaves the column at its default 227px, which satisfies the
+    // minimum below and passes green through the exact bug the other two tests
+    // were failing on.
+    expect(after.Subject).toBeLessThan(before.Subject);
+    // minSize is 160; without it the column would collapse to nothing. The
+    // threshold is under 160 because the table still stretches to fill the
+    // frame, so the rendered width is the clamped size plus a share of the
+    // leftover space.
+    expect(after.Subject).toBeGreaterThanOrEqual(150);
   });
 
   test("double-clicking a handle restores the default width", async ({

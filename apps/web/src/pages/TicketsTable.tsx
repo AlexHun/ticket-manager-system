@@ -1,10 +1,9 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   flexRender,
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
-  type ColumnSizingState,
   type Header,
   type OnChangeFn,
   type SortDirection,
@@ -353,14 +352,24 @@ export function TicketsTable({
   density = ROW_DENSITY.comfortable,
   className,
 }: TicketsTableProps) {
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
-
+  // Column sizing is deliberately *uncontrolled* — do not lift it back into a
+  // `useState` here (issue #263). TanStack's resize handler builds the new
+  // sizes into a closure object from inside the `setColumnSizingInfo` updater
+  // and then reads that same object from inside the `setColumnSizing` updater,
+  // so the two updates have a producer/consumer order React only honours if
+  // they share one update queue. Controlled, they did not: `columnSizing` was a
+  // hook declared *before* `useReactTable`, so on any render where React could
+  // not eagerly evaluate the dispatches — which is any render with an update
+  // already pending on this fiber — the consumer ran first, spread an empty
+  // object, and the drag applied **nothing at all**. That is the intermittent
+  // CI failure where a dragged column came back at the exact same width. Left
+  // uncontrolled, both updates land in the single `useState` inside
+  // `useReactTable` and are applied in dispatch order, producer first.
   const table = useReactTable({
     data: tickets,
     columns,
-    state: { sorting, columnSizing },
+    state: { sorting },
     onSortingChange,
-    onColumnSizingChange: setColumnSizing,
     // Postgres already ordered these rows — render them as they arrived.
     // Note the deliberate absence of getSortedRowModel().
     manualSorting: true,
