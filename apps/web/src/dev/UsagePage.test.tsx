@@ -75,6 +75,10 @@ function makeReport(over: Partial<UsageReport> = {}): UsageReport {
         verdict: "on target",
       }),
     ],
+    // Two turns on `main` or on no branch, spending 6,200 output tokens. Not
+    // zero by default: a total nothing else on the page carries is exactly the
+    // figure a default of zero would let the page quietly stop rendering.
+    unattributed: { turns: 2, out: 6200 },
     warnings: [],
     ...over,
   };
@@ -86,6 +90,21 @@ const scanButton = () => screen.getByRole("button", { name: "Scan" });
 
 /** The frame `TableFrame` puts round the spend table, once one has been read. */
 const spendTable = () => screen.findByRole("region", { name: "Issue spend" });
+
+/** Any of the page's named regions — the two chart panels and the unattributed
+ *  total. All three are addressed by name for the same reason: the region is
+ *  what a reader lands on, and it is what the E2E asks for too. */
+const panel = (name: string) => screen.findByRole("region", { name });
+
+/** Render, press Scan, and hand back the `user` for whatever comes next. Shared
+ *  rather than written once per describe: the blocks below all begin this way,
+ *  and a second copy is a second thing to keep in step with `renderPage`. */
+const scanned = async () => {
+  const user = userEvent.setup();
+  renderPage();
+  await user.click(scanButton());
+  return user;
+};
 
 beforeEach(() => {
   post.mockReset();
@@ -389,6 +408,95 @@ describe("UsagePage", () => {
 });
 
 /**
+ * R7 (#253): what ran on `main` or on no branch, reported as its own total.
+ *
+ * It is a large share of everything the machine has done — 28% of all turns
+ * when the scan was written — and the page used to say only that it existed.
+ * The three claims below are the acceptance criteria said in the page's own
+ * terms: both figures are there, they are not an issue, and no row absorbed
+ * them.
+ */
+describe("UsagePage unattributed work", () => {
+  const unattributed = () => panel("Unattributed work");
+
+  test("reports nothing about it until a scan has been read", () => {
+    renderPage();
+
+    expect(
+      screen.queryByRole("region", { name: "Unattributed work" }),
+    ).toBeNull();
+  });
+
+  test("reports it in turns and in output tokens", async () => {
+    await scanned();
+
+    const panel = await unattributed();
+    expect(panel).toHaveTextContent("2 turns");
+    expect(panel).toHaveTextContent("6,200 output tokens");
+  });
+
+  /**
+   * The criterion the shape of this is for: it must read as *not an issue*.
+   *
+   * A row would be the obvious place to put it and is the one place it cannot
+   * go — it has no issue number, nothing forecast it, and `bucketFor` would file
+   * its tokens in a band as though somebody had estimated them. So the table
+   * holds the same rows it did before and the total sits beside it.
+   */
+  test("keeps it out of the table rather than making it a row", async () => {
+    await scanned();
+
+    const table = await spendTable();
+    const rows = within(table).getAllByRole("row");
+    // Header, #101, #102 — the two issues the report carries, and nothing else.
+    expect(rows).toHaveLength(3);
+    expect(table).not.toHaveTextContent("6,200");
+    expect(within(await unattributed()).queryByRole("link")).toBeNull();
+    expect(await unattributed()).not.toHaveTextContent("#");
+  });
+
+  // Reported as a measurement rather than dropped. Nothing scores this figure —
+  // no band, no verdict, no quartile — so a zero here is the honest answer to
+  // "what ran on main", and its absence would read as the page not asking.
+  test("reports a zero total rather than falling silent", async () => {
+    post.mockResolvedValue({
+      data: makeReport({ unattributed: { turns: 0, out: 0 } }),
+    });
+    await scanned();
+
+    const panel = await unattributed();
+    expect(panel).toHaveTextContent("0 turns");
+    expect(panel).toHaveTextContent("0 output tokens");
+  });
+
+  test("says turn rather than turns when there was one", async () => {
+    post.mockResolvedValue({
+      data: makeReport({ unattributed: { turns: 1, out: 5000 } }),
+    });
+    await scanned();
+
+    const panel = await unattributed();
+    expect(panel).toHaveTextContent("1 turn");
+    expect(panel).not.toHaveTextContent("1 turns");
+  });
+
+  test("replaces the total on a second press rather than holding the first", async () => {
+    const user = await scanned();
+    expect(await unattributed()).toHaveTextContent("6,200");
+
+    post.mockResolvedValue({
+      data: makeReport({ unattributed: { turns: 9, out: 31_500 } }),
+    });
+    await user.click(scanButton());
+
+    await waitFor(async () =>
+      expect(await unattributed()).toHaveTextContent("31,500"),
+    );
+    expect(await unattributed()).not.toHaveTextContent("6,200");
+  });
+});
+
+/**
  * The two charts (#252), at the only level a component test can hold them.
  *
  * Recharts draws nothing in jsdom — every container measures zero, which is why
@@ -399,15 +507,6 @@ describe("UsagePage", () => {
  * arithmetic is `usage-charts.test.ts`'s.
  */
 describe("UsagePage charts", () => {
-  const panel = (name: string) => screen.findByRole("region", { name });
-
-  const scanned = async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await user.click(scanButton());
-    return user;
-  };
-
   test("draws neither chart until a scan has been read", async () => {
     renderPage();
 

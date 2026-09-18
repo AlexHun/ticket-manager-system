@@ -8,12 +8,16 @@
 // files for what the numbers mean and why output tokens are the unit. This one
 // decides argv and column widths, and nothing else.
 //
-// It scans the transcripts itself rather than calling `gatherUsage`, and that
-// is not a second copy of the join: `joinIssues` builds the rows both sides
-// show. The scan is here because this command reports one figure the page's
-// wire shape does not carry — the turns that ran on `main` — and reading the
-// directory a second time to recover it costs seconds, not milliseconds: 2-3s
-// warm and 28s cold, over this machine's 136 transcripts.
+// It scans the transcripts itself rather than calling `gatherUsage`, and #253
+// removed the reason it had to: the report carries the unattributed total now,
+// so `gatherUsage(dir, meta)` would serve every figure below in a single sweep.
+// What is left is not a figure. This command reports its own diagnostics at the
+// terminal — naming the directory and saying "run this from the repo root",
+// rather than handing a page a warning string — and `--open` filters on the
+// issue *state*, which no row carries. Consolidating would trade those away and
+// is a change to this command's output, not to its numbers. Either way R8
+// holds: `joinIssues` builds the rows both sides show and `scanSpend` totals
+// what ran on `main`, so nothing here is a second copy of the join.
 //
 // Run by Bun, not Node: the shared module is TypeScript (the dev-tools half is,
 // and must be), and relying on Node's type stripping would be an undeclared
@@ -44,8 +48,8 @@ import {
   recordedSpend,
   resolveTranscriptDir,
   scanSpend,
+  emptyScan,
   type IssueSpend,
-  type Spend,
 } from "../apps/web/dev/usage.ts";
 
 const fmt = (n: number) =>
@@ -68,7 +72,12 @@ async function main() {
   // issue" — false on any machine whose transcripts cannot be read, which is
   // the ordinary state of a fresh clone and of CI. An unreadable directory
   // costs the actuals, not the command.
-  let scan = { byIssue: new Map<number, Spend>(), unattributed: 0 };
+  //
+  // `emptyScan()` rather than a literal written out here: it is the same "found
+  // nothing" reading `gatherUsage` starts from, and sharing it is what makes a
+  // figure added to `ScanResult` a value somebody has to supply rather than an
+  // `undefined` this command would print in the middle of a sentence.
+  let scan = emptyScan();
   try {
     const files = readdirSync(dir);
     if (files.some((f) => f.endsWith(".jsonl"))) scan = scanSpend(dir);
@@ -181,8 +190,14 @@ async function main() {
       `forecast accuracy: ${onTarget}/${scored} on target (${Math.round((onTarget / scored) * 100)}%)`,
     );
   }
+  // The last line, and since #253 it carries the tokens as well as the turns —
+  // the scan used to count these turns and discard their output, so this said
+  // how much work happened off-ticket and never what it cost. The figures are
+  // `scanSpend`'s, which is what the Usage page is served, so R8 holds for the
+  // one total that is not a row.
+  const turns = `${unattributed.turns} ${unattributed.turns === 1 ? "turn" : "turns"}`;
   console.log(
-    `unattributed: ${unattributed} turns ran on main or with no branch and belong to no ticket.`,
+    `unattributed: ${turns} and ${fmt(unattributed.out)} output tokens ran on main or with no branch, belonging to no ticket.`,
   );
 }
 

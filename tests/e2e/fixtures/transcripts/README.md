@@ -12,12 +12,17 @@ What the two files add up to, and why each line is here:
 | `#101` | 12,000 + 8,000 = **20,000** | 2     | 1        | 300,000 + 100,000 = **400,000** |
 | `#102` | **3,000**                   | 1     | 1        | **20,000**                      |
 
-Three lines are in `session-a.jsonl` to be _excluded_, and each one is a rule
-worth holding:
+Three lines are in `session-a.jsonl` to be kept out of both rows above, and each
+one is a rule worth holding:
 
-- a turn on `main` — belongs to no issue, and must not land in either row;
+- a turn on `main` — belongs to no issue, and must not land in either row. Since
+  #253 it is not merely excluded: it is reported on its own, as **1 turn** and
+  **5,000** output tokens. It sits _between_ two `feat/101-a` turns in the same
+  session, which is what a scan attributing by session rather than by branch
+  would get wrong;
 - a turn on `chore/no-issue-here` — a branch naming no issue is dropped, not
-  bucketed into a zeroth row;
+  bucketed into a zeroth row, and it is not unattributed either: `unattributed`
+  means `main` or no branch at all;
 - a truncated final line — the ordinary shape of an append-only JSONL file that
   is still being written, and skipping it must not lose the lines above it.
 
