@@ -80,7 +80,7 @@ describe("listIssues", () => {
     expect(args.slice(0, 2)).toEqual(["issue", "list"]);
     expect(args).not.toContain("view");
     // Closed issues carry most of the spend; a default listing would leave
-    // every finished ticket unnamed.
+    // every finished issue unnamed.
     expect(args).toContain("all");
     // Every field the join reads, and no more.
     expect(args).toContain("number,title,state,url,labels");

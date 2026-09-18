@@ -543,7 +543,7 @@ describe("gatherUsage: issues nobody has started", () => {
   });
 
   // Criterion 3: an empty actual is not a small one. Sorting the two together
-  // on a zero would file every unstarted issue between the cheapest tickets,
+  // on a zero would file every unstarted issue between the cheapest ones,
   // which is where they read as work that cost almost nothing.
   it("puts every issue with spend above every issue without", async () => {
     write("s1.jsonl", [

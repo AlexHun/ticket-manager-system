@@ -95,7 +95,7 @@ const Unknown = () => (
  * transcripts were read and they name no branch for this issue.
  *
  * What it must never be is a zero. `bucketFor(0)` is `S` and a forecast of `L`
- * read against it is "under", so an unstarted ticket rendered as zeroes would
+ * read against it is "under", so an unstarted issue rendered as zeroes would
  * sit in the table claiming to have come in comfortably under budget — and
  * would take the accuracy figure and the percentile distribution down with it.
  * The two markers are told apart on hover rather than by sight, which is enough
@@ -496,7 +496,7 @@ function Gathered({ report }: { report: UsageReport }) {
  * does `bun run tokens`, which since slice 2 prints these same rows rather than
  * ordering the scan itself. The unstarted issues are a block at the end rather
  * than rows sorted at zero, because an empty actual is not a small one and
- * filing them among the cheapest tickets is where they would read as work that
+ * filing them among the cheapest issues is where they would read as work that
  * cost almost nothing.
  *
  * Sortable headers belong here eventually — `ModuleTable` next door is the shape

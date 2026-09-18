@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-// Forecast vs. actual token spend, per ticket.
+// Forecast vs. actual token spend, per issue.
 //
 // The join, the buckets, the verdicts and the percentile maths live in
 // `apps/web/dev/usage.ts`, and the `gh` call in `apps/web/dev/issues.ts` — both
 // shared with the dev-tools Usage page, so the terminal and the page cannot
-// disagree about what a ticket cost or whether it came in on target. Read those
+// disagree about what an issue cost or whether it came in on target. Read those
 // files for what the numbers mean and why output tokens are the unit. This one
 // decides argv and column widths, and nothing else.
 //
@@ -25,7 +25,7 @@
 // Bun already.
 //
 // Usage:
-//   bun run tokens              # every attributable ticket
+//   bun run tokens              # every attributable issue
 //   bun run tokens 226 232      # just these issues
 //   bun run tokens --open       # only issues still open
 //
@@ -103,13 +103,13 @@ async function main() {
   }
 
   if (!rows.length) {
-    console.log("No attributable tickets matched.");
+    console.log("No attributable issues matched.");
     return;
   }
 
   /** An empty cell, for a row there is no work to report on. Never a zero: the
    *  page's rule, for the same reason — `bucketFor(0)` is `S`, so zeroes would
-   *  have every unstarted ticket printing as comfortably under its band. */
+   *  have every unstarted issue printing as comfortably under its band. */
   const EMPTY = "-";
 
   /** One figure off a row's spend, or `EMPTY` when there is none. The branch
@@ -163,7 +163,7 @@ async function main() {
   }
 
   // The spend rows only, through the shared rule (#252). An issue nobody has
-  // started is not a zero-token measurement of how big this repo's tickets are,
+  // started is not a zero-token measurement of how big this repo's issues are,
   // and letting it into the percentiles would drag the very bands this table
   // exists to re-check — the same exclusion the page's distribution chart makes,
   // which is why it is one function rather than two flatMaps.
@@ -172,17 +172,17 @@ async function main() {
   // The quartiles are dropped rather than printed as zeroes when nothing in the
   // selection has spend — `bun run tokens --open` on a machine with no matching
   // transcripts is exactly that case, and `percentiles([])` answers 0/0/0,
-  // which reads as a measurement of very cheap tickets rather than as no
+  // which reads as a measurement of very cheap issues rather than as no
   // measurement at all. The same rule `EMPTY` carries in the rows above.
   if (spent.length) {
     const { p25, p50, p75 } = percentiles(spent);
     const totalOut = spent.reduce((sum, out) => sum + out, 0);
     console.log(
-      `${rows.length} tickets, ${spent.length} with recorded spend | output p25 ${fmt(p25)} median ${fmt(p50)} p75 ${fmt(p75)} | total ${fmt(totalOut)}`,
+      `${rows.length} issues, ${spent.length} with recorded spend | output p25 ${fmt(p25)} median ${fmt(p50)} p75 ${fmt(p75)} | total ${fmt(totalOut)}`,
     );
   } else {
     console.log(
-      `${rows.length} tickets, none with recorded spend — no distribution to report.`,
+      `${rows.length} issues, none with recorded spend — no distribution to report.`,
     );
   }
   if (scored) {
@@ -192,12 +192,12 @@ async function main() {
   }
   // The last line, and since #253 it carries the tokens as well as the turns —
   // the scan used to count these turns and discard their output, so this said
-  // how much work happened off-ticket and never what it cost. The figures are
+  // how much work happened off-issue and never what it cost. The figures are
   // `scanSpend`'s, which is what the Usage page is served, so R8 holds for the
   // one total that is not a row.
   const turns = `${unattributed.turns} ${unattributed.turns === 1 ? "turn" : "turns"}`;
   console.log(
-    `unattributed: ${turns} and ${fmt(unattributed.out)} output tokens ran on main or with no branch, belonging to no ticket.`,
+    `unattributed: ${turns} and ${fmt(unattributed.out)} output tokens ran on main or with no branch, belonging to no issue.`,
   );
 }
 

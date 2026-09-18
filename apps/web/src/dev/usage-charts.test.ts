@@ -23,7 +23,7 @@ import { outputDistribution } from "./usage-charts";
  * reading is the bug #251 spent a whole slice describing: `bucketFor(0)` is `S`,
  * so a zeroed unstarted row scores as "under" against any larger forecast and
  * lands in the smallest band, dragging the accuracy figure down and the
- * percentiles with it. It is not an edge case — every open ticket in the backlog
+ * percentiles with it. It is not an edge case — every open issue in the backlog
  * is one.
  */
 
@@ -136,7 +136,7 @@ describe("outputDistribution", () => {
 
   test("reports no marks at all when nothing has been spent", () => {
     // Not three marks at the origin: `percentiles([])` answers 0/0/0, which
-    // draws as a measurement of very cheap tickets rather than as no
+    // draws as a measurement of very cheap issues rather than as no
     // measurement. The caller shows its empty state off `measured`.
     const result = outputDistribution([unstarted(), unstarted({ issue: 2 })]);
 

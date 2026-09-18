@@ -13,23 +13,23 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
-## Forecasting a ticket's size
+## Forecasting an issue's size
 
-Every ticket carries one `forecast/S|M|L` label, applied when it is cut. The
-bands are **output tokens**, from this repo's own measured per-ticket
-distribution (90 branches): `S` <60k, `M` 60-150k (the median ticket is 92k),
-`L` 150-250k. Anything forecast above `L` is a ticket to split, not a bigger
+Every issue carries one `forecast/S|M|L` label, applied when it is cut. The
+bands are **output tokens**, from this repo's own measured per-issue
+distribution (90 branches): `S` <60k, `M` 60-150k (the median issue is 92k),
+`L` 150-250k. Anything forecast above `L` is an issue to split, not a bigger
 label — which is why no `forecast/XL` exists.
 
 Forecast **turns**, then read the band off them: output runs at a near-constant
-~745 tokens per turn, so a ticket you expect to take ~120 tool-call round trips
+~745 tokens per turn, so an issue you expect to take ~120 tool-call round trips
 is an `M`. Estimating tokens directly is estimating a number nobody has an
 intuition for.
 
 `bun run tokens` scores the forecasts against what was actually spent, joining
 transcripts to issues through the branch name — so `<type>/<issue>-<slug>` is
-what makes a ticket measurable at all. Work done straight on `main` belongs to
-no ticket and is invisible to it.
+what makes an issue measurable at all. Work done straight on `main` belongs to
+no issue and is invisible to it.
 
 ## Pull requests as a triage surface
 
@@ -53,11 +53,11 @@ Run `gh issue view <number> --comments`.
 
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+Used by `/wayfinder`. The **map** is a single issue with **child** issues.
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
+- **Child issue**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the issue is assigned to the driving dev.
+- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. An issue is unblocked when every blocker is closed.
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
