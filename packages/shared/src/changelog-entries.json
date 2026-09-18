@@ -283,5 +283,10 @@
     "version": "0.1.107",
     "date": "2026-09-18",
     "title": "List issues nobody has started on the Usage page"
+  },
+  {
+    "version": "0.1.108",
+    "date": "2026-09-18",
+    "title": "Chart forecast accuracy and output distribution (#252)"
   }
 ]
