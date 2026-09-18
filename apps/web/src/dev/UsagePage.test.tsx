@@ -387,3 +387,164 @@ describe("UsagePage", () => {
     expect(scanButton()).toBeEnabled();
   });
 });
+
+/**
+ * The two charts (#252), at the only level a component test can hold them.
+ *
+ * Recharts draws nothing in jsdom — every container measures zero, which is why
+ * no dashboard chart has a component test either — so what is asserted here is
+ * the panel around it: the figure in the corner, the footer, and above all the
+ * two empty states, which are the parts that have to *say* something rather than
+ * draw it. The drawn result is `tests/e2e/dev-usage.spec.ts`'s job; the
+ * arithmetic is `usage-charts.test.ts`'s.
+ */
+describe("UsagePage charts", () => {
+  const panel = (name: string) => screen.findByRole("region", { name });
+
+  const scanned = async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(scanButton());
+    return user;
+  };
+
+  test("draws neither chart until a scan has been read", async () => {
+    renderPage();
+
+    expect(
+      screen.queryByRole("region", { name: "Forecast accuracy" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Output distribution" }),
+    ).toBeNull();
+  });
+
+  test("scores the issues that carry a forecast, and only those", async () => {
+    await scanned();
+
+    // Two rows, both with a verdict: #101 under, #102 on target.
+    const accuracy = await panel("Forecast accuracy");
+    expect(accuracy).toHaveTextContent(/1\/2 on target/);
+    expect(accuracy).toHaveTextContent(/50%/);
+  });
+
+  /**
+   * The acceptance criterion this chart exists to get right: with no forecast
+   * labels anywhere it says there is nothing to score, rather than drawing three
+   * empty columns under an axis — which reads as "we forecast everything and got
+   * all of it wrong".
+   *
+   * It is also the ordinary state of this page with no `gh`: the bands come from
+   * the listing, so a machine that cannot reach GitHub has every figure and
+   * nothing to score.
+   */
+  test("says there is nothing to score when no issue carries a forecast", async () => {
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [makeIssue({ forecast: null, verdict: null })],
+      }),
+    });
+    await scanned();
+
+    const accuracy = await panel("Forecast accuracy");
+    expect(within(accuracy).getByRole("status")).toHaveTextContent(
+      /nothing to score/i,
+    );
+    expect(accuracy).not.toHaveTextContent(/on target \(/);
+  });
+
+  test("marks the quartiles of the spend it actually recorded", async () => {
+    await scanned();
+
+    // 20,000 and 3,000: nearest-rank over two values puts p25 on the smaller and
+    // both upper quartiles on the larger. The figures are the shared
+    // `percentiles`, so they are the ones `bun run tokens` prints.
+    const distribution = await panel("Output distribution");
+    expect(distribution).toHaveTextContent(
+      "p25 3,000 · median 20,000 · p75 20,000",
+    );
+    expect(distribution).toHaveTextContent(/2 issues with recorded spend/);
+  });
+
+  /**
+   * The rule both readings share, asserted where it would be felt.
+   *
+   * The unstarted row carries a `forecast/L` band and no spend. Counted as a
+   * zero it would be scored "under" — dragging the accuracy figure to 1/3 — and
+   * would file itself in band `S` as a third measurement, pulling every quartile
+   * down with it.
+   */
+  test("keeps an issue nobody has started out of both readings", async () => {
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [
+          makeIssue(),
+          makeIssue({
+            issue: 300,
+            spend: null,
+            forecast: "L",
+            bucket: null,
+            verdict: null,
+          }),
+        ],
+      }),
+    });
+    await scanned();
+
+    expect(await panel("Forecast accuracy")).toHaveTextContent(
+      /0\/1 on target/,
+    );
+    expect(await panel("Output distribution")).toHaveTextContent(
+      /1 issue with recorded spend/,
+    );
+  });
+
+  test("says there is no distribution when nothing has been spent", async () => {
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [makeIssue({ spend: null, bucket: null, verdict: null })],
+      }),
+    });
+    await scanned();
+
+    const distribution = await panel("Output distribution");
+    expect(within(distribution).getByRole("status")).toHaveTextContent(
+      /no recorded spend yet/i,
+    );
+    // Not three marks at the origin: `percentiles([])` answers 0/0/0, which
+    // would draw as a repository of very cheap tickets.
+    expect(distribution).not.toHaveTextContent(/p25 0/);
+  });
+
+  test("redraws both charts on a fresh scan rather than holding the first", async () => {
+    const user = await scanned();
+    expect(await panel("Forecast accuracy")).toHaveTextContent(
+      /1\/2 on target/,
+    );
+
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [
+          makeIssue({ verdict: "on target" }),
+          makeIssue({
+            issue: 102,
+            spend: { out: 3000, turns: 1, sessions: 1, cacheRead: 12_000 },
+            forecast: "S",
+            verdict: "on target",
+          }),
+        ],
+      }),
+    });
+    await user.click(scanButton());
+
+    await waitFor(async () =>
+      expect(await panel("Forecast accuracy")).toHaveTextContent(
+        /2\/2 on target/,
+      ),
+    );
+    // The first reading is gone rather than sitting beneath the second.
+    expect(await panel("Forecast accuracy")).not.toHaveTextContent(
+      /1\/2 on target/,
+    );
+  });
+});

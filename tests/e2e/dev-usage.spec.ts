@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   USAGE_COLUMNS,
@@ -12,9 +12,9 @@ import {
 import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
- * Slices 1 to 3 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251), end
- * to end: page → dev middleware → `apps/web/dev/usage.ts` and `issues.ts` → the
- * filesystem, all real.
+ * Slices 1 to 4 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
+ * #252), end to end: page → dev middleware → `apps/web/dev/usage.ts` and
+ * `issues.ts` → the filesystem, all real.
  *
  * It is the whole reason both sources got a resolver with an environment
  * override. Neither is something an assertion can name — a machine's spend is
@@ -52,6 +52,27 @@ const EXPECTED = {
   issue102: { out: "3,000" },
 } as const;
 
+/**
+ * What the same fixture implies for the two charts (#252) — arithmetic, not a
+ * second reading of the code under test.
+ *
+ * **Accuracy is 1/1, and the denominator is the interesting half.** Three rows
+ * reach the page and only `#101` carries both a band and spend to read against
+ * it: `#102` has figures and no `forecast/` label, `#103` has a band and no
+ * work. A chart that scored either would report 1/2 or 1/3 here.
+ *
+ * **The distribution is two values, 20,000 and 3,000.** Nearest-rank over them
+ * puts p25 on the smaller and both upper quartiles on the larger, and all three
+ * land in band `S` — which is deliberately the awkward case: three marks at one
+ * x is what the grouped label in `UsageCharts.tsx` exists for, and a run that
+ * drew them one line each would overprint here rather than somewhere rarer.
+ */
+const CHARTS = {
+  accuracy: "1/1 on target (100%)",
+  quartiles: "p25 3,000 · median 20,000 · p75 20,000",
+  measured: "2 issues with recorded spend",
+} as const;
+
 /** Where a named column sits in a row. Read off `USAGE_COLUMNS` — the same list
  *  `UsagePage.tsx` renders from — rather than counted here, for the reason
  *  `route-timing.spec.ts` imports its mark names instead of retyping them: a
@@ -64,6 +85,27 @@ const CELL = Object.fromEntries(
 /** The em dash the page renders for anything it has no value for \u2014 `gh` could
  *  not supply it, or no work has been recorded against the issue yet. */
 const UNKNOWN = "\u2014";
+
+/**
+ * A chart panel's x-axis tick labels, in order.
+ *
+ * Reaches for Recharts' own classes rather than for `svg text`, which would also
+ * match the bar value labels and the quartile marks — and a bare substring match
+ * on "L" catches `XL` besides. That is not a new coupling: `ui/chart.tsx`
+ * already styles `.recharts-cartesian-axis-tick text`.
+ *
+ * **`.recharts-xAxis-tick-labels`, not `.recharts-xAxis`**, and the difference
+ * cost a red run. Under Recharts 3.10 the tick text is not inside the axis
+ * group: the axis renders `recharts-cartesian-axis recharts-xAxis xAxis`, and
+ * the labels go into a *sibling* `recharts-cartesian-axis-tick-labels
+ * recharts-xAxis-tick-labels` layer of their own, on a different z-index. A
+ * descendant selector under the axis therefore matches nothing at all, which
+ * reads exactly like a chart that failed to draw.
+ */
+const ticksOf = (panel: Locator) =>
+  panel.locator(
+    ".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value",
+  );
 
 const [FIXTURE_101, FIXTURE_102, FIXTURE_103, FIXTURE_104] = GH_ISSUES;
 
@@ -294,6 +336,20 @@ test.describe("dev tools: Usage", () => {
     await expect(
       page.getByText(/could not read the issue listing/i),
     ).toBeVisible();
+
+    // The charts split the same way the columns do, and this is the honest
+    // route to the acceptance criterion: with no listing there is no band
+    // anywhere, so the accuracy chart has nothing to score and says so rather
+    // than drawing three empty columns under an axis. The distribution is
+    // untouched — it is derived from the figures, which owe `gh` nothing.
+    const accuracy = page.getByRole("region", { name: "Forecast accuracy" });
+    await expect(accuracy.getByRole("status")).toContainText(
+      /nothing to score/i,
+    );
+    await expect(accuracy).not.toContainText("on target (");
+    await expect(
+      page.getByRole("region", { name: "Output distribution" }),
+    ).toContainText(CHARTS.quartiles);
   });
 
   test("re-reads on a second press rather than answering from the first", async ({
@@ -317,6 +373,81 @@ test.describe("dev tools: Usage", () => {
     await expect(
       page.getByRole("region", { name: "Issue spend" }),
     ).toBeVisible();
+  });
+
+  /**
+   * R6, slice 4 (#252): the two questions the table makes you compute by eye.
+   *
+   * Asserted on roles and text and never on a screenshot — Playwright's
+   * `fullPage` captures catch Recharts mid-tween, so a picture of these panels
+   * is a picture of whichever frame the capture landed on. The figures are the
+   * fixture's own arithmetic in `CHARTS` above; the axis ticks and the quartile
+   * marks are read out of the drawn `<svg>`, which is the part a component test
+   * cannot reach at all (jsdom measures every chart container as zero, so
+   * Recharts draws nothing there).
+   */
+  test("charts the forecast accuracy and the output distribution", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const accuracy = page.getByRole("region", { name: "Forecast accuracy" });
+    await expect(accuracy).toBeVisible();
+    // One row scored, and on target. Two of the three rows on this page are
+    // deliberately unscorable, so a wrong denominator shows up here as 1/2 or
+    // 1/3 rather than as a missing assertion.
+    await expect(accuracy).toContainText(CHARTS.accuracy);
+    // The axis really drew, and drew all three verdicts whether or not anything
+    // landed in them: only `#101` is scored here, so a chart that dropped its
+    // empty columns would leave a single tick. In `ACCURACY_ORDER`, which is an
+    // axis rather than a record's key order — the two misses sit either side of
+    // the hit, so the shape of the columns is the shape of the error.
+    await expect(ticksOf(accuracy)).toHaveText(["under", "on target", "over"]);
+
+    const distribution = page.getByRole("region", {
+      name: "Output distribution",
+    });
+    await expect(distribution).toBeVisible();
+    await expect(distribution).toContainText(CHARTS.quartiles);
+    await expect(distribution).toContainText(CHARTS.measured);
+    // All four bands on the axis, including the two nothing landed in — the
+    // bands are the question this chart asks, so a band with no issues in it is
+    // part of the answer.
+    await expect(ticksOf(distribution)).toHaveText(["S", "M", "L", "XL"]);
+    // The marks are drawn on the chart, not merely printed above it. All three
+    // share band `S` here, which is exactly the case the grouped label handles.
+    for (const mark of ["p25 3,000", "median 20,000", "p75 20,000"]) {
+      await expect(
+        distribution.locator("svg text", { hasText: mark }),
+      ).toBeVisible();
+    }
+  });
+
+  /**
+   * A second press replaces the charts rather than leaving them behind or
+   * stacking a second pair beside them.
+   *
+   * The figures cannot change — the fixture is fixed — so what is asserted is
+   * that there is exactly *one* of each panel afterwards and it still reads
+   * right. Both failures this catches are real shapes: a chart rendered outside
+   * the `report &&` gate would survive a scan that failed, and a keyed list
+   * getting a fresh key each press would double them.
+   */
+  test("redraws both charts on a fresh Scan", async ({ page }) => {
+    const scan = page.getByRole("button", { name: "Scan" });
+    await scan.click();
+    await expect(page.getByText(/^Gathered at/)).toBeVisible();
+
+    await scan.click();
+
+    const accuracy = page.getByRole("region", { name: "Forecast accuracy" });
+    const distribution = page.getByRole("region", {
+      name: "Output distribution",
+    });
+    await expect(accuracy).toHaveCount(1);
+    await expect(distribution).toHaveCount(1);
+    await expect(accuracy).toContainText(CHARTS.accuracy);
+    await expect(distribution).toContainText(CHARTS.quartiles);
   });
 
   test("puts the scrollable table where a keyboard can reach it", async ({
