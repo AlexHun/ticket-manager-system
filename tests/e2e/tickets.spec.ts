@@ -481,6 +481,25 @@ async function dragHandle(
   await page.mouse.move(x + dx / 2, y, { steps: 5 });
   await page.mouse.move(x + dx, y, { steps: 5 });
   await page.mouse.up();
+
+  // And wait for it to say the drag *finished*, for the mirror-image reason.
+  // `mouse.up()` resolves when Chrome has dispatched the event, not when React
+  // has committed the render it caused, so a width read on the next line can
+  // legitimately be one frame stale.
+  //
+  // This is where #263's "why does the keyboard test poll and these don't?"
+  // lands. The answer is that the two `expect.poll`s in this file are not drag
+  // assertions at all — they follow a `dblclick()` and a `keyboard.press()`,
+  // neither of which has a resize gesture to bracket — so the fix is not to
+  // sprinkle polls over the drag tests but to make the end of a drag as
+  // observable as its start, once, here. A bare `expect` after `dragHandle` is
+  // then correct by construction.
+  //
+  // Worth keeping separate from the bug this issue was really about: that one
+  // was in the component and no amount of waiting would have caught it (see
+  // the note on `columnSizing` in `TicketsTable.tsx`). This is the smaller,
+  // genuine race beside it.
+  await expect(handle).toHaveAttribute("data-resizing", "false");
 }
 
 /**
@@ -2162,10 +2181,21 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
+    const before = await columnWidths(page);
     await dragHandle(page, "Subject", -600);
+    const after = await columnWidths(page);
 
-    // minSize is 160; without it the column would collapse to nothing.
-    expect((await columnWidths(page)).Subject).toBeGreaterThanOrEqual(150);
+    // The edge actually moved. Without this the test is blind to the one
+    // failure mode this whole group has ever had (#263): a drag that does
+    // nothing leaves the column at its default 227px, which satisfies the
+    // minimum below and passes green through the exact bug the other two tests
+    // were failing on.
+    expect(after.Subject).toBeLessThan(before.Subject);
+    // minSize is 160; without it the column would collapse to nothing. The
+    // threshold is under 160 because the table still stretches to fill the
+    // frame, so the rendered width is the clamped size plus a share of the
+    // leftover space.
+    expect(after.Subject).toBeGreaterThanOrEqual(150);
   });
 
   test("double-clicking a handle restores the default width", async ({
