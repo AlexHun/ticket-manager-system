@@ -5,7 +5,8 @@
 ## Layers crossed
 
 ```
-web (apps/web/src/dev/UsagePage.tsx — SpendTable, new: UsageFilters.tsx)
+web (apps/web/src/dev/SpendTable.tsx — the table and its column definitions,
+     lifted out of UsagePage.tsx by slice 1; new: UsageFilters.tsx)
   → contract (apps/web/src/dev/protocol.ts — USAGE_SPINE / USAGE_DETAIL / USAGE_COLUMNS)
     → tests (apps/web/src/dev/UsagePage.test.tsx + tests/e2e/dev-usage.spec.ts)
       → fixtures (tests/e2e/fixtures/transcripts/, fixtures/gh-issues.ts)

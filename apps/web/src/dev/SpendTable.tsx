@@ -134,8 +134,11 @@ const VERDICT_VARIANT: Record<Verdict, "default" | "outline" | "destructive"> =
  * absence: the half that is dashed already says which question went unanswered,
  * and a third marker after it would be the same sentence twice.
  *
- * The arrow is `aria-hidden` and the cell reads out as its two bands and the
- * verdict; the column header's hint is where the direction is said in words.
+ * The arrow is `aria-hidden`, so the cell reads out as its two bands and the
+ * verdict with nothing between them. The column header carries the direction in
+ * words — forecast first, landed second — which is what a reader who cannot see
+ * the arrow has to go on, and is why that hint names both halves in order
+ * rather than calling the column a comparison and stopping.
  */
 const Comparison = ({ row }: { row: IssueUsage }) => (
   <span className="flex items-center gap-2">
