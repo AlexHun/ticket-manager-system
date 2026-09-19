@@ -13,8 +13,9 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
  * Slices 1 to 5 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
- * #252, #253), end to end: page → dev middleware → `apps/web/dev/usage.ts` and
- * `issues.ts` → the filesystem, all real.
+ * #252, #253) and slice 1 of `docs/plans/usage-table-legibility.md` (#270), end
+ * to end: page → dev middleware → `apps/web/dev/usage.ts` and `issues.ts` → the
+ * filesystem, all real.
  *
  * It is the whole reason both sources got a resolver with an environment
  * override. Neither is something an assertion can name — a machine's spend is
@@ -89,6 +90,17 @@ const CELL = Object.fromEntries(
 /** The em dash the page renders for anything it has no value for \u2014 `gh` could
  *  not supply it, or no work has been recorded against the issue yet. */
 const UNKNOWN = "\u2014";
+
+/**
+ * The one marker in a row's comparison cell, and the words behind it.
+ *
+ * Since #270 the forecast band, the band the spend landed in and the verdict are
+ * one cell, so "which absence is this" is no longer answered by which column a
+ * dash sits in. Each of the three rows here has at most one marker in that cell
+ * \u2014 `#102` lacks a band, `#103` lacks recorded work \u2014 so hovering the dash is
+ * what tells the two apart, and it is the only thing that does.
+ */
+const markerIn = (cell: Locator) => cell.getByText(UNKNOWN);
 
 /**
  * A chart panel's x-axis tick labels, in order.
@@ -192,6 +204,17 @@ test.describe("dev tools: Usage", () => {
     );
   });
 
+  /**
+   * R3/R4, slice 1 (#270): the comparison is one cell, and the table is seven
+   * columns wide rather than nine.
+   *
+   * `#101` is the row where nothing is missing — a band, spend to read against
+   * it, and a verdict — so it is where the cell's *shape* is held: both halves
+   * drew, each as its letter and the range that letter means, and no marker is
+   * standing in for anything. Both halves are band `S` here, which is why they
+   * are counted rather than matched once: a cell that rendered only the actual
+   * would still contain "S <60k".
+   */
   test("names each issue, links it to GitHub, and scores it against its band", async ({
     page,
   }) => {
@@ -210,13 +233,23 @@ test.describe("dev tools: Usage", () => {
     await expect(link).toHaveAttribute("target", "_blank");
 
     const cells = first.getByRole("cell");
-    // Band aimed at, band landed in, and the word comparing them.
-    await expect(cells.nth(CELL.forecast)).toContainText("S");
-    await expect(cells.nth(CELL.forecast)).toContainText("<60k");
-    await expect(cells.nth(CELL.bucket)).toContainText("S");
-    await expect(cells.nth(CELL.verdict)).toHaveText("on target");
+    // Seven columns: six cells and the issue rowheader.
+    await expect(cells).toHaveCount(USAGE_COLUMNS.length);
+
+    const comparison = cells.nth(CELL.comparison);
+    // Band aimed at, band landed in, and the word comparing them — in one cell.
+    await expect(comparison.getByText("S", { exact: true })).toHaveCount(2);
+    await expect(comparison.getByText("<60k", { exact: true })).toHaveCount(2);
+    await expect(comparison).toContainText("on target");
+    await expect(markerIn(comparison)).toHaveCount(0);
   });
 
+  /**
+   * The first of the two absences the merged cell must keep apart: `gh`
+   * answered for `#102`, so it has a title, but it carries no `forecast/`
+   * label. The forecast half is a marker meaning *unknown* and there is no
+   * verdict — not "on target", and above all not a band the page chose.
+   */
   test("leaves an issue nobody forecast unscored rather than scoring it", async ({
     page,
   }) => {
@@ -225,16 +258,23 @@ test.describe("dev tools: Usage", () => {
     const table = page.getByRole("region", { name: "Issue spend" });
     const second = table.getByRole("row").nth(2);
 
-    // `gh` answered for this one, so it has a title; it simply carries no
-    // `forecast/` label. No band, and above all no verdict.
     await expect(
       second.getByRole("link", { name: FIXTURE_102!.title }),
     ).toBeVisible();
-    const cells = second.getByRole("cell");
-    await expect(cells.nth(CELL.forecast)).toHaveText(UNKNOWN);
-    await expect(cells.nth(CELL.verdict)).toHaveText(UNKNOWN);
-    // The bucket is the row's own arithmetic, so it is there regardless.
-    await expect(cells.nth(CELL.bucket)).toContainText("S");
+    const comparison = second.getByRole("cell").nth(CELL.comparison);
+    // One marker, and it is the forecast half. The landed band is the row's own
+    // arithmetic, so it is there regardless of what `gh` could say.
+    await expect(markerIn(comparison)).toHaveCount(1);
+    await expect(comparison).toContainText("S");
+    await expect(comparison).toContainText("<60k");
+    await expect(comparison).not.toContainText(/on target|over|under/);
+
+    // Which absence it is, said in words — the only thing that tells this
+    // marker from the one on `#103` below.
+    await markerIn(comparison).hover();
+    await expect(page.getByRole("tooltip")).toContainText(
+      /gh could not supply/i,
+    );
   });
 
   /**
@@ -246,6 +286,12 @@ test.describe("dev tools: Usage", () => {
    * half is the part worth holding: a zero would put it in band `S`, and `S`
    * read against its `forecast/M` would print "under" — an unstarted issue
    * scored as having beaten its estimate.
+   *
+   * It is also the second of the two absences #270's merged cell must keep
+   * apart. This row's marker sits on the *landed* half and means "no work
+   * recorded"; `#102`'s sits on the forecast half and means "`gh` could not
+   * say". The hover is what distinguishes them, and the two assertions are
+   * deliberately the same shape in both tests.
    */
   test("lists an open issue nobody has started, with its band and no figures", async ({
     page,
@@ -264,14 +310,21 @@ test.describe("dev tools: Usage", () => {
     ).toBeVisible();
 
     const cells = row.getByRole("cell");
-    await expect(cells.nth(CELL.forecast)).toContainText("M");
-    await expect(cells.nth(CELL.forecast)).toContainText("60-150k");
     for (const column of ["out", "turns", "sessions", "cacheRead"] as const) {
       await expect(cells.nth(CELL[column])).toHaveText(UNKNOWN);
     }
-    // No band landed in, and above all no verdict.
-    await expect(cells.nth(CELL.bucket)).toHaveText(UNKNOWN);
-    await expect(cells.nth(CELL.verdict)).toHaveText(UNKNOWN);
+
+    const comparison = cells.nth(CELL.comparison);
+    await expect(comparison).toContainText("M");
+    await expect(comparison).toContainText("60-150k");
+    // No band landed in, no verdict, and above all no band the page invented:
+    // one marker, on the half that has nothing to report.
+    await expect(markerIn(comparison)).toHaveCount(1);
+    await expect(comparison).not.toContainText("<60k");
+    await expect(comparison).not.toContainText(/on target|over|under/);
+
+    await markerIn(comparison).hover();
+    await expect(page.getByRole("tooltip")).toContainText(/no recorded work/i);
   });
 
   /**
@@ -327,12 +380,18 @@ test.describe("dev tools: Usage", () => {
     await expect(cells.nth(CELL.cacheRead)).toHaveText(
       EXPECTED.issue101.cacheRead,
     );
-    await expect(cells.nth(CELL.bucket)).toContainText("S");
 
-    // The three `gh` columns read as unknown rather than as a default.
+    // What `gh` could not supply reads as unknown rather than as a default: the
+    // title, and the forecast half of the comparison. The landed band is the
+    // row's own arithmetic and stands whatever `gh` did, so the cell keeps one
+    // half and marks the other — and there is no verdict, since nothing was
+    // forecast for the spend to be read against.
+    const comparison = cells.nth(CELL.comparison);
     await expect(cells.nth(CELL.title)).toHaveText(UNKNOWN);
-    await expect(cells.nth(CELL.forecast)).toHaveText(UNKNOWN);
-    await expect(cells.nth(CELL.verdict)).toHaveText(UNKNOWN);
+    await expect(markerIn(comparison)).toHaveCount(1);
+    await expect(comparison).toContainText("S");
+    await expect(comparison).toContainText("<60k");
+    await expect(comparison).not.toContainText(/on target|over|under/);
     await expect(table.getByRole("link")).toHaveCount(0);
 
     // And the page says why, rather than leaving three quiet columns to be read
