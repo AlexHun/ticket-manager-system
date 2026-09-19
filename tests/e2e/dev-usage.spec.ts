@@ -2,6 +2,7 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   USAGE_COLUMNS,
+  USAGE_DETAIL_LABEL,
   USAGE_SPINE,
   type UsageColumn,
 } from "../../apps/web/src/dev/protocol";
@@ -95,17 +96,22 @@ const CELL = Object.fromEntries(
 ) as Record<UsageColumn, number>;
 
 /**
- * Press the one control that appends turns, sessions and cache-read (#271).
+ * The one control that appends turns, sessions and cache-read (#271), and the
+ * press of it.
  *
- * Reached by its accessible name rather than by its visible chip, and asserted
- * pressed before anything reads the columns it produced — a click that silently
- * did nothing would otherwise show up as a confusing cell-index failure three
- * assertions later.
+ * Reached by its accessible name, which is imported rather than retyped — the
+ * same reason this file imports `USAGE_COLUMNS` instead of counting columns,
+ * and the same failure `route-timing.spec.ts` records: a spec that restates the
+ * string cannot catch a rename of it. The press asserts `aria-pressed` before
+ * anything reads the columns it produced, so a click that silently did nothing
+ * fails here rather than as a confusing cell-index mismatch three assertions
+ * later.
  */
+const detailToggle = (page: Page) =>
+  page.getByRole("button", { name: USAGE_DETAIL_LABEL });
+
 const showDetailColumns = async (page: Page) => {
-  const toggle = page.getByRole("button", {
-    name: /turns, sessions and cache read/i,
-  });
+  const toggle = detailToggle(page);
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
 };
@@ -337,9 +343,7 @@ test.describe("dev tools: Usage", () => {
 
     // And back: the control removes them again rather than being a one-way
     // door.
-    const toggle = page.getByRole("button", {
-      name: /turns, sessions and cache read/i,
-    });
+    const toggle = detailToggle(page);
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
     await expect(first.getByRole("cell")).toHaveCount(USAGE_SPINE.length);

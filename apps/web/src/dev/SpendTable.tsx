@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { formatTokens } from "./usage-charts";
 import {
   USAGE_COLUMNS,
+  USAGE_DETAIL_LABEL,
   USAGE_SPINE,
   BUCKETS,
   VERDICT,
@@ -347,7 +348,7 @@ export function SpendTable({ issues }: { issues: IssueUsage[] }) {
           size="sm"
           pressed={detail}
           onPressedChange={setDetail}
-          aria-label="Show turns, sessions and cache read"
+          aria-label={USAGE_DETAIL_LABEL}
         >
           <Columns3 aria-hidden="true" />
           Detail columns

@@ -173,6 +173,17 @@ None. The one open unknown — whether four columns genuinely clear 1280px given
 `Title`'s `max-w-[26rem]` cap — is measured by slice 2's own E2E assertion
 rather than guessed at beforehand, so it is a slice, not a question.
 
+**Answered, and it answered more than it was asked** (2026-09-19, in slice 2).
+Four columns clear 1280px — and so do all seven: a real 103-issue scan reports
+the frame's `scrollWidth` as 1218 against a `clientWidth` of 1218 in both
+states, and the E2E fixture reads 1248/1248 either way. `Title`'s cap is why,
+together with the fact that `/__dev` has no sidebar. So slice 1 is what cleared
+the width, by taking nine columns to seven, and slice 2's toggle buys less to
+read rather than less to scroll. The E2E assertion stands as a regression guard
+— a `min-w` on the `<table>`, a column escaping the cap, a fifth spine column —
+and its doc comment says so rather than letting a green run imply more. R1's
+row in the PRD's metrics table was corrected to match.
+
 ## Deferred
 
 - **A date filter or calendar** — PRD non-goal. A row is an issue's lifetime

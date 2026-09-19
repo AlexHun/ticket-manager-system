@@ -3,7 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { renderRoutes } from "@/test/render";
 import { UsagePage } from "./UsagePage";
-import { USAGE_COLUMNS, USAGE_DETAIL, USAGE_SPINE } from "./protocol";
+import {
+  USAGE_COLUMNS,
+  USAGE_DETAIL,
+  USAGE_DETAIL_LABEL,
+  USAGE_SPINE,
+} from "./protocol";
 import type { IssueUsage, UsageColumn, UsageReport } from "./protocol";
 
 /**
@@ -112,11 +117,13 @@ const scanned = async () => {
  * Addressed by its accessible name rather than by its visible chip, for the
  * same reason the project map's two toggles carry one: the chip is short enough
  * to fit above a table and the name is what says which three columns it is
- * about. A `Toggle` is a button with `aria-pressed`, so the state is asserted
- * from that attribute and never from the columns it happens to have produced.
+ * about. The name itself comes from the contract rather than being retyped
+ * here — see `USAGE_DETAIL_LABEL`. A `Toggle` is a button with `aria-pressed`,
+ * so the state is asserted from that attribute and never from the columns it
+ * happens to have produced.
  */
 const detailToggle = () =>
-  screen.getByRole("button", { name: /turns, sessions and cache read/i });
+  screen.getByRole("button", { name: USAGE_DETAIL_LABEL });
 
 beforeEach(() => {
   post.mockReset();
@@ -312,7 +319,7 @@ describe("UsagePage", () => {
     renderPage();
 
     expect(
-      screen.queryByRole("button", { name: /turns, sessions and cache read/i }),
+      screen.queryByRole("button", { name: USAGE_DETAIL_LABEL }),
     ).toBeNull();
   });
 

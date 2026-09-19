@@ -438,18 +438,12 @@ export const VERDICT = {
 export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
 
 /**
- * The Usage table's columns, left to right — the issue number excepted, which
+ * The columns a scan opens on, left to right — the issue number excepted, which
  * is the row's identity rather than one of its columns.
  *
- * Here, in the import-free contract, for the reason `ROUTE` is in an
- * import-free `routes.ts`: two tests index a row by position, and a column
- * inserted in `SpendTable.tsx` would otherwise leave each of them asserting
- * against a neighbouring cell with nothing failing. `SpendTable.tsx` keys its
- * column definitions by these names and renders them in this order, so the
- * order the page prints and the order a test counts are one list; a name added
- * here without a definition, or a definition without a name, does not compile.
- * `tests/e2e/dev-usage.spec.ts` reaches in here the same way
- * `route-timing.spec.ts` reaches into `routes.ts`.
+ * Three of the seven since #271; the other three are `USAGE_DETAIL` below, and
+ * `USAGE_COLUMNS` under that is where the positional contract both suites rest
+ * on is written down.
  *
  * **`comparison` is one cell carrying three former columns** (#270): the band
  * that was forecast, the band the actual landed in, and the verdict reading one
@@ -498,16 +492,40 @@ export const USAGE_DETAIL = ["turns", "sessions", "cacheRead"] as const;
 /**
  * Every column, in the order the table walks them once the detail columns are
  * shown — the spine and then the detail, as the concatenation and never as a
- * third literal.
+ * third literal. A restatement would be a third copy of the order, free to
+ * disagree with the two it is built from.
  *
- * A restatement would be a third copy of the order, free to disagree with the
- * two it is built from. This is still the list a test indexes a row against,
- * and still the list `SpendTable.tsx` keys its definitions by: a name here
- * without a definition, or a definition without a name, does not compile.
+ * Here, in the import-free contract, for the reason `ROUTE` is in an
+ * import-free `routes.ts`: two tests index a row by position, and a column
+ * inserted in `SpendTable.tsx` would otherwise leave each of them asserting
+ * against a neighbouring cell with nothing failing. `SpendTable.tsx` keys its
+ * column definitions by these names and walks `USAGE_SPINE` or this list
+ * depending on the toggle, so the order the page prints and the order a test
+ * counts are one list; a name added to either half without a definition, or a
+ * definition without a name, does not compile.
+ * `tests/e2e/dev-usage.spec.ts` reaches in here the same way
+ * `route-timing.spec.ts` reaches into `routes.ts`.
  */
 export const USAGE_COLUMNS = [...USAGE_SPINE, ...USAGE_DETAIL] as const;
 
 export type UsageColumn = (typeof USAGE_COLUMNS)[number];
+
+/**
+ * The accessible name of the one control that appends `USAGE_DETAIL`.
+ *
+ * In the contract beside the columns it is about, and for the same reason the
+ * order is: three modules spend this string — `SpendTable.tsx` renders it as
+ * the `Toggle`'s `aria-label`, `UsagePage.test.tsx` and `dev-usage.spec.ts`
+ * each reach for the control by it — and neither suite can import a `.tsx`
+ * module. Retyped, a reworded label leaves both suites querying a button that
+ * no longer exists, which is the failure `route-timing.spec.ts` records for the
+ * user-timing mark names: the E2E could not catch the rename either, because it
+ * had restated the strings too.
+ *
+ * It is the *name* rather than the chip on the button, which is short enough to
+ * sit above a table and says nothing about which three columns it means.
+ */
+export const USAGE_DETAIL_LABEL = "Show turns, sessions and cache read";
 
 /**
  * What one issue's branches actually cost, as this machine's transcripts
