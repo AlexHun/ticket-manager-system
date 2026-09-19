@@ -52,6 +52,10 @@ apps/web/csp.caddy
 /playwright/.cache/
 # Playwright storageState — contains live session cookies
 /playwright/.auth/
+
+# `claude plugin eval` run output (aggregate-result.json, report.html) — the
+# authored evals/**/prompt.md + graders/*.md are source, this is not.
+.claude/skills/*/evals/results/
 # Fixtures a spec writes rather than checks in — dev-usage.spec.ts writes the
 # issue listing it reads so that it can also take it away, which is how the
 # no-`gh` path is reached through the real middleware.
