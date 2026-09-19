@@ -465,14 +465,47 @@ export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
  * been recorded — and neither may ever be rendered as a zero or a default band.
  * See `Comparison` in `SpendTable.tsx`.
  */
-export const USAGE_COLUMNS = [
-  "title",
-  "out",
-  "comparison",
-  "turns",
-  "sessions",
-  "cacheRead",
-] as const;
+export const USAGE_SPINE = ["title", "out", "comparison"] as const;
+
+/**
+ * The three diagnostic columns, hidden until the developer asks for them
+ * (#271).
+ *
+ * They **append**, and that is the whole reason the contract is two lists
+ * rather than one list carrying a `detail` flag: a spine column sits at the
+ * same index whether the toggle is on or off, so the one index map built from
+ * `USAGE_COLUMNS` below serves both states. Two maps — one per state — would
+ * be two things to keep in step, and the two suites that index a row by
+ * position would go on passing while asserting against a neighbouring cell.
+ *
+ * What is in here rather than in the spine is what a developer consults rather
+ * than reads: turns and sessions describe how the work was arranged, and
+ * cache-read is session hygiene that is deliberately not comparable to a
+ * forecast band. None of the three is the figure the page exists to report —
+ * that is `out`.
+ *
+ * **They are hidden because they are noise, and measurably not because they
+ * overflow.** The horizontal scroll the PRD complains about was *nine* columns
+ * wide, and #270's merged comparison cell is what removed it: against a real
+ * scan on 2026-09-19 (103 issues, a 1280px window) the frame reads
+ * `scrollWidth` 1218 against `clientWidth` 1218 with all seven columns shown.
+ * Bringing them back is still *allowed* to reintroduce a scroll — it is opt-in,
+ * and `TableFrame` makes the scroller focusable and named (#111) — but nothing
+ * here should be read as claiming it currently does.
+ */
+export const USAGE_DETAIL = ["turns", "sessions", "cacheRead"] as const;
+
+/**
+ * Every column, in the order the table walks them once the detail columns are
+ * shown — the spine and then the detail, as the concatenation and never as a
+ * third literal.
+ *
+ * A restatement would be a third copy of the order, free to disagree with the
+ * two it is built from. This is still the list a test indexes a row against,
+ * and still the list `SpendTable.tsx` keys its definitions by: a name here
+ * without a definition, or a definition without a name, does not compile.
+ */
+export const USAGE_COLUMNS = [...USAGE_SPINE, ...USAGE_DETAIL] as const;
 
 export type UsageColumn = (typeof USAGE_COLUMNS)[number];
 

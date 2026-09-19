@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { renderRoutes } from "@/test/render";
 import { UsagePage } from "./UsagePage";
-import { USAGE_COLUMNS } from "./protocol";
+import { USAGE_COLUMNS, USAGE_DETAIL, USAGE_SPINE } from "./protocol";
 import type { IssueUsage, UsageColumn, UsageReport } from "./protocol";
 
 /**
@@ -106,6 +106,18 @@ const scanned = async () => {
   return user;
 };
 
+/**
+ * The one control that appends the detail columns (#271).
+ *
+ * Addressed by its accessible name rather than by its visible chip, for the
+ * same reason the project map's two toggles carry one: the chip is short enough
+ * to fit above a table and the name is what says which three columns it is
+ * about. A `Toggle` is a button with `aria-pressed`, so the state is asserted
+ * from that attribute and never from the columns it happens to have produced.
+ */
+const detailToggle = () =>
+  screen.getByRole("button", { name: /turns, sessions and cache read/i });
+
 beforeEach(() => {
   post.mockReset();
   post.mockResolvedValue({ data: makeReport() });
@@ -152,6 +164,16 @@ describe("UsagePage", () => {
   const cellsOf = async (n: number) =>
     within((await screen.findAllByRole("row"))[n]!).getAllByRole("cell");
 
+  /** What each detail column's header reads, so the toggle test can name the
+   *  three columns it appends instead of trusting a count to have appended the
+   *  right ones. Restated here on purpose: these are the words on screen, and a
+   *  test that read them off `SpendTable` would agree with it about a typo. */
+  const COLUMN_HEADING: Record<(typeof USAGE_DETAIL)[number], string> = {
+    turns: "Turns",
+    sessions: "Sessions",
+    cacheRead: "Cache read",
+  };
+
   /**
    * The two halves of the merged comparison cell, in the order they read: the
    * band forecast, then the band the spend landed in.
@@ -196,13 +218,7 @@ describe("UsagePage", () => {
     await user.click(scanButton());
 
     const cells = await cellsOf(1);
-    // Six cells and the issue rowheader: seven columns, down from nine.
-    expect(cells).toHaveLength(USAGE_COLUMNS.length);
-    expect(
-      within((await screen.findAllByRole("row"))[0]!).getAllByRole(
-        "columnheader",
-      ),
-    ).toHaveLength(USAGE_COLUMNS.length + 1);
+    expect(cells).toHaveLength(USAGE_SPINE.length);
 
     const comparison = cells[CELL.comparison]!;
     expect(comparison).toHaveTextContent("M 60-150k");
@@ -210,6 +226,94 @@ describe("UsagePage", () => {
     expect(comparison).toHaveTextContent("under");
     // Nothing is missing here, so neither marker is standing in for anything.
     expect(within(comparison).queryByText("—")).toBeNull();
+  });
+
+  /**
+   * R1/R2 (#271): the table opens on its spine — four columns including the
+   * issue row-header — and one control appends the rest.
+   *
+   * Counted against `USAGE_SPINE` rather than against the literal 4, for the
+   * reason every index in this file is read off the contract: a column moved
+   * between the two lists must fail here rather than quietly re-point the
+   * assertions below at a neighbour.
+   *
+   * The header row carries one more than the body, always: the issue number is
+   * a `columnheader` above and a `rowheader` beside each row, because it is what
+   * every figure on the row is about rather than a figure itself.
+   */
+  test("opens on four columns, the issue row-header among them", async () => {
+    await scanned();
+
+    expect(await cellsOf(1)).toHaveLength(USAGE_SPINE.length);
+    expect(
+      within((await screen.findAllByRole("row"))[0]!).getAllByRole(
+        "columnheader",
+      ),
+    ).toHaveLength(USAGE_SPINE.length + 1);
+    expect(detailToggle()).toHaveAttribute("aria-pressed", "false");
+    // Named, not merely absent: a header the spine does not carry is the thing
+    // the control is for.
+    expect(
+      screen.queryByRole("columnheader", { name: /cache read/i }),
+    ).toBeNull();
+  });
+
+  test("appends the detail columns on one press, and removes them again", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await user.click(detailToggle());
+
+    expect(detailToggle()).toHaveAttribute("aria-pressed", "true");
+    expect(await cellsOf(1)).toHaveLength(USAGE_COLUMNS.length);
+    for (const name of USAGE_DETAIL)
+      expect(
+        within(await spendTable()).getByRole("columnheader", {
+          name: new RegExp(COLUMN_HEADING[name], "i"),
+        }),
+      ).toBeVisible();
+
+    await user.click(detailToggle());
+
+    expect(detailToggle()).toHaveAttribute("aria-pressed", "false");
+    expect(await cellsOf(1)).toHaveLength(USAGE_SPINE.length);
+  });
+
+  /**
+   * The reason the contract is two lists rather than one list with a flag.
+   *
+   * Detail columns **append**, so a spine cell sits at the same index in both
+   * states and the one `CELL` map above serves both. Asserted on the cell's
+   * contents rather than on its index alone: an index that matched while the
+   * cell beside it had shifted is exactly the failure a positional contract
+   * exists to make impossible, and it is invisible to a count.
+   */
+  test("keeps a spine cell at the same index with the detail columns shown", async () => {
+    const user = await scanned();
+    const before = (await cellsOf(1)).map((cell) => cell.textContent);
+
+    await user.click(detailToggle());
+
+    const after = await cellsOf(1);
+    expect(
+      after.slice(0, USAGE_SPINE.length).map((c) => c.textContent),
+    ).toEqual(before);
+    expect(after[CELL.out]).toHaveTextContent("20,000");
+    expect(after[CELL.comparison]).toHaveTextContent("M 60-150k");
+    // And the appended three really are the ones that were hidden.
+    expect(after[CELL.turns]).toHaveTextContent("2");
+    expect(after[CELL.sessions]).toHaveTextContent("1");
+    expect(after[CELL.cacheRead]).toHaveTextContent("400,000");
+  });
+
+  /** The control belongs to the table, so it arrives with one and not before:
+   *  there is nothing to widen until a scan has been read. */
+  test("offers no column control until a scan has been read", () => {
+    renderPage();
+
+    expect(
+      screen.queryByRole("button", { name: /turns, sessions and cache read/i }),
+    ).toBeNull();
   });
 
   // R3's sharp edge: an unforecast issue is unscored, not scored generously.
@@ -250,6 +354,9 @@ describe("UsagePage", () => {
     renderPage();
 
     await user.click(scanButton());
+    // Turns and cache-read are detail columns since #271, so this is the state
+    // the assertion below is about rather than the page's default.
+    await user.click(detailToggle());
 
     const cells = await cellsOf(1);
     expect(cells[CELL.out]).toHaveTextContent("20,000");
@@ -292,6 +399,10 @@ describe("UsagePage", () => {
     renderPage();
 
     await user.click(scanButton());
+    // All four figures are the claim here, and three of them are detail
+    // columns — an assertion that only reached `out` would be a weaker test
+    // than the one #251 earned.
+    await user.click(detailToggle());
 
     const cells = await cellsOf(1);
     const comparison = cells[CELL.comparison]!;
