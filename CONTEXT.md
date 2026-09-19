@@ -184,6 +184,9 @@ reason. The word does double duty and the two senses are worth holding apart:
 under Outcome, "a verdict was reached" means something was decided about the
 ticket, and a repeat where nothing was lands on abandoned. A verdict in this
 sense is recorded either way, because a run has to say where every repeat went.
+The dev-only Usage page's under / on target / over is a third, unrelated sense —
+how an issue's token spend read against its forecast band — and shares nothing
+with this one but the word; see `USAGE_COLUMNS` in `apps/web/src/dev/protocol.ts`.
 _Avoid_: result, score, pass, judgement (judging belongs to a Threshold)
 
 **Schedule**:

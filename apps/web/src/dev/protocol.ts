@@ -443,24 +443,32 @@ export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
  *
  * Here, in the import-free contract, for the reason `ROUTE` is in an
  * import-free `routes.ts`: two tests index a row by position, and a column
- * inserted in `UsagePage.tsx` would otherwise leave each of them asserting
- * against a neighbouring cell with nothing failing. `UsagePage.tsx` keys its
+ * inserted in `SpendTable.tsx` would otherwise leave each of them asserting
+ * against a neighbouring cell with nothing failing. `SpendTable.tsx` keys its
  * column definitions by these names and renders them in this order, so the
  * order the page prints and the order a test counts are one list; a name added
  * here without a definition, or a definition without a name, does not compile.
  * `tests/e2e/dev-usage.spec.ts` reaches in here the same way
  * `route-timing.spec.ts` reaches into `routes.ts`.
  *
- * Forecast sits immediately left of the actual and the bucket immediately
- * right, so the comparison the verdict states is legible without it: band aimed
- * at, tokens spent, band landed in, and only then the word.
+ * **`comparison` is one cell carrying three former columns** (#270): the band
+ * that was forecast, the band the actual landed in, and the verdict reading one
+ * against the other. They were `forecast`, `out`, `bucket`, `verdict` across
+ * four columns, which is the comparison spelled out at the cost of a table
+ * nobody could read without scrolling sideways. Merged, the spend the page
+ * exists to report still sits on its own in `out`, and the sentence about it
+ * reads in one place: `M 60-150k → S <60k` and then the word.
+ *
+ * What the merge must not cost is the distinction the page is built on. The two
+ * halves fail for different reasons and are still told apart — an absent
+ * forecast means `gh` could not say, an absent landed band means no work has
+ * been recorded — and neither may ever be rendered as a zero or a default band.
+ * See `Comparison` in `SpendTable.tsx`.
  */
 export const USAGE_COLUMNS = [
   "title",
-  "forecast",
   "out",
-  "bucket",
-  "verdict",
+  "comparison",
   "turns",
   "sessions",
   "cacheRead",

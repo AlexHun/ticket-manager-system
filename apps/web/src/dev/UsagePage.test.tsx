@@ -152,6 +152,19 @@ describe("UsagePage", () => {
   const cellsOf = async (n: number) =>
     within((await screen.findAllByRole("row"))[n]!).getAllByRole("cell");
 
+  /**
+   * The two halves of the merged comparison cell, in the order they read: the
+   * band forecast, then the band the spend landed in.
+   *
+   * Only the halves that are *absent* are addressed this way — a present band
+   * is asserted by its text — so this returns the markers, and which index a
+   * marker carries is what says which absence it is. That ordering is the cell's
+   * contract, not an accident of the DOM: `Comparison` renders forecast, arrow,
+   * landed, verdict, and a cell that put them the other way round would read as
+   * the spend having been forecast from the actual.
+   */
+  const markersIn = (cell: HTMLElement) => within(cell).getAllByText("—");
+
   test("links each row's title to the issue on GitHub", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -167,20 +180,36 @@ describe("UsagePage", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
-  test("shows the band it was forecast into, the band it landed in, and the verdict", async () => {
+  /**
+   * R3/R4 (#270): the whole comparison in one cell, and the table seven columns
+   * wide rather than nine.
+   *
+   * The sentence is what is asserted, not three neighbouring cells: band aimed
+   * at, band landed in, and only then the word — with the letter and the range
+   * together each time, because the letter alone is jargon and the range alone
+   * does not match the label on the issue.
+   */
+  test("reads the forecast, the landed band and the verdict as one cell", async () => {
     const user = userEvent.setup();
     renderPage();
 
     await user.click(scanButton());
 
     const cells = await cellsOf(1);
-    // The letter and the range together: the letter alone is jargon, and the
-    // range alone does not match the label on the issue.
-    expect(cells[CELL.forecast]).toHaveTextContent("M");
-    expect(cells[CELL.forecast]).toHaveTextContent("60-150k");
-    expect(cells[CELL.bucket]).toHaveTextContent("S");
-    expect(cells[CELL.bucket]).toHaveTextContent("<60k");
-    expect(cells[CELL.verdict]).toHaveTextContent("under");
+    // Six cells and the issue rowheader: seven columns, down from nine.
+    expect(cells).toHaveLength(USAGE_COLUMNS.length);
+    expect(
+      within((await screen.findAllByRole("row"))[0]!).getAllByRole(
+        "columnheader",
+      ),
+    ).toHaveLength(USAGE_COLUMNS.length + 1);
+
+    const comparison = cells[CELL.comparison]!;
+    expect(comparison).toHaveTextContent("M 60-150k");
+    expect(comparison).toHaveTextContent("S <60k");
+    expect(comparison).toHaveTextContent("under");
+    // Nothing is missing here, so neither marker is standing in for anything.
+    expect(within(comparison).queryByText("—")).toBeNull();
   });
 
   // R3's sharp edge: an unforecast issue is unscored, not scored generously.
@@ -196,9 +225,12 @@ describe("UsagePage", () => {
     await user.click(scanButton());
 
     const cells = await cellsOf(1);
-    expect(cells[CELL.forecast]).toHaveTextContent("—");
-    expect(cells[CELL.verdict]).toHaveTextContent("—");
-    expect(cells[CELL.verdict]).not.toHaveTextContent(/target|over|under/);
+    const comparison = cells[CELL.comparison]!;
+    // One marker, on the forecast half — and the band it landed in beside it,
+    // since that is the row's own arithmetic and owes `gh` nothing.
+    expect(markersIn(comparison)).toHaveLength(1);
+    expect(comparison).toHaveTextContent("S <60k");
+    expect(comparison).not.toHaveTextContent(/target|over|under/);
     // The title still came from `gh`; only the label was missing.
     expect(cells[CELL.title]).toHaveTextContent(/Usage page/);
   });
@@ -223,10 +255,13 @@ describe("UsagePage", () => {
     expect(cells[CELL.out]).toHaveTextContent("20,000");
     expect(cells[CELL.turns]).toHaveTextContent("2");
     expect(cells[CELL.cacheRead]).toHaveTextContent("400,000");
-    // Derived from the figures, so it survives a `gh` that does not.
-    expect(cells[CELL.bucket]).toHaveTextContent("S");
+    const comparison = cells[CELL.comparison]!;
+    // The landed band is derived from the figures, so it survives a `gh` that
+    // does not — and the forecast half is the one marker in the cell.
+    expect(comparison).toHaveTextContent("S <60k");
+    expect(markersIn(comparison)).toHaveLength(1);
+    expect(comparison).not.toHaveTextContent(/target|over|under/);
     expect(cells[CELL.title]).toHaveTextContent("—");
-    expect(cells[CELL.forecast]).toHaveTextContent("—");
     expect(screen.queryByRole("link", { name: /Usage page/ })).toBeNull();
     expect(await screen.findByText(/gh` could not list/)).toBeInTheDocument();
   });
@@ -259,31 +294,36 @@ describe("UsagePage", () => {
     await user.click(scanButton());
 
     const cells = await cellsOf(1);
+    const comparison = cells[CELL.comparison]!;
     // What `gh` knows is all there is, and it is all shown.
-    expect(cells[CELL.forecast]).toHaveTextContent("L");
-    expect(cells[CELL.forecast]).toHaveTextContent("150-250k");
+    expect(comparison).toHaveTextContent("L 150-250k");
     expect(
       await screen.findByRole("link", { name: /Not started yet/ }),
     ).toBeVisible();
-    // Every figure is empty rather than zero, the bucket with them: there is no
-    // band to land in until something has been spent.
-    for (const column of ["out", "turns", "sessions", "cacheRead", "bucket"])
+    // Every figure is empty rather than zero, and so is the half of the
+    // comparison that would carry a band: there is none to land in until
+    // something has been spent, and no verdict to read against the forecast.
+    for (const column of ["out", "turns", "sessions", "cacheRead"])
       expect(cells[CELL[column as UsageColumn]]).toHaveTextContent("—");
-    expect(cells[CELL.verdict]).toHaveTextContent("—");
-    expect(cells[CELL.verdict]).not.toHaveTextContent(/target|over|under/);
+    expect(markersIn(comparison)).toHaveLength(1);
+    expect(comparison).not.toHaveTextContent(/target|over|under/);
+    // Above all, not a band the page picked for it.
+    expect(comparison).not.toHaveTextContent("<60k");
   });
 
   /**
    * The two absences render as the same em dash, so the words behind them are
-   * the only thing that tells a reader which one they are looking at.
+   * the only thing that tells a reader which one they are looking at — and
+   * since #270 both can sit inside the *same cell*, an inch apart.
    *
    * One row carries both, which is what makes this an assertion about the
    * *distinction* rather than about one marker: nothing has been spent on it
-   * (so every figure is `NotStarted`) and `gh` supplied no band for it (so the
-   * forecast is `Unknown`). Asserting only the first would pass just as well if
-   * the page rendered one marker everywhere.
+   * (so every figure and the landed band are `NotStarted`) and `gh` supplied no
+   * band for it (so the forecast half is `Unknown`). Asserting only one would
+   * pass just as well if the merged cell had collapsed them into one marker,
+   * which is exactly the failure the merge risks.
    */
-  const hoverDash = async (column: UsageColumn) => {
+  const bothAbsent = async () => {
     const user = userEvent.setup();
     post.mockResolvedValue({
       data: makeReport({
@@ -300,25 +340,43 @@ describe("UsagePage", () => {
     renderPage();
 
     await user.click(scanButton());
-    const cells = await cellsOf(1);
-    // The dash itself is the tooltip's trigger, so it is what a pointer lands
-    // on — and reaching it by its text keeps the test off `Hint`'s internals.
-    await user.hover(within(cells[CELL[column]]!).getByText("—"));
+    return { user, cells: await cellsOf(1) };
   };
 
-  // Two tests rather than two hovers in one: Radix keeps the open tooltip's
+  // Three tests rather than three hovers in one: Radix keeps the open tooltip's
   // state on its provider, so a second trigger hovered in the same render does
-  // not open. A fresh render per marker is the honest way to ask.
+  // not open. A fresh render per marker is the honest way to ask. The dash
+  // itself is the tooltip's trigger, so it is what a pointer lands on — and
+  // reaching it by its text keeps these off `Hint`'s internals.
   test("says a figure nobody has spent is unrecorded", async () => {
-    await hoverDash("out");
+    const { user, cells } = await bothAbsent();
+
+    await user.hover(within(cells[CELL.out]!).getByText("—"));
 
     expect(await screen.findByText(/no recorded work/i)).toBeInTheDocument();
   });
 
   test("says a band gh could not supply is unknown", async () => {
-    await hoverDash("forecast");
+    const { user, cells } = await bothAbsent();
+    const comparison = cells[CELL.comparison]!;
+    // Both halves are dashed on this row, which is the point: the forecast is
+    // the first, and it must not be the same marker as the one beside it.
+    expect(markersIn(comparison)).toHaveLength(2);
+
+    await user.hover(markersIn(comparison)[0]!);
 
     expect(await screen.findByText(/gh could not supply/i)).toBeInTheDocument();
+  });
+
+  test("says the band an unstarted issue landed in is unrecorded", async () => {
+    const { user, cells } = await bothAbsent();
+
+    await user.hover(markersIn(cells[CELL.comparison]!)[1]!);
+
+    expect(await screen.findByText(/no recorded work/i)).toBeInTheDocument();
+    // And not the other marker's words, which is the assertion that would fail
+    // if the cell rendered one `Unknown` for both halves.
+    expect(screen.queryByText(/gh could not supply/i)).toBeNull();
   });
 
   test("states when the figures were gathered and what was read", async () => {
