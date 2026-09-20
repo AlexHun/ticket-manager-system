@@ -1,7 +1,9 @@
-import { test, expect, type Locator } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   USAGE_COLUMNS,
+  USAGE_DETAIL_LABEL,
+  USAGE_SPINE,
   type UsageColumn,
 } from "../../apps/web/src/dev/protocol";
 import {
@@ -13,9 +15,9 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
  * Slices 1 to 5 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
- * #252, #253) and slice 1 of `docs/plans/usage-table-legibility.md` (#270), end
- * to end: page → dev middleware → `apps/web/dev/usage.ts` and `issues.ts` → the
- * filesystem, all real.
+ * #252, #253) and slices 1 and 2 of `docs/plans/usage-table-legibility.md`
+ * (#270, #271), end to end: page → dev middleware → `apps/web/dev/usage.ts` and
+ * `issues.ts` → the filesystem, all real.
  *
  * It is the whole reason both sources got a resolver with an environment
  * override. Neither is something an assertion can name — a machine's spend is
@@ -79,13 +81,40 @@ const CHARTS = {
 } as const;
 
 /** Where a named column sits in a row. Read off `USAGE_COLUMNS` — the same list
- *  `UsagePage.tsx` renders from — rather than counted here, for the reason
+ *  `SpendTable.tsx` renders from — rather than counted here, for the reason
  *  `route-timing.spec.ts` imports its mark names instead of retyping them: a
  *  bare index goes stale silently when a column is inserted, and these
- *  assertions would then be checking a neighbouring cell. */
+ *  assertions would then be checking a neighbouring cell.
+ *
+ *  **One map for both states, because the detail columns append** (#271). The
+ *  spine occupies the same indices whether the toggle is on or off, so the
+ *  entries past `USAGE_SPINE.length` are simply the ones that need the toggle
+ *  pressed first. A second map per state is exactly what `USAGE_SPINE` /
+ *  `USAGE_DETAIL` exist to avoid. */
 const CELL = Object.fromEntries(
   USAGE_COLUMNS.map((name, i) => [name, i]),
 ) as Record<UsageColumn, number>;
+
+/**
+ * The one control that appends turns, sessions and cache-read (#271), and the
+ * press of it.
+ *
+ * Reached by its accessible name, which is imported rather than retyped — the
+ * same reason this file imports `USAGE_COLUMNS` instead of counting columns,
+ * and the same failure `route-timing.spec.ts` records: a spec that restates the
+ * string cannot catch a rename of it. The press asserts `aria-pressed` before
+ * anything reads the columns it produced, so a click that silently did nothing
+ * fails here rather than as a confusing cell-index mismatch three assertions
+ * later.
+ */
+const detailToggle = (page: Page) =>
+  page.getByRole("button", { name: USAGE_DETAIL_LABEL });
+
+const showDetailColumns = async (page: Page) => {
+  const toggle = detailToggle(page);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+};
 
 /** The em dash the page renders for anything it has no value for \u2014 `gh` could
  *  not supply it, or no work has been recorded against the issue yet. */
@@ -176,6 +205,9 @@ test.describe("dev tools: Usage", () => {
 
     const table = page.getByRole("region", { name: "Issue spend" });
     await expect(table).toBeVisible();
+    // All four of `#101`'s figures are the claim here, and three of them are
+    // detail columns since #271.
+    await showDetailColumns(page);
 
     const rows = table.getByRole("row");
     // Header, #101, #102, and the open issue nobody has started — and nothing
@@ -233,8 +265,9 @@ test.describe("dev tools: Usage", () => {
     await expect(link).toHaveAttribute("target", "_blank");
 
     const cells = first.getByRole("cell");
-    // Seven columns: six cells and the issue rowheader.
-    await expect(cells).toHaveCount(USAGE_COLUMNS.length);
+    // The spine, which is what a scan opens on: three cells and the issue
+    // rowheader.
+    await expect(cells).toHaveCount(USAGE_SPINE.length);
 
     const comparison = cells.nth(CELL.comparison);
     // Band aimed at, band landed in, and the word comparing them — in one cell.
@@ -242,6 +275,139 @@ test.describe("dev tools: Usage", () => {
     await expect(comparison.getByText("<60k", { exact: true })).toHaveCount(2);
     await expect(comparison).toContainText("on target");
     await expect(markerIn(comparison)).toHaveCount(0);
+  });
+
+  /**
+   * R1/R2, slice 2 (#271): the table opens on its spine, and one control brings
+   * the rest back.
+   *
+   * Counted against the two contract lists rather than against 4 and 7, for the
+   * reason `CELL` is read off `USAGE_COLUMNS`: a column moved between the spine
+   * and the detail has to fail here rather than quietly re-point every index
+   * below it. The header row carries one more than the body in both states —
+   * the issue number is a `columnheader` above and a `rowheader` beside each
+   * row, because it names what every figure on the row is about.
+   *
+   * The last assertion is the one the two-list contract exists for: a spine
+   * cell reads the same and sits at the same index in both states, because the
+   * detail columns **append**. Held on the cell's contents and not on its index
+   * alone — an index that matched while the cell beside it had shifted is
+   * exactly the failure a positional contract is meant to make impossible, and
+   * a count cannot see it.
+   */
+  test("opens on four columns and appends the other three on one press", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    await expect(table).toBeVisible();
+    const header = table.getByRole("row").nth(0);
+    const first = table.getByRole("row").nth(1);
+
+    await expect(first.getByRole("cell")).toHaveCount(USAGE_SPINE.length);
+    await expect(header.getByRole("columnheader")).toHaveCount(
+      USAGE_SPINE.length + 1,
+    );
+    await expect(
+      header.getByRole("columnheader", { name: /cache read/i }),
+    ).toHaveCount(0);
+
+    const spine = await first.getByRole("cell").allTextContents();
+
+    await showDetailColumns(page);
+
+    await expect(first.getByRole("cell")).toHaveCount(USAGE_COLUMNS.length);
+    await expect(header.getByRole("columnheader")).toHaveCount(
+      USAGE_COLUMNS.length + 1,
+    );
+    for (const heading of [/turns/i, /sessions/i, /cache read/i]) {
+      await expect(
+        header.getByRole("columnheader", { name: heading }),
+      ).toBeVisible();
+    }
+    // Same cells, same indices, and the appended three really are the ones that
+    // were hidden.
+    expect(
+      (await first.getByRole("cell").allTextContents()).slice(
+        0,
+        USAGE_SPINE.length,
+      ),
+    ).toEqual(spine);
+    const cells = first.getByRole("cell");
+    await expect(cells.nth(CELL.out)).toHaveText(EXPECTED.issue101.out);
+    await expect(cells.nth(CELL.turns)).toHaveText(EXPECTED.issue101.turns);
+    await expect(cells.nth(CELL.cacheRead)).toHaveText(
+      EXPECTED.issue101.cacheRead,
+    );
+
+    // And back: the control removes them again rather than being a one-way
+    // door.
+    const toggle = detailToggle(page);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(first.getByRole("cell")).toHaveCount(USAGE_SPINE.length);
+  });
+
+  /**
+   * R1, and the assertion the whole slice is judged by.
+   *
+   * The complaint was not "nine columns"; it was that the table was wider than
+   * the space the page had, so `cacheRead` sat off-screen behind a horizontal
+   * scroll nothing announced. A column count cannot say whether that is fixed —
+   * four wide columns would fail just as badly — so this measures the scroller
+   * itself: `TableFrame` is the `overflow-auto` element, and a `scrollWidth`
+   * within its `clientWidth` is the browser saying there is nothing to scroll
+   * to. `clientWidth` already excludes a vertical scrollbar, which is what makes
+   * the two comparable.
+   *
+   * The viewport is set here rather than inherited from `devices["Desktop
+   * Chrome"]` because 1280px is the claim, not a coincidence of the project's
+   * device — a future change to that default must not quietly weaken this.
+   *
+   * **What it does not prove, measured rather than assumed.** Both states
+   * report `scrollWidth` 1248 against `clientWidth` 1248 on this fixture, so
+   * this test would pass with the toggle pressed — and that is not a fact about
+   * four short fixture rows. The same measurement against a real scan on
+   * 2026-09-19 (103 issues, 152 transcripts, 1280px) reads 1218/1218 in *both*
+   * states: seven columns already fit. `Title` is capped at `max-w-[26rem]` and
+   * truncates, so a long title never widens anything, and the horizontal scroll
+   * the PRD is about was *nine* columns — removed by #270's merged comparison
+   * cell, not by #271's toggle.
+   *
+   * So what this holds is the default table's own width against a regression: a
+   * `min-w` on the `<table>`, a column escaping that cap, a fifth column added
+   * to the spine. Read it as a guard, not as evidence that hiding three columns
+   * bought the room.
+   *
+   * The asymmetry is deliberate for the same reason. Nothing asserts the
+   * opposite once the detail columns are shown: they are *allowed* to
+   * reintroduce the scroll, and today they do not, so an assertion that they do
+   * would fail on the honest state of the page.
+   */
+  test("does not scroll sideways at 1280px on its default columns", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    await expect(table).toBeVisible();
+
+    const width = await table.evaluate((frame) => ({
+      scroll: frame.scrollWidth,
+      client: frame.clientWidth,
+    }));
+    expect(width.scroll).toBeLessThanOrEqual(width.client);
+    // And the window itself did not grow one instead, which is the other way a
+    // too-wide table reads as fitting.
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
   });
 
   /**
@@ -299,6 +465,11 @@ test.describe("dev tools: Usage", () => {
     await page.getByRole("button", { name: "Scan" }).click();
 
     const table = page.getByRole("region", { name: "Issue spend" });
+    await expect(table).toBeVisible();
+    // Every figure must be empty rather than zero, so every figure has to be on
+    // screen to be asserted about.
+    await showDetailColumns(page);
+
     // Last, not third: the issues with spend come first whatever they cost, so
     // an empty actual is never read as a small one.
     const row = table.getByRole("row").nth(3);
@@ -365,6 +536,8 @@ test.describe("dev tools: Usage", () => {
     await page.getByRole("button", { name: "Scan" }).click();
 
     const table = page.getByRole("region", { name: "Issue spend" });
+    await expect(table).toBeVisible();
+    await showDetailColumns(page);
     const first = table.getByRole("row").nth(1);
     const cells = first.getByRole("cell");
 
@@ -554,6 +727,10 @@ test.describe("dev tools: Usage", () => {
     const rows = page
       .getByRole("region", { name: "Issue spend" })
       .getByRole("row");
+    await expect(rows).toHaveCount(4);
+    // `turns` is a detail column, and it is half of what says the `main` turn
+    // was not absorbed.
+    await showDetailColumns(page);
     await expect(rows.nth(1).getByRole("cell").nth(CELL.out)).toHaveText(
       EXPECTED.issue101.out,
     );

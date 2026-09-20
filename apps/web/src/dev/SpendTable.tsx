@@ -1,13 +1,16 @@
-import { type ReactNode } from "react";
-import { ArrowRight, ExternalLink } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ArrowRight, Columns3, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Hint } from "@/components/Hint";
+import { Toggle } from "@/components/ui/toggle";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { formatTokens } from "./usage-charts";
 import {
-  BUCKETS,
   USAGE_COLUMNS,
+  USAGE_DETAIL_LABEL,
+  USAGE_SPINE,
+  BUCKETS,
   VERDICT,
   type Bucket,
   type IssueSpend,
@@ -252,9 +255,20 @@ const COLUMNS: Record<UsageColumn, Column> = {
   },
 };
 
-/** The columns as the table walks them: `USAGE_COLUMNS`'s order, `COLUMNS`'s
- *  definitions. One list for the header and the body both. */
-const ORDERED = USAGE_COLUMNS.map((name) => COLUMNS[name]);
+/**
+ * The columns the table walks, for a given answer to "show the detail three?".
+ *
+ * `USAGE_SPINE`'s order or `USAGE_COLUMNS`'s, `COLUMNS`'s definitions — one
+ * list driving the header and the body both, in either state. The detail
+ * columns **append**, which is the property the two positional suites rest on:
+ * a spine cell sits at the same index whether the toggle is on or off, so one
+ * index map read off `USAGE_COLUMNS` serves both. See `USAGE_DETAIL` in
+ * `./protocol` for why that is two lists rather than one list with a flag.
+ */
+const columnsShown = (detail: boolean) =>
+  (detail ? USAGE_COLUMNS : USAGE_SPINE).map(
+    (name) => [name, COLUMNS[name]] as const,
+  );
 
 /**
  * Every issue worth looking at, biggest spend first — and, after them, the open
@@ -274,10 +288,36 @@ const ORDERED = USAGE_COLUMNS.map((name) => COLUMNS[name]);
  * filing them among the cheapest issues is where they would read as work that
  * cost almost nothing.
  *
+ * **Four columns by default, and one control for the other three** (#271). The
+ * spine is the issue, its title, the spend and the comparison; `turns`,
+ * `sessions` and `cacheRead` come back on one press and are allowed to
+ * reintroduce a horizontal scroll, because by then it is something the
+ * developer asked for and `TableFrame` makes the scroller reachable (#111).
+ *
+ * **What this buys is less to read, and measurably not less to scroll.**
+ * Measured 2026-09-19 against a real scan — 103 issues, 152 transcripts, at a
+ * 1280px window — the frame reports `scrollWidth` 1218 against `clientWidth`
+ * 1218 in *both* states: seven columns already fit. The horizontal scroll the
+ * PRD is about was nine columns wide, and #270 is what removed it, by merging
+ * the forecast, the landed band and the verdict into one cell. Do not read this
+ * toggle as the fix for the width, and do not take the E2E's scroll-width
+ * assertion (`dev-usage.spec.ts`) as saying otherwise — its own doc comment says
+ * what it holds. A fifth column in the spine is where that assertion starts
+ * earning its keep.
+ *
+ * The state is `useState` here rather than lifted to the page or persisted:
+ * nothing else on the page reads it, and the scan it describes does not survive
+ * a reload either (see `UsageReport` in `./protocol`), so a preference restored
+ * over an empty table would be describing rows that are not there.
+ *
  * Sortable headers belong here eventually — `ModuleTable` next door is the shape
  * to copy — but not while there is one column anybody ranks by.
  */
 export function SpendTable({ issues }: { issues: IssueUsage[] }) {
+  const [detail, setDetail] = useState(false);
+
+  // No control on the empty state, and deliberately: it widens a table that has
+  // no cells to widen, and the sentence beside it is the answer to why.
   if (issues.length === 0) {
     return (
       <TableFrame label="Issue spend" className="grid place-items-center p-6">
@@ -291,66 +331,90 @@ export function SpendTable({ issues }: { issues: IssueUsage[] }) {
     );
   }
 
+  const columns = columnsShown(detail);
+
   return (
-    <TableFrame label="Issue spend" className="max-h-[70dvh]">
-      <table className="w-full text-sm">
-        <thead className="text-muted-foreground">
-          <tr>
-            <th
-              scope="col"
-              className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium"
-            >
-              <Hint content="GitHub issue number, taken from the branch name">
-                <span>Issue</span>
-              </Hint>
-            </th>
-            {ORDERED.map((column) => (
+    <div className="space-y-2">
+      {/* Above the table, and the only control over it — so it sits on the row
+          the search box and the facet filters will share with it later. A
+          shadcn `Toggle`, the same `variant="outline"` pair the project map's
+          filter bar wears: it is a button carrying `aria-pressed`, which is
+          what says the columns are hidden rather than gone. The chip is short
+          enough to sit above a table and the `aria-label` is what names the
+          three columns it is about. */}
+      <div className="flex items-center justify-end">
+        <Toggle
+          variant="outline"
+          size="sm"
+          pressed={detail}
+          onPressedChange={setDetail}
+          aria-label={USAGE_DETAIL_LABEL}
+        >
+          <Columns3 aria-hidden="true" />
+          Detail columns
+        </Toggle>
+      </div>
+
+      <TableFrame label="Issue spend" className="max-h-[70dvh]">
+        <table className="w-full text-sm">
+          <thead className="text-muted-foreground">
+            <tr>
               <th
-                key={column.label}
                 scope="col"
-                className={cn(
-                  "sticky top-0 z-10 bg-muted px-3 py-2 font-medium",
-                  column.numeric ? "text-right" : "text-left",
-                )}
+                className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium"
               >
-                {/* `ModuleTable` next door puts the hint on the sort button;
-                    there is nothing to sort here yet, so it wraps the label. */}
-                <Hint content={column.title}>
-                  <span>{column.label}</span>
+                <Hint content="GitHub issue number, taken from the branch name">
+                  <span>Issue</span>
                 </Hint>
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {issues.map((row) => (
-            <tr key={row.issue} className="border-t border-border">
-              {/* A row header, not a cell: the issue number is what every
-                  figure on the row is about, so a screen reader announcing a
-                  cell announces which issue it belongs to. */}
-              <th
-                scope="row"
-                className="px-3 py-1.5 text-left font-mono font-normal tabular-nums"
-              >
-                #{row.issue}
-              </th>
-              {ORDERED.map((column) => (
-                <td
-                  key={column.label}
+              {columns.map(([name, column]) => (
+                <th
+                  key={name}
+                  scope="col"
                   className={cn(
-                    "px-3 py-1.5",
-                    column.numeric && "text-right tabular-nums",
-                    column.lead && "font-medium",
-                    column.muted && "text-muted-foreground",
+                    "sticky top-0 z-10 bg-muted px-3 py-2 font-medium",
+                    column.numeric ? "text-right" : "text-left",
                   )}
                 >
-                  {column.render(row)}
-                </td>
+                  {/* `ModuleTable` next door puts the hint on the sort button;
+                    there is nothing to sort here yet, so it wraps the label. */}
+                  <Hint content={column.title}>
+                    <span>{column.label}</span>
+                  </Hint>
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </TableFrame>
+          </thead>
+          <tbody>
+            {issues.map((row) => (
+              <tr key={row.issue} className="border-t border-border">
+                {/* A row header, not a cell: the issue number is what every
+                  figure on the row is about, so a screen reader announcing a
+                  cell announces which issue it belongs to. */}
+                <th
+                  scope="row"
+                  className="px-3 py-1.5 text-left font-mono font-normal tabular-nums"
+                >
+                  #{row.issue}
+                </th>
+                {columns.map(([name, column]) => (
+                  <td
+                    key={name}
+                    className={cn(
+                      "px-3 py-1.5",
+                      column.numeric && "text-right tabular-nums",
+                      column.lead && "font-medium",
+                      column.muted && "text-muted-foreground",
+                    )}
+                  >
+                    {column.render(row)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableFrame>
+    </div>
   );
 }

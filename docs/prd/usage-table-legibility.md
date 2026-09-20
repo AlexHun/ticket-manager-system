@@ -27,12 +27,24 @@ hundred**.
 
 ## Success metrics
 
-| Metric                                                               | Today                               | Target                                              |
-| -------------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------- |
-| **Columns readable without horizontal scrolling** at a 1280px window | 8 of 9 — `Cache read` is off-screen | 4 of 4, with the other 3 opt-in                     |
-| Ways to rank the 98 rows                                             | 1 — the server's order, fixed       | 4 sortable columns, both directions                 |
-| Actions to isolate every issue that came in over forecast            | scan 98 rows by eye                 | 1                                                   |
-| _Guardrail:_ the forecast-accuracy figure                            | 1/8 on target (13%)                 | reads identically whatever the table is filtered to |
+**The first row's "Today" was wrong, and was corrected once it was measured**
+(2026-09-19, while building #271). Two premises behind it do not hold: `/__dev`
+sits outside `AppShell`, so there is no ~256px sidebar taking width — the dev
+nav is a horizontal bar — and `Title` is capped at `max-w-[26rem]` and
+truncates, so a long title never widens the table. Against a real scan (103
+issues, a 1280px window) the table's frame reports `scrollWidth` 1218 against
+`clientWidth` 1218 with **all seven** columns shown; on the E2E fixture both
+states read 1248/1248. So nothing is off-screen today, and #270's merged
+comparison cell is what removed the scroll the paragraph above describes — not
+#271's toggle, which buys less to _read_ rather than less to scroll. The target
+is unchanged and worth having on that narrower ground.
+
+| Metric                                                               | Today                         | Target                                              |
+| -------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------- |
+| **Columns readable without horizontal scrolling** at a 1280px window | 9 of 9 — see the note below   | 4 of 4, with the other 3 opt-in                     |
+| Ways to rank the 98 rows                                             | 1 — the server's order, fixed | 4 sortable columns, both directions                 |
+| Actions to isolate every issue that came in over forecast            | scan 98 rows by eye           | 1                                                   |
+| _Guardrail:_ the forecast-accuracy figure                            | 1/8 on target (13%)           | reads identically whatever the table is filtered to |
 
 The guardrail is the one that matters most. The accuracy figure describes the
 scan, not the view, and it is the number somebody might quote — a filter that
