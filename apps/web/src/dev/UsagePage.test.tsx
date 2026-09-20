@@ -991,6 +991,53 @@ describe("UsagePage sorting", () => {
   });
 
   /**
+   * A ranking with nothing left to announce it is the state this rule exists
+   * to make unreachable.
+   *
+   * `turns` only has a header while the detail columns are shown, so hiding
+   * them while the table is ranked by it would leave the rows in an order with
+   * no arrow, no `aria-sort` and nothing on screen saying why. Going back to
+   * the order the rows arrived in is the one outcome that can still be
+   * announced, and it happens in the same gesture that caused it.
+   */
+  test("returns to the default ranking when the column it ranked by is hidden", async () => {
+    const user = await scanned();
+    await spendTable();
+    await user.click(detailToggle());
+    await sortBy(user, "Turns");
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+
+    await user.click(detailToggle());
+
+    expect(await issueOrder()).toEqual(["#101", "#102", `#${UNSTARTED}`]);
+    expect(header("Output tokens")).toHaveAttribute("aria-sort", "descending");
+    expect(screen.queryByRole("columnheader", { name: /turns/i })).toBeNull();
+  });
+
+  /**
+   * The other half of the same rule, and the reason both pieces of state sit on
+   * the page rather than only the sort.
+   *
+   * A sort on a detail column that came back from a re-scan without the column
+   * beside it would satisfy "the chosen sort survives" and break "the active
+   * column shows its direction" in the same render.
+   */
+  test("keeps the detail columns, and a sort on one of them, across a re-scan", async () => {
+    const user = await scanned();
+    await spendTable();
+    await user.click(detailToggle());
+    await sortBy(user, "Sessions");
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+
+    await user.click(scanButton());
+
+    await waitFor(async () => expect(post).toHaveBeenCalledTimes(2));
+    expect(detailToggle()).toHaveAttribute("aria-pressed", "true");
+    expect(header("Sessions")).toHaveAttribute("aria-sort", "descending");
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+  });
+
+  /**
    * Sorting rearranges the rows and nothing else. The two charts read the whole
    * report, the unattributed total belongs to no row at all, and the line at the
    * top describes the reading rather than its arrangement — so all three have to

@@ -16,8 +16,8 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 /**
  * Slices 1 to 5 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
  * #252, #253) and slices 1 to 3 of `docs/plans/usage-table-legibility.md`
- * (#270, #271, #272), end to end: page → dev middleware → `apps/web/dev/usage.ts` and
- * `issues.ts` → the filesystem, all real.
+ * (#270, #271, #272), end to end: page → dev middleware →
+ * `apps/web/dev/usage.ts` and `issues.ts` → the filesystem, all real.
  *
  * It is the whole reason both sources got a resolver with an environment
  * override. Neither is something an assertion can name — a machine's spend is
@@ -833,6 +833,48 @@ test.describe("dev tools: Usage", () => {
     await expect(
       table.getByRole("columnheader", { name: "Output tokens" }),
     ).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  /**
+   * The detail columns and a sort on one of them survive together, which is the
+   * pair that has to travel rather than either alone.
+   *
+   * `turns` has no header at all while the detail columns are hidden, so a sort
+   * on it that came back from a re-scan without them would satisfy "the chosen
+   * sort survives" and leave the rows ranked by a column with no arrow and no
+   * `aria-sort` — a ranking with nothing on screen to explain it. The fixture's
+   * two spending rows disagree about turns and output tokens (`#101` has two
+   * turns and the larger spend, `#102` one turn and the smaller), so ascending
+   * by turns is visibly a different question from the default.
+   */
+  test("keeps the detail columns, and a sort on one of them, across a re-scan", async ({
+    page,
+  }) => {
+    const scan = page.getByRole("button", { name: "Scan" });
+    await scan.click();
+
+    const table = page.getByRole("region", { name: "Issue spend" });
+    await expect(table).toBeVisible();
+    await showDetailColumns(page);
+    const turns = () => table.getByRole("button", { name: "Turns" });
+    await turns().click();
+    await turns().click();
+
+    const ranked = ["#102", "#101", `#${FIXTURE_103!.number}`];
+    await expect(table.getByRole("rowheader")).toHaveText(ranked);
+
+    const gathered = page.getByText(/^Gathered at/);
+    const first = await gathered.locator("time").getAttribute("datetime");
+    await scan.click();
+    await expect
+      .poll(() => gathered.locator("time").getAttribute("datetime"))
+      .not.toBe(first);
+
+    await expect(detailToggle(page)).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      table.getByRole("columnheader", { name: "Turns" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    await expect(table.getByRole("rowheader")).toHaveText(ranked);
   });
 
   test("puts the scrollable table where a keyboard can reach it", async ({

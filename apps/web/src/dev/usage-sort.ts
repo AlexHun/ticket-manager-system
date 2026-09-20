@@ -24,28 +24,40 @@ import type { IssueSpend, IssueUsage } from "./protocol";
  * The columns a reader can rank by: the issue number, and each of the four
  * figures on a row's spend.
  *
- * A **set, not an order** — the order the table prints is `USAGE_COLUMNS` in
- * `./protocol`, and nothing here should be read as a second copy of it. It is a
- * list rather than a union alone so the test can walk every key and ask it the
- * one question that matters; `satisfies` is what ties the four figure names to
- * `IssueSpend`, so renaming a figure on the wire fails here rather than sorting
- * every row by `undefined`.
+ * **A record keyed by that union rather than a list of names, so it is
+ * exhaustive by construction.** A list could only be checked for *membership* —
+ * `satisfies readonly ("issue" | keyof IssueSpend)[]` says every name in it is
+ * real and nothing about the names left out, so a fifth figure added to
+ * `IssueSpend` would quietly arrive with no way to rank by it. Keyed, the same
+ * addition does not compile until it has been decided about. It also cannot
+ * name `title` or `comparison` at all, which is where the two deliberate
+ * exclusions below stop being a comment and start being a type.
  *
- * What is missing from it is deliberate. `title` is a name nobody ranks a spend
- * table by, and it can be absent (`gh` said nothing), which would need a second
- * sink rule beside the one this ticket is about; `comparison` is three facts in
- * one cell rather than a figure, and the band it would rank by is already the
+ * What is excluded is deliberate. `title` is a name nobody ranks a spend table
+ * by, and it can be absent (`gh` said nothing), which would need a second sink
+ * rule beside the one this module is about; `comparison` is three facts in one
+ * cell rather than a figure, and the band it would rank by is already the
  * distribution chart's question.
  */
-export const USAGE_SORT_KEYS = [
-  "issue",
-  "out",
-  "turns",
-  "sessions",
-  "cacheRead",
-] as const satisfies readonly ("issue" | keyof IssueSpend)[];
+const SORTABLE: Record<"issue" | keyof IssueSpend, true> = {
+  issue: true,
+  out: true,
+  turns: true,
+  sessions: true,
+  cacheRead: true,
+};
 
-export type UsageSortKey = (typeof USAGE_SORT_KEYS)[number];
+export type UsageSortKey = keyof typeof SORTABLE;
+
+/**
+ * The same set, walkable — which is what `usage-sort.test.ts` asks the sink of,
+ * key by key.
+ *
+ * A **set, not an order**: the order the table prints is `USAGE_COLUMNS` in
+ * `./protocol`, and nothing here should be read as a second copy of it. The
+ * cast is `Object.keys` losing what the record already knows.
+ */
+export const USAGE_SORT_KEYS = Object.keys(SORTABLE) as readonly UsageSortKey[];
 
 /** A column and a direction — the whole of what a header click decides. */
 export interface UsageSort {
@@ -114,12 +126,13 @@ const figureOf = (row: IssueUsage, key: UsageSortKey): number | null =>
  * A copy, because the rows belong to the report the page is holding and a scan
  * is a reading rather than a working set.
  */
+const started = (row: IssueUsage) => row.spend !== null;
+
 export function sortIssues(
   issues: IssueUsage[],
   { key, descending }: UsageSort,
 ): IssueUsage[] {
   return [...issues].sort((a, b) => {
-    const started = (row: IssueUsage) => row.spend !== null;
     if (started(a) !== started(b)) return started(a) ? -1 : 1;
 
     const left = figureOf(a, key);

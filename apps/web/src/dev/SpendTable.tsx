@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -13,6 +13,7 @@ import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { formatTokens } from "./usage-charts";
 import {
+  DEFAULT_USAGE_SORT,
   nextSort,
   sortIssues,
   type UsageSort,
@@ -20,6 +21,7 @@ import {
 } from "./usage-sort";
 import {
   USAGE_COLUMNS,
+  USAGE_DETAIL,
   USAGE_DETAIL_LABEL,
   USAGE_SPINE,
   BUCKETS,
@@ -188,17 +190,6 @@ interface Column {
   /** What the column means, on hover. */
   title: string;
   render: (row: IssueUsage) => ReactNode;
-  /**
-   * What clicking this column's header ranks the table by, when it can be
-   * ranked at all (#272).
-   *
-   * Absent on `title` and `comparison`, and the absence is the decision:
-   * `title` is a name nobody ranks a spend table by and can be missing
-   * entirely, which would need a second sink rule beside the one this table
-   * already carries; `comparison` is three facts in one cell rather than a
-   * figure. See `USAGE_SORT_KEYS` in `./usage-sort`.
-   */
-  sort?: UsageSortKey;
   /** Right-aligned and tabular — a figure rather than a word. */
   numeric?: boolean;
   /** The column this page exists for. */
@@ -206,6 +197,28 @@ interface Column {
   /** Muted — the figure that is not comparable to a forecast band. */
   muted?: boolean;
 }
+
+/**
+ * Which columns offer a sort, and which key each one ranks by — said once, in
+ * the type (#272).
+ *
+ * A column whose name is also a sort key **must** carry `sort`, and it must be
+ * its own name; every other column may not carry one at all. Written as an
+ * optional field instead, the two lists would be independent: dropping `sort`
+ * from `turns` would leave `usage-sort.ts`'s tests green while no header
+ * offered it, and a copy-pasted `sort: "turns"` on `cacheRead` would compile
+ * and rank the wrong column — neither of which any assertion here would see,
+ * because only some of the six have a header-level test.
+ *
+ * The exclusions are the same fact from the other side: `title` and
+ * `comparison` are not keys of `SORTABLE` in `./usage-sort`, so they cannot be
+ * given one by accident either.
+ */
+type ColumnDefinitions = {
+  [Name in UsageColumn]: Name extends UsageSortKey
+    ? Column & { sort: Name }
+    : Column & { sort?: never };
+};
 
 /**
  * What each column renders, keyed by name.
@@ -216,7 +229,7 @@ interface Column {
  * names is what keeps the two in step: a column defined here and left out of
  * that list does not compile, and neither does the reverse.
  */
-const COLUMNS: Record<UsageColumn, Column> = {
+const COLUMNS: ColumnDefinitions = {
   title: {
     label: "Title",
     title: "The issue on GitHub — the link opens it in a new tab",
@@ -297,6 +310,37 @@ const columnsShown = (detail: boolean) =>
     (name) => [name, COLUMNS[name]] as const,
   );
 
+/**
+ * How the developer is reading the table, as opposed to what the table is
+ * reading.
+ *
+ * One object rather than two pieces of state, because the two are not
+ * independent: a sort on `turns` means nothing without the column that
+ * announces it, and the rules below hold them together. It lives on
+ * `UsagePage` for a measured reason — see `SpendTable`'s own comment.
+ */
+export interface UsageTableView {
+  sort: UsageSort;
+  /** Whether `USAGE_DETAIL`'s three columns are appended (#271). */
+  detail: boolean;
+}
+
+export const DEFAULT_USAGE_TABLE_VIEW: UsageTableView = {
+  sort: DEFAULT_USAGE_SORT,
+  detail: false,
+};
+
+/**
+ * The sort keys that only exist while the detail columns are shown.
+ *
+ * Derived from the two contracts rather than listed again: `USAGE_DETAIL` says
+ * which columns those are and `COLUMNS` says what each ranks by, so a column
+ * moved between the spine and the detail needs no edit here.
+ */
+const DETAIL_SORT_KEYS = new Set<UsageSortKey>(
+  USAGE_DETAIL.map((name) => COLUMNS[name].sort),
+);
+
 /** The sticky header cell, shared by both kinds of heading below — the ones
  *  that rank the table and the two that do not. */
 const HEADER_CELL = "sticky top-0 z-10 bg-muted px-3 py-2 font-medium";
@@ -326,18 +370,19 @@ function HeaderCell({
   onSortChange,
 }: {
   label: string;
-  title: ReactNode;
+  title: string;
   numeric?: boolean;
   sortKey?: UsageSortKey;
   sort: UsageSort;
   onSortChange: (next: UsageSort) => void;
 }) {
-  const active = sortKey !== undefined && sort.key === sortKey;
+  const sortable = sortKey !== undefined;
+  const active = sortable && sort.key === sortKey;
   return (
     <th
       scope="col"
       aria-sort={
-        sortKey === undefined
+        !sortable
           ? undefined
           : active
             ? sort.descending
@@ -348,7 +393,7 @@ function HeaderCell({
       className={cn(HEADER_CELL, numeric ? "text-right" : "text-left")}
     >
       <Hint content={title}>
-        {sortKey === undefined ? (
+        {!sortable ? (
           <span>{label}</span>
         ) : (
           <button
@@ -433,15 +478,34 @@ function HeaderCell({
  */
 export function SpendTable({
   issues,
-  sort,
-  onSortChange,
+  view,
+  onViewChange,
 }: {
   issues: IssueUsage[];
-  sort: UsageSort;
-  onSortChange: (next: UsageSort) => void;
+  view: UsageTableView;
+  onViewChange: (next: UsageTableView) => void;
 }) {
-  const [detail, setDetail] = useState(false);
+  const { sort, detail } = view;
   const rows = useMemo(() => sortIssues(issues, sort), [issues, sort]);
+
+  const onSortChange = (next: UsageSort) =>
+    onViewChange({ ...view, sort: next });
+
+  /**
+   * Hiding the detail columns gives the table back its default ranking, when
+   * the sort was on one of them.
+   *
+   * The alternative is a table ranked by a column that is no longer on screen:
+   * no arrow, no `aria-sort`, nothing anywhere saying why the rows are in the
+   * order they are in. Returning to the order the rows arrived in is the one
+   * outcome that can still be announced — `Output tokens` takes its arrow back
+   * — and it is visible in the same gesture that caused it.
+   */
+  const onDetailChange = (next: boolean) =>
+    onViewChange({
+      detail: next,
+      sort: !next && DETAIL_SORT_KEYS.has(sort.key) ? DEFAULT_USAGE_SORT : sort,
+    });
 
   // No control on the empty state, and deliberately: it widens a table that has
   // no cells to widen, and the sentence beside it is the answer to why.
@@ -474,7 +538,7 @@ export function SpendTable({
           variant="outline"
           size="sm"
           pressed={detail}
-          onPressedChange={setDetail}
+          onPressedChange={onDetailChange}
           aria-label={USAGE_DETAIL_LABEL}
         >
           <Columns3 aria-hidden="true" />
@@ -492,7 +556,7 @@ export function SpendTable({
                   an unstarted row carries a value for. */}
               <HeaderCell
                 label="Issue"
-                title="GitHub issue number, taken from the branch name — click to rank by it"
+                title="GitHub issue number, taken from the branch name"
                 sortKey="issue"
                 sort={sort}
                 onSortChange={onSortChange}
