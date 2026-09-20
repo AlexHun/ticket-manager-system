@@ -308,5 +308,10 @@
     "version": "0.1.114",
     "date": "2026-09-20",
     "title": "A four-column spine for the Usage table, and a toggle for the rest (#271)"
+  },
+  {
+    "version": "0.1.115",
+    "date": "2026-09-20",
+    "title": "Sortable headers for the Usage table, and the unstarted sink (#272)"
   }
 ]
