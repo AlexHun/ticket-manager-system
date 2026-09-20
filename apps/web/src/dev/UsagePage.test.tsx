@@ -125,6 +125,19 @@ const scanned = async () => {
 const detailToggle = () =>
   screen.getByRole("button", { name: USAGE_DETAIL_LABEL });
 
+/**
+ * Where a named column sits in a row. Read off `USAGE_COLUMNS` rather than
+ * counted here: a bare index is exactly the literal that goes stale silently
+ * when a column is inserted, and these are the assertions that would then be
+ * checking a neighbour.
+ */
+const CELL = Object.fromEntries(
+  USAGE_COLUMNS.map((name, i) => [name, i]),
+) as Record<UsageColumn, number>;
+
+const cellsOf = async (n: number) =>
+  within((await screen.findAllByRole("row"))[n]!).getAllByRole("cell");
+
 beforeEach(() => {
   post.mockReset();
   post.mockResolvedValue({ data: makeReport() });
@@ -157,19 +170,6 @@ describe("UsagePage", () => {
     ).toBeVisible();
     expect(within(rows[2]!).getByText("3,000")).toBeVisible();
   });
-
-  /**
-   * Where a named column sits in a row. Read off `USAGE_COLUMNS` rather than
-   * counted here: a bare index is exactly the literal that goes stale silently
-   * when a column is inserted, and these are the assertions that would then be
-   * checking a neighbour.
-   */
-  const CELL = Object.fromEntries(
-    USAGE_COLUMNS.map((name, i) => [name, i]),
-  ) as Record<UsageColumn, number>;
-
-  const cellsOf = async (n: number) =>
-    within((await screen.findAllByRole("row"))[n]!).getAllByRole("cell");
 
   /** What each detail column's header reads, so the toggle test can name the
    *  three columns it appends instead of trusting a count to have appended the
@@ -820,6 +820,204 @@ describe("UsagePage charts", () => {
     // The first reading is gone rather than sitting beneath the second.
     expect(await panel("Forecast accuracy")).not.toHaveTextContent(
       /1\/2 on target/,
+    );
+  });
+});
+
+/**
+ * R5/R6, slice 3 (#272): the table ranks itself, and refuses to rank one row.
+ *
+ * The ordering rules themselves are `usage-sort.test.ts`'s — the sink asked of
+ * every key in both directions, the total order, the measured zero that is not
+ * an absence. What is asked here is everything that only exists once the rules
+ * are wired to a header: which column a click ranks by, what the header says
+ * about it, and whether the answer survives the next press of Scan.
+ *
+ * The rows are three because three is the smallest set that can tell a flip
+ * from a reversal *and* carry the row that must sink through both. `#102` has
+ * the smaller spend and the larger session count on purpose, so a sort by a
+ * detail column is visibly not the sort by output tokens.
+ */
+describe("UsagePage sorting", () => {
+  const UNSTARTED = 300;
+
+  const sortableReport = () =>
+    makeReport({
+      issues: [
+        makeIssue(),
+        makeIssue({
+          issue: 102,
+          spend: { out: 3_000, turns: 9, sessions: 4, cacheRead: 12_000 },
+          title: "A second issue",
+          url: "https://github.com/AlexHun/ticket-manager-system/issues/102",
+          forecast: "S",
+          verdict: "on target",
+        }),
+        makeIssue({
+          issue: UNSTARTED,
+          spend: null,
+          bucket: null,
+          verdict: null,
+          title: "Nobody has started this",
+          url: "https://github.com/AlexHun/ticket-manager-system/issues/300",
+          forecast: "L",
+        }),
+      ],
+    });
+
+  /** The column header cell, which is where the direction is announced. */
+  const header = (name: string) =>
+    screen.getByRole("columnheader", { name: new RegExp(`^${name}$`, "i") });
+
+  /** The control inside it. A header that sorts carries a button; one that does
+   *  not carries its label and nothing else. */
+  const sortBy = (user: ReturnType<typeof userEvent.setup>, name: string) =>
+    user.click(screen.getByRole("button", { name }));
+
+  /** The rows in the order they are rendered, by the issue each one is about. */
+  const issueOrder = async () =>
+    within(await spendTable())
+      .getAllByRole("rowheader")
+      .map((cell) => cell.textContent);
+
+  beforeEach(() => {
+    post.mockResolvedValue({ data: sortableReport() });
+  });
+
+  /**
+   * The first render after a scan is the rows as they arrived, so pressing Scan
+   * does not hand back a table that immediately reshuffles itself. Both halves
+   * are asserted — the order, and the header saying which order it is — because
+   * a page that sorted correctly and announced nothing would pass on the rows
+   * alone.
+   */
+  test("opens on output tokens descending, the order the rows arrive in", async () => {
+    await scanned();
+
+    expect(await issueOrder()).toEqual(["#101", "#102", `#${UNSTARTED}`]);
+    expect(header("Output tokens")).toHaveAttribute("aria-sort", "descending");
+    expect(header("Issue")).toHaveAttribute("aria-sort", "none");
+    // A column nothing ranks by says nothing rather than "none": `aria-sort` on
+    // it would advertise a sort that is not offered.
+    expect(header("Title")).not.toHaveAttribute("aria-sort");
+  });
+
+  test("reverses the active column on a second click", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await sortBy(user, "Output tokens");
+
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+    expect(header("Output tokens")).toHaveAttribute("aria-sort", "ascending");
+
+    await sortBy(user, "Output tokens");
+
+    expect(await issueOrder()).toEqual(["#101", "#102", `#${UNSTARTED}`]);
+    expect(header("Output tokens")).toHaveAttribute("aria-sort", "descending");
+  });
+
+  /**
+   * The ticket's real constraint, at the level a reader meets it. `#300` is an
+   * open issue nobody has started: ascending by output tokens is where a row
+   * read as zero would float to the top as the cheapest work in the repository,
+   * and its forecast band would then score it as having come in under.
+   */
+  test("keeps an issue nobody has started last in both directions", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    for (const _ of [0, 1]) {
+      expect((await issueOrder()).at(-1)).toBe(`#${UNSTARTED}`);
+      await sortBy(user, "Output tokens");
+    }
+    expect((await issueOrder()).at(-1)).toBe(`#${UNSTARTED}`);
+  });
+
+  test("ranks by a detail column once the detail columns are shown", async () => {
+    const user = await scanned();
+    await spendTable();
+    await user.click(detailToggle());
+
+    await sortBy(user, "Sessions");
+
+    // Sessions and output tokens disagree about these two rows, which is what
+    // says the click ranked by the column it was on.
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+    expect(header("Sessions")).toHaveAttribute("aria-sort", "descending");
+    expect(header("Output tokens")).toHaveAttribute("aria-sort", "none");
+    expect((await cellsOf(1))[CELL.sessions]).toHaveTextContent("4");
+  });
+
+  /**
+   * The issue number is a column too, and the only sortable one an unstarted
+   * row carries a value for — so the sink is what decides where `#300` goes,
+   * not the number itself.
+   */
+  test("ranks by the issue number from the column that names the rows", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await sortBy(user, "Issue");
+
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+    expect(header("Issue")).toHaveAttribute("aria-sort", "descending");
+
+    await sortBy(user, "Issue");
+
+    expect(await issueOrder()).toEqual(["#101", "#102", `#${UNSTARTED}`]);
+  });
+
+  /**
+   * A scan is a reading; the sort is how the developer is reading it. Pressing
+   * Scan again answers the same question, so it must not throw the answer's
+   * arrangement away.
+   *
+   * This is the assertion that catches the shape the page is actually in: the
+   * mutation clears `data` the moment it is fired, so the table unmounts for
+   * the length of the read and any state left inside it goes with it.
+   */
+  test("keeps the chosen sort when Scan is pressed again", async () => {
+    const user = await scanned();
+    await spendTable();
+    await sortBy(user, "Output tokens");
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+
+    await user.click(scanButton());
+
+    await waitFor(async () => expect(post).toHaveBeenCalledTimes(2));
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${UNSTARTED}`]);
+    expect(header("Output tokens")).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  /**
+   * Sorting rearranges the rows and nothing else. The two charts read the whole
+   * report, the unattributed total belongs to no row at all, and the line at the
+   * top describes the reading rather than its arrangement — so all three have to
+   * come through a re-rank unchanged.
+   */
+  test("leaves the charts, the unattributed total and the reading alone", async () => {
+    const user = await scanned();
+    const before = {
+      accuracy: (await panel("Forecast accuracy")).textContent,
+      distribution: (await panel("Output distribution")).textContent,
+      unattributed: (await panel("Unattributed work")).textContent,
+      gathered: (await screen.findByText(/^Gathered at/)).textContent,
+    };
+
+    await sortBy(user, "Output tokens");
+
+    expect((await panel("Forecast accuracy")).textContent).toBe(
+      before.accuracy,
+    );
+    expect((await panel("Output distribution")).textContent).toBe(
+      before.distribution,
+    );
+    expect((await panel("Unattributed work")).textContent).toBe(
+      before.unattributed,
+    );
+    expect((await screen.findByText(/^Gathered at/)).textContent).toBe(
+      before.gathered,
     );
   });
 });

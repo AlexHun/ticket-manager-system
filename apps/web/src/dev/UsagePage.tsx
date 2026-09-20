@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { AlertTriangle, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { useUsageScan } from "./dev-api";
 import { SpendTable } from "./SpendTable";
 import { UsageCharts } from "./UsageCharts";
 import { formatTokens } from "./usage-charts";
+import { DEFAULT_USAGE_SORT, type UsageSort } from "./usage-sort";
 import type { UnattributedWork, UsageReport } from "./protocol";
 
 /**
@@ -58,6 +59,14 @@ const SCAN_FAILED = "The dev middleware could not read the transcripts.";
 export function UsagePage() {
   const scan = useUsageScan();
   const report = scan.data ?? null;
+  /* How the table below is ranked. It belongs to the table and is held here for
+     one measured reason: `useUsageScan` is a `useMutation`, and a mutation
+     clears its `data` the moment it is fired — so `report` is null for the
+     length of the read, the gate below closes, and `SpendTable` unmounts with
+     whatever state it was holding. A sort kept inside it would be thrown away
+     by the press of Scan that re-asks the same question. The rows change; how
+     the developer is reading them does not. */
+  const [sort, setSort] = useState<UsageSort>(DEFAULT_USAGE_SORT);
   const problem = scan.error
     ? extractErrorMessage(scan.error, SCAN_FAILED)
     : null;
@@ -144,7 +153,9 @@ export function UsagePage() {
           into the next press. */}
       {report && <UsageCharts issues={report.issues} />}
 
-      {report && <SpendTable issues={report.issues} />}
+      {report && (
+        <SpendTable issues={report.issues} sort={sort} onSortChange={setSort} />
+      )}
 
       {/* Below the table rather than inside it: the same reading, and the one
           part of it that is not an issue. */}

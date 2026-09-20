@@ -1,11 +1,23 @@
-import { useState, type ReactNode } from "react";
-import { ArrowRight, Columns3, ExternalLink } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  Columns3,
+  ExternalLink,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Hint } from "@/components/Hint";
 import { Toggle } from "@/components/ui/toggle";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { formatTokens } from "./usage-charts";
+import {
+  nextSort,
+  sortIssues,
+  type UsageSort,
+  type UsageSortKey,
+} from "./usage-sort";
 import {
   USAGE_COLUMNS,
   USAGE_DETAIL_LABEL,
@@ -176,6 +188,17 @@ interface Column {
   /** What the column means, on hover. */
   title: string;
   render: (row: IssueUsage) => ReactNode;
+  /**
+   * What clicking this column's header ranks the table by, when it can be
+   * ranked at all (#272).
+   *
+   * Absent on `title` and `comparison`, and the absence is the decision:
+   * `title` is a name nobody ranks a spend table by and can be missing
+   * entirely, which would need a second sink rule beside the one this table
+   * already carries; `comparison` is three facts in one cell rather than a
+   * figure. See `USAGE_SORT_KEYS` in `./usage-sort`.
+   */
+  sort?: UsageSortKey;
   /** Right-aligned and tabular — a figure rather than a word. */
   numeric?: boolean;
   /** The column this page exists for. */
@@ -224,6 +247,7 @@ const COLUMNS: Record<UsageColumn, Column> = {
     title:
       "Actual output tokens — the unit the forecast bands are denominated in",
     render: figure((spend) => spend.out),
+    sort: "out",
     numeric: true,
     lead: true,
   },
@@ -237,12 +261,14 @@ const COLUMNS: Record<UsageColumn, Column> = {
     label: "Turns",
     title: "Assistant turns recorded against this issue's branches",
     render: figure((spend) => spend.turns),
+    sort: "turns",
     numeric: true,
   },
   sessions: {
     label: "Sessions",
     title: "Distinct sittings the work was split across",
     render: figure((spend) => spend.sessions),
+    sort: "sessions",
     numeric: true,
   },
   cacheRead: {
@@ -250,6 +276,7 @@ const COLUMNS: Record<UsageColumn, Column> = {
     title:
       "Cache-read tokens — a measure of session hygiene, never part of the forecast",
     render: figure((spend) => spend.cacheRead),
+    sort: "cacheRead",
     numeric: true,
     muted: true,
   },
@@ -270,6 +297,82 @@ const columnsShown = (detail: boolean) =>
     (name) => [name, COLUMNS[name]] as const,
   );
 
+/** The sticky header cell, shared by both kinds of heading below — the ones
+ *  that rank the table and the two that do not. */
+const HEADER_CELL = "sticky top-0 z-10 bg-muted px-3 py-2 font-medium";
+
+/**
+ * One column heading — and, where the column can be ranked, the control that
+ * ranks it (#272).
+ *
+ * `ModuleTable` next door is the shape this copies, down to where each part
+ * goes: `aria-sort` on the `<th>` rather than on the button, because the sort is
+ * a property of the column and the button is what changes it; the arrow
+ * `aria-hidden`, because the same fact is already on the cell in words; and the
+ * hint on the button rather than around the label, so the thing a pointer lands
+ * on is the thing that explains itself.
+ *
+ * **A column nothing ranks by carries no `aria-sort` at all**, rather than
+ * `"none"`. The two are different claims: `"none"` says this column is sortable
+ * and is not currently sorted, which on `Title` would advertise a control that
+ * is not there.
+ */
+function HeaderCell({
+  label,
+  title,
+  numeric,
+  sortKey,
+  sort,
+  onSortChange,
+}: {
+  label: string;
+  title: ReactNode;
+  numeric?: boolean;
+  sortKey?: UsageSortKey;
+  sort: UsageSort;
+  onSortChange: (next: UsageSort) => void;
+}) {
+  const active = sortKey !== undefined && sort.key === sortKey;
+  return (
+    <th
+      scope="col"
+      aria-sort={
+        sortKey === undefined
+          ? undefined
+          : active
+            ? sort.descending
+              ? "descending"
+              : "ascending"
+            : "none"
+      }
+      className={cn(HEADER_CELL, numeric ? "text-right" : "text-left")}
+    >
+      <Hint content={title}>
+        {sortKey === undefined ? (
+          <span>{label}</span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onSortChange(nextSort(sort, sortKey))}
+            className={cn(
+              "flex cursor-pointer items-center gap-1 select-none hover:text-foreground",
+              numeric && "ml-auto",
+            )}
+          >
+            {label}
+            {active &&
+              (sort.descending ? (
+                <ArrowDown aria-hidden="true" className="size-3" />
+              ) : (
+                <ArrowUp aria-hidden="true" className="size-3" />
+              ))}
+          </button>
+        )}
+      </Hint>
+    </th>
+  );
+}
+
 /**
  * Every issue worth looking at, biggest spend first — and, after them, the open
  * issues nobody has started, which carry a forecast and no figures at all.
@@ -280,13 +383,30 @@ const columnsShown = (detail: boolean) =>
  * scroller focusable and gives it a name (#111); the height cap is what gives it
  * something to scroll and the sticky header something to stick to.
  *
- * The ranking is the server's: rows arrive in output-token order with the issue
- * number as a tie-break, so two scans of an unchanged directory agree — and so
- * does `bun run tokens`, which since slice 2 prints these same rows rather than
- * ordering the scan itself. The unstarted issues are a block at the end rather
- * than rows sorted at zero, because an empty actual is not a small one and
- * filing them among the cheapest issues is where they would read as work that
- * cost almost nothing.
+ * The ranking opens as the server's: rows arrive in output-token order with the
+ * issue number as a tie-break, so two scans of an unchanged directory agree —
+ * and so does `bun run tokens`, which since slice 2 prints these same rows
+ * rather than ordering the scan itself. The unstarted issues are a block at the
+ * end rather than rows sorted at zero, because an empty actual is not a small
+ * one and filing them among the cheapest issues is where they would read as
+ * work that cost almost nothing.
+ *
+ * **Every figure and the issue number re-rank the table from their header**
+ * (#272), and that block at the end survives all of it. The comparator and the
+ * reason it sinks a row rather than reading it as zero are `./usage-sort`'s;
+ * what is here is the wiring — which columns offer it (`Column.sort`), what a
+ * click does (`HeaderCell`), and the default that matches the order the rows
+ * arrived in, so the first render after a scan does not reshuffle in front of
+ * the developer.
+ *
+ * **The chosen sort is the page's state, not this component's**, which is the
+ * one thing about it that is not `ModuleTable`'s shape. The reason is measured
+ * rather than stylistic: `useUsageScan` is a mutation, and a mutation clears its
+ * `data` the moment it is fired, so `UsagePage`'s `report &&` gate closes for
+ * the length of the read and this component unmounts. State kept here would be
+ * thrown away by the Scan that re-asks the same question — see
+ * `UsagePage.tsx`. The detail toggle below is still local, and does not survive
+ * a re-scan; that is #271's decision standing, not a rule this state follows.
  *
  * **Four columns by default, and one control for the other three** (#271). The
  * spine is the issue, its title, the spend and the comparison; `turns`,
@@ -305,16 +425,23 @@ const columnsShown = (detail: boolean) =>
  * what it holds. A fifth column in the spine is where that assertion starts
  * earning its keep.
  *
- * The state is `useState` here rather than lifted to the page or persisted:
- * nothing else on the page reads it, and the scan it describes does not survive
- * a reload either (see `UsageReport` in `./protocol`), so a preference restored
- * over an empty table would be describing rows that are not there.
- *
- * Sortable headers belong here eventually — `ModuleTable` next door is the shape
- * to copy — but not while there is one column anybody ranks by.
+ * The toggle's state is `useState` here rather than lifted to the page or
+ * persisted: nothing else on the page reads it, and the scan it describes does
+ * not survive a reload either (see `UsageReport` in `./protocol`), so a
+ * preference restored over an empty table would be describing rows that are not
+ * there.
  */
-export function SpendTable({ issues }: { issues: IssueUsage[] }) {
+export function SpendTable({
+  issues,
+  sort,
+  onSortChange,
+}: {
+  issues: IssueUsage[];
+  sort: UsageSort;
+  onSortChange: (next: UsageSort) => void;
+}) {
   const [detail, setDetail] = useState(false);
+  const rows = useMemo(() => sortIssues(issues, sort), [issues, sort]);
 
   // No control on the empty state, and deliberately: it widens a table that has
   // no cells to widen, and the sentence beside it is the answer to why.
@@ -359,34 +486,32 @@ export function SpendTable({ issues }: { issues: IssueUsage[] }) {
         <table className="w-full text-sm">
           <thead className="text-muted-foreground">
             <tr>
-              <th
-                scope="col"
-                className="sticky top-0 z-10 bg-muted px-3 py-2 text-left font-medium"
-              >
-                <Hint content="GitHub issue number, taken from the branch name">
-                  <span>Issue</span>
-                </Hint>
-              </th>
+              {/* Sortable like the figures beside it, and for the same reason
+                  the row's identity is a `<th>`: the issue number is a column
+                  of numbers a reader ranks by, and it is the only sortable one
+                  an unstarted row carries a value for. */}
+              <HeaderCell
+                label="Issue"
+                title="GitHub issue number, taken from the branch name — click to rank by it"
+                sortKey="issue"
+                sort={sort}
+                onSortChange={onSortChange}
+              />
               {columns.map(([name, column]) => (
-                <th
+                <HeaderCell
                   key={name}
-                  scope="col"
-                  className={cn(
-                    "sticky top-0 z-10 bg-muted px-3 py-2 font-medium",
-                    column.numeric ? "text-right" : "text-left",
-                  )}
-                >
-                  {/* `ModuleTable` next door puts the hint on the sort button;
-                    there is nothing to sort here yet, so it wraps the label. */}
-                  <Hint content={column.title}>
-                    <span>{column.label}</span>
-                  </Hint>
-                </th>
+                  label={column.label}
+                  title={column.title}
+                  numeric={column.numeric}
+                  sortKey={column.sort}
+                  sort={sort}
+                  onSortChange={onSortChange}
+                />
               ))}
             </tr>
           </thead>
           <tbody>
-            {issues.map((row) => (
+            {rows.map((row) => (
               <tr key={row.issue} className="border-t border-border">
                 {/* A row header, not a cell: the issue number is what every
                   figure on the row is about, so a screen reader announcing a
