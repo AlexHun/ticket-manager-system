@@ -528,6 +528,36 @@ export type UsageColumn = (typeof USAGE_COLUMNS)[number];
 export const USAGE_DETAIL_LABEL = "Show turns, sessions and cache read";
 
 /**
+ * The accessible name of the search box above the table, which is also the
+ * visible label beside it (#273).
+ *
+ * Here for the reason `USAGE_DETAIL_LABEL` is: `SpendTable.tsx` renders it,
+ * `UsagePage.test.tsx` reaches for the input by it and `dev-usage.spec.ts`
+ * does the same, and neither suite can import a `.tsx` module. Retyped in
+ * three places, a reworded label would leave both suites typing into a control
+ * that no longer exists — the failure `route-timing.spec.ts` records for the
+ * user-timing mark names.
+ *
+ * "An issue" rather than "a row": the thing being narrowed to is an issue, and
+ * the two things that match one are the number it is filed under and the words
+ * in its title.
+ */
+export const USAGE_SEARCH_LABEL = "Find an issue";
+
+/**
+ * The table's own name, and what the visible count sits beside (#273).
+ *
+ * One constant because it is said twice — as the scroller's accessible name
+ * (`TableFrame`'s required `label`) and in the line above it that carries
+ * `countLabel` — and because both suites address the region by it. The
+ * **name** is deliberately not the thing that carries the count: a landmark
+ * whose name changes on every keystroke is a worse place for a screen-reader
+ * user to land than a stable one, and the count is stated in the visible line
+ * that the search box and the toggle share. See `SpendTable.tsx`.
+ */
+export const USAGE_TABLE_LABEL = "Issue spend";
+
+/**
  * What one issue's branches actually cost, as this machine's transcripts
  * recorded it.
  *
