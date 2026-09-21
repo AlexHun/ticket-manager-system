@@ -78,7 +78,7 @@ unless you pass `--reset`.
 | ------------------- | ------------------------- | ------------------------------------------ | -------------- |
 | `db:seed`           | `seed.ts`                 | admin, AI assistant, demo agent            | dev, test, prod |
 | `db:seed:kb`        | `seed-knowledge-base.ts`  | `knowledge_article` rows                   | dev, prod      |
-| `db:seed:tutorials` | `seed-tutorials.ts`       | `tutorial_content` rows (all 8 pages)      | dev, prod      |
+| `db:seed:tutorials` | `seed-tutorials.ts`       | `tutorial_content` rows (all 9 pages)      | dev, prod      |
 | `db:seed:tickets`   | `seed-tickets.ts`         | 140 demo tickets + their email threads     | dev only       |
 
 ### 1. `db:seed` — the accounts
@@ -139,9 +139,9 @@ rather than looking like a quiet week.
 cd apps/api && bun run db:seed:tutorials
 ```
 
-Writes starter copy into `TutorialContent` for all eight pages — `dashboard`,
+Writes starter copy into `TutorialContent` for all nine pages — `dashboard`,
 `tickets`, `ticketDetail`, `pipeline`, `knowledge`, `users`, `activity`,
-`outbox`. A page whose row already exists is skipped whole, same rule as
+`outbox`, `evals`. A page whose row already exists is skipped whole, same rule as
 `db:seed:kb`: this can never overwrite an admin's edits made through the
 tutorial editor. `updatedByName` is set to `"Seed script"` so the editor shows
 where unedited content came from.

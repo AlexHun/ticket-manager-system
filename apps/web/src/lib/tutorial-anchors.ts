@@ -57,4 +57,17 @@ export const TUTORIAL_ANCHORS: Record<
     { id: "status", label: "Status filter" },
     { id: "rows", label: "An email row" },
   ],
+  // The last three live on a run card, which makes them the only anchors in
+  // this file a page can fail to draw for a reason that is not a tagging
+  // mistake: a deployment nobody has run an eval on has no card to point at,
+  // and a run still filling in has no metrics yet. Those land on the centered
+  // callout, which is the fallback doing its job rather than a step pointing
+  // at nothing — the copy beside them reads the same either way.
+  [TUTORIAL_PAGE_KEY.evals]: [
+    { id: "run", label: "The Run button" },
+    { id: "corpus", label: "Corpus selector" },
+    { id: "status", label: "A run's name and badges" },
+    { id: "metrics", label: "A run's headline rates" },
+    { id: "cases", label: "The per-case table" },
+  ],
 };

@@ -15,7 +15,7 @@ import { TutorialEditorDialog } from "./TutorialEditorDialog";
 /**
  * The tutorial editor, at `/tutorials` — admin only.
  *
- * One row per page, fixed at eight and always all eight: unlike the knowledge
+ * One row per page, fixed at nine and always all nine: unlike the knowledge
  * base, nothing here is created or archived, only written. A page with no
  * content yet is not missing from the list, it is a row that says so — the
  * same "steps.length === 0" state `GET /api/tutorials/:pageKey` reads as

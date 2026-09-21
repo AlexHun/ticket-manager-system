@@ -52,7 +52,7 @@ const NO_ANCHOR = "none";
  * Writing one page's tutorial.
  *
  * Always an edit, never a create: the row that opens this always exists
- * server-side (`GET /api/tutorials` returns all eight, `defaultContent` filling
+ * server-side (`GET /api/tutorials` returns all nine, `defaultContent` filling
  * whichever nobody has written), so there is no separate "new tutorial" mode
  * the way `KnowledgeArticleDialog` has — only "this page's content, possibly
  * still empty."
