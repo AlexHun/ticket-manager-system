@@ -1591,20 +1591,32 @@ describe("UsagePage facets", () => {
 
   /**
    * R7 thickened: the facets and the search box are one filter, so both apply
-   * at once. `forecast/S` alone leaves two rows and `101` alone leaves one of
-   * each pair, so a run where either was being ignored shows a different table.
+   * at once.
+   *
+   * **Each control's own answer is asserted first**, because an intersection
+   * that happens to equal what one control returns alone proves nothing — the
+   * other could be doing nothing and this would stay green. So the pair is
+   * chosen to disagree: the term "issue" keeps `#105` and `#102` (their titles
+   * carry the word and the other two do not), `forecast/S` keeps `#105` and
+   * `#101`, and only `#105` is in both.
    */
   test("composes a facet with the search query", async () => {
     const user = await scanned();
     await spendTable();
 
-    await pickFacet(user, "forecast", band("S"));
-    await user.type(searchBox(), "101");
+    await user.type(searchBox(), "issue");
+    await waitFor(
+      async () => expect(await issueOrder()).toEqual([`#${OVER}`, "#102"]),
+      { timeout: 5_000 },
+    );
 
-    await waitFor(async () => expect(await issueOrder()).toEqual(["#101"]), {
-      timeout: 5_000,
-    });
+    await pickFacet(user, "forecast", band("S"));
+
+    expect(await issueOrder()).toEqual([`#${OVER}`]);
     expect(screen.getByText(`${USAGE_TABLE_LABEL} (1 of 4)`)).toBeVisible();
+    // And the query really is still doing its half: without it the band alone
+    // would have kept `#101` beside it.
+    expect(searchBox()).toHaveValue("issue");
   });
 
   /**

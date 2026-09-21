@@ -719,6 +719,15 @@ interface UsageFacetSpec<Value extends string> {
  * `apps/web/dev/issues.ts` accepts any band key, so a `forecast/XL` label would
  * be read; that no such label exists today is a fact about this repository's
  * practice and not about what the facet can express.
+ *
+ * **The band rows are in `BUCKETS`'s key order and the verdict rows are in
+ * `ACCURACY_ORDER`, which is not the inconsistency it looks like.** A record's
+ * key order usually means nothing, which is exactly why `ACCURACY_ORDER` exists
+ * beside `VERDICT` — but `BUCKETS` is ordered by construction and `bucketFor`
+ * already depends on it, walking the keys and taking the first band whose `max`
+ * the figure is under. Ascending size is a property of that record rather than
+ * an accident of how it was typed, so a second list restating it here would be
+ * the drift `bucketFor` is written to avoid.
  */
 export const USAGE_FACETS: {
   [K in UsageFacetKey]: UsageFacetSpec<UsageFacetValues[K]>;

@@ -1220,19 +1220,27 @@ test.describe("dev tools: Usage", () => {
    * R7 thickened: the box and the selects are one filter, so both apply at
    * once.
    *
-   * The started facet on its own leaves the three spending rows and `101` on
-   * its own leaves `#101` and `#105` (the fixture's issue numbers all begin
-   * `10`), so a run where either half was being ignored shows a different
-   * table. The unstarted row is the one this pair is aimed at: it is the only
-   * row `not started` keeps, and it is the only row a search for its title
-   * finds.
+   * **Each control's own answer is asserted first, and that is the part that
+   * makes the rest worth having.** An intersection that happens to equal what
+   * one control returns on its own proves nothing — the other could be doing
+   * nothing at all and the assertion would stay green. So the pair here is
+   * chosen to disagree: `Started` keeps `#105`, `#101` and `#102`, the term
+   * "nobody" keeps `#102` and `#103` (both titles carry the word), and only
+   * `#102` is in both. Swapping the facet to `Not started` against the same
+   * term then returns the *other* row, which neither control picks out alone.
+   *
+   * The last step is three controls that each keep something and together keep
+   * nothing, which is the strongest form of the claim.
    */
   test("composes a facet with the search query", async ({ page }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
     const table = spendTable(page);
     await expect(table).toBeVisible();
+    const search = page.getByLabel(USAGE_SEARCH_LABEL);
 
+    // Each control on its own, so the intersection below is visibly smaller
+    // than either of them and not merely equal to one.
     await pickFacet(page, "started", "Started");
     await expect(table.getByRole("rowheader")).toHaveText([
       `#${FIXTURE_105!.number}`,
@@ -1240,14 +1248,28 @@ test.describe("dev tools: Usage", () => {
       "#102",
     ]);
 
-    await page.getByLabel(USAGE_SEARCH_LABEL).fill("101");
+    await pickFacet(page, "started", USAGE_FACETS.started.any);
+    await search.fill("nobody");
+    await expect(table.getByRole("rowheader")).toHaveText(["#102", SUNK]);
 
-    await expect(table.getByRole("rowheader")).toHaveText(["#101"]);
+    // And together: the one row both keep. Drop either control and this
+    // assertion goes red — two rows with the facet alone that the query does
+    // not match, and one with the query alone that the facet does not.
+    await pickFacet(page, "started", "Started");
+
+    await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
     await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 4)`)).toBeVisible();
 
-    // And the pair that agree on nothing: the query keeps only started rows,
-    // the facet keeps only the unstarted one.
+    // The same query against the other half of the same facet: a different
+    // single row, which neither control picks out by itself.
     await pickFacet(page, "started", "Not started");
+
+    await expect(table.getByRole("rowheader")).toHaveText([SUNK]);
+
+    // Three controls that each keep something and together keep nothing. Only
+    // `#105` is over its band, and its title carries no "nobody".
+    await pickFacet(page, "started", "Started");
+    await pickFacet(page, "verdict", "over");
 
     await expect(page.getByText(USAGE_NO_MATCH)).toBeVisible();
   });

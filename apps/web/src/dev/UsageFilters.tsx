@@ -54,7 +54,10 @@ export function UsageFilters({
   facets: UsageFacets;
   onChange: (next: UsageFacets) => void;
 }) {
-  const ids = useId();
+  /* One prefix, suffixed per facet below: `useId` is called once because the
+     three controls are one component, and a hook cannot be called inside the
+     map that renders them. */
+  const idPrefix = useId();
 
   /* Radix hands `onValueChange` a bare `string` — a `SelectItem`'s value is
      typed as one, so there is no narrower signature to ask for. The values it
@@ -70,7 +73,7 @@ export function UsageFilters({
     <>
       {USAGE_FACET_KEYS.map((key) => {
         const facet = USAGE_FACETS[key];
-        const id = `${ids}-${key}`;
+        const id = `${idPrefix}-${key}`;
         return (
           <div key={key} className="flex flex-col gap-1.5">
             <Label htmlFor={id}>{facet.label}</Label>
