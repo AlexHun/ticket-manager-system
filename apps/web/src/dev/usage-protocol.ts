@@ -546,7 +546,7 @@ export interface IssueUsage {
 
 /**
  * Whether the transcripts recorded any work at all against this issue — **the
- * page's central claim, and since #285 the only place it is stated** (R2).
+ * page's central claim, and since #285 the one place the page states it** (R2).
  *
  * A row with no recorded spend is an *absence*, not a zero. `bucketFor(0)` is
  * `S`, so a row read as zero would be filed in the smallest band, scored
@@ -566,15 +566,30 @@ export interface IssueUsage {
  * em dash (`figure` in `./SpendTable`). It was written out separately in each
  * of them until #285, with nothing holding them in step.
  *
+ * **One statement of the rule survives outside those five**, and it is named
+ * here rather than left to be rediscovered: `figure` in
+ * `scripts/issue-tokens.ts` is the terminal's own em-dash cell and takes a
+ * nullable `IssueSpend` rather than a row, so it cannot call this. Consolidating
+ * the terminal is slice 8 of `docs/plans/usage-page-module-seams.md`, where
+ * `bun run tokens` starts calling `gatherUsage` instead of re-assembling the
+ * scan. Until then this is the page's one home for the rule, not the repo's.
+ *
  * **It is not the ranking's sink value, and the two must not be collapsed.**
  * This answers "is there spend"; `rank` needs a *number* that sorts below every
  * real figure (`-1`, because zero is a real figure) and is a different question
  * with a different answer type. `rank` is a caller of this, not a spelling of
  * it — see its doc comment for why the sink cannot simply be `0`.
  *
- * A type guard rather than a `boolean`, so the callers that go on to read a
- * figure off the row do it without a `?.` or a `!` that would each be a second,
- * unchecked statement of the same rule.
+ * A type guard rather than a `boolean`, so a caller that asks the question and
+ * then reads a figure off the *same* row — `rank`, `recordedSpend`, `figure` in
+ * `./SpendTable` — does it without a `?.` or a `!` standing beside the check as
+ * a second, unverified copy of it.
+ *
+ * That covers a caller reading one row. It is **not** a rule that every `?.` on
+ * `spend` is now a defect: `figureOf` in `./usage-sort` keeps one deliberately,
+ * because it runs on two rows already known to be on the same side of the sink
+ * and its null is a live answer rather than an unreached fallback. Its doc
+ * comment is where that is argued.
  */
 export const hasRecordedSpend = (
   row: IssueUsage,

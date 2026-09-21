@@ -103,8 +103,24 @@ export const nextSort = (current: UsageSort, key: UsageSortKey): UsageSort =>
  *
  * Null rather than zero, and the two are never mixed: a row that really spent
  * zero output tokens is a measurement and ranks as the cheapest work there is,
- * while a row with no spend at all has already been sunk before this is called
- * on it.
+ * while a row with no spend at all has already been sunk *relative to a started
+ * row* before this is called.
+ *
+ * **The `?.` here is not an unchecked second statement of the absence rule, and
+ * this does not take the narrowed row `hasRecordedSpend` would give it** — both
+ * of which it looks like at a glance, and a review read it that way. Two
+ * unstarted rows reach this, because the sink above only separates a started
+ * row from an unstarted one and says nothing about two of the latter. What they
+ * get here is the whole of how the sunk block orders itself, and it differs by
+ * column: under a figure key both sides answer null, the caller reads that as
+ * equal and the issue-number tie-break orders them ascending whichever way the
+ * table is pointed; under the issue key they answer real numbers and the block
+ * reverses with the header, because the issue number is the one sortable value
+ * an unstarted row carries. Narrowing the parameter would force the caller to
+ * gate this on *both* rows being started, which collapses that second case —
+ * the sunk block would stop reversing under the issue column, which
+ * `usage-sort.test.ts` holds in "ranks the sunk block by the one column an
+ * unstarted row carries".
  */
 const figureOf = (row: IssueUsage, key: UsageSortKey): number | null =>
   key === "issue" ? row.issue : (row.spend?.[key] ?? null);
@@ -140,8 +156,8 @@ export function sortIssues(
   { key, descending }: UsageSort,
 ): IssueUsage[] {
   return [...issues].sort((a, b) => {
-    const started = hasRecordedSpend(a);
-    if (started !== hasRecordedSpend(b)) return started ? -1 : 1;
+    const aStarted = hasRecordedSpend(a);
+    if (aStarted !== hasRecordedSpend(b)) return aStarted ? -1 : 1;
 
     const left = figureOf(a, key);
     const right = figureOf(b, key);
