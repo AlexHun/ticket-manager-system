@@ -12,7 +12,7 @@ import {
 } from "./SpendTable";
 import { UsageCharts } from "./UsageCharts";
 import { formatTokens } from "./usage-charts";
-import type { UnattributedWork, UsageReport } from "./protocol";
+import type { UnattributedWork, UsageReport } from "./usage-protocol";
 
 /**
  * What each issue actually cost, read off this machine's Claude Code
@@ -24,9 +24,9 @@ import type { UnattributedWork, UsageReport } from "./protocol";
  * holds, which on a long-lived project is tens of thousands of JSONL lines. So
  * the page opens empty and says so, and the figures on screen are always one
  * named moment's reading rather than "whatever the machine has been doing"
- * (R5). Pressing Scan again re-reads — `UsageReport` in `./protocol` is where
- * the reason nothing on either side of the wire caches the answer is written
- * down.
+ * (R5). Pressing Scan again re-reads — `UsageReport` in `./usage-protocol` is
+ * where the reason nothing on either side of the wire caches the answer is
+ * written down.
  *
  * **The rows are `./SpendTable`, which is where everything about an issue
  * lives** (#270) — the column definitions, the two markers that tell a missing

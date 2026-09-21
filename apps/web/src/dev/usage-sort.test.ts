@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { IssueUsage } from "./protocol";
+import type { IssueUsage } from "./usage-protocol";
 import {
   DEFAULT_USAGE_SORT,
   USAGE_SORT_KEYS,

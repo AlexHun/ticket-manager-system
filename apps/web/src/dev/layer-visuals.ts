@@ -22,7 +22,7 @@
  * shadcn's vendored components, fixtures, seeds and config.
  */
 
-import { LAYER, type Layer } from "./protocol";
+import { LAYER, type Layer } from "./map-protocol";
 
 export interface LayerVisual {
   /** What the legend and the badges call it. */

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { EDGE_KIND, type ModuleEdge, type ModuleNode } from "./protocol";
+import { EDGE_KIND, type ModuleEdge, type ModuleNode } from "./map-protocol";
 import { LAYER_VISUAL } from "./layer-visuals";
 import { matchesQuery } from "./module-match";
 import { TableFrame } from "@/lib/table-frame";

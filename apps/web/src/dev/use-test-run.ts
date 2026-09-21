@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { extractErrorMessage } from "@/lib/errors";
-import {
-  DEVTOOLS_API,
-  type CaseResult,
-  type DevStreamMessage,
-  type RunEvent,
-  type RunSummary,
-} from "./protocol";
+import { DEVTOOLS_API } from "./devtools-paths";
+import type {
+  CaseResult,
+  DevStreamMessage,
+  RunEvent,
+  RunSummary,
+} from "./test-run-protocol";
 
 /**
  * Watches the dev server's test runs and asks it to start and stop them.

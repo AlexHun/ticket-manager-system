@@ -5,7 +5,7 @@ import {
   VERDICT,
   forecastAccuracy,
   type IssueUsage,
-} from "./protocol";
+} from "./usage-protocol";
 import { outputDistribution } from "./usage-charts";
 
 /**

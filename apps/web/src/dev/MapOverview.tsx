@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { LayerBadge } from "./LayerBadge";
 import { LAYER_VISUAL, WORKSPACE_LABEL } from "./layer-visuals";
 import { countLabel, matchesQuery } from "./module-match";
-import type { ProjectGraph } from "./protocol";
+import type { ProjectGraph } from "./map-protocol";
 
 /**
  * The numbers, the shape, and the things that look wrong.

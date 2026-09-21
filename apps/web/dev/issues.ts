@@ -20,7 +20,7 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { BUCKETS, type Bucket } from "../src/dev/protocol.ts";
+import { BUCKETS, type Bucket } from "../src/dev/usage-protocol.ts";
 import { REPO_ROOT, childEnv } from "./child-env.ts";
 
 /**
@@ -57,8 +57,9 @@ const FORECAST_PREFIX = "forecast/";
 /**
  * The two states `gh issue list --state all` reports.
  *
- * A const object rather than two bare strings, matching `LAYER`, `GUARD` and
- * `VERDICT` in `protocol.ts` and for the same reason: `bun run tokens --open`
+ * A const object rather than two bare strings, matching `LAYER` and `GUARD` in
+ * `../src/dev/map-protocol.ts` and `VERDICT` in `../src/dev/usage-protocol.ts`,
+ * for the same reason: `bun run tokens --open`
  * filters on this word, and a comparison against a mistyped literal does not
  * fail — it silently reports no open issues.
  */

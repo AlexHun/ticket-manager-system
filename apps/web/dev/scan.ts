@@ -29,7 +29,7 @@ import {
   type RouteEntry,
   type Workspace,
   type WorkspaceSummary,
-} from "../src/dev/protocol.ts";
+} from "../src/dev/map-protocol.ts";
 
 /** Directory trees the scan walks, repo-relative. */
 const SCAN_DIRS = [

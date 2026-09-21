@@ -19,14 +19,14 @@ import {
   USAGE_SEARCH_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
-} from "./protocol";
+} from "./usage-protocol";
 import type {
   Bucket,
   IssueUsage,
   UsageColumn,
   UsageFacetKey,
   UsageReport,
-} from "./protocol";
+} from "./usage-protocol";
 
 /**
  * The page's one rule: it reads nothing until asked, and what it shows

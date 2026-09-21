@@ -38,7 +38,7 @@ import {
   type Layer,
   type ProjectGraph,
   type Workspace,
-} from "./protocol";
+} from "./map-protocol";
 
 /**
  * Everything the repository is, on one page.

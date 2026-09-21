@@ -42,7 +42,7 @@ import {
   type UsageColumn,
   type UsageFacets,
   type Verdict,
-} from "./protocol";
+} from "./usage-protocol";
 
 /**
  * The Usage page's spend table, and the definitions of every column in it.
@@ -234,11 +234,11 @@ type ColumnDefinitions = {
 /**
  * What each column renders, keyed by name.
  *
- * The *order* is `USAGE_COLUMNS` in `./protocol` and not this literal's key
- * order, because two tests index a row by position and neither can import this
- * file — so the order has to live somewhere import-free. Keying by the same
- * names is what keeps the two in step: a column defined here and left out of
- * that list does not compile, and neither does the reverse.
+ * The *order* is `USAGE_COLUMNS` in `./usage-protocol` and not this literal's
+ * key order, because two tests index a row by position and neither can import
+ * this file — so the order has to live somewhere import-free. Keying by the
+ * same names is what keeps the two in step: a column defined here and left out
+ * of that list does not compile, and neither does the reverse.
  */
 const COLUMNS: ColumnDefinitions = {
   title: {
@@ -314,7 +314,8 @@ const COLUMNS: ColumnDefinitions = {
  * columns **append**, which is the property the two positional suites rest on:
  * a spine cell sits at the same index whether the toggle is on or off, so one
  * index map read off `USAGE_COLUMNS` serves both. See `USAGE_DETAIL` in
- * `./protocol` for why that is two lists rather than one list with a flag.
+ * `./usage-protocol` for why that is two lists rather than one list with a
+ * flag.
  */
 const columnsShown = (detail: boolean) =>
   (detail ? USAGE_COLUMNS : USAGE_SPINE).map(

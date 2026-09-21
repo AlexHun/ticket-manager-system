@@ -6,7 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { LayerBadge } from "./LayerBadge";
 import { LAYER_VISUAL, WORKSPACE_LABEL } from "./layer-visuals";
-import { EDGE_KIND, type ModuleNode, type ProjectGraph } from "./protocol";
+import { EDGE_KIND, type ModuleNode, type ProjectGraph } from "./map-protocol";
 
 /**
  * Everything the graph knows about one module.
