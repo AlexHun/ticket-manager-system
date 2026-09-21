@@ -323,5 +323,10 @@
     "version": "0.1.117",
     "date": "2026-09-21",
     "title": "Facet filters for the Usage table, and an over-budget fixture (#274)"
+  },
+  {
+    "version": "0.1.118",
+    "date": "2026-09-21",
+    "title": "A walkthrough for the evals page (#240)"
   }
 ]
