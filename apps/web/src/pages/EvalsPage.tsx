@@ -8,6 +8,7 @@ import {
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   PIPELINE_OUTCOME,
+  TUTORIAL_PAGE_KEY,
   type AutoReplyDecline,
   type EvalCaseResultRow,
   type EvalCategoryRow,
@@ -25,6 +26,7 @@ import {
 } from "@ticket/shared";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Tutorial } from "@/components/Tutorial";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,6 +95,15 @@ import { EvalSchedulePanel } from "./EvalSchedulePanel";
  * **A run folds to its headline numbers** (#237). Twenty full cards is a page
  * nobody scrolls, so only the newest is open on arrival and a closed one keeps
  * exactly what decides whether to open it — see `RunCard`.
+ *
+ * **It carries a walkthrough, and this is the page that most needed one**
+ * (#240). Everything on screen is a measurement with a caveat — a rate is never
+ * a pass, the two corpora are never averaged, "Failing" is not "Failed", and a
+ * run spends real money while touching no ticket — and none of it is guessable
+ * from the screen. The five `data-tutorial-anchor` attributes below are the
+ * other half of `TUTORIAL_ANCHORS[evals]`: an id offered by the editor's
+ * "points at" dropdown with nothing carrying it here is a step that quietly
+ * falls back to a centered callout, which no type can check.
  */
 
 /** What a case did, in words. `notOffered` never reaches a run's own row. */
@@ -542,7 +553,13 @@ function RunCard({
     <Collapsible open={open} onOpenChange={setOpen}>
       <Card>
         <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-3 text-base">
+          {/* The card's own heading line is what a step points at to tell
+              "Failing" from "Failed" — the two badges are an inch apart here
+              and mean entirely different things. */}
+          <CardTitle
+            data-tutorial-anchor="status"
+            className="flex flex-wrap items-center gap-3 text-base"
+          >
             {/* Only the run's name is the trigger. The badges beside it are the
               status, not controls, and a header row that was one button would
               read as a single unlabelled target to a screen reader. */}
@@ -654,7 +671,10 @@ function RunCard({
               the set that has finished is not a smaller version of the answer,
               it is a different number, and drawing one invites reading it. */}
           {!running && run.metrics.length > 0 && (
-            <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div
+              data-tutorial-anchor="metrics"
+              className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3"
+            >
               {run.metrics.map((metric) => (
                 <MetricCell key={metric.metric} row={metric} />
               ))}
@@ -785,7 +805,11 @@ function RunCard({
              it — it counts what is behind the fold, which is exactly what a
              closed disclosure has to say for itself. */
               <Collapsible open={casesOpen} onOpenChange={setCasesOpen}>
-                <CollapsibleTrigger asChild>
+                {/* The anchor is on the disclosure rather than on the table
+                    inside it: a closed one unmounts its content, and the step
+                    that explains what a 3/2 means is worth pointing at the
+                    control that opens the rows. */}
+                <CollapsibleTrigger asChild data-tutorial-anchor="cases">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -912,33 +936,41 @@ export function EvalsPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <Tutorial pageKey={TUTORIAL_PAGE_KEY.evals} />
+
       <div className="flex max-w-5xl flex-col gap-6">
         <PageHeader
           title="Evals"
           description="Answer every case whose outcome is written down, five times each, against the real provider — and see whether the unattended path still lands where it should. No ticket is created."
         >
-          <Select
-            value={corpus}
-            onValueChange={(value) => setCorpus(value as EvalCorpus)}
-            disabled={start.isPending}
-          >
-            <SelectTrigger aria-label="Corpus" className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.values(EVAL_CORPUS).map((option) => (
-                <SelectItem key={option} value={option}>
-                  {CORPUS_LABEL[option]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* `display: contents` so the wrapper can carry the anchor without
+              becoming a flex item between the selector and the button —
+              `Tutorial` walks into the first real box to measure it. */}
+          <div data-tutorial-anchor="corpus" className="contents">
+            <Select
+              value={corpus}
+              onValueChange={(value) => setCorpus(value as EvalCorpus)}
+              disabled={start.isPending}
+            >
+              <SelectTrigger aria-label="Corpus" className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.values(EVAL_CORPUS).map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {CORPUS_LABEL[option]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {/* The button says which corpus it will run, rather than a bare "Run"
               beside a selector the eye has already left. It is the same value
               the list beside it is filtered by, which is the whole point of
               there being one control: what you are reading and what you are
               about to start can never be two different series. */}
           <Button
+            data-tutorial-anchor="run"
             onClick={() => start.mutate()}
             disabled={start.isPending || !canRun}
           >

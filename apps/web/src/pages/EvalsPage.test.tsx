@@ -9,6 +9,7 @@ import {
   EVAL_THRESHOLD,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
+  TUTORIAL_PAGE_KEY,
   USER_ROLE,
   type EvalCaseResultRow,
   type EvalCorpus,
@@ -17,6 +18,7 @@ import {
   type EvalRunRow,
   type EvalRunsResponse,
 } from "@ticket/shared";
+import { TUTORIAL_ANCHORS } from "@/lib/tutorial-anchors";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { EvalsPage } from "./EvalsPage";
@@ -36,6 +38,14 @@ import { EvalsPage } from "./EvalsPage";
  * two jobs — it filters the list and aims the Run button — so what is asserted
  * below is that the two halves can never disagree about which series is on
  * screen.
+ *
+ * And since #240 a fifth, which is the one thing about this page's walkthrough
+ * that no type checks: the ids in `TUTORIAL_ANCHORS[evals]` are what the
+ * editor's "points at" dropdown offers an admin, and an id nothing on the page
+ * carries is a step that falls back to a centered callout without saying so.
+ * The last describe below reads that list and asks the rendered page for each
+ * one, so adding a row there without tagging the element is a red test rather
+ * than a quiet downgrade.
  */
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
@@ -51,6 +61,15 @@ const runsPost = apiStub.post("/api/evals/runs");
  * `EvalSchedulePanel.test.tsx`'s subject, not this file's.
  */
 const scheduleGet = apiStub.get("/api/evals/schedule");
+/**
+ * The `<Tutorial>` this page mounts (#240).
+ *
+ * Taken as an ordinary handle only to read back *which* page it asked for —
+ * the stub answers this path by default with "nothing to show", and
+ * `reset()` puts that default back, so this file never decides what the
+ * callout does. `Tutorial.test.tsx` is what that belongs to.
+ */
+const tutorialGet = apiStub.get("/api/tutorials/:pageKey");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -1474,5 +1493,37 @@ describe("folding a run", () => {
       "aria-expanded",
       "false",
     );
+  });
+});
+
+describe("the walkthrough", () => {
+  test("asks for this page's own tutorial on mount", async () => {
+    render();
+
+    await waitFor(() =>
+      expect(tutorialGet).toHaveBeenCalledWith(
+        `/api/tutorials/${TUTORIAL_PAGE_KEY.evals}`,
+        expect.anything(),
+      ),
+    );
+  });
+
+  test("carries every element the editor offers as an anchor", async () => {
+    // The half of the tutorial contract the compiler cannot reach. Both maps
+    // are `Record`s over the key set, so a missing *page* is a build error;
+    // a missing `data-tutorial-anchor` is a step quietly recentering itself,
+    // which looks like an admin's bad choice rather than a page that was
+    // re-tagged out from under one.
+    const { container } = render();
+    await screen.findByRole("button", { name: "Run 7" });
+
+    for (const { id } of TUTORIAL_ANCHORS[TUTORIAL_PAGE_KEY.evals]) {
+      // The id in the message, because the bare failure is "expected null not
+      // to be null" and which of the five is missing is the whole finding.
+      expect(
+        container.querySelector(`[data-tutorial-anchor="${id}"]`),
+        `nothing on the page carries data-tutorial-anchor="${id}"`,
+      ).not.toBeNull();
+    }
   });
 });

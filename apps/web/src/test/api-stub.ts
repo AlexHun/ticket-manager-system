@@ -120,7 +120,7 @@ const TUTORIAL_SEEN_PATH = "/api/tutorials/:pageKey/seen";
 /**
  * "Nothing to show", for every page's `<Tutorial>`.
  *
- * All eight main pages mount one, so before this every page test carried the
+ * All nine main pages mount one, so before this every page test carried the
  * same `url.startsWith("/api/tutorials/")` branch and the same never-asserted
  * fake behind it — a callout no test exercised, answered by hand in four files
  * at once. Answering it here is what lets a page test declare only the

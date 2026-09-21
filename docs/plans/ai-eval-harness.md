@@ -359,6 +359,7 @@ Every `Must` has a slice. No slice carries work without a requirement.
   `TutorialPageKey` is a **Postgres enum**, so a new key is a migration plus
   seed content. Out of this epic; worth its own small issue once the screen has
   settled, rather than writing tutorial steps against a page that changes in
-  five slices.
+  five slices. (That issue was #240, and it landed after the corpus control of
+  #234 — which one of its steps describes.)
 - **A "New" nav badge** (`NEW_FEATURE_KEY` / `NEW_FEATURE_VERSIONS`) — same
   reasoning, and it is two lines whenever somebody wants it.

@@ -166,6 +166,41 @@ const CONTENT: Record<string, { title: string; steps: TutorialStep[] }> = {
       },
     ],
   },
+  // Every step here says something the screen cannot say for itself, which is
+  // why this page was the one that most needed a walkthrough (#240): a rate is
+  // never a pass, the two corpora are never averaged, "Failing" is not
+  // "Failed", and a run spends real money while touching no ticket. All of
+  // that was explained only in code comments before this.
+  evals: {
+    title: "Measuring the unattended path",
+    steps: [
+      {
+        title: "What a run is",
+        body: "Every case whose outcome is written down, answered five times each against the real provider. It spends real money — and it touches nothing: no ticket, no message, no email. Nothing on an agent's screen moves while one runs.",
+        anchor: "run",
+      },
+      {
+        title: "Which corpus",
+        body: 'One control, doing two jobs: it filters the runs below and aims the Run button, so what you are reading and what you are about to start are always the same series. There is deliberately no "all" — a frozen run and a live run are two series and are never averaged. Frozen moves only when the code does; live answers from the articles admins are editing.',
+        anchor: "corpus",
+      },
+      {
+        title: "Failing is not Failed",
+        body: 'Two different pieces of news, an inch apart. "Failed" is the run falling over — the provider was unreachable — and it has no numbers. "Failing" is a run that finished and whose rates came in under what they were declared to need. That second one is the answer this page exists to give.',
+        anchor: "status",
+      },
+      {
+        title: "Reading the headline rates",
+        body: "Each is a rate over repeats, never a pass, and each carries its own denominator because they count different things — the catch rate only over the repeats that actually planted a payload. They are judged against the threshold the run itself recorded, so an old run keeps saying what it was measured against.",
+        anchor: "metrics",
+      },
+      {
+        title: "Case by case",
+        body: "Open this for the per-case rows. A case that split 3 of 5 is the finding, not a failure: five answers from a model that disagree with each other is exactly what one answer reported as a fact would have hidden. An escaped payload is the one thing here that is a defect rather than a measurement.",
+        anchor: "cases",
+      },
+    ],
+  },
 };
 
 const inserted: string[] = [];

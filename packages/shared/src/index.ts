@@ -2861,8 +2861,9 @@ export interface ActivityFeedResponse {
 }
 
 /**
- * The eight main pages that carry a tutorial. Mirrors the `TutorialPageKey`
- * Postgres enum — keep the two in step.
+ * The nine main pages that carry a tutorial. Mirrors the `TutorialPageKey`
+ * Postgres enum — keep the two in step, which means a new key is a migration
+ * (`ALTER TYPE … ADD VALUE`) and not only a line here.
  */
 export const TUTORIAL_PAGE_KEY = {
   dashboard: "dashboard",
@@ -2873,6 +2874,7 @@ export const TUTORIAL_PAGE_KEY = {
   users: "users",
   activity: "activity",
   outbox: "outbox",
+  evals: "evals",
 } as const;
 
 export type TutorialPageKey =
@@ -2887,6 +2889,7 @@ export const TUTORIAL_PAGE_KEYS = [
   TUTORIAL_PAGE_KEY.users,
   TUTORIAL_PAGE_KEY.activity,
   TUTORIAL_PAGE_KEY.outbox,
+  TUTORIAL_PAGE_KEY.evals,
 ] as const;
 
 /**
@@ -2896,7 +2899,7 @@ export const TUTORIAL_PAGE_KEYS = [
  * admin editing the tutorial's copy, and never automatically.
  *
  * A `Record` over the whole key set rather than a lookup with a fallback, same
- * trick as `DECLINE_STAGE` and `EVENT_AUDIENCE`: a ninth page is a compile
+ * trick as `DECLINE_STAGE` and `EVENT_AUDIENCE`: a tenth page is a compile
  * error here until somebody gives it a starting version.
  *
  * Read only by `GET /api/tutorials/:pageKey`, which compares this against the
@@ -2913,6 +2916,7 @@ export const TUTORIAL_PAGE_VERSIONS: Record<TutorialPageKey, number> = {
   [TUTORIAL_PAGE_KEY.users]: 1,
   [TUTORIAL_PAGE_KEY.activity]: 1,
   [TUTORIAL_PAGE_KEY.outbox]: 1,
+  [TUTORIAL_PAGE_KEY.evals]: 1,
 };
 
 /** Longest accepted tutorial title, mirrored by the zod schema in `@ticket/core`. */

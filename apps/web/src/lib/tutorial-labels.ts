@@ -1,7 +1,7 @@
 import { TUTORIAL_PAGE_KEY, type TutorialPageKey } from "@ticket/shared";
 
 /**
- * The eight tutorial pages, named for the editor's list.
+ * The nine tutorial pages, named for the editor's list.
  *
  * `nav-items.ts` names the *nav item* a page sits under, which is not the same
  * set: `/tickets` and `/tickets/:id` are one nav entry but two tutorials
@@ -18,4 +18,5 @@ export const TUTORIAL_PAGE_LABEL: Record<TutorialPageKey, string> = {
   [TUTORIAL_PAGE_KEY.users]: "Users",
   [TUTORIAL_PAGE_KEY.activity]: "Activity",
   [TUTORIAL_PAGE_KEY.outbox]: "Outbox",
+  [TUTORIAL_PAGE_KEY.evals]: "Evals",
 };

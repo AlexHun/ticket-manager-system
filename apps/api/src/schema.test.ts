@@ -25,6 +25,7 @@ import {
   EVAL_COUNTERS,
   KNOWLEDGE_REVISION_ACTION,
   TICKET_CATEGORY,
+  TUTORIAL_PAGE_KEYS,
 } from "@ticket/shared";
 import { prisma, resetDb } from "./test/pg";
 import { COLLEAGUE, seedColleagues } from "./test/fixtures";
@@ -59,6 +60,78 @@ describe("TutorialContent.updatedBy", () => {
         select: { updatedById: true, updatedByName: true },
       }),
     ).toEqual({ updatedById: null, updatedByName: COLLEAGUE.admin.name });
+  });
+});
+
+describe("the TutorialPageKey enum", () => {
+  /**
+   * The declaration in `@ticket/shared` and the Postgres enum agree (#240).
+   *
+   * Adding a tutorial page is the one part of that feature the compiler cannot
+   * reach. `TUTORIAL_PAGE_LABEL`, `TUTORIAL_ANCHORS` and
+   * `TUTORIAL_PAGE_VERSIONS` are all `Record`s over `TutorialPageKey`, so a new
+   * key is a build error until each is answered — but `pageKey` is a Postgres
+   * enum column, and the Prisma schema is its own language that cannot derive
+   * from a TypeScript declaration. A key with no `ALTER TYPE ... ADD VALUE`
+   * behind it compiles, ships, and fails the first time an admin saves that
+   * page's copy.
+   *
+   * Both directions, same reasoning as the eval counters below. A key with no
+   * label fails loudly on the first write; a *label* nobody declared is silent
+   * — nothing iterates the enum, every route maps over `TUTORIAL_PAGE_KEYS`, so
+   * a row written under it would be a page's content that no screen can reach.
+   *
+   * No request involved, deliberately: the claim is Postgres', and it has to
+   * survive `routes/tutorials.ts` being rewritten.
+   */
+  const enumLabels = async (): Promise<string[]> => {
+    const rows = await prisma.$queryRaw<{ enumlabel: string }[]>`
+      SELECT enumlabel
+      FROM pg_enum
+      JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+      WHERE pg_type.typname = 'TutorialPageKey'
+      ORDER BY enumlabel
+    `;
+
+    return rows.map((row) => row.enumlabel);
+  };
+
+  test("every declared page key is a value of the enum", async () => {
+    const labels = new Set(await enumLabels());
+
+    expect(TUTORIAL_PAGE_KEYS.filter((key) => !labels.has(key))).toEqual([]);
+  });
+
+  test("no value of the enum is undeclared", async () => {
+    const declared = new Set<string>(TUTORIAL_PAGE_KEYS);
+
+    expect((await enumLabels()).filter((l) => !declared.has(l))).toEqual([]);
+  });
+
+  test("content and a seen mark can be written under every key", async () => {
+    // The enum reaches two columns, and the labels above only prove one type.
+    // Writing both is what says the whole feature is available for a new page
+    // — content an admin saves, and the per-user mark that stops it showing
+    // again.
+    for (const pageKey of TUTORIAL_PAGE_KEYS) {
+      await prisma.tutorialContent.create({
+        data: {
+          pageKey,
+          title: `Welcome to ${pageKey}`,
+          steps: [{ title: "A step", body: "Something worth saying." }],
+        },
+      });
+      await prisma.tutorialProgress.create({
+        data: { userId: COLLEAGUE.admin.id, pageKey, seenVersion: 1 },
+      });
+    }
+
+    expect(await prisma.tutorialContent.count()).toBe(
+      TUTORIAL_PAGE_KEYS.length,
+    );
+    expect(await prisma.tutorialProgress.count()).toBe(
+      TUTORIAL_PAGE_KEYS.length,
+    );
   });
 });
 

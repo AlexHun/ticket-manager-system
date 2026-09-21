@@ -196,6 +196,18 @@ It skips ids that already exist, so it is safe to re-run. Without at least one
 article flagged for auto-reply, the lower half of `/pipeline` is permanently
 dead — which the page will tell you (`autoReplyArticleCount`).
 
+And the walkthroughs, which are the same shape of job:
+
+```bash
+railway ssh --service api --command 'cd /app/apps/api && bun run db:seed:tutorials'
+```
+
+It skips pages that already have a row, so it never touches copy an admin has
+edited through `/tutorials` — which is what makes it the command to run **after
+a deploy that adds a page**, not only on the first one. An unseeded page is
+silent rather than broken: its tutorial has no steps, so it simply never pops
+up, and nothing on screen says it is missing.
+
 ## 6. Postmark
 
 Point the inbound webhook at

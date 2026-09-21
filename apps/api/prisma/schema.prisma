@@ -814,12 +814,15 @@ enum OutboundEmailStatus {
 }
 
 /// The per-page walkthrough shown the first time (and again after a material
-/// change) a user opens each of the eight main pages. Mirrors `TutorialPageKey`
+/// change) a user opens each of the nine main pages. Mirrors `TutorialPageKey`
 /// in `@ticket/shared`.
 ///
 /// A fixed enum, not a free-form string: nothing in the API can create a page
-/// that isn't one of these eight, so `TutorialContent` can only ever hold
-/// exactly the rows the frontend knows what to do with.
+/// that isn't one of these nine, so `TutorialContent` can only ever hold
+/// exactly the rows the frontend knows what to do with. The price of that is
+/// paid when a page is added: a tenth key is an `ALTER TYPE ... ADD VALUE`
+/// migration, and both the dev and the test database need it before a green
+/// suite means anything (`evals` was the ninth, #240).
 enum TutorialPageKey {
   dashboard
   tickets
@@ -829,6 +832,7 @@ enum TutorialPageKey {
   users
   activity
   outbox
+  evals
 }
 
 /// One page's tutorial copy, admin-editable. One row per `TutorialPageKey` —
@@ -896,7 +900,7 @@ model TutorialProgress {
 ///
 /// `featureKey` is a plain `String`, not a Postgres enum like
 /// `TutorialPageKey`: the set of "new" things churns as features age out,
-/// unlike the tutorial's fixed eight pages, and a `String` (validated against
+/// unlike the tutorial's fixed nine pages, and a `String` (validated against
 /// `NEW_FEATURE_KEYS` in `@ticket/shared`) means adding or retiring a badge is
 /// a code change, not a migration.
 model NewFeatureSeen {
