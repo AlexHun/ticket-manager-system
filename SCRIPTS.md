@@ -152,6 +152,16 @@ existed, which is why a freshly deployed environment, production included, had
 no tutorial content at all until someone wrote it by hand against that exact
 database.
 
+
+
+**Run it again whenever a page is added.** "Once on a fresh deployment" is not
+the whole rule: the ninth page (`evals`, #240) shipped with starter copy that
+only reaches a deployed database when this runs there, and an unseeded page is
+silent rather than broken — `shouldShow` is false while `steps` is empty, so
+nothing on screen says the walkthrough is missing. Skipping whole is what makes
+the re-run safe: the eight pages already in the table are left exactly as their
+admins last edited them.
+
 ### 4. `db:seed:tickets` — demo tickets (dev only)
 
 ```bash

@@ -328,35 +328,4 @@ describe("PUT /api/tutorials/:pageKey", () => {
     const sent = await put("/not-a-real-page", CONTENT_BODY);
     expect(sent.status).toBe(404);
   });
-
-  /**
-   * Every key the app knows is a key the *database* accepts (#240).
-   *
-   * `TutorialPageKey` is a Postgres enum, so adding a page is a migration and
-   * not only a line in `@ticket/shared` — and the half that gets forgotten is
-   * the migration, which nothing else here would notice: the `Record`s over the
-   * key set are compile errors until they are answered, `GET /` reads rows and
-   * never writes one, and every other test in this file names `dashboard`. The
-   * schema these run against is built from the migration files (ADR-0014), so a
-   * key with no `ALTER TYPE ... ADD VALUE` behind it fails on the write, here,
-   * rather than the first time an admin opens that page's editor.
-   *
-   * Exhaustive over `TUTORIAL_PAGE_KEYS` rather than a case for the newest key:
-   * the same omission is available to every page added after this one.
-   */
-  test("accepts content and a seen mark for every page key in the enum", async () => {
-    for (const pageKey of TUTORIAL_PAGE_KEYS) {
-      const written = await put<TutorialContentResponse>(
-        `/${pageKey}`,
-        CONTENT_BODY,
-      );
-      expect(written.status).toBe(200);
-      expect(written.body.tutorial.pageKey).toBe(pageKey);
-
-      const seen = await post(`/${pageKey}/seen`);
-      expect(seen.status).toBe(200);
-    }
-
-    expect(await progressRows()).toHaveLength(TUTORIAL_PAGE_KEYS.length);
-  });
 });

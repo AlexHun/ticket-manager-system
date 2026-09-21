@@ -59,10 +59,19 @@ export const TUTORIAL_ANCHORS: Record<
   ],
   // The last three live on a run card, which makes them the only anchors in
   // this file a page can fail to draw for a reason that is not a tagging
-  // mistake: a deployment nobody has run an eval on has no card to point at,
-  // and a run still filling in has no metrics yet. Those land on the centered
-  // callout, which is the fallback doing its job rather than a step pointing
-  // at nothing — the copy beside them reads the same either way.
+  // mistake. Three such reasons, and the first is the ordinary one: a
+  // deployment nobody has run an eval on has no card to point at, a run still
+  // filling in has no metrics yet, and `cases` sits inside the card's own
+  // fold, so it is there only while that card is open — which the newest one
+  // is on arrival. Those land on the centered callout, which is the fallback
+  // doing its job rather than a step pointing at nothing, and the copy beside
+  // them is written to read the same either way.
+  //
+  // `status` and `metrics` are also the only ids on this page that are not
+  // unique: a card draws them, and there are up to `EVAL_RUN_LIMIT` cards.
+  // `Tutorial` resolves by `document.querySelector`, so a step points at the
+  // newest run — which is the one an admin came to read, and the one the page
+  // leaves open. Worth knowing before anything reorders that list.
   [TUTORIAL_PAGE_KEY.evals]: [
     { id: "run", label: "The Run button" },
     { id: "corpus", label: "Corpus selector" },
