@@ -15,7 +15,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { TableFrame } from "@/lib/table-frame";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
-import { countLabel, matchesQuery } from "./module-match";
+import { SEARCH_DEBOUNCE_MS, countLabel, matchesQuery } from "./module-match";
 import { formatTokens } from "./usage-charts";
 import {
   DEFAULT_USAGE_SORT,
@@ -28,6 +28,7 @@ import {
   USAGE_COLUMNS,
   USAGE_DETAIL,
   USAGE_DETAIL_LABEL,
+  USAGE_NO_MATCH,
   USAGE_SEARCH_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
@@ -348,17 +349,6 @@ export const DEFAULT_USAGE_TABLE_VIEW: UsageTableView = {
 };
 
 /**
- * How long the box waits after a keystroke before the table narrows.
- *
- * The project map's 150 ms, deliberately the same number: the two filter bars
- * sit two clicks apart and a developer should not be able to feel which page
- * they are on. It is short enough to read as immediate and long enough that
- * typing an issue number re-ranks and re-renders the rows once rather than
- * four times.
- */
-const SEARCH_DEBOUNCE_MS = 150;
-
-/**
  * The sort keys that only exist while the detail columns are shown.
  *
  * Derived from the two contracts rather than listed again: `USAGE_DETAIL` says
@@ -661,9 +651,7 @@ export function SpendTable({
           label={USAGE_TABLE_LABEL}
           className="grid place-items-center p-6"
         >
-          <p className="text-sm text-muted-foreground">
-            No issue matches the search.
-          </p>
+          <p className="text-sm text-muted-foreground">{USAGE_NO_MATCH}</p>
         </TableFrame>
       ) : (
         <TableFrame label={USAGE_TABLE_LABEL} className="max-h-[70dvh]">

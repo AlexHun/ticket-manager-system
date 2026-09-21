@@ -13,8 +13,10 @@ import {
   USAGE_COLUMNS,
   USAGE_DETAIL,
   USAGE_DETAIL_LABEL,
+  USAGE_NO_MATCH,
   USAGE_SEARCH_LABEL,
   USAGE_SPINE,
+  USAGE_TABLE_LABEL,
 } from "./protocol";
 import type { IssueUsage, UsageColumn, UsageReport } from "./protocol";
 
@@ -101,7 +103,8 @@ const renderPage = () => renderRoutes([{ path: "/", element: <UsagePage /> }]);
 const scanButton = () => screen.getByRole("button", { name: "Scan" });
 
 /** The frame `TableFrame` puts round the spend table, once one has been read. */
-const spendTable = () => screen.findByRole("region", { name: "Issue spend" });
+const spendTable = () =>
+  screen.findByRole("region", { name: USAGE_TABLE_LABEL });
 
 /** Any of the page's named regions — the two chart panels and the unattributed
  *  total. All three are addressed by name for the same reason: the region is
@@ -1226,7 +1229,7 @@ describe("UsagePage search", () => {
     await scanned();
     await spendTable();
     const rowsNow = () =>
-      within(screen.getByRole("region", { name: "Issue spend" }))
+      within(screen.getByRole("region", { name: USAGE_TABLE_LABEL }))
         .getAllByRole("rowheader")
         .map((cell) => cell.textContent);
 
@@ -1259,11 +1262,11 @@ describe("UsagePage search", () => {
     const user = await scanned();
     await spendTable();
 
-    expect(screen.getByText("Issue spend (3)")).toBeVisible();
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (3)`)).toBeVisible();
 
     await searchFor(user, "102", ["#102"]);
 
-    expect(screen.getByText("Issue spend (1 of 3)")).toBeVisible();
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (1 of 3)`)).toBeVisible();
   });
 
   /**
@@ -1279,12 +1282,11 @@ describe("UsagePage search", () => {
     await user.type(searchBox(), "nothing-matches-this");
 
     await waitFor(
-      () =>
-        expect(screen.getByText("No issue matches the search.")).toBeVisible(),
+      () => expect(screen.getByText(USAGE_NO_MATCH)).toBeVisible(),
       { timeout: 5_000 },
     );
     expect(searchBox()).toBeVisible();
-    expect(screen.getByText("Issue spend (0 of 3)")).toBeVisible();
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (0 of 3)`)).toBeVisible();
   });
 
   /**

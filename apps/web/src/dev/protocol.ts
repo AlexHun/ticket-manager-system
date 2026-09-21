@@ -547,15 +547,35 @@ export const USAGE_SEARCH_LABEL = "Find an issue";
 /**
  * The table's own name, and what the visible count sits beside (#273).
  *
- * One constant because it is said twice — as the scroller's accessible name
- * (`TableFrame`'s required `label`) and in the line above it that carries
- * `countLabel` — and because both suites address the region by it. The
+ * One constant because it is said three times — as the scroller's accessible
+ * name (`TableFrame`'s required `label`), in the line above it that carries
+ * `countLabel`, and in the empty frame a search matching nothing leaves — and
+ * because both suites address the region by it, neither being able to import a
+ * `.tsx` module. What the suites do *not* take from here is the count's shape:
+ * `(1 of 3)` is restated in each, because a test deriving it from `countLabel`
+ * would agree with the code about a typo in it. The
  * **name** is deliberately not the thing that carries the count: a landmark
  * whose name changes on every keystroke is a worse place for a screen-reader
  * user to land than a stable one, and the count is stated in the visible line
  * that the search box and the toggle share. See `SpendTable.tsx`.
  */
 export const USAGE_TABLE_LABEL = "Issue spend";
+
+/**
+ * What the table says when the search matches none of its rows (#273).
+ *
+ * A string both suites reach for and neither can import from a `.tsx` module,
+ * which is the whole of the rule `USAGE_DETAIL_LABEL` above records. It is the
+ * project map's sentence with the noun changed — `MapWiring` says "No endpoint
+ * matches the search." of its own lists — because the two bars are two clicks
+ * apart and a developer should not have to learn which words each one uses for
+ * the same answer.
+ *
+ * Distinct from the frame's other empty state, which is not here: "no issue
+ * spend in these transcripts at all" is a fact about the scan, is worded as
+ * one, and no test addresses it by a whole string.
+ */
+export const USAGE_NO_MATCH = "No issue matches the search.";
 
 /**
  * What one issue's branches actually cost, as this machine's transcripts
