@@ -1,0 +1,70 @@
+## reading
+
+Gathered at <gathered-at> from tests/e2e/fixtures/transcripts — 2 transcripts, 4 issues, read in <scan-ms> ms.
+
+## table — default columns
+
+Issue | Title | Output tokens | Forecast vs actual
+#105 | Fixture: an issue that came in over its band | 90,000 | S <60k M 60-150k over
+#101 | Fixture: the issue these transcripts spent on | 20,000 | S <60k S <60k on target
+#102 | Fixture: an issue nobody forecast | 3,000 | — S <60k
+#103 | Fixture: an open issue nobody has started | — | M 60-150k —
+
+## table — detail columns shown
+
+Issue | Title | Output tokens | Forecast vs actual | Turns | Sessions | Cache read
+#105 | Fixture: an issue that came in over its band | 90,000 | S <60k M 60-150k over | 1 | 1 | 250,000
+#101 | Fixture: the issue these transcripts spent on | 20,000 | S <60k S <60k on target | 2 | 1 | 400,000
+#102 | Fixture: an issue nobody forecast | 3,000 | — S <60k | 1 | 1 | 20,000
+#103 | Fixture: an open issue nobody has started | — | M 60-150k — | — | — | —
+
+## panel — forecast accuracy
+
+Forecast accuracy
+Issues carrying a forecast band, by how the actual read against it.
+1/2 on target (50%)
+under
+on target
+over
+0
+1
+2
+3
+4
+0
+1
+1
+
+Only issues with both halves are counted. A band nobody has started work against is not a forecast that has been tested, and counting it as a miss would walk this figure toward zero as the backlog grows.
+
+## panel — output distribution
+
+Output distribution
+Issues with recorded spend, by the band their output tokens landed in.
+p25 3,000 · median 20,000 · p75 90,000
+p25 3,000
+median 20,000
+p75 90,000
+S
+M
+L
+XL
+0
+1
+2
+3
+4
+2
+1
+0
+0
+
+3 issues with recorded spend. The bands were cut from p25 55k / median 90k / p75 154k over 90 branches and nothing has re-checked them since — where these marks sit now is that re-check.
+
+## panel — unattributed work
+
+Unattributed work
+
+1 turn·5,000 output tokens
+
+Turns that ran on main or on no branch at all. They belong to no issue, so nothing above includes them — and they are a total rather than a row because there is no issue number to carry, nothing forecast them, and no band for them to land in.

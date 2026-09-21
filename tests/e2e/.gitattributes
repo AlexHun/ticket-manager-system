@@ -1,0 +1,15 @@
+# Playwright's text snapshots are compared byte for byte.
+#
+# `compareText` in playwright-core reads the committed file into a Buffer,
+# decodes it as UTF-8 and asks `expected === actual` — there is no line-ending
+# normalisation anywhere in that path. This repo is developed on Windows with
+# `core.autocrlf=true` and deliberately leaves the working copy CRLF (see the
+# root `.gitattributes`), so without this line a fresh clone would check these
+# files out with CRLF while the spec captures LF from the browser and the
+# script, and `dev-usage-guardrail.spec.ts` would fail every line at once on a
+# tree nobody had touched.
+#
+# It does not reproduce on the machine that wrote the snapshots: Playwright
+# writes them with LF and they are only rewritten by a checkout, so the failure
+# waits for the next clone. CI is Linux and would never see it either.
+dev-usage-guardrail.spec.ts-snapshots/* text eol=lf

@@ -1,0 +1,10 @@
+issue  forecast    actual bucket verdict    turns  sess   cache title
+---------------------------------------------------------------------
+#105   S <60k         90k M      over           1     1    250k Fixture: an issue that came in over its band
+#101   S <60k         20k S      on target      2     1    400k Fixture: the issue these transcripts spent o
+#102   -               3k S      -              1     1     20k Fixture: an issue nobody forecast
+#103   M 60-150k        - -      -              -     -       - Fixture: an open issue nobody has started
+---------------------------------------------------------------------
+4 issues, 3 with recorded spend | output p25 3k median 20k p75 90k | total 113k
+forecast accuracy: 1/2 on target (50%)
+unattributed: 1 turn and 5k output tokens ran on main or with no branch, belonging to no issue.
