@@ -313,5 +313,10 @@
     "version": "0.1.115",
     "date": "2026-09-20",
     "title": "Sortable headers for the Usage table, and the unstarted sink (#272)"
+  },
+  {
+    "version": "0.1.116",
+    "date": "2026-09-21",
+    "title": "A search box over the Usage spend table, reaching only it (#273)"
   }
 ]
