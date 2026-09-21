@@ -3,11 +3,15 @@ import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   USAGE_COLUMNS,
   USAGE_DETAIL_LABEL,
+  USAGE_FACETS,
+  USAGE_FACET_KEYS,
   USAGE_NO_MATCH,
   USAGE_SEARCH_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
+  type Bucket,
   type UsageColumn,
+  type UsageFacetKey,
 } from "../../apps/web/src/dev/protocol";
 import {
   GH_ISSUES,
@@ -56,9 +60,14 @@ const EXPECTED = {
   issue101: { out: "20,000", turns: "2", sessions: "1", cacheRead: "400,000" },
   // One turn of `fix/102-b`, on an issue the listing carries no band for.
   issue102: { out: "3,000" },
+  // One turn of `feat/105-over-its-band`, sharing `session-b.jsonl` with
+  // `#102`. 90,000 against the same `forecast/S` band (<60k) lands in `M` and
+  // reads as **over** — the row #274 added, because a verdict facet whose only
+  // testable outcome is "matches nothing" proves nothing about a filter.
+  issue105: { out: "90,000", turns: "1", sessions: "1", cacheRead: "250,000" },
   // The one `main` turn in `session-a.jsonl`, which belongs to no issue and is
-  // in neither row above. Singular on purpose — the fixture holds exactly one,
-  // so this also holds the page's "turn" / "turns" branch.
+  // in none of the rows above. Singular on purpose — the fixture holds exactly
+  // one, so this also holds the page's "turn" / "turns" branch.
   unattributed: { turns: "1 turn", out: "5,000 output tokens" },
 } as const;
 
@@ -66,21 +75,28 @@ const EXPECTED = {
  * What the same fixture implies for the two charts (#252) — arithmetic, not a
  * second reading of the code under test.
  *
- * **Accuracy is 1/1, and the denominator is the interesting half.** Three rows
- * reach the page and only `#101` carries both a band and spend to read against
- * it: `#102` has figures and no `forecast/` label, `#103` has a band and no
- * work. A chart that scored either would report 1/2 or 1/3 here.
+ * **These three moved when #274 added `#105`**, and that was the named cost of
+ * that slice rather than something discovered mid-way: an over-budget row is
+ * the only thing that makes a verdict facet testable, and it is scored, banded
+ * and counted in the quartiles like any other row. The arithmetic is worked
+ * through in `fixtures/transcripts/README.md`.
  *
- * **The distribution is two values, 20,000 and 3,000.** Nearest-rank over them
- * puts p25 on the smaller and both upper quartiles on the larger, and all three
- * land in band `S` — which is deliberately the awkward case: three marks at one
- * x is what the grouped label in `UsageCharts.tsx` exists for, and a run that
- * drew them one line each would overprint here rather than somewhere rarer.
+ * **Accuracy is 1/2, and the denominator is the interesting half.** Four rows
+ * reach the page and only two carry both a band and spend to read against it:
+ * `#101` on target and `#105` over. `#102` has figures and no `forecast/`
+ * label, `#103` has a band and no work — a chart that scored either would
+ * report 1/3 or 1/4 here.
+ *
+ * **The distribution is three values: 3,000, 20,000 and 90,000.** Nearest-rank
+ * over them puts one mark on each. The two lower ones share band `S`, which
+ * keeps the case the grouped label in `UsageCharts.tsx` exists for — two labels
+ * at one x that a run drawing them one line each would overprint — and p75 now
+ * sits alone in `M`, so both arrangements are drawn on the same chart.
  */
 const CHARTS = {
-  accuracy: "1/1 on target (100%)",
-  quartiles: "p25 3,000 · median 20,000 · p75 20,000",
-  measured: "2 issues with recorded spend",
+  accuracy: "1/2 on target (50%)",
+  quartiles: "p25 3,000 · median 20,000 · p75 90,000",
+  measured: "3 issues with recorded spend",
 } as const;
 
 /** Where a named column sits in a row. Read off `USAGE_COLUMNS` — the same list
@@ -119,6 +135,32 @@ const showDetailColumns = async (page: Page) => {
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
 };
 
+/**
+ * A facet's select, by the accessible name its `<Label>` gives it, and the
+ * press that picks a row from it (#274).
+ *
+ * The names come from `USAGE_FACETS` rather than being retyped, for the reason
+ * this file imports `USAGE_COLUMNS` instead of counting columns: a spec that
+ * restates a string cannot catch a rename of it.
+ *
+ * A Radix `Select` is a `combobox` and not a native `<select>`, so
+ * `selectOption` does nothing here — the trigger is clicked and then the
+ * `option` — and its current value is read off the trigger's text.
+ */
+const facetSelect = (page: Page, key: UsageFacetKey) =>
+  page.getByRole("combobox", { name: USAGE_FACETS[key].label });
+
+const pickFacet = async (page: Page, key: UsageFacetKey, option: string) => {
+  await facetSelect(page, key).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+  await expect(facetSelect(page, key)).toContainText(option);
+};
+
+/** A band row's words: the letter and the range it means, the same pair a row's
+ *  comparison cell prints. */
+const band = (value: Bucket) =>
+  USAGE_FACETS.forecast.options.find((option) => option.value === value)!.label;
+
 /** The em dash the page renders for anything it has no value for \u2014 `gh` could
  *  not supply it, or no work has been recorded against the issue yet. */
 const UNKNOWN = "\u2014";
@@ -155,7 +197,53 @@ const ticksOf = (panel: Locator) =>
     ".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value",
   );
 
-const [FIXTURE_101, FIXTURE_102, FIXTURE_103, FIXTURE_104] = GH_ISSUES;
+const [FIXTURE_101, FIXTURE_102, FIXTURE_103, FIXTURE_104, FIXTURE_105] =
+  GH_ISSUES;
+
+/** The scrollable frame the table is drawn in, which is also the region every
+ *  row assertion is scoped to. */
+const spendTable = (page: Page) =>
+  page.getByRole("region", { name: USAGE_TABLE_LABEL });
+
+/**
+ * One row, by the issue it is about rather than by where it currently sits.
+ *
+ * Most of the tests below are about a *row* and not about the order, and an
+ * index made them about both: #274 added an over-budget issue to the fixture,
+ * which — because `over` against `forecast/S` means at least 60,000 output
+ * tokens — necessarily outspends everything else and takes the first position
+ * under the default ranking. Every `nth(1)` in this file meant a different row
+ * afterwards, and nothing but the assertions failing would have said so.
+ *
+ * `exact` is load-bearing: Playwright matches an accessible name as a
+ * case-insensitive substring by default, so `#10` would find `#101`, `#102` and
+ * `#105` at once.
+ *
+ * The tests that *are* about the order still read `rowheader` texts as a list —
+ * that is the claim there, and this helper would hide it.
+ */
+const rowFor = (page: Page, issue: number) =>
+  spendTable(page)
+    .getByRole("row")
+    .filter({
+      has: page.getByRole("rowheader", { name: `#${issue}`, exact: true }),
+    });
+
+/** The issue nobody has started, which sinks to the bottom whatever column is
+ *  ranked and whichever way round. */
+const SUNK = `#${FIXTURE_103!.number}`;
+
+/**
+ * The whole table, ranked by output tokens each way — the order a scan opens
+ * on, and its reverse.
+ *
+ * `#105` leads the descending order because an over-budget row cannot be
+ * anything but the largest figure in this fixture: `over` against `forecast/S`
+ * means at least 60,000 output tokens, against `#101`'s 20,000 and `#102`'s
+ * 3,000. The sunk row is outside the flip in both.
+ */
+const SPENT_DESCENDING = ["#105", "#101", "#102", SUNK];
+const SPENT_ASCENDING = ["#102", "#101", "#105", SUNK];
 
 test.describe("dev tools: Usage", () => {
   // Written before each test rather than once, because one test below removes
@@ -186,9 +274,7 @@ test.describe("dev tools: Usage", () => {
 
   test("shows no figures until Scan is pressed", async ({ page }) => {
     await expect(page.getByText(/nothing gathered yet/i)).toBeVisible();
-    await expect(
-      page.getByRole("region", { name: USAGE_TABLE_LABEL }),
-    ).toHaveCount(0);
+    await expect(spendTable(page)).toHaveCount(0);
   });
 
   test("reads the fixture transcripts and reports each issue's spend", async ({
@@ -206,22 +292,19 @@ test.describe("dev tools: Usage", () => {
     const stamp = await gathered.locator("time").getAttribute("datetime");
     expect(Number.isNaN(Date.parse(stamp ?? ""))).toBe(false);
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
-    // All four of `#101`'s figures are the claim here, and three of them are
+    // All four of each row's figures are the claim here, and three of them are
     // detail columns since #271.
     await showDetailColumns(page);
 
-    const rows = table.getByRole("row");
-    // Header, #101, #102, and the open issue nobody has started — and nothing
-    // else. The `main` turn, the turn on a branch naming no issue and the
-    // truncated line are all excluded, and so is the *closed* issue the listing
-    // carries with no work against it.
-    await expect(rows).toHaveCount(4);
+    // Header, #101, #102, #105, and the open issue nobody has started — and
+    // nothing else. The `main` turn, the turn on a branch naming no issue and
+    // the truncated line are all excluded, and so is the *closed* issue the
+    // listing carries with no work against it.
+    await expect(table.getByRole("row")).toHaveCount(5);
 
-    const first = rows.nth(1);
-    await expect(first.getByRole("rowheader")).toHaveText("#101");
-    const cells = first.getByRole("cell");
+    const cells = rowFor(page, 101).getByRole("cell");
     await expect(cells.nth(CELL.out)).toHaveText(EXPECTED.issue101.out);
     await expect(cells.nth(CELL.turns)).toHaveText(EXPECTED.issue101.turns);
     await expect(cells.nth(CELL.sessions)).toHaveText(
@@ -231,11 +314,22 @@ test.describe("dev tools: Usage", () => {
       EXPECTED.issue101.cacheRead,
     );
 
-    // Sorted by spend descending, so the smaller issue is second.
-    const second = rows.nth(2);
-    await expect(second.getByRole("rowheader")).toHaveText("#102");
-    await expect(second.getByRole("cell").nth(CELL.out)).toHaveText(
+    await expect(rowFor(page, 102).getByRole("cell").nth(CELL.out)).toHaveText(
       EXPECTED.issue102.out,
+    );
+
+    // `#105` shares `session-b.jsonl` with `#102` on a branch of its own, which
+    // is the mirror of the `main` turn sitting inside `#101`'s session: two
+    // branches in one session are two rows, and one session's `main` turn is
+    // none.
+    const over = rowFor(page, 105).getByRole("cell");
+    await expect(over.nth(CELL.out)).toHaveText(EXPECTED.issue105.out);
+    await expect(over.nth(CELL.turns)).toHaveText(EXPECTED.issue105.turns);
+    await expect(over.nth(CELL.sessions)).toHaveText(
+      EXPECTED.issue105.sessions,
+    );
+    await expect(over.nth(CELL.cacheRead)).toHaveText(
+      EXPECTED.issue105.cacheRead,
     );
   });
 
@@ -255,8 +349,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
-    const first = table.getByRole("row").nth(1);
+    const first = rowFor(page, 101);
 
     // The title is the link, and the href is `gh`'s own `url` rather than one
     // assembled from an owner and repo the page would have to know. The title
@@ -303,10 +396,10 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     const header = table.getByRole("row").nth(0);
-    const first = table.getByRole("row").nth(1);
+    const first = rowFor(page, 101);
 
     await expect(first.getByRole("cell")).toHaveCount(USAGE_SPINE.length);
     await expect(header.getByRole("columnheader")).toHaveCount(
@@ -394,7 +487,7 @@ test.describe("dev tools: Usage", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
 
     const width = await table.evaluate((frame) => ({
@@ -424,8 +517,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
-    const second = table.getByRole("row").nth(2);
+    const second = rowFor(page, 102);
 
     await expect(
       second.getByRole("link", { name: FIXTURE_102!.title }),
@@ -467,16 +559,18 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     // Every figure must be empty rather than zero, so every figure has to be on
     // screen to be asserted about.
     await showDetailColumns(page);
 
-    // Last, not third: the issues with spend come first whatever they cost, so
-    // an empty actual is never read as a small one.
-    const row = table.getByRole("row").nth(3);
-    await expect(row.getByRole("rowheader")).toHaveText(
+    // Last, not somewhere among the spending rows: the issues with spend come
+    // first whatever they cost, so an empty actual is never read as a small
+    // one. The sink's own test below holds the order; this one is about the
+    // cells.
+    const row = rowFor(page, FIXTURE_103!.number);
+    await expect(table.getByRole("rowheader").last()).toHaveText(
       `#${FIXTURE_103!.number}`,
     );
     await expect(
@@ -511,7 +605,7 @@ test.describe("dev tools: Usage", () => {
   test("leaves out a closed issue with no recorded work", async ({ page }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     await expect(
       table.getByRole("rowheader", { name: `#${FIXTURE_104!.number}` }),
@@ -538,19 +632,17 @@ test.describe("dev tools: Usage", () => {
 
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     await showDetailColumns(page);
-    const first = table.getByRole("row").nth(1);
-    const cells = first.getByRole("cell");
+    const cells = rowFor(page, 101).getByRole("cell");
 
-    // Header, #101, #102 — the unstarted row goes with the listing, since
+    // Header, #101, #102, #105 — the unstarted row goes with the listing, since
     // "open" is something only the listing can say. The transcripts are all
     // there is to go on.
-    await expect(table.getByRole("row")).toHaveCount(3);
+    await expect(table.getByRole("row")).toHaveCount(4);
 
     // Every actual survives: they are filesystem work and owe `gh` nothing.
-    await expect(first.getByRole("rowheader")).toHaveText("#101");
     await expect(cells.nth(CELL.out)).toHaveText(EXPECTED.issue101.out);
     await expect(cells.nth(CELL.turns)).toHaveText(EXPECTED.issue101.turns);
     await expect(cells.nth(CELL.cacheRead)).toHaveText(
@@ -609,9 +701,7 @@ test.describe("dev tools: Usage", () => {
     await expect
       .poll(() => gathered.locator("time").getAttribute("datetime"))
       .not.toBe(first);
-    await expect(
-      page.getByRole("region", { name: USAGE_TABLE_LABEL }),
-    ).toBeVisible();
+    await expect(spendTable(page)).toBeVisible();
   });
 
   /**
@@ -653,9 +743,12 @@ test.describe("dev tools: Usage", () => {
     // bands are the question this chart asks, so a band with no issues in it is
     // part of the answer.
     await expect(ticksOf(distribution)).toHaveText(["S", "M", "L", "XL"]);
-    // The marks are drawn on the chart, not merely printed above it. All three
-    // share band `S` here, which is exactly the case the grouped label handles.
-    for (const mark of ["p25 3,000", "median 20,000", "p75 20,000"]) {
+    // The marks are drawn on the chart, not merely printed above it. Two of
+    // them share band `S`, which is exactly the case the grouped label handles,
+    // and since #274 added the over-budget row p75 sits alone in `M` — so both
+    // arrangements are drawn on the one chart. `L` and `XL` hold no mark at
+    // all, which is why the axis above is asserted separately.
+    for (const mark of ["p25 3,000", "median 20,000", "p75 90,000"]) {
       await expect(
         distribution.locator("svg text", { hasText: mark }),
       ).toBeVisible();
@@ -711,8 +804,8 @@ test.describe("dev tools: Usage", () => {
 
     // Not an issue: no number, no link, and no row of its own in the table.
     await expect(total.getByRole("link")).toHaveCount(0);
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
-    await expect(table.getByRole("row")).toHaveCount(4);
+    const table = spendTable(page);
+    await expect(table.getByRole("row")).toHaveCount(5);
     await expect(table).not.toContainText("5,000");
   });
 
@@ -727,21 +820,19 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const rows = page
-      .getByRole("region", { name: USAGE_TABLE_LABEL })
-      .getByRole("row");
-    await expect(rows).toHaveCount(4);
+    await expect(spendTable(page).getByRole("row")).toHaveCount(5);
     // `turns` is a detail column, and it is half of what says the `main` turn
     // was not absorbed.
     await showDetailColumns(page);
-    await expect(rows.nth(1).getByRole("cell").nth(CELL.out)).toHaveText(
+    const row = rowFor(page, 101);
+    await expect(row.getByRole("cell").nth(CELL.out)).toHaveText(
       EXPECTED.issue101.out,
     );
-    await expect(rows.nth(1).getByRole("cell").nth(CELL.turns)).toHaveText(
+    await expect(row.getByRole("cell").nth(CELL.turns)).toHaveText(
       EXPECTED.issue101.turns,
     );
     // 20,000 + 5,000 is what a row that swallowed it would read.
-    await expect(rows.nth(1)).not.toContainText("25,000");
+    await expect(row).not.toContainText("25,000");
     // And the distribution is quartiles of the two issues, not of three figures.
     await expect(
       page.getByRole("region", { name: "Output distribution" }),
@@ -755,9 +846,9 @@ test.describe("dev tools: Usage", () => {
    * The ordering rules are unit-tested over made-up rows (`usage-sort.test.ts`)
    * and the wiring over a stubbed report (`UsagePage.test.tsx`). What only this
    * level can say is that the click reaches a real reading of the real
-   * transcripts: `#101` and `#102` are ranked by figures the fixture actually
-   * recorded, and `#103` is an open issue the listing names that no branch in
-   * `fixtures/transcripts` mentions.
+   * transcripts: `#105`, `#101` and `#102` are ranked by figures the fixture
+   * actually recorded, and `#103` is an open issue the listing names that no
+   * branch in `fixtures/transcripts` mentions.
    *
    * `#103` is the whole point of the case. Ascending by output tokens is where
    * a row read as zero would arrive first, as the cheapest work in the
@@ -771,29 +862,28 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     const order = table.getByRole("rowheader");
-    const sunk = `#${FIXTURE_103!.number}`;
     const outHeader = table.getByRole("columnheader", {
       name: "Output tokens",
     });
 
     // The rows as they arrived: output tokens descending, and the issue nobody
     // has started below every issue that has spent anything.
-    await expect(order).toHaveText(["#101", "#102", sunk]);
+    await expect(order).toHaveText(SPENT_DESCENDING);
     await expect(outHeader).toHaveAttribute("aria-sort", "descending");
 
     await table.getByRole("button", { name: "Output tokens" }).click();
 
-    // 3,000 before 20,000 — and the row with no figures at all still last,
-    // which is the direction the sink has to be proved in.
-    await expect(order).toHaveText(["#102", "#101", sunk]);
+    // 3,000 before 20,000 before 90,000 — and the row with no figures at all
+    // still last, which is the direction the sink has to be proved in.
+    await expect(order).toHaveText(SPENT_ASCENDING);
     await expect(outHeader).toHaveAttribute("aria-sort", "ascending");
 
     await table.getByRole("button", { name: "Output tokens" }).click();
 
-    await expect(order).toHaveText(["#101", "#102", sunk]);
+    await expect(order).toHaveText(SPENT_DESCENDING);
     await expect(outHeader).toHaveAttribute("aria-sort", "descending");
   });
 
@@ -812,14 +902,10 @@ test.describe("dev tools: Usage", () => {
     const scan = page.getByRole("button", { name: "Scan" });
     await scan.click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     await table.getByRole("button", { name: "Output tokens" }).click();
-    await expect(table.getByRole("rowheader")).toHaveText([
-      "#102",
-      "#101",
-      `#${FIXTURE_103!.number}`,
-    ]);
+    await expect(table.getByRole("rowheader")).toHaveText(SPENT_ASCENDING);
 
     const gathered = page.getByText(/^Gathered at/);
     const first = await gathered.locator("time").getAttribute("datetime");
@@ -828,11 +914,7 @@ test.describe("dev tools: Usage", () => {
       .poll(() => gathered.locator("time").getAttribute("datetime"))
       .not.toBe(first);
 
-    await expect(table.getByRole("rowheader")).toHaveText([
-      "#102",
-      "#101",
-      `#${FIXTURE_103!.number}`,
-    ]);
+    await expect(table.getByRole("rowheader")).toHaveText(SPENT_ASCENDING);
     await expect(
       table.getByRole("columnheader", { name: "Output tokens" }),
     ).toHaveAttribute("aria-sort", "ascending");
@@ -846,9 +928,11 @@ test.describe("dev tools: Usage", () => {
    * on it that came back from a re-scan without them would satisfy "the chosen
    * sort survives" and leave the rows ranked by a column with no arrow and no
    * `aria-sort` — a ranking with nothing on screen to explain it. The fixture's
-   * two spending rows disagree about turns and output tokens (`#101` has two
-   * turns and the larger spend, `#102` one turn and the smaller), so ascending
-   * by turns is visibly a different question from the default.
+   * three spending rows disagree about turns and output tokens (`#101` has two
+   * turns and the middle spend; `#102` and `#105` have one turn each, at the
+   * extremes), so ascending by turns is visibly a different question from the
+   * default: the two one-turn rows come first, in issue order, which is the
+   * tie-break sitting outside the direction flip.
    */
   test("keeps the detail columns, and a sort on one of them, across a re-scan", async ({
     page,
@@ -856,14 +940,14 @@ test.describe("dev tools: Usage", () => {
     const scan = page.getByRole("button", { name: "Scan" });
     await scan.click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     await showDetailColumns(page);
     const turns = () => table.getByRole("button", { name: "Turns" });
     await turns().click();
     await turns().click();
 
-    const ranked = ["#102", "#101", `#${FIXTURE_103!.number}`];
+    const ranked = ["#102", "#105", "#101", SUNK];
     await expect(table.getByRole("rowheader")).toHaveText(ranked);
 
     const gathered = page.getByText(/^Gathered at/);
@@ -904,23 +988,22 @@ test.describe("dev tools: Usage", () => {
 
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     const order = table.getByRole("rowheader");
-    const unstarted = `#${FIXTURE_103!.number}`;
     const search = page.getByLabel(USAGE_SEARCH_LABEL);
-    await expect(page.getByText(`${USAGE_TABLE_LABEL} (3)`)).toBeVisible();
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (4)`)).toBeVisible();
 
     await search.fill("102");
 
     await expect(order).toHaveText(["#102"]);
-    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 3)`)).toBeVisible();
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 4)`)).toBeVisible();
 
     // Words out of a title, and a term that `#102`'s title shares the first
     // word of — so a match on "nobody" alone would show two rows here.
     await search.fill("nobody has started");
 
-    await expect(order).toHaveText([unstarted]);
+    await expect(order).toHaveText([SUNK]);
 
     // A term nothing matches says so, and leaves the box that produced it on
     // screen: an empty state that took the controls with it would strand the
@@ -928,13 +1011,13 @@ test.describe("dev tools: Usage", () => {
     await search.fill("nothing-matches-this");
 
     await expect(page.getByText(USAGE_NO_MATCH)).toBeVisible();
-    await expect(page.getByText(`${USAGE_TABLE_LABEL} (0 of 3)`)).toBeVisible();
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (0 of 4)`)).toBeVisible();
     await expect(search).toBeVisible();
 
     await search.fill("");
 
-    await expect(order).toHaveText(["#101", "#102", unstarted]);
-    await expect(page.getByText(`${USAGE_TABLE_LABEL} (3)`)).toBeVisible();
+    await expect(order).toHaveText(SPENT_DESCENDING);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (4)`)).toBeVisible();
 
     // Deliberately not in the URL, unlike the tickets list and the dashboard:
     // the scan does not survive a reload, so a restored query would deserialize
@@ -983,10 +1066,10 @@ test.describe("dev tools: Usage", () => {
       gathered: await gathered.textContent(),
     };
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await page.getByLabel(USAGE_SEARCH_LABEL).fill("102");
-    // The narrowing really happened — two of the three rows are gone, and
-    // `#101` is the one row the accuracy figure is computed from.
+    // The narrowing really happened — three of the four rows are gone, and
+    // both the rows the accuracy figure is computed from are among them.
     await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
 
     expect(await accuracy.textContent()).toBe(before.accuracy);
@@ -1012,7 +1095,7 @@ test.describe("dev tools: Usage", () => {
     const scan = page.getByRole("button", { name: "Scan" });
     await scan.click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     await page.getByLabel(USAGE_SEARCH_LABEL).fill("102");
     await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
@@ -1026,7 +1109,209 @@ test.describe("dev tools: Usage", () => {
 
     await expect(page.getByLabel(USAGE_SEARCH_LABEL)).toHaveValue("102");
     await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
-    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 3)`)).toBeVisible();
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 4)`)).toBeVisible();
+  });
+
+  /**
+   * R8, slice 5 (#274): the verdict facet, against a fixture that now has
+   * something for it to find.
+   *
+   * **This test is the reason the fixture grew a fourth issue.** Until #274 no
+   * row anywhere in `fixtures/transcripts` came in over its band, so the only
+   * outcome a verdict filter could be asked for was "matches nothing" — which
+   * a filter that did nothing at all would also produce. `#105` spends 90,000
+   * against a `forecast/S` band, which lands in `M`, which reads as `over`. The
+   * cost of it is named in `fixtures/transcripts/README.md` and lands in
+   * `CHARTS` above: the accuracy figure moved from 1/1 to 1/2 and p75 from
+   * 20,000 to 90,000, both of which belong to #252 rather than to this slice.
+   *
+   * The comparison cell is asserted beside the row, because "the filter found a
+   * row" and "the row it found is the over-budget one" are two claims and only
+   * the second is worth having.
+   */
+  test("narrows to the issue that came in over its forecast", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = spendTable(page);
+    await expect(table).toBeVisible();
+    await expect(table.getByRole("rowheader")).toHaveText(SPENT_DESCENDING);
+
+    await pickFacet(page, "verdict", "over");
+
+    await expect(table.getByRole("rowheader")).toHaveText([
+      `#${FIXTURE_105!.number}`,
+    ]);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 4)`)).toBeVisible();
+
+    // The row really is the one that missed: forecast `S`, landed `M`, over.
+    const comparison = rowFor(page, FIXTURE_105!.number)
+      .getByRole("cell")
+      .nth(CELL.comparison);
+    await expect(comparison).toContainText("<60k");
+    await expect(comparison).toContainText("60-150k");
+    await expect(comparison).toContainText("over");
+    await expect(markerIn(comparison)).toHaveCount(0);
+
+    // R10 again, for the second kind of control: the accuracy figure describes
+    // the scan, not what somebody picked from a dropdown. `#105` is one of the
+    // two rows it is computed from, so a chart reading the filtered rows would
+    // now say 0/1.
+    await expect(
+      page.getByRole("region", { name: "Forecast accuracy" }),
+    ).toContainText(CHARTS.accuracy);
+    await expect(
+      page.getByRole("region", { name: "Output distribution" }),
+    ).toContainText(CHARTS.quartiles);
+    await expect(
+      page.getByRole("region", { name: "Unattributed work" }),
+    ).toContainText(EXPECTED.unattributed.out);
+  });
+
+  /**
+   * The band facet, and the empty state a facet can reach on its own.
+   *
+   * `L` is a band this fixture forecast exactly one issue into — `#104`, which
+   * is closed and has no row — so it is the honest "nothing here" answer rather
+   * than a band that was never offered. That is what the options being the
+   * *vocabulary* rather than an inventory of the rows on screen buys: a facet
+   * derived from the rows could not ask this question at all.
+   *
+   * The half that matters is that the controls survive the emptiness they
+   * caused. A selection cannot be guessed at from the rows the way a typed term
+   * can, so an empty state that replaced the bar would leave nothing on screen
+   * to undo it.
+   */
+  test("narrows to a band, and says so when a band has no rows", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = spendTable(page);
+    await expect(table).toBeVisible();
+
+    // Both `forecast/S` rows, still ranked by spend — and not `#102`, which
+    // carries no band at all, nor `#103`, whose band is `M`.
+    await pickFacet(page, "forecast", band("S"));
+
+    await expect(table.getByRole("rowheader")).toHaveText([
+      `#${FIXTURE_105!.number}`,
+      "#101",
+    ]);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (2 of 4)`)).toBeVisible();
+
+    await pickFacet(page, "forecast", band("L"));
+
+    await expect(page.getByText(USAGE_NO_MATCH)).toBeVisible();
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (0 of 4)`)).toBeVisible();
+    // Every control that could have caused this is still on screen to undo it.
+    for (const key of USAGE_FACET_KEYS) {
+      await expect(facetSelect(page, key)).toBeVisible();
+    }
+    await expect(page.getByLabel(USAGE_SEARCH_LABEL)).toBeVisible();
+
+    await pickFacet(page, "forecast", USAGE_FACETS.forecast.any);
+
+    await expect(table.getByRole("rowheader")).toHaveText(SPENT_DESCENDING);
+  });
+
+  /**
+   * R7 thickened: the box and the selects are one filter, so both apply at
+   * once.
+   *
+   * **Each control's own answer is asserted first, and that is the part that
+   * makes the rest worth having.** An intersection that happens to equal what
+   * one control returns on its own proves nothing — the other could be doing
+   * nothing at all and the assertion would stay green. So the pair here is
+   * chosen to disagree: `Started` keeps `#105`, `#101` and `#102`, the term
+   * "nobody" keeps `#102` and `#103` (both titles carry the word), and only
+   * `#102` is in both. Swapping the facet to `Not started` against the same
+   * term then returns the *other* row, which neither control picks out alone.
+   *
+   * The last step is three controls that each keep something and together keep
+   * nothing, which is the strongest form of the claim.
+   */
+  test("composes a facet with the search query", async ({ page }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = spendTable(page);
+    await expect(table).toBeVisible();
+    const search = page.getByLabel(USAGE_SEARCH_LABEL);
+
+    // Each control on its own, so the intersection below is visibly smaller
+    // than either of them and not merely equal to one.
+    await pickFacet(page, "started", "Started");
+    await expect(table.getByRole("rowheader")).toHaveText([
+      `#${FIXTURE_105!.number}`,
+      "#101",
+      "#102",
+    ]);
+
+    await pickFacet(page, "started", USAGE_FACETS.started.any);
+    await search.fill("nobody");
+    await expect(table.getByRole("rowheader")).toHaveText(["#102", SUNK]);
+
+    // And together: the one row both keep. Drop either control and this
+    // assertion goes red — two rows with the facet alone that the query does
+    // not match, and one with the query alone that the facet does not.
+    await pickFacet(page, "started", "Started");
+
+    await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 4)`)).toBeVisible();
+
+    // The same query against the other half of the same facet: a different
+    // single row, which neither control picks out by itself.
+    await pickFacet(page, "started", "Not started");
+
+    await expect(table.getByRole("rowheader")).toHaveText([SUNK]);
+
+    // Three controls that each keep something and together keep nothing. Only
+    // `#105` is over its band, and its title carries no "nobody".
+    await pickFacet(page, "started", "Started");
+    await pickFacet(page, "verdict", "over");
+
+    await expect(page.getByText(USAGE_NO_MATCH)).toBeVisible();
+  });
+
+  /**
+   * R11/R12 for the selects: they arrive with the reading and they outlive the
+   * next one.
+   *
+   * The same shape as the query's and the sort's cases above, and for the same
+   * measured reason — `useUsageScan` is a mutation, and a mutation clears its
+   * `data` the moment it is fired, so the bar really does unmount and come
+   * back. The second reading is waited for by its stamp rather than by the
+   * rows, because the rows are what this is about.
+   */
+  test("offers the facets only after a scan, and keeps them across one", async ({
+    page,
+  }) => {
+    for (const key of USAGE_FACET_KEYS) {
+      await expect(facetSelect(page, key)).toHaveCount(0);
+    }
+
+    const scan = page.getByRole("button", { name: "Scan" });
+    await scan.click();
+
+    const table = spendTable(page);
+    await expect(table).toBeVisible();
+    await pickFacet(page, "verdict", "over");
+    await expect(table.getByRole("rowheader")).toHaveText([
+      `#${FIXTURE_105!.number}`,
+    ]);
+
+    const gathered = page.getByText(/^Gathered at/);
+    const first = await gathered.locator("time").getAttribute("datetime");
+    await scan.click();
+    await expect
+      .poll(() => gathered.locator("time").getAttribute("datetime"))
+      .not.toBe(first);
+
+    await expect(facetSelect(page, "verdict")).toContainText("over");
+    await expect(table.getByRole("rowheader")).toHaveText([
+      `#${FIXTURE_105!.number}`,
+    ]);
   });
 
   test("puts the scrollable table where a keyboard can reach it", async ({
@@ -1034,7 +1319,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    const table = spendTable(page);
     await expect(table).toBeVisible();
     // `TableFrame`'s contract (#111): a named region that is its own tab stop,
     // so the rows below the fold are reachable without a pointer.
