@@ -62,8 +62,9 @@ const SCAN_FAILED = "The dev middleware could not read the transcripts.";
 export function UsagePage() {
   const scan = useUsageScan();
   const report = scan.data ?? null;
-  /* How the table below is being read — its ranking, and whether the detail
-     columns are shown. It belongs to the table and is held here for one
+  /* How the table below is being read — its ranking, whether the detail
+     columns are shown, and what the four controls on its bar have narrowed it
+     to. It belongs to the table and is held here for one
      measured reason: `useUsageScan` is a `useMutation`, and a mutation clears
      its `data` the moment it is fired — so `report` is null for the length of
      the read, the gate below closes, and `SpendTable` unmounts with whatever

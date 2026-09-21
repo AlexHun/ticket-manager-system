@@ -16,7 +16,9 @@ import { TableFrame } from "@/lib/table-frame";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
 import { SEARCH_DEBOUNCE_MS, countLabel, matchesQuery } from "./module-match";
+import { UsageFilters } from "./UsageFilters";
 import { formatTokens } from "./usage-charts";
+import { DEFAULT_USAGE_FACETS, matchesFacets } from "./usage-facets";
 import {
   DEFAULT_USAGE_SORT,
   nextSort,
@@ -38,6 +40,7 @@ import {
   type IssueSpend,
   type IssueUsage,
   type UsageColumn,
+  type UsageFacets,
   type Verdict,
 } from "./protocol";
 
@@ -340,12 +343,25 @@ export interface UsageTableView {
    * below. The debounce happens where the term is *spent* — see `SpendTable`.
    */
   query: string;
+  /**
+   * Which forecast band, which verdict and whether work has been recorded
+   * (#274).
+   *
+   * Up here with the query and for the same reasons: it is how the developer is
+   * reading the rows rather than part of the reading, and the mutation clears
+   * its `data` while it re-reads, so anything kept below would be thrown away
+   * by the press of Scan that re-asks the same question. Undebounced, unlike
+   * the query — a select settles the moment it is picked, and there is no
+   * per-keystroke cost to wait out.
+   */
+  facets: UsageFacets;
 }
 
 export const DEFAULT_USAGE_TABLE_VIEW: UsageTableView = {
   sort: DEFAULT_USAGE_SORT,
   detail: false,
   query: "",
+  facets: DEFAULT_USAGE_FACETS,
 };
 
 /**
@@ -468,8 +484,12 @@ function HeaderCell({
  * `data` the moment it is fired, so `UsagePage`'s `report &&` gate closes for
  * the length of the read and this component unmounts. State kept here would be
  * thrown away by the Scan that re-asks the same question — see
- * `UsagePage.tsx`. The detail toggle below is still local, and does not survive
- * a re-scan; that is #271's decision standing, not a rule this state follows.
+ * `UsagePage.tsx`. **Everything else on the bar travels with it, in one
+ * `UsageTableView`**: the detail toggle (#271 moved up with the sort, and had
+ * to — a sort on `turns` surviving without the column announcing it is a
+ * ranking with no arrow and nothing on screen saying why), the query (#273) and
+ * the three facets (#274). The rows change on a re-scan; how the developer is
+ * reading them does not.
  *
  * **Four columns by default, and one control for the other three** (#271). The
  * spine is the issue, its title, the spend and the comparison; `turns`,
@@ -488,11 +508,15 @@ function HeaderCell({
  * what it holds. A fifth column in the spine is where that assertion starts
  * earning its keep.
  *
- * The toggle's state is `useState` here rather than lifted to the page or
- * persisted: nothing else on the page reads it, and the scan it describes does
- * not survive a reload either (see `UsageReport` in `./protocol`), so a
- * preference restored over an empty table would be describing rows that are not
- * there.
+ * **Four controls narrow it, and they are one filter** (#273, #274). The search
+ * box matches the issue number and the title; the three selects beside it pick
+ * a forecast band, a verdict or started-versus-unstarted (`./UsageFilters`,
+ * with the predicates in `./usage-facets`). They are `&&`'d in one pass, so
+ * "they compose" holds by construction and the shown-out-of-total line counts
+ * what all four left. What none of them touches is the rest of the page: the
+ * charts, the unattributed total and the gathered-at line read `report.issues`
+ * up on `UsagePage` and never see these rows, which is #273's decision and the
+ * one this slice had to keep rather than re-make.
  */
 export function SpendTable({
   issues,
@@ -503,7 +527,7 @@ export function SpendTable({
   view: UsageTableView;
   onViewChange: (next: UsageTableView) => void;
 }) {
-  const { sort, detail } = view;
+  const { sort, detail, facets } = view;
   const searchId = useId();
   /* Debounced here rather than on the page, because here is where the term is
      spent: the box's own value has to keep up with the keystrokes, and only the
@@ -518,16 +542,25 @@ export function SpendTable({
      hash a developer copies out of the table or a commit message is a term that
      matches rather than one that matches nothing; a bare `101` still does,
      since the hash is a prefix. Nothing else on the row is searched: the URL is
-     the number again, and a band is what slice 5's facets are for. */
+     the number again, and a band is what the facets beside the box are for.
+
+     The two narrowings are one `&&` rather than two passes, which is what makes
+     "they compose" true by construction instead of by convention — and it is
+     why the count below can be `rows.length` against `issues.length` and
+     describe every control on the bar at once (#274). Both halves treat an
+     untouched control as matching everything, so neither needs an "is the
+     developer narrowing" branch that a later one could forget to write. */
   const rows = useMemo(
     () =>
       sortIssues(
-        issues.filter((row) =>
-          matchesQuery(needle, `#${row.issue}`, row.title),
+        issues.filter(
+          (row) =>
+            matchesQuery(needle, `#${row.issue}`, row.title) &&
+            matchesFacets(row, facets),
         ),
         sort,
       ),
-    [issues, needle, sort],
+    [issues, needle, facets, sort],
   );
 
   const onSortChange = (next: UsageSort) =>
@@ -572,8 +605,9 @@ export function SpendTable({
 
   return (
     <div className="space-y-2">
-      {/* The filter bar: the box that narrows the table, what it has narrowed
-          it to, and the control that widens it (#271, #273).
+      {/* The filter bar: the box and the three selects that narrow the table,
+          what they have narrowed it to, and the control that widens it (#271,
+          #273, #274).
 
           **Its reach is the table and nothing else**, which is this slice's
           whole decision. The two charts, the unattributed total and the
@@ -585,29 +619,43 @@ export function SpendTable({
           at two tabs, its search reaches all four), which is why a new
           filtering surface here has to choose one deliberately.
 
-          The three sit on one row because they are one bar. The toggle keeps
+          They all sit on one row because they are one bar. The toggle keeps
           `variant="outline"` and its `aria-label`; the box is the project map's
-          shape down to the icon and the `pl-8`, because two filter bars two
-          clicks apart should not need learning twice. */}
+          shape down to the icon and the `pl-8`, and the selects are that page's
+          workspace select down to the `w-44`, because two filter bars two
+          clicks apart should not need learning twice.
+
+          The narrowing controls wrap as a group of their own rather than
+          sharing one `flex-wrap` with the count and the toggle: at a width
+          where the selects have to drop to a second line, a `justify-between`
+          over all six would leave the count stranded beside the search box with
+          the thing it counts below it. */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex min-w-56 max-w-sm flex-1 flex-col gap-1.5">
-          <Label htmlFor={searchId}>{USAGE_SEARCH_LABEL}</Label>
-          <div className="relative">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              id={searchId}
-              type="search"
-              value={view.query}
-              placeholder="issue number or words from a title"
-              onChange={(event) =>
-                onViewChange({ ...view, query: event.target.value })
-              }
-              className="pl-8"
-            />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-56 max-w-sm flex-1 flex-col gap-1.5">
+            <Label htmlFor={searchId}>{USAGE_SEARCH_LABEL}</Label>
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                id={searchId}
+                type="search"
+                value={view.query}
+                placeholder="issue number or words from a title"
+                onChange={(event) =>
+                  onViewChange({ ...view, query: event.target.value })
+                }
+                className="pl-8"
+              />
+            </div>
           </div>
+
+          <UsageFilters
+            facets={facets}
+            onChange={(next) => onViewChange({ ...view, facets: next })}
+          />
         </div>
 
         <div className="flex items-center gap-3">
@@ -616,7 +664,10 @@ export function SpendTable({
               frozen module counter used to tell, and the number is what a
               developer reads to confirm the search took at all. `countLabel` is
               that helper — a bare total at rest, `shown of total` while
-              anything is narrowing it.
+              anything is narrowing it. **Anything**, which is why it reads
+              `rows.length` rather than counting the query's own work: the
+              facets narrow the same list, so one number describes all four
+              controls without any of them having to report itself (#274).
 
               Visible rather than folded into the scroller's `aria-label`, which
               is where the plan first put it. `TableFrame`'s name is a landmark
@@ -640,12 +691,14 @@ export function SpendTable({
         </div>
       </div>
 
-      {/* A term that matches nothing says so, and — the half that matters —
+      {/* A bar that matches nothing says so, and — the half that matters —
           says it *below* the bar rather than instead of it. Replacing the whole
-          block the way the no-issues state above does would take the box away
-          with the rows, leaving the query that emptied the table with no
-          control left to clear it from. Reachable only through the search,
-          since `issues.length` is non-zero by here. */}
+          block the way the no-issues state above does would take the controls
+          away with the rows, leaving whatever emptied the table with nothing
+          left to clear it from. `issues.length` is non-zero by here, so this is
+          reachable only through the search or a facet — and since #274 a facet
+          reaches it on its own, which is why the sentence names the filters
+          rather than the search. */}
       {rows.length === 0 ? (
         <TableFrame
           label={USAGE_TABLE_LABEL}

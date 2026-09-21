@@ -438,6 +438,27 @@ export const VERDICT = {
 export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
 
 /**
+ * The verdicts in reading order: what was overestimated, what was right, what
+ * was underestimated.
+ *
+ * Not `Object.values(VERDICT)`, whose order is the record's and means nothing.
+ * This one is an axis — the two misses sit either side of the hit, so the shape
+ * of the accuracy chart's columns is the shape of the error, and a reader sees
+ * which way the bands are wrong before reading a single label.
+ *
+ * It sits beside `VERDICT` rather than beside `forecastAccuracy` below because
+ * it stopped being the chart's alone in #274: the verdict facet's rows read in
+ * this order too, for the same reason the columns do — under, on target, over
+ * is the axis the words sit on, and a select that listed them in some other
+ * order would be a second opinion about what that order means.
+ */
+export const ACCURACY_ORDER = [
+  VERDICT.under,
+  VERDICT.onTarget,
+  VERDICT.over,
+] as const;
+
+/**
  * The columns a scan opens on, left to right — the issue number excepted, which
  * is the row's identity rather than one of its columns.
  *
@@ -562,20 +583,185 @@ export const USAGE_SEARCH_LABEL = "Find an issue";
 export const USAGE_TABLE_LABEL = "Issue spend";
 
 /**
- * What the table says when the search matches none of its rows (#273).
+ * What the table says when nothing on the bar above it matches a row (#273,
+ * reworded in #274).
  *
  * A string both suites reach for and neither can import from a `.tsx` module,
- * which is the whole of the rule `USAGE_DETAIL_LABEL` above records. It is the
- * project map's sentence with the noun changed — `MapWiring` says "No endpoint
- * matches the search." of its own lists — because the two bars are two clicks
- * apart and a developer should not have to learn which words each one uses for
- * the same answer.
+ * which is the whole of the rule `USAGE_DETAIL_LABEL` above records. It began
+ * as the project map's sentence with the noun changed — `MapWiring` says "No
+ * endpoint matches the search." of its own lists — because the two bars are two
+ * clicks apart and a developer should not have to learn which words each one
+ * uses for the same answer.
+ *
+ * **"These filters" rather than "the search", since #274.** The bar has four
+ * controls now and any of them can empty the table on its own; naming only the
+ * box would send a developer who had narrowed to `forecast/L` to clear a search
+ * term that was never there. The two bars diverge on this one word deliberately
+ * — the map's search is the only control that can empty one of its lists.
  *
  * Distinct from the frame's other empty state, which is not here: "no issue
  * spend in these transcripts at all" is a fact about the scan, is worded as
  * one, and no test addresses it by a whole string.
  */
-export const USAGE_NO_MATCH = "No issue matches the search.";
+export const USAGE_NO_MATCH = "No issue matches these filters.";
+
+/**
+ * The token every facet's "any" row carries (#274).
+ *
+ * Non-empty, and that is a requirement rather than a preference: the Radix
+ * `Select` underneath reserves `""` for *cleared* and throws on a `SelectItem`
+ * whose value is it. `ProjectMapPage` learned the same thing for its workspace
+ * select and answered it the same way; this one is in the contract because
+ * three selects share it and because `UsagePage.test.tsx` and `dev-usage.spec.ts`
+ * both have to name the row that clears a facet.
+ *
+ * It is a token rather than `null` on the wire of the state because it is what
+ * a `SelectItem` is given — the mapping from "any" to "no constraint" happens
+ * once, in `matchesFacets` (`./usage-facets`), rather than at each of the three
+ * comparisons.
+ */
+export const ANY_FACET = "any";
+
+/**
+ * The two answers to "has any work been recorded against this issue?" (#274).
+ *
+ * A vocabulary of its own rather than a boolean, because it is a facet value
+ * like the bands and the verdicts beside it and travels through the same
+ * `string`-valued control. The words are the values for the reason `VERDICT`'s
+ * are: what the select shows and what the state holds cannot then disagree.
+ *
+ * What it asks is `spend !== null` and nothing else. It is deliberately not
+ * "spent more than zero": a row that really recorded zero output tokens is a
+ * measurement, and the distinction this whole page is built on is that an
+ * absence is not a small quantity. See `NotStarted` in `SpendTable.tsx`.
+ */
+export const USAGE_STARTED = {
+  started: "started",
+  unstarted: "unstarted",
+} as const;
+
+export type UsageStarted = (typeof USAGE_STARTED)[keyof typeof USAGE_STARTED];
+
+/**
+ * What each facet narrows on — the type that makes the other three lists
+ * exhaustive (#274).
+ *
+ * The key set is derived from this one interface, so a fourth facet is one
+ * edit here and then three compile errors: a spec with no entry in
+ * `USAGE_FACETS`, a field missing from `UsageFacets`, and a predicate missing
+ * from `FACET_MATCH` (`./usage-facets`). Written as three independent lists it
+ * would be three things to keep in step, which is the shape `SORTABLE` in
+ * `./usage-sort` exists to refuse for the sort keys.
+ *
+ * Each value type is the vocabulary the row already carries, never a second
+ * spelling of it: a forecast facet is a `Bucket` because `IssueUsage.forecast`
+ * is one, and a verdict facet is a `Verdict` for the same reason. That is what
+ * lets `FACET_MATCH` be three `===` comparisons with nothing to translate.
+ */
+interface UsageFacetValues {
+  forecast: Bucket;
+  verdict: Verdict;
+  started: UsageStarted;
+}
+
+export type UsageFacetKey = keyof UsageFacetValues;
+
+/**
+ * The facets in the order they sit on the bar. A list rather than
+ * `Object.keys(USAGE_FACETS)`, whose order is a record's and means nothing —
+ * the same distinction `ACCURACY_ORDER` draws against `Object.values(VERDICT)`.
+ *
+ * Forecast first because it is the column the page is about, verdict second
+ * because it reads the first against the spend, and "work recorded" last
+ * because it is the only one that asks about the row's existence rather than
+ * about its figures.
+ */
+export const USAGE_FACET_KEYS = [
+  "forecast",
+  "verdict",
+  "started",
+] as const satisfies readonly UsageFacetKey[];
+
+/**
+ * One facet's control: its accessible name, the row that clears it, and the
+ * rows that constrain it.
+ *
+ * The options are `{ value, label }` pairs rather than bare values because two
+ * of the three read differently from how they are stored: a band's row says
+ * `M 60-150k`, since the letter alone is jargon and the range alone does not
+ * match the label on the issue (the same pair `Band` renders in a row), while a
+ * verdict's row is the verdict itself.
+ */
+interface UsageFacetSpec<Value extends string> {
+  /** The select's accessible name, and the visible label beside it. */
+  label: string;
+  /** The "any" row's words — what `ANY_FACET` reads as. */
+  any: string;
+  options: readonly { value: Value; label: string }[];
+}
+
+/**
+ * The three selects beside the search box, said once (#274).
+ *
+ * In the contract for the reason `USAGE_DETAIL_LABEL` and `USAGE_SEARCH_LABEL`
+ * are: `UsageFilters.tsx` renders every string here, and both suites reach for
+ * the controls and the rows by them while neither can import a `.tsx` module. A
+ * retyped label would leave them driving a select that no longer exists, which
+ * is the failure `route-timing.spec.ts` records for the user-timing mark names.
+ *
+ * **Every band is offered, including `XL`, and every verdict, including ones
+ * nothing currently lands in.** The options are the *vocabulary*, not an
+ * inventory of the rows on screen — which is what makes "narrow to a band and
+ * find the table empty" a reachable, honest answer rather than an option that
+ * quietly vanishes. Derived from the rows instead, a facet could never produce
+ * the empty state at all, and the developer would be left unable to ask a
+ * question whose answer is "none". `XL` is in `BUCKETS` and `forecastOf` in
+ * `apps/web/dev/issues.ts` accepts any band key, so a `forecast/XL` label would
+ * be read; that no such label exists today is a fact about this repository's
+ * practice and not about what the facet can express.
+ */
+export const USAGE_FACETS: {
+  [K in UsageFacetKey]: UsageFacetSpec<UsageFacetValues[K]>;
+} = {
+  forecast: {
+    label: "Forecast band",
+    any: "Any band",
+    options: (Object.keys(BUCKETS) as Bucket[]).map((band) => ({
+      value: band,
+      label: `${band} ${BUCKETS[band].label}`,
+    })),
+  },
+  verdict: {
+    label: "Verdict",
+    any: "Any verdict",
+    options: ACCURACY_ORDER.map((verdict) => ({
+      value: verdict,
+      label: verdict,
+    })),
+  },
+  started: {
+    label: "Work recorded",
+    any: "Started or not",
+    options: [
+      { value: USAGE_STARTED.started, label: "Started" },
+      { value: USAGE_STARTED.unstarted, label: "Not started" },
+    ],
+  },
+};
+
+/**
+ * How the table is narrowed besides the search box: one value per facet, and
+ * `ANY_FACET` for the ones nobody has touched.
+ *
+ * Mapped off `UsageFacetValues` rather than written out, so the fields and the
+ * controls cannot drift apart. It lives in the contract beside the specs
+ * because `UsageTableView` carries it up to `UsagePage` — the state belongs to
+ * the page for the measured reason #272 records, and the shape of it is
+ * something both halves of the split read.
+ */
+export type UsageFacets = {
+  [K in UsageFacetKey]: UsageFacetValues[K] | typeof ANY_FACET;
+};
 
 /**
  * What one issue's branches actually cost, as this machine's transcripts
@@ -741,21 +927,6 @@ export interface UsageReport {
 }
 
 /* ── Readings over the rows ───────────────────────────────────────────── */
-
-/**
- * The verdicts in reading order: what was overestimated, what was right, what
- * was underestimated.
- *
- * Not `Object.values(VERDICT)`, whose order is the record's and means nothing.
- * This one is an axis — the two misses sit either side of the hit, so the shape
- * of the accuracy chart's columns is the shape of the error, and a reader sees
- * which way the bands are wrong before reading a single label.
- */
-export const ACCURACY_ORDER = [
-  VERDICT.under,
-  VERDICT.onTarget,
-  VERDICT.over,
-] as const;
 
 export interface AccuracyBin {
   verdict: Verdict;

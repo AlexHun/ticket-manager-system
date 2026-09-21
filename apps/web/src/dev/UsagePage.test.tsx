@@ -13,12 +13,20 @@ import {
   USAGE_COLUMNS,
   USAGE_DETAIL,
   USAGE_DETAIL_LABEL,
+  USAGE_FACETS,
+  USAGE_FACET_KEYS,
   USAGE_NO_MATCH,
   USAGE_SEARCH_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
 } from "./protocol";
-import type { IssueUsage, UsageColumn, UsageReport } from "./protocol";
+import type {
+  Bucket,
+  IssueUsage,
+  UsageColumn,
+  UsageFacetKey,
+  UsageReport,
+} from "./protocol";
 
 /**
  * The page's one rule: it reads nothing until asked, and what it shows
@@ -1373,5 +1381,334 @@ describe("UsagePage search", () => {
 
     expect(await issueOrder()).toEqual(["#102", "#101"]);
     expect(searchBox()).toHaveValue("10");
+  });
+});
+
+/**
+ * R8, slice 5 (#274): three selects beside the box, and the composition of all
+ * four.
+ *
+ * The facet *predicates* are unit-tested over made-up rows in
+ * `usage-facets.test.ts`, which is where "an absence is not a quantity" is
+ * asked of every option. What only this level can say is that the controls
+ * exist, are named, reach the rows, compose with the query and with each other,
+ * and survive the press of Scan that re-asks the same question.
+ *
+ * The rows are chosen so that every assertion below has a wrong answer that
+ * would be visible: `#105` is the only one over its band, `#101` the only one
+ * on target, `#102` carries figures and no band at all, and `#300` a band and
+ * no figures. A facet that matched too widely picks up one of the other three.
+ */
+describe("UsagePage facets", () => {
+  const OVER = 105;
+  const UNSTARTED = 300;
+
+  /** An on-target row, a row over its band, a row nobody forecast, and a row
+   *  nobody has started — the four states the three facets cut across. */
+  const facetedReport = () =>
+    makeReport({
+      issues: [
+        makeIssue({
+          issue: OVER,
+          spend: { out: 90_000, turns: 1, sessions: 1, cacheRead: 250_000 },
+          title: "An issue that came in over its band",
+          url: "https://github.com/AlexHun/ticket-manager-system/issues/105",
+          forecast: "S",
+          bucket: "M",
+          verdict: "over",
+        }),
+        makeIssue({
+          issue: 101,
+          forecast: "S",
+          bucket: "S",
+          verdict: "on target",
+        }),
+        makeIssue({
+          issue: 102,
+          spend: { out: 3_000, turns: 1, sessions: 1, cacheRead: 12_000 },
+          title: "A second issue",
+          url: "https://github.com/AlexHun/ticket-manager-system/issues/102",
+          forecast: null,
+          verdict: null,
+        }),
+        makeIssue({
+          issue: UNSTARTED,
+          spend: null,
+          bucket: null,
+          verdict: null,
+          title: "Nobody has started this",
+          url: "https://github.com/AlexHun/ticket-manager-system/issues/300",
+          forecast: "L",
+        }),
+      ],
+    });
+
+  /** Output tokens descending with the unstarted row sunk — the order the rows
+   *  arrive in, and what every narrowing below is a subset of. */
+  const ALL = [`#${OVER}`, "#101", "#102", `#${UNSTARTED}`];
+
+  const issueOrder = async () =>
+    within(await spendTable())
+      .getAllByRole("rowheader")
+      .map((cell) => cell.textContent);
+
+  const searchBox = () => screen.getByLabelText(USAGE_SEARCH_LABEL);
+
+  /**
+   * A facet's select, by the accessible name its `<Label>` gives it.
+   *
+   * A Radix `Select` is a `combobox`, not a native `<select>`, so nothing here
+   * can use `selectOptions` and the current value is read off the trigger's
+   * text rather than with `toHaveValue` — `frontend.md`'s rule, and the shims
+   * these need in jsdom are already in `src/test/setup.ts`.
+   */
+  const facetSelect = (key: UsageFacetKey) =>
+    screen.getByRole("combobox", { name: USAGE_FACETS[key].label });
+
+  /** Open a facet and pick a row from it, by the words on the row. */
+  const pickFacet = async (
+    user: ReturnType<typeof userEvent.setup>,
+    key: UsageFacetKey,
+    option: string,
+  ) => {
+    await user.click(facetSelect(key));
+    await user.click(await screen.findByRole("option", { name: option }));
+  };
+
+  /** The band rows read as the letter and the range that letter means, the same
+   *  pair a row's comparison cell prints — the letter alone is jargon. */
+  const band = (value: Bucket) =>
+    USAGE_FACETS.forecast.options.find((option) => option.value === value)!
+      .label;
+
+  beforeEach(() => {
+    post.mockResolvedValue({ data: facetedReport() });
+  });
+
+  /**
+   * R12, the same gate the search box is behind: a filter bar over no data is
+   * an invitation to configure a view of nothing, and the scan does not survive
+   * a reload, so there would be nothing to configure it against.
+   */
+  test("offers no facet selects until a scan has been read", async () => {
+    renderPage();
+
+    for (const key of USAGE_FACET_KEYS) {
+      expect(
+        screen.queryByRole("combobox", { name: USAGE_FACETS[key].label }),
+      ).toBeNull();
+    }
+
+    await userEvent.setup().click(scanButton());
+    await spendTable();
+
+    for (const key of USAGE_FACET_KEYS) {
+      expect(facetSelect(key)).toBeVisible();
+    }
+  });
+
+  /** Each opens on its "any" row, which is the state the table opens in: three
+   *  controls that are present and narrowing nothing. */
+  test("opens with every facet at its any row", async () => {
+    await scanned();
+    await spendTable();
+
+    for (const key of USAGE_FACET_KEYS) {
+      expect(facetSelect(key)).toHaveTextContent(USAGE_FACETS[key].any);
+    }
+    expect(await issueOrder()).toEqual(ALL);
+  });
+
+  test("narrows the table to a single forecast band", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await pickFacet(user, "forecast", band("S"));
+
+    // Both `S` rows, still ranked by spend — and not `#102`, which carries no
+    // band at all, nor `#300`, whose band is `L`.
+    expect(await issueOrder()).toEqual([`#${OVER}`, "#101"]);
+    expect(facetSelect("forecast")).toHaveTextContent(band("S"));
+  });
+
+  /**
+   * The verdict the ticket is named for. "Which issues came in over their
+   * forecast?" is one action, and the answer is the one row that did.
+   */
+  test("narrows the table to a verdict, including over", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await pickFacet(user, "verdict", "over");
+
+    expect(await issueOrder()).toEqual([`#${OVER}`]);
+
+    await pickFacet(user, "verdict", "on target");
+
+    expect(await issueOrder()).toEqual(["#101"]);
+  });
+
+  test("narrows the table to started, and to unstarted, issues", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await pickFacet(user, "started", "Not started");
+
+    expect(await issueOrder()).toEqual([`#${UNSTARTED}`]);
+
+    await pickFacet(user, "started", "Started");
+
+    expect(await issueOrder()).toEqual([`#${OVER}`, "#101", "#102"]);
+  });
+
+  /**
+   * The "any" row is what clears a facet, and it needs a non-empty token to be
+   * a `SelectItem` at all — Radix reserves `""` for *cleared* and throws on it.
+   * `ANY_FACET` is that token; this is the assertion that it round-trips.
+   */
+  test("clears a facet from its any row", async () => {
+    const user = await scanned();
+    await spendTable();
+    await pickFacet(user, "verdict", "over");
+    expect(await issueOrder()).toEqual([`#${OVER}`]);
+
+    await pickFacet(user, "verdict", USAGE_FACETS.verdict.any);
+
+    expect(await issueOrder()).toEqual(ALL);
+  });
+
+  /** Two facets at once are an `and`, not an `or` — which is also how the
+   *  empty state below is reachable from the bar alone. */
+  test("requires every facet a developer has set", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await pickFacet(user, "forecast", band("S"));
+    await pickFacet(user, "verdict", "over");
+
+    expect(await issueOrder()).toEqual([`#${OVER}`]);
+  });
+
+  /**
+   * R7 thickened: the facets and the search box are one filter, so both apply
+   * at once. `forecast/S` alone leaves two rows and `101` alone leaves one of
+   * each pair, so a run where either was being ignored shows a different table.
+   */
+  test("composes a facet with the search query", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await pickFacet(user, "forecast", band("S"));
+    await user.type(searchBox(), "101");
+
+    await waitFor(async () => expect(await issueOrder()).toEqual(["#101"]), {
+      timeout: 5_000,
+    });
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (1 of 4)`)).toBeVisible();
+  });
+
+  /**
+   * R9: the count describes every control on the bar rather than the box
+   * alone. A line still reading four over two visible rows is the same lie the
+   * project map's frozen module counter used to tell.
+   */
+  test("counts what every control left, not what the query left", async () => {
+    const user = await scanned();
+    await spendTable();
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (4)`)).toBeVisible();
+
+    await pickFacet(user, "forecast", band("S"));
+
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (2 of 4)`)).toBeVisible();
+  });
+
+  /**
+   * A facet matching nothing says so, and leaves the controls that produced it
+   * on screen. An empty state that took them with it would be a trap: the
+   * selection that emptied the table would have nothing left to clear it from
+   * — and unlike a typed term, a facet cannot be guessed at from the rows.
+   *
+   * `M` is the band nothing in this report was forecast into, which is the
+   * whole reason the options are the vocabulary rather than an inventory of the
+   * rows on screen.
+   */
+  test("says nothing matches rather than showing a table with no rows", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await pickFacet(user, "forecast", band("M"));
+
+    expect(screen.getByText(USAGE_NO_MATCH)).toBeVisible();
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (0 of 4)`)).toBeVisible();
+    for (const key of USAGE_FACET_KEYS) {
+      expect(facetSelect(key)).toBeVisible();
+    }
+    expect(searchBox()).toBeVisible();
+  });
+
+  /**
+   * R11. You press Scan to refresh the figures, not to clear your view — and
+   * the mutation clears its `data` while it reads, so the bar and the table
+   * really do unmount and come back. This is why the facets live in
+   * `UsageTableView` on the page rather than inside `SpendTable`.
+   */
+  test("keeps the facets when Scan is pressed again", async () => {
+    const user = await scanned();
+    await spendTable();
+    await pickFacet(user, "verdict", "over");
+    expect(await issueOrder()).toEqual([`#${OVER}`]);
+
+    await user.click(scanButton());
+
+    await waitFor(async () => expect(post).toHaveBeenCalledTimes(2));
+    expect(facetSelect("verdict")).toHaveTextContent("over");
+    expect(await issueOrder()).toEqual([`#${OVER}`]);
+  });
+
+  /**
+   * R10, the guardrail, re-asserted for the second kind of control. The
+   * accuracy figure describes the whole scan — it is the number somebody might
+   * quote — so a filter that moved it would turn a claim about this repository
+   * into a claim about what somebody picked from a dropdown. Compared on
+   * `textContent` because what is held is that *nothing* in them moved.
+   */
+  test("leaves the charts, the unattributed total and the reading alone", async () => {
+    const user = await scanned();
+    const before = {
+      accuracy: (await panel("Forecast accuracy")).textContent,
+      distribution: (await panel("Output distribution")).textContent,
+      unattributed: (await panel("Unattributed work")).textContent,
+      gathered: (await screen.findByText(/^Gathered at/)).textContent,
+    };
+
+    await pickFacet(user, "verdict", "over");
+    expect(await issueOrder()).toEqual([`#${OVER}`]);
+
+    expect((await panel("Forecast accuracy")).textContent).toBe(
+      before.accuracy,
+    );
+    expect((await panel("Output distribution")).textContent).toBe(
+      before.distribution,
+    );
+    expect((await panel("Unattributed work")).textContent).toBe(
+      before.unattributed,
+    );
+    expect((await screen.findByText(/^Gathered at/)).textContent).toBe(
+      before.gathered,
+    );
+  });
+
+  /** The bar's controls are independent of the ranking: a narrowed table still
+   *  ranks from its headers, and the facet survives the click that re-ranks
+   *  it. */
+  test("ranks what the facets left, and keeps them while it does", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await pickFacet(user, "started", "Started");
+    await user.click(screen.getByRole("button", { name: "Output tokens" }));
+
+    expect(await issueOrder()).toEqual(["#102", "#101", `#${OVER}`]);
+    expect(facetSelect("started")).toHaveTextContent("Started");
   });
 });

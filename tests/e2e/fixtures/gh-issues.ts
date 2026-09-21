@@ -45,13 +45,20 @@ const issue = (
 });
 
 /**
- * Four issues: the two the transcript fixture spends on, and two it does not.
+ * Five issues: the three the transcript fixture spends on, and two it does not.
  *
  * `#101` spent 20,000 output tokens against a `forecast/S` band (<60k), so it
  * is **on target** — the enriched row the spec reads a title, an `href` and a
  * verdict off. `#102` carries no forecast label at all, which is the other case
  * worth holding: it must render with its figures and *no* verdict, rather than
  * a default one.
+ *
+ * `#105` is the row #274 added and the reason it had to: it spent 90,000
+ * against the same `forecast/S` band, so it lands in `M` and its verdict is
+ * **over**. Until it existed the fixture had no over-budget row at all, and a
+ * verdict facet whose only testable outcome is "matches nothing" proves
+ * nothing about a filter. It is also why `CHARTS` in the spec now reads 1/2
+ * rather than 1/1 — see `transcripts/README.md`, which carries the arithmetic.
  *
  * The last two have no branch anywhere in the transcripts, and they are the
  * pair #251 turns on. `#103` is **open**, so it earns a row with its band and
@@ -62,7 +69,7 @@ const issue = (
  * having cost nothing. Both carry a forecast, so what separates them in the
  * table is their state and nothing else.
  *
- * The titles say "fixture" on purpose. All four numbers are real issues in this
+ * The titles say "fixture" on purpose. All five numbers are real issues in this
  * repository, so a run that adopted a leftover dev server started without
  * `GH_ISSUES_FILE` would quietly show their real titles instead — and the
  * assertion that fails should say which listing it read, not merely that some
@@ -81,6 +88,10 @@ export const GH_ISSUES = [
     ["forecast/L"],
     "CLOSED",
   ),
+  issue(105, "Fixture: an issue that came in over its band", [
+    "ready-for-agent",
+    "forecast/S",
+  ]),
 ];
 
 export function writeGhIssuesFixture(): void {
