@@ -318,5 +318,10 @@
     "version": "0.1.116",
     "date": "2026-09-21",
     "title": "A search box over the Usage spend table, reaching only it (#273)"
+  },
+  {
+    "version": "0.1.117",
+    "date": "2026-09-21",
+    "title": "Facet filters for the Usage table, and an over-budget fixture (#274)"
   }
 ]
