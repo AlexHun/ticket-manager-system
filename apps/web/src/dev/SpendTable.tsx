@@ -36,6 +36,7 @@ import {
   USAGE_TABLE_LABEL,
   BUCKETS,
   VERDICT,
+  hasRecordedSpend,
   type Bucket,
   type IssueSpend,
   type IssueUsage,
@@ -120,11 +121,16 @@ const Band = ({ band }: { band: Bucket }) => (
  * has no figures, and each of the four is absent exactly when the others are —
  * which is why `IssueSpend` is one nullable object on the wire rather than four
  * nullable numbers.
+ *
+ * The branch itself is `hasRecordedSpend` in `./usage-protocol` rather than a
+ * truthiness test of this file's own (#285): the same predicate the comparator
+ * sinks by, the facet filters by and the distribution samples by, so a cell can
+ * never dash a row the chart counted.
  */
 const figure =
   (pick: (spend: IssueSpend) => number) =>
   (row: IssueUsage): ReactNode =>
-    row.spend ? formatTokens(pick(row.spend)) : <NotStarted />;
+    hasRecordedSpend(row) ? formatTokens(pick(row.spend)) : <NotStarted />;
 
 /** Colour carries the same three verdicts the word does, and adds nothing: over
  *  is the one worth catching an eye. */

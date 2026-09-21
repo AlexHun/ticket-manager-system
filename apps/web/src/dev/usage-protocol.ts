@@ -8,12 +8,15 @@
  * Nothing here is read by a module that renders `/__dev/map` or
  * `/__dev/tests`, and nothing here reads theirs.
  *
- * Mostly types, and the exceptions are deliberate: a handful of records and the
+ * Mostly types, and the exceptions are deliberate: a handful of records, the
  * four small functions that read them (`bucketFor`, `percentiles`,
- * `forecastAccuracy`, `recordedSpend`). Vocabulary both halves spend belongs in
- * the file both halves import — a band's printed range and the boundary that
- * decides it are two halves of one fact, and so are the median the terminal
- * prints and the median the page marks.
+ * `forecastAccuracy`, `recordedSpend`) and one predicate over a row
+ * (`hasRecordedSpend`, the page's central rule rather than arithmetic).
+ * Vocabulary both halves spend belongs in the file both halves import — a
+ * band's printed range and the boundary that decides it are two halves of one
+ * fact, and so are the median the terminal prints and the median the page
+ * marks. Same for the rule: the node half ranks by it and the browser half
+ * sorts, filters and dashes cells by it, so it lives where both can reach it.
  *
  * It also still holds the browser's UI copy and the shape of the table's view
  * state, which are read by the page and by both suites but by nothing in the
@@ -312,10 +315,12 @@ export const ANY_FACET = "any";
  * `string`-valued control. The words are the values for the reason `VERDICT`'s
  * are: what the select shows and what the state holds cannot then disagree.
  *
- * What it asks is `spend !== null` and nothing else. It is deliberately not
- * "spent more than zero": a row that really recorded zero output tokens is a
- * measurement, and the distinction this whole page is built on is that an
- * absence is not a small quantity. See `NotStarted` in `SpendTable.tsx`.
+ * What it asks is `hasRecordedSpend` and nothing else — the predicate above,
+ * which `FACET_MATCH` in `./usage-facets` calls rather than restating. It is
+ * deliberately not "spent more than zero": a row that really recorded zero
+ * output tokens is a measurement, and the distinction this whole page is built
+ * on is that an absence is not a small quantity. See `NotStarted` in
+ * `SpendTable.tsx`.
  */
 export const USAGE_STARTED = {
   started: "started",
@@ -540,6 +545,42 @@ export interface IssueUsage {
 }
 
 /**
+ * Whether the transcripts recorded any work at all against this issue — **the
+ * page's central claim, and since #285 the only place it is stated** (R2).
+ *
+ * A row with no recorded spend is an *absence*, not a zero. `bucketFor(0)` is
+ * `S`, so a row read as zero would be filed in the smallest band, scored
+ * "under" against whatever it was forecast at, and counted in the quartiles —
+ * which would put every unstarted issue in the backlog in the table claiming to
+ * have beaten its estimate, and drag the accuracy figure and the distribution
+ * down with it as the backlog grows.
+ *
+ * It asks `spend !== null` and deliberately **not** `out > 0`: a turn can
+ * record no output tokens at all, so an issue really can have spent zero. That
+ * is a measurement, and it ranks, bands and scores like any other figure.
+ *
+ * Five callers read it and none re-derives it — the node half's ranking
+ * (`rank` in `apps/web/dev/usage.ts`), the table's comparator (`sortIssues` in
+ * `./usage-sort`), the `started` facet (`FACET_MATCH` in `./usage-facets`), the
+ * distribution's sample (`recordedSpend` below) and the cell that renders the
+ * em dash (`figure` in `./SpendTable`). It was written out separately in each
+ * of them until #285, with nothing holding them in step.
+ *
+ * **It is not the ranking's sink value, and the two must not be collapsed.**
+ * This answers "is there spend"; `rank` needs a *number* that sorts below every
+ * real figure (`-1`, because zero is a real figure) and is a different question
+ * with a different answer type. `rank` is a caller of this, not a spelling of
+ * it — see its doc comment for why the sink cannot simply be `0`.
+ *
+ * A type guard rather than a `boolean`, so the callers that go on to read a
+ * figure off the row do it without a `?.` or a `!` that would each be a second,
+ * unchecked statement of the same rule.
+ */
+export const hasRecordedSpend = (
+  row: IssueUsage,
+): row is IssueUsage & { spend: IssueSpend } => row.spend !== null;
+
+/**
  * What ran on `main`, or on no branch at all — the work that belongs to no
  * issue.
  *
@@ -676,11 +717,11 @@ export function forecastAccuracy(issues: IssueUsage[]): ForecastAccuracy {
  * page's quartile marks must be quartiles *of the same set*, and both had
  * written this `flatMap` out for themselves.
  *
- * A row with no spend is an absence, not a zero. `bucketFor(0)` is `S`, so
- * substituting one would file every unstarted issue in the smallest band and
- * drag all three quartiles down with it as the backlog grows — and a
- * `forecast/L` read against that zero prints "under", which is the same bug
- * arriving at the accuracy figure by the other road.
+ * The exclusion is `hasRecordedSpend` above and is written down there: a row
+ * with no recorded spend is an absence, not a zero. This is the one line that
+ * decides what is in the sample, and since #285 it decides it by asking the
+ * same predicate the ranking, the comparator, the facets and the cells ask
+ * rather than by re-deriving the rule.
  */
 export const recordedSpend = (issues: IssueUsage[]): number[] =>
-  issues.flatMap((row) => (row.spend ? [row.spend.out] : []));
+  issues.flatMap((row) => (hasRecordedSpend(row) ? [row.spend.out] : []));

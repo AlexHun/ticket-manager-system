@@ -48,6 +48,7 @@ import {
   VERDICT,
   bucketFor,
   forecastAccuracy,
+  hasRecordedSpend,
   percentiles,
   recordedSpend,
   type Bucket,
@@ -296,15 +297,31 @@ export function scanSpend(dir: string): ScanResult {
 }
 
 /**
- * Where a row sorts: its output tokens, or below every one of them.
+ * The key an unstarted row sorts under: below every figure a started row can
+ * carry.
  *
  * `-1` rather than `0`, and the difference is not hypothetical — a turn can
  * record no output tokens at all, so an issue really can have spent zero. That
  * is a measurement; an issue nobody has started is an absence, and the two must
  * not share a key or the empty rows file themselves among the cheapest issues,
  * where they read as work that cost almost nothing.
+ *
+ * **This is not `hasRecordedSpend`, and it is deliberately not derived from
+ * it** (#285). That predicate answers "is there spend" and is what `rank` below
+ * branches on; this is the *value* the absent case sorts at, which is a
+ * different question with a different answer type. Collapsing them — ranking by
+ * the predicate itself, say — would change the order, since every started row
+ * would then compare equal and the output-token ordering the page opens on
+ * would be gone. Only this module wants a sink value at all: the browser's
+ * comparator (`sortIssues` in `../src/dev/usage-sort.ts`) never reads one,
+ * because it compares two rows by the predicate directly before it looks at any
+ * figure.
  */
-const rank = (row: IssueUsage) => row.spend?.out ?? -1;
+const UNSTARTED_RANK = -1;
+
+/** Where a row sorts: its output tokens, or below every one of them. */
+const rank = (row: IssueUsage) =>
+  hasRecordedSpend(row) ? row.spend.out : UNSTARTED_RANK;
 
 /**
  * The rows themselves: every issue worth looking at, joined to what GitHub
