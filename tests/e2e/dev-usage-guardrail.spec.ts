@@ -3,6 +3,7 @@ import { exec } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   GH_ISSUES_FIXTURE_PATH,
   removeGhIssuesFixture,
@@ -60,7 +61,14 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
  * title is text on screen, so it moves the snapshot and fails here; a renamed
  * *accessible* name breaks the locator, which is also a change to the surface
  * and also a failure. The only things imported are the two test-side fixture
- * modules, which no slice of that plan touches.
+ * modules and `ROUTE`, none of which that plan touches.
+ *
+ * **`ROUTE` is not an exception to that, and the distinction is the standard's
+ * own.** `frontend.md` declares a route's path exactly once and keeps
+ * `apps/web/src/lib/routes.ts` import-free *so that an E2E spec can reach into
+ * it* — a rule with no counterpart for the strings above, and a module no slice
+ * of this plan moves. Retyping `/__dev/usage` here was a plain breach of it,
+ * caught in review.
  *
  * ## What is masked, and what is not
  *
@@ -97,10 +105,13 @@ const SCAN_MS = "<scan-ms>";
 /**
  * The two per-run values, wherever they appear in a captured surface.
  *
- * Applied to both snapshots from one function rather than to one of them from
- * two regexes: "the gathered-at time and the scan duration are masked, and
- * nothing else is" is a single rule about this guardrail, and the terminal is
- * not exempt from it merely because the script prints no duration today.
+ * **On the terminal this is a no-op today, and that is said plainly rather than
+ * argued around.** `scripts/issue-tokens.ts` prints neither a timestamp nor a
+ * duration, so only the page capture has anything for it to replace. It is
+ * still one function over both, for two reasons that are not style: the rule is
+ * one rule about this guardrail rather than two, and the later slices of this
+ * plan rewrite that script's own diagnostics — a `read in N ms` reaching the
+ * terminal would otherwise turn this snapshot into a flake instead of a diff.
  *
  * The timestamp cannot be found by pattern — it is rendered in the runner's
  * locale — so callers that have one pass the exact string they read off the
@@ -117,15 +128,18 @@ const maskVolatile = (text: string, stamp?: string) =>
 const portable = (dir: string) =>
   path.relative(REPO_ROOT, dir).split(path.sep).join("/");
 
-/** Trailing whitespace and CRLF are not part of either surface's claim, and a
- *  checkout that rewrote line endings would otherwise fail every line at once. */
-const tidy = (text: string) =>
-  text
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .join("\n")
-    .trim();
+/**
+ * Line endings, and nothing else.
+ *
+ * Deliberately **not** a per-line `trimEnd`, which is what this was first and
+ * is a third masked value wearing a tidier name. `bun run tokens` renders a
+ * fixed-width table with `padEnd`/`padStart`, so trailing spaces on that
+ * surface are its rendering rather than noise: a slice that changed the last
+ * column's width would have been absorbed here and reported as unchanged.
+ * Verified no line of either committed snapshot ends in whitespace today, so
+ * restoring the grip cost nothing.
+ */
+const tidy = (text: string) => text.replace(/\r\n/g, "\n").trim();
 
 /** The scrollable frame the table is drawn in. Named, because `TableFrame`
  *  gives every scroller a `region` role and an `aria-label` (#111). */
@@ -165,8 +179,37 @@ const tableText = async (page: Page) =>
  * `<text>` nodes, and Chromium renders them into `innerText` in document order.
  * Gathering them a second time through `svg text` was tried and only put every
  * label in the snapshot twice.
+ *
+ * Each line is trimmed here rather than in `tidy`: a panel's trailing
+ * whitespace is a browser's line-boxing and says nothing, where the terminal's
+ * is a column width and says everything.
  */
-const panelText = async (panel: Locator) => tidy(await panel.innerText());
+const panelText = async (panel: Locator) =>
+  tidy(await panel.innerText())
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n");
+
+/**
+ * A chart panel's x-axis tick labels — the settle signal, and the reason it is
+ * a selector rather than a string.
+ *
+ * Waiting on copy ("on target (", "p25") was tried and is a trap this file in
+ * particular cannot afford: both strings live in `protocol.ts`, the module
+ * slice 2 splits, so a rename there would fail as a locator **timeout** rather
+ * than as a snapshot diff — and would force an edit to the guardrail, which the
+ * plan defines as a slice that changed the measurement. A drawn axis is
+ * structure, and it is what "the chart has rendered" actually means.
+ *
+ * `.recharts-xAxis-tick-labels`, not `.recharts-xAxis`: under Recharts 3.10 the
+ * tick text goes into a *sibling* layer of the axis group, so a descendant
+ * selector under the axis matches nothing and reads exactly like a chart that
+ * failed to draw. `dev-usage.spec.ts` records the red run that established it.
+ */
+const ticksOf = (panel: Locator) =>
+  panel.locator(
+    ".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value",
+  );
 
 const section = (heading: string, body: string) => `## ${heading}\n\n${body}`;
 
@@ -206,7 +249,7 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
   }, testInfo) => {
     testInfo.snapshotSuffix = noPlatformSuffix;
 
-    await page.goto("/__dev/usage");
+    await page.goto(ROUTE.devUsage.path);
     await page.getByRole("button", { name: "Scan" }).click();
 
     const reading = page.getByText(/^Gathered at/);
@@ -229,10 +272,11 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
       name: "Unattributed work",
     });
     // Settled before anything is read off them, so what lands in the snapshot
-    // is the drawn chart rather than a frame on the way to it. The two strings
-    // are the only figures this file names, and they are named only to wait on.
-    await expect(accuracy).toContainText("on target (");
-    await expect(distribution).toContainText("p25");
+    // is the drawn chart rather than a frame on the way to it. Waited on as
+    // structure — a drawn axis — rather than on any figure or label, so this
+    // file names none of the copy it is watching. See `ticksOf`.
+    await expect(ticksOf(accuracy).first()).toBeVisible();
+    await expect(ticksOf(distribution).first()).toBeVisible();
 
     const stamp = await reading.locator("time").innerText();
     const directory = await reading.locator("code").innerText();
