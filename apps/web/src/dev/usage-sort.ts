@@ -54,8 +54,8 @@ export type UsageSortKey = keyof typeof SORTABLE;
  * key by key.
  *
  * A **set, not an order**: the order the table prints is `USAGE_COLUMNS` in
- * `./usage-protocol`, and nothing here should be read as a second copy of it. The
- * cast is `Object.keys` losing what the record already knows.
+ * `./usage-protocol`, and nothing here should be read as a second copy of it.
+ * The cast is `Object.keys` losing what the record already knows.
  */
 export const USAGE_SORT_KEYS = Object.keys(SORTABLE) as readonly UsageSortKey[];
 

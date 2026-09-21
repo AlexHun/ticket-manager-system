@@ -288,7 +288,8 @@ export function devToolsPlugin(): Plugin {
       server.middlewares.use(
         DEVTOOLS_API.usage,
         // `POST`, no `GET`, and nothing held between presses — `UsageReport` in
-        // `../src/dev/usage-protocol.ts` carries the reasoning, beside the shape it
+        // `../src/dev/usage-protocol.ts` carries the reasoning, beside the
+        // shape it
         // governs. Note what it costs here: this is the one dev-tools route
         // that keeps no state at all, which is why there is nothing above this
         // handler the way `runs` sits above the test runner's.

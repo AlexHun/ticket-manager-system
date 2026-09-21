@@ -6,8 +6,9 @@
  * unrelated contracts in one file — the project map's graph, the test runner's
  * stream and the Usage report — which is why it appeared in fifteen of the
  * twenty-four commits that built the Usage page: a slice touching none of the
- * other two still had to edit the module they lived in. Its thirteen importers
- * clustered one-to-one by page, so it split along that line into
+ * other two still had to edit the module they lived in. Its thirty importers
+ * clustered by page — sixteen Usage, eleven map, five test runner, and only
+ * three naming more than one — so it split along that line into
  * `./map-protocol`, `./test-run-protocol` and `./usage-protocol`.
  *
  * This record was the one name that did not cluster. Every tool's handler in
@@ -21,9 +22,9 @@
  * renamed alone, with nothing failing until the request 404s at runtime. So: a
  * fourth module, small on purpose, holding the one fact that really is shared.
  *
- * It lives under `src/` for the reason the three contracts do — the browser half
- * reaches it through the `@/` alias, the node half by relative path — and it has
- * no imports of its own and must keep none. None of it ships: the plugin is
+ * It lives under `src/` for the reason the three contracts do — the browser
+ * half reaches it through the `@/` alias, the node half by relative path — and
+ * it has no imports of its own and must keep none. None of it ships: the plugin is
  * registered `apply: "serve"` and every importer sits behind
  * `import.meta.env.DEV`.
  */

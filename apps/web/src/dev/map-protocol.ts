@@ -11,9 +11,11 @@
  * reach it through the `@/` alias; the node half imports it with a relative
  * path (see `apps/web/dev/scan.ts`), and `apps/web/tsconfig.node.json` lists
  * `dev` precisely so the two ends are typechecked against the same
- * declarations. Types only, and it has no imports of its own and must keep
- * none: the node half reaches it by relative path under Vite's native config
- * loader, which resolves the way Node does.
+ * declarations. Types, plus the three const records the scan classifies with
+ * (`LAYER`, `WORKSPACE`, `EDGE_KIND`) and `GUARD` — vocabulary both ends spend,
+ * which is why it is here rather than beside the scan. It has no imports of its
+ * own and must keep none: the node half reaches it by relative path under
+ * Vite's native config loader, which resolves the way Node does.
  *
  * None of this ships: the plugin is registered `apply: "serve"` and every
  * importer of these types sits behind `import.meta.env.DEV`.

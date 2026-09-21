@@ -222,8 +222,8 @@ function spendByBranch(dir: string): {
         // Totalled here rather than counted, and deliberately not given a
         // `BranchAccumulator` of its own: `sessions` and `cacheRead` are
         // questions about an issue, and `main` is not one. See
-        // `UnattributedWork` in `../src/dev/usage-protocol.ts` for why the shape
-        // stops at two.
+        // `UnattributedWork` in `../src/dev/usage-protocol.ts` for why the
+        // shape stops at two.
         unattributed.turns++;
         unattributed.out += usage.output_tokens ?? 0;
         continue;

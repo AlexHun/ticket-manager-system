@@ -14,8 +14,8 @@ import {
  * `usage-charts.ts` are: what a facet says is a predicate over *every* row, and
  * a component test can only ask it about the three or four rows it happened to
  * render. The contract half — the labels, the option rows and the shape of the
- * state — lives in `./usage-protocol`, because both suites reach for those strings
- * and neither can import a `.tsx` module.
+ * state — lives in `./usage-protocol`, because both suites reach for those
+ * strings and neither can import a `.tsx` module.
  *
  * **Two rules run through all three predicates.** A facet nobody has touched
  * carries `ANY_FACET` and matches everything, which is `matchesQuery`'s rule

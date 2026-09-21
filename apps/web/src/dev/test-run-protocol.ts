@@ -11,9 +11,11 @@
  * reach it through the `@/` alias; the node half imports it with a relative
  * path (see `apps/web/dev/suites.ts`), and `apps/web/tsconfig.node.json` lists
  * `dev` precisely so the two ends are typechecked against the same
- * declarations. Types only, and it has no imports of its own and must keep
- * none: the node half reaches it by relative path under Vite's native config
- * loader, which resolves the way Node does.
+ * declarations. Types, plus the two const records both ends spend (`SUITE_KIND`
+ * and `CASE_STATUS`), which is why they are here rather than beside the runner.
+ * It has no imports of its own and must keep none: the node half reaches it by
+ * relative path under Vite's native config loader, which resolves the way Node
+ * does.
  *
  * None of this ships: the plugin is registered `apply: "serve"` and every
  * importer of these types sits behind `import.meta.env.DEV`.
