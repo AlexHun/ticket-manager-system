@@ -27,6 +27,23 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
  * the same two environment overrides. A moved figure, a renamed label or a
  * reordered row fails here whatever caused it.
  *
+ * ## Two tests, because the surfaces can move apart
+ *
+ * The page and the terminal are one test each, so a red run says which one
+ * changed before anything is read. That is not tidiness — **the two derive
+ * their row order independently, and it was measured here.** Reversing
+ * `joinIssues`'s final `sort` (`apps/web/dev/usage.ts`) reorders the terminal
+ * and leaves the page alone: `SpendTable` re-ranks the rows it is handed with
+ * `usage-sort.ts`, whose default is the same order written a second time.
+ * Reversing *that* default does the mirror image. Either way exactly one of
+ * these two tests goes red and it is the one whose surface moved, which is the
+ * whole claim.
+ *
+ * Four mutations were run against this file before it was committed, each
+ * reverted after: a shared band label (`BUCKETS.S.label` in `protocol.ts` —
+ * both red), a page-only column header (`SpendTable.tsx` — page red, terminal
+ * green), and the two orderings above.
+ *
  * ## How this differs from `dev-usage.spec.ts`, deliberately
  *
  * That spec imports `USAGE_COLUMNS`, `USAGE_DETAIL_LABEL` and the rest from
