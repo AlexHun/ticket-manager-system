@@ -5,7 +5,8 @@ import { join, resolve } from "node:path";
 import type { Connect, ViteDevServer } from "vite";
 import type { ServerResponse } from "node:http";
 import { devToolsPlugin } from "./plugin.ts";
-import { DEVTOOLS_API, type UsageReport } from "../src/dev/protocol.ts";
+import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
+import type { UsageReport } from "../src/dev/usage-protocol.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./usage.ts";
 

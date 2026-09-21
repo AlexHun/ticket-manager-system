@@ -35,7 +35,7 @@ rows, the same way one session's `main` turn must land in none.
 
 `fixtures/gh-issues.ts` is the other half — it pins what was _forecast_ where
 this directory pins what was _spent_. Read together, with the bands in
-`apps/web/src/dev/protocol.ts` (`S <60k`, `M 60-150k`, `L 150-250k`, `XL >250k`,
+`apps/web/src/dev/usage-protocol.ts` (`S <60k`, `M 60-150k`, `L 150-250k`, `XL >250k`,
 `max` exclusive):
 
 | Issue  | Forecast     | Landed   | Verdict       |

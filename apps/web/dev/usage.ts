@@ -56,7 +56,7 @@ import {
   type UnattributedWork,
   type UsageReport,
   type Verdict,
-} from "../src/dev/protocol.ts";
+} from "../src/dev/usage-protocol.ts";
 import {
   ISSUE_STATE,
   fetchIssueMetadata,
@@ -65,9 +65,9 @@ import {
 
 // Re-exported because `scripts/issue-tokens.ts` prints a band's label, counts
 // how many rows came in on target and prints the quartiles, and reaching into
-// the browser half's protocol file from a script under `scripts/` would be a
+// the browser half's contract module from a script under `scripts/` would be a
 // worse seam than this line. The words especially: the CLI comparing against a
-// literal `"on target"` is how a rename in `protocol.ts` would leave its
+// literal `"on target"` is how a rename in `usage-protocol.ts` would leave its
 // accuracy figure reading 0/N with nothing failing.
 //
 // `bucketFor`, `percentiles`, `forecastAccuracy` and `recordedSpend` moved
@@ -222,7 +222,8 @@ function spendByBranch(dir: string): {
         // Totalled here rather than counted, and deliberately not given a
         // `BranchAccumulator` of its own: `sessions` and `cacheRead` are
         // questions about an issue, and `main` is not one. See
-        // `UnattributedWork` in the protocol for why the shape stops at two.
+        // `UnattributedWork` in `../src/dev/usage-protocol.ts` for why the shape
+        // stops at two.
         unattributed.turns++;
         unattributed.out += usage.output_tokens ?? 0;
         continue;

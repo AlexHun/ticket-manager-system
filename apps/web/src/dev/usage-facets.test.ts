@@ -7,7 +7,7 @@ import {
   VERDICT,
   type IssueUsage,
   type UsageFacets,
-} from "./protocol";
+} from "./usage-protocol";
 import { DEFAULT_USAGE_FACETS, matchesFacets } from "./usage-facets";
 
 /**

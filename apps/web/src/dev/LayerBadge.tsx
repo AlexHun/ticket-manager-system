@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { LAYER_VISUAL } from "./layer-visuals";
-import type { Layer } from "./protocol";
+import type { Layer } from "./map-protocol";
 
 /**
  * A layer, named and coloured.

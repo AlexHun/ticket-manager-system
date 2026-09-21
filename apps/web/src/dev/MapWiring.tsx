@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { countLabel, matchesQuery } from "./module-match";
-import { GUARD, type Guard, type ProjectGraph } from "./protocol";
+import { GUARD, type Guard, type ProjectGraph } from "./map-protocol";
 
 /**
  * How the two apps are joined: URL to page, URL to handler, and which client

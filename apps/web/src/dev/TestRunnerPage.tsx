@@ -25,7 +25,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { extractErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { useSuites } from "./dev-api";
-import { CASE_STATUS, SUITE_KIND, type SuiteDescriptor } from "./protocol";
+import {
+  CASE_STATUS,
+  SUITE_KIND,
+  type SuiteDescriptor,
+} from "./test-run-protocol";
 import {
   RUN_STATUS,
   runOf,

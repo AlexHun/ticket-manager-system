@@ -186,7 +186,7 @@ ticket, and a repeat where nothing was lands on abandoned. A verdict in this
 sense is recorded either way, because a run has to say where every repeat went.
 The dev-only Usage page's under / on target / over is a third, unrelated sense —
 how an issue's token spend read against its forecast band — and shares nothing
-with this one but the word; see `USAGE_COLUMNS` in `apps/web/src/dev/protocol.ts`.
+with this one but the word; see `USAGE_COLUMNS` in `apps/web/src/dev/usage-protocol.ts`.
 _Avoid_: result, score, pass, judgement (judging belongs to a Threshold)
 
 **Schedule**:

@@ -10,7 +10,7 @@ import {
   WORKSPACE,
   type ModuleNode,
   type ProjectGraph,
-} from "./protocol";
+} from "./map-protocol";
 
 /**
  * The filter bar reaches every tab.

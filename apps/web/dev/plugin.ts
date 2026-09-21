@@ -28,11 +28,11 @@ import {
   type RunHandle,
 } from "./suites.ts";
 import { gatherUsage, resolveTranscriptDir } from "./usage.ts";
-import {
-  DEVTOOLS_API,
-  type DevStreamMessage,
-  type RunEvent,
-} from "../src/dev/protocol.ts";
+import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
+import type {
+  DevStreamMessage,
+  RunEvent,
+} from "../src/dev/test-run-protocol.ts";
 
 /**
  * Events retained per suite for replay.
@@ -288,7 +288,7 @@ export function devToolsPlugin(): Plugin {
       server.middlewares.use(
         DEVTOOLS_API.usage,
         // `POST`, no `GET`, and nothing held between presses — `UsageReport` in
-        // `../src/dev/protocol.ts` carries the reasoning, beside the shape it
+        // `../src/dev/usage-protocol.ts` carries the reasoning, beside the shape it
         // governs. Note what it costs here: this is the one dev-tools route
         // that keeps no state at all, which is why there is nothing above this
         // handler the way `runs` sits above the test runner's.

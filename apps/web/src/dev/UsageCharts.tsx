@@ -38,7 +38,7 @@ import {
   type Bucket,
   type IssueUsage,
   type Verdict,
-} from "./protocol";
+} from "./usage-protocol";
 import {
   formatTokens,
   outputDistribution,

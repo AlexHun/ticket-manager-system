@@ -12,12 +12,10 @@
 
 import axios from "axios";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  DEVTOOLS_API,
-  type ProjectGraph,
-  type SuiteDescriptor,
-  type UsageReport,
-} from "./protocol";
+import { DEVTOOLS_API } from "./devtools-paths";
+import type { ProjectGraph } from "./map-protocol";
+import type { SuiteDescriptor } from "./test-run-protocol";
+import type { UsageReport } from "./usage-protocol";
 
 const devApi = axios.create({ baseURL: "" });
 
@@ -70,7 +68,7 @@ export function useSuites() {
  * stated in the library's own terms. `useQuery({ enabled: false })` would be
  * the same behaviour spelled as a suppression of the default one — and it would
  * still take a query key, which is a cache entry, which is the thing
- * `UsageReport` in `./protocol` explains this feature must not have.
+ * `UsageReport` in `./usage-protocol` explains this feature must not have.
  */
 export function useUsageScan() {
   return useMutation({

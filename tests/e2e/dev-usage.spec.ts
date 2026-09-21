@@ -12,7 +12,7 @@ import {
   type Bucket,
   type UsageColumn,
   type UsageFacetKey,
-} from "../../apps/web/src/dev/protocol";
+} from "../../apps/web/src/dev/usage-protocol";
 import {
   GH_ISSUES,
   removeGhIssuesFixture,

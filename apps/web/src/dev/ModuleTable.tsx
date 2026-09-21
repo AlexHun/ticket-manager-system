@@ -4,7 +4,7 @@ import { Hint } from "@/components/Hint";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { LayerBadge } from "./LayerBadge";
-import type { ModuleNode } from "./protocol";
+import type { ModuleNode } from "./map-protocol";
 
 /**
  * Every module in the filtered set, as a sortable table.
