@@ -1,4 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { renderRoutes } from "@/test/render";
@@ -7,7 +13,10 @@ import {
   USAGE_COLUMNS,
   USAGE_DETAIL,
   USAGE_DETAIL_LABEL,
+  USAGE_NO_MATCH,
+  USAGE_SEARCH_LABEL,
   USAGE_SPINE,
+  USAGE_TABLE_LABEL,
 } from "./protocol";
 import type { IssueUsage, UsageColumn, UsageReport } from "./protocol";
 
@@ -94,7 +103,8 @@ const renderPage = () => renderRoutes([{ path: "/", element: <UsagePage /> }]);
 const scanButton = () => screen.getByRole("button", { name: "Scan" });
 
 /** The frame `TableFrame` puts round the spend table, once one has been read. */
-const spendTable = () => screen.findByRole("region", { name: "Issue spend" });
+const spendTable = () =>
+  screen.findByRole("region", { name: USAGE_TABLE_LABEL });
 
 /** Any of the page's named regions — the two chart panels and the unattributed
  *  total. All three are addressed by name for the same reason: the region is
@@ -1066,5 +1076,302 @@ describe("UsagePage sorting", () => {
     expect((await screen.findByText(/^Gathered at/)).textContent).toBe(
       before.gathered,
     );
+  });
+});
+
+/**
+ * R7, R9, R10, R11 and R12 (#273): one box narrows the table, and the reach of
+ * it stops there.
+ *
+ * The reach is the whole ticket. Everything else on the page — the accuracy
+ * figure, the distribution marks, the unattributed total and the gathered-at
+ * line — describes the *scan*, and a filter that moved any of them would turn a
+ * claim about this repository into a claim about a search box. So the last two
+ * blocks here are not decoration on the narrowing tests: they are what the
+ * slice is for.
+ */
+describe("UsagePage search", () => {
+  const UNSTARTED = 300;
+
+  const searchableReport = () =>
+    makeReport({
+      issues: [
+        makeIssue(),
+        makeIssue({
+          issue: 102,
+          spend: { out: 3_000, turns: 1, sessions: 1, cacheRead: 12_000 },
+          title: "A second issue",
+          url: "https://github.com/AlexHun/ticket-manager-system/issues/102",
+          forecast: "S",
+          verdict: "on target",
+        }),
+        makeIssue({
+          issue: UNSTARTED,
+          spend: null,
+          bucket: null,
+          verdict: null,
+          title: "Nobody has started this",
+          url: "https://github.com/AlexHun/ticket-manager-system/issues/300",
+          forecast: "L",
+        }),
+      ],
+    });
+
+  const ALL = ["#101", "#102", `#${UNSTARTED}`];
+
+  /** The rows on screen, by the issue each one is about. */
+  const issueOrder = async () =>
+    within(await spendTable())
+      .getAllByRole("rowheader")
+      .map((cell) => cell.textContent);
+
+  const searchBox = () => screen.getByLabelText(USAGE_SEARCH_LABEL);
+
+  /**
+   * Type a term and wait out the debounce.
+   *
+   * The wait describes the **settled** state and carries an explicit timeout,
+   * which is `testing.md`'s rule for anything debounced: RTL's `waitFor` has its
+   * own 1,000 ms default that Vitest's `testTimeout` does not govern, and a
+   * prefix of the term renders on the way past it.
+   */
+  const searchFor = async (
+    user: ReturnType<typeof userEvent.setup>,
+    term: string,
+    settled: string[],
+  ) => {
+    await user.clear(searchBox());
+    await user.type(searchBox(), term);
+    await waitFor(async () => expect(await issueOrder()).toEqual(settled), {
+      timeout: 5_000,
+    });
+  };
+
+  beforeEach(() => {
+    post.mockResolvedValue({ data: searchableReport() });
+  });
+
+  /**
+   * R12: the bar is gated on a reading like everything else on this page. A
+   * filter over no data is an invitation to configure a view of nothing, and
+   * the scan does not survive a reload, so there would be nothing to configure
+   * it against.
+   */
+  test("offers no search box until a scan has been read", async () => {
+    renderPage();
+
+    expect(screen.queryByLabelText(USAGE_SEARCH_LABEL)).toBeNull();
+
+    await userEvent.setup().click(scanButton());
+
+    expect(await screen.findByLabelText(USAGE_SEARCH_LABEL)).toBeVisible();
+  });
+
+  test("narrows the table to an issue number", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await searchFor(user, "102", ["#102"]);
+  });
+
+  /** The number is matched as the row prints it, so the `#` a developer copies
+   *  out of the table or a commit message is not a term that matches nothing. */
+  test("narrows the table to an issue number written with its hash", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await searchFor(user, "#300", [`#${UNSTARTED}`]);
+  });
+
+  test("narrows the table to words from a title", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await searchFor(user, "second", ["#102"]);
+  });
+
+  /** An empty query matches everything — `matchesQuery`'s rule, and the reason
+   *  the filter is applied unconditionally rather than behind an "is the
+   *  developer searching" branch. */
+  test("matches every row again once the box is cleared", async () => {
+    const user = await scanned();
+    await spendTable();
+    await searchFor(user, "second", ["#102"]);
+
+    await user.clear(searchBox());
+
+    await waitFor(async () => expect(await issueOrder()).toEqual(ALL), {
+      timeout: 5_000,
+    });
+  });
+
+  /**
+   * The debounce, proved rather than timed.
+   *
+   * Asserting "still three rows" straight after a real-timer `type()` would be
+   * a race against the 150 ms the hook waits: it passes on an idle machine and
+   * goes red under a loaded one, which is the flake `testing.md` records for
+   * the tickets list. Under a fake clock the two states are separable — the
+   * term is in the box and nothing has moved, and then the clock is what moves
+   * it — so this is the one assertion in the file that can say *why* the table
+   * narrowed rather than only that it did.
+   *
+   * **`fireEvent`, not `userEvent`, and that is what makes it work at all.**
+   * `userEvent` awaits between keystrokes through RTL's async wrapper, which
+   * needs a clock that is running; under `vi.useFakeTimers()` the very first
+   * `type()` never resolves, the test dies on Vitest's own 15 s timeout, and
+   * the `finally` that would have restored the clock never runs — so every test
+   * after it in the file times out too. A `change` event is synchronous, is
+   * already wrapped in `act`, and is all this needs: nothing here is about how
+   * the characters arrive, only about when the term is spent.
+   */
+  test("filters once the typing settles rather than on every keystroke", async () => {
+    await scanned();
+    await spendTable();
+    const rowsNow = () =>
+      within(screen.getByRole("region", { name: USAGE_TABLE_LABEL }))
+        .getAllByRole("rowheader")
+        .map((cell) => cell.textContent);
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(searchBox(), { target: { value: "102" } });
+
+      expect(searchBox()).toHaveValue("102");
+      expect(rowsNow()).toEqual(ALL);
+
+      // Generously past the debounce rather than exactly on it: what is being
+      // held is that the clock has to move at all, not the length of the wait.
+      act(() => {
+        vi.advanceTimersByTime(1_000);
+      });
+
+      expect(rowsNow()).toEqual(["#102"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * R9: a line still claiming three over one visible row is the same lie the
+   * project map's frozen module counter used to tell, so the count moves when
+   * the rows do. `countLabel` is the shared helper — a bare total at rest, and
+   * `shown of total` while anything is narrowing it.
+   */
+  test("states how many rows are shown out of how many exist", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (3)`)).toBeVisible();
+
+    await searchFor(user, "102", ["#102"]);
+
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (1 of 3)`)).toBeVisible();
+  });
+
+  /**
+   * A term that matches nothing says so, and — this is the half that matters —
+   * leaves the box you typed it into on screen. An empty state that took the
+   * controls with it would be a trap: the query that emptied the table would
+   * have no control left to clear it from.
+   */
+  test("says nothing matches rather than showing a table with no rows", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await user.type(searchBox(), "nothing-matches-this");
+
+    await waitFor(
+      () => expect(screen.getByText(USAGE_NO_MATCH)).toBeVisible(),
+      { timeout: 5_000 },
+    );
+    expect(searchBox()).toBeVisible();
+    expect(screen.getByText(`${USAGE_TABLE_LABEL} (0 of 3)`)).toBeVisible();
+  });
+
+  /**
+   * R11. A scan is a reading; the query is how the developer is reading it. You
+   * press Scan to refresh the figures, not to clear your view — and the
+   * mutation clears its `data` while it reads, so the table and the bar above
+   * it really do unmount and come back.
+   */
+  test("keeps the query when Scan is pressed again", async () => {
+    const user = await scanned();
+    await spendTable();
+    await searchFor(user, "102", ["#102"]);
+
+    await user.click(scanButton());
+
+    await waitFor(async () => expect(post).toHaveBeenCalledTimes(2));
+    expect(searchBox()).toHaveValue("102");
+    expect(await issueOrder()).toEqual(["#102"]);
+  });
+
+  /**
+   * Deliberately unlike the tickets list and the dashboard, which put their
+   * filters in the URL. This page's scan does not survive a reload, so a
+   * restored query would deserialize onto an empty page and describe rows that
+   * are not there.
+   */
+  test("puts nothing about the query in the URL", async () => {
+    const user = userEvent.setup();
+    const { router } = renderPage();
+    await user.click(scanButton());
+    await spendTable();
+
+    await searchFor(user, "102", ["#102"]);
+
+    expect(router.state.location.search).toBe("");
+  });
+
+  /**
+   * R10, and the reason this slice is where it is proved.
+   *
+   * The accuracy figure describes the whole scan. It is the number somebody
+   * might quote, and a filter that moved it would turn a claim about this
+   * repository into a claim about a search box — so the two charts, the
+   * unattributed total and the gathered-at line have to read identically either
+   * side of a narrowing. Compared on `textContent` rather than on a figure
+   * picked out of each, because what is being asserted is that *nothing* in
+   * them moved.
+   */
+  test("leaves the charts, the unattributed total and the reading alone", async () => {
+    const user = await scanned();
+    const before = {
+      accuracy: (await panel("Forecast accuracy")).textContent,
+      distribution: (await panel("Output distribution")).textContent,
+      unattributed: (await panel("Unattributed work")).textContent,
+      gathered: (await screen.findByText(/^Gathered at/)).textContent,
+    };
+
+    await searchFor(user, "102", ["#102"]);
+
+    expect((await panel("Forecast accuracy")).textContent).toBe(
+      before.accuracy,
+    );
+    expect((await panel("Output distribution")).textContent).toBe(
+      before.distribution,
+    );
+    expect((await panel("Unattributed work")).textContent).toBe(
+      before.unattributed,
+    );
+    expect((await screen.findByText(/^Gathered at/)).textContent).toBe(
+      before.gathered,
+    );
+  });
+
+  /**
+   * The two controls above the table are independent: a narrowed table still
+   * ranks from its headers, and the query survives the click that re-ranks it.
+   */
+  test("ranks what the query left, and keeps the query while it does", async () => {
+    const user = await scanned();
+    await spendTable();
+
+    await searchFor(user, "10", ["#101", "#102"]);
+    await user.click(screen.getByRole("button", { name: "Output tokens" }));
+
+    expect(await issueOrder()).toEqual(["#102", "#101"]);
+    expect(searchBox()).toHaveValue("10");
   });
 });

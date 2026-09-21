@@ -9,7 +9,26 @@
  *
  * Wiring a view in is now naming the fields it searches, not reimplementing the
  * match.
+ *
+ * Shared with the Usage page's own bar since #273, which spends all three of
+ * these. That is what widened this from "the project map decides" to "the dev
+ * tools decide": two boxes two clicks apart, answering the same way.
  */
+
+/**
+ * How long a dev-tools search box waits after a keystroke before the view it
+ * drives narrows.
+ *
+ * One number rather than one per bar, because the sameness is the point: the
+ * project map and the Usage page sit two clicks apart in the same sidebar
+ * group, and a developer should not be able to feel which page they are on. It
+ * was a bare literal here and a second one on Usage until #273 — a claim the
+ * comment beside each made and nothing held.
+ *
+ * 150 ms is short enough to read as immediate and long enough that typing an
+ * issue number re-filters and re-renders once rather than once per character.
+ */
+export const SEARCH_DEBOUNCE_MS = 150;
 
 /**
  * Whether any of `fields` contains `query`.

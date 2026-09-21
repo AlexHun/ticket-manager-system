@@ -1,16 +1,21 @@
-import { useMemo, type ReactNode } from "react";
+import { useId, useMemo, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
   Columns3,
   ExternalLink,
+  Search,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Hint } from "@/components/Hint";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Toggle } from "@/components/ui/toggle";
 import { TableFrame } from "@/lib/table-frame";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
+import { SEARCH_DEBOUNCE_MS, countLabel, matchesQuery } from "./module-match";
 import { formatTokens } from "./usage-charts";
 import {
   DEFAULT_USAGE_SORT,
@@ -23,7 +28,10 @@ import {
   USAGE_COLUMNS,
   USAGE_DETAIL,
   USAGE_DETAIL_LABEL,
+  USAGE_NO_MATCH,
+  USAGE_SEARCH_LABEL,
   USAGE_SPINE,
+  USAGE_TABLE_LABEL,
   BUCKETS,
   VERDICT,
   type Bucket,
@@ -323,11 +331,21 @@ export interface UsageTableView {
   sort: UsageSort;
   /** Whether `USAGE_DETAIL`'s three columns are appended (#271). */
   detail: boolean;
+  /**
+   * What the search box holds, live rather than debounced (#273).
+   *
+   * The raw term and not the settled one, because this is the input's value:
+   * lifted in its settled form, every keystroke would either wait 150 ms to
+   * appear in the box it was typed into or need a second copy of itself kept
+   * below. The debounce happens where the term is *spent* — see `SpendTable`.
+   */
+  query: string;
 }
 
 export const DEFAULT_USAGE_TABLE_VIEW: UsageTableView = {
   sort: DEFAULT_USAGE_SORT,
   detail: false,
+  query: "",
 };
 
 /**
@@ -486,7 +504,31 @@ export function SpendTable({
   onViewChange: (next: UsageTableView) => void;
 }) {
   const { sort, detail } = view;
-  const rows = useMemo(() => sortIssues(issues, sort), [issues, sort]);
+  const searchId = useId();
+  /* Debounced here rather than on the page, because here is where the term is
+     spent: the box's own value has to keep up with the keystrokes, and only the
+     filtering below is worth doing once the typing stops. The hook seeds itself
+     from the value it is given, so the remount a re-scan forces (see below)
+     comes back already settled rather than waiting out another 150 ms. */
+  const query = useDebouncedValue(view.query, SEARCH_DEBOUNCE_MS);
+  const needle = query.trim().toLowerCase();
+
+  /* Filtered, then ranked — the same rows either way round, and cheaper in this
+     order. The issue number is matched as the row prints it (`#101`), so the
+     hash a developer copies out of the table or a commit message is a term that
+     matches rather than one that matches nothing; a bare `101` still does,
+     since the hash is a prefix. Nothing else on the row is searched: the URL is
+     the number again, and a band is what slice 5's facets are for. */
+  const rows = useMemo(
+    () =>
+      sortIssues(
+        issues.filter((row) =>
+          matchesQuery(needle, `#${row.issue}`, row.title),
+        ),
+        sort,
+      ),
+    [issues, needle, sort],
+  );
 
   const onSortChange = (next: UsageSort) =>
     onViewChange({ ...view, sort: next });
@@ -503,6 +545,7 @@ export function SpendTable({
    */
   const onDetailChange = (next: boolean) =>
     onViewChange({
+      ...view,
       detail: next,
       sort: !next && DETAIL_SORT_KEYS.has(sort.key) ? DEFAULT_USAGE_SORT : sort,
     });
@@ -511,7 +554,10 @@ export function SpendTable({
   // no cells to widen, and the sentence beside it is the answer to why.
   if (issues.length === 0) {
     return (
-      <TableFrame label="Issue spend" className="grid place-items-center p-6">
+      <TableFrame
+        label={USAGE_TABLE_LABEL}
+        className="grid place-items-center p-6"
+      >
         <p className="max-w-prose text-center text-sm text-muted-foreground">
           No issue spend in these transcripts, and no open issue to list beside
           it. Only a branch named{" "}
@@ -526,84 +572,147 @@ export function SpendTable({
 
   return (
     <div className="space-y-2">
-      {/* Above the table, and the only control over it — so it sits on the row
-          the search box and the facet filters will share with it later. A
-          shadcn `Toggle`, the same `variant="outline"` pair the project map's
-          filter bar wears: it is a button carrying `aria-pressed`, which is
-          what says the columns are hidden rather than gone. The chip is short
-          enough to sit above a table and the `aria-label` is what names the
-          three columns it is about. */}
-      <div className="flex items-center justify-end">
-        <Toggle
-          variant="outline"
-          size="sm"
-          pressed={detail}
-          onPressedChange={onDetailChange}
-          aria-label={USAGE_DETAIL_LABEL}
-        >
-          <Columns3 aria-hidden="true" />
-          Detail columns
-        </Toggle>
+      {/* The filter bar: the box that narrows the table, what it has narrowed
+          it to, and the control that widens it (#271, #273).
+
+          **Its reach is the table and nothing else**, which is this slice's
+          whole decision. The two charts, the unattributed total and the
+          gathered-at line all read `report.issues` up on `UsagePage` and never
+          see `rows`, so the accuracy figure goes on describing the scan rather
+          than the search box — a filter that moved it would turn a claim about
+          this repository into a claim about what somebody had typed. The
+          project map's bar next door reaches two ways at once (its selects stop
+          at two tabs, its search reaches all four), which is why a new
+          filtering surface here has to choose one deliberately.
+
+          The three sit on one row because they are one bar. The toggle keeps
+          `variant="outline"` and its `aria-label`; the box is the project map's
+          shape down to the icon and the `pl-8`, because two filter bars two
+          clicks apart should not need learning twice. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex min-w-56 max-w-sm flex-1 flex-col gap-1.5">
+          <Label htmlFor={searchId}>{USAGE_SEARCH_LABEL}</Label>
+          <div className="relative">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              id={searchId}
+              type="search"
+              value={view.query}
+              placeholder="issue number or words from a title"
+              onChange={(event) =>
+                onViewChange({ ...view, query: event.target.value })
+              }
+              className="pl-8"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* The count, and it has to move when the rows do: a line still
+              reading 98 over three visible rows is the same lie the map's
+              frozen module counter used to tell, and the number is what a
+              developer reads to confirm the search took at all. `countLabel` is
+              that helper — a bare total at rest, `shown of total` while
+              anything is narrowing it.
+
+              Visible rather than folded into the scroller's `aria-label`, which
+              is where the plan first put it. `TableFrame`'s name is a landmark
+              name: re-writing it on every keystroke would make the region
+              announce a new title as you type, and it would still leave a
+              sighted developer counting rows. The frame keeps the stable
+              `USAGE_TABLE_LABEL`, and this line carries the arithmetic. */}
+          <p className="text-sm text-muted-foreground tabular-nums">
+            {USAGE_TABLE_LABEL} ({countLabel(rows.length, issues.length)})
+          </p>
+          <Toggle
+            variant="outline"
+            size="sm"
+            pressed={detail}
+            onPressedChange={onDetailChange}
+            aria-label={USAGE_DETAIL_LABEL}
+          >
+            <Columns3 aria-hidden="true" />
+            Detail columns
+          </Toggle>
+        </div>
       </div>
 
-      <TableFrame label="Issue spend" className="max-h-[70dvh]">
-        <table className="w-full text-sm">
-          <thead className="text-muted-foreground">
-            <tr>
-              {/* Sortable like the figures beside it, and for the same reason
+      {/* A term that matches nothing says so, and — the half that matters —
+          says it *below* the bar rather than instead of it. Replacing the whole
+          block the way the no-issues state above does would take the box away
+          with the rows, leaving the query that emptied the table with no
+          control left to clear it from. Reachable only through the search,
+          since `issues.length` is non-zero by here. */}
+      {rows.length === 0 ? (
+        <TableFrame
+          label={USAGE_TABLE_LABEL}
+          className="grid place-items-center p-6"
+        >
+          <p className="text-sm text-muted-foreground">{USAGE_NO_MATCH}</p>
+        </TableFrame>
+      ) : (
+        <TableFrame label={USAGE_TABLE_LABEL} className="max-h-[70dvh]">
+          <table className="w-full text-sm">
+            <thead className="text-muted-foreground">
+              <tr>
+                {/* Sortable like the figures beside it, and for the same reason
                   the row's identity is a `<th>`: the issue number is a column
                   of numbers a reader ranks by, and it is the only sortable one
                   an unstarted row carries a value for. */}
-              <HeaderCell
-                label="Issue"
-                title="GitHub issue number, taken from the branch name"
-                sortKey="issue"
-                sort={sort}
-                onSortChange={onSortChange}
-              />
-              {columns.map(([name, column]) => (
                 <HeaderCell
-                  key={name}
-                  label={column.label}
-                  title={column.title}
-                  numeric={column.numeric}
-                  sortKey={column.sort}
+                  label="Issue"
+                  title="GitHub issue number, taken from the branch name"
+                  sortKey="issue"
                   sort={sort}
                   onSortChange={onSortChange}
                 />
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.issue} className="border-t border-border">
-                {/* A row header, not a cell: the issue number is what every
-                  figure on the row is about, so a screen reader announcing a
-                  cell announces which issue it belongs to. */}
-                <th
-                  scope="row"
-                  className="px-3 py-1.5 text-left font-mono font-normal tabular-nums"
-                >
-                  #{row.issue}
-                </th>
                 {columns.map(([name, column]) => (
-                  <td
+                  <HeaderCell
                     key={name}
-                    className={cn(
-                      "px-3 py-1.5",
-                      column.numeric && "text-right tabular-nums",
-                      column.lead && "font-medium",
-                      column.muted && "text-muted-foreground",
-                    )}
-                  >
-                    {column.render(row)}
-                  </td>
+                    label={column.label}
+                    title={column.title}
+                    numeric={column.numeric}
+                    sortKey={column.sort}
+                    sort={sort}
+                    onSortChange={onSortChange}
+                  />
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </TableFrame>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.issue} className="border-t border-border">
+                  {/* A row header, not a cell: the issue number is what every
+                  figure on the row is about, so a screen reader announcing a
+                  cell announces which issue it belongs to. */}
+                  <th
+                    scope="row"
+                    className="px-3 py-1.5 text-left font-mono font-normal tabular-nums"
+                  >
+                    #{row.issue}
+                  </th>
+                  {columns.map(([name, column]) => (
+                    <td
+                      key={name}
+                      className={cn(
+                        "px-3 py-1.5",
+                        column.numeric && "text-right tabular-nums",
+                        column.lead && "font-medium",
+                        column.muted && "text-muted-foreground",
+                      )}
+                    >
+                      {column.render(row)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableFrame>
+      )}
     </div>
   );
 }

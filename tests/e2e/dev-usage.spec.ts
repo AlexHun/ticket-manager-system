@@ -3,7 +3,10 @@ import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   USAGE_COLUMNS,
   USAGE_DETAIL_LABEL,
+  USAGE_NO_MATCH,
+  USAGE_SEARCH_LABEL,
   USAGE_SPINE,
+  USAGE_TABLE_LABEL,
   type UsageColumn,
 } from "../../apps/web/src/dev/protocol";
 import {
@@ -15,8 +18,8 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
 
 /**
  * Slices 1 to 5 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
- * #252, #253) and slices 1 to 3 of `docs/plans/usage-table-legibility.md`
- * (#270, #271, #272), end to end: page → dev middleware →
+ * #252, #253) and slices 1 to 4 of `docs/plans/usage-table-legibility.md`
+ * (#270, #271, #272, #273), end to end: page → dev middleware →
  * `apps/web/dev/usage.ts` and `issues.ts` → the filesystem, all real.
  *
  * It is the whole reason both sources got a resolver with an environment
@@ -183,9 +186,9 @@ test.describe("dev tools: Usage", () => {
 
   test("shows no figures until Scan is pressed", async ({ page }) => {
     await expect(page.getByText(/nothing gathered yet/i)).toBeVisible();
-    await expect(page.getByRole("region", { name: "Issue spend" })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole("region", { name: USAGE_TABLE_LABEL }),
+    ).toHaveCount(0);
   });
 
   test("reads the fixture transcripts and reports each issue's spend", async ({
@@ -203,7 +206,7 @@ test.describe("dev tools: Usage", () => {
     const stamp = await gathered.locator("time").getAttribute("datetime");
     expect(Number.isNaN(Date.parse(stamp ?? ""))).toBe(false);
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     // All four of `#101`'s figures are the claim here, and three of them are
     // detail columns since #271.
@@ -252,7 +255,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     const first = table.getByRole("row").nth(1);
 
     // The title is the link, and the href is `gh`'s own `url` rather than one
@@ -300,7 +303,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     const header = table.getByRole("row").nth(0);
     const first = table.getByRole("row").nth(1);
@@ -391,7 +394,7 @@ test.describe("dev tools: Usage", () => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
 
     const width = await table.evaluate((frame) => ({
@@ -421,7 +424,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     const second = table.getByRole("row").nth(2);
 
     await expect(
@@ -464,7 +467,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     // Every figure must be empty rather than zero, so every figure has to be on
     // screen to be asserted about.
@@ -508,7 +511,7 @@ test.describe("dev tools: Usage", () => {
   test("leaves out a closed issue with no recorded work", async ({ page }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     await expect(
       table.getByRole("rowheader", { name: `#${FIXTURE_104!.number}` }),
@@ -535,7 +538,7 @@ test.describe("dev tools: Usage", () => {
 
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     await showDetailColumns(page);
     const first = table.getByRole("row").nth(1);
@@ -607,7 +610,7 @@ test.describe("dev tools: Usage", () => {
       .poll(() => gathered.locator("time").getAttribute("datetime"))
       .not.toBe(first);
     await expect(
-      page.getByRole("region", { name: "Issue spend" }),
+      page.getByRole("region", { name: USAGE_TABLE_LABEL }),
     ).toBeVisible();
   });
 
@@ -708,7 +711,7 @@ test.describe("dev tools: Usage", () => {
 
     // Not an issue: no number, no link, and no row of its own in the table.
     await expect(total.getByRole("link")).toHaveCount(0);
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table.getByRole("row")).toHaveCount(4);
     await expect(table).not.toContainText("5,000");
   });
@@ -725,7 +728,7 @@ test.describe("dev tools: Usage", () => {
     await page.getByRole("button", { name: "Scan" }).click();
 
     const rows = page
-      .getByRole("region", { name: "Issue spend" })
+      .getByRole("region", { name: USAGE_TABLE_LABEL })
       .getByRole("row");
     await expect(rows).toHaveCount(4);
     // `turns` is a detail column, and it is half of what says the `main` turn
@@ -768,7 +771,7 @@ test.describe("dev tools: Usage", () => {
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     const order = table.getByRole("rowheader");
     const sunk = `#${FIXTURE_103!.number}`;
@@ -809,7 +812,7 @@ test.describe("dev tools: Usage", () => {
     const scan = page.getByRole("button", { name: "Scan" });
     await scan.click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     await table.getByRole("button", { name: "Output tokens" }).click();
     await expect(table.getByRole("rowheader")).toHaveText([
@@ -853,7 +856,7 @@ test.describe("dev tools: Usage", () => {
     const scan = page.getByRole("button", { name: "Scan" });
     await scan.click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     await showDetailColumns(page);
     const turns = () => table.getByRole("button", { name: "Turns" });
@@ -877,12 +880,161 @@ test.describe("dev tools: Usage", () => {
     await expect(table.getByRole("rowheader")).toHaveText(ranked);
   });
 
+  /**
+   * R7/R9/R12, slice 4 (#273): one box narrows the table, and the page says
+   * what it narrowed it to.
+   *
+   * Three kinds of term in one test because each is a `fill` and an assertion
+   * rather than a fresh scan: the number a developer copies out of a commit
+   * message, words out of a title, and nothing at all. The last is the one with
+   * a rule behind it — an empty query matches *everything*, which is why the
+   * filter is applied unconditionally rather than behind an "is the developer
+   * searching" branch that a later view could forget to write.
+   *
+   * The count is asserted beside every one of them. A line still reading 3 over
+   * one visible row is the same lie the project map's frozen module counter
+   * used to tell, and it is what a developer reads to confirm the search took.
+   */
+  test("narrows the table to a number, to a title, and back to everything", async ({
+    page,
+  }) => {
+    // R12: gated on a reading like everything else here. A filter bar over no
+    // data invites configuring a view of nothing.
+    await expect(page.getByLabel(USAGE_SEARCH_LABEL)).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    await expect(table).toBeVisible();
+    const order = table.getByRole("rowheader");
+    const unstarted = `#${FIXTURE_103!.number}`;
+    const search = page.getByLabel(USAGE_SEARCH_LABEL);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (3)`)).toBeVisible();
+
+    await search.fill("102");
+
+    await expect(order).toHaveText(["#102"]);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 3)`)).toBeVisible();
+
+    // Words out of a title, and a term that `#102`'s title shares the first
+    // word of — so a match on "nobody" alone would show two rows here.
+    await search.fill("nobody has started");
+
+    await expect(order).toHaveText([unstarted]);
+
+    // A term nothing matches says so, and leaves the box that produced it on
+    // screen: an empty state that took the controls with it would strand the
+    // query with nothing left to clear it from.
+    await search.fill("nothing-matches-this");
+
+    await expect(page.getByText(USAGE_NO_MATCH)).toBeVisible();
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (0 of 3)`)).toBeVisible();
+    await expect(search).toBeVisible();
+
+    await search.fill("");
+
+    await expect(order).toHaveText(["#101", "#102", unstarted]);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (3)`)).toBeVisible();
+
+    // Deliberately not in the URL, unlike the tickets list and the dashboard:
+    // the scan does not survive a reload, so a restored query would deserialize
+    // onto an empty page and describe rows that are not there.
+    expect(new URL(page.url()).search).toBe("");
+  });
+
+  /**
+   * R10, and the reason this slice exists as its own decision.
+   *
+   * **The filter bar's reach is the table and nothing else.** The accuracy
+   * figure describes the whole scan — it is the number somebody might quote —
+   * so a filter that moved it would turn a claim about this repository into a
+   * claim about a search box. The distribution's quartiles, the unattributed
+   * total and the gathered-at line are the same kind of claim.
+   *
+   * Compared on `textContent` either side of the narrowing rather than on a
+   * figure picked out of each, because what is being held is that *nothing* in
+   * them moved; the named constants are asserted as well, so a run where both
+   * readings were identically wrong still fails. The project map's bar next
+   * door has two different reaches for its own controls, which is why this one
+   * had to be chosen rather than inherited.
+   */
+  test("leaves the charts, the unattributed total and the reading alone", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Scan" }).click();
+
+    const accuracy = page.getByRole("region", { name: "Forecast accuracy" });
+    const distribution = page.getByRole("region", {
+      name: "Output distribution",
+    });
+    const unattributed = page.getByRole("region", {
+      name: "Unattributed work",
+    });
+    const gathered = page.getByText(/^Gathered at/);
+    // Settled before anything is read off it, so `before` is the drawn chart
+    // rather than a frame of it.
+    await expect(accuracy).toContainText(CHARTS.accuracy);
+    await expect(distribution).toContainText(CHARTS.quartiles);
+
+    const before = {
+      accuracy: await accuracy.textContent(),
+      distribution: await distribution.textContent(),
+      unattributed: await unattributed.textContent(),
+      gathered: await gathered.textContent(),
+    };
+
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    await page.getByLabel(USAGE_SEARCH_LABEL).fill("102");
+    // The narrowing really happened — two of the three rows are gone, and
+    // `#101` is the one row the accuracy figure is computed from.
+    await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
+
+    expect(await accuracy.textContent()).toBe(before.accuracy);
+    expect(await distribution.textContent()).toBe(before.distribution);
+    expect(await unattributed.textContent()).toBe(before.unattributed);
+    expect(await gathered.textContent()).toBe(before.gathered);
+    await expect(accuracy).toContainText(CHARTS.accuracy);
+    await expect(distribution).toContainText(CHARTS.quartiles);
+    await expect(distribution).toContainText(CHARTS.measured);
+    await expect(unattributed).toContainText(EXPECTED.unattributed.out);
+  });
+
+  /**
+   * R11. You press Scan to refresh the figures, not to clear your view.
+   *
+   * The same shape as the sort's two cases above and for the same measured
+   * reason: `useUsageScan` is a mutation, and a mutation clears its `data` the
+   * moment it is fired — so the bar and the table really do unmount for the
+   * length of the read. The second reading is waited for by its stamp rather
+   * than by the rows, because the rows are what this is about.
+   */
+  test("keeps the query when Scan is pressed again", async ({ page }) => {
+    const scan = page.getByRole("button", { name: "Scan" });
+    await scan.click();
+
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
+    await expect(table).toBeVisible();
+    await page.getByLabel(USAGE_SEARCH_LABEL).fill("102");
+    await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
+
+    const gathered = page.getByText(/^Gathered at/);
+    const first = await gathered.locator("time").getAttribute("datetime");
+    await scan.click();
+    await expect
+      .poll(() => gathered.locator("time").getAttribute("datetime"))
+      .not.toBe(first);
+
+    await expect(page.getByLabel(USAGE_SEARCH_LABEL)).toHaveValue("102");
+    await expect(table.getByRole("rowheader")).toHaveText(["#102"]);
+    await expect(page.getByText(`${USAGE_TABLE_LABEL} (1 of 3)`)).toBeVisible();
+  });
+
   test("puts the scrollable table where a keyboard can reach it", async ({
     page,
   }) => {
     await page.getByRole("button", { name: "Scan" }).click();
 
-    const table = page.getByRole("region", { name: "Issue spend" });
+    const table = page.getByRole("region", { name: USAGE_TABLE_LABEL });
     await expect(table).toBeVisible();
     // `TableFrame`'s contract (#111): a named region that is its own tab stop,
     // so the rows below the fold are reachable without a pointer.

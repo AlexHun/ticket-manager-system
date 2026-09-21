@@ -31,7 +31,7 @@ import { LayerBadge } from "./LayerBadge";
 import { MapOverview } from "./MapOverview";
 import { MapWiring } from "./MapWiring";
 import { ModuleInspector } from "./ModuleInspector";
-import { matchesQuery } from "./module-match";
+import { SEARCH_DEBOUNCE_MS, matchesQuery } from "./module-match";
 import { ModuleTable } from "./ModuleTable";
 import {
   LAYER,
@@ -79,8 +79,12 @@ export function ProjectMapPage() {
   const [showVendored, setShowVendored] = useState(false);
 
   // The graph redraws on every keystroke otherwise: the layout is memoised on the
-  // filtered node list, and dimming is derived from this same term.
-  const query = useDebouncedValue(search.trim().toLowerCase(), 150);
+  // filtered node list, and dimming is derived from this same term. The delay is
+  // `./module-match`'s, shared with the Usage page's bar since #273.
+  const query = useDebouncedValue(
+    search.trim().toLowerCase(),
+    SEARCH_DEBOUNCE_MS,
+  );
 
   const visible = useMemo(() => {
     if (!graph) return [];
