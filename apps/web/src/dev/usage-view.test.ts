@@ -30,7 +30,7 @@ import {
  *
  * **This is where the Usage page's suite used to ask it** — by mounting the
  * page, stubbing axios, pressing Scan and reading the rows back out of the
- * DOM, across three describe blocks and 867 lines. #288 retired them: what a
+ * DOM, across three describe blocks and 883 lines. #288 retired them: what a
  * narrowing shows is answered here, that the controls are wired to it in
  * `SpendTable.test.tsx`, and that a click reaches a real reading of real
  * transcripts in `dev-usage.spec.ts`. `UsagePage.test.tsx` keeps what the page

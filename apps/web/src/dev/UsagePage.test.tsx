@@ -24,17 +24,18 @@ import type { IssueUsage, UsageColumn, UsageReport } from "./usage-protocol";
  * wire — which is the seam the dev middleware sits behind anyway.
  *
  * **What is no longer here is half the file, and where each part went is the
- * point of #288.** Three describe blocks — sorting, search and facets, 867 of
- * this file's 1,726 lines — mounted the page, stubbed axios and pressed Scan in
+ * point of #288.** Three describe blocks — sorting, search and facets, and the
+ * 883 lines they took with them — mounted the page, stubbed axios and pressed Scan in
  * order to ask a comparator and three predicates what they leave. Since #287
  * that composition is a module, so it is asked of made-up rows in
  * `usage-view.test.ts`: what a term matches, what a facet keeps, that the four
  * controls are one `&&`, that what they leave is ranked afterwards, that an
  * unstarted row sinks through every key in both directions, and what the detail
- * toggle does to a sort whose header it is about to take away. The four claims
- * that need a render but not a page — the `aria-sort` vocabulary, the debounce,
- * the toggle calling `withDetail`, the selects' resting labels — are
- * `SpendTable.test.tsx`. Everything about a control reaching a real reading of
+ * toggle does to a sort whose header it is about to take away. The six claims
+ * that need a render but not a page — the `aria-sort` vocabulary, the column a
+ * ranking moves from, the `Issue` header no browser test presses, the
+ * debounce, the toggle calling `withDetail`, and the bar surviving a re-rank —
+ * are `SpendTable.test.tsx`. Everything about a control reaching a real reading of
  * real transcripts was already `dev-usage.spec.ts`'s, in a browser, and is
  * untouched: the gate on a scan, both directions from a header, the empty
  * state, the count, the query staying out of the URL, the reach of the bar
@@ -42,7 +43,10 @@ import type { IssueUsage, UsageColumn, UsageReport } from "./usage-protocol";
  *
  * What is left is the page: that it reads nothing until asked, what it does
  * with a reading it cannot fully make (the warnings, the two absences), the
- * columns it opens on, the charts, and the total that belongs to no row.
+ * columns it opens on, the charts, the total that belongs to no row — and the
+ * one piece of the filter bar's reach that is the page's rather than the
+ * table's, since it is the page's panels that must not move when the table
+ * below them does.
  */
 
 const { post } = vi.hoisted(() => ({ post: vi.fn() }));
@@ -603,6 +607,55 @@ describe("UsagePage", () => {
 
     expect(await screen.findByText(/EPERM/)).toBeInTheDocument();
     expect(scanButton()).toBeEnabled();
+  });
+
+  /**
+   * R10, and the one piece of the filter bar's reach that is the *page's*
+   * rather than the table's (#273, #288).
+   *
+   * The two charts, the unattributed total and the gathered-at line read
+   * `report.issues` up here and never see the rows `SpendTable` was left with,
+   * so a control on the bar below must not move any of them. The search box's
+   * half of that claim is `dev-usage.spec.ts`'s, in a browser. The sort's is
+   * here, because re-ranking is the one gesture that changes the table while
+   * removing nothing — a panel wired to the ranked rows instead of the report
+   * would keep the right *figures* under a search and still shuffle its marks
+   * under a header click.
+   *
+   * Compared on `textContent` rather than on a figure picked out of each,
+   * because what is being asserted is that *nothing* in them moved.
+   */
+  test("leaves the charts, the unattributed total and the reading alone when the table is re-ranked", async () => {
+    const user = await scanned();
+    await spendTable();
+    const before = {
+      accuracy: (await panel("Forecast accuracy")).textContent,
+      distribution: (await panel("Output distribution")).textContent,
+      unattributed: (await panel("Unattributed work")).textContent,
+      gathered: (await screen.findByText(/^Gathered at/)).textContent,
+    };
+
+    await user.click(screen.getByRole("button", { name: "Output tokens" }));
+
+    // The table really did re-rank: the click reversed the column the page
+    // opened on, so the smaller spend is now first.
+    expect(
+      within(await spendTable())
+        .getAllByRole("rowheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["#102", "#101"]);
+    expect((await panel("Forecast accuracy")).textContent).toBe(
+      before.accuracy,
+    );
+    expect((await panel("Output distribution")).textContent).toBe(
+      before.distribution,
+    );
+    expect((await panel("Unattributed work")).textContent).toBe(
+      before.unattributed,
+    );
+    expect((await screen.findByText(/^Gathered at/)).textContent).toBe(
+      before.gathered,
+    );
   });
 });
 
