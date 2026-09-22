@@ -34,7 +34,7 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
  * changed before anything is read. That is not tidiness — a mutation can move
  * one surface and leave the other standing, and it was measured here. A
  * page-only column header (`SpendTable.tsx`) turns the page red and the
- * terminal green; a shared band label (`BUCKETS.S.label`) turns both red.
+ * terminal green; a shared band label (`BUCKETS.S.label` in `usage-protocol.ts`) turns both red.
  *
  * **The row order used to be the sharpest example of that, and since #286 it is
  * the opposite one.** When this file was committed the two halves derived their
@@ -43,8 +43,9 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
  * `usage-sort.ts`'s default, and reversing *that* default did the mirror image.
  * Slice 4 of the plan above deleted the second expression: `joinIssues` now
  * sorts with `DEFAULT_USAGE_SORT` itself, so reversing it turns **both** tests
- * red. That is the slice's acceptance criterion showing up in this file's
- * behaviour rather than in its source — and it is why this comment records what
+ * red — run on the #286 branch before it was merged, and reverted, the way the
+ * four below were. That is the slice's acceptance criterion showing up in this
+ * file's behaviour rather than in its source — and it is why this comment records what
  * the mutations found rather than what they would find today.
  *
  * Four mutations were run before it was committed, each reverted after: the

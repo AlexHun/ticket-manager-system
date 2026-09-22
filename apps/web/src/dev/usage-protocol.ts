@@ -559,12 +559,16 @@ export interface IssueUsage {
  * record no output tokens at all, so an issue really can have spent zero. That
  * is a measurement, and it ranks, bands and scores like any other figure.
  *
- * Five callers read it and none re-derives it — the node half's ranking
- * (`rank` in `apps/web/dev/usage.ts`), the table's comparator (`sortIssues` in
- * `./usage-sort`), the `started` facet (`FACET_MATCH` in `./usage-facets`), the
- * distribution's sample (`recordedSpend` below) and the cell that renders the
- * em dash (`figure` in `./SpendTable`). It was written out separately in each
- * of them until #285, with nothing holding them in step.
+ * Four callers read it and none re-derives it — the table's comparator
+ * (`sortIssues` in `./usage-sort`), the `started` facet (`FACET_MATCH` in
+ * `./usage-facets`), the distribution's sample (`recordedSpend` below) and the
+ * cell that renders the em dash (`figure` in `./SpendTable`). It was written
+ * out separately in each of them until #285, with nothing holding them in step.
+ *
+ * It was five until #286. The node half had a ranking of its own (`rank` in
+ * `apps/web/dev/usage.ts`) that branched on this to pick between a row's output
+ * tokens and a sink value; `joinIssues` now sorts with `sortIssues` itself, so
+ * that caller is the comparator above rather than a second one beside it.
  *
  * **One statement of the rule survives outside those five**, and it is named
  * here rather than left to be rediscovered: `figure` in
@@ -574,15 +578,20 @@ export interface IssueUsage {
  * `bun run tokens` starts calling `gatherUsage` instead of re-assembling the
  * scan. Until then this is the page's one home for the rule, not the repo's.
  *
- * **It is not the ranking's sink value, and the two must not be collapsed.**
- * This answers "is there spend"; `rank` needs a *number* that sorts below every
- * real figure (`-1`, because zero is a real figure) and is a different question
- * with a different answer type. `rank` is a caller of this, not a spelling of
- * it — see its doc comment for why the sink cannot simply be `0`.
+ * **It is not a ranking's sink value, and the two must not be collapsed.**
+ * This answers "is there spend"; a sink value is the *number* an absent row
+ * sorts at — below every real figure, and `-1` rather than `0` because zero is
+ * a real figure — which is a different question with a different answer type.
+ * Ranking by this predicate instead would make every started row compare equal
+ * and lose the output-token order the page opens on. Nothing in the repo holds
+ * such a value any more: `dev/usage.ts`'s `UNSTARTED_RANK` was the only one and
+ * #286 deleted it, because `sortIssues` asks this of *two rows* before it reads
+ * any figure and so never needs a number for the absent case. A reintroduced
+ * sink value would be a second ordering, not a helper.
  *
  * A type guard rather than a `boolean`, so a caller that asks the question and
- * then reads a figure off the *same* row — `rank`, `recordedSpend`, `figure` in
- * `./SpendTable` — does it without a `?.` or a `!` standing beside the check as
+ * then reads a figure off the *same* row — `sortIssues`, `recordedSpend`,
+ * `figure` in `./SpendTable` — does it without a `?.` or a `!` standing beside the check as
  * a second, unverified copy of it.
  *
  * That covers a caller reading one row. It is **not** a rule that every `?.` on

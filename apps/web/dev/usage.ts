@@ -58,8 +58,8 @@ import {
   type Verdict,
 } from "../src/dev/usage-protocol.ts";
 // The order the rows go on the wire in, imported rather than restated (#286).
-// See `joinIssues` below, and `DEFAULT_USAGE_SORT`'s own comment for why this
-// is the browser's module and not a third one both halves read.
+// `joinIssues` below is where that is argued, including why this is the
+// browser's module and not a third one both halves read.
 import { DEFAULT_USAGE_SORT, sortIssues } from "../src/dev/usage-sort.ts";
 import {
   ISSUE_STATE,
@@ -326,23 +326,26 @@ export function scanSpend(dir: string): ScanResult {
  * fact about the work. A closed issue that *does* have spend keeps its row:
  * closed decides only whether an empty row is worth drawing.
  *
- * Sorted spend-descending, which is the order the question is asked in, with
- * the unstarted issues in a block of their own at the end. The tie-break on the
- * issue number is what makes two readings of an unchanged directory agree:
- * `Array.prototype.sort` is stable, but `Map` iteration order is insertion
- * order, which is the order the filesystem happened to hand the files over —
- * and it is also what orders that trailing block, since every row in it ranks
- * the same.
+ * **The order is `DEFAULT_USAGE_SORT` and nothing else** (#286) — spend
+ * descending, the unstarted issues in a block of their own at the end, and the
+ * issue number breaking every tie upward. All three belong to `sortIssues` in
+ * `../src/dev/usage-sort.ts`; this function no longer states any of them, it
+ * passes the rows through the comparator the table's headers drive at the
+ * setting they open on.
  *
- * **All three of those are `DEFAULT_USAGE_SORT` and nothing else** (#286). This
- * used to rank each row to a number of its own — its output tokens, or a `-1`
- * sink for a row with no spend — and land on the same order the table opens on
- * by agreeing with it in prose. Two expressions of one claim, and the guardrail
- * spec measured what that cost: reversing either moved exactly one of the two
- * surfaces, so the property "the first render after a scan is the order the
- * server sent" was held by nothing but inspection. Now the server sorts with
- * the comparator the table's headers drive, at the setting they open on, and
- * the two cannot disagree because there is only one of them.
+ * That third property is why the rows do not move between two readings of an
+ * unchanged directory: `Array.prototype.sort` is stable, but `Map` iteration
+ * order is insertion order — the order the filesystem happened to hand the
+ * files over — so a total order is the only thing that makes the two agree. It
+ * is also what orders the trailing block, every row of which ranks the same.
+ *
+ * This used to rank each row to a number of its own — its output tokens, or a
+ * `-1` sink for a row with no spend — and land on the same order the table
+ * opens on by agreeing with it in prose. Two expressions of one claim, and the
+ * guardrail spec measured what that cost: reversing either moved exactly one of
+ * the two surfaces, so the property "the first render after a scan is the order
+ * the server sent" was held by nothing but inspection. Now there is only one of
+ * them to reverse, and doing so moves both.
  *
  * The direction of the dependency is deliberate: the browser half is the pure
  * one, and this module already reaches across for the bands, the verdict words
