@@ -48,7 +48,6 @@ import {
   VERDICT,
   bucketFor,
   forecastAccuracy,
-  hasRecordedSpend,
   percentiles,
   recordedSpend,
   type Bucket,
@@ -58,6 +57,10 @@ import {
   type UsageReport,
   type Verdict,
 } from "../src/dev/usage-protocol.ts";
+// The order the rows go on the wire in, imported rather than restated (#286).
+// `joinIssues` below is where that is argued, including why this is the
+// browser's module and not a third one both halves read.
+import { DEFAULT_USAGE_SORT, sortIssues } from "../src/dev/usage-sort.ts";
 import {
   ISSUE_STATE,
   fetchIssueMetadata,
@@ -297,33 +300,6 @@ export function scanSpend(dir: string): ScanResult {
 }
 
 /**
- * The key an unstarted row sorts under: below every figure a started row can
- * carry.
- *
- * `-1` rather than `0`, and the difference is not hypothetical — a turn can
- * record no output tokens at all, so an issue really can have spent zero. That
- * is a measurement; an issue nobody has started is an absence, and the two must
- * not share a key or the empty rows file themselves among the cheapest issues,
- * where they read as work that cost almost nothing.
- *
- * **This is not `hasRecordedSpend`, and it is deliberately not derived from
- * it** (#285). That predicate answers "is there spend" and is what `rank` below
- * branches on; this is the *value* the absent case sorts at, which is a
- * different question with a different answer type. Collapsing them — ranking by
- * the predicate itself, say — would change the order, since every started row
- * would then compare equal and the output-token ordering the page opens on
- * would be gone. Only this module wants a sink value at all: the browser's
- * comparator (`sortIssues` in `../src/dev/usage-sort.ts`) never reads one,
- * because it compares two rows by the predicate directly before it looks at any
- * figure.
- */
-const UNSTARTED_RANK = -1;
-
-/** Where a row sorts: its output tokens, or below every one of them. */
-const rank = (row: IssueUsage) =>
-  hasRecordedSpend(row) ? row.spend.out : UNSTARTED_RANK;
-
-/**
  * The rows themselves: every issue worth looking at, joined to what GitHub
  * knows.
  *
@@ -350,13 +326,31 @@ const rank = (row: IssueUsage) =>
  * fact about the work. A closed issue that *does* have spend keeps its row:
  * closed decides only whether an empty row is worth drawing.
  *
- * Sorted spend-descending, which is the order the question is asked in, with
- * the unstarted issues in a block of their own at the end (see `rank`). The
- * tie-break on the issue number is what makes two readings of an unchanged
- * directory agree: `Array.prototype.sort` is stable, but `Map` iteration order
- * is insertion order, which is the order the filesystem happened to hand the
- * files over — and it is also what orders that trailing block, since every row
- * in it ranks the same.
+ * **The order is `DEFAULT_USAGE_SORT` and nothing else** (#286) — spend
+ * descending, the unstarted issues in a block of their own at the end, and the
+ * issue number breaking every tie upward. All three belong to `sortIssues` in
+ * `../src/dev/usage-sort.ts`; this function no longer states any of them, it
+ * passes the rows through the comparator the table's headers drive at the
+ * setting they open on.
+ *
+ * That third property is why the rows do not move between two readings of an
+ * unchanged directory: `Array.prototype.sort` is stable, but `Map` iteration
+ * order is insertion order — the order the filesystem happened to hand the
+ * files over — so a total order is the only thing that makes the two agree. It
+ * is also what orders the trailing block, every row of which ranks the same.
+ *
+ * This used to rank each row to a number of its own — its output tokens, or a
+ * `-1` sink for a row with no spend — and land on the same order the table
+ * opens on by agreeing with it in prose. Two expressions of one claim, and the
+ * guardrail spec measured what that cost: reversing either moved exactly one of
+ * the two surfaces, so the property "the first render after a scan is the order
+ * the server sent" was held by nothing but inspection. Now there is only one of
+ * them to reverse, and doing so moves both.
+ *
+ * The direction of the dependency is deliberate: the browser half is the pure
+ * one, and this module already reaches across for the bands, the verdict words
+ * and the arithmetic. A third module holding an ordering both imported
+ * would be a seam with one caller on each side and no reader of its own.
  */
 export function joinIssues(
   byIssue: Map<number, Spend>,
@@ -367,29 +361,29 @@ export function joinIssues(
     if (meta.state === ISSUE_STATE.open) numbers.add(issue);
   }
 
-  return [...numbers]
-    .map((issue) => {
-      // `?? null` rather than a branch on `metadata.byIssue`: an issue the
-      // listing does not mention is unknown in exactly the way every issue is
-      // unknown when there is no listing, and both render the same.
-      const meta = metadata.byIssue?.get(issue) ?? null;
-      const forecast = meta?.forecast ?? null;
-      const spend = byIssue.get(issue) ?? null;
-      return {
-        issue,
-        spend,
-        title: meta?.title ?? null,
-        url: meta?.url ?? null,
-        forecast,
-        // Both null together, and not merely because there is no arithmetic to
-        // do: `bucketFor(0)` is `S` and `verdictFor("L", 0)` is "under", so a
-        // row defaulted to zero would score every unstarted issue as having
-        // come in comfortably under budget.
-        bucket: spend ? bucketFor(spend.out) : null,
-        verdict: spend ? verdictFor(forecast, spend.out) : null,
-      };
-    })
-    .sort((a, b) => rank(b) - rank(a) || a.issue - b.issue);
+  const rows = [...numbers].map((issue) => {
+    // `?? null` rather than a branch on `metadata.byIssue`: an issue the
+    // listing does not mention is unknown in exactly the way every issue is
+    // unknown when there is no listing, and both render the same.
+    const meta = metadata.byIssue?.get(issue) ?? null;
+    const forecast = meta?.forecast ?? null;
+    const spend = byIssue.get(issue) ?? null;
+    return {
+      issue,
+      spend,
+      title: meta?.title ?? null,
+      url: meta?.url ?? null,
+      forecast,
+      // Both null together, and not merely because there is no arithmetic to
+      // do: `bucketFor(0)` is `S` and `verdictFor("L", 0)` is "under", so a
+      // row defaulted to zero would score every unstarted issue as having
+      // come in comfortably under budget.
+      bucket: spend ? bucketFor(spend.out) : null,
+      verdict: spend ? verdictFor(forecast, spend.out) : null,
+    };
+  });
+
+  return sortIssues(rows, DEFAULT_USAGE_SORT);
 }
 
 /**

@@ -58,11 +58,14 @@ describe("sortIssues", () => {
    * The default is the order the rows arrive in, so the first render after a
    * scan does not reshuffle in front of the developer.
    *
-   * `joinIssues` in `apps/web/dev/usage.ts` sorts `rank(b) - rank(a) ||
-   * a.issue - b.issue`, with `rank` reading `-1` for a row with no spend. The
-   * three properties asserted here are that one, restated: output tokens
-   * descending, the issue number breaking ties upward, and the unstarted rows
-   * in a block at the end.
+   * `joinIssues` in `apps/web/dev/usage.ts` sorts the rows it puts on the wire
+   * by calling `sortIssues` with this very default (#286), so the three
+   * properties asserted here — output tokens descending, the issue number
+   * breaking ties upward, and the unstarted rows in a block at the end — are
+   * the server's order *and* the table's opening state in one reading. They
+   * used to be this comparator's half of a claim the node side wrote out again
+   * in a `rank` of its own; this case was what held the two together, and it is
+   * unchanged because the properties did not move, only the second copy.
    */
   test("opens on output tokens descending, matching the order rows arrive in", () => {
     const rows = [

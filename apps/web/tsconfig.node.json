@@ -12,5 +12,12 @@
   // `test-run-protocol.ts`, `usage-protocol.ts` and `devtools-paths.ts` — each
   // reached by relative path from here rather than through the `@/` alias: this
   // project has no `paths` mapping, and they are pulled in transitively anyway.
+  //
+  // Since #286 it reaches one module in `src/dev/` that is *not* a contract
+  // module: `usage-sort.ts`, which `joinIssues` sorts the wire rows with so the
+  // server's order and the table's default are one expression. That is why that
+  // file — alone in `src/dev/` — writes the `.ts` extension on its own relative
+  // import: Vite's native config loader resolves nothing extensionless in
+  // anything the node half pulls in, transitively included.
   "include": ["vite.config.ts", "dev"]
 }
