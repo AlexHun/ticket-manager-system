@@ -637,6 +637,49 @@ export interface UnattributedWork {
 }
 
 /**
+ * Which half of the scan a warning came from.
+ *
+ * The scan reads two sources and they fail independently — the transcript
+ * directory can be unreadable while `gh` answers perfectly, and the reverse.
+ * Both are warnings beside whatever could be read, so a caller that wants to
+ * treat one differently from the other has to be able to tell them apart.
+ *
+ * Before #289 it could not: `warnings` was a flat `string[]` and the only way
+ * to branch was to match on the prose, which is a contract nobody declared and
+ * every re-wording breaks. That is also what kept `bun run tokens` from calling
+ * `gatherUsage` at all — it words its diagnostics differently, and a list of
+ * finished sentences gives it nothing to re-word.
+ *
+ * Two values and not three: "could not read the directory" and "the directory
+ * holds no transcripts" are one source failing in two ways, and nothing on
+ * either surface treats them differently — both mean there are no figures and
+ * the message says which. A third value would be a distinction with no reader.
+ */
+export const USAGE_WARNING_SOURCE = {
+  /** The transcript directory — unreadable, or holding no `.jsonl` files. */
+  transcripts: "transcripts",
+  /** The `gh issue list` the title, link and forecast columns come from. */
+  listing: "listing",
+} as const;
+
+export type UsageWarningSource =
+  (typeof USAGE_WARNING_SOURCE)[keyof typeof USAGE_WARNING_SOURCE];
+
+/**
+ * Something the scan could not see, and which source it could not see it from.
+ *
+ * `message` is the whole of what either surface displays, already worded for a
+ * reader — the page renders it unchanged and the em-dash cells beside it say
+ * nothing more. `source` is for the caller, not the reader: it is what lets a
+ * surface decide *whether* to show a warning, or word its own, without parsing
+ * the sentence it was handed.
+ */
+export interface UsageWarning {
+  source: UsageWarningSource;
+  message: string;
+}
+
+/**
  * One reading of the local transcripts, taken when the developer pressed Scan.
  *
  * There is no `GET` half and the middleware caches nothing: a held copy is the
@@ -678,8 +721,15 @@ export interface UsageReport {
    * excludes it.
    */
   unattributed: UnattributedWork;
-  /** Anything that stopped the scan seeing everything. Shown, not swallowed. */
-  warnings: string[];
+  /**
+   * Anything that stopped the scan seeing everything. Shown, not swallowed.
+   *
+   * The two sources fail independently, so these **stack** rather than mask one
+   * another: an unreadable directory and an unavailable listing are two entries,
+   * not one. Each names its `source`, so a surface branches on that rather than
+   * on the wording of `message` (#289).
+   */
+  warnings: UsageWarning[];
 }
 
 /* ── Readings over the rows ───────────────────────────────────────────── */

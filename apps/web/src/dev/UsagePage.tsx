@@ -137,17 +137,23 @@ export function UsagePage() {
       )}
 
       {/* What the scan could not see, shown rather than swallowed — the same
-          bargain the project map makes with its own `warnings`. */}
+          bargain the project map makes with its own `warnings`.
+
+          Every warning is drawn, whichever source it names: the directory and
+          the listing fail independently (#289), so a machine with neither
+          should not have to discover the second one after fixing the first.
+          The page reads `message` and nothing else — `source` is there for a
+          caller that has to branch, which this one does not. */}
       {report?.warnings.map((warning) => (
         <p
-          key={warning}
+          key={`${warning.source}:${warning.message}`}
           className="flex items-start gap-2 rounded-md px-3 py-2 text-sm text-status-warning ring-1 ring-status-warning/30"
         >
           <AlertTriangle
             aria-hidden="true"
             className="mt-0.5 size-4 shrink-0"
           />
-          {warning}
+          {warning.message}
         </p>
       ))}
 

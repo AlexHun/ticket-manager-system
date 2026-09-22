@@ -13,6 +13,7 @@ import {
   verdictFor,
 } from "./usage.ts";
 import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
+import { USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
 
 /**
  * An issue listing, without asking `gh` for one.
@@ -275,7 +276,10 @@ describe("gatherUsage", () => {
     // the warning beside it is what says why.
     expect(report.unattributed).toEqual({ turns: 0, out: 0 });
     expect(report.warnings).toHaveLength(1);
-    expect(report.warnings[0]).toContain(missing);
+    expect(report.warnings[0]).toMatchObject({
+      source: USAGE_WARNING_SOURCE.transcripts,
+    });
+    expect(report.warnings[0]?.message).toContain(missing);
   });
 
   it("says so when the directory holds no transcripts", async () => {
@@ -285,7 +289,10 @@ describe("gatherUsage", () => {
 
     expect(report.issues).toEqual([]);
     expect(report.transcripts).toBe(0);
-    expect(report.warnings[0]).toContain(".jsonl");
+    // The directory's other failure, and the *same* source (#289): both mean
+    // there are no figures, and only the message distinguishes them.
+    expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+    expect(report.warnings[0]?.message).toContain(".jsonl");
   });
 
   /**
@@ -424,7 +431,9 @@ describe("gatherUsage", () => {
         verdict: null,
       },
     ]);
-    expect(report.warnings).toEqual(["gh is not on PATH"]);
+    expect(report.warnings).toEqual([
+      { source: USAGE_WARNING_SOURCE.listing, message: "gh is not on PATH" },
+    ]);
   });
 
   // Two independent failures, and the page shows both: a machine with no
@@ -437,7 +446,31 @@ describe("gatherUsage", () => {
     );
 
     expect(report.warnings).toHaveLength(2);
-    expect(report.warnings[1]).toBe("no gh here");
+    expect(report.warnings[1]).toEqual({
+      source: USAGE_WARNING_SOURCE.listing,
+      message: "no gh here",
+    });
+  });
+
+  /**
+   * R7 (#289): the acceptance criterion itself.
+   *
+   * The two failures above are told apart *here* without reading a character of
+   * either message — which is what `bun run tokens` needs before it can word its
+   * own diagnostics from the same scan (slice 8), and what no amount of matching
+   * on prose could give it. `map` over the sources rather than an index, so a
+   * third warning arriving in the middle fails this rather than shifting it.
+   */
+  it("names which source each warning came from, without its wording", async () => {
+    const report = await gatherUsage(
+      join(dir, "nope"),
+      noListing("no gh here"),
+    );
+
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+      USAGE_WARNING_SOURCE.listing,
+    ]);
   });
 });
 

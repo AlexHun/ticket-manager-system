@@ -9,6 +9,7 @@ import {
   USAGE_DETAIL_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
+  USAGE_WARNING_SOURCE,
 } from "./usage-protocol";
 import type { IssueUsage, UsageColumn, UsageReport } from "./usage-protocol";
 
@@ -382,7 +383,12 @@ describe("UsagePage", () => {
         issues: [
           makeIssue({ title: null, url: null, forecast: null, verdict: null }),
         ],
-        warnings: ["`gh` could not list this repository's issues: ENOENT"],
+        warnings: [
+          {
+            source: USAGE_WARNING_SOURCE.listing,
+            message: "`gh` could not list this repository's issues: ENOENT",
+          },
+        ],
       }),
     });
     renderPage();
@@ -586,7 +592,12 @@ describe("UsagePage", () => {
       data: makeReport({
         issues: [],
         transcripts: 0,
-        warnings: [`No .jsonl transcripts in ${FIXTURE_DIR}.`],
+        warnings: [
+          {
+            source: USAGE_WARNING_SOURCE.transcripts,
+            message: `No .jsonl transcripts in ${FIXTURE_DIR}.`,
+          },
+        ],
       }),
     });
     renderPage();
