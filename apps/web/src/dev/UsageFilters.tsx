@@ -21,8 +21,8 @@ import {
  * One forecast band, one verdict, or started versus unstarted — so "which
  * issues came in over their forecast?" is one action rather than a scan down
  * ninety-eight rows. They compose with the search and with each other:
- * `SpendTable` `&&`s `matchesFacets` with `matchesQuery`, and the
- * shown-out-of-total line beside them counts what both left.
+ * `visibleRows` in `./usage-view` `&&`s `matchesFacets` with `matchesQuery`,
+ * and the shown-out-of-total line beside them counts what both left.
  *
  * **Their reach is the table and nothing else**, which is #273's decision
  * standing rather than a new one. The accuracy figure, the distribution's

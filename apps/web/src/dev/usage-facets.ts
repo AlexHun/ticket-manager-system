@@ -74,8 +74,8 @@ export const DEFAULT_USAGE_FACETS: UsageFacets = {
  * answers that are each true of some row and of no row together (`forecast/L`
  * and `over`, say) narrow to nothing, and the table has to say so rather than
  * draw a header over no rows. It is also what lets the search box and the three
- * selects be one filter — `SpendTable` `&&`s this with `matchesQuery` and the
- * shown-out-of-total count reads the result of both.
+ * selects be one filter — `visibleRows` in `./usage-view` `&&`s this with
+ * `matchesQuery` and the shown-out-of-total count reads the result of both.
  */
 export const matchesFacets = (row: IssueUsage, facets: UsageFacets): boolean =>
   USAGE_FACET_KEYS.every((key) => FACET_MATCH[key](row, facets));
