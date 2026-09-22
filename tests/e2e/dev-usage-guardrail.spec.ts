@@ -31,19 +31,24 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
  * ## Two tests, because the surfaces can move apart
  *
  * The page and the terminal are one test each, so a red run says which one
- * changed before anything is read. That is not tidiness — **the two derive
- * their row order independently, and it was measured here.** Reversing
- * `joinIssues`'s final `sort` (`apps/web/dev/usage.ts`) reorders the terminal
- * and leaves the page alone: `SpendTable` re-ranks the rows it is handed with
- * `usage-sort.ts`, whose default is the same order written a second time.
- * Reversing *that* default does the mirror image. Either way exactly one of
- * these two tests goes red and it is the one whose surface moved, which is the
- * whole claim.
+ * changed before anything is read. That is not tidiness — a mutation can move
+ * one surface and leave the other standing, and it was measured here. A
+ * page-only column header (`SpendTable.tsx`) turns the page red and the
+ * terminal green; a shared band label (`BUCKETS.S.label`) turns both red.
  *
- * Four mutations were run against this file before it was committed, each
- * reverted after: a shared band label (`BUCKETS.S.label` in `protocol.ts` —
- * both red), a page-only column header (`SpendTable.tsx` — page red, terminal
- * green), and the two orderings above.
+ * **The row order used to be the sharpest example of that, and since #286 it is
+ * the opposite one.** When this file was committed the two halves derived their
+ * order independently — reversing `joinIssues`'s final `sort` reordered the
+ * terminal alone, because `SpendTable` re-ranked the rows it was handed with
+ * `usage-sort.ts`'s default, and reversing *that* default did the mirror image.
+ * Slice 4 of the plan above deleted the second expression: `joinIssues` now
+ * sorts with `DEFAULT_USAGE_SORT` itself, so reversing it turns **both** tests
+ * red. That is the slice's acceptance criterion showing up in this file's
+ * behaviour rather than in its source — and it is why this comment records what
+ * the mutations found rather than what they would find today.
+ *
+ * Four mutations were run before it was committed, each reverted after: the
+ * band label, the column header, and the two orderings that are now one.
  *
  * ## How this differs from `dev-usage.spec.ts`, deliberately
  *

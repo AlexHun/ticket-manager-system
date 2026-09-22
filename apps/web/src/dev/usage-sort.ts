@@ -1,8 +1,14 @@
+// The `.ts` extension is load-bearing since #286: `joinIssues` in
+// `apps/web/dev/usage.ts` imports this module to order the rows it puts on the
+// wire, and the node half is loaded by Vite's native config loader, which
+// resolves no extensionless relative specifier — not in the file it loads, and
+// not in anything that file pulls in. `allowImportingTsExtensions` is on in
+// both tsconfigs, so it costs the browser build nothing.
 import {
   hasRecordedSpend,
   type IssueSpend,
   type IssueUsage,
-} from "./usage-protocol";
+} from "./usage-protocol.ts";
 
 /**
  * How the Usage table's rows are ranked, and the one row it refuses to rank.
@@ -72,14 +78,22 @@ export interface UsageSort {
 }
 
 /**
- * Output tokens descending — the order `joinIssues` already hands the rows over
- * in (`apps/web/dev/usage.ts`), so the first render after a scan is the rows as
+ * Output tokens descending — the order `joinIssues` hands the rows over in
+ * (`apps/web/dev/usage.ts`), so the first render after a scan is the rows as
  * they arrived rather than a reshuffle in front of the developer.
  *
- * The two orders are the same claim written twice, which is a thing to keep in
- * step deliberately: `rank(b) - rank(a) || a.issue - b.issue` there, and the
- * sink plus this key here. `usage-sort.test.ts`'s first case is where they are
- * held together.
+ * **It is that order rather than an order matching it** (#286). `joinIssues`
+ * imports this constant and `sortIssues` below and sorts with them; there is no
+ * second comparator on the node side to keep in step. Until then the server
+ * ranked each row to a number of its own (`rank(b) - rank(a) || a.issue -
+ * b.issue`, with a `-1` sink) and the two agreed by inspection — which is a
+ * claim about the page's opening state that nothing held, since reversing
+ * either one moved exactly one of the two surfaces.
+ *
+ * What makes the two expressible as one at all is step 3 of `sortIssues`: the
+ * issue-number tie-break sits outside the direction flip, so the default here
+ * is a *total* order and not merely a stable-sort artefact of whatever order
+ * the rows were built in.
  */
 export const DEFAULT_USAGE_SORT: UsageSort = { key: "out", descending: true };
 
@@ -134,14 +148,17 @@ const figureOf = (row: IssueUsage, key: UsageSortKey): number | null =>
  * 1. **The sink**, before any figure is read. A row's spend is present or it is
  *    not (`hasRecordedSpend`), and that outranks every column: it is what stops
  *    an absence being ranked as a quantity. Note what this step does *not*
- *    need — a sink value. `joinIssues`' `rank` needs one because it ranks each
- *    row to a number on its own; comparing two rows, the predicate is the whole
- *    answer, which is why the `-1` over there has no counterpart here.
+ *    need — a sink value. Comparing two rows, the predicate is the whole
+ *    answer; ranking each row to a number on its own needs some number to put
+ *    the absent case at, which is what `joinIssues`' `-1` was before #286
+ *    deleted it in favour of calling this.
  * 2. **The column**, flipped by `descending`.
  * 3. **The issue number, always ascending**, so the order is total and a
  *    re-render never reshuffles rows the sort cannot tell apart. Outside the
- *    flip on purpose, which is what makes the default here identical to the
- *    server's `|| a.issue - b.issue` — and it is also what orders the sunk
+ *    flip on purpose, which is what lets the server sort with this comparator
+ *    at all: a default that reversed the tie-break with the direction would be
+ *    total only in one direction, and `joinIssues` would need its own rule for
+ *    the other (#286). It is also what orders the sunk
  *    block under a *figure* column, since every row in it compares equal there.
  *    Under the issue column the block is ranked by step 2 like everything else:
  *    the issue number is the one sortable value an unstarted row carries, and a
