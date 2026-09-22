@@ -26,9 +26,15 @@ import {
  * ordering and `usage-facets.test.ts` asks a predicate about one row; what
  * neither can ask is whether the four controls narrow the *same* list, in the
  * order that keeps the ranking honest, and what the detail toggle does to a
- * sort it is about to take the header away from. That question used to need a
- * page, an axios stub and a button press — see `UsagePage.test.tsx`, which
- * still asks it that way until slice 6 moves those cases here.
+ * sort it is about to take the header away from.
+ *
+ * **This is where the Usage page's suite used to ask it** — by mounting the
+ * page, stubbing axios, pressing Scan and reading the rows back out of the
+ * DOM, across three describe blocks and 867 lines. #288 retired them: what a
+ * narrowing shows is answered here, that the controls are wired to it in
+ * `SpendTable.test.tsx`, and that a click reaches a real reading of real
+ * transcripts in `dev-usage.spec.ts`. `UsagePage.test.tsx` keeps what the page
+ * itself owns.
  *
  * Every row below is made up on purpose. A filter is a claim about every row
  * the scan could produce, and the four the E2E fixture holds are not a sample
@@ -221,6 +227,20 @@ describe("visibleRows — the facets", () => {
       ),
     ).toEqual([300]);
   });
+
+  /** And its other half, which is the one that can pass by accident: a facet
+   *  doing nothing at all returns every row, so the answer is only worth
+   *  having beside the row it leaves out. */
+  test("narrows to the issues somebody has started", () => {
+    expect(
+      numbersOf(
+        visibleRows(
+          ISSUES,
+          view({ facets: facets({ started: USAGE_STARTED.started }) }),
+        ),
+      ),
+    ).toEqual([105, 101, 102]);
+  });
 });
 
 describe("visibleRows — the four controls compose", () => {
@@ -279,6 +299,25 @@ describe("visibleRows — filtered, then ranked", () => {
         ),
       ),
     ).toEqual([101, 102, 105]);
+  });
+
+  /**
+   * The issue number is a sortable column too, and the only one an unstarted
+   * row carries a value for — which is what makes it the direction the sink
+   * could quietly stop working in. `#300` has the largest number here, so a
+   * comparator that ranked it on its number alone would put it first
+   * descending and the rule would be gone with no other case noticing.
+   */
+  test("ranks by the issue number without lifting the row with no figures", () => {
+    for (const descending of [true, false]) {
+      const rows = visibleRows(
+        ISSUES,
+        view({ sort: { key: "issue", descending } }),
+      );
+      expect(numbersOf(rows)).toEqual(
+        descending ? [105, 102, 101, 300] : [101, 102, 105, 300],
+      );
+    }
   });
 
   /** The sink survives the narrowing: an empty actual is not a small one,

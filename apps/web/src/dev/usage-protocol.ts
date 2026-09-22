@@ -238,7 +238,7 @@ export const USAGE_DETAIL_LABEL = "Show turns, sessions and cache read";
  * visible label beside it (#273).
  *
  * Here for the reason `USAGE_DETAIL_LABEL` is: `SpendTable.tsx` renders it,
- * `UsagePage.test.tsx` reaches for the input by it and `dev-usage.spec.ts`
+ * `SpendTable.test.tsx` reaches for the input by it and `dev-usage.spec.ts`
  * does the same, and neither suite can import a `.tsx` module. Retyped in
  * three places, a reworded label would leave both suites typing into a control
  * that no longer exists — the failure `route-timing.spec.ts` records for the
@@ -297,8 +297,8 @@ export const USAGE_NO_MATCH = "No issue matches these filters.";
  * `Select` underneath reserves `""` for *cleared* and throws on a `SelectItem`
  * whose value is it. `ProjectMapPage` learned the same thing for its workspace
  * select and answered it the same way; this one is in the contract because
- * three selects share it and because `UsagePage.test.tsx` and `dev-usage.spec.ts`
- * both have to name the row that clears a facet.
+ * three selects share it and because `SpendTable.test.tsx` and `dev-usage.spec.ts`
+ * both have to name the row it puts a facet at.
  *
  * It is a token rather than `null` on the wire of the state because it is what
  * a `SelectItem` is given — the mapping from "any" to "no constraint" happens
