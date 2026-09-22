@@ -446,10 +446,11 @@ describe("gatherUsage", () => {
     );
 
     expect(report.warnings).toHaveLength(2);
-    expect(report.warnings[1]).toEqual({
-      source: USAGE_WARNING_SOURCE.listing,
-      message: "no gh here",
-    });
+    // Both messages survive, which is what "stack" means here. *Which* source
+    // each came from is the case below — one claim per test, or the two drift
+    // into one assertion that fails for either reason.
+    expect(report.warnings[0]?.message).toContain("nope");
+    expect(report.warnings[1]?.message).toBe("no gh here");
   });
 
   /**

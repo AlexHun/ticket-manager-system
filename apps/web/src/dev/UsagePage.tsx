@@ -139,11 +139,11 @@ export function UsagePage() {
       {/* What the scan could not see, shown rather than swallowed — the same
           bargain the project map makes with its own `warnings`.
 
-          Every warning is drawn, whichever source it names: the directory and
-          the listing fail independently (#289), so a machine with neither
-          should not have to discover the second one after fixing the first.
-          The page reads `message` and nothing else — `source` is there for a
-          caller that has to branch, which this one does not. */}
+          Every warning is drawn, whichever source it names, because the two
+          sources fail independently — see `UsageWarning` in `usage-protocol`
+          for why that is a field rather than a turn of phrase. This page reads
+          `message` and never `source`: it has no branch to make, and the
+          wording on screen is what it always was. */}
       {report?.warnings.map((warning) => (
         <p
           key={`${warning.source}:${warning.message}`}
