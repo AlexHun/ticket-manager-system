@@ -844,7 +844,7 @@ test.describe("dev tools: Usage", () => {
    * be ranked.
    *
    * The ordering rules are unit-tested over made-up rows (`usage-sort.test.ts`)
-   * and the wiring over a stubbed report (`UsagePage.test.tsx`). What only this
+   * and the wiring over a mounted table (`SpendTable.test.tsx`). What only this
    * level can say is that the click reaches a real reading of the real
    * transcripts: `#105`, `#101` and `#102` are ranked by figures the fixture
    * actually recorded, and `#103` is an open issue the listing names that no
