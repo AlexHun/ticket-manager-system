@@ -451,9 +451,9 @@ export const USAGE_FACETS: {
  *
  * Mapped off `UsageFacetValues` rather than written out, so the fields and the
  * controls cannot drift apart. It lives in the contract beside the specs
- * because `UsageTableView` carries it up to `UsagePage` — the state belongs to
- * the page for the measured reason #272 records, and the shape of it is
- * something both halves of the split read.
+ * because `UsageTableView` (`./usage-view`) carries it up to `UsagePage` — the
+ * state belongs to the page for the measured reason #272 records, and the shape
+ * of it is something both halves of the split read.
  */
 export type UsageFacets = {
   [K in UsageFacetKey]: UsageFacetValues[K] | typeof ANY_FACET;

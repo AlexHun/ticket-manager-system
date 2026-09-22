@@ -15,20 +15,13 @@ import { Toggle } from "@/components/ui/toggle";
 import { TableFrame } from "@/lib/table-frame";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { cn } from "@/lib/utils";
-import { SEARCH_DEBOUNCE_MS, countLabel, matchesQuery } from "./module-match";
+import { SEARCH_DEBOUNCE_MS, countLabel } from "./module-match";
 import { UsageFilters } from "./UsageFilters";
 import { formatTokens } from "./usage-charts";
-import { DEFAULT_USAGE_FACETS, matchesFacets } from "./usage-facets";
-import {
-  DEFAULT_USAGE_SORT,
-  nextSort,
-  sortIssues,
-  type UsageSort,
-  type UsageSortKey,
-} from "./usage-sort";
+import { nextSort, type UsageSort, type UsageSortKey } from "./usage-sort";
+import { visibleRows, withDetail, type UsageTableView } from "./usage-view";
 import {
   USAGE_COLUMNS,
-  USAGE_DETAIL,
   USAGE_DETAIL_LABEL,
   USAGE_NO_MATCH,
   USAGE_SEARCH_LABEL,
@@ -41,7 +34,6 @@ import {
   type IssueSpend,
   type IssueUsage,
   type UsageColumn,
-  type UsageFacets,
   type Verdict,
 } from "./usage-protocol";
 
@@ -328,60 +320,6 @@ const columnsShown = (detail: boolean) =>
     (name) => [name, COLUMNS[name]] as const,
   );
 
-/**
- * How the developer is reading the table, as opposed to what the table is
- * reading.
- *
- * One object rather than two pieces of state, because the two are not
- * independent: a sort on `turns` means nothing without the column that
- * announces it, and the rules below hold them together. It lives on
- * `UsagePage` for a measured reason — see `SpendTable`'s own comment.
- */
-export interface UsageTableView {
-  sort: UsageSort;
-  /** Whether `USAGE_DETAIL`'s three columns are appended (#271). */
-  detail: boolean;
-  /**
-   * What the search box holds, live rather than debounced (#273).
-   *
-   * The raw term and not the settled one, because this is the input's value:
-   * lifted in its settled form, every keystroke would either wait 150 ms to
-   * appear in the box it was typed into or need a second copy of itself kept
-   * below. The debounce happens where the term is *spent* — see `SpendTable`.
-   */
-  query: string;
-  /**
-   * Which forecast band, which verdict and whether work has been recorded
-   * (#274).
-   *
-   * Up here with the query and for the same reasons: it is how the developer is
-   * reading the rows rather than part of the reading, and the mutation clears
-   * its `data` while it re-reads, so anything kept below would be thrown away
-   * by the press of Scan that re-asks the same question. Undebounced, unlike
-   * the query — a select settles the moment it is picked, and there is no
-   * per-keystroke cost to wait out.
-   */
-  facets: UsageFacets;
-}
-
-export const DEFAULT_USAGE_TABLE_VIEW: UsageTableView = {
-  sort: DEFAULT_USAGE_SORT,
-  detail: false,
-  query: "",
-  facets: DEFAULT_USAGE_FACETS,
-};
-
-/**
- * The sort keys that only exist while the detail columns are shown.
- *
- * Derived from the two contracts rather than listed again: `USAGE_DETAIL` says
- * which columns those are and `COLUMNS` says what each ranks by, so a column
- * moved between the spine and the detail needs no edit here.
- */
-const DETAIL_SORT_KEYS = new Set<UsageSortKey>(
-  USAGE_DETAIL.map((name) => COLUMNS[name].sort),
-);
-
 /** The sticky header cell, shared by both kinds of heading below — the ones
  *  that rank the table and the two that do not. */
 const HEADER_CELL = "sticky top-0 z-10 bg-muted px-3 py-2 font-medium";
@@ -477,13 +415,18 @@ function HeaderCell({
  * one and filing them among the cheapest issues is where they would read as
  * work that cost almost nothing.
  *
+ * **It renders the rows it is handed, and computes no narrowing of its own**
+ * (#287). Which issues survive the four controls, in what order, and what
+ * hiding the detail columns does to a sort that was on one of them are all
+ * `./usage-view` — `visibleRows` and `withDetail`, pure and unit-tested without
+ * a renderer. What is left here is the wiring a `.tsx` file is for: which
+ * columns offer a sort (`Column.sort`), what a header click produces
+ * (`HeaderCell`, `nextSort`), where the term is debounced, and the markup.
+ *
  * **Every figure and the issue number re-rank the table from their header**
- * (#272), and that block at the end survives all of it. The comparator and the
- * reason it sinks a row rather than reading it as zero are `./usage-sort`'s;
- * what is here is the wiring — which columns offer it (`Column.sort`), what a
- * click does (`HeaderCell`), and the default that matches the order the rows
- * arrived in, so the first render after a scan does not reshuffle in front of
- * the developer.
+ * (#272), and the unstarted block at the end survives all of it. The comparator
+ * and the reason it sinks a row rather than reading it as zero are
+ * `./usage-sort`'s.
  *
  * **The chosen sort is the page's state, not this component's**, which is the
  * one thing about it that is not `ModuleTable`'s shape. The reason is measured
@@ -492,11 +435,12 @@ function HeaderCell({
  * the length of the read and this component unmounts. State kept here would be
  * thrown away by the Scan that re-asks the same question — see
  * `UsagePage.tsx`. **Everything else on the bar travels with it, in one
- * `UsageTableView`**: the detail toggle (#271 moved up with the sort, and had
- * to — a sort on `turns` surviving without the column announcing it is a
- * ranking with no arrow and nothing on screen saying why), the query (#273) and
- * the three facets (#274). The rows change on a re-scan; how the developer is
- * reading them does not.
+ * `UsageTableView`** (`./usage-view`, which is where that shape now lives
+ * rather than being exported upward from here): the detail toggle (#271 moved
+ * up with the sort, and had to — a sort on `turns` surviving without the column
+ * announcing it is a ranking with no arrow and nothing on screen saying why),
+ * the query (#273) and the three facets (#274). The rows change on a re-scan;
+ * how the developer is reading them does not.
  *
  * **Four columns by default, and one control for the other three** (#271). The
  * spine is the issue, its title, the spend and the comparison; `turns`,
@@ -518,9 +462,10 @@ function HeaderCell({
  * **Four controls narrow it, and they are one filter** (#273, #274). The search
  * box matches the issue number and the title; the three selects beside it pick
  * a forecast band, a verdict or started-versus-unstarted (`./UsageFilters`,
- * with the predicates in `./usage-facets`). They are `&&`'d in one pass, so
- * "they compose" holds by construction and the shown-out-of-total line counts
- * what all four left. What none of them touches is the rest of the page: the
+ * with the predicates in `./usage-facets`). They are `&&`'d in one pass in
+ * `visibleRows`, so "they compose" holds by construction and the
+ * shown-out-of-total line counts what all four left. What none of them touches
+ * is the rest of the page: the
  * charts, the unattributed total and the gathered-at line read `report.issues`
  * up on `UsagePage` and never see these rows, which is #273's decision and the
  * one this slice had to keep rather than re-make.
@@ -542,53 +487,26 @@ export function SpendTable({
      from the value it is given, so the remount a re-scan forces (see below)
      comes back already settled rather than waiting out another 150 ms. */
   const query = useDebouncedValue(view.query, SEARCH_DEBOUNCE_MS);
-  const needle = query.trim().toLowerCase();
 
-  /* Filtered, then ranked — the same rows either way round, and cheaper in this
-     order. The issue number is matched as the row prints it (`#101`), so the
-     hash a developer copies out of the table or a commit message is a term that
-     matches rather than one that matches nothing; a bare `101` still does,
-     since the hash is a prefix. Nothing else on the row is searched: the URL is
-     the number again, and a band is what the facets beside the box are for.
+  /* Which rows are on screen is `visibleRows` in `./usage-view` (#287), not
+     this component's arithmetic: what the four controls leave and how it is
+     ranked is a claim about every row a scan could produce, and a component
+     test can only ask it about the three or four it happened to render.
 
-     The two narrowings are one `&&` rather than two passes, which is what makes
-     "they compose" true by construction instead of by convention — and it is
-     why the count below can be `rows.length` against `issues.length` and
-     describe every control on the bar at once (#274). Both halves treat an
-     untouched control as matching everything, so neither needs an "is the
-     developer narrowing" branch that a later one could forget to write. */
+     The view handed over is this one with the *settled* term in place of the
+     live one — the only substitution the debounce needs, and the reason it can
+     happen here while the state lives on the page. Rebuilt field by field
+     rather than spread, so the dependency list below is the memo's real inputs:
+     a spread `view` would re-filter and re-sort on every keystroke, which is
+     precisely what the 150 ms is for. `detail` is in both because hiding a
+     column can reset the sort (`withDetail`), which does change the rows. */
   const rows = useMemo(
-    () =>
-      sortIssues(
-        issues.filter(
-          (row) =>
-            matchesQuery(needle, `#${row.issue}`, row.title) &&
-            matchesFacets(row, facets),
-        ),
-        sort,
-      ),
-    [issues, needle, facets, sort],
+    () => visibleRows(issues, { sort, detail, facets, query }),
+    [issues, sort, detail, facets, query],
   );
 
   const onSortChange = (next: UsageSort) =>
     onViewChange({ ...view, sort: next });
-
-  /**
-   * Hiding the detail columns gives the table back its default ranking, when
-   * the sort was on one of them.
-   *
-   * The alternative is a table ranked by a column that is no longer on screen:
-   * no arrow, no `aria-sort`, nothing anywhere saying why the rows are in the
-   * order they are in. Returning to the order the rows arrived in is the one
-   * outcome that can still be announced — `Output tokens` takes its arrow back
-   * — and it is visible in the same gesture that caused it.
-   */
-  const onDetailChange = (next: boolean) =>
-    onViewChange({
-      ...view,
-      detail: next,
-      sort: !next && DETAIL_SORT_KEYS.has(sort.key) ? DEFAULT_USAGE_SORT : sort,
-    });
 
   // No control on the empty state, and deliberately: it widens a table that has
   // no cells to widen, and the sentence beside it is the answer to why.
@@ -689,7 +607,11 @@ export function SpendTable({
             variant="outline"
             size="sm"
             pressed={detail}
-            onPressedChange={onDetailChange}
+            /* The sort reset that comes with hiding a column is
+               `withDetail`'s, in `./usage-view` — see its comment for why
+               going back to the order the rows arrived in is the one outcome a
+               vanished header can still announce. */
+            onPressedChange={(next) => onViewChange(withDetail(view, next))}
             aria-label={USAGE_DETAIL_LABEL}
           >
             <Columns3 aria-hidden="true" />

@@ -5,11 +5,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { extractErrorMessage } from "@/lib/errors";
 import { useUsageScan } from "./dev-api";
-import {
-  DEFAULT_USAGE_TABLE_VIEW,
-  SpendTable,
-  type UsageTableView,
-} from "./SpendTable";
+import { SpendTable } from "./SpendTable";
+import { DEFAULT_USAGE_TABLE_VIEW, type UsageTableView } from "./usage-view";
 import { UsageCharts } from "./UsageCharts";
 import { formatTokens } from "./usage-charts";
 import type { UnattributedWork, UsageReport } from "./usage-protocol";
@@ -64,7 +61,9 @@ export function UsagePage() {
   const report = scan.data ?? null;
   /* How the table below is being read — its ranking, whether the detail
      columns are shown, and what the four controls on its bar have narrowed it
-     to. It belongs to the table and is held here for one
+     to. The shape and the rules over it are `./usage-view` (#287), which is
+     pure and knows nothing about a renderer; what is here is the state itself.
+     It belongs to the table and is held here for one
      measured reason: `useUsageScan` is a `useMutation`, and a mutation clears
      its `data` the moment it is fired — so `report` is null for the length of
      the read, the gate below closes, and `SpendTable` unmounts with whatever
