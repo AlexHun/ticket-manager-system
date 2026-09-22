@@ -2,6 +2,7 @@ import {
   ANY_FACET,
   USAGE_FACET_KEYS,
   USAGE_STARTED,
+  hasRecordedSpend,
   type IssueUsage,
   type UsageFacetKey,
   type UsageFacets,
@@ -24,12 +25,12 @@ import {
  * row that carries *no* value for a facet — no forecast band, no verdict — is
  * in none of that facet's results rather than in a default one, which is the
  * distinction the page is built on told in a filter instead of in a cell.
+ *
+ * The `started` facet's own predicate is not written here: it is
+ * `hasRecordedSpend` in `./usage-protocol`, the one statement of "has any work
+ * been recorded against this issue" that the ranking, the comparator, the
+ * distribution's sample and the table's em-dash cells all read too (#285).
  */
-
-/** Whether the transcripts recorded anything at all against this issue — the
- *  one question the `started` facet asks, and deliberately not "did it spend
- *  more than zero". */
-const hasSpend = (row: IssueUsage) => row.spend !== null;
 
 /**
  * One predicate per facet, keyed by the facet — exhaustive by construction.
@@ -55,7 +56,7 @@ const FACET_MATCH: Record<
     verdict === ANY_FACET || row.verdict === verdict,
   started: (row, { started }) =>
     started === ANY_FACET ||
-    hasSpend(row) === (started === USAGE_STARTED.started),
+    hasRecordedSpend(row) === (started === USAGE_STARTED.started),
 };
 
 /** Nothing narrowed: every select on its "any" row, which is what the table

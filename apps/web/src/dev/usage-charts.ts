@@ -18,8 +18,11 @@
  *
  * What is left here is what only a chart wants — bins with the band labels an
  * axis prints, and the quartiles placed against those bands as marks. The
- * exclusion rule they inherit is `recordedSpend`'s and is written down there: a
- * row with no recorded work is an absence, never a zero.
+ * exclusion rule they inherit arrives through `recordedSpend` and is stated
+ * once, as `hasRecordedSpend` in `usage-protocol.ts` (#285): a row with no
+ * recorded work is an absence, never a zero. Nothing here restates it — which
+ * is the point, since the same predicate is what dashes the cells and sinks the
+ * rows in the table beside these charts.
  */
 
 import {

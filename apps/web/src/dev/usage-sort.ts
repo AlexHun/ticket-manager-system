@@ -1,4 +1,8 @@
-import type { IssueSpend, IssueUsage } from "./usage-protocol";
+import {
+  hasRecordedSpend,
+  type IssueSpend,
+  type IssueUsage,
+} from "./usage-protocol";
 
 /**
  * How the Usage table's rows are ranked, and the one row it refuses to rank.
@@ -17,7 +21,9 @@ import type { IssueSpend, IssueUsage } from "./usage-protocol";
  * (see `NotStarted` in `SpendTable.tsx`), told in its ordering instead. There is
  * no substitution to get wrong here because there is no substitution at all: a
  * row with no `spend` is compared by whether it has one, before any figure is
- * read off it.
+ * read off it — and since #285 "whether it has one" is `hasRecordedSpend` in
+ * `./usage-protocol`, the one statement of that rule, rather than a `!== null`
+ * of this module's own.
  */
 
 /**
@@ -97,8 +103,24 @@ export const nextSort = (current: UsageSort, key: UsageSortKey): UsageSort =>
  *
  * Null rather than zero, and the two are never mixed: a row that really spent
  * zero output tokens is a measurement and ranks as the cheapest work there is,
- * while a row with no spend at all has already been sunk before this is called
- * on it.
+ * while a row with no spend at all has already been sunk *relative to a started
+ * row* before this is called.
+ *
+ * **The `?.` here is not an unchecked second statement of the absence rule, and
+ * this does not take the narrowed row `hasRecordedSpend` would give it** — both
+ * of which it looks like at a glance, and a review read it that way. Two
+ * unstarted rows reach this, because the sink above only separates a started
+ * row from an unstarted one and says nothing about two of the latter. What they
+ * get here is the whole of how the sunk block orders itself, and it differs by
+ * column: under a figure key both sides answer null, the caller reads that as
+ * equal and the issue-number tie-break orders them ascending whichever way the
+ * table is pointed; under the issue key they answer real numbers and the block
+ * reverses with the header, because the issue number is the one sortable value
+ * an unstarted row carries. Narrowing the parameter would force the caller to
+ * gate this on *both* rows being started, which collapses that second case —
+ * the sunk block would stop reversing under the issue column, which
+ * `usage-sort.test.ts` holds in "ranks the sunk block by the one column an
+ * unstarted row carries".
  */
 const figureOf = (row: IssueUsage, key: UsageSortKey): number | null =>
   key === "issue" ? row.issue : (row.spend?.[key] ?? null);
@@ -110,8 +132,11 @@ const figureOf = (row: IssueUsage, key: UsageSortKey): number | null =>
  * Three decisions, in the order the comparator applies them:
  *
  * 1. **The sink**, before any figure is read. A row's spend is present or it is
- *    not, and that outranks every column: it is what stops an absence being
- *    ranked as a quantity.
+ *    not (`hasRecordedSpend`), and that outranks every column: it is what stops
+ *    an absence being ranked as a quantity. Note what this step does *not*
+ *    need — a sink value. `joinIssues`' `rank` needs one because it ranks each
+ *    row to a number on its own; comparing two rows, the predicate is the whole
+ *    answer, which is why the `-1` over there has no counterpart here.
  * 2. **The column**, flipped by `descending`.
  * 3. **The issue number, always ascending**, so the order is total and a
  *    re-render never reshuffles rows the sort cannot tell apart. Outside the
@@ -126,14 +151,13 @@ const figureOf = (row: IssueUsage, key: UsageSortKey): number | null =>
  * A copy, because the rows belong to the report the page is holding and a scan
  * is a reading rather than a working set.
  */
-const started = (row: IssueUsage) => row.spend !== null;
-
 export function sortIssues(
   issues: IssueUsage[],
   { key, descending }: UsageSort,
 ): IssueUsage[] {
   return [...issues].sort((a, b) => {
-    if (started(a) !== started(b)) return started(a) ? -1 : 1;
+    const aStarted = hasRecordedSpend(a);
+    if (aStarted !== hasRecordedSpend(b)) return aStarted ? -1 : 1;
 
     const left = figureOf(a, key);
     const right = figureOf(b, key);
