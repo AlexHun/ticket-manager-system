@@ -133,10 +133,19 @@ const DETAIL_SORT_KEYS: ReadonlySet<UsageSortKey> = new Set(
  * A copy comes back, because the rows belong to the report the page is holding
  * and a scan is a reading rather than a working set — `sortIssues` is what
  * makes that true.
+ *
+ * **Three fields of the view and not the whole of it, which is a claim rather
+ * than a tidy signature.** The detail toggle changes which *columns* are drawn
+ * and never which rows, so naming it here would be a promise this function does
+ * not keep — and the caller feels it: `SpendTable`'s memo would have to list
+ * `detail` as a dependency and re-filter every row on a press that changed
+ * nothing. The one case where the toggle does move the rows is the sort reset,
+ * and that arrives as a changed `sort`, which is named. A full `UsageTableView`
+ * still satisfies this, so the page's state can be handed over whole.
  */
 export function visibleRows(
   issues: IssueUsage[],
-  { query, facets, sort }: UsageTableView,
+  { query, facets, sort }: Pick<UsageTableView, "sort" | "query" | "facets">,
 ): IssueUsage[] {
   const needle = query.trim().toLowerCase();
   return sortIssues(

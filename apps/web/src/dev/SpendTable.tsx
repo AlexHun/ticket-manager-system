@@ -493,16 +493,18 @@ export function SpendTable({
      ranked is a claim about every row a scan could produce, and a component
      test can only ask it about the three or four it happened to render.
 
-     The view handed over is this one with the *settled* term in place of the
-     live one — the only substitution the debounce needs, and the reason it can
-     happen here while the state lives on the page. Rebuilt field by field
-     rather than spread, so the dependency list below is the memo's real inputs:
-     a spread `view` would re-filter and re-sort on every keystroke, which is
-     precisely what the 150 ms is for. `detail` is in both because hiding a
-     column can reset the sort (`withDetail`), which does change the rows. */
+     What is handed over is the three fields that decide the rows, with the
+     *settled* term in place of the live one — the only substitution the
+     debounce needs, and the reason it can happen here while the state lives on
+     the page. Rebuilt field by field rather than spread, so the dependency list
+     below is the memo's real inputs: a spread `view` would re-filter and
+     re-sort on every keystroke, which is precisely what the 150 ms is for.
+     `detail` is in neither, because `visibleRows` does not take it — the
+     toggle changes which columns are drawn, and the one case where it does move
+     the rows is the sort reset, which arrives as a changed `sort`. */
   const rows = useMemo(
-    () => visibleRows(issues, { sort, detail, facets, query }),
-    [issues, sort, detail, facets, query],
+    () => visibleRows(issues, { sort, facets, query }),
+    [issues, sort, facets, query],
   );
 
   const onSortChange = (next: UsageSort) =>
