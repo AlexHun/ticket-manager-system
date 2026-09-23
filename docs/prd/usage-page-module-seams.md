@@ -62,18 +62,18 @@ becoming a change to the measurement.
 
 ### In this pass
 
-| #   | Requirement                                                                                                                                               | Priority |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| R1  | A module that renders the project map does not read the Usage page's contract, and vice versa.                                                            | Must     |
-| R2  | The rule that a row with no recorded spend is an absence rather than a zero is stated once, and every module that needs it reads that statement.          | Must     |
-| R3  | The table's default ranking is stated once, not once on the server and once in the comparator.                                                            | Must     |
-| R4  | Filtering, ranking, and the rule that hiding the detail columns returns the sort to its default are all assertable from a test that imports no component. | Must     |
-| R5  | The shape of the table's view state is declared by the module that computes against it, not by the component that renders it.                             | Must     |
-| R6  | `bun run tokens` obtains its rows, its totals and its diagnostics from one call, and words those diagnostics itself.                                      | Must     |
-| R7  | A caller can tell which source a scan's warning came from without reading the warning's text.                                                             | Must     |
-| R8  | The page's rendered output and `bun run tokens`' printed output are unchanged, byte for byte, for the same transcripts and the same issue listing.        | Must     |
-| R9  | Filtering `bun run tokens` to open issues reads a field on the row rather than re-joining the issue listing the row was built from.                       | Should   |
-| R10 | No module in `apps/web/src/dev/` or `apps/web/dev/` exceeds 15 KB.                                                                                        | Should   |
+| #   | Requirement                                                                                                                                               | Priority                                              |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| R1  | A module that renders the project map does not read the Usage page's contract, and vice versa.                                                            | Must                                                  |
+| R2  | The rule that a row with no recorded spend is an absence rather than a zero is stated once, and every module that needs it reads that statement.          | Must                                                  |
+| R3  | The table's default ranking is stated once, not once on the server and once in the comparator.                                                            | Must                                                  |
+| R4  | Filtering, ranking, and the rule that hiding the detail columns returns the sort to its default are all assertable from a test that imports no component. | Must                                                  |
+| R5  | The shape of the table's view state is declared by the module that computes against it, not by the component that renders it.                             | Must                                                  |
+| R6  | `bun run tokens` obtains its rows, its totals and its diagnostics from one call, and words those diagnostics itself.                                      | Must                                                  |
+| R7  | A caller can tell which source a scan's warning came from without reading the warning's text.                                                             | Must                                                  |
+| R8  | The page's rendered output and `bun run tokens`' printed output are unchanged, byte for byte, for the same transcripts and the same issue listing.        | Must                                                  |
+| R9  | Filtering `bun run tokens` to open issues reads a field on the row rather than re-joining the issue listing the row was built from.                       | Should — **not taken** (#290); see the risk row below |
+| R10 | No module in `apps/web/src/dev/` or `apps/web/dev/` exceeds 15 KB.                                                                                        | Should                                                |
 
 ### Non-goals
 
@@ -124,13 +124,13 @@ becoming a change to the measurement.
 
 ## Risks
 
-| Risk                                                                         | Impact                                                                                                             | Mitigation                                                                                             |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| A refactor quietly changes a figure                                          | The page's claims about this repository become claims about a refactor, and nobody notices because the tests moved | R8 as a testable requirement; capture both outputs before the first slice and diff them after each one |
-| Moving the column names breaks positional assertions in both suites silently | Suites stay green while asserting against a neighbouring cell                                                      | The column lists move as one unit, and the move is its own slice with no other change in it            |
-| Consolidating the six statements of the absence rule lands on the wrong one  | `rank`'s `-1` and `started`'s `!== null` are not the same function; collapsing them carelessly changes the sort    | R2 and R3 are separate requirements for that reason — the sink rule and the ranking are two claims     |
-| Adding `state` to the row grows the wire for one caller                      | A field on the wire is a promise something reads it (#253's rule)                                                  | R9 is a `Should`; if only the terminal reads it, the honest answer may be to leave `--open` as it is   |
-| The split lands while another Usage slice is in flight                       | Every import in the directory conflicts                                                                            | Sequence R1 first, on a clean tree, before anything else in this PRD                                   |
+| Risk                                                                         | Impact                                                                                                             | Mitigation                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A refactor quietly changes a figure                                          | The page's claims about this repository become claims about a refactor, and nobody notices because the tests moved | R8 as a testable requirement; capture both outputs before the first slice and diff them after each one                                                                                                        |
+| Moving the column names breaks positional assertions in both suites silently | Suites stay green while asserting against a neighbouring cell                                                      | The column lists move as one unit, and the move is its own slice with no other change in it                                                                                                                   |
+| Consolidating the six statements of the absence rule lands on the wrong one  | `rank`'s `-1` and `started`'s `!== null` are not the same function; collapsing them carelessly changes the sort    | R2 and R3 are separate requirements for that reason — the sink rule and the ranking are two claims                                                                                                            |
+| Adding `state` to the row grows the wire for one caller                      | A field on the wire is a promise something reads it (#253's rule)                                                  | **Realised, and R9 dropped** (#290): only `--open` would read it, so `--open` keeps its `Map.get` against the listing the command holds in order to pass it to `gatherUsage` — never the re-join R9 describes |
+| The split lands while another Usage slice is in flight                       | Every import in the directory conflicts                                                                            | Sequence R1 first, on a clean tree, before anything else in this PRD                                                                                                                                          |
 
 ## Open questions
 

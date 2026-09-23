@@ -45,7 +45,11 @@
 // measurement of the distribution nor a forecast that has been tested.
 
 import { ISSUE_STATE, fetchIssueMetadata } from "../apps/web/dev/issues.ts";
-import { gatherUsage, resolveTranscriptDir } from "../apps/web/dev/usage.ts";
+import {
+  TRANSCRIPT_DIR_ENV,
+  gatherUsage,
+  resolveTranscriptDir,
+} from "../apps/web/dev/usage.ts";
 // Reached directly rather than through `apps/web/dev/usage.ts`, which used to
 // re-export this vocabulary on this file's behalf (#290). The contract module is
 // import-free and has no filesystem in it, so a script under `scripts/` reads it
@@ -60,6 +64,7 @@ import {
   recordedSpend,
   type IssueSpend,
   type IssueUsage,
+  type UsageReport,
   type UsageWarning,
 } from "../apps/web/src/dev/usage-protocol.ts";
 
@@ -74,14 +79,21 @@ const fmt = (n: number) =>
  * The diagnostic this command prints for a source that could not be read.
  *
  * The transcripts get a sentence of this command's own, because the advice is
- * this command's own: the directory is derived from the working directory when
- * no override is set, so the fix for both ways that source fails — unreadable,
- * or readable and holding no `.jsonl` — is to run from the repo root. One
- * sentence for one source is deliberate. `USAGE_WARNING_SOURCE` has two values
- * and not three (#289) precisely because nothing treats "could not read it"
- * differently from "it was empty", and a terminal that branched on the two
- * would have to do it by matching the sentence it was handed, which is the
- * contract that shape exists to remove.
+ * this command's own — and it branches on **why the directory is the directory**
+ * rather than on how the read failed. Unresolvable and empty take the same
+ * advice, which is `USAGE_WARNING_SOURCE`'s two-values-not-three shape (#289)
+ * holding up: a terminal that wanted to tell those two apart could only do it by
+ * matching the sentence it was handed, which is the contract that shape exists
+ * to remove. What does change the advice is the override: with
+ * `CLAUDE_TRANSCRIPT_DIR` unset the directory is derived from the working
+ * directory, so "run this from the repo root" is the fix; with it set, the cwd
+ * is not consulted at all and that sentence would send the developer to correct
+ * something the run never read. Naming the variable is the whole of the fix
+ * there, so that is all it says.
+ *
+ * The directory comes off the report rather than from the local `dir`. They are
+ * the same string today because this command passes one in, and reading it back
+ * from the reading it is describing is what keeps them the same string.
  *
  * The listing's message is passed through, and that is not the same thing as
  * printing a page's string: it is `fetchIssueMetadata`'s own account of what it
@@ -90,10 +102,15 @@ const fmt = (n: number) =>
  * terminal-specific advice to add. Re-wording it here would be a second copy of
  * a sentence with nothing new in it.
  */
-const diagnostic = (warning: UsageWarning, dir: string) =>
-  warning.source === USAGE_WARNING_SOURCE.transcripts
-    ? `No transcripts at ${dir} — run this from the repo root.`
-    : warning.message;
+const diagnostic = (warning: UsageWarning, report: UsageReport) => {
+  if (warning.source !== USAGE_WARNING_SOURCE.transcripts) {
+    return warning.message;
+  }
+  const at = `No transcripts at ${report.transcriptDir}`;
+  return process.env[TRANSCRIPT_DIR_ENV]?.trim()
+    ? `${at}, which ${TRANSCRIPT_DIR_ENV} names.`
+    : `${at} — run this from the repo root.`;
+};
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -122,7 +139,7 @@ async function main() {
   // while `gh` answers perfectly, and the reverse (#289). Nothing here counts
   // them or stops at the first.
   for (const warning of report.warnings) {
-    console.error(`${diagnostic(warning, dir)}\n`);
+    console.error(`${diagnostic(warning, report)}\n`);
   }
 
   // The same rows, in the same order, that the Usage page renders — because they

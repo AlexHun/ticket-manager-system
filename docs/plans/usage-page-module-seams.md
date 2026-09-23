@@ -174,29 +174,45 @@ missing-directory and no-`gh` cases still pass.
 **Un-hardcodes:** nine imports re-assembling the scan, and `usage.ts`'s ten-symbol re-export block.
 
 `bun run tokens` calls `gatherUsage(dir, meta)` once and formats what comes
-back — its own diagnostics, its own `-` marker, its own `120k`. `--open` reads
-`state` off the row if the spike says that field earns its place.
+back — its own diagnostics, its own `-` marker, its own `120k`.
 
 - The page and the terminal cannot report different figures because they no
   longer run different code.
+
+**Done** (#290, PR #300). The spike below was run and answered **no**: `state`
+stays off `IssueUsage` and `--open` keeps its lookup, which is a `Map.get`
+against the listing the command is holding anyway in order to pass it to
+`gatherUsage` — not the re-join R9 warns about. So R9 resolved as the `Should`
+it was cut as. Recorded in `apps/web/dev/issues.ts` (the `state` doc comment),
+in the filter's own comment, and in `docs/standards/frontend.md`.
+
+Two things the slice decided that the plan did not anticipate. The re-export
+block went, and `joinIssues` and `emptyScan` went module-private with it —
+nineteen exported names down to seven. And the terminal's **two** transcript
+diagnostics became **one**, because "could not read it" and "it was empty" take
+the same advice; what the sentence branches on instead is whether
+`CLAUDE_TRANSCRIPT_DIR` is set, since with an override the working directory is
+never consulted and "run this from the repo root" would be wrong. Neither
+diagnostic is covered by a test — the guardrail snapshots stdout only, and
+`scripts/` has no runner pointed at it.
 
 **E2E:** slice 1's guardrail unchanged — **this is the slice it exists for.**
 Every line of the terminal's output is in that snapshot.
 
 ## Requirement coverage
 
-| Req | Slice | Note                                                                                                   |
-| --- | ----- | ------------------------------------------------------------------------------------------------------ |
-| R1  | 2     |                                                                                                        |
-| R2  | 3     |                                                                                                        |
-| R3  | 4     |                                                                                                        |
-| R4  | 5, 6  | Slice 5 makes it possible, slice 6 makes it true                                                       |
-| R5  | 5     |                                                                                                        |
-| R6  | 8     |                                                                                                        |
-| R7  | 7     | Blocks slice 8 — the terminal needs structured warnings before it can word its own                     |
-| R8  | 1     | Built in slice 1, then re-run unchanged by every slice after it                                        |
-| R9  | 8     | `Should` — drops if the spike says `state` on the wire is a field nothing but one caller reads         |
-| R10 | 2, 5  | `Should` — a consequence, not a slice. Measured at the end of 2 and 5; if still over, it needs a ninth |
+| Req | Slice | Note                                                                                                    |
+| --- | ----- | ------------------------------------------------------------------------------------------------------- |
+| R1  | 2     |                                                                                                         |
+| R2  | 3     |                                                                                                         |
+| R3  | 4     |                                                                                                         |
+| R4  | 5, 6  | Slice 5 makes it possible, slice 6 makes it true                                                        |
+| R5  | 5     |                                                                                                         |
+| R6  | 8     |                                                                                                         |
+| R7  | 7     | Blocks slice 8 — the terminal needs structured warnings before it can word its own                      |
+| R8  | 1     | Built in slice 1, then re-run unchanged by every slice after it                                         |
+| R9  | 8     | `Should` — **dropped** (#290): the spike said `state` on the wire is a field nothing but `--open` reads |
+| R10 | 2, 5  | `Should` — a consequence, not a slice. Measured at the end of 2 and 5; if still over, it needs a ninth  |
 
 Every `Must` has a slice. No slice exists without a requirement.
 
@@ -205,10 +221,14 @@ Every `Must` has a slice. No slice exists without a requirement.
 - **Where does `DEVTOOLS_API` live after the split?** All three tools read it,
   so it is either a fourth module or duplicated per tool. Timebox 1h, blocks
   slice 2.
-- **Does `state` on `IssueUsage` earn its place?** #253's rule is that a field on
-  the wire is a promise something reads it, and after slice 8 the only reader
-  would be `--open`. The alternative is leaving the terminal's re-join alone.
-  Timebox 2h, blocks slice 8's R9 half only — R6 does not depend on it.
+- **Does `state` on `IssueUsage` earn its place?** ~~Timebox 2h, blocks slice 8's
+  R9 half only — R6 does not depend on it.~~ **Answered in #290: no.** #253's
+  rule is that a field on the wire is a promise something reads it, and the only
+  reader would be `--open`; the page has no column for it and the row set
+  already implies it, since an issue with no spend earns a row only because the
+  listing called it open. Leaving the terminal's lookup alone costs one
+  `Map.get` against a listing it holds anyway in order to pass it in, so this
+  was never the re-join R9 describes.
 
 ## Deferred
 
