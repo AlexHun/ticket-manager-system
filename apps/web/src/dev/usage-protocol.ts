@@ -70,8 +70,9 @@ export type Bucket = keyof typeof BUCKETS;
  * row; the page's distribution chart has to place a *percentile* in the same
  * bands, and a percentile is a figure no row carries. A second `find` over the
  * same record, written in the browser, is exactly the drift one record exists
- * to stop. `apps/web/dev/usage.ts` re-exports it, so the scan and
- * `bun run tokens` are unchanged.
+ * to stop. Every reader imports it from here — the scan, the charts and
+ * `bun run tokens` alike, the last of which reached it through a re-export in
+ * `apps/web/dev/usage.ts` until #290.
  */
 export const bucketFor = (out: number): Bucket =>
   (Object.keys(BUCKETS) as Bucket[]).find((b) => out < BUCKETS[b].max) ?? "XL";
@@ -570,13 +571,12 @@ export interface IssueUsage {
  * tokens and a sink value; `joinIssues` now sorts with `sortIssues` itself, so
  * that caller is the comparator above rather than a second one beside it.
  *
- * **One statement of the rule survives outside those five**, and it is named
- * here rather than left to be rediscovered: `figure` in
- * `scripts/issue-tokens.ts` is the terminal's own em-dash cell and takes a
- * nullable `IssueSpend` rather than a row, so it cannot call this. Consolidating
- * the terminal is slice 8 of `docs/plans/usage-page-module-seams.md`, where
- * `bun run tokens` starts calling `gatherUsage` instead of re-assembling the
- * scan. Until then this is the page's one home for the rule, not the repo's.
+ * **One statement of the rule used to survive outside those five, and #290
+ * closed it.** `figure` in `scripts/issue-tokens.ts` is the terminal's own
+ * em-dash cell; it took a nullable `IssueSpend` rather than a row, so it could
+ * not call this, and it took one because the terminal was assembling its own
+ * rows and had no `IssueUsage` to hand. It calls `gatherUsage` now, so it has
+ * one, and it asks this instead. This is the repo's home for the rule.
  *
  * **It is not a ranking's sink value, and the two must not be collapsed.**
  * This answers "is there spend"; a sink value is the *number* an absent row
@@ -648,12 +648,17 @@ export interface UnattributedWork {
  * to branch was to match on the prose, which is a contract nobody declared and
  * every re-wording breaks. That is also what kept `bun run tokens` from calling
  * `gatherUsage` at all — it words its diagnostics differently, and a list of
- * finished sentences gives it nothing to re-word.
+ * finished sentences gives it nothing to re-word. #290 spent this: the terminal
+ * calls `gatherUsage` now and branches here, printing its own sentence for
+ * `transcripts` and passing `listing`'s message through.
  *
  * Two values and not three: "could not read the directory" and "the directory
  * holds no transcripts" are one source failing in two ways, and nothing on
  * either surface treats them differently — both mean there are no figures and
- * the message says which. A third value would be a distinction with no reader.
+ * the message says which. A third value would be a distinction with no reader,
+ * and #290 is where that was tested rather than assumed: the terminal's two
+ * sentences for those two failures became one, because the advice it has to
+ * give ("run this from the repo root") is the same advice for both.
  */
 export const USAGE_WARNING_SOURCE = {
   /** The transcript directory — unreadable, or holding no `.jsonl` files. */

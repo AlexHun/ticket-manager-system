@@ -11,8 +11,8 @@
  *
  * Nothing here recomputes a figure something else already owns. The verdict on
  * each row is `verdictFor`'s; the bands, the quartiles, the accuracy tally and
- * the rule about which rows count are all `usage-protocol.ts`'s, where `bun run
- * tokens` reaches them through `apps/web/dev/usage.ts`. That is not tidiness: an
+ * the rule about which rows count are all `usage-protocol.ts`'s, which `bun run
+ * tokens` imports directly (#290). That is not tidiness: an
  * accuracy figure the terminal and the page each tallied for themselves would
  * agree until somebody changed one, and nothing would fail when they stopped.
  *
