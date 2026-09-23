@@ -12,7 +12,8 @@ import { autoReplyArticles, type KbArticle } from "../ai/knowledge-base";
 import { prisma } from "../db";
 import { isEvalConfigured } from "../evals/config";
 import { frozenCorpus } from "../evals/frozen-corpus";
-import { expectedCategoryOf, EVAL_REPEATS, runCase } from "../evals/runner";
+import { measureCase } from "../evals/measure-case";
+import { expectedCategoryOf, EVAL_REPEATS } from "../evals/runner";
 import { storedVerdict } from "../evals/stored-verdict";
 import { publishEvalRunChanged } from "../events/ticket-events";
 import { getBoss, registerWorker, type WorkerSpec } from "./boss";
@@ -213,7 +214,7 @@ async function handle(job: EvalRunJob): Promise<void> {
   for (const evalCase of cases) {
     if (done.has(evalCase.id)) continue;
 
-    const outcome = await runCase(articles, evalCase, run.repeats);
+    const outcome = await measureCase(articles, evalCase, run.repeats);
 
     await prisma.evalCaseResult.create({
       data: {

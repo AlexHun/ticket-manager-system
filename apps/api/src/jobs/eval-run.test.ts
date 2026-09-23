@@ -7,7 +7,7 @@
  * exported, which is what makes the terminal path testable at all — it
  * otherwise never runs on a good day (`backend.md`, #154).
  *
- * `../evals/runner` is stubbed, so what is under test is the bookkeeping: the
+ * `../evals/measure-case` is stubbed, so what is under test is the bookkeeping: the
  * expectations copied onto each row, the aggregates rolled onto the run, the
  * three idempotency guards, and the per-case event. The translation it stands
  * in for has its own file next to it.
@@ -120,17 +120,17 @@ let answered: { caseId: string; repeats: number }[] = [];
 /** The corpus the runner was handed, so the R4 fork can be asserted. */
 let lastArticles: unknown;
 
-// Spread, for the reason the note in `routes/evals.test.ts` records at length:
-// a factory that does not spread the real module *is* that module for every
-// file that loads it afterwards. Nothing depends on this one today —
-// `evals/runner.test.ts` destructures while loading, so it holds the real
-// functions whatever is registered later — but "nothing depends on it today" is
-// how the other one got written, and it cost a red CI run.
-const runnerModule = await import("../evals/runner");
-
-mock.module("../evals/runner", () => ({
-  ...runnerModule,
-  runCase: async (
+// `../evals/measure-case`, never `../evals/runner`. This file used to replace
+// `runCase` on the runner itself, with a comment here reasoning that
+// `evals/runner.test.ts` destructures while loading and so holds the real one
+// whatever is registered later. That is only true when it loads *first*: when
+// ubuntu-latest's walk put `jobs/` ahead of `evals/` (run 35908384626), it
+// destructured this stub and fourteen of its tests went red. The seam module
+// exists so this factory owns a specifier no other file loads for real — see
+// its header. It replaces the module's one export outright and never delegates
+// to it, so there is nothing to spread and nothing to snapshot.
+mock.module("../evals/measure-case", () => ({
+  measureCase: async (
     articles: unknown,
     evalCase: { id: string },
     repeats: number,
