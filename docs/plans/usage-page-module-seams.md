@@ -206,13 +206,16 @@ Every line of the terminal's output is in that snapshot.
 **Un-hardcodes:** `frontend.md`'s standing "splitting _that_ is the later slice".
 
 Measured after #290 landed, in LF bytes (`git cat-file -s`), so a Windows
-checkout's CRLF does not inflate the figures — the issue's own table was taken
-off a working tree, which is why its numbers differ from these.
+checkout's CRLF does not inflate the figures. The issue's own table differs for
+two reasons, not one: it was taken off a working tree, and it was taken after
+#287 — #289 and #290 then grew `usage-protocol.ts` from the 36,850 it records
+to the 38,763 below, which CRLF alone could never explain, since it only adds
+bytes.
 
 | Module (before)                      | Before | After                                                                                                                                         |
 | ------------------------------------ | -----: | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web/src/dev/usage-protocol.ts` | 38,763 | 13,410 — the wire only; + `usage-readings.ts` 10,395, `usage-copy.ts` 8,739, and the facet vocabulary into `usage-facets.ts` (3,598 → 11,234) |
-| `apps/web/src/dev/SpendTable.tsx`    | 30,929 | 12,288 — + `SpendColumns.tsx` 8,645, `SpendCells.tsx` 7,351, `SpendTableBar.tsx` 5,441                                                        |
+| `apps/web/src/dev/usage-protocol.ts` | 38,763 | 13,419 — the wire only; + `usage-readings.ts` 10,395, `usage-copy.ts` 8,739, and the facet vocabulary into `usage-facets.ts` (3,598 → 11,234) |
+| `apps/web/src/dev/SpendTable.tsx`    | 30,929 | 12,285 — + `SpendColumns.tsx` 8,645, `SpendCells.tsx` 7,351, `SpendTableBar.tsx` 5,441                                                        |
 | `apps/web/dev/usage.ts`              | 20,309 | 13,533 — the join; + `dev/transcripts.ts` 7,937, the scan                                                                                     |
 | `apps/web/src/dev/UsageCharts.tsx`   | 16,063 | 12,995 — + `UsageChartPanel.tsx` 3,669, the shell both charts share                                                                           |
 

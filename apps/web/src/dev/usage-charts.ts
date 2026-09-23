@@ -13,9 +13,9 @@
  * each row is `verdictFor`'s; the bands are `usage-protocol.ts`'s, and the
  * quartiles, the accuracy tally and the rule about which rows count are
  * `usage-readings.ts`'s — both of which `bun run tokens` imports directly
- * (#290). That is not tidiness: an
- * accuracy figure the terminal and the page each tallied for themselves would
- * agree until somebody changed one, and nothing would fail when they stopped.
+ * (#290). That is not tidiness: an accuracy figure the terminal and the page
+ * each tallied for themselves would agree until somebody changed one, and
+ * nothing would fail when they stopped.
  *
  * What is left here is what only a chart wants — bins with the band labels an
  * axis prints, and the quartiles placed against those bands as marks. The

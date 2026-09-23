@@ -97,12 +97,11 @@ import { visibleRows, type UsageTableView } from "./usage-view";
  * a forecast band, a verdict or started-versus-unstarted (`./UsageFilters`
  * inside `./SpendTableBar`, with the predicates in `./usage-facets`). They are
  * `&&`'d in one pass in `visibleRows`, so "they compose" holds by construction
- * and the
- * shown-out-of-total line counts what all four left. What none of them touches
- * is the rest of the page: the
- * charts, the unattributed total and the gathered-at line read `report.issues`
- * up on `UsagePage` and never see these rows, which is #273's decision and the
- * one this slice had to keep rather than re-make.
+ * and the shown-out-of-total line counts what all four left. What none of them
+ * touches is the rest of the page: the charts, the unattributed total and the
+ * gathered-at line read `report.issues` up on `UsagePage` and never see these
+ * rows, which is #273's decision and the one this slice had to keep rather than
+ * re-make.
  */
 export function SpendTable({
   issues,

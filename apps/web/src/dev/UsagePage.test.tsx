@@ -9,10 +9,10 @@ import {
   USAGE_DETAIL_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
+  type UsageColumn,
 } from "./usage-copy";
 import { USAGE_WARNING_SOURCE } from "./usage-protocol";
 import type { IssueUsage, UsageReport } from "./usage-protocol";
-import type { UsageColumn } from "./usage-copy";
 
 /**
  * The page's one rule: it reads nothing until asked, and what it shows

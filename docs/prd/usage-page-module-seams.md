@@ -80,8 +80,13 @@ literally it reached five modules no slice of this PRD touches — two of which
 this PRD's own plan defers to a different one. A requirement that cannot be met
 without reaching into two other plans is one that gets quietly dropped rather
 than met, so #297 narrowed it to the modules a Usage slice reads, which is what
-the success-metrics row always said. Out of scope, measured in LF bytes after
-#290:
+the success-metrics row always said. **Test files do not count**: R10 is about
+the code a slice has to hold in its head to change the page, and a suite is read
+for the assertion a change breaks rather than end to end — so
+`UsagePage.test.tsx` (36,299 bytes) and `apps/web/dev/usage.test.ts` (23,937)
+are over the bar and outside it by that reading, not by oversight. R4's metric
+row is the one that measures the page suite. Out of scope, measured in LF bytes
+after #290:
 
 | Module                                |  Bytes | Whose problem                                                                          |
 | ------------------------------------- | -----: | -------------------------------------------------------------------------------------- |

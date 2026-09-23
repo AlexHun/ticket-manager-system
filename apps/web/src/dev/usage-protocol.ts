@@ -30,10 +30,11 @@
  * should be forecast into it, and no `forecast/XL` label exists.
  *
  * It lives in the wire contract rather than beside the scan in
- * `apps/web/dev/usage.ts` because both ends spend it: the middleware puts a
- * letter on every row and the page prints that letter's range beside it. One
- * record, imported by both, is what stops a band's printed range drifting from
- * the boundary that decides it — they are two halves of the same fact.
+ * `apps/web/dev/transcripts.ts` because both ends spend it: the middleware
+ * puts a letter on every row and the page prints that letter's range beside
+ * it. One record, imported by both, is what stops a band's printed range
+ * drifting from the boundary that decides it — they are two halves of the
+ * same fact.
  */
 export const BUCKETS = {
   S: { max: 60_000, label: "<60k" },
@@ -77,8 +78,8 @@ export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
  * These are the fields of `Spend` in `apps/web/dev/transcripts.ts`. They are
  * declared again rather than derived from it, and that is the direction the
  * dependency has to run: this file is the contract the browser half reads, and
- * `transcripts.ts` imports *it*. Fusing them would let a change made for the wire quietly retype
- * the CLI's domain figure.
+ * `transcripts.ts` imports *it*. Fusing them would let a change made for the
+ * wire quietly retype the CLI's domain figure.
  */
 export interface IssueSpend {
   /**

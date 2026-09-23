@@ -83,8 +83,8 @@ export type UsageStarted = (typeof USAGE_STARTED)[keyof typeof USAGE_STARTED];
  * The key set is derived from this one interface, so a fourth facet is one
  * edit here and then three compile errors: a spec with no entry in
  * `USAGE_FACETS`, a field missing from `UsageFacets`, and a predicate missing
- * from `FACET_MATCH` below. Written as three independent lists it
- * would be three things to keep in step, which is the shape `SORTABLE` in
+ * from `FACET_MATCH` below. Written as three independent lists it would be
+ * three things to keep in step, which is the shape `SORTABLE` in
  * `./usage-sort` exists to refuse for the sort keys.
  *
  * Each value type is the vocabulary the row already carries, never a second
@@ -212,8 +212,8 @@ export type UsageFacets = {
  * A `Record` over `UsageFacetKey` rather than three `if`s inside
  * `matchesFacets`, for the reason `SORTABLE` in `./usage-sort` is a record
  * rather than a list: a fourth facet added to `UsageFacetValues` does not
- * compile until it has been decided about here, where a list of checks would simply
- * have gone on passing while the new control narrowed nothing.
+ * compile until it has been decided about here, where a list of checks would
+ * simply have gone on passing while the new control narrowed nothing.
  *
  * Each predicate takes the whole state and destructures its own field, so the
  * "is this facet set at all" test sits beside the comparison it guards rather

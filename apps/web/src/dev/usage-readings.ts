@@ -32,9 +32,9 @@ import {
  * this is the arithmetic that turns those boundaries into a letter, and since
  * #252 both halves do it. The scan puts a letter on every row; the page's
  * distribution chart has to place a *percentile* in the same bands, and a
- * percentile is a figure no row carries. A second `find` over the
- * same record, written in the browser, is exactly the drift one record exists
- * to stop. Every reader imports it from here — the scan, the charts and
+ * percentile is a figure no row carries. A second `find` over the same record,
+ * written in the browser, is exactly the drift one record exists to stop.
+ * Every reader imports it from here — the scan, the charts and
  * `bun run tokens` alike, the last of which reached it through a re-export in
  * `apps/web/dev/usage.ts` until #290.
  */

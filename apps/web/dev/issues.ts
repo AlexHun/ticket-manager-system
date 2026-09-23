@@ -2,12 +2,12 @@
 //
 // The other half of the Usage page: `transcripts.ts` reads what was *spent* off
 // the filesystem, this reads what was *forecast* off GitHub, and `gatherUsage`
-// in `usage.ts` joins them on the issue number. Split because the two have nothing in common
-// but that number — different source, different dependency (`child_process`),
-// and, above all, different failure modes. Transcripts that cannot be read mean
-// there is nothing to report; a `gh` that cannot be reached means the actuals
-// stand and only the forecast columns go unknown. Keeping them apart is what
-// lets the second failure be that small.
+// in `usage.ts` joins them on the issue number. Split because the two have
+// nothing in common but that number — different source, different dependency
+// (`child_process`), and, above all, different failure modes. Transcripts that
+// cannot be read mean there is nothing to report; a `gh` that cannot be reached
+// means the actuals stand and only the forecast columns go unknown. Keeping
+// them apart is what lets the second failure be that small.
 //
 // **One call, not one per issue.** `gh issue list --state all --limit 500`
 // returns every issue in ~1.7s; `gh issue view` costs ~0.9s *each*, which for

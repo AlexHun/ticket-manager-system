@@ -102,7 +102,7 @@ const CHARTS = {
 } as const;
 
 /** Where a named column sits in a row. Read off `USAGE_COLUMNS` — the same list
- *  `SpendTable.tsx` renders from — rather than counted here, for the reason
+ *  `SpendColumns.tsx` renders from — rather than counted here, for the reason
  *  `route-timing.spec.ts` imports its mark names instead of retyping them: a
  *  bare index goes stale silently when a column is inserted, and these
  *  assertions would then be checking a neighbouring cell.

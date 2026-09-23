@@ -1,8 +1,8 @@
 # Transcript fixture
 
-Two Claude Code transcripts, in the JSONL shape `apps/web/dev/usage.ts` reads.
-`tests/e2e/dev-usage.spec.ts` points `CLAUDE_TRANSCRIPT_DIR` here (via
-`playwright.config.ts`) so the Usage page has figures an assertion can be
+Two Claude Code transcripts, in the JSONL shape `apps/web/dev/transcripts.ts`
+reads. `tests/e2e/dev-usage.spec.ts` points `CLAUDE_TRANSCRIPT_DIR` here
+(via `playwright.config.ts`) so the Usage page has figures an assertion can be
 written against — a real machine's spend is not something a test can name.
 
 What the two files add up to, and why each line is here:
