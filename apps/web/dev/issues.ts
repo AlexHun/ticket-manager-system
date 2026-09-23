@@ -73,8 +73,22 @@ export interface IssueMeta {
   /** Straight from `gh`, rather than assembled from an owner and repo this
    *  module would otherwise have to carry a copy of. */
   url: string;
-  /** Not on the wire — `bun run tokens --open` filters on it, and the page has
-   *  no column for it. */
+  /**
+   * Not on the wire, and #290 is where that was decided rather than inherited.
+   *
+   * `bun run tokens --open` is its only reader, and the page has no column for
+   * it. Putting it on `IssueUsage` was the alternative — it would have let the
+   * terminal filter the rows `gatherUsage` hands back without looking anything
+   * up — and #253's rule is what rules it out: a field on the wire is a promise
+   * that something reads it, and nothing on the page would. It would also
+   * restate what the row set already says, since an issue with no spend earns a
+   * row only because this listing called it open.
+   *
+   * So the terminal keeps the lookup, and it is cheap for a reason that is
+   * structural rather than lucky: it holds the listing because it *passes* it to
+   * `gatherUsage`, so the filter is one `Map.get` against a map already in hand
+   * and not a second reading of anything.
+   */
   state: IssueState;
   /** The band its `forecast/S|M|L` label names, or null when it carries none. */
   forecast: Bucket | null;

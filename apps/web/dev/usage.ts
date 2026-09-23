@@ -23,13 +23,19 @@
 //     reads as complete when it is not.
 //   - Sessions from any other machine. These transcripts are local.
 //
-// This module is the single copy of the join. `scripts/issue-tokens.ts` prints
-// it at the terminal; the dev-tools Vite plugin serves `gatherUsage` to the
-// Usage page under `/__dev` (#248), which is why it lives here rather than
-// under `scripts/`. Both callers take the *same rows*, forecast band and
-// verdict included, rather than each scoring the scan themselves — that is
-// what makes "the page and `bun run tokens` cannot disagree" a property of one
-// function instead of a promise two of them keep.
+// This module is the single copy of the join, and since #290 both callers reach
+// it through one door. `gatherUsage` returns the whole reading — the rows, the
+// unattributed total, the timing and the warnings — and that is what the
+// dev-tools Vite plugin serialises to the Usage page under `/__dev` (#248) and
+// what `scripts/issue-tokens.ts` formats at the terminal. Neither re-assembles a
+// scan of its own, so "the page and `bun run tokens` cannot disagree" is a
+// property of one function rather than a promise two of them keep.
+//
+// The terminal used to import nine pieces of this file and do the assembling
+// itself, which is why this module also carried a ten-symbol block re-exporting
+// `usage-protocol.ts`'s vocabulary on its behalf. Both are gone: a caller that
+// wants a band label, the quartiles or the accuracy tally imports the contract
+// module directly, the way every browser-side module already did.
 //
 // What it still leaves to its callers is presentation and process: no column
 // widths, no colours, no `process.exit`. The one thing it reaches out of the
@@ -48,11 +54,7 @@ import {
   USAGE_WARNING_SOURCE,
   VERDICT,
   bucketFor,
-  forecastAccuracy,
-  percentiles,
-  recordedSpend,
   type Bucket,
-  type IssueSpend,
   type IssueUsage,
   type UnattributedWork,
   type UsageReport,
@@ -68,37 +70,6 @@ import {
   fetchIssueMetadata,
   type IssueMetadata,
 } from "./issues.ts";
-
-// Re-exported because `scripts/issue-tokens.ts` prints a band's label, counts
-// how many rows came in on target and prints the quartiles, and reaching into
-// the browser half's contract module from a script under `scripts/` would be a
-// worse seam than this line. The words especially: the CLI comparing against a
-// literal `"on target"` is how a rename in `usage-protocol.ts` would leave its
-// accuracy figure reading 0/N with nothing failing.
-//
-// `bucketFor`, `percentiles`, `forecastAccuracy` and `recordedSpend` moved
-// *into* that file in #252 and are re-sent from here unchanged. They went
-// because the page's charts need them and cannot import this module — it reads
-// the filesystem — and they are re-exported because this module is the join's
-// public face: the CLI and this file's own tests name them here, and a move is
-// not a reason to make every caller learn where the arithmetic sleeps.
-//
-// The last two are the ones that were genuinely duplicated. `issue-tokens.ts`
-// tallied its own `hits`/`scored` and wrote its own "rows with spend" flatMap,
-// beside a page that did both again — two readings of the same rows, agreeing
-// until one of them changed.
-export {
-  BUCKETS,
-  VERDICT,
-  bucketFor,
-  forecastAccuracy,
-  percentiles,
-  recordedSpend,
-  type Bucket,
-  type IssueSpend,
-  type UnattributedWork,
-  type Verdict,
-};
 
 /**
  * Environment variable that overrides where transcripts are read from.
@@ -279,17 +250,19 @@ function spendByIssue(
 }
 
 /**
- * A reading that found nothing, for the two callers that need one before they
- * know whether the directory can be read at all.
+ * A reading that found nothing, for `gatherUsage` below to start from before it
+ * knows whether the directory can be read at all.
  *
  * A function rather than a shared constant because `unattributed` is an object:
  * a single frozen-by-convention literal is one `scan.unattributed.turns++` away
- * from being poisoned for every later caller in the process. And it is here
- * rather than written out twice so that a figure added to `ScanResult` has to be
- * given a value in one place instead of arriving as an `undefined` that
- * `bun run tokens` would print in the middle of a sentence.
+ * from being poisoned for every later caller in the process.
+ *
+ * Not exported since #290. `bun run tokens` used to need one too, because it ran
+ * its own scan and had to have something to print when the read failed; it calls
+ * `gatherUsage` now, so there is one caller and the "found nothing" reading is
+ * this module's own business rather than a shape two surfaces agree on.
  */
-export const emptyScan = (): ScanResult => ({
+const emptyScan = (): ScanResult => ({
   byIssue: new Map(),
   unattributed: { turns: 0, out: 0 },
   transcripts: 0,
@@ -305,14 +278,16 @@ export function scanSpend(dir: string): ScanResult {
  * The rows themselves: every issue worth looking at, joined to what GitHub
  * knows.
  *
- * Exported, and the reason is the whole of R8. `gatherUsage` below is the Vite
- * plugin's entry point and reads the transcripts itself; `bun run tokens`
- * cannot use it, because it also prints a figure the wire does not carry
- * (turns that ran on `main`) and a second sweep to recover that costs seconds,
- * not milliseconds — 2-3s warm and 28s cold over the 136 transcripts on the
- * machine this was measured on. So the *scan* is the CLI's and the *join* is
- * this, shared — rather than the CLI assembling rows of its own that agree
- * with these by inspection.
+ * **Module-private since #290, and that is the slice's point.** It was exported
+ * for one caller: `bun run tokens` ran its own scan and joined the rows itself,
+ * because the wire carried no total for the turns that ran on `main` and a
+ * second sweep to recover one costs seconds, not milliseconds — 2-3s warm and
+ * 28s cold over the 136 transcripts this was measured on. #253 put that total on
+ * the wire and #289 tagged the warnings by source, which between them left the
+ * terminal nothing it still had to assemble. So the scan, the join and the
+ * warnings are all `gatherUsage`'s now, and R8 — the page and the terminal never
+ * report different figures — stops depending on two callers running the same
+ * steps in the same order.
  *
  * **Two sources of rows, not one** (#251, R4). The transcripts contribute every
  * issue they recorded work against; the listing contributes every issue it
@@ -354,7 +329,7 @@ export function scanSpend(dir: string): ScanResult {
  * and the arithmetic. A third module holding an ordering both imported
  * would be a seam with one caller on each side and no reader of its own.
  */
-export function joinIssues(
+function joinIssues(
   byIssue: Map<number, Spend>,
   metadata: IssueMetadata,
 ): IssueUsage[] {
@@ -394,9 +369,11 @@ export function joinIssues(
  *
  * The composition lives here rather than in the plugin so that R8 — the page
  * and `bun run tokens` never report different figures for the same issue — is a
- * property of one module rather than of two callers agreeing to be careful. The
- * plugin's job is reduced to resolving the directory and serialising this; the
- * CLI shares the half that matters through `joinIssues` above.
+ * property of one module rather than of two callers agreeing to be careful.
+ * Since #290 it is the *only* entry point either of them has: the plugin
+ * resolves the directory and serialises this, and the terminal resolves the
+ * directory and formats this. Everything below the two of them — the scan, the
+ * join, the ordering and the two ways a source can fail — happens once.
  *
  * **The listing is optional, and that it has a default is the point.** Written
  * as a bare `fetchIssueMetadata()` inside, a test would shell out to `gh` and

@@ -3,17 +3,22 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  BUCKETS,
   TRANSCRIPT_DIR_ENV,
-  bucketFor,
   gatherUsage,
-  percentiles,
   resolveTranscriptDir,
   scanSpend,
   verdictFor,
 } from "./usage.ts";
 import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
-import { USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
+// The bands, the quartiles and the band arithmetic come from the contract
+// module rather than from `./usage.ts`, which forwarded them until #290 — the
+// same import every other reader of this vocabulary already wrote.
+import {
+  BUCKETS,
+  USAGE_WARNING_SOURCE,
+  bucketFor,
+  percentiles,
+} from "../src/dev/usage-protocol.ts";
 
 /**
  * An issue listing, without asking `gh` for one.
