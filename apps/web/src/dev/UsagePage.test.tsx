@@ -9,6 +9,7 @@ import {
   USAGE_DETAIL_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
+  USAGE_WARNING_SOURCE,
 } from "./usage-protocol";
 import type { IssueUsage, UsageColumn, UsageReport } from "./usage-protocol";
 
@@ -382,7 +383,12 @@ describe("UsagePage", () => {
         issues: [
           makeIssue({ title: null, url: null, forecast: null, verdict: null }),
         ],
-        warnings: ["`gh` could not list this repository's issues: ENOENT"],
+        warnings: [
+          {
+            source: USAGE_WARNING_SOURCE.listing,
+            message: "`gh` could not list this repository's issues: ENOENT",
+          },
+        ],
       }),
     });
     renderPage();
@@ -586,7 +592,12 @@ describe("UsagePage", () => {
       data: makeReport({
         issues: [],
         transcripts: 0,
-        warnings: [`No .jsonl transcripts in ${FIXTURE_DIR}.`],
+        warnings: [
+          {
+            source: USAGE_WARNING_SOURCE.transcripts,
+            message: `No .jsonl transcripts in ${FIXTURE_DIR}.`,
+          },
+        ],
       }),
     });
     renderPage();
@@ -596,6 +607,36 @@ describe("UsagePage", () => {
     expect(
       await screen.findByText(/no \.jsonl transcripts in/i),
     ).toBeInTheDocument();
+  });
+
+  // The other half of #289's stacking rule, and the half `usage.test.ts` cannot
+  // reach: the scan producing two warnings is worth nothing if the page draws
+  // one of them. A machine with neither source should not have to discover the
+  // second failure after fixing the first.
+  test("draws both warnings when neither source could be read", async () => {
+    const user = userEvent.setup();
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [],
+        transcripts: 0,
+        warnings: [
+          {
+            source: USAGE_WARNING_SOURCE.transcripts,
+            message: `Could not read ${FIXTURE_DIR}: ENOENT`,
+          },
+          {
+            source: USAGE_WARNING_SOURCE.listing,
+            message: "`gh` could not list this repository's issues: ENOENT",
+          },
+        ],
+      }),
+    });
+    renderPage();
+
+    await user.click(scanButton());
+
+    expect(await screen.findByText(/could not read/i)).toBeInTheDocument();
+    expect(screen.getByText(/could not list this repository/i)).toBeVisible();
   });
 
   test("surfaces a failed scan and leaves the page usable", async () => {

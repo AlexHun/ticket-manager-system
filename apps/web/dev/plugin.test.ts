@@ -6,7 +6,10 @@ import type { Connect, ViteDevServer } from "vite";
 import type { ServerResponse } from "node:http";
 import { devToolsPlugin } from "./plugin.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
-import type { UsageReport } from "../src/dev/usage-protocol.ts";
+import {
+  USAGE_WARNING_SOURCE,
+  type UsageReport,
+} from "../src/dev/usage-protocol.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./usage.ts";
 
@@ -211,7 +214,8 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
     // was forecast to cost is knowable with no transcripts at all. Every figure
     // is absent rather than zero, and the warning says why there are none.
     expect(report.issues).toMatchObject([{ issue: 101, spend: null }]);
-    expect(report.warnings[0]).toContain(missing);
+    expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+    expect(report.warnings[0]?.message).toContain(missing);
   });
 
   // R2/R3 over the wire: the two sources are joined inside the middleware, so
@@ -274,7 +278,12 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
         bucket: "S",
         verdict: null,
       });
-      expect(report.warnings.join(" ")).toContain(missingListing);
+      // Named by its source over the wire, not found by searching the prose
+      // (#289) — the middleware serialises the structured shape unchanged.
+      const listing = report.warnings.find(
+        (w) => w.source === USAGE_WARNING_SOURCE.listing,
+      );
+      expect(listing?.message).toContain(missingListing);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

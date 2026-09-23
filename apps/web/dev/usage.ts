@@ -45,6 +45,7 @@ import { join } from "node:path";
 // spend, not an implementation detail of the scan.
 import {
   BUCKETS,
+  USAGE_WARNING_SOURCE,
   VERDICT,
   bucketFor,
   forecastAccuracy,
@@ -55,6 +56,7 @@ import {
   type IssueUsage,
   type UnattributedWork,
   type UsageReport,
+  type UsageWarning,
   type Verdict,
 } from "../src/dev/usage-protocol.ts";
 // The order the rows go on the wire in, imported rather than restated (#286).
@@ -412,6 +414,14 @@ export function joinIssues(
  * three columns, not the page. Both are reported as warnings beside whatever
  * could be read, the way the project map surfaces what its scan could not
  * parse.
+ *
+ * **Each warning names its source** (#289). They were bare strings, so the only
+ * way to tell an unreadable directory from an unavailable listing was to match
+ * on the sentence — a contract nobody declared and any re-wording breaks.
+ * `USAGE_WARNING_SOURCE` is what a caller branches on instead, and it is what
+ * lets `bun run tokens` word its own diagnostics off this same scan rather than
+ * re-assembling one. What the page displays is unchanged: `message` is the
+ * string it used to be handed, rendered as it always was.
  */
 export async function gatherUsage(
   dir: string,
@@ -421,23 +431,38 @@ export async function gatherUsage(
   // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
   const startedAt = Date.now();
   const listing = metadata ?? (await fetchIssueMetadata());
-  const warnings: string[] = [];
+  const warnings: UsageWarning[] = [];
 
   let scan = emptyScan();
   try {
     scan = scanSpend(dir);
+    // Inside the `try`, so "there is nothing in it" is only asked of a directory
+    // that was actually read. It used to be a `warnings.length === 0` guard
+    // below, which said the same thing by counting what this function had pushed
+    // so far — true only while the transcripts were the first source to report,
+    // and quietly wrong the moment a second one went in ahead of them.
+    if (scan.transcripts === 0) {
+      warnings.push({
+        source: USAGE_WARNING_SOURCE.transcripts,
+        message: `No .jsonl transcripts in ${dir}.`,
+      });
+    }
   } catch (err) {
-    warnings.push(
-      `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  if (warnings.length === 0 && scan.transcripts === 0) {
-    warnings.push(`No .jsonl transcripts in ${dir}.`);
+    warnings.push({
+      source: USAGE_WARNING_SOURCE.transcripts,
+      message: `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
   // Second, and separately: the transcripts can be perfectly readable while the
   // issue listing is not. The page shows every warning it is given, so the two
-  // failures stack rather than masking one another.
-  if (listing.warning) warnings.push(listing.warning);
+  // failures stack rather than masking one another — and since #289 they are
+  // told apart by `source` rather than by how each one is worded.
+  if (listing.warning) {
+    warnings.push({
+      source: USAGE_WARNING_SOURCE.listing,
+      message: listing.warning,
+    });
+  }
 
   return {
     gatheredAt: new Date().toISOString(),
