@@ -1,8 +1,8 @@
 // Issue titles, links and forecast labels, from `gh`.
 //
-// The other half of the Usage page: `usage.ts` reads what was *spent* off the
-// filesystem, this reads what was *forecast* off GitHub, and `gatherUsage`
-// joins them on the issue number. Split because the two have nothing in common
+// The other half of the Usage page: `transcripts.ts` reads what was *spent* off
+// the filesystem, this reads what was *forecast* off GitHub, and `gatherUsage`
+// in `usage.ts` joins them on the issue number. Split because the two have nothing in common
 // but that number — different source, different dependency (`child_process`),
 // and, above all, different failure modes. Transcripts that cannot be read mean
 // there is nothing to report; a `gh` that cannot be reached means the actuals

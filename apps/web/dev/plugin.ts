@@ -27,7 +27,8 @@ import {
   suiteDescriptors,
   type RunHandle,
 } from "./suites.ts";
-import { gatherUsage, resolveTranscriptDir } from "./usage.ts";
+import { gatherUsage } from "./usage.ts";
+import { resolveTranscriptDir } from "./transcripts.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
 import type {
   DevStreamMessage,

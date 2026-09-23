@@ -13,7 +13,7 @@ import {
   USAGE_FACET_KEYS,
   type UsageFacetKey,
   type UsageFacets,
-} from "./usage-protocol";
+} from "./usage-facets";
 
 /**
  * The three selects beside the Usage table's search box (#274).
@@ -45,7 +45,7 @@ import {
  * tried in a filter bar. The consequence to know about is the `ANY_FACET`
  * token: Radix reserves `""` for *cleared* and throws on a `SelectItem` whose
  * value is it, so the row that clears a facet needs a non-empty token of its
- * own. See `ANY_FACET` in `./usage-protocol`.
+ * own. See `ANY_FACET` in `./usage-facets`.
  */
 export function UsageFilters({
   facets,

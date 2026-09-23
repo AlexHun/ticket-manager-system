@@ -32,8 +32,8 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * what was read, and the work that belongs to no issue at all.
  *
  * Output tokens are the column this exists for; cache-read sits beside it and
- * is deliberately not comparable to a forecast band. `apps/web/dev/usage.ts`
- * carries the measurements behind both.
+ * is deliberately not comparable to a forecast band.
+ * `apps/web/dev/transcripts.ts` carries the measurements behind both.
  *
  * **Two charts sit above the table** (#252), answering the questions it
  * otherwise makes you compute by eye: how often a forecast band matched, and
@@ -259,7 +259,7 @@ function Unattributed({ work }: { work: UnattributedWork }) {
 
 /** A figure and the unit it is in, kept in one element so the two cannot wrap
  *  apart — a lone "turns" on the next line names nothing. Named away from the
- *  `figure` helper in `./SpendTable`, which is a cell renderer and unrelated. */
+ *  `figure` helper in `./SpendCells`, which is a cell renderer and unrelated. */
 const Quantity = ({ value, unit }: { value: number; unit: string }) => (
   <span className="whitespace-nowrap">
     <span className="font-medium tabular-nums">{formatTokens(value)}</span>{" "}

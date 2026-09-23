@@ -4,11 +4,8 @@
 // resolves no extensionless relative specifier — not in the file it loads, and
 // not in anything that file pulls in. `allowImportingTsExtensions` is on in
 // both tsconfigs, so it costs the browser build nothing.
-import {
-  hasRecordedSpend,
-  type IssueSpend,
-  type IssueUsage,
-} from "./usage-protocol.ts";
+import { hasRecordedSpend } from "./usage-readings.ts";
+import type { IssueSpend, IssueUsage } from "./usage-protocol.ts";
 
 /**
  * How the Usage table's rows are ranked, and the one row it refuses to rank.
@@ -24,11 +21,11 @@ import {
  * reason to exist. An empty actual is not a small one: `bucketFor(0)` is `S`,
  * so a row read as zero floats to the top of an ascending sort as the cheapest
  * work in the repository — the same lie the page refuses to tell in its cells
- * (see `NotStarted` in `SpendTable.tsx`), told in its ordering instead. There is
+ * (see `NotStarted` in `SpendCells.tsx`), told in its ordering instead. There is
  * no substitution to get wrong here because there is no substitution at all: a
  * row with no `spend` is compared by whether it has one, before any figure is
  * read off it — and since #285 "whether it has one" is `hasRecordedSpend` in
- * `./usage-protocol.ts`, the one statement of that rule, rather than a `!== null`
+ * `./usage-readings.ts`, the one statement of that rule, rather than a `!== null`
  * of this module's own.
  */
 
@@ -66,7 +63,7 @@ export type UsageSortKey = keyof typeof SORTABLE;
  * key by key.
  *
  * A **set, not an order**: the order the table prints is `USAGE_COLUMNS` in
- * `./usage-protocol.ts`, and nothing here should be read as a second copy of it.
+ * `./usage-copy.ts`, and nothing here should be read as a second copy of it.
  * The cast is `Object.keys` losing what the record already knows.
  */
 export const USAGE_SORT_KEYS = Object.keys(SORTABLE) as readonly UsageSortKey[];

@@ -1,11 +1,7 @@
 import { describe, expect, test } from "vitest";
-import {
-  USAGE_DETAIL,
-  USAGE_STARTED,
-  VERDICT,
-  type IssueUsage,
-} from "./usage-protocol";
-import { DEFAULT_USAGE_FACETS } from "./usage-facets";
+import { USAGE_DETAIL } from "./usage-copy";
+import { VERDICT, type IssueUsage } from "./usage-protocol";
+import { DEFAULT_USAGE_FACETS, USAGE_STARTED } from "./usage-facets";
 import {
   DEFAULT_USAGE_SORT,
   USAGE_SORT_KEYS,

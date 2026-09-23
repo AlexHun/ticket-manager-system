@@ -4,21 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   TRANSCRIPT_DIR_ENV,
-  gatherUsage,
   resolveTranscriptDir,
   scanSpend,
-  verdictFor,
-} from "./usage.ts";
+} from "./transcripts.ts";
+import { gatherUsage, verdictFor } from "./usage.ts";
 import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
 // The bands, the quartiles and the band arithmetic come from the contract
 // module rather than from `./usage.ts`, which forwarded them until #290 — the
 // same import every other reader of this vocabulary already wrote.
-import {
-  BUCKETS,
-  USAGE_WARNING_SOURCE,
-  bucketFor,
-  percentiles,
-} from "../src/dev/usage-protocol.ts";
+import { BUCKETS, USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
+import { bucketFor, percentiles } from "../src/dev/usage-readings.ts";
 
 /**
  * An issue listing, without asking `gh` for one.
