@@ -109,8 +109,9 @@ export default defineConfig({
       //
       // `CLAUDE_TRANSCRIPT_DIR` points the dev-tools Usage page at a fixture
       // directory instead of `~/.claude/projects/<slug>` (see
-      // `apps/web/dev/usage.ts`), and `GH_ISSUES_FILE` points it at a fixture
-      // issue listing instead of spawning `gh` (see `apps/web/dev/issues.ts`).
+      // `apps/web/dev/transcripts.ts`), and `GH_ISSUES_FILE` points it at a
+      // fixture issue listing instead of spawning `gh` (see
+      // `apps/web/dev/issues.ts`).
       // Both belong here rather than in the spec because the middleware that
       // reads them runs inside *this* process, not in the browser — which is
       // also the one thing to check first when `dev-usage.spec.ts` fails:

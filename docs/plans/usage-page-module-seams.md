@@ -199,6 +199,48 @@ diagnostic is covered by a test — the guardrail snapshots stdout only, and
 **E2E:** slice 1's guardrail unchanged — **this is the slice it exists for.**
 Every line of the terminal's output is in that snapshot.
 
+## Slice 9 — Every Usage module under the bar
+
+**Retires:** R10, which no slice owned and the measurements at the end of 2 and 5 left open.
+**Covers:** R10 (restated — see the PRD)
+**Un-hardcodes:** `frontend.md`'s standing "splitting _that_ is the later slice".
+
+Measured after #290 landed, in LF bytes (`git cat-file -s`), so a Windows
+checkout's CRLF does not inflate the figures. The issue's own table differs for
+two reasons, not one: it was taken off a working tree, and it was taken after
+#287 — #289 and #290 then grew `usage-protocol.ts` from the 36,850 it records
+to the 38,763 below, which CRLF alone could never explain, since it only adds
+bytes.
+
+| Module (before)                      | Before | After                                                                                                                                         |
+| ------------------------------------ | -----: | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/dev/usage-protocol.ts` | 38,763 | 13,419 — the wire only; + `usage-readings.ts` 10,395, `usage-copy.ts` 8,739, and the facet vocabulary into `usage-facets.ts` (3,598 → 11,234) |
+| `apps/web/src/dev/SpendTable.tsx`    | 30,929 | 12,285 — + `SpendColumns.tsx` 8,645, `SpendCells.tsx` 7,351, `SpendTableBar.tsx` 5,441                                                        |
+| `apps/web/dev/usage.ts`              | 20,309 | 13,533 — the join; + `dev/transcripts.ts` 7,937, the scan                                                                                     |
+| `apps/web/src/dev/UsageCharts.tsx`   | 16,063 | 12,995 — + `UsageChartPanel.tsx` 3,669, the shell both charts share                                                                           |
+
+The largest module a Usage slice now reads is `UsagePage.tsx` at 14,146,
+which this slice did not split. Nothing needed an R10 amendment: none of the
+four turned out to be a single cohesive unit, and each split follows a line the
+module's own readers already drew.
+
+**The cut is by reader, not by size.** `usage-protocol.ts` held four groups
+with four sets of readers, and the split is those groups: the wire (both
+halves), the arithmetic and `hasRecordedSpend` (both halves — `usage-readings.ts`,
+whose one import spells `.ts` because `dev/` reaches it), the column order and
+UI copy (the browser and both suites — `usage-copy.ts`, import-free), and the
+facet vocabulary, which went to sit with its predicates in `usage-facets.ts`
+so a fourth facet is one file's edit. One departure from the issue's grouping:
+`BUCKETS` and `VERDICT` stayed on the wire rather than moving with the
+arithmetic, because `IssueUsage`'s own fields are typed in them and the wire
+would otherwise import the module that imports it. `dev/usage.ts` split the way
+`dev/issues.ts` already had — a module per source, and the join — which also
+left it exporting two names (`gatherUsage`, `verdictFor`), the PRD's target for
+that interface.
+
+**E2E:** slice 1's guardrail unchanged, and `dev-usage.spec.ts` unchanged
+apart from its imports.
+
 ## Requirement coverage
 
 | Req | Slice | Note                                                                                                    |
@@ -212,7 +254,7 @@ Every line of the terminal's output is in that snapshot.
 | R7  | 7     | Blocks slice 8 — the terminal needs structured warnings before it can word its own                      |
 | R8  | 1     | Built in slice 1, then re-run unchanged by every slice after it                                         |
 | R9  | 8     | `Should` — **dropped** (#290): the spike said `state` on the wire is a field nothing but `--open` reads |
-| R10 | 2, 5  | `Should` — a consequence, not a slice. Measured at the end of 2 and 5; if still over, it needs a ninth  |
+| R10 | 9     | `Should` — measured at the end of 2 and 5 and still over, so it got a ninth (#297); scope restated      |
 
 Every `Must` has a slice. No slice exists without a requirement.
 

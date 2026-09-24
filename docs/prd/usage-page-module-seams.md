@@ -73,7 +73,32 @@ becoming a change to the measurement.
 | R7  | A caller can tell which source a scan's warning came from without reading the warning's text.                                                             | Must                                                  |
 | R8  | The page's rendered output and `bun run tokens`' printed output are unchanged, byte for byte, for the same transcripts and the same issue listing.        | Must                                                  |
 | R9  | Filtering `bun run tokens` to open issues reads a field on the row rather than re-joining the issue listing the row was built from.                       | Should — **not taken** (#290); see the risk row below |
-| R10 | No module in `apps/web/src/dev/` or `apps/web/dev/` exceeds 15 KB.                                                                                        | Should                                                |
+| R10 | No module a Usage slice must read exceeds 15 KB — the scope the success metric names. **Restated in #297**; see below.                                    | Should                                                |
+
+**R10 as first written covered the whole of both directories**, and taken
+literally it reached five modules no slice of this PRD touches — two of which
+this PRD's own plan defers to a different one. A requirement that cannot be met
+without reaching into two other plans is one that gets quietly dropped rather
+than met, so #297 narrowed it to the modules a Usage slice reads, which is what
+the success-metrics row always said. **Test files do not count**: R10 is about
+the code a slice has to hold in its head to change the page, and a suite is read
+for the assertion a change breaks rather than end to end — so
+`UsagePage.test.tsx` (36,299 bytes) and `apps/web/dev/usage.test.ts` (23,937)
+are over the bar and outside it by that reading, not by oversight. R4's metric
+row is the one that measures the page suite. Out of scope, measured in LF bytes
+after #290:
+
+| Module                                |  Bytes | Whose problem                                                                          |
+| ------------------------------------- | -----: | -------------------------------------------------------------------------------------- |
+| `apps/web/dev/scan.ts`                | 38,877 | [dev-server-test-seams.md](dev-server-test-seams.md) — deferred there by this plan     |
+| `apps/web/dev/suites.ts`              | 15,951 | Same                                                                                   |
+| `apps/web/src/dev/TestRunnerPage.tsx` | 26,610 | The test runner's. **No plan owns its size yet**                                       |
+| `apps/web/src/dev/ProjectMapPage.tsx` | 15,542 | The project map's. **No plan owns its size yet**                                       |
+| `apps/web/src/dev/MapOverview.tsx`    | 14,969 | The project map's — under the bar in LF bytes, over it (15,360) in a CRLF working tree |
+
+The last three are named rather than assigned: `dev-server-test-seams.md`
+crosses those pages but is about the node half's test seams, not their size, and
+pointing at it would be the same quiet drop this restatement exists to avoid.
 
 ### Non-goals
 

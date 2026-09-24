@@ -1,11 +1,6 @@
 import { describe, expect, test } from "vitest";
-import {
-  ACCURACY_ORDER,
-  BUCKETS,
-  VERDICT,
-  forecastAccuracy,
-  type IssueUsage,
-} from "./usage-protocol";
+import { ACCURACY_ORDER, forecastAccuracy } from "./usage-readings";
+import { BUCKETS, VERDICT, type IssueUsage } from "./usage-protocol";
 import { outputDistribution } from "./usage-charts";
 
 /**

@@ -6,8 +6,9 @@
 // dev-tools Usage page is served that same report. So the terminal and the page
 // cannot disagree about what an issue cost or whether it came in on target —
 // not because two code paths are kept in step, but because there is one. Read
-// that file and `apps/web/dev/issues.ts` for what the numbers mean and why
-// output tokens are the unit. This one decides argv and column widths.
+// its two sources, `apps/web/dev/transcripts.ts` and `apps/web/dev/issues.ts`,
+// for what the numbers mean and why output tokens are the unit. This one
+// decides argv and column widths.
 //
 // **It used to re-assemble the scan itself**, importing nine pieces of that
 // module, and the header here argued that it had to: this command words its own
@@ -47,26 +48,28 @@
 import { ISSUE_STATE, fetchIssueMetadata } from "../apps/web/dev/issues.ts";
 import {
   TRANSCRIPT_DIR_ENV,
-  gatherUsage,
   resolveTranscriptDir,
-} from "../apps/web/dev/usage.ts";
+} from "../apps/web/dev/transcripts.ts";
+import { gatherUsage } from "../apps/web/dev/usage.ts";
 // Reached directly rather than through `apps/web/dev/usage.ts`, which used to
-// re-export this vocabulary on this file's behalf (#290). The contract module is
-// import-free and has no filesystem in it, so a script under `scripts/` reads it
-// as cheaply as the browser does — and a forwarding block whose only reader was
-// this import is a seam with nothing on the other side of it.
+// re-export this vocabulary on this file's behalf (#290). The wire and the
+// arithmetic over it have no filesystem in them, so a script under `scripts/`
+// reads them as cheaply as the browser does — and a forwarding block whose only
+// reader was this import is a seam with nothing on the other side of it.
 import {
   BUCKETS,
   USAGE_WARNING_SOURCE,
-  forecastAccuracy,
-  hasRecordedSpend,
-  percentiles,
-  recordedSpend,
   type IssueSpend,
   type IssueUsage,
   type UsageReport,
   type UsageWarning,
 } from "../apps/web/src/dev/usage-protocol.ts";
+import {
+  forecastAccuracy,
+  hasRecordedSpend,
+  percentiles,
+  recordedSpend,
+} from "../apps/web/src/dev/usage-readings.ts";
 
 const fmt = (n: number) =>
   n >= 1_000_000

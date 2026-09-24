@@ -1,16 +1,17 @@
 import { matchesQuery } from "./module-match";
-import { DEFAULT_USAGE_FACETS, matchesFacets } from "./usage-facets";
+import {
+  DEFAULT_USAGE_FACETS,
+  matchesFacets,
+  type UsageFacets,
+} from "./usage-facets";
 import {
   DEFAULT_USAGE_SORT,
   sortIssues,
   type UsageSort,
   type UsageSortKey,
 } from "./usage-sort";
-import {
-  USAGE_DETAIL,
-  type IssueUsage,
-  type UsageFacets,
-} from "./usage-protocol";
+import { USAGE_DETAIL } from "./usage-copy";
+import type { IssueUsage } from "./usage-protocol";
 
 /**
  * How the developer is reading the Usage table — and what that leaves on

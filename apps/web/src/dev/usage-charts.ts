@@ -10,29 +10,24 @@
  * `UsagePage.test.tsx`, and the drawn result in `tests/e2e/dev-usage.spec.ts`.
  *
  * Nothing here recomputes a figure something else already owns. The verdict on
- * each row is `verdictFor`'s; the bands, the quartiles, the accuracy tally and
- * the rule about which rows count are all `usage-protocol.ts`'s, which `bun run
- * tokens` imports directly (#290). That is not tidiness: an
- * accuracy figure the terminal and the page each tallied for themselves would
- * agree until somebody changed one, and nothing would fail when they stopped.
+ * each row is `verdictFor`'s; the bands are `usage-protocol.ts`'s, and the
+ * quartiles, the accuracy tally and the rule about which rows count are
+ * `usage-readings.ts`'s — both of which `bun run tokens` imports directly
+ * (#290). That is not tidiness: an accuracy figure the terminal and the page
+ * each tallied for themselves would agree until somebody changed one, and
+ * nothing would fail when they stopped.
  *
  * What is left here is what only a chart wants — bins with the band labels an
  * axis prints, and the quartiles placed against those bands as marks. The
  * exclusion rule they inherit arrives through `recordedSpend` and is stated
- * once, as `hasRecordedSpend` in `usage-protocol.ts` (#285): a row with no
+ * once, as `hasRecordedSpend` in `usage-readings.ts` (#285): a row with no
  * recorded work is an absence, never a zero. Nothing here restates it — which
  * is the point, since the same predicate is what dashes the cells and sinks the
  * rows in the table beside these charts.
  */
 
-import {
-  BUCKETS,
-  bucketFor,
-  percentiles,
-  recordedSpend,
-  type Bucket,
-  type IssueUsage,
-} from "./usage-protocol";
+import { BUCKETS, type Bucket, type IssueUsage } from "./usage-protocol";
+import { bucketFor, percentiles, recordedSpend } from "./usage-readings";
 
 /**
  * A whole number of tokens, grouped for reading.

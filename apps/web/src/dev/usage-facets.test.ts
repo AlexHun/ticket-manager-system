@@ -1,14 +1,14 @@
 import { describe, expect, test } from "vitest";
+import { VERDICT, type IssueUsage } from "./usage-protocol";
 import {
+  DEFAULT_USAGE_FACETS,
+  matchesFacets,
   ANY_FACET,
   USAGE_FACETS,
   USAGE_FACET_KEYS,
   USAGE_STARTED,
-  VERDICT,
-  type IssueUsage,
   type UsageFacets,
-} from "./usage-protocol";
-import { DEFAULT_USAGE_FACETS, matchesFacets } from "./usage-facets";
+} from "./usage-facets";
 
 /**
  * What the three selects above the table actually ask of a row.

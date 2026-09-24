@@ -1,4 +1,3 @@
-import { useId, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -10,40 +9,30 @@ import {
   YAxis,
 } from "recharts";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from "@/components/ui/chart";
 import { StackSegmentV } from "@/components/dashboard/chart-marks";
 import {
   CHART_ANIMATION,
   CHART_BOX,
-  CHART_HEIGHT_CLASS,
   ORDINAL_FILL,
 } from "@/components/dashboard/chart-tokens";
-import { cn } from "@/lib/utils";
 import {
   BUCKETS,
   VERDICT,
-  forecastAccuracy,
   type Bucket,
   type IssueUsage,
   type Verdict,
 } from "./usage-protocol";
+import { forecastAccuracy } from "./usage-readings";
 import {
   formatTokens,
   outputDistribution,
   type PercentileMark,
 } from "./usage-charts";
+import { ChartPanel, issuesConfig, withFill } from "./UsageChartPanel";
 
 /**
  * The two questions the table makes you compute by eye (#252).
@@ -113,90 +102,6 @@ const BAND_TICK: Record<string, string> = Object.fromEntries(
     `${band} ${BUCKETS[band].label}`,
   ]),
 );
-
-/** One series, so one config key — and it must equal the `dataKey`, which is
- *  what `ChartStyle` emits its custom property from. */
-const issuesConfig = {
-  count: { label: "Issues", color: "var(--viz-accent)" },
-} satisfies ChartConfig;
-
-/**
- * A bin with its own colour on it, which is what the tooltip needs.
- *
- * Both charts colour per column rather than per series, and a `<Cell>` alone
- * does not tell the tooltip that: `ChartTooltipContent` resolves its swatch as
- * `color ?? item.payload?.fill ?? item.color`, and with the fill living only on
- * the Cell it falls through to `item.color` — the *series* colour from
- * `issuesConfig`. Hovering the red "over" column then showed an accent-green dot
- * beside it. Carrying the fill on the datum answers both: the `<Cell>` reads it
- * for the bar, and Recharts hands the same object to the tooltip.
- */
-const withFill = <T,>(bin: T, fill: string) => ({ ...bin, fill });
-
-/**
- * The shell both panels share: a named region, a headline figure, and an empty
- * state that says what is missing instead of drawing an axis around nothing.
- *
- * `role="region"` with `aria-labelledby` for the reason `TableFrame` carries the
- * same pair (#111): a region without an accessible name is not exposed as a
- * landmark at all, and these two panels are what the E2E addresses by name —
- * Playwright's full-page screenshots catch Recharts mid-animation, so the spec
- * asserts on roles and text and never on a picture.
- */
-function ChartPanel({
-  title,
-  description,
-  stat,
-  isEmpty,
-  emptyMessage,
-  footer,
-  children,
-}: {
-  title: string;
-  description: string;
-  /** A headline figure for the top-right — the one number the panel is for. */
-  stat?: ReactNode;
-  isEmpty: boolean;
-  /** Shown instead of the chart. Says which measurement is missing, never
-   *  "no data". */
-  emptyMessage: string;
-  /** What the figures are read against. Shown in both states: it is context for
-   *  the empty message as much as for the chart. */
-  footer: ReactNode;
-  children: ReactNode;
-}) {
-  const titleId = useId();
-  return (
-    <Card role="region" aria-labelledby={titleId}>
-      <CardHeader>
-        <CardTitle id={titleId}>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-        {stat && (
-          <CardAction className="text-sm font-medium tabular-nums">
-            {stat}
-          </CardAction>
-        )}
-      </CardHeader>
-      <CardContent>
-        {isEmpty ? (
-          <div
-            className={cn(CHART_HEIGHT_CLASS, "grid place-items-center")}
-            role="status"
-          >
-            <p className="max-w-prose text-center text-sm text-muted-foreground">
-              {emptyMessage}
-            </p>
-          </div>
-        ) : (
-          children
-        )}
-        <p className="max-w-prose pt-2 text-xs text-muted-foreground">
-          {footer}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
 
 /**
  * How often the forecast band matched the actual spend.

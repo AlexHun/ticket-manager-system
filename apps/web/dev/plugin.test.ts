@@ -11,7 +11,7 @@ import {
   type UsageReport,
 } from "../src/dev/usage-protocol.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
-import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./usage.ts";
+import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./transcripts.ts";
 
 /**
  * The usage route, exercised through the plugin rather than around it.

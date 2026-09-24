@@ -13,13 +13,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SpendTable } from "./SpendTable";
 import {
   USAGE_DETAIL_LABEL,
-  USAGE_FACETS,
-  USAGE_FACET_KEYS,
   USAGE_SEARCH_LABEL,
   USAGE_TABLE_LABEL,
-  VERDICT,
-  type IssueUsage,
-} from "./usage-protocol";
+} from "./usage-copy";
+import { USAGE_FACETS, USAGE_FACET_KEYS } from "./usage-facets";
+import { VERDICT, type IssueUsage } from "./usage-protocol";
 import { DEFAULT_USAGE_TABLE_VIEW, type UsageTableView } from "./usage-view";
 
 /**

@@ -3,16 +3,18 @@ import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   USAGE_COLUMNS,
   USAGE_DETAIL_LABEL,
-  USAGE_FACETS,
-  USAGE_FACET_KEYS,
   USAGE_NO_MATCH,
   USAGE_SEARCH_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
-  type Bucket,
   type UsageColumn,
+} from "../../apps/web/src/dev/usage-copy";
+import {
+  USAGE_FACETS,
+  USAGE_FACET_KEYS,
   type UsageFacetKey,
-} from "../../apps/web/src/dev/usage-protocol";
+} from "../../apps/web/src/dev/usage-facets";
+import type { Bucket } from "../../apps/web/src/dev/usage-protocol";
 import {
   GH_ISSUES,
   removeGhIssuesFixture,
@@ -100,7 +102,7 @@ const CHARTS = {
 } as const;
 
 /** Where a named column sits in a row. Read off `USAGE_COLUMNS` — the same list
- *  `SpendTable.tsx` renders from — rather than counted here, for the reason
+ *  `SpendColumns.tsx` renders from — rather than counted here, for the reason
  *  `route-timing.spec.ts` imports its mark names instead of retyping them: a
  *  bare index goes stale silently when a column is inserted, and these
  *  assertions would then be checking a neighbouring cell.
