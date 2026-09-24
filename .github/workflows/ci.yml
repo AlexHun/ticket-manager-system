@@ -117,7 +117,8 @@ jobs:
       # `LC_ALL=C` so the collation is the same on every machine. The printed
       # list is the order that ran; paste it after `bun test` to reproduce a
       # red one. The flag is passed as well as bunfig.toml's [test] preload —
-      # see src/test/preload.ts for why both. ~30s each.
+      # see src/test/preload.ts for why both. ~10s each here (#303, run
+      # 35993112770); ~30s on a Windows dev machine.
       - name: API unit tests
         working-directory: apps/api
         run: |
