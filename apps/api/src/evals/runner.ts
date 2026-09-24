@@ -6,11 +6,12 @@ import {
   type TicketCategory,
 } from "@ticket/shared";
 import type { AutoReplyCase } from "@ticket/core";
-import { autoReply, type AutoReplyResult } from "../ai/auto-reply";
+import type { AutoReplyResult } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
 import type { KbArticle } from "../ai/knowledge-base";
 import { isProviderFailure, usdFor, wasCached } from "../ai/provider";
 import { classifyCase, isClassifiable } from "./classify-case";
+import { replyToCase } from "./reply-to-case";
 
 /**
  * Answering one case five times, and deciding how often it landed where it said
@@ -322,7 +323,7 @@ export async function answerCase(
     };
   }
 
-  const result = await autoReply(
+  const result = await replyToCase(
     articles,
     {
       subject: evalCase.values.subject,

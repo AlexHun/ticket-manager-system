@@ -93,27 +93,45 @@ jobs:
       # The provider and the session are mocked; the database is real but runs
       # in process (PGLite, ADR-0014), so this still needs no OPENAI_API_KEY and
       # no Postgres server.
-      - name: API unit tests
-        run: bun run --filter '@ticket/api' test
-
-      # The same suite again, in reverse discovery order, and it is the check
-      # this repo has been doing by hand (`bun test <a> <b>` in both orders,
-      # testing.md) on the honour system. `mock.module`'s registry is one
-      # process wide and nothing resets it between files, so which file loads
-      # first decides which factory a shared specifier binds to — and discovery
-      # order differs between Windows and ubuntu-latest, which is how #158 came
-      # to be green three runs in a row locally and red here. Reversing it is
-      # the cheapest second order that swaps every pair at once, and it catches
-      # what the by-hand check structurally cannot: a collision whose poisoning
-      # file is a *third* one, which no pair run ever puts in the same process.
       #
-      # An explicit file list rather than a flag, because `bun test` has no
-      # shuffle. The preload still applies: bunfig.toml lists it under [test]
-      # as well as on the `test` script's --preload, deliberately, for exactly
-      # this kind of invocation. ~30s.
+      # Twice, in two file orders that are exact reverses of each other, and
+      # both are spelled out rather than left to discovery. `mock.module`'s
+      # registry is one process wide and nothing resets it between files, so
+      # which file loads first decides which factory a shared specifier binds
+      # to; reversing the order swaps every pair at once, and catches what a
+      # pair run structurally cannot — a collision whose poisoning file is a
+      # *third* one (#158, and the `eval-nightly` → `runner` → `auto-reply`
+      # chain #303 found).
+      #
+      # **Every path starts `./`, and that is load-bearing.** `bun test` reads
+      # a bare `src/x.test.ts` as a name *filter* and runs whatever matches in
+      # its own discovery order, whatever order the arguments came in; only a
+      # path it recognises as one — `./…` — is run where it was listed
+      # (measured on Bun 1.3.13, #303). This step used to pass
+      # `$(find src … | sort -r)`, bare, so it ran the forward order a second
+      # time, green over 75 failures a real reverse order had in it.
+      #
+      # A sorted list rather than discovery for the forward run too, because
+      # discovery is the filesystem's order: NTFS on a dev machine, ext4's hash
+      # order here, so no failure it produced could be replayed locally (#202).
+      # `LC_ALL=C` so the collation is the same on every machine. The printed
+      # list is the order that ran; paste it after `bun test` to reproduce a
+      # red one. The flag is passed as well as bunfig.toml's [test] preload —
+      # see src/test/preload.ts for why both. ~10s each here (#303, run
+      # 35993112770); ~30s on a Windows dev machine.
+      - name: API unit tests
+        working-directory: apps/api
+        run: |
+          FILES=$(find ./src -name '*.test.ts' | LC_ALL=C sort)
+          echo "$FILES"
+          bun test --preload ./src/test/preload.ts $FILES
+
       - name: API unit tests (reverse file order)
         working-directory: apps/api
-        run: bun test $(find src -name '*.test.ts' | sort -r)
+        run: |
+          FILES=$(find ./src -name '*.test.ts' | LC_ALL=C sort -r)
+          echo "$FILES"
+          bun test --preload ./src/test/preload.ts $FILES
 
       - name: Web component tests
         run: bun run --filter '@ticket/web' test

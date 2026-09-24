@@ -5,8 +5,9 @@
  * The router on a real Express app over a real socket, over a real database
  * (#174 — the last file ADR-0014 had left) and a stubbed provider. That last
  * one is not a seam ADR-0014 moves: an AI feature test must not spend money or
- * depend on the network, so `../ai/polish` and `../ai/summarize` stay mocked,
- * and `polishDraft` itself is covered next door in `../ai/polish.test.ts`.
+ * depend on the network, so `../ai/polish-reply` and `../ai/summarize` stay
+ * mocked, and `polishDraft` itself is covered next door in
+ * `../ai/polish.test.ts`.
  * What is under test is the order each route does things in — configured,
  * valid, found, within budget, only then paid for — the context it assembles
  * from the thread, and the sentence each failure turns into.
@@ -104,7 +105,7 @@ type AiFailureValue = Extract<SummarizeResult, { ok: false }>["reason"];
 let polishResult: PolishResult;
 let configured: boolean;
 
-const polishDraft = mock(
+const polishReply = mock(
   (_draft: string, _context: PolishContext, _signal?: AbortSignal) =>
     Promise.resolve(polishResult),
 );
@@ -152,13 +153,16 @@ mock.module("../middleware/auth", () => ({
   sessionOf: (res: Response) => res.locals.session,
 }));
 
-// Spread so the real POLISH_FAILURE values travel — the route indexes its
-// response table with them, and a stubbed copy would let the two drift apart
-// without a test noticing.
-mock.module("../ai/polish", () => ({
-  ...polishModule,
-  isPolishConfigured: () => configured,
-  polishDraft,
+// `../ai/polish-reply`, never `../ai/polish`: `ai/polish.test.ts` tests the
+// real `polishDraft`, and a factory on its specifier is what that file imports
+// whenever this one loads first (#303) — see the seam's header. This replaces
+// the seam's two exports outright and never delegates to them, so there is
+// nothing to spread. `POLISH_FAILURE` needs no spreading either: the route
+// reads it from `../ai/polish`, which nothing replaces, so the real values
+// travel.
+mock.module("../ai/polish-reply", () => ({
+  isPolishReplyConfigured: () => configured,
+  polishReply,
 }));
 
 // The summary endpoint's twin, and the reason `../ai/summarize` grew an
@@ -168,8 +172,10 @@ mock.module("../ai/polish", () => ({
 // reconcile tests flip. Two stateful copies on one specifier are two boxes, of
 // which the process-wide registry keeps one, leaving the other file's switch
 // inert (`docs/standards/testing.md` says so about `../test/send-email`, for
-// exactly this reason). A per-feature guard beside `polishDraft`'s own gives
-// each route's test a specifier nothing else touches.
+// exactly this reason). A per-feature guard gives this route's test a specifier
+// nothing else touches — while its module has no test of its own. `summarize`
+// has none; `polish` has one, which is why that half goes through
+// `../ai/polish-reply` above (#303).
 mock.module("../ai/summarize", () => ({
   ...summarizeModule,
   isSummarizeConfigured: () => summaryConfigured,
@@ -301,8 +307,8 @@ function goodBody(overrides: Record<string, unknown> = {}) {
 
 /** The context the route handed the model on its most recent call. */
 function lastContext(): PolishContext {
-  const call = polishDraft.mock.calls.at(-1);
-  if (!call) throw new Error("polishDraft was never called");
+  const call = polishReply.mock.calls.at(-1);
+  if (!call) throw new Error("polishReply was never called");
   return call[1];
 }
 
@@ -352,7 +358,7 @@ function lastSummaryContext(): SummarizeContext {
 
 beforeEach(async () => {
   await resetDb();
-  polishDraft.mockClear();
+  polishReply.mockClear();
   summarizeTicket.mockClear();
   configured = true;
   summaryConfigured = true;
@@ -378,7 +384,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     // Checked first, before the body is even parsed: the answer is the same for
     // every request, so nothing else should run.
     expect(dbCalls("ticket.findUnique")).toBe(0);
-    expect(polishDraft).not.toHaveBeenCalled();
+    expect(polishReply).not.toHaveBeenCalled();
   });
 
   test("rejects an empty draft with the composer's own sentence", async () => {
@@ -386,7 +392,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
 
     expect(sent.status).toBe(400);
     expect(sent.body.error).toBe("Write a draft before polishing");
-    expect(polishDraft).not.toHaveBeenCalled();
+    expect(polishReply).not.toHaveBeenCalled();
   });
 
   test("rejects a draft over the shared cap", async () => {
@@ -400,7 +406,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post({ draft: "shipped fri" });
 
     expect(sent.status).toBe(400);
-    expect(polishDraft).not.toHaveBeenCalled();
+    expect(polishReply).not.toHaveBeenCalled();
   });
 
   test("rejects a ticket id that is not one", async () => {
@@ -419,7 +425,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
 
     expect(sent.status).toBe(404);
     expect(sent.body.error).toBe("Ticket not found");
-    expect(polishDraft).not.toHaveBeenCalled();
+    expect(polishReply).not.toHaveBeenCalled();
   });
 });
 
@@ -558,13 +564,13 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
   test("passes the draft trimmed, as the schema left it", async () => {
     await post(goodBody({ draft: "  shipped fri  " }));
 
-    expect(polishDraft.mock.calls.at(-1)![0]).toBe("shipped fri");
+    expect(polishReply.mock.calls.at(-1)![0]).toBe("shipped fri");
   });
 
   test("hands the model a signal it can be abandoned with", async () => {
     await post(goodBody());
 
-    expect(polishDraft.mock.calls.at(-1)![2]).toBeInstanceOf(AbortSignal);
+    expect(polishReply.mock.calls.at(-1)![2]).toBeInstanceOf(AbortSignal);
   });
 });
 
@@ -646,7 +652,7 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
     expect(refused.body.error).toContain("try again in a minute");
     expect(Number(refused.retryAfter)).toBeGreaterThan(0);
     // The refusal is free: it never reaches the provider.
-    expect(polishDraft).toHaveBeenCalledTimes(10);
+    expect(polishReply).toHaveBeenCalledTimes(10);
   });
 
   test("counts per user, not per process", async () => {

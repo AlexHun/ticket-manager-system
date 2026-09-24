@@ -130,3 +130,12 @@ The spike branch carries both states as separate commits, each with its own CI
 run — the conversion first, then this revert of it — so "green in a second file
 order" is on record for the option that lost as well as the one that won. The
 run links are on the pull request.
+
+> **Correction ([#303](https://github.com/AlexHun/ticket-manager-system/issues/303)).**
+> The "reverse" half of that measurement was the forward order run twice. The
+> step passed its list as bare `src/…` paths, which `bun test` reads as name
+> filters and runs in its own discovery order; only `./`-prefixed paths are run
+> in the order given. Once the step passed `./` paths, the suite had 75
+> reverse-order failures, all but one from two `mock.module` registry
+> collisions; the second order this paragraph describes did not exist until
+> #303.

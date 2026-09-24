@@ -7,12 +7,12 @@
  * now reachable from values, and that a run writes nothing a customer or an
  * agent would see (PRD R12).
  *
- * `../ai/auto-reply` is stubbed rather than called, and that is the honest
- * seam: what is under test here is the **translation** — an `AutoReplyResult`
- * into an outcome, an outcome into a match, five of them into a rate — not what
- * the model says. The model half is measured by running the thing, which is
- * what the harness is for, and exercised end to end against the E2E suite's
- * fake provider in `tests/e2e/evals.spec.ts`.
+ * `autoReply` is stubbed (through `./reply-to-case`) rather than called, and
+ * that is the honest seam: what is under test here is the **translation** — an
+ * `AutoReplyResult` into an outcome, an outcome into a match, five of them into
+ * a rate — not what the model says. The model half is measured by running the
+ * thing, which is what the harness is for, and exercised end to end against the
+ * E2E suite's fake provider in `tests/e2e/evals.spec.ts`.
  *
  * The R12 assertion is the interesting one and it is deliberately made against
  * a **real** database (`../test/pg`, ADR-0014) rather than a count of calls on
@@ -82,11 +82,13 @@ let calls = 0;
 /** What `autoReply` was handed, so the synthesized context can be asserted. */
 let lastCall: { articles: KbArticle[]; context: unknown } | undefined;
 
-const actual = await import("../ai/auto-reply");
-
-mock.module("../ai/auto-reply", () => ({
-  ...actual,
-  autoReply: async (articles: KbArticle[], context: unknown) => {
+// `./reply-to-case`, never `../ai/auto-reply`: `ai/auto-reply.test.ts` tests
+// the real `autoReply`, and a factory on its specifier is what that file
+// imports whenever this one loads first (#303) — see the seam's header. This
+// replaces the seam's one export outright and never delegates to it, so there
+// is nothing to spread and nothing to snapshot.
+mock.module("./reply-to-case", () => ({
+  replyToCase: async (articles: KbArticle[], context: unknown) => {
     lastCall = { articles, context };
     const answer = script[Math.min(calls, script.length - 1)]!;
     calls += 1;
