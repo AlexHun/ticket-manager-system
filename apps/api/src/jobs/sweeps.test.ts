@@ -52,12 +52,17 @@ import { prisma, resetDb } from "../test/pg";
  * which differs between a Windows dev machine and CI. A fake whose default is
  * indistinguishable from the real module cannot make that ordering matter.
  *
- * So `isAiConfigured` starts `false`, which is what the real one returns in
- * this suite (no `OPENAI_API_KEY` anywhere in `.env.test`, deliberately); only
- * the reconcile tests flip it, and `beforeEach` puts it back. It has to be
+ * So `isAiConfigured` answers whatever the real one does until a test sets
+ * `aiConfigured`, and `beforeEach` and `afterEach` both put it back. It used to
+ * start `false`, on the reasoning that the real one answers that in this suite
+ * — and that was never so: the preload sets a key now, and before it did, the
+ * first file to link the provider in forward order was an `ai/` one that set
+ * one (#303). A reverse-order run put this file ahead of `ai/polish.test.ts`,
+ * and `isPolishConfigured()`, which reads straight through to this fake,
+ * answered `false` in a file that never mentions this one. It has to be
  * reachable at all because `enqueueClassification` short-circuits on it —
- * without the flip, the sweep's whole output is a no-op and there is nothing to
- * assert.
+ * without setting it, the sweep's whole output is a no-op and there is nothing
+ * to assert.
  *
  * And `getBoss` delegates to the real one — which throws, the queue never
  * having been started — unless a test has installed a queue to watch. That
@@ -73,10 +78,11 @@ import { prisma, resetDb } from "../test/pg";
 // replaces the live namespace, so a factory that spreads the import binding is
 // spreading itself.
 const provider = { ...(await import("../ai/provider")) };
-let aiConfigured = false;
+/** What `isAiConfigured` answers, or `undefined` for "whatever the real one does". */
+let aiConfigured: boolean | undefined;
 mock.module("../ai/provider", () => ({
   ...provider,
-  isAiConfigured: () => aiConfigured,
+  isAiConfigured: () => aiConfigured ?? provider.isAiConfigured(),
 }));
 
 /** Everything a sweep asked to be enqueued, in order. */
@@ -202,7 +208,7 @@ let quiet: ReturnType<typeof spyOn>[] = [];
 beforeEach(async () => {
   await resetDb();
   enqueued = [];
-  aiConfigured = false;
+  aiConfigured = undefined;
   watchedQueue = undefined;
   quiet = [
     spyOn(console, "log").mockImplementation(() => {}),
@@ -215,7 +221,9 @@ afterEach(() => {
   // Cleared here as well as in `beforeEach`, so the fake is guaranteed to be
   // back to real behaviour once this file's last test finishes rather than only
   // because of which test happens to be last. Nothing else in the process
-  // should ever see a working queue from `getBoss()`.
+  // should ever see a working queue from `getBoss()`, or a provider this file
+  // switched on or off.
+  aiConfigured = undefined;
   watchedQueue = undefined;
 });
 
@@ -262,12 +270,14 @@ describe("CLASSIFY_RECONCILE_SWEEP", () => {
   });
 
   test("enqueues nothing on a deployment with no key", async () => {
-    // `aiConfigured` stays false and no queue is watched, so `getBoss()` is the
-    // real one and would throw. The sweep still runs and still reads the
-    // tickets; `enqueueClassification` is the no-op, and that is deliberate —
-    // a keyless deployment must not build a backlog for the day somebody adds
-    // a key. This is the state the E2E suite runs in, and the throw is what
-    // makes the assertion below mean "never asked" rather than "asked nothing".
+    // Said outright rather than left to the default, which is the real answer
+    // and has a key behind it. No queue is watched, so `getBoss()` is the real
+    // one and would throw. The sweep still runs and still reads the tickets;
+    // `enqueueClassification` is the no-op, and that is deliberate — a keyless
+    // deployment must not build a backlog for the day somebody adds a key. This
+    // is the state the E2E suite runs in, and the throw is what makes the
+    // assertion below mean "never asked" rather than "asked nothing".
+    aiConfigured = false;
     await newTicket({ createdAt: ago(30 * MINUTE) });
 
     await CLASSIFY_RECONCILE_SWEEP.run();
