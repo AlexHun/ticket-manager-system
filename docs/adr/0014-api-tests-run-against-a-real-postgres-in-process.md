@@ -168,6 +168,11 @@ SQL of its own — and two suites that both reach the database no longer have to
 share a file. Every _other_ specifier a factory replaces is still one registry
 deep, and still gets `bun test <a> <b>` in both orders before it is believed.
 
+> **Correction ([#303](https://github.com/AlexHun/ticket-manager-system/issues/303)).**
+> Written bare, that pair is one order run twice: `bun test` reads
+> `src/x.test.ts` as a name filter and runs the matches in its own discovery
+> order. The check is `bun test ./<a> ./<b>`; see `testing-api.md`.
+
 **A mis-registered mock is silent and dangerous.** Registering the binding
 under a path that does not match — `new URL("../src/db.ts",
 import.meta.url).pathname` yields `/C:/…` on Windows — does not error. The

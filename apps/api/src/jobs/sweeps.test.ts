@@ -78,7 +78,10 @@ import { prisma, resetDb } from "../test/pg";
 // replaces the live namespace, so a factory that spreads the import binding is
 // spreading itself.
 const provider = { ...(await import("../ai/provider")) };
-/** What `isAiConfigured` answers, or `undefined` for "whatever the real one does". */
+/**
+ * What `isAiConfigured` answers, or `undefined` for "whatever the real one
+ * does".
+ */
 let aiConfigured: boolean | undefined;
 mock.module("../ai/provider", () => ({
   ...provider,

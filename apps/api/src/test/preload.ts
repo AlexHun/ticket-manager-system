@@ -20,8 +20,9 @@
  * `--preload`, and `bunfig.toml` lists it under `[test]`. The flag is what CI
  * passes too, and it fails loudly if it is ever resolved from the wrong
  * directory; the bunfig covers a bare `bun test <file>` from `apps/api`, and in
- * particular the `bun test ./<a> ./<b>` in both orders `testing.md` prescribes
- * before believing a new mock — a run with no preload has no sentinel either.
+ * particular the `bun test ./<a> ./<b>` in both orders `testing-api.md`
+ * prescribes before believing a new mock — a run with no preload has no
+ * sentinel either.
  * Bun evaluates a module once, so the two entries register one binding.
  *
  * ## The two things this file has to get exactly right
@@ -64,9 +65,14 @@ process.env.DATABASE_URL =
 // file to link the provider decided for every file after it: eleven files that
 // never set one each left `polish.test.ts`'s `isPolishConfigured()` false when
 // loaded ahead of it, and forward order was green only because an `ai/` file
-// that sets one got there first. Not a real key — nothing here reaches
-// the network, and a keyless deployment is a test that says so
+// that sets one got there first. A keyless deployment is a test that says so
 // (`jobs/sweeps.test.ts`).
+//
+// Not a real key, and the base URL beside it is the same closed port as
+// `DATABASE_URL` above, for the same reason: with a key set, a provider call a
+// test forgot to mock would otherwise leave for OpenAI and come back `auth`.
+// This way it fails at once, on this machine, with a connection refusal.
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
+process.env.OPENAI_BASE_URL = "http://127.0.0.1:1/v1";
 
 mock.module("../db", () => ({ Prisma, prisma }));

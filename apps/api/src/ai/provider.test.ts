@@ -40,6 +40,9 @@ import type { AiUsage } from "./provider";
  * It passed on Windows and failed on `ubuntu-latest`, which is the file-order
  * difference `testing.md` warns about wearing different clothes: the hazard is
  * not only `mock.module`, it is anything a module captures at import.
+ *
+ * The preload sets the same key for the whole process now (#303), which is what
+ * actually closed that; this line is belt to it rather than the guard.
  */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
 

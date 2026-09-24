@@ -136,5 +136,6 @@ run links are on the pull request.
 > step passed its list as bare `src/…` paths, which `bun test` reads as name
 > filters and runs in its own discovery order; only `./`-prefixed paths are run
 > in the order given. Once the step passed `./` paths, the suite had 75
-> reverse-order failures, from two `mock.module` registry collisions; the
-> second order this paragraph describes did not exist until #303.
+> reverse-order failures, all but one from two `mock.module` registry
+> collisions; the second order this paragraph describes did not exist until
+> #303.
