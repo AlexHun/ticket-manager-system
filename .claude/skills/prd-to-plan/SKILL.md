@@ -96,6 +96,7 @@ reshape it.
 
 ## After it merges
 
-Offer `/mattpocock-skills:to-tickets` on the finished plan: it cuts one ticket
-per slice with native blocking edges, so the unblocked ones are easy to find
-(`docs/agents/issue-tracker.md`). Never create them unasked.
+Offer to cut tickets from the finished plan: one ticket per slice, with native
+blocking edges so the unblocked ones are easy to find
+(`docs/agents/issue-tracker.md`). On a yes, call the Skill tool with
+`to-tickets`. Never create them unasked.
