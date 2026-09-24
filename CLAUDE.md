@@ -11,15 +11,32 @@ Take the skill's _narrowest_ matching row and read that file in full; a question
 ## Workflow
 
 Feature work runs in this order, unbroken in one context up to the tickets:
-`/write-a-prd` → `/prd-to-plan` → `/mattpocock-skills:to-tickets`, then one
-`/mattpocock-skills:implement` per ticket. `write-a-prd` and `prd-to-plan` are
-this repo's tuned spec pair and fill the slot `/mattpocock-skills:to-spec`
-holds elsewhere.
+`/write-a-prd` → `/prd-to-plan` → `/to-tickets`, then one `/implement` per
+ticket. `write-a-prd` and `prd-to-plan` are this repo's tuned spec pair and
+fill the slot `/mattpocock-skills:to-spec` holds elsewhere. `to-tickets` and
+`implement` are local copies of the plugin skills, adapted to this repo, and
+unlike the plugin versions they can be invoked by the agent; use them rather
+than the `mattpocock-skills:` versions.
 
-**One ticket per session.** A ticket ends at `/mattpocock-skills:code-review`;
-report it done and stop there rather than opening the next one, so the next
-ticket starts in a fresh context. Context cost per turn climbs steeply with
-session length, and past roughly 150k tokens reasoning degrades — a ticket that
+Branch every change from a freshly fetched main —
+`git fetch origin && git switch -c <branch> origin/main` — since local `main`
+lags whatever merged since the last session.
+
+**Self-check before every commit.** Search for each reference the change leaves
+stale: old symbol names, moved paths, mentions in docs and comments. Re-read
+every edited range after the last edit, its delimiters (`*/`, brackets) and
+surrounding sentences included. Recount every number stated in prose against
+its source. These are the defects review agents most often send back, each one
+a fix commit.
+
+**One ticket per session.** A ticket ends when its PR is green in CI: after
+`/mattpocock-skills:code-review`, push and run `gh pr checks <n> --watch` in the
+background. A red job whose test has an open `Flake:` issue gets one
+`gh run rerun <run-id> --failed`; any other red job is diagnosed in this
+session, and one that goes green on re-run is filed as `Flake: <test>`. Report
+it done and stop there rather than opening the next one, so the next ticket
+starts in a fresh context. Context cost per turn climbs steeply with session
+length, and past roughly 150k tokens reasoning degrades — a ticket that
 outgrows its window wants splitting, not compacting.
 
 A bug, a flake, or a regression starts at `/mattpocock-skills:diagnosing-bugs`,

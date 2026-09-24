@@ -1,6 +1,30 @@
 {
   "enabledPlugins": {
     "mattpocock-skills@claude-plugins-official": true,
-    "github@claude-plugins-official": true
+    "github@claude-plugins-official": false
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-no-verify.mjs\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git fetch origin --quiet",
+            "async": true
+          }
+        ]
+      }
+    ]
   }
 }
