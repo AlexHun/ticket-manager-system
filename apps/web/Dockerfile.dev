@@ -1,0 +1,63 @@
+# The web service on the Railway `develop` environment: the Vite **dev server**,
+# not a static build, so the `/__dev` tools (map, tests, usage) are reachable
+# there. Production is untouched and keeps `apps/web/Dockerfile` + Caddy; this
+# file is only ever selected by `apps/web/railway.dev.json`.
+#
+# The whole site sits behind HTTP Basic Auth (`apps/web/dev/basic-auth.ts`),
+# because `/__dev/tests` starts processes on a machine somebody pays for. The
+# credentials are Railway variables; see DEPLOYMENT.md.
+#
+# Build context is the **repository root**, like the other two images.
+
+FROM oven/bun:1-slim
+
+# The API-unit suite on `/__dev/tests` loads the Prisma client, and Prisma's
+# engines look for OpenSSL, which the slim image lacks (see apps/api/Dockerfile).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Manifests first for layer caching; every workspace's, because
+# `--frozen-lockfile` resolves the whole graph. devDependencies are the point
+# here — Vite, Vitest and the Prisma CLI are all of them.
+COPY package.json bun.lock ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY packages/core/package.json packages/core/
+COPY packages/shared/package.json packages/shared/
+
+RUN bun install --frozen-lockfile
+
+COPY tsconfig.base.json ./
+
+# Every workspace, not only the web app's: the project map scans `apps/api`
+# and the Prisma schema, and the typecheck and API-unit suites run against it.
+# The root `.dockerignore` still applies, so `tests/`, `scripts/`, `*.md` and
+# `playwright.config.ts` are absent — the map does not see them and the E2E
+# suite cannot run here.
+COPY packages packages
+COPY apps apps
+
+# The generated client is gitignored; the typecheck and API-unit suites need it.
+# Placeholder `DATABASE_URL` for the reason given in apps/api/Dockerfile — it is
+# never used to open a connection.
+RUN cd apps/api \
+    && DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder" \
+       bunx --bun prisma generate
+
+# Fail closed: with this set, the dev server refuses to start unless both
+# DEV_BASIC_AUTH_USERNAME and DEV_BASIC_AUTH_PASSWORD are set, rather than
+# serving `/__dev` to anyone.
+ENV DEV_BASIC_AUTH_REQUIRED=1
+
+# **No `NODE_ENV=production`.** This is a dev server on purpose:
+# `import.meta.env.DEV` must be true for the `/__dev` routes to exist at all.
+
+WORKDIR /app/apps/web
+
+# A shell, for `$PORT`; `exec` so the shell hands PID 1 to the dev server and
+# Railway's SIGTERM reaches it directly. `--host ::` binds every interface, IPv4 included,
+# which Railway's edge and its healthcheck both need.
+CMD ["sh", "-c", "exec bunx --bun vite --host :: --port \"$PORT\""]

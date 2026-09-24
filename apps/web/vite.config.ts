@@ -6,6 +6,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { basicAuthPlugin } from "./dev/basic-auth.ts";
 import { devToolsPlugin } from "./dev/plugin.ts";
 import {
   apiOriginFrom,
@@ -194,6 +195,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      // Basic auth over the whole dev server when credentials are set — the
+      // Railway develop service. A no-op locally. First, so it gates the dev
+      // tools and the `/api` proxy along with everything else.
+      basicAuthPlugin(),
       react(),
       tailwindcss(),
       // Backs the two pages under /__dev: the project map and the test runner.

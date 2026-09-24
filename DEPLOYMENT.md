@@ -151,7 +151,7 @@ service — not on a command line, where the password lands in shell history —
 run the seed **inside the container**:
 
 ```bash
-railway ssh --service api --command 'cd /app/apps/api && bun run db:seed'
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed'
 ```
 
 `--service` takes the service's **actual name in your project**, which is only
@@ -161,7 +161,9 @@ line in this document uses the generic names from section 1.
 Note the command: `railway run` executes **locally** with Railway's variables
 injected, which is not what you want here (it would need Bun, the generated
 Prisma client and a publicly reachable database on your own machine).
-`railway ssh --command` runs in the deployed container. Delete the two seed
+`railway ssh -- '…'` runs in the deployed container. The command goes after
+`--`, quoted whole so the container's shell sees the `&&`; Railway CLI 5.62
+has no `--command` flag and rejects it. Delete the two seed
 variables afterwards; nothing reads them again.
 
 **Changing `SEED_ADMIN_PASSWORD` and re-running the seed does nothing.**
@@ -189,7 +191,7 @@ never makes a second one.
 Then seed the knowledge base, if you want the shipped corpus:
 
 ```bash
-railway ssh --service api --command 'cd /app/apps/api && bun run db:seed:kb'
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed:kb'
 ```
 
 It skips ids that already exist, so it is safe to re-run. Without at least one
@@ -199,7 +201,7 @@ dead — which the page will tell you (`autoReplyArticleCount`).
 And the walkthroughs, which are the same shape of job:
 
 ```bash
-railway ssh --service api --command 'cd /app/apps/api && bun run db:seed:tutorials'
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed:tutorials'
 ```
 
 It skips pages that already have a row, so it never touches copy an admin has
@@ -218,6 +220,69 @@ https://<api-domain>/api/webhooks/inbound-email
 
 with the Basic Auth credentials you set above. Outbound sending is Phase 3 and
 does not exist yet — the auto-reply writes a `Message` row and sends nothing.
+
+## 7. The `develop` environment
+
+A second Railway environment, `develop`, deploys the git branch `develop`. It
+has its own Postgres and the same two services — `api-ticket-manager` and
+`web-ticket-manager` there — and one deliberate difference: its `web` runs the
+**Vite dev server** rather than the static build, so the `/__dev` tools (project
+map, test runner, usage) are reachable at
+`https://web-ticket-manager-develop.up.railway.app`. Production is untouched.
+
+The whole site sits behind **HTTP Basic Auth** — every request, `/api/*` and
+`/__dev*` included, `/health` excepted. The repo is public, so serving source is
+not the concern; strangers starting test runs on a metered machine is. The gate
+is `apps/web/dev/basic-auth.ts`.
+
+**Config file** (_Service → Settings → Config as code_, develop environment
+only):
+
+| Service              | Config path                  |
+| -------------------- | ---------------------------- |
+| `web-ticket-manager` | `/apps/web/railway.dev.json` |
+
+That file builds `apps/web/Dockerfile.dev`: every workspace installed, the
+Prisma client generated, `bunx --bun vite --host :: --port $PORT` as the
+command, and **no** `NODE_ENV=production`. Its `watchPatterns` include
+`apps/api/**`, because the project map reads it.
+
+**Variables on `web-ticket-manager`** (develop):
+
+| Variable                                 | Value                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `DEV_API_PROXY`                          | `http://${{api-ticket-manager.RAILWAY_PRIVATE_DOMAIN}}:3001`        |
+| `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS` | `web-ticket-manager-develop.up.railway.app,healthcheck.railway.app` |
+| `DEV_BASIC_AUTH_USERNAME`                | chosen by the owner; never in the repo                              |
+| `DEV_BASIC_AUTH_PASSWORD`                | chosen by the owner; never in the repo                              |
+
+- `DEV_API_PROXY` replaces `API_UPSTREAM`, which nothing reads on develop any
+  more. It is a full URL, scheme included, where `API_UPSTREAM` was host:port.
+  The browser still talks to one origin, so the session cookie stays
+  first-party (`SameSite=Lax`) exactly as behind Caddy.
+- `healthcheck.railway.app` must be in the allowed hosts. Vite's host check
+  runs **before** any plugin middleware, so without it the healthcheck gets a
+  403 and never reaches the `/health` exemption.
+- **Both credentials are required.** The dev image sets
+  `DEV_BASIC_AUTH_REQUIRED=1`, and with that on the dev server refuses to start
+  if either is missing — the deploy fails its healthcheck rather than serving an
+  open dev server.
+
+The API's `TRUSTED_ORIGINS` on develop is the develop web URL plus
+`http://localhost:4000` (for `bun run dev:web:develop`).
+
+**What the dev image does not have.** The root `.dockerignore` applies to it
+too, so `tests/`, `scripts/`, `*.md` and `playwright.config.ts` are absent: the
+map does not show them and the E2E suite cannot run there. The typecheck and
+unit suites can.
+
+**Seeding** develop's database is the §5 commands pointed at that environment:
+
+```bash
+railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed'
+railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:kb'
+railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:tutorials'
+```
 
 ---
 
