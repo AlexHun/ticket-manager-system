@@ -2,9 +2,8 @@
 # have run (a `--no-verify` commit, a commit made by another tool, a rebase).
 #
 # The web suite is not here. It is jsdom-bound and took ~4m54s of every push
-# on a Windows dev machine (~4x slower than ubuntu-latest; see
-# docs/standards/testing.md), and CI runs it on every PR anyway. CLAUDE.md
-# makes a green PR the finish line, so CI owns it. The API suite stays: it is
+# on a Windows dev machine, and CI runs it on every PR anyway. CLAUDE.md makes
+# a green PR the finish line, so CI owns it. The API suite stays: it is
 # fast enough to pay per push, and it is the one that exercises the database.
 #
 # Measured 2026-09-24 on a Windows dev machine, warm: typecheck ~16s,
