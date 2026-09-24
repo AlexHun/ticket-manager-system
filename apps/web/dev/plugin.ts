@@ -1,11 +1,13 @@
 /**
  * The dev-tools backend, as a Vite plugin.
  *
- * `apply: "serve"` is the whole security story: the plugin — and therefore the
+ * `apply: "serve"` keeps it out of production: the plugin — and therefore the
  * project scan and the ability to spawn a test run — exists only while
  * `vite dev` is running. `vite build` never loads it, so there is no production
  * artefact to forget to disable. The pages that talk to it are behind
- * `import.meta.env.DEV`, which Rollup folds to `false` and eliminates.
+ * `import.meta.env.DEV`, which Rollup folds to `false` and eliminates. The one
+ * deployed dev server, Railway's `develop` environment, is gated by
+ * `basic-auth.ts`, which runs ahead of every middleware registered here.
  *
  * Middlewares are registered by returning nothing from `configureServer`, so
  * they install *ahead* of Vite's internals. That matters for one reason: the SPA

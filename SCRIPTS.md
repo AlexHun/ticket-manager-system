@@ -58,9 +58,9 @@ Argument order is `bun run --filter <pkg> <script>` — `bun --filter <pkg> run
 Both production seeds run **inside the container**, not locally:
 
 ```bash
-railway ssh --service api --command 'cd /app/apps/api && bun run db:seed'
-railway ssh --service api --command 'cd /app/apps/api && bun run db:seed:kb'
-railway ssh --service api --command 'cd /app/apps/api && bun run db:seed:tutorials'
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed'
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed:kb'
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed:tutorials'
 ```
 
 `railway run` would execute on *your* machine with Railway's variables injected —
@@ -228,9 +228,9 @@ Covered in full by `DEPLOYMENT.md` §4–5. In command terms it is only this:
    `bunx --bun prisma migrate deploy` before the new version takes traffic.
    Nothing else runs by itself — pg-boss provisions its own `pgboss` schema on
    boot and needs nothing from you.
-2. `railway ssh … 'cd /app/apps/api && bun run db:seed'`
-3. `railway ssh … 'cd /app/apps/api && bun run db:seed:kb'`
-4. `railway ssh … 'cd /app/apps/api && bun run db:seed:tutorials'`
+2. `railway ssh … -- 'cd /app/apps/api && bun run db:seed'`
+3. `railway ssh … -- 'cd /app/apps/api && bun run db:seed:kb'`
+4. `railway ssh … -- 'cd /app/apps/api && bun run db:seed:tutorials'`
 5. Delete the two `SEED_ADMIN_*` variables.
 
 Every deploy after the first is step 1 alone.

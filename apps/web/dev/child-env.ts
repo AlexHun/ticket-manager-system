@@ -14,6 +14,7 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { BASIC_AUTH_ENV } from "./basic-auth.ts";
 
 /**
  * The repo root, as this directory knows it: `apps/web/dev` → three up.
@@ -89,7 +90,7 @@ function isBunNodeShimDir(entry: string): boolean {
 /**
  * The environment a suite runs in.
  *
- * Three subtractions from the OS environment, each for its own reason.
+ * Four subtractions from the OS environment, each for its own reason.
  *
  * **Every key the repo's `.env*` files declare.** `dotenv-cli` does not override a
  * variable that is already set, and this dev server's process carries the app's
@@ -105,6 +106,11 @@ function isBunNodeShimDir(entry: string): boolean {
  * **`npm_*` and `NODE`.** These describe the script that started the *dev server*
  * (`npm_lifecycle_script=vite`, `npm_package_name=…`). A nested run that reads them
  * is being told it is something it is not.
+ *
+ * **The basic-auth gate's variables** (`basic-auth.ts`). On Railway's develop
+ * service they are service variables rather than `.env` keys, so the first rule
+ * misses them; no suite needs the password, and a child cannot print what it
+ * was never handed.
  *
  * Everything a child actually needs — PATH itself, SystemRoot, USERPROFILE — is
  * left alone.
@@ -124,6 +130,7 @@ export function childEnv(root: string): NodeJS.ProcessEnv {
   for (const key of configuredKeys(root)) delete env[key];
 
   delete env.NODE;
+  for (const key of Object.values(BASIC_AUTH_ENV)) delete env[key];
   for (const key of Object.keys(env)) {
     if (key.startsWith("npm_")) delete env[key];
   }
