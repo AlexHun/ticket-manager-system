@@ -1,7 +1,7 @@
 {
   "enabledPlugins": {
     "mattpocock-skills@claude-plugins-official": true,
-    "github@claude-plugins-official": true
+    "github@claude-plugins-official": false
   },
   "hooks": {
     "PreToolUse": [
