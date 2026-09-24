@@ -246,6 +246,7 @@ Every deploy after the first is step 1 alone.
 | `bun run dev`         | API (:3001) and web (:4000) together                                |
 | `bun run dev:api`     | API only                                                            |
 | `bun run dev:web`     | web only                                                            |
+| `bun run dev:web:develop` | web only on :4000, with `/api` proxied to the Railway **develop** API instead of :3001 (`DEV_API_PROXY`, read in `apps/web/vite.config.ts`) — the app pages show develop's database and the `/__dev` tools still work, because they read this machine and never the API. Signing in needs `http://localhost:4000` in develop's `TRUSTED_ORIGINS`, and Chrome or Firefox: the session cookie is `Secure`, which those two send to `localhost` over plain HTTP and Safari does not |
 | `bun run dev:stop`    | kills every dev server on 3001/3002/4000/4001 and proves the ports came back. **Windows/PowerShell only** — it has to outlive the `bun` that launched it |
 | `bun run build`       | builds every workspace that has a `build` script (the web app; the API ships as source) |
 | `bun run typecheck`   | `tsc --noEmit` across all four workspaces                           |
