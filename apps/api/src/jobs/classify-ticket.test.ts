@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 import { beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY, type TicketCategory } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";

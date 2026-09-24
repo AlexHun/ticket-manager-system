@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * A regression guard for `CORPUS_SELECT` in `./knowledge-base` — the query
  * that decides what an unattended reply is even allowed to see.

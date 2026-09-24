@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 import { expect, spyOn, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";

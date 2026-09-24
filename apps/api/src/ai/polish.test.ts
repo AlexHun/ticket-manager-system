@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for the polish module — the AI half of the reply composer.
  *

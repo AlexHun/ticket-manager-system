@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `./automation` — who ends up with a ticket the assistant could
  * not finish, and the diff that records that choice changing.

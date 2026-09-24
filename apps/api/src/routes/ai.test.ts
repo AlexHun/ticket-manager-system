@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `./ai` — both `POST /api/ai/polish-reply` and
  * `POST /api/ai/summarize-ticket`.

@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for the auto-reply — the only feature in this app that writes to a
  * customer with nobody reading it first, and the one whose six safety checks

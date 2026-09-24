@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 import { describe, expect, test } from "bun:test";
 import { diffToEntries } from "./activity-diff";
 

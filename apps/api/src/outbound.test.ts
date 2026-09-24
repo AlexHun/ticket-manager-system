@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `sendReply` in `./outbound` — the only path a reply leaves the
  * desk by.

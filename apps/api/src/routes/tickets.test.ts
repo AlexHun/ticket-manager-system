@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for the unread-assignment surface added to `./tickets`
  * (ADR-0013 / #28): `GET /api/tickets/unread`, the conditional

@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `apps/api/src/routes/automation.ts` — the two routes behind the
  * `/pipeline` screen's handoff card: read the setting, and change it.

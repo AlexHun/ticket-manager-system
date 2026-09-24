@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for the two pieces of the effectiveness endpoint expressible as
  * pure functions over plain rows rather than a raw SQL string, and so the

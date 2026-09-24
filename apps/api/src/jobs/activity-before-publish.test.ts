@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,

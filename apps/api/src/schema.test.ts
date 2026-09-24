@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Invariants the Prisma schema carries, exercised against the real database
  * (`./test/pg`, ADR-0014).

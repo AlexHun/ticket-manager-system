@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `./users` — the account-management router ADR-0011 and
  * ADR-0009 built: `POST /` creates a colleague with no password and invites

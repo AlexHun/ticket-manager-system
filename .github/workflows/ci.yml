@@ -132,6 +132,17 @@ jobs:
           echo "$FILES"
           bun test --preload ./src/test/preload.ts $FILES
 
+      # PROBE ONLY (#303 evidence, never merged): the old bare command and
+      # Bun's own discovery order, logged with the same per-file markers.
+      - name: "Probe: old bare reverse command"
+        if: always()
+        working-directory: apps/api
+        run: bun test $(find src -name '*.test.ts' | sort -r)
+
+      - name: "Probe: discovery order"
+        if: always()
+        run: bun run --filter '@ticket/api' test
+
       - name: Web component tests
         run: bun run --filter '@ticket/web' test
 

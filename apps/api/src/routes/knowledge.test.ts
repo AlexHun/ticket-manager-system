@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `apps/api/src/routes/knowledge.ts`'s approval gate: the
  * routes on top of the pending-revision schema from #23 — submit, approve,

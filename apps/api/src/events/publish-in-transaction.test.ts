@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   TICKET_EVENT,

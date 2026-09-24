@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `apps/api/src/routes/pipeline.ts` — specifically `toRun`, the
  * one place in this codebase that derives both a Stage and an Outcome from a

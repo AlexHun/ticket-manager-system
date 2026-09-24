@@ -1,3 +1,4 @@
+process.stderr.write(`PROBE LOAD ${import.meta.path}\n`);
 /**
  * Unit tests for `ticketEffectivenessHandler`'s facts scan — the raw SQL half of
  * `apps/api/src/routes/ticket-effectiveness.ts`.
