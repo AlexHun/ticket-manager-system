@@ -5,8 +5,9 @@
  * The router on a real Express app over a real socket, over a real database
  * (#174 — the last file ADR-0014 had left) and a stubbed provider. That last
  * one is not a seam ADR-0014 moves: an AI feature test must not spend money or
- * depend on the network, so `../ai/polish` and `../ai/summarize` stay mocked,
- * and `polishDraft` itself is covered next door in `../ai/polish.test.ts`.
+ * depend on the network, so `../ai/polish-reply` and `../ai/summarize` stay
+ * mocked, and `polishDraft` itself is covered next door in
+ * `../ai/polish.test.ts`.
  * What is under test is the order each route does things in — configured,
  * valid, found, within budget, only then paid for — the context it assembles
  * from the thread, and the sentence each failure turns into.
@@ -152,13 +153,16 @@ mock.module("../middleware/auth", () => ({
   sessionOf: (res: Response) => res.locals.session,
 }));
 
-// Spread so the real POLISH_FAILURE values travel — the route indexes its
-// response table with them, and a stubbed copy would let the two drift apart
-// without a test noticing.
-mock.module("../ai/polish", () => ({
-  ...polishModule,
-  isPolishConfigured: () => configured,
-  polishDraft,
+// `../ai/polish-reply`, never `../ai/polish`: `ai/polish.test.ts` tests the
+// real `polishDraft`, and a factory on its specifier is what that file imports
+// whenever this one loads first (#303) — see the seam's header. This replaces
+// the seam's two exports outright and never delegates to them, so there is
+// nothing to spread. `POLISH_FAILURE` needs no spreading either: the route
+// reads it from `../ai/polish`, which nothing replaces, so the real values
+// travel.
+mock.module("../ai/polish-reply", () => ({
+  isPolishReplyConfigured: () => configured,
+  polishReply: polishDraft,
 }));
 
 // The summary endpoint's twin, and the reason `../ai/summarize` grew an

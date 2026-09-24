@@ -6,12 +6,8 @@ import {
   type PolishReplyResponse,
   type SummarizeTicketResponse,
 } from "@ticket/shared";
-import {
-  POLISH_FAILURE,
-  isPolishConfigured,
-  polishDraft,
-  type PolishFailure,
-} from "../ai/polish";
+import { POLISH_FAILURE, type PolishFailure } from "../ai/polish";
+import { isPolishReplyConfigured, polishReply } from "../ai/polish-reply";
 import { AI_FAILURE, type AiFailure } from "../ai/provider";
 import {
   isSummarizeConfigured,
@@ -192,7 +188,7 @@ aiRouter.post(
     // First, and before the body is even looked at: on a deployment with no key
     // the answer is the same for every request, and saying so plainly beats a
     // failed provider call that was never going to work.
-    if (!isPolishConfigured()) {
+    if (!isPolishReplyConfigured()) {
       res
         .status(503)
         .json({ error: "Polishing isn't configured on this server." });
@@ -266,7 +262,7 @@ aiRouter.post(
       if (!res.writableEnded) abort.abort();
     });
 
-    const result = await polishDraft(
+    const result = await polishReply(
       body.data.draft,
       {
         subject: ticket.subject,
