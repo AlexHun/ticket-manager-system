@@ -74,14 +74,14 @@ function sha256(value: string): Buffer {
   return createHash("sha256").update(value).digest();
 }
 
-export type Decision = "health" | "allow" | "challenge";
+export type GateDecision = "health" | "allow" | "challenge";
 
 /** What one request earns, from its path and its `Authorization` header. */
-export function decide(
+export function gateDecision(
   pathname: string,
   authorization: string | undefined,
   expected: Credentials,
-): Decision {
+): GateDecision {
   if (pathname === "/health") return "health";
 
   const [scheme, token] = (authorization ?? "").split(" ");
@@ -105,7 +105,11 @@ export function basicAuthMiddleware(
 ): Connect.NextHandleFunction {
   return (req, res, next) => {
     const { pathname } = new URL(req.url ?? "/", "http://dev.invalid");
-    const decision = decide(pathname, req.headers.authorization, expected);
+    const decision = gateDecision(
+      pathname,
+      req.headers.authorization,
+      expected,
+    );
 
     if (decision === "health") {
       res.statusCode = 200;
@@ -130,9 +134,7 @@ export function basicAuthMiddleware(
   };
 }
 
-export function basicAuthPlugin(
-  env: Record<string, string | undefined> = process.env,
-): Plugin {
+export function basicAuthPlugin(): Plugin {
   return {
     name: "ticket-basic-auth",
     apply: "serve",
@@ -141,7 +143,7 @@ export function basicAuthPlugin(
     configureServer(server) {
       // Throwing here fails `createServer`, so a misconfigured deploy never
       // starts listening and Railway's healthcheck fails the release.
-      const credentials = readCredentials(env);
+      const credentials = readCredentials(process.env);
       if (credentials) server.middlewares.use(basicAuthMiddleware(credentials));
     },
   };

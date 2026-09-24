@@ -3,19 +3,22 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   BASIC_AUTH_ENV,
   basicAuthMiddleware,
-  decide,
+  gateDecision,
   readCredentials,
   type Credentials,
 } from "./basic-auth.ts";
+import { REPO_ROOT, childEnv } from "./child-env.ts";
 
 /**
  * The gate in front of the develop dev server.
  *
  * Almost everything is asked of the two pure halves — which credentials are in
  * force, and what one request earns — because that is where the rule lives. The
- * middleware gets two cases of its own for the two things it does that no
- * return value can show: the challenge header on a 401, and the credential
- * being gone before the request reaches the `/api` proxy.
+ * middleware gets three cases of its own for what no return value can show: the
+ * challenge header on a 401, the credential being gone before the request
+ * reaches the `/api` proxy, and `/health` answered with a query string on it.
+ * The last case is `childEnv`, so a suite spawned from `/__dev/tests` never
+ * inherits the password.
  */
 
 const creds: Credentials = { username: "desk", password: "s3cret:with:colons" };
@@ -85,9 +88,9 @@ describe("readCredentials", () => {
   });
 });
 
-describe("decide", () => {
+describe("gateDecision", () => {
   it("lets the healthcheck through without credentials", () => {
-    expect(decide("/health", undefined, creds)).toBe("health");
+    expect(gateDecision("/health", undefined, creds)).toBe("health");
   });
 
   it("gates everything else without credentials, the API and /__dev included", () => {
@@ -97,17 +100,17 @@ describe("decide", () => {
       "/__dev/map",
       "/__devtools/graph",
     ]) {
-      expect(decide(path, undefined, creds)).toBe("challenge");
+      expect(gateDecision(path, undefined, creds)).toBe("challenge");
     }
   });
 
   it("does not stretch the healthcheck exemption to its neighbours", () => {
-    expect(decide("/healthz", undefined, creds)).toBe("challenge");
-    expect(decide("/health/", undefined, creds)).toBe("challenge");
+    expect(gateDecision("/healthz", undefined, creds)).toBe("challenge");
+    expect(gateDecision("/health/", undefined, creds)).toBe("challenge");
   });
 
   it("allows the right pair, a password with colons in it included", () => {
-    expect(decide("/", basic("desk", "s3cret:with:colons"), creds)).toBe(
+    expect(gateDecision("/", basic("desk", "s3cret:with:colons"), creds)).toBe(
       "allow",
     );
   });
@@ -126,7 +129,7 @@ describe("decide", () => {
       `Basic ${Buffer.from("desk").toString("base64")}`,
     ],
   ])("challenges %s", (_what, header) => {
-    expect(decide("/", header, creds)).toBe("challenge");
+    expect(gateDecision("/", header, creds)).toBe("challenge");
   });
 });
 
@@ -178,5 +181,21 @@ describe("basicAuthMiddleware", () => {
     const { res, next } = run("/health?probe=1");
     expect(res.statusCode).toBe(200);
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe("childEnv", () => {
+  it("hands no suite the gate's credentials", () => {
+    vi.stubEnv(BASIC_AUTH_ENV.required, "1");
+    vi.stubEnv(BASIC_AUTH_ENV.username, "desk");
+    vi.stubEnv(BASIC_AUTH_ENV.password, "pw");
+    try {
+      const env = childEnv(REPO_ROOT);
+      for (const key of Object.values(BASIC_AUTH_ENV)) {
+        expect(env[key]).toBeUndefined();
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

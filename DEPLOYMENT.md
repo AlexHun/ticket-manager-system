@@ -15,7 +15,8 @@ domains are two _sites_, and a session that has to span them is a third-party
 cookie that Chrome incognito and Safari drop. See
 [Cookies](#cookies-read-this-before-the-first-login).
 
-Both images build from the **repository root** — `@ticket/core` and `@ticket/shared`
+Every image builds from the **repository root** — the two above and the
+`develop` environment's `apps/web/Dockerfile.dev` (§7) — `@ticket/core` and `@ticket/shared`
 are workspace dependencies, so a build context scoped to one app could not see
 them. Each service is pointed at its own Dockerfile instead of using Railway's
 Root Directory setting, which would scope the context and break the install.
@@ -273,8 +274,9 @@ The API's `TRUSTED_ORIGINS` on develop is the develop web URL plus
 
 **What the dev image does not have.** The root `.dockerignore` applies to it
 too, so `tests/`, `scripts/`, `*.md` and `playwright.config.ts` are absent: the
-map does not show them and the E2E suite cannot run there. The typecheck and
-unit suites can.
+map does not show them and the E2E suite cannot run there. The image is built
+for the typecheck and API-unit suites; the web-unit suite has not been run
+there.
 
 **Seeding** develop's database is the §5 commands pointed at that environment:
 
@@ -362,7 +364,7 @@ policy and the bundle are always produced together and cannot disagree.
   safe to run more than once — handlers are idempotent and `Processing` is a
   claim taken with a conditional `updateMany` — but nothing here has been
   measured at more than one.
-- **Pinned base images.** Both Dockerfiles use `oven/bun:1-slim` and
+- **Pinned base images.** The Dockerfiles use `oven/bun:1-slim` and
   `caddy:2-alpine` — both confirmed to exist and be active on Docker Hub, both
   floating within a major. Pin to a digest for reproducible builds.
 

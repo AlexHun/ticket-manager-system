@@ -1,4 +1,5 @@
-# Both images build from the repository root, because the workspaces in
+# Every image builds from the repository root — the API's, the web's and the
+# develop web's `Dockerfile.dev` — because the workspaces in
 # `packages/` are real dependencies of both apps and a context scoped to
 # `apps/api` or `apps/web` could not see them. That makes this file the only
 # thing standing between a developer's working tree and a deployed image.

@@ -201,7 +201,8 @@ export default defineConfig(({ mode }) => {
       basicAuthPlugin(),
       react(),
       tailwindcss(),
-      // Backs the two pages under /__dev: the project map and the test runner.
+      // Backs the three pages under /__dev: the project map, the test runner and
+      // the usage report.
       // `apply: "serve"` inside, so this contributes nothing to a build — see the
       // note at the top of dev/plugin.ts.
       devToolsPlugin(),
