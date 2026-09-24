@@ -1,5 +1,5 @@
 // PreToolUse guard: refuses a shell command that would skip the husky hooks.
-// .husky/pre-push is the only local run of the unit suites, and sessions have
+// .husky/pre-push is the only local run of the API suite, and sessions have
 // committed past it more than once. Exit 2 blocks the call and hands stderr to
 // Claude as the reason.
 import { readFileSync } from "node:fs";
