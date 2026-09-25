@@ -1,4 +1,5 @@
 import { HANDOFF_TARGET, USER_ROLE, type HandoffTarget } from "@ticket/shared";
+import { ASSIGNABLE_USER } from "./assignable-user";
 import { prisma } from "./db";
 
 /**
@@ -169,7 +170,7 @@ export async function resolveHandoffUser(): Promise<AutomationUser | null> {
 
   if (settings.target === HANDOFF_TARGET.user && settings.user) {
     const live = await prisma.user.findFirst({
-      where: { id: settings.user.id, deletedAt: null, automated: false },
+      where: { ...ASSIGNABLE_USER, id: settings.user.id },
       select: ASSIGNEE_SELECT,
     });
     if (live) return live;

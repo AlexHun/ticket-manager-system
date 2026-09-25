@@ -55,7 +55,8 @@ outbox like anyone's. Each later slice adds one of those.
   fresh row is a first-time user (R12) with no code of its own.
 - **Every visitor has the same name, and is kept off every list of the
   people.** R11 asks that a visitor never be confused with a real user. So a
-  demo identity is never offered as an assignee (`ASSIGNABLE_USER`), never
+  demo identity is never offered as an assignee or named as the handoff target
+  (`ASSIGNABLE_USER`, one predicate for both), never
   listed on the Users roster, and never drawn as a row on the desk-wide
   Workload panel. The assistant gets the first treatment too
   ([ADR-0002](./0002-the-assistant-is-an-account-not-a-role.md)).

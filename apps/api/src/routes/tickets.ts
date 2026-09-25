@@ -32,6 +32,7 @@ import {
   type TicketWithAssignee,
   type UpdateTicketResponse,
 } from "@ticket/shared";
+import { ASSIGNABLE_USER } from "../assignable-user";
 import { prisma, type Prisma } from "../db";
 import {
   publishTicketChanges,
@@ -151,38 +152,6 @@ function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
 
   return where;
 }
-
-/**
- * Who a ticket may be handed to: every active user, whatever their role.
- * Admins work tickets alongside agents, so role doesn't narrow this.
- *
- * One definition, used both to build the picker and to validate what comes
- * back from it — otherwise the two drift and the UI offers a choice the API
- * refuses.
- *
- * Deleting a user is a soft delete that also bans them, so `deletedAt` already
- * covers "can't sign in". If a standalone ban ever lands, this is the predicate
- * to extend.
- *
- * The assistant is excluded, and that is the one narrowing here that is about
- * meaning rather than access. Assigning a ticket is asking somebody to deal
- * with it; the assistant deals with a ticket exactly once, unattended, at the
- * moment it arrives, and has no way to be asked again. It reaches the column
- * from the other side — `jobs/auto-reply-ticket.ts` files a ticket under it
- * after answering — so a ticket can *show* the assistant as its assignee while
- * nobody can *choose* it. Because this predicate builds the picker and validates
- * what comes back, both halves are settled by the one line.
- *
- * A demo visitor is excluded for a reason of its own (#319, R11). They can work
- * a ticket and even reassign one, but nobody may hand a ticket *to* one: every
- * visitor is called "Demo visitor", so a ticket filed under one would read as
- * a colleague's in every trail that names it. Same one line, same two halves.
- */
-const ASSIGNABLE_USER = {
-  deletedAt: null,
-  automated: false,
-  isAnonymous: false,
-} satisfies Prisma.UserWhereInput;
 
 /** The columns an assignee is described by — never role, ban state or the rest. */
 const ASSIGNEE_SELECT = { id: true, name: true, email: true } as const;

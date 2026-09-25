@@ -328,6 +328,21 @@ describe("PATCH /api/automation/handoff — who may be named", () => {
     expect(sent.body.error).toBe("Assignee not found");
     expect(await settingsRow()).toBeNull();
   });
+
+  test("refuses a demo visitor (#319)", async () => {
+    // Nobody may hand a ticket to one — the same rule `ASSIGNABLE_USER` keeps
+    // for the assignee picker, which is also what this page's picker draws on.
+    await seedColleagues("demoVisitor");
+
+    const sent = await patch({
+      target: HANDOFF_TARGET.user,
+      userId: COLLEAGUE.demoVisitor.id,
+    });
+
+    expect(sent.status).toBe(400);
+    expect(sent.body.error).toBe("Assignee not found");
+    expect(await settingsRow()).toBeNull();
+  });
 });
 
 describe("PATCH /api/automation/handoff — the audit trail", () => {

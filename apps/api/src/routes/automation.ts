@@ -13,6 +13,7 @@ import {
   resolveHandoffUser,
   SETTINGS_ID,
 } from "../automation";
+import { ASSIGNABLE_USER } from "../assignable-user";
 import { prisma } from "../db";
 import { requireAdmin, sessionOf } from "../middleware/auth";
 
@@ -101,7 +102,7 @@ automationRouter.patch(
     let candidate: { id: string; name: string } | null = null;
     if (userId !== null) {
       candidate = await prisma.user.findFirst({
-        where: { id: userId, deletedAt: null, automated: false },
+        where: { ...ASSIGNABLE_USER, id: userId },
         select: { id: true, name: true },
       });
       if (!candidate) {

@@ -32,7 +32,8 @@ describe("GET /api/demo", () => {
     expect(await status()).toEqual({ enabled: true });
   });
 
-  test.each([undefined, "false", "1", "TRUE"])(
+  // The same list `routes/users.test.ts` asks the sign-in refusal about.
+  test.each([undefined, "false", "1", "TRUE", "yes"])(
     "reports it off for %p",
     async (value) => {
       if (value === undefined) delete process.env.DEMO_MODE_ENABLED;

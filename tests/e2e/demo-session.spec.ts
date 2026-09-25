@@ -14,6 +14,7 @@ import {
   type TicketAssigneesResponse,
   type TicketStatsResponse,
 } from "@ticket/shared";
+import { DEMO_VISITOR_NAME } from "../../apps/api/src/demo/mode";
 import { ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { CREDENTIALS } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
@@ -33,7 +34,8 @@ import { API_URL } from "./helpers/env";
 /** The second, demo-off API — see `playwright.config.ts`. */
 const DEMO_OFF_API_URL = "http://localhost:3003";
 
-const DEMO_VISITOR = "Demo visitor";
+/** Imported rather than retyped: `demo/mode.ts` is import-free, like `routes.ts`. */
+const DEMO_VISITOR = DEMO_VISITOR_NAME;
 const DEMO_BUTTON = { name: "Use demo session" };
 
 /**
