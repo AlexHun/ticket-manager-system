@@ -3234,3 +3234,14 @@ export const CHANGELOG_LATEST_VERSION: string | null = CHANGELOG_ENTRIES.reduce<
 export interface ChangelogStatusResponse {
   shouldShow: boolean;
 }
+
+/**
+ * `GET /api/demo`: whether this deployment offers a demo session (#319).
+ *
+ * Public, because the login page asks before anyone has signed in. A presence
+ * boolean like `PipelineConfig`'s, never the env value behind it.
+ */
+export interface DemoStatusResponse {
+  /** `DEMO_MODE_ENABLED` is the literal `"true"`. Drives the login button. */
+  enabled: boolean;
+}

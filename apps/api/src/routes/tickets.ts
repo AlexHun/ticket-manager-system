@@ -172,10 +172,16 @@ function buildWhere(query: TicketsQuery): Prisma.TicketWhereInput {
  * after answering — so a ticket can *show* the assistant as its assignee while
  * nobody can *choose* it. Because this predicate builds the picker and validates
  * what comes back, both halves are settled by the one line.
+ *
+ * A demo visitor is excluded for a reason of its own (#319, R11). They can work
+ * a ticket and even reassign one, but nobody may hand a ticket *to* one: every
+ * visitor is called "Demo visitor", so a ticket filed under one would read as
+ * a colleague's in every trail that names it. Same one line, same two halves.
  */
 const ASSIGNABLE_USER = {
   deletedAt: null,
   automated: false,
+  isAnonymous: false,
 } satisfies Prisma.UserWhereInput;
 
 /** The columns an assignee is described by — never role, ban state or the rest. */

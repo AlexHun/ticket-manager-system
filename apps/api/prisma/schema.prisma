@@ -34,6 +34,19 @@ model User {
   /// ticket the machine finished, so the assignee column answers "who dealt with
   /// this" for every ticket instead of going blank on the automated ones.
   automated            Boolean                      @default(false)
+  /// This row is a demo visitor: minted by Better Auth's `anonymous` plugin on
+  /// one click of "Use demo session", with no password and no `Account` row.
+  ///
+  /// The plugin owns the name and writes it, which is why it is spelled the
+  /// plugin's way rather than this schema's. Written `true` only by
+  /// `/sign-in/anonymous`, and that endpoint answers only while
+  /// `DEMO_MODE_ENABLED` is `"true"` (`demo/mode.ts`). A demo identity keeps
+  /// the plugin's default `agent` role and is never `admin`: the admin plugin
+  /// serves its own `/api/auth/admin/*` endpoints to that role without passing
+  /// through `requireAdmin`. Like the assistant, it is never offered as an
+  /// assignee; unlike it, it is never listed on the roster or on the desk's
+  /// Workload panel either. See `docs/adr/0022`.
+  isAnonymous          Boolean                      @default(false)
   banned               Boolean?                     @default(false)
   banReason            String?
   banExpires           DateTime?
