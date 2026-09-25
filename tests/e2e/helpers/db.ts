@@ -40,6 +40,22 @@ export async function resetE2eUsers(): Promise<number> {
 }
 
 /**
+ * Hard-delete every demo identity (#319) — the rows `/sign-in/anonymous` mints,
+ * one per click of "Use demo session".
+ *
+ * Matched on `isAnonymous` rather than an address prefix, because the plugin
+ * picks the address. Nothing in production deletes them yet (the nightly reset
+ * is a later slice), so without this every run leaves one per click. Sessions
+ * cascade; anything a visitor authored or was named on is `SetNull`.
+ */
+export async function resetDemoUsers(): Promise<number> {
+  const { count } = await testDb.user.deleteMany({
+    where: { isAnonymous: true },
+  });
+  return count;
+}
+
+/**
  * Delete the outbox rows the suite caused.
  *
  * `OutboundEmail` carries no foreign key to `User` — deliberately, so the send

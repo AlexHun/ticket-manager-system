@@ -1,13 +1,19 @@
 import * as Sentry from "@sentry/bun";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { admin } from "better-auth/plugins";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { admin, anonymous } from "better-auth/plugins";
 import { USER_ROLE } from "@ticket/shared";
 // A leaf module rather than a constant declared here, and the note on it says
 // why: this file cannot be loaded by a unit test, so anything else that needs
 // the number cannot reach it through this file.
 import { RESET_TOKEN_TTL_SECONDS } from "./auth-tokens";
 import { prisma } from "./db";
+import {
+  DEMO_EMAIL_DOMAIN,
+  DEMO_VISITOR_NAME,
+  isDemoModeEnabled,
+} from "./demo/mode";
 import { enqueueEmail } from "./jobs/send-email";
 
 const parsedOrigins = process.env.TRUSTED_ORIGINS?.split(",")
@@ -180,7 +186,7 @@ export const auth = betterAuth({
       // handing out. Failures still surface — they just surface to us.
       void (async () => {
         /**
-         * Two accounts that must never receive one of these, checked here
+         * Three accounts that must never receive one of these, checked here
          * because this is the one place every door leads to.
          *
          * **The assistant.** `/request-password-reset` is public — that is what
@@ -195,12 +201,23 @@ export const auth = betterAuth({
          *
          * **A deleted colleague.** `deletedAt` is set on accounts that are gone;
          * mailing one an invitation would be inviting them back.
+         *
+         * **A demo visitor** (ADR-0022). Their placeholder address is in their
+         * own session, so a stranger could ask for a link to it. Following one
+         * would create the credential row ADR-0011 says only an account's
+         * owner may hold, on an account a stranger can already sign into.
          */
         const account = await prisma.user.findUnique({
           where: { id: user.id },
-          select: { automated: true, deletedAt: true },
+          select: { automated: true, deletedAt: true, isAnonymous: true },
         });
-        if (!account || account.automated || account.deletedAt !== null) return;
+        if (
+          !account ||
+          account.automated ||
+          account.isAnonymous ||
+          account.deletedAt !== null
+        )
+          return;
 
         const credential = await prisma.account.findFirst({
           where: { userId: user.id, providerId: "credential" },
@@ -270,6 +287,24 @@ export const auth = betterAuth({
   session: {
     cookieCache: { enabled: true, maxAge: 60 },
   },
+  /**
+   * The demo-mode switch, and the only thing that makes it a switch.
+   *
+   * Better Auth's `anonymous` plugin creates a user on every call to
+   * `/sign-in/anonymous` **regardless of `disableSignUp`** (read in the
+   * installed 1.6.13 source). So loading the plugin opens a public
+   * user-creation endpoint, and hiding the button would leave it open. This
+   * refuses the endpoint itself while demo mode is off. It reads the flag per
+   * request, so the refusal follows the environment the process actually has.
+   * See `docs/adr/0022-a-demo-session-is-an-anonymous-agent.md`.
+   */
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-in/anonymous" && !isDemoModeEnabled()) {
+        throw new APIError("FORBIDDEN", { message: "Demo mode is off" });
+      }
+    }),
+  },
   rateLimit: {
     enabled: isProduction,
     window: 60,
@@ -308,6 +343,30 @@ export const auth = betterAuth({
     admin({
       defaultRole: USER_ROLE.agent,
       adminRoles: [USER_ROLE.admin],
+    }),
+    /**
+     * "Use demo session": one click, a fresh identity, no password (#319,
+     * ADR-0022). Refused while demo mode is off by the `before` hook above.
+     *
+     * - **The role is the admin plugin's `defaultRole`, `agent`, and must
+     *   stay so.** That plugin serves `/api/auth/admin/*` (set role, remove
+     *   user, impersonate) to `adminRoles` without ever passing through
+     *   `requireAdmin`. So a demo identity holding `admin` would reach those
+     *   endpoints directly.
+     * - **Every visitor is called the same thing**, which is what the top bar
+     *   and every trail their changes leave will say (R11).
+     * - **The placeholder address sits under a reserved domain.** The plugin's
+     *   default is `temp@<id>.com`, a real top-level domain.
+     * - **Deleting is off.** The plugin ships `/delete-anonymous-user` and a
+     *   hook that deletes the demo identity when the browser signs in some
+     *   other way. Either would erase the identity a visitor's changes are
+     *   filed under, and the trails would then name nobody. Demo identities
+     *   are removed by this repo, not by a visitor.
+     */
+    anonymous({
+      generateName: () => DEMO_VISITOR_NAME,
+      emailDomainName: DEMO_EMAIL_DOMAIN,
+      disableDeleteAnonymousUser: true,
     }),
   ],
 });

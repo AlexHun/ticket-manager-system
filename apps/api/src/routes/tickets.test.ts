@@ -32,11 +32,12 @@
 import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type {
+  TicketAssigneesResponse,
   TicketDetailResponse,
   TicketUnreadResponse,
   UpdateTicketResponse,
 } from "@ticket/shared";
-import { seedTicket } from "../test/fixtures";
+import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
@@ -348,6 +349,41 @@ describe("PATCH /api/tickets/:id/assignee — assignmentSeenAt reset", () => {
     });
 
     const sent = await patch("/1/assignee", { assignedToId: "u_other" });
+
+    expect(sent.status).toBe(400);
+    expect(await assigneeOf(1)).toBeNull();
+  });
+});
+
+/* ── A demo visitor is never an assignee (#319, R11) ─────────────────────── */
+
+/**
+ * `ASSIGNABLE_USER` builds the picker and validates what comes back, so both
+ * halves are asserted: the visitor is not offered, and an id typed past the
+ * picker is refused. Either one alone would let a ticket be filed under
+ * "Demo visitor", which reads as a colleague in every trail that names it.
+ */
+describe("A demo visitor and the assignee picker", () => {
+  beforeEach(async () => {
+    await seedColleagues("demoVisitor");
+  });
+
+  test("is not offered", async () => {
+    const sent = await get<TicketAssigneesResponse>("/assignees");
+
+    expect(sent.status).toBe(200);
+    expect(sent.body.assignees.map((a) => a.id)).toEqual([
+      "u_agent",
+      "u_other",
+    ]);
+  });
+
+  test("is refused when named anyway", async () => {
+    await makeTicket({ id: 1 });
+
+    const sent = await patch("/1/assignee", {
+      assignedToId: COLLEAGUE.demoVisitor.id,
+    });
 
     expect(sent.status).toBe(400);
     expect(await assigneeOf(1)).toBeNull();

@@ -37,7 +37,8 @@
  * would silently be an `id` sort. Pinned dates make both a fact about the
  * rows. The order is `admin` (2025, the founder), then `agent`, `other`,
  * `otherAdmin`, and the assistant last; changing it changes what those two
- * assertions mean.
+ * assertions mean. The demo visitor comes after all of them and is never on
+ * the roster, so it moves neither assertion.
  *
  * ## The customer, and the ticket they opened
  *
@@ -125,6 +126,28 @@ export const COLLEAGUE = {
     role: USER_ROLE.agent,
     automated: true,
     createdAt: new Date("2026-05-01T00:00:00.000Z"),
+  },
+  /**
+   * A demo visitor (#319, ADR-0022) — not a colleague either, and here for the
+   * same reason the assistant is: the assignee picker and the roster each
+   * refuse it on one column, and the refusal is only real against the row.
+   *
+   * Shaped the way Better Auth's `anonymous` plugin mints one — the plugin's
+   * `agent` default, `isAnonymous`, a placeholder address under the reserved
+   * demo domain, and no `Account` row. The name and domain are re-typed rather
+   * than imported from `../demo/mode`, like the assistant's are. Nothing ties
+   * them to those constants, and nothing needs to: every refusal this row is
+   * for keys on `isAnonymous`. What the plugin really mints is asserted in
+   * `routes/users.test.ts`, against the constants.
+   */
+  demoVisitor: {
+    id: "u_demo",
+    name: "Demo visitor",
+    email: "temp-u_demo@demo.example.com",
+    emailVerified: false,
+    role: USER_ROLE.agent,
+    isAnonymous: true,
+    createdAt: new Date("2026-06-01T00:00:00.000Z"),
   },
 } as const;
 
