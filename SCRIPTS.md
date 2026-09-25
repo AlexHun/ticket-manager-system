@@ -51,11 +51,11 @@ Argument order is `bun run --filter <pkg> <script>` — `bun --filter <pkg> run
 | `db:seed`                  | **yes, once**       | sign-up is disabled, so this is the only way a first admin exists |
 | `db:seed:kb`               | **yes, once**       | without it the auto-reply half of the app is inert                |
 | `db:seed:tutorials`        | **yes, once**       | without it no page has a walkthrough — empty content just stays silent, not broken |
-| `db:seed:tickets`          | **never**           | 140 fake customers and their email threads                        |
+| `db:seed:tickets`          | **showcase only**   | 100 fake tickets — allowed while production has no real customer mail; see §4 below |
 | `db:migrate`               | **never**           | that is `migrate dev`; it diffs, prompts and can reset            |
 | `db:test:*`                | **never**           | reads `.env.test`, and `db:test:reset` wipes                      |
 
-Both production seeds run **inside the container**, not locally:
+Every production seed runs **inside the container**, not locally:
 
 ```bash
 railway ssh --service api -- 'cd /app/apps/api && bun run db:seed'
@@ -70,7 +70,7 @@ wrong shell, wrong Prisma client, and it needs the database publicly reachable.
 
 ## The seeds
 
-All three live in `apps/api/prisma/` and are run from `apps/api`. All three are
+All four live in `apps/api/prisma/` and are run from `apps/api`. All four are
 idempotent: re-running never duplicates a row, and none of them deletes anything
 unless you pass `--reset`.
 
@@ -79,7 +79,7 @@ unless you pass `--reset`.
 | `db:seed`           | `seed.ts`                 | admin, AI assistant, demo agent            | dev, test, prod |
 | `db:seed:kb`        | `seed-knowledge-base.ts`  | `knowledge_article` rows                   | dev, prod      |
 | `db:seed:tutorials` | `seed-tutorials.ts`       | `tutorial_content` rows (all 9 pages)      | dev, prod      |
-| `db:seed:tickets`   | `seed-tickets.ts`         | 140 demo tickets + their email threads     | dev only       |
+| `db:seed:tickets`   | `seed-tickets.ts`         | 100 demo tickets + their email threads     | dev, showcase prod |
 
 ### 1. `db:seed` — the accounts
 
@@ -162,24 +162,43 @@ nothing on screen says the walkthrough is missing. Skipping whole is what makes
 the re-run safe: the eight pages already in the table are left exactly as their
 admins last edited them.
 
-### 4. `db:seed:tickets` — demo tickets (dev only)
+### 4. `db:seed:tickets` — demo tickets (dev, and a showcase production)
 
 ```bash
 cd apps/api && bun run db:seed:tickets            # append what's missing
 cd apps/api && bun run db:seed:tickets --reset    # delete the demo rows first
 ```
 
-140 tickets across all four categories and every status except `Processing`,
-each with a 2–5 message email thread, dates spread over ~6 months. Requires
-`db:seed` to have run first — it assigns tickets to real users and throws
-`No users found` otherwise.
+100 tickets from 41 fake customers, across all four categories and every
+status except `Processing`, each with a 2–5 message email thread, dates spread
+over ~6 months. Requires `db:seed` to have run first — it assigns tickets to
+real users and throws `No users found` otherwise.
 
 Rows are matched on subject + customer email, so both modes leave anything that
 arrived through the webhook (or the `/pipeline` simulator) alone. The plain run
 also backfills threads onto demo tickets seeded before threads existed.
+Assignees are spread across every user that exists when a ticket is created, so
+an account made afterwards owns none until a `--reset`.
 
 Kept out of `db:seed` on purpose: that one also runs against the **test**
-database, where 140 extra rows would undermine the E2E fixtures.
+database, where 100 extra rows would undermine the E2E fixtures.
+
+**On production, only while it is a showcase.** This deployment has no real
+customers — it exists to be shown to HR and clients, and an empty desk demos
+badly — so the seed may run there, with `--reset` between demos to undo what a
+visitor clicked:
+
+```bash
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed:tickets'
+railway ssh --service api -- 'cd /app/apps/api && bun run db:seed:tickets --reset'
+```
+
+Every customer address is on `example.com`, `.org` or `.net`, reserved by RFC
+2606, so no reply to a demo ticket can reach a real person. The day production
+takes real customer mail this goes back to **never**: `--reset` would still
+spare the real tickets, but until it ran the demo rows would sit among them in
+every list, count and `/pipeline` figure. The demo login that goes with it is in
+`DEPLOYMENT.md` §5.
 
 ---
 
@@ -232,6 +251,8 @@ Covered in full by `DEPLOYMENT.md` §4–5. In command terms it is only this:
 3. `railway ssh … -- 'cd /app/apps/api && bun run db:seed:kb'`
 4. `railway ssh … -- 'cd /app/apps/api && bun run db:seed:tutorials'`
 5. Delete the two `SEED_ADMIN_*` variables.
+6. Showcase only: `railway ssh … -- 'cd /app/apps/api && bun run db:seed:tickets'`,
+   after the demo login exists (see `db:seed:tickets` above).
 
 Every deploy after the first is step 1 alone.
 
@@ -275,7 +296,7 @@ Every deploy after the first is step 1 alone.
 | `bun run db:deploy`        | `prisma migrate deploy` — applies pending migrations, nothing else. This is what production runs |
 | `bun run db:studio`        | Prisma Studio against whatever `.env` points at                |
 | `bun run db:seed`          | accounts — see above                                           |
-| `bun run db:seed:tickets`  | demo tickets — see above, dev only                             |
+| `bun run db:seed:tickets`  | demo tickets — see above; dev, and a showcase production       |
 | `bun run db:seed:kb`       | knowledge base — see above                                     |
 | `bun run db:seed:tutorials`| tutorial walkthroughs — see above                               |
 | `bun run db:test:migrate`  | `dotenv -e .env.test -- prisma migrate deploy`                 |
