@@ -211,6 +211,27 @@ a deploy that adds a page**, not only on the first one. An unseeded page is
 silent rather than broken: its tutorial has no steps, so it simply never pops
 up, and nothing on screen says it is missing.
 
+### A demo login, while this is a showcase
+
+This production has no real customers; it is shown to HR and clients, who get a
+login of their own rather than the admin's. `db:seed` cannot make it — the
+skipped demo agent above is exactly the published-password account a deployed
+database must not carry — so it is made the way any colleague is:
+
+1. Sign in as the admin, **Users** → add e.g. `demo@<your-domain>` with role
+   **agent**.
+2. **Outbox** → copy the invitation link from that row. With no mail provider
+   bound, that row is the only place the link exists.
+3. Open it in a private window and set the password.
+
+Keep it an agent. An admin can read the Outbox, and every unexpired invitation
+there is a working credential for somebody else's account.
+
+Then fill the desk with demo tickets, which production allows only while it is a
+showcase — the `db:seed:tickets` section of `SCRIPTS.md` has the condition
+and the between-demos `--reset`. Run it after the demo login exists, so the
+demo agent is among the assignees.
+
 ## 6. Postmark
 
 Point the inbound webhook at
@@ -284,6 +305,7 @@ there.
 railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed'
 railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:kb'
 railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:tutorials'
+railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:tickets'
 ```
 
 ---

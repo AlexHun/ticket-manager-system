@@ -1,5 +1,6 @@
 /**
- * Demo ticket seeder — dev database only.
+ * Demo ticket seeder — dev databases, and production only while it is a
+ * showcase with no real customer mail (see SCRIPTS.md).
  *
  * Deliberately NOT part of `prisma/seed.ts`: that file also runs against the
  * test database via `db:test:seed`, where 100 extra rows would undermine the
