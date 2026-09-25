@@ -43,6 +43,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
 mock.module("../middleware/auth", () => ({
   requireAuth: fakeGuard,
   requireAdmin: fakeGuard,
+  requireAdminView: fakeGuard,
   sessionOf: (res: Response) => res.locals.session,
 }));
 

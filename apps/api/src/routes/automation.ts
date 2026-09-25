@@ -15,13 +15,14 @@ import {
 } from "../automation";
 import { ASSIGNABLE_USER } from "../assignable-user";
 import { prisma } from "../db";
-import { requireAdmin, sessionOf } from "../middleware/auth";
+import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
  * Who picks up what the assistant could not finish.
  *
- * **Admin only, both routes.** Reading it says how the unattended half of the
- * desk is wired; writing it decides where a stream of tickets lands, which is a
+ * **Admin only, both routes** — except that a demo session may read (#320,
+ * `requireAdminView`). Reading it says how the unattended half of the desk is
+ * wired; writing it decides where a stream of tickets lands, which is a
  * staffing decision and not an agent's to make. The `/pipeline` screen this
  * hangs off is admin-only for the same reason and by the same mechanism.
  *
@@ -65,7 +66,7 @@ async function currentSettings(): Promise<AutomationSettings> {
 
 automationRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (_req: Request, res: Response<AutomationSettingsResponse>) => {
     res.json({ settings: await currentSettings() });
   },

@@ -41,7 +41,7 @@ import {
 import { AUTO_REPLY_QUEUE } from "../jobs/auto-reply-ticket";
 import { getBoss } from "../jobs/boss";
 import { CLASSIFY_QUEUE } from "../jobs/classify-ticket";
-import { requireAdmin, sessionOf } from "../middleware/auth";
+import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
  * The unattended pipeline, read back and fed.
@@ -377,7 +377,7 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
 
 pipelineRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (
     req: Request,
     res: Response<PipelineOverviewResponse | { error: string }>,
@@ -472,7 +472,7 @@ const ticketIdSchema = z.coerce.number().int().positive().max(MAX_TICKET_ID);
 
 pipelineRouter.get(
   "/runs/:id",
-  requireAdmin,
+  requireAdminView,
   async (
     req: Request,
     res: Response<PipelineRunResponse | { error: string }>,

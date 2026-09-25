@@ -38,7 +38,7 @@ A monorepo with two apps keeps types shared:
 - Every authenticated request → one DB read to resolve the session and load the user.
 - Logout / revocation: delete the `Session` row (or call `auth.api.signOut` / `revokeSession`). Effect is immediate across all devices.
 - Email/password is the only enabled provider, and sign-up is closed — an admin creates every account.
-- **Role-based access shipped.** Better Auth's `admin` plugin (`defaultRole: agent`, `adminRoles: [admin]`) plus a `Role` enum on `User`. `requireAuth` / `requireAdmin` in `apps/api/src/middleware/auth.ts` are the control; the SPA's `ProtectedRoute` / `AdminRoute` are UX and enforce nothing.
+- **Role-based access shipped.** Better Auth's `admin` plugin (`defaultRole: agent`, `adminRoles: [admin]`) plus a `Role` enum on `User`. `requireAuth` / `requireAdmin` / `requireAdminView` in `apps/api/src/middleware/auth.ts` are the control; the SPA's `ProtectedRoute` / `AdminRoute` / `AdminViewRoute` are UX and enforce nothing.
 - **There is no `active` column.** Deactivation is a soft delete: `deletedAt` is stamped, `banned` is set, and the account's sessions are deleted in the same transaction, so revocation is immediate. Roster and assignee queries filter on `deletedAt: null`. The row stays because tickets and revisions reference it.
 - **Email verification deliberately did not ship.** `emailVerified` is forced true at creation and never read to decide anything — the admin who typed the address already knows the colleague. See `docs/adr/0010-no-email-verification.md`.
 

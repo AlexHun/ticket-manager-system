@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { USER_ROLE, type TicketEvent } from "@ticket/shared";
+import { seesAdminScreens } from "../demo/admin-view";
 import { subscribe } from "../events/hub";
 import { requireAuth, sessionOf } from "../middleware/auth";
 
@@ -83,10 +84,12 @@ const MAX_BUFFERED_BYTES = 64 * 1024;
 
 eventsRouter.get("/", requireAuth, (req: Request, res: Response) => {
   // Frozen for the life of the connection, which is what `STREAM_MAX_MS` bounds.
-  const role =
-    sessionOf(res).user.role === USER_ROLE.admin
-      ? USER_ROLE.admin
-      : USER_ROLE.agent;
+  // A demo session joins the admin audience without holding the role: it reads
+  // the pipeline and eval runs those events are about (#320), and the audience
+  // is this repo's to decide, unlike the admin plugin's `adminRoles`.
+  const role = seesAdminScreens(sessionOf(res).user)
+    ? USER_ROLE.admin
+    : USER_ROLE.agent;
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",

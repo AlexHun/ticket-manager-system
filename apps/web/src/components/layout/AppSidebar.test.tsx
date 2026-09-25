@@ -29,14 +29,20 @@ const newFeatureSeenPost = apiStub.post("/api/new-features/:featureKey/seen");
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
-// Admin, not agent: the "new" badge tests below target the Activity nav item,
-// which is admin-only — the unread-badge tests above don't care about role
-// since Tickets has none, so widening this doesn't touch their assertions.
+// Admin by default, not agent: the "new" badge tests below target the Activity
+// nav item, which is admin-only — the unread-badge tests above don't care about
+// role since Tickets has none, so widening this doesn't touch their assertions.
+// The navigation tests swap the user per case.
+const ADMIN_USER = {
+  id: "admin-1",
+  name: "Ada Admin",
+  role: USER_ROLE.admin,
+  isAnonymous: false,
+};
+const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
+
 vi.mock("@/lib/auth-client", () => ({
-  useSession: () => ({
-    data: { user: { id: "admin-1", name: "Ada Admin", role: USER_ROLE.admin } },
-    isPending: false,
-  }),
+  useSession: () => ({ data: { user: session.user }, isPending: false }),
 }));
 
 function unread(tickets: TicketUnreadResponse["tickets"]) {
@@ -78,11 +84,63 @@ function renderSidebar() {
 // fail loudly in a test that has no opinion about it — which is the point, but
 // only once the quiet ones are declared.
 beforeEach(() => {
+  session.user = ADMIN_USER;
   apiStub.reset();
   unreadGet.mockResolvedValue(unread([]));
   viewsGet.mockResolvedValue(zeroViewCounts());
   newFeaturesGet.mockResolvedValue(newFeatureStatuses());
   newFeatureSeenPost.mockResolvedValue({ data: { ok: true } });
+});
+
+describe("AppSidebar navigation", () => {
+  const SHOWCASE = [
+    "Knowledge base",
+    "Pipeline",
+    "Evals",
+    "Activity",
+    "Tutorials",
+  ];
+  const PRIVATE = ["Users", "Outbox"];
+
+  function navLinks(): string[] {
+    return screen.getAllByRole("link").map((link) => link.textContent ?? "");
+  }
+
+  test("an admin sees every admin screen", () => {
+    renderSidebar();
+
+    for (const label of [...SHOWCASE, ...PRIVATE]) {
+      expect(navLinks()).toContain(label);
+    }
+  });
+
+  // R3: the showcase screens come from `isAnonymous`, and the role is agent.
+  test("a demo session sees the showcase screens and not Users or Outbox", () => {
+    session.user = {
+      id: "demo-1",
+      name: "Demo visitor",
+      role: USER_ROLE.agent,
+      isAnonymous: true,
+    };
+    renderSidebar();
+
+    for (const label of SHOWCASE) expect(navLinks()).toContain(label);
+    for (const label of PRIVATE) expect(navLinks()).not.toContain(label);
+  });
+
+  test("an agent sees none of them", () => {
+    session.user = {
+      id: "agent-1",
+      name: "Aaron Agent",
+      role: USER_ROLE.agent,
+      isAnonymous: false,
+    };
+    renderSidebar();
+
+    for (const label of [...SHOWCASE, ...PRIVATE]) {
+      expect(navLinks()).not.toContain(label);
+    }
+  });
 });
 
 describe("AppSidebar unread badge", () => {

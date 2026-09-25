@@ -48,8 +48,9 @@ outbox like anyone's. Each later slice adds one of those.
   `/api/auth/admin/*` endpoints (list and remove users, set roles, impersonate)
   to `adminRoles`, and none of them passes through `requireAdmin`. The demo keeps
   the plugin's `defaultRole`, `agent`. The admin screens R3 promises a visitor
-  will come from this repo's own guard, keyed on `isAnonymous`, never from the
-  role (plan slice 2).
+  come from this repo's own guard, `requireAdminView`, keyed on `isAnonymous`
+  and on reads only, never from the role
+  ([#320](https://github.com/AlexHun/ticket-manager-system/issues/320)).
 - **Every click is a new identity.** Walkthrough progress, the "new" badges, the
   changelog's seen flag and the dashboard layout are all stored per user, so a
   fresh row is a first-time user (R12) with no code of its own.

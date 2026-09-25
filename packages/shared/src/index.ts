@@ -781,9 +781,9 @@ export const TICKET_EVENT = {
   /**
    * An eval run started, finished, or failed.
    *
-   * Admin-only for exactly the reason `pipeline_changed` is: every route in
-   * `apps/api/src/routes/evals.ts` is `requireAdmin`, and an event that outran
-   * its own endpoint would be a leak no route guard could catch.
+   * Admin-only for exactly the reason `pipeline_changed` is: no route in
+   * `apps/api/src/routes/evals.ts` is open to an agent, and an event that
+   * outran its own endpoint would be a leak no route guard could catch.
    *
    * It is also the first kind that is **not about a ticket**, which is what
    * makes `TicketEvent` below a union rather than one interface. See the note
@@ -913,10 +913,11 @@ export type EventOfKind<K extends TicketEventKind> =
  * somebody says who is allowed to receive it. Getting that wrong is a disclosure
  * bug, and this is the only place it can be decided.
  *
- * `pipeline_changed` is `admin` because every route in `routes/pipeline.ts` is
- * `requireAdmin` — an event that outran its own endpoint would be a leak that no
- * route guard could catch. `eval_run_changed` is `admin` for exactly that
- * reason, against `routes/evals.ts`.
+ * `pipeline_changed` is `admin` because no route in `routes/pipeline.ts` is
+ * open to an agent — an event that outran its own endpoint would be a leak that
+ * no route guard could catch. `eval_run_changed` is `admin` for exactly that
+ * reason, against `routes/evals.ts`. A demo session is in the `admin` audience
+ * without holding the role, because it may read both (`requireAdminView`, #320).
  */
 export const EVENT_AUDIENCE: Record<TicketEventKind, UserRole | "all"> = {
   ticket_created: "all",

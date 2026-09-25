@@ -39,16 +39,17 @@ import {
   type StoredVerdict,
 } from "../evals/stored-verdict";
 import { ALL_EVAL_CASE_IDS } from "../jobs/eval-run";
-import { requireAdmin } from "../middleware/auth";
+import { requireAdmin, requireAdminView } from "../middleware/auth";
 
 /**
  * The eval harness, started and read back.
  *
- * **Admin only, on every route** (PRD R6), and this one is not a judgement call
- * about tidiness: a run spends money, and its results say how well the
- * unattended path is holding — which is the shape of the system's own defences,
- * not an agent's business. `AdminRoute` on the client is UX; these two guards
- * are the control.
+ * **Admin only** (PRD R6), and this one is not a judgement call about
+ * tidiness: a run spends money, and its results say how well the unattended
+ * path is holding — which is the shape of the system's own defences, not an
+ * agent's business. Starting a run is `requireAdmin`; reading them back is
+ * `requireAdminView`, which a demo session also passes (#320, R15).
+ * `AdminViewRoute` on the client is UX; these two guards are the control.
  *
  * The write half creates a row and returns. It does **not** wait for the run: a
  * full set is ~175 model calls and several minutes, so an admin holding an HTTP
@@ -604,7 +605,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
    */
   router.get(
     "/runs",
-    requireAdmin,
+    requireAdminView,
     async (
       req: Request,
       res: Response<EvalRunsResponse | { error: string }>,

@@ -11,7 +11,7 @@ import {
   type ActivityFeedResponse,
 } from "@ticket/shared";
 import { Prisma, prisma } from "../db";
-import { requireAdmin } from "../middleware/auth";
+import { requireAdminView } from "../middleware/auth";
 
 /**
  * `GET /api/activity` — the unified admin activity feed.
@@ -243,7 +243,7 @@ export const activityRouter = Router();
 
 activityRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (
     req: Request,
     res: Response<ActivityFeedResponse | { error: string }>,

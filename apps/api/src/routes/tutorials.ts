@@ -11,7 +11,12 @@ import {
   type TutorialStatusResponse,
 } from "@ticket/shared";
 import { prisma } from "../db";
-import { requireAdmin, requireAuth, sessionOf } from "../middleware/auth";
+import {
+  requireAdmin,
+  requireAdminView,
+  requireAuth,
+  sessionOf,
+} from "../middleware/auth";
 
 /**
  * The per-page tutorial: what an authenticated user is shown, and what an
@@ -20,8 +25,9 @@ import { requireAdmin, requireAuth, sessionOf } from "../middleware/auth";
  * Split by guard rather than by path, the way `tickets.ts` mixes
  * `requireAuth` reads with narrower writes: both roles open every page here,
  * so `GET /:pageKey` and `POST /:pageKey/seen` are `requireAuth`; only an
- * admin decides what a page's tutorial says, so `GET /` (the editor's list)
- * and `PUT /:pageKey` are `requireAdmin`.
+ * admin decides what a page's tutorial says, so `PUT /:pageKey` is
+ * `requireAdmin`. `GET /` (the editor's list) is `requireAdminView`: a demo
+ * session reads the editor and writes nothing (#320).
  */
 
 export const tutorialsRouter = Router();
@@ -64,7 +70,7 @@ function defaultContent(pageKey: TutorialPageKey): TutorialContent {
 
 tutorialsRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (_req: Request, res: Response<TutorialContentsResponse>) => {
     const rows = await prisma.tutorialContent.findMany();
     const byKey = new Map(rows.map((row) => [row.pageKey as string, row]));

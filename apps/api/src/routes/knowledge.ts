@@ -15,7 +15,7 @@ import {
   type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
 import { prisma } from "../db";
-import { requireAdmin, sessionOf } from "../middleware/auth";
+import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
  * Editing the knowledge base.
@@ -205,7 +205,7 @@ export const knowledgeRouter = Router();
  */
 knowledgeRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (_req: Request, res: Response<KnowledgeArticlesResponse>) => {
     const articles = await prisma.knowledgeArticle.findMany({
       select: ARTICLE_SELECT,
@@ -226,7 +226,7 @@ knowledgeRouter.get(
  */
 knowledgeRouter.get(
   "/:id/revisions",
-  requireAdmin,
+  requireAdminView,
   async (
     req: Request,
     res: Response<KnowledgeArticleRevisionsResponse | { error: string }>,
@@ -260,7 +260,7 @@ knowledgeRouter.get(
  */
 knowledgeRouter.get(
   "/pending-revisions",
-  requireAdmin,
+  requireAdminView,
   async (_req: Request, res: Response<KnowledgeArticleRevisionsResponse>) => {
     const revisions = await prisma.knowledgeArticleRevision.findMany({
       where: { status: KNOWLEDGE_REVISION_STATUS.pending },
