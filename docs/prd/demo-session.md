@@ -34,23 +34,23 @@ defaced knowledge base.
 
 ### In this pass
 
-| #   | Requirement                                                                                                                                                                                                                                                                                                      | Priority |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| R1  | While demo mode is on, the login page shows a "Use demo session" button; one click lands the visitor on the dashboard, signed in, without typing anything.                                                                                                                                                       | Must     |
-| R2  | While demo mode is off, the button is absent and every attempt to start a demo session is refused. Turning it off also ends every open demo session within 60 seconds.                                                                                                                                           | Must     |
-| R3  | A demo session sees every screen an admin sees except Users and Outbox. Reaching either by link or typed URL shows the not-found page, and the API refuses their data to a demo session.                                                                                                                         | Must     |
-| R4  | A demo session can do to a ticket everything an admin can: reply, change status and category, reassign, polish and summarise.                                                                                                                                                                                    | Must     |
-| R5  | Knowledge articles, automation settings, eval schedules and tutorial copy are viewable but not changeable in a demo session; their save controls are disabled with a note saying why.                                                                                                                            | Must     |
-| R6  | Every night, demo tickets return to their seeded state and any ticket a demo session created is removed; tickets that neither the seed nor a demo session created are untouched.                                                                                                                                 | Must     |
-| R7  | A demo session ends 2 hours after it started; the visitor lands back on the login page with the button still there.                                                                                                                                                                                              | Must     |
-| R8  | Once the estimated AI spend of all demo sessions reaches $1.00 in a UTC day, AI actions in demo sessions show "demo AI limit reached, resets at 00:00 UTC" and make no call; admins' AI features are unaffected.                                                                                                 | Must     |
-| R9  | One IP address can start at most 5 demo sessions per hour; the sixth attempt shows "try again later" and starts nothing.                                                                                                                                                                                         | Must     |
-| R10 | No outbound email created in a demo session is ever delivered, whether or not a mail provider is bound.                                                                                                                                                                                                          | Must     |
-| R11 | Every action a demo session takes is attributed in ticket history and the activity log to an identity visibly labelled as the demo, never to a real user.                                                                                                                                                        | Must     |
-| R12 | Every new demo session starts as a first-time user: walkthroughs, new-feature and changelog notices show as unseen and the dashboard has its default layout, whatever earlier demo sessions did.                                                                                                                 | Must     |
-| R13 | Throughout a demo session a banner says this is a demo, that data resets nightly, and offers "Exit demo".                                                                                                                                                                                                        | Should   |
-| R14 | The admin can see demo sessions started per week and how many of them opened at least one ticket.                                                                                                                                                                                                                | Should   |
-| R15 | Evals are read-only in a demo session: a visitor can browse runs and results but cannot start, cancel or reschedule a run. An eval run completes every night, so results are never more than 24 hours old; the nightly reset leaves eval runs and results untouched, and their spend is not demo spend under R8. | Must     |
+| #   | Requirement                                                                                                                                                                                                      | Priority |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| R1  | While demo mode is on, the login page shows a "Use demo session" button; one click lands the visitor on the dashboard, signed in, without typing anything.                                                       | Must     |
+| R2  | While demo mode is off, the button is absent and every attempt to start a demo session is refused. Turning it off also ends every open demo session within 60 seconds.                                           | Must     |
+| R3  | A demo session sees every screen an admin sees except Users and Outbox. Reaching either by link or typed URL shows the not-found page, and the API refuses their data to a demo session.                         | Must     |
+| R4  | A demo session can do to a ticket everything an admin can: reply, change status and category, reassign, polish and summarise.                                                                                    | Must     |
+| R5  | Knowledge articles, automation settings, eval schedules and tutorial copy are viewable but not changeable in a demo session; their save controls are disabled with a note saying why.                            | Must     |
+| R6  | Every night, demo tickets return to their seeded state and any ticket a demo session created is removed; tickets that neither the seed nor a demo session created are untouched.                                 | Must     |
+| R7  | A demo session ends 2 hours after it started; the visitor lands back on the login page with the button still there.                                                                                              | Must     |
+| R8  | Once the estimated AI spend of all demo sessions reaches $1.00 in a UTC day, AI actions in demo sessions show "demo AI limit reached, resets at 00:00 UTC" and make no call; admins' AI features are unaffected. | Must     |
+| R9  | One IP address can start at most 5 demo sessions per hour; the sixth attempt shows "try again later" and starts nothing.                                                                                         | Must     |
+| R10 | No outbound email created in a demo session is ever delivered, whether or not a mail provider is bound.                                                                                                          | Must     |
+| R11 | Every action a demo session takes is attributed in ticket history and the activity log to an identity visibly labelled as the demo, never to a real user.                                                        | Must     |
+| R12 | Every new demo session starts as a first-time user: walkthroughs, new-feature and changelog notices show as unseen and the dashboard has its default layout, whatever earlier demo sessions did.                 | Must     |
+| R13 | Throughout a demo session a banner says this is a demo, that data resets nightly, and offers "Exit demo".                                                                                                        | Should   |
+| R14 | The admin can see demo sessions started per week and how many of them opened at least one ticket.                                                                                                                | Should   |
+| R15 | Evals are read-only in a demo session: a visitor can browse every past run and its results but cannot start, cancel or reschedule a run. The nightly reset leaves eval runs and results untouched.               | Must     |
 
 ### Non-goals
 
@@ -85,13 +85,13 @@ defaced knowledge base.
 
 ## Risks
 
-| Risk                                                                            | Impact                                          | Mitigation                                                                           |
-| ------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
-| A visitor writes something offensive into a shared ticket before the next reset | The next visitor, possibly a recruiter, sees it | Nightly reset (R6); `db:seed:tickets --reset` by hand before a key demo              |
-| The nightly eval run is a fixed daily AI cost outside the $1 demo cap           | The owner pays it whether or not anyone visits  | Its size is set on the existing eval schedule; demo sessions cannot start runs (R15) |
-| Prompt injection through the pipeline simulator                                 | Model output misbehaves in front of a visitor   | Output checks unchanged (ADR-0004); nothing is delivered (R10)                       |
-| Demo mode left on after real customers arrive                                   | Strangers read real customer mail               | R2 off switch; showcase rule in `SCRIPTS.md`; the ADR names the trigger              |
-| Visitors' changes skew `/pipeline` and dashboard figures during the day         | Numbers look odd mid-day                        | Accepted: all tickets are demo data; reset nightly                                   |
+| Risk                                                                               | Impact                                          | Mitigation                                                                                       |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A visitor writes something offensive into a shared ticket before the next reset    | The next visitor, possibly a recruiter, sees it | Nightly reset (R6); `db:seed:tickets --reset` by hand before a key demo                          |
+| Eval results age, because scheduled runs are paused while production is a showcase | A visitor sees runs dated weeks back            | Accepted: the runs show what the harness measures; the owner can resume the schedule at any time |
+| Prompt injection through the pipeline simulator                                    | Model output misbehaves in front of a visitor   | Output checks unchanged (ADR-0004); nothing is delivered (R10)                                   |
+| Demo mode left on after real customers arrive                                      | Strangers read real customer mail               | R2 off switch; showcase rule in `SCRIPTS.md`; the ADR names the trigger                          |
+| Visitors' changes skew `/pipeline` and dashboard figures during the day            | Numbers look odd mid-day                        | Accepted: all tickets are demo data; reset nightly                                               |
 
 ## Open questions
 
@@ -102,7 +102,8 @@ defaced knowledge base.
       edits.
 - [x] **Decided:** 5 demo sessions per IP per hour (R9).
 - [x] **Decided:** the reset and the AI-cap day both roll over at 00:00 UTC.
-- [x] **Decided:** evals are read-only for demo sessions and run nightly on their
-      own; they are not reset (R15).
+- [x] **Decided:** evals are read-only for demo sessions, which see every past run
+      (R15). The owner pauses scheduled runs, so no new eval spend accrues; runs are
+      not reset.
 - [x] **Decided:** the cap counts only AI calls a demo session starts. Background
       classification of inbound mail is excluded; production receives none today.
