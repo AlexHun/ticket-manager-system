@@ -343,5 +343,15 @@
     "version": "0.1.134",
     "date": "2026-09-24",
     "title": "Address #314 review — strip gate credentials from spawned suites, stale docs"
+  },
+  {
+    "version": "0.1.136",
+    "date": "2026-09-25",
+    "title": "One-click demo session as a demo visitor"
+  },
+  {
+    "version": "0.1.136",
+    "date": "2026-09-25",
+    "title": "One assignable-user predicate for assignee and handoff"
   }
 ]
