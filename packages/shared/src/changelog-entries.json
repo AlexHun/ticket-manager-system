@@ -383,5 +383,15 @@
     "version": "0.1.139",
     "date": "2026-09-26",
     "title": "Review follow-ups for the demo start limit"
+  },
+  {
+    "version": "0.1.140",
+    "date": "2026-09-26",
+    "title": "Put the showcase back every night at 00:00 UTC"
+  },
+  {
+    "version": "0.1.140",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the nightly reset"
   }
 ]
