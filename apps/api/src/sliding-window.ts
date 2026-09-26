@@ -31,8 +31,9 @@ export type Admission =
  * A fresh window `windowMs` long, returned as its `admit(key, max)`: whether
  * `key` may have one more now, and if so, count it.
  *
- * A refusal is not counted, so a caller who keeps knocking is let back in a
- * window after their last admission, not a window after their last knock.
+ * A refusal is not counted, so a caller who keeps knocking is let back in as
+ * soon as the oldest admission still counted ages out of the window, not a
+ * window after their last knock.
  * `max` is asked per call so a caller may read its limit from the environment
  * each time.
  */

@@ -53,8 +53,8 @@ const admit = slidingWindow(HOUR_MS);
  * Whether `address` may start a demo session now, and if so, count it.
  *
  * A sliding hour from each start, and a refused attempt is not a start: a
- * visitor who keeps knocking is let back in an hour after the fifth start,
- * not an hour after the last knock.
+ * visitor who has spent five is let back in an hour after the first of them,
+ * however often they knocked in between.
  *
  * Counted before the plugin's handler runs, so a start the handler then turns
  * down still counts — the one it does turn down is a session that is already
