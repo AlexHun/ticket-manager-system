@@ -373,5 +373,15 @@
     "version": "0.1.138",
     "date": "2026-09-26",
     "title": "Review follow-ups for the demo AI budget"
+  },
+  {
+    "version": "0.1.139",
+    "date": "2026-09-26",
+    "title": "Five demo starts per address per hour"
+  },
+  {
+    "version": "0.1.139",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the demo start limit"
   }
 ]
