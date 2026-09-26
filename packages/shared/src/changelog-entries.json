@@ -393,5 +393,15 @@
     "version": "0.1.140",
     "date": "2026-09-26",
     "title": "Review follow-ups for the nightly reset"
+  },
+  {
+    "version": "0.1.141",
+    "date": "2026-09-26",
+    "title": "End a demo session after two hours or when demo mode goes off"
+  },
+  {
+    "version": "0.1.141",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the demo session lifetime"
   }
 ]
