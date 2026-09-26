@@ -1385,7 +1385,9 @@ describe("Demo start limit — auth.ts", () => {
     const visitor = freshAddress();
 
     for (let hop = 1; hop <= 5; hop += 1) {
-      await startDemoFrom(`${visitor}, 100.64.0.${hop}`);
+      expect((await startDemoFrom(`${visitor}, 100.64.0.${hop}`)).status).toBe(
+        200,
+      );
     }
 
     expect((await startDemoFrom(`${visitor}, 100.64.0.99`)).status).toBe(429);

@@ -305,10 +305,14 @@ export const auth = betterAuth({
    * production, so a rule written there could not be observed by any test —
    * and here rather than as Express middleware in front of the handler so the
    * address is Better Auth's own `getIp`, the one the `/sign-in/email` rule
-   * counts (`demo/start-limit.ts` says why that matters). An address it cannot
-   * resolve is not limited, as Better Auth's own limiter does: the only such
-   * request in production arrives without Railway's `X-Forwarded-For`, and
-   * counting those together would be one shared bucket for every one of them.
+   * counts (`demo/start-limit.ts` says why that matters). In production an
+   * address `getIp` cannot resolve — no `X-Forwarded-For`, or a leftmost entry
+   * that is not an address — is not limited, as Better Auth's own limiter
+   * does: counting those together would be one shared bucket for every one of
+   * them. Outside production `getIp` never answers null; it falls back to
+   * `127.0.0.1`, so every request that names no client shares that one
+   * bucket, which is why each demo start under test sends an address of its
+   * own.
    */
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
@@ -316,8 +320,10 @@ export const auth = betterAuth({
       if (!isDemoModeEnabled()) {
         throw new APIError("FORBIDDEN", { message: "Demo mode is off" });
       }
-      const from = ctx.request ?? ctx.headers;
-      const address = from ? getIp(from, ctx.context.options) : null;
+      const requestOrHeaders = ctx.request ?? ctx.headers;
+      const address = requestOrHeaders
+        ? getIp(requestOrHeaders, ctx.context.options)
+        : null;
       if (address && !admitDemoStart(address)) {
         throw new APIError("TOO_MANY_REQUESTS", {
           message: DEMO_START_LIMIT_MESSAGE,

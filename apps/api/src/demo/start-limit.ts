@@ -13,29 +13,23 @@
  * re-implemented here: a second opinion about which hop is the client is how
  * the two limits would come to disagree the day the pin moves.
  *
- * **In memory, per process**, like the per-user AI rate limit in
- * `routes/ai.ts` and Better Auth's own limiter: a restart forgets the hour and
- * two instances would allow five each. That is accepted. This guards a demo
- * against being farmed for identities, it is not protecting data, and a counter
- * shared across instances means Redis, which `tech-stack.md` defers. It is also
- * why nothing here is ever written down: no visitor's address outlives the
- * hour it is counted for.
+ * **In memory, per process**, through the `slidingWindow` the per-user AI
+ * rate limit in `routes/ai.ts` also counts with, as Better Auth's own limiter
+ * does: a restart forgets the hour and two instances would allow five each.
+ * That is accepted. This guards a demo against being farmed for identities, it
+ * is not protecting data. It is also why nothing here is ever written down: no
+ * visitor's address outlives the hour it is counted for.
  *
- * A leaf with no imports, like `mode.ts` beside it and for the same reason:
- * `auth.ts` is the module a unit test cannot always load, and nothing mocks a
- * module with no dependencies.
+ * Its one import is another leaf, so like `mode.ts` beside it nothing ever
+ * mocks it: `auth.ts` is the module a unit test cannot always load.
  */
+
+import { slidingWindow } from "../sliding-window";
 
 /** What the PRD promises, and what a missing or mistyped setting means. */
 const DEFAULT_DEMO_STARTS_PER_HOUR = 5;
 
 const HOUR_MS = 60 * 60 * 1000;
-
-/**
- * How often the map is swept, counted in admissions rather than in time — the
- * reasoning is `routes/ai.ts`'s: a timer would wake a server nobody is using.
- */
-const SWEEP_EVERY = 100;
 
 /**
  * The limit, read per call so a test can set it and so it follows the
@@ -52,19 +46,8 @@ function startsPerHour(): number {
     : DEFAULT_DEMO_STARTS_PER_HOUR;
 }
 
-/** Start times per address, oldest first. */
-const startsByAddress = new Map<string, number[]>();
-let admitted = 0;
-
-/** Forget addresses whose last start is an hour old, so the map cannot grow without bound. */
-function sweep(now: number): void {
-  for (const [address, times] of startsByAddress) {
-    const last = times[times.length - 1];
-    if (last === undefined || now - last >= HOUR_MS) {
-      startsByAddress.delete(address);
-    }
-  }
-}
+/** A sliding hour per address. */
+const admit = slidingWindow(HOUR_MS);
 
 /**
  * Whether `address` may start a demo session now, and if so, count it.
@@ -78,18 +61,6 @@ function sweep(now: number): void {
  * a demo asking for another, which the login page never sends, since a
  * signed-in visitor is taken straight past it.
  */
-export function admitDemoStart(address: string, now = Date.now()): boolean {
-  const recent = (startsByAddress.get(address) ?? []).filter(
-    (at) => now - at < HOUR_MS,
-  );
-
-  if (recent.length >= startsPerHour()) {
-    startsByAddress.set(address, recent);
-    return false;
-  }
-
-  recent.push(now);
-  startsByAddress.set(address, recent);
-  if (++admitted % SWEEP_EVERY === 0) sweep(now);
-  return true;
+export function admitDemoStart(address: string): boolean {
+  return admit(address, startsPerHour()).allowed;
 }
