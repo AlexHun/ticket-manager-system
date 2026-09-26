@@ -820,11 +820,16 @@ enum OutboundEmailKind {
 /// app runs in today. Collapsing the two would make a working deployment with no
 /// Postmark key look like a broken one, and would hide real failures among
 /// hundreds of rows that were never tried.
+///
+/// `withheld` is a demo session's email (#325, PRD R10): written so the thread
+/// and the outbox both show it, never queued, never handed to a worker, and
+/// refused by the outbox retry — whether or not a provider is configured.
 enum OutboundEmailStatus {
   queued
   sent
   failed
   undeliverable
+  withheld
 }
 
 /// The per-page walkthrough shown the first time (and again after a material

@@ -42,8 +42,9 @@
  * It is a copy of the real insert, so it pins *what a caller asked for*, not
  * that `jobs/send-email.ts` writes the columns it says it does. A column added
  * to the real insert leaves every caller of this asserting last month's row
- * shape, green. `jobs/send-email.ts` still has no test of its own; that is the
- * gap to close, and it is that module's to close.
+ * shape, green. `jobs/send-email.test.ts` (#325) covers the worker and
+ * `withholdEmail`, which both share `enqueueEmail`'s row builder, but not
+ * `enqueueEmail` itself — that is the gap left, and it is that module's to close.
  */
 import { mock } from "bun:test";
 import { prisma, type Prisma } from "./pg";

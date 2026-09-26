@@ -117,11 +117,30 @@ outboxRouter.get(
  * `sent` and `queued` are absent, and that absence is the safety property. A
  * retry on a `sent` row would put a second copy of somebody else's email in the
  * queue, and this is the one screen in the app where that is a click away.
+ * `withheld` is absent for the same reason (#325, PRD R10): it is a demo
+ * session's email, and nothing may ever send one — an admin included.
  */
 const RETRYABLE_STATUS = [
   OUTBOUND_EMAIL_STATUS.undeliverable,
   OUTBOUND_EMAIL_STATUS.failed,
 ] as const;
+
+type RefusedStatus = Exclude<
+  OutboundEmailStatus,
+  (typeof RETRYABLE_STATUS)[number]
+>;
+
+/**
+ * Why a row the retry did not match was refused. A `Record` over every status
+ * `RETRYABLE_STATUS` leaves out, so a new status is a compile error here until
+ * somebody says what a refusal of it tells the admin.
+ */
+const REFUSED_BECAUSE: Record<RefusedStatus, string> = {
+  [OUTBOUND_EMAIL_STATUS.sent]: "That email was already sent",
+  [OUTBOUND_EMAIL_STATUS.queued]: "That email is already queued to send",
+  [OUTBOUND_EMAIL_STATUS.withheld]:
+    "That email was written in a demo session, and a demo session's email is never sent",
+};
 
 /**
  * Send this one again.
@@ -197,10 +216,7 @@ outboxRouter.post(
       }
 
       res.status(409).json({
-        error:
-          existing.status === OUTBOUND_EMAIL_STATUS.sent
-            ? "That email was already sent"
-            : "That email is already queued to send",
+        error: REFUSED_BECAUSE[existing.status as RefusedStatus],
       });
       return;
     }

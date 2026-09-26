@@ -47,16 +47,18 @@ import {
  *
  * `queued` is absent and that absence is the safety property: a queued row has
  * a job coming for it, and deleting one would silently drop an email the app
- * has already promised to send. The three here are the states the worker
- * settles a row into, so nothing is scheduled to touch them again.
+ * has already promised to send. The first three are the states the worker
+ * settles a row into, so nothing is scheduled to touch them again; `withheld`
+ * is a demo session's email, settled from birth and never sent (#325).
  *
- * Listed rather than expressed as "not queued" so that a fifth status has to be
+ * Listed rather than expressed as "not queued" so that a sixth status has to be
  * classified by hand instead of being swept up by a negation nobody re-read.
  */
 const PRUNABLE_STATUS: readonly OutboundEmailStatus[] = [
   OUTBOUND_EMAIL_STATUS.sent,
   OUTBOUND_EMAIL_STATUS.failed,
   OUTBOUND_EMAIL_STATUS.undeliverable,
+  OUTBOUND_EMAIL_STATUS.withheld,
 ];
 
 /**

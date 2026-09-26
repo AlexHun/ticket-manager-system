@@ -108,17 +108,7 @@ export async function enqueueEmail(
 ): Promise<{ id: number }> {
   const write = async (client: Prisma.TransactionClient) => {
     const row = await client.outboundEmail.create({
-      data: {
-        kind: input.kind,
-        messageId: input.messageId ?? null,
-        toEmail: input.toEmail,
-        toName: input.toName ?? null,
-        subject: input.subject,
-        textBody: input.textBody,
-        emailMessageId: input.emailMessageId ?? null,
-        inReplyTo: input.inReplyTo ?? null,
-        references: input.references ?? [],
-      },
+      data: rowData(input),
       select: { id: true },
     });
 
@@ -133,6 +123,54 @@ export async function enqueueEmail(
 
   if (tx) return write(tx);
   return prisma.$transaction(write);
+}
+
+/** One addressed email as an outbox row, however it is going to be settled. */
+function rowData(input: EnqueueEmailInput) {
+  return {
+    kind: input.kind,
+    messageId: input.messageId ?? null,
+    toEmail: input.toEmail,
+    toName: input.toName ?? null,
+    subject: input.subject,
+    textBody: input.textBody,
+    emailMessageId: input.emailMessageId ?? null,
+    inReplyTo: input.inReplyTo ?? null,
+    references: input.references ?? [],
+  } satisfies Prisma.OutboundEmailUncheckedCreateInput;
+}
+
+/** What an admin reads on `/outbox` beside a withheld row. */
+export const WITHHELD_REASON =
+  "Written in a demo session, and a demo session's email is never sent";
+
+/**
+ * Write an email to the outbox that nothing will ever send (#325, PRD R10).
+ *
+ * A demo visitor's reply is on the thread like anyone's, and the row beside it
+ * is how an admin sees what was written. But the row is born `withheld`: never
+ * `queued`, so no job is enqueued and a stray one would find nothing to act on
+ * (`handle` below sends only a queued row), and absent from the retry's
+ * `RETRYABLE_STATUS`, so no admin can push it out either. That holds whether or
+ * not a provider is configured, which is the point — the day Postmark is bound
+ * is the day a demo reply would otherwise reach a customer.
+ *
+ * Its own function rather than a flag on `enqueueEmail`, so a caller cannot
+ * reach the queue by getting a boolean wrong, and so it survives the test stub
+ * in `../test/send-email`, which replaces `enqueueEmail` alone.
+ */
+export async function withholdEmail(
+  input: EnqueueEmailInput,
+  tx: Prisma.TransactionClient,
+): Promise<{ id: number }> {
+  return tx.outboundEmail.create({
+    data: {
+      ...rowData(input),
+      status: "withheld",
+      lastError: WITHHELD_REASON,
+    },
+    select: { id: true },
+  });
 }
 
 /**

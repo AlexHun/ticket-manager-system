@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { MESSAGE_DIRECTION, OUTBOUND_EMAIL_KIND } from "@ticket/shared";
 import { prisma, type Prisma } from "./db";
-import { enqueueEmail } from "./jobs/send-email";
+import { enqueueEmail, withholdEmail } from "./jobs/send-email";
+import type { Session } from "./middleware/auth";
 
 /**
  * Sending a reply from the desk.
@@ -154,7 +155,18 @@ export const REPLY_ORIGIN = {
 export type ReplyOrigin =
   | {
       kind: typeof REPLY_ORIGIN.agent;
-      author: { id: string; name: string; email: string };
+      /**
+       * `isAnonymous` is required, not optional, and it is the one field here
+       * that decides whether the reply is *sent*: a demo session's reply is
+       * written and never delivered (#325, PRD R10). Required so a new caller
+       * cannot leave it out and have a demo reply read as a colleague's.
+       */
+      author: {
+        id: string;
+        name: string;
+        email: string;
+        isAnonymous: Session["user"]["isAnonymous"];
+      };
       /**
        * The polished draft this reply was sent from, when there was one —
        * see `Message.polishedDraft`. Never set by the assistant branch:
@@ -224,6 +236,13 @@ function senderOf(origin: ReplyOrigin) {
     automated: true,
     citedArticleIds: origin.citedArticleIds,
   };
+}
+
+/** Whether a demo session wrote this. The assistant never is one. */
+function isDemo(origin: ReplyOrigin): boolean {
+  return (
+    origin.kind === REPLY_ORIGIN.agent && origin.author.isAnonymous === true
+  );
 }
 
 async function write(
@@ -302,7 +321,13 @@ async function write(
   // the header the customer's client threads on is the id `ingest.ts` will look
   // up when they answer. Two ids here would silently open a new ticket per
   // reply, and it is the sort of thing nobody notices until a thread splits.
-  await enqueueEmail(
+  //
+  // A demo visitor's reply gets the same row, born `withheld` and never
+  // enqueued (#325, PRD R10): the thread and the outbox both show what was
+  // written, and nothing ever sends it. Decided here rather than at the route
+  // because this is the one outbound path, so a second caller cannot miss it.
+  const record = isDemo(reply.origin) ? withholdEmail : enqueueEmail;
+  await record(
     {
       kind: OUTBOUND_EMAIL_KIND.reply,
       messageId: message.id,

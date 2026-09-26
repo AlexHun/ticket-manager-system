@@ -391,6 +391,27 @@ describe("PRUNE_OUTBOX_SWEEP", () => {
 
     expect(await outboxIds()).toEqual([queued]);
   });
+
+  test("a demo session's withheld reply ages out like any settled reply", async () => {
+    // Settled from birth and never coming back (#325), so it is kept on a
+    // reply's schedule rather than forever — a listed status, not one a
+    // negation happened to sweep up.
+    const oldWithheld = await outboundRow({
+      kind: OUTBOUND_EMAIL_KIND.reply,
+      status: OUTBOUND_EMAIL_STATUS.withheld,
+      createdAt: ago(100 * DAY),
+    });
+    const recentWithheld = await outboundRow({
+      kind: OUTBOUND_EMAIL_KIND.reply,
+      status: OUTBOUND_EMAIL_STATUS.withheld,
+      createdAt: ago(30 * DAY),
+    });
+
+    await PRUNE_OUTBOX_SWEEP.run();
+
+    expect(await outboxIds()).toEqual([recentWithheld]);
+    expect(await outboxIds()).not.toContain(oldWithheld);
+  });
 });
 
 /* ── The audit-trail sweep ───────────────────────────────────────────────── */
