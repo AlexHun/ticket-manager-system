@@ -21,7 +21,7 @@ import {
 } from "@ticket/shared";
 import { DEMO_VISITOR_NAME } from "../../apps/api/src/demo/mode";
 import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
-import { CREDENTIALS } from "./helpers/auth";
+import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
 import {
   DEMO_BUTTON,
@@ -127,6 +127,26 @@ test.afterAll(async () => {
 /** The walkthrough's dialog, named by its title. */
 function walkthrough(page: Page) {
   return page.getByRole("dialog", { name: WALKTHROUGH_TITLE });
+}
+
+/**
+ * The two figures on the Users page's demo card, as the admin reads them. The
+ * `<dt>` precedes its `<dd>` in the markup, so the card's text runs
+ * "Started12Opened a ticket5".
+ */
+async function demoFigures(
+  page: Page,
+): Promise<{ started: number; openedTicket: number }> {
+  await page.goto(ROUTE.users.path);
+  const card = page.getByRole("region", { name: "Demo sessions this week" });
+  await expect(card).toBeVisible();
+  const text = (await card.textContent()) ?? "";
+  const figure = (label: string) =>
+    Number(new RegExp(`${label}(\\d+)`).exec(text)?.[1] ?? Number.NaN);
+  return {
+    started: figure("Started"),
+    openedTicket: figure("Opened a ticket"),
+  };
 }
 
 /** Status of a request made with the demo's own cookie. */
@@ -555,6 +575,47 @@ test.describe("Demo session", () => {
       await expect(page.getByRole("button", DEMO_BUTTON)).toBeVisible();
     });
   }
+
+  /* ── Weekly usage figures for the admin (#327) ─────────────────────────── */
+
+  // R14. Read off the page before and after rather than asserted as totals:
+  // the tally outlives every demo identity by design, so the test database
+  // holds whatever earlier runs this week left. `workers: 1` is what makes
+  // "by one" exact.
+  test("a demo that opens a ticket moves the admin's weekly figures by one and one", async ({
+    page,
+    browser,
+  }) => {
+    const adminContext = await browser.newContext();
+    try {
+      const admin = await adminContext.newPage();
+      await signIn(admin, USER_ROLE.admin);
+      const before = await demoFigures(admin);
+
+      await startDemo(page);
+      await page.goto(ticketDetailPath(ticketId));
+      await expect(
+        page.getByRole("heading", { name: "Demo visitor works this one" }),
+      ).toBeVisible();
+      // Twice, so "once per session, not once per ticket" is on the line too.
+      await page.reload();
+      await expect(
+        page.getByRole("heading", { name: "Demo visitor works this one" }),
+      ).toBeVisible();
+
+      // Only admins: the demo's own cookie is refused the figures.
+      expect(await statusOf(page.request, "get", "/api/demo/usage")).toBe(403);
+
+      await expect
+        .poll(() => demoFigures(admin))
+        .toEqual({
+          started: before.started + 1,
+          openedTicket: before.openedTicket + 1,
+        });
+    } finally {
+      await adminContext.close();
+    }
+  });
 
   // R12, and it comes free: each click is a new identity, and walkthrough
   // progress is stored per user.

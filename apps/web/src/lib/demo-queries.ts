@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import type { DemoStatusResponse } from "@ticket/shared";
+import type { DemoStatusResponse, DemoUsageResponse } from "@ticket/shared";
 import { api } from "@/lib/api";
 
 export const demoKeys = {
   status: ["demo", "status"] as const,
+  usage: ["demo", "usage"] as const,
 };
 
 /**
@@ -23,5 +24,23 @@ export function useDemoStatus() {
       });
       return data.enabled;
     },
+  });
+}
+
+/**
+ * This week's demo figures (#327, PRD R14). Admin-only on the API, which
+ * refuses a demo session; `enabled` is whether demo mode is on, so a
+ * deployment that never offers the demo never asks.
+ */
+export function useDemoUsage(enabled: boolean) {
+  return useQuery({
+    queryKey: demoKeys.usage,
+    queryFn: async ({ signal }) => {
+      const { data } = await api.get<DemoUsageResponse>("/api/demo/usage", {
+        signal,
+      });
+      return data;
+    },
+    enabled,
   });
 }

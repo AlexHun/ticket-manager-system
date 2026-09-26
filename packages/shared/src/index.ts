@@ -3251,6 +3251,23 @@ export interface DemoStatusResponse {
 }
 
 /**
+ * `GET /api/demo/usage`: this week's demo figures, for an admin only (#327,
+ * PRD R14). A demo session is refused them, like the Users page they sit on.
+ *
+ * The week runs from 00:00 UTC on Monday, the same clock as the nightly reset.
+ * A session counts toward the week it started in, so `openedTicket` is always
+ * a share of `started`.
+ */
+export interface DemoUsageResponse {
+  /** ISO timestamp: 00:00 UTC on this week's Monday. */
+  weekStartsAt: string;
+  /** Demo sessions started since then. */
+  started: number;
+  /** How many of those opened at least one ticket. */
+  openedTicket: number;
+}
+
+/**
  * Why a demo session's polish or summarise was answered without a model call:
  * every demo session together has spent the day's AI budget (#321, PRD R8).
  *

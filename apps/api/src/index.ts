@@ -22,6 +22,7 @@ import { automationRouter } from "./routes/automation";
 import { changelogRouter } from "./routes/changelog";
 import { dashboardLayoutRouter } from "./routes/dashboard-layout";
 import { demoRouter } from "./routes/demo";
+import { demoUsageRouter } from "./routes/demo-usage";
 import { createEvalScheduleRouter } from "./routes/eval-schedule";
 import { createEvalsRouter } from "./routes/evals";
 import { eventsRouter } from "./routes/events";
@@ -129,6 +130,9 @@ app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
 // Public, like health above: the login page asks it before anyone has signed
 // in, to decide whether to offer "Use demo session". One boolean — see the
 // router. The sign-in it advertises is refused on the same switch in auth.ts.
+// Unlike the public router below it, admin-only: the week's demo figures,
+// refused to a demo session (#327).
+app.use("/api/demo/usage", demoUsageRouter);
 app.use("/api/demo", demoRouter);
 
 app.use("/api/tickets", ticketsRouter);

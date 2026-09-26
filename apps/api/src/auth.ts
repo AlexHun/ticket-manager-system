@@ -17,6 +17,7 @@ import {
 } from "./demo/mode";
 import { demoSessionEndsAt, demoSessionRefused } from "./demo/session-lifetime";
 import { admitDemoStart } from "./demo/start-limit";
+import { recordDemoStart } from "./demo/usage";
 import { enqueueEmail } from "./jobs/send-email";
 
 const parsedOrigins = process.env.TRUSTED_ORIGINS?.split(",")
@@ -367,6 +368,23 @@ export const auth = betterAuth({
               expiresAt: demoSessionEndsAt(new Date(current.session.createdAt)),
             },
           };
+        },
+      },
+    },
+    /**
+     * A demo start is tallied for the admin's weekly figures (#327, PRD R14).
+     * On the user rather than the session because each click mints a fresh
+     * identity with exactly one session, and the user's `isAnonymous` is what
+     * this hook is handed: the plugin writes it in the same `createUser`.
+     */
+    user: {
+      create: {
+        after: async (user) => {
+          // Typed as the core user plus an index signature, as in the session
+          // `update` above; the tally test in `routes/users.test.ts` fails if
+          // the plugin ever renames the field.
+          if (user.isAnonymous !== true) return;
+          await recordDemoStart(user.id, user.createdAt);
         },
       },
     },
