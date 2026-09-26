@@ -1277,6 +1277,27 @@ describe("Demo sign-in — auth.ts", () => {
     expect(rows[0]?.id).not.toBe(rows[1]?.id);
   });
 
+  // PRD R14: the admin's weekly figure is a count of these, one per start.
+  test("every start is tallied for the admin's weekly figures", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+
+    await startDemo();
+    await startDemo();
+
+    const rows = await demoRows();
+    const tally = await prisma.demoSessionTally.findMany({
+      orderBy: { startedAt: "asc" },
+    });
+    expect(tally.map((row) => row.userId)).toEqual(rows.map((row) => row.id));
+    expect(tally.every((row) => !row.openedTicket)).toBe(true);
+  });
+
+  test("a refused start is not tallied", async () => {
+    await startDemo();
+
+    expect(await prisma.demoSessionTally.count()).toBe(0);
+  });
+
   test("its session is refused by Better Auth's own admin endpoints", async () => {
     process.env.DEMO_MODE_ENABLED = "true";
     const cookie = cookieHeader(await startDemo());

@@ -34,6 +34,7 @@ import {
 } from "@ticket/shared";
 import { ASSIGNABLE_USER } from "../assignable-user";
 import { prisma, type Prisma } from "../db";
+import { markDemoTicketOpened } from "../demo/usage";
 import {
   publishTicketChanges,
   publishTicketMessage,
@@ -486,17 +487,22 @@ ticketsRouter.get(
     // ticket at once both match-or-miss without a preceding read to race on.
     // Guarded on the row already in hand so the common case — reading a
     // ticket that isn't yours — costs no write at all.
-    const viewerId = sessionOf(res).user.id;
-    if (ticket.assignedToId === viewerId) {
+    const viewer = sessionOf(res).user;
+    if (ticket.assignedToId === viewer.id) {
       await prisma.ticket.updateMany({
         where: {
           id: ticket.id,
-          assignedToId: viewerId,
+          assignedToId: viewer.id,
           assignmentSeenAt: null,
         },
         data: { assignmentSeenAt: new Date() },
       });
     }
+
+    // "A demo session opened a ticket" is likewise what this request means
+    // (#327, PRD R14), with the same conditional write: only the first open
+    // of the session matches.
+    if (viewer.isAnonymous) await markDemoTicketOpened(viewer.id);
 
     res.json({
       ticket: {

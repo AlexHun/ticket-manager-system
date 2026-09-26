@@ -24,11 +24,14 @@ import {
   USER_ROLE,
   type TicketStatus,
 } from "@ticket/shared";
+import type { DemoUsage } from "../demo/usage";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 
 const { DEMO_RESET_SWEEP } = await import("./demo-reset");
 const { seedShowcase } = await import("../demo/showcase");
+const { demoUsageThisWeek, markDemoTicketOpened, recordDemoStart } =
+  await import("../demo/usage");
 
 /** Seeding and resetting a hundred tickets is slow on PGLite under Windows. */
 const NIGHT_TIMEOUT_MS = 60_000;
@@ -93,6 +96,7 @@ describe("DEMO_RESET_SWEEP, one night", () => {
   let taken: { subject: string; customerEmail: string };
   let ingestedId: number;
   let evalsBefore: Awaited<ReturnType<typeof evalRows>>;
+  let usageBefore: DemoUsage;
 
   beforeAll(async () => {
     process.env.DEMO_MODE_ENABLED = "true";
@@ -135,8 +139,24 @@ describe("DEMO_RESET_SWEEP, one night", () => {
     });
     evalsBefore = await evalRows();
 
+    // The week's demo figures (#327): all three visitors started, and the one
+    // whose identity the night deletes opened a ticket.
+    for (const id of [LIVE, EXPIRED, SIGNED_OUT]) {
+      await recordDemoStart(id, new Date(now));
+    }
+    await markDemoTicketOpened(EXPIRED);
+    usageBefore = await demoUsageThisWeek();
+
     await DEMO_RESET_SWEEP.run();
   }, NIGHT_TIMEOUT_MS);
+
+  test("the admin's weekly demo figures are unchanged", async () => {
+    expect(usageBefore).toMatchObject({
+      sessionsStarted: 3,
+      sessionsOpenedTicket: 1,
+    });
+    expect(await demoUsageThisWeek()).toEqual(usageBefore);
+  });
 
   test("a seeded ticket a demo closed is back to its seeded status", async () => {
     expect((await bySeedKey(closed)).status).toBe(TICKET_STATUS.Open);

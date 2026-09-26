@@ -37,6 +37,7 @@ import type {
   TicketUnreadResponse,
   UpdateTicketResponse,
 } from "@ticket/shared";
+import { demoUsageThisWeek, recordDemoStart } from "../demo/usage";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
@@ -272,6 +273,41 @@ describe("GET /api/tickets/:id — assignmentSeenAt side effect", () => {
   test("404s on a ticket that does not exist", async () => {
     const sent = await get<TicketDetailResponse>("/999");
     expect(sent.status).toBe(404);
+  });
+});
+
+/* ── GET /:id tallies a demo session's first ticket ─────────────────────── */
+
+describe("GET /api/tickets/:id — the demo usage tally (#327, PRD R14)", () => {
+  const DEMO = { ...OTHER, "x-test-demo": "true" };
+
+  beforeEach(async () => {
+    await makeTicket({ id: 1 });
+    await makeTicket({ id: 2 });
+  });
+
+  test("a demo session opening tickets counts once toward the week's figure", async () => {
+    await recordDemoStart("u_other", NOW);
+
+    await get<TicketDetailResponse>("/1", DEMO);
+    await get<TicketDetailResponse>("/2", DEMO);
+
+    expect(await demoUsageThisWeek(NOW)).toMatchObject({
+      sessionsStarted: 1,
+      sessionsOpenedTicket: 1,
+    });
+  });
+
+  test("a colleague opening a ticket is not a demo session", async () => {
+    // A tally row under a colleague's id is not a state production reaches;
+    // it is here so that "not counted" means the route asked nothing, rather
+    // than that it had no row to flag.
+    await recordDemoStart("u_other", NOW);
+
+    const sent = await get<TicketDetailResponse>("/1", OTHER);
+
+    expect(sent.status).toBe(200);
+    expect((await demoUsageThisWeek(NOW)).sessionsOpenedTicket).toBe(0);
   });
 });
 

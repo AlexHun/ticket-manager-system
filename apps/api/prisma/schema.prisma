@@ -1352,3 +1352,25 @@ model DemoAiSpend {
 
   @@map("demo_ai_spend")
 }
+
+/// One row per demo session, for the admin's weekly usage figures (#327, PRD
+/// R14): when it started and whether it opened a ticket.
+///
+/// **Keyed by the demo identity's id, and deliberately not related to it.**
+/// The nightly reset (`jobs/demo-reset.ts`) deletes finished demo identities,
+/// and a foreign key would take their tally with them (cascade) or refuse the
+/// delete (restrict). So `userId` is a copy, and the row outlives the user it
+/// names. Each click on "Use demo session" mints a fresh identity with one
+/// session, so an identity and a session are the same count.
+///
+/// Written by `demo/usage.ts` only: created by the `user.create.after` hook in
+/// `auth.ts`, flagged by `GET /api/tickets/:id`. Nothing prunes it; a row is a
+/// few dozen bytes and a visitor is a click.
+model DemoSessionTally {
+  userId       String   @id
+  startedAt    DateTime @default(now())
+  openedTicket Boolean  @default(false)
+
+  @@index([startedAt])
+  @@map("demo_session_tally")
+}

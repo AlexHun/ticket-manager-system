@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import { DAY_MS, utcDay } from "./utc-day";
 
 /**
  * The demo sessions' daily AI budget (#321, PRD R8).
@@ -25,8 +26,6 @@ import { prisma } from "../db";
 /** What the PRD promises the owner, and what a missing or mistyped setting means. */
 const DEFAULT_DEMO_AI_DAILY_USD = 1;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
  * The limit, read per call so a test can set it and so it follows the
  * environment the process actually has. Zero is a legal setting (demo AI off
@@ -38,11 +37,6 @@ function dailyLimitUsd(): number {
   if (!raw) return DEFAULT_DEMO_AI_DAILY_USD;
   const usd = Number(raw);
   return Number.isFinite(usd) && usd >= 0 ? usd : DEFAULT_DEMO_AI_DAILY_USD;
-}
-
-/** 00:00 UTC on the day `now` falls in, which is the row's key. */
-function utcDay(now: Date): Date {
-  return new Date(Math.floor(now.getTime() / DAY_MS) * DAY_MS);
 }
 
 /** Whether today's demo AI is spent. At the limit counts as spent. */

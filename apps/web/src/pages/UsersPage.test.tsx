@@ -19,6 +19,9 @@ const usersGet = apiStub.get("/api/users");
 const usersPost = apiStub.post("/api/users");
 const invitePost = apiStub.post("/api/users/:id/invite");
 const userDelete = apiStub.delete("/api/users/:id");
+// The demo usage card asks first whether demo mode is on; off here, so it
+// draws nothing and asks nothing more. `DemoUsageCard.test.tsx` covers it.
+const demoStatusGet = apiStub.get("/api/demo");
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({
@@ -91,6 +94,7 @@ async function openNewUserDialog() {
 
 beforeEach(() => {
   apiStub.reset();
+  demoStatusGet.mockResolvedValue({ data: { enabled: false } });
 });
 
 afterEach(() => {

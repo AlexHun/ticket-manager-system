@@ -6,6 +6,7 @@ import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useUsersQuery } from "@/lib/use-users";
 import { DeleteUserDialog } from "./DeleteUserDialog";
+import { DemoUsageCard } from "./DemoUsageCard";
 import { UserDialog } from "./UserDialog";
 import { UsersTable, UsersTableSkeleton } from "./UsersTable";
 
@@ -56,6 +57,8 @@ export function UsersPage() {
             <Button onClick={openCreate}>New user</Button>
           </div>
         </PageHeader>
+
+        <DemoUsageCard />
 
         {isPending && <UsersTableSkeleton />}
 
