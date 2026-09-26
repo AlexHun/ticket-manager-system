@@ -19,6 +19,7 @@ import {
   useNewFeatureStatus,
 } from "@/lib/new-feature-queries";
 import { ROUTE } from "@/lib/routes";
+import { viewerOf } from "@/lib/viewer";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { LogoMark } from "./Logo";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
@@ -27,7 +28,7 @@ import { SidebarViews } from "./SidebarViews";
 export function AppSidebar() {
   const { data: session } = useSession();
   const { pathname } = useLocation();
-  const items = navItemsFor(session?.user.role);
+  const items = navItemsFor(viewerOf(session?.user));
   // Unread count for the "Tickets" row only — see the badge below for why
   // this is a different question from any of `SidebarViews`'s counts.
   const { data: unread } = useUnreadAssignments();

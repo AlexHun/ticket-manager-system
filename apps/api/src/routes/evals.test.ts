@@ -58,6 +58,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
       id: req.header("x-test-user") ?? "admin-1",
       name: "Adele Admin",
       email: "admin@example.com",
+      isAnonymous: req.header("x-test-demo") === "true",
     },
     session: { id: "sess-1" },
   };
@@ -67,6 +68,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
 mock.module("../middleware/auth", () => ({
   requireAuth: fakeGuard,
   requireAdmin: fakeGuard,
+  requireAdminView: fakeGuard,
   sessionOf: (res: Response) => res.locals.session,
 }));
 

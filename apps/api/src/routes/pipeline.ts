@@ -41,7 +41,7 @@ import {
 import { AUTO_REPLY_QUEUE } from "../jobs/auto-reply-ticket";
 import { getBoss } from "../jobs/boss";
 import { CLASSIFY_QUEUE } from "../jobs/classify-ticket";
-import { requireAdmin, sessionOf } from "../middleware/auth";
+import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
  * The unattended pipeline, read back and fed.
@@ -52,8 +52,9 @@ import { requireAdmin, sessionOf } from "../middleware/auth";
  * already write. The write half posts an email through the real ingestion code
  * so somebody can watch one ticket take it.
  *
- * **Admin only, on every route.** The read half exposes the shape of the queue
- * and how the safety checks are firing; the write half creates tickets and
+ * **Admin only, on every route**, apart from a demo session, which may make the
+ * two reads (`requireAdminView`, #320). The read half exposes the shape of the
+ * queue and how the safety checks are firing; the write half creates tickets and
  * spends model calls. Neither is an agent's business, and the second is a
  * capability nothing in this API had before — until now the only ways into the
  * ticket table were the webhook's shared secret and the seed script.
@@ -377,7 +378,7 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
 
 pipelineRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (
     req: Request,
     res: Response<PipelineOverviewResponse | { error: string }>,
@@ -472,7 +473,7 @@ const ticketIdSchema = z.coerce.number().int().positive().max(MAX_TICKET_ID);
 
 pipelineRouter.get(
   "/runs/:id",
-  requireAdmin,
+  requireAdminView,
   async (
     req: Request,
     res: Response<PipelineRunResponse | { error: string }>,

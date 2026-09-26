@@ -23,7 +23,8 @@ import { KnowledgeArticleDialog } from "./KnowledgeArticleDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
 
 /**
- * The knowledge base, at `/knowledge` — admin only.
+ * The knowledge base, at `/knowledge` — admin only, and a demo session may
+ * look (#320).
  *
  * This is the screen the auto-reply's whole safety story rests on. Six checks
  * sit between a model and a customer, and five of them are checks on what the

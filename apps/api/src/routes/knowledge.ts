@@ -15,13 +15,15 @@ import {
   type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
 import { prisma } from "../db";
-import { requireAdmin, sessionOf } from "../middleware/auth";
+import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
  * Editing the knowledge base.
  *
- * **Admin only, on every route, without exception.** Whoever can write here can
- * write into the system prompt of the one feature in this product that sends
+ * **Admin only, on every write, without exception.** The three reads are
+ * `requireAdminView`, which a demo session also passes (#320): it may look at
+ * the articles and never change one. Whoever can write here can write into the
+ * system prompt of the one feature in this product that sends
  * prose to customers with nobody reading it first. That is a strictly larger
  * power than editing a document, and the frontend's route guard is UX — this
  * middleware is the control.
@@ -205,7 +207,7 @@ export const knowledgeRouter = Router();
  */
 knowledgeRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (_req: Request, res: Response<KnowledgeArticlesResponse>) => {
     const articles = await prisma.knowledgeArticle.findMany({
       select: ARTICLE_SELECT,
@@ -226,7 +228,7 @@ knowledgeRouter.get(
  */
 knowledgeRouter.get(
   "/:id/revisions",
-  requireAdmin,
+  requireAdminView,
   async (
     req: Request,
     res: Response<KnowledgeArticleRevisionsResponse | { error: string }>,
@@ -260,7 +262,7 @@ knowledgeRouter.get(
  */
 knowledgeRouter.get(
   "/pending-revisions",
-  requireAdmin,
+  requireAdminView,
   async (_req: Request, res: Response<KnowledgeArticleRevisionsResponse>) => {
     const revisions = await prisma.knowledgeArticleRevision.findMany({
       where: { status: KNOWLEDGE_REVISION_STATUS.pending },

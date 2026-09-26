@@ -148,11 +148,13 @@ app.use("/api/dashboard-layout", dashboardLayoutRouter);
 // requireAuth throughout, same reasoning as the two routers above: content
 // lives in the code-level CHANGELOG_ENTRIES registry, not admin-editable here.
 app.use("/api/changelog", changelogRouter);
-// Admin-only on every route inside it, which is worth knowing here as well as
+// Admin-only on every write inside it, which is worth knowing here as well as
 // there: this one edits the prompt of the feature that writes to customers
-// unattended.
+// unattended. Its reads are `requireAdminView`, open to a demo session (#320),
+// as are the reads of the pipeline, evals, eval-schedule, automation and
+// activity routers below. The outbox's are not.
 app.use("/api/knowledge-articles", knowledgeRouter);
-// Admin-only throughout, like the one above it, and for two reasons rather than
+// Admin-only to write, like the one above it, and for two reasons rather than
 // one: it reads back how the unattended pipeline is behaving, and — behind
 // `PIPELINE_SIMULATOR_ENABLED` — it can post an email into it.
 app.use("/api/pipeline", pipelineRouter);
@@ -173,16 +175,17 @@ app.use(
   "/api/evals",
   createEvalScheduleRouter({ evalConfigured: isAiConfigured }),
 );
-// Admin-only as well: it decides where every ticket the assistant hands back
-// lands, which is a staffing decision rather than something an agent picks.
+// Admin-only to write as well: it decides where every ticket the assistant
+// hands back lands, which is a staffing decision rather than something an
+// agent picks.
 app.use("/api/automation", automationRouter);
 
 // Admin-only, and read-only. On a deployment with no mail provider this is how
 // an invitation actually reaches somebody — see the note in routes/outbox.ts.
 app.use("/api/outbox", outboxRouter);
 
-// Admin-only, and read-only: a query-time merge of the trails above plus
-// sent replies. Registered last among these because it reads across all of
+// Admin-only apart from a demo session (#320), and read-only: a query-time
+// merge of the trails above plus sent replies. Registered last among these because it reads across all of
 // them rather than owning a domain of its own.
 app.use("/api/activity", activityRouter);
 

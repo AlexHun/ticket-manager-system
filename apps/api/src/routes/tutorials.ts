@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { tutorialContentSchema } from "@ticket/core";
 import {
+  TUTORIAL_PAGE_KEY,
   TUTORIAL_PAGE_KEYS,
   TUTORIAL_PAGE_VERSIONS,
   type TutorialContent,
@@ -11,7 +12,12 @@ import {
   type TutorialStatusResponse,
 } from "@ticket/shared";
 import { prisma } from "../db";
-import { requireAdmin, requireAuth, sessionOf } from "../middleware/auth";
+import {
+  requireAdmin,
+  requireAdminView,
+  requireAuth,
+  sessionOf,
+} from "../middleware/auth";
 
 /**
  * The per-page tutorial: what an authenticated user is shown, and what an
@@ -20,8 +26,9 @@ import { requireAdmin, requireAuth, sessionOf } from "../middleware/auth";
  * Split by guard rather than by path, the way `tickets.ts` mixes
  * `requireAuth` reads with narrower writes: both roles open every page here,
  * so `GET /:pageKey` and `POST /:pageKey/seen` are `requireAuth`; only an
- * admin decides what a page's tutorial says, so `GET /` (the editor's list)
- * and `PUT /:pageKey` are `requireAdmin`.
+ * admin decides what a page's tutorial says, so `PUT /:pageKey` is
+ * `requireAdmin`. `GET /` (the editor's list) is `requireAdminView`: a demo
+ * session reads the editor and writes nothing (#320).
  */
 
 export const tutorialsRouter = Router();
@@ -62,15 +69,28 @@ function defaultContent(pageKey: TutorialPageKey): TutorialContent {
   };
 }
 
+/**
+ * The two pages a demo session never sees (#320, R3), so the editor list leaves
+ * their rows out rather than naming them and showing their copy.
+ */
+const DEMO_HIDDEN_PAGES: ReadonlySet<TutorialPageKey> = new Set([
+  TUTORIAL_PAGE_KEY.users,
+  TUTORIAL_PAGE_KEY.outbox,
+]);
+
 tutorialsRouter.get(
   "/",
-  requireAdmin,
+  requireAdminView,
   async (_req: Request, res: Response<TutorialContentsResponse>) => {
     const rows = await prisma.tutorialContent.findMany();
     const byKey = new Map(rows.map((row) => [row.pageKey as string, row]));
+    const demo = sessionOf(res).user.isAnonymous === true;
+    const pageKeys = demo
+      ? TUTORIAL_PAGE_KEYS.filter((pageKey) => !DEMO_HIDDEN_PAGES.has(pageKey))
+      : TUTORIAL_PAGE_KEYS;
 
     res.json({
-      tutorials: TUTORIAL_PAGE_KEYS.map((pageKey) => {
+      tutorials: pageKeys.map((pageKey) => {
         const row = byKey.get(pageKey);
         return row ? toWireContent(row) : defaultContent(pageKey);
       }),

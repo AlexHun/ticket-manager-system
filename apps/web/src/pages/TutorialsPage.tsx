@@ -13,9 +13,11 @@ import { TUTORIAL_PAGE_LABEL } from "@/lib/tutorial-labels";
 import { TutorialEditorDialog } from "./TutorialEditorDialog";
 
 /**
- * The tutorial editor, at `/tutorials` — admin only.
+ * The tutorial editor, at `/tutorials` — admin only, and a demo session may
+ * look (#320).
  *
- * One row per page, fixed at nine and always all nine: unlike the knowledge
+ * One row per page, fixed at nine and always all nine (seven for a demo
+ * session, which never sees Users or Outbox — the API leaves them out): unlike the knowledge
  * base, nothing here is created or archived, only written. A page with no
  * content yet is not missing from the list, it is a row that says so — the
  * same "steps.length === 0" state `GET /api/tutorials/:pageKey` reads as

@@ -28,7 +28,8 @@ _Avoid_: bot, AI user, system user, robot
 **Demo visitor**:
 A stranger looking around the showcase through a demo session. Signed in as an
 agent with no password, a new identity on every visit, and never offered as
-anyone a ticket could be handed to.
+anyone a ticket could be handed to. Sees the admin screens except Users and
+Outbox, and may look at them but not change them.
 _Avoid_: guest, anonymous user, trial user, demo account
 
 ### The desk

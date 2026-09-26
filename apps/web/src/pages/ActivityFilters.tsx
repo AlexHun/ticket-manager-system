@@ -20,8 +20,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ACTIVITY_ENTITY_LABEL } from "@/lib/activity-feed-labels";
+import { useSession } from "@/lib/auth-client";
 import { useIsMobile } from "@/lib/use-mobile";
 import { useUsersQuery } from "@/lib/use-users";
+import { viewerOf } from "@/lib/viewer";
 
 /** `""` is "no filter", in our own state — same convention `FilterSelect` uses. */
 const ANY = "";
@@ -132,6 +134,10 @@ interface ActivityFiltersProps {
 
 export function ActivityFilters({ filters, onChange }: ActivityFiltersProps) {
   const active = hasActiveActivityFilters(filters);
+  // The roster behind the Actor filter is `GET /api/users`, which a demo
+  // session is refused (#320, R3), so a demo is not offered the filter at all.
+  const { data: session } = useSession();
+  const demo = viewerOf(session?.user).demo;
 
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -140,10 +146,12 @@ export function ActivityFilters({ filters, onChange }: ActivityFiltersProps) {
         onChange={(entityType) => onChange({ ...filters, entityType })}
       />
 
-      <ActorFilter
-        value={filters.actorId}
-        onChange={(actorId) => onChange({ ...filters, actorId })}
-      />
+      {!demo && (
+        <ActorFilter
+          value={filters.actorId}
+          onChange={(actorId) => onChange({ ...filters, actorId })}
+        />
+      )}
 
       <ActivityDateRangeField
         value={{ from: filters.from, to: filters.to }}

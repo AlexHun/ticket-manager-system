@@ -6,7 +6,11 @@ import {
 } from "@playwright/test";
 import {
   DASHBOARD_SCOPE,
+  EVAL_CORPUS,
+  EVAL_RUN_STATUS,
+  EVAL_THRESHOLD,
   MESSAGE_DIRECTION,
+  PIPELINE_OUTCOME,
   TICKET_CATEGORY,
   TICKET_STATUS,
   TUTORIAL_PAGE_KEY,
@@ -15,7 +19,7 @@ import {
   type TicketStatsResponse,
 } from "@ticket/shared";
 import { DEMO_VISITOR_NAME } from "../../apps/api/src/demo/mode";
-import { ticketDetailPath } from "../../apps/web/src/lib/routes";
+import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { CREDENTIALS } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
 import { API_URL } from "./helpers/env";
@@ -118,9 +122,9 @@ test.afterAll(async () => {
 
 /** Click the button and wait to land on the dashboard. */
 async function startDemo(page: Page): Promise<void> {
-  await page.goto("/login");
+  await page.goto(ROUTE.login.path);
   await page.getByRole("button", DEMO_BUTTON).click();
-  await page.waitForURL("/");
+  await page.waitForURL(ROUTE.dashboard.path);
 }
 
 /** The walkthrough's dialog, named by its title. */
@@ -148,9 +152,8 @@ test.describe("Demo session", () => {
     // Scoped to the top bar for the reason auth.spec.ts gives: `/` is the
     // dashboard, and names appear on it as workload rows too.
     await expect(page.locator("header").getByText(DEMO_VISITOR)).toBeVisible();
-    // Agent screens: the demo is an `agent`, never `admin` (ADR-0022).
-    await expect(page.getByRole("link", { name: "Users" })).toHaveCount(0);
-
+    // The demo is an `agent`, never `admin` (ADR-0022); the admin screens it
+    // does see come from `isAnonymous`, asserted below.
     const visitor = await testDb.user.findFirstOrThrow({
       where: { isAnonymous: true },
       select: { role: true, name: true },
@@ -283,6 +286,165 @@ test.describe("Demo session", () => {
     expect(
       await statusOf(page.request, "get", "/api/auth/admin/list-users"),
     ).toBe(403);
+  });
+
+  /* ── Admin screens without the admin role (#320) ───────────────────────── */
+
+  // R3. Read on `/tickets` rather than on the dashboard it lands on: the
+  // dashboard's walkthrough is a modal, which hides the sidebar from the
+  // accessibility tree, and a hidden "Users" link would pass the absence
+  // check for the wrong reason.
+  test("the navigation shows the showcase screens, and not Users or Outbox", async ({
+    page,
+  }) => {
+    await startDemo(page);
+    await page.goto(ROUTE.tickets.path);
+
+    for (const name of [
+      "Pipeline",
+      "Knowledge base",
+      "Evals",
+      "Activity",
+      "Tutorials",
+    ]) {
+      await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+    }
+    // Tickets first, so the two absences below are read off a sidebar that
+    // has demonstrably rendered.
+    await expect(
+      page.getByRole("link", { name: "Tickets", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Users", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Outbox", exact: true }),
+    ).toHaveCount(0);
+  });
+
+  // R3: not found, rather than a redirect that would say the page exists.
+  test("a typed URL to Users or Outbox shows the not-found page", async ({
+    page,
+  }) => {
+    await startDemo(page);
+
+    for (const path of [ROUTE.users.path, ROUTE.outbox.path]) {
+      await page.goto(path);
+      await expect(
+        page.getByRole("heading", { name: "No such page" }),
+      ).toBeVisible();
+      await expect(page).toHaveURL(path);
+    }
+  });
+
+  // The API is the control; the two tests above are UX. Every showcase read
+  // opens to the demo's cookie, Users and Outbox do not, and a write on a
+  // showcase screen stays shut — `requireAdminView` passes a demo on reads only.
+  test("the API opens the showcase reads and refuses Users, Outbox and writes", async ({
+    page,
+  }) => {
+    await startDemo(page);
+
+    for (const path of [
+      "/api/pipeline",
+      "/api/automation",
+      "/api/knowledge-articles",
+      "/api/knowledge-articles/pending-revisions",
+      "/api/evals/runs",
+      "/api/evals/schedule",
+      "/api/activity",
+      "/api/tutorials",
+    ]) {
+      expect(await statusOf(page.request, "get", path), path).toBe(200);
+    }
+
+    expect(await statusOf(page.request, "get", "/api/users")).toBe(403);
+    expect(await statusOf(page.request, "get", "/api/outbox")).toBe(403);
+    expect(
+      await statusOf(page.request, "post", "/api/users", {
+        name: "Demo invitee",
+        email: "e2e-demo-invitee@example.com",
+        role: USER_ROLE.admin,
+      }),
+    ).toBe(403);
+    expect(await statusOf(page.request, "post", "/api/outbox/1/retry")).toBe(
+      403,
+    );
+    expect(
+      await statusOf(page.request, "post", "/api/knowledge-articles", {
+        title: "Demo edit",
+        body: "Should never land.",
+      }),
+    ).toBe(403);
+    expect(await statusOf(page.request, "post", "/api/evals/runs", {})).toBe(
+      403,
+    );
+  });
+
+  // R15: a past run and the cases it answered, on the page itself. Seeded,
+  // like `evals.spec.ts`'s cards, and dated just ahead of now for that file's
+  // reason: the database is never wiped, and an older row could sink below
+  // the page's run limit.
+  test("can browse a past eval run and its results", async ({ page }) => {
+    const run = await testDb.evalRun.create({
+      data: {
+        corpus: EVAL_CORPUS.frozen,
+        status: EVAL_RUN_STATUS.completed,
+        startedAt: new Date(Date.now() + 1000),
+        finishedAt: new Date(Date.now() + 1000),
+        repeats: 5,
+        attempts: 5,
+        matches: 5,
+        classifiedRepeats: 5,
+        classifyMatches: 5,
+        thresholds: EVAL_THRESHOLD,
+        results: {
+          create: {
+            caseId: "demo-visible-case",
+            caseName: "Case a demo visitor can read",
+            adversarial: false,
+            expectedOutcome: PIPELINE_OUTCOME.resolved,
+            expectedCategory: TICKET_CATEGORY.General,
+            repeats: 5,
+            matches: 5,
+            classifiedRepeats: 5,
+            classifyMatches: 5,
+            verdicts: Array.from({ length: 5 }, () => ({
+              outcome: PIPELINE_OUTCOME.resolved,
+              decline: null,
+              matched: true,
+              caught: false,
+              escaped: false,
+              category: TICKET_CATEGORY.General,
+            })),
+          },
+        },
+      },
+    });
+
+    try {
+      await startDemo(page);
+      await page.goto(ROUTE.evals.path);
+
+      const card = page.locator('[data-slot="card"]', {
+        has: page.getByText(`Run ${run.id}`, { exact: true }),
+      });
+      const runToggle = card.getByRole("button", { name: `Run ${run.id}` });
+      await expect(runToggle).toBeVisible();
+      if ((await runToggle.getAttribute("aria-expanded")) === "false") {
+        await runToggle.click();
+      }
+      await card
+        .getByRole("button", { name: "1 case, 5 repeats each" })
+        .click();
+      await expect(
+        card
+          .getByRole("region", { name: `Cases answered by run ${run.id}` })
+          .getByText("Case a demo visitor can read"),
+      ).toBeVisible();
+    } finally {
+      await testDb.evalRun.delete({ where: { id: run.id } });
+    }
   });
 
   // R12, and it comes free: each click is a new identity, and walkthrough

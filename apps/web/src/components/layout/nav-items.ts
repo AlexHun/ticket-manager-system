@@ -21,6 +21,7 @@ import {
   type UserRole,
 } from "@ticket/shared";
 import { ROUTE, type RoutePath } from "@/lib/routes";
+import type { Viewer } from "@/lib/viewer";
 
 export interface NavItem {
   /**
@@ -39,6 +40,11 @@ export interface NavItem {
   end?: boolean;
   /** Absent means everyone sees it. */
   role?: UserRole;
+  /**
+   * A demo session sees this admin item too (#320, R3), without holding the
+   * role. Users and Outbox leave it off: a visitor never sees either.
+   */
+  demo?: true;
   /**
    * The "new" badge (issue #45): present means `AppSidebar` renders a dot on
    * this item while `NEW_FEATURE_VERSIONS[newFeatureKey]` in `@ticket/shared`
@@ -65,6 +71,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     to: ROUTE.knowledge.path,
     label: "Knowledge base",
+    demo: true,
     icon: BookTextIcon,
     role: USER_ROLE.admin,
   },
@@ -77,18 +84,21 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     to: ROUTE.pipeline.path,
     label: "Pipeline",
+    demo: true,
     icon: WorkflowIcon,
     role: USER_ROLE.admin,
   },
   {
     to: ROUTE.evals.path,
     label: "Evals",
+    demo: true,
     icon: GaugeIcon,
     role: USER_ROLE.admin,
   },
   {
     to: ROUTE.activity.path,
     label: "Activity",
+    demo: true,
     icon: HistoryIcon,
     role: USER_ROLE.admin,
     newFeatureKey: NEW_FEATURE_KEY.activityPage,
@@ -96,6 +106,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     to: ROUTE.tutorials.path,
     label: "Tutorials",
+    demo: true,
     icon: GraduationCapIcon,
     role: USER_ROLE.admin,
   },
@@ -144,9 +155,14 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
   );
 }
 
-/** Nav items this role is allowed to see. `undefined` role sees only the public ones. */
-export function navItemsFor(role: UserRole | undefined): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.role || item.role === role);
+/** Nav items this viewer is allowed to see. An `undefined` role sees only the public ones. */
+export function navItemsFor(viewer: Viewer): NavItem[] {
+  return NAV_ITEMS.filter(
+    (item) =>
+      !item.role ||
+      item.role === viewer.role ||
+      (viewer.demo && item.demo === true),
+  );
 }
 
 /**

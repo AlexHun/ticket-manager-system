@@ -474,6 +474,8 @@ function extractEndpoints(
 }
 
 function guardIn(window: string, file: string): Guard {
+  // Before `requireAdmin`, which is a prefix of it.
+  if (window.includes("requireAdminView")) return GUARD.adminView;
   if (window.includes("requireAdmin")) return GUARD.admin;
   if (window.includes("requireAuth")) return GUARD.auth;
   // A webhook is authenticated by a shared secret inside the handler rather than

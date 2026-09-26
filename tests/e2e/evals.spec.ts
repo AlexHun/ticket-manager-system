@@ -374,7 +374,7 @@ test.describe("the evals screen", () => {
 
   test("an agent has no way in, by link or by address", async ({ page }) => {
     // The guard half matters as much as the happy path: this route spends
-    // money. `AdminRoute` is UX and `requireAdmin` is the control — both are
+    // money. `AdminViewRoute` is UX and the API guards are the control — both are
     // asserted, here and below.
     await signIn(page, "agent");
 
@@ -385,7 +385,7 @@ test.describe("the evals screen", () => {
   });
 });
 
-test.describe("the evals API refuses everyone but an admin", () => {
+test.describe("the evals API refuses an agent and a signed-out caller", () => {
   test("unauthenticated -> 401", async ({ request }) => {
     // Better Auth's session check runs before the role check, so this is 401
     // rather than 403.
