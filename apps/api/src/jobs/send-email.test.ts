@@ -15,7 +15,7 @@
  * module.
  */
 
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { OUTBOUND_EMAIL_KIND, OUTBOUND_EMAIL_STATUS } from "@ticket/shared";
 import {
   COLLEAGUE,
@@ -39,6 +39,12 @@ beforeEach(async () => {
   await resetDb();
   await seedColleagues("demoVisitor");
   await seedTicket({ id: TICKET_ID });
+});
+
+// Unbound again after every test, so no file loaded after this one inherits a
+// provider it never asked for (see `../test/mail-transport`).
+afterEach(() => {
+  mailTransportStub.bound = false;
 });
 
 describe("with a mail provider bound", () => {

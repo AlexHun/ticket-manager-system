@@ -13,7 +13,7 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { OUTBOUND_EMAIL_KIND, OUTBOUND_EMAIL_STATUS } from "@ticket/shared";
 import { CUSTOMER } from "../test/fixtures";
 import { mailTransportStub, stubMailTransport } from "../test/mail-transport";
@@ -54,6 +54,12 @@ beforeEach(async () => {
   mailTransportStub.bound = true;
   mailTransportStub.delivered.length = 0;
   await resetDb();
+});
+
+// Unbound again after every test, so no file loaded after this one inherits a
+// provider it never asked for (see `../test/mail-transport`).
+afterEach(() => {
+  mailTransportStub.bound = false;
 });
 
 /* ── Retry ───────────────────────────────────────────────────────────────── */

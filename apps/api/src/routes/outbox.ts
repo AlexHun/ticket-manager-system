@@ -8,7 +8,7 @@ import {
   type OutboxListResponse,
 } from "@ticket/shared";
 import { prisma } from "../db";
-import { requeueEmail } from "../jobs/send-email";
+import { requeueEmail, WITHHELD_REASON } from "../jobs/send-email";
 import { isMailConfigured } from "../mail/transport";
 import { requireAdmin } from "../middleware/auth";
 
@@ -125,10 +125,12 @@ const RETRYABLE_STATUS = [
   OUTBOUND_EMAIL_STATUS.failed,
 ] as const;
 
-type RefusedStatus = Exclude<
-  OutboundEmailStatus,
-  (typeof RETRYABLE_STATUS)[number]
->;
+type RetryableStatus = (typeof RETRYABLE_STATUS)[number];
+type RefusedStatus = Exclude<OutboundEmailStatus, RetryableStatus>;
+
+function isRetryable(status: OutboundEmailStatus): status is RetryableStatus {
+  return (RETRYABLE_STATUS as readonly OutboundEmailStatus[]).includes(status);
+}
 
 /**
  * Why a row the retry did not match was refused. A `Record` over every status
@@ -138,8 +140,8 @@ type RefusedStatus = Exclude<
 const REFUSED_BECAUSE: Record<RefusedStatus, string> = {
   [OUTBOUND_EMAIL_STATUS.sent]: "That email was already sent",
   [OUTBOUND_EMAIL_STATUS.queued]: "That email is already queued to send",
-  [OUTBOUND_EMAIL_STATUS.withheld]:
-    "That email was written in a demo session, and a demo session's email is never sent",
+  // The sentence the row itself carries on `/outbox`, so the two cannot drift.
+  [OUTBOUND_EMAIL_STATUS.withheld]: WITHHELD_REASON,
 };
 
 /**
@@ -215,8 +217,13 @@ outboxRouter.post(
         return;
       }
 
+      // Retryable again by now only if the worker settled it between the two
+      // queries — a row that was queued when the `updateMany` ran.
+      const status = existing.status as OutboundEmailStatus;
       res.status(409).json({
-        error: REFUSED_BECAUSE[existing.status as RefusedStatus],
+        error: isRetryable(status)
+          ? "That email changed while this retry ran — try again"
+          : REFUSED_BECAUSE[status],
       });
       return;
     }

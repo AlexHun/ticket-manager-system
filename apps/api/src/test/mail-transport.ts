@@ -15,8 +15,10 @@
  * exports delegate to the genuine module — because every file that loads after
  * this one links against it too (testing-api.md).
  *
- * **Reset it in the same `beforeEach` that calls `resetDb()`** in every file
- * that installs it: `bound = false` and `delivered.length = 0`.
+ * **Reset it in every file that installs it**: set `bound` and clear
+ * `delivered` in the same `beforeEach` that calls `resetDb()`, and put
+ * `bound = false` back in an `afterEach`, so a file loaded after one that
+ * binds a provider never inherits it.
  */
 import { mock } from "bun:test";
 import type { OutgoingEmail } from "../mail/transport";

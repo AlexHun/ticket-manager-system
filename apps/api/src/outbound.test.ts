@@ -268,6 +268,20 @@ describe("a demo visitor's reply is never sent (R10)", () => {
     expect(email.lastError).toContain("demo");
   });
 
+  test("an author whose isAnonymous is null is a colleague, and is queued", async () => {
+    // The column is nullable, and only `true` means a demo: an account from
+    // before the anonymous plugin must not have its mail withheld.
+    await sendReply({
+      ...agentReply(),
+      origin: {
+        kind: REPLY_ORIGIN.agent,
+        author: { ...AGENT, isAnonymous: null },
+      },
+    });
+
+    expect((await outboxRows())[0].status).toBe(OUTBOUND_EMAIL_STATUS.queued);
+  });
+
   test("it commits with no queue to hand it to, because it is never enqueued", async () => {
     // The switch that makes `enqueueEmail` throw after its insert. A demo reply
     // that went through it would roll back; one that never asks for a job does

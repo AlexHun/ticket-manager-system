@@ -85,7 +85,10 @@ outbox like anyone's. Each later slice adds one of those.
   and on `/outbox`, but its outbox row is born `withheld`: never queued, never
   handed to a worker, and refused by the outbox retry. That holds with a mail
   provider bound as well as without one, so binding Postmark does not open a
-  way for a stranger to write to a customer.
+  way for a stranger to write to a customer. The public
+  `/request-password-reset` is not a demo mail path: it writes only to the
+  account's own address, as it does for any visitor who is not signed in, and
+  refuses a demo identity's own address.
 
 ## Considered Options
 
