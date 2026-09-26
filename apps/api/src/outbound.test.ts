@@ -36,8 +36,10 @@
  * `emailMessageId`, the parent and the `References` are all this module's
  * answers — not that `jobs/send-email.ts` writes the column it says it does. A
  * column added to the real insert would leave this file asserting last month's
- * row shape, green. `jobs/send-email.ts` has no test of its own; that is the
- * gap to close, and it is that module's to close.
+ * row shape, green. `jobs/send-email.test.ts` covers the worker, not
+ * `enqueueEmail`'s insert; that is the gap left, and it is that module's to
+ * close. A demo visitor's reply is the exception (#325): it goes through the
+ * genuine `withholdEmail`, which the stub leaves alone.
  *
  * **The seam is deliberately `./jobs/send-email` rather than `./jobs/boss`**,
  * which would have let the real `enqueueEmail` run end to end.
@@ -89,6 +91,15 @@ const AGENT = {
   id: COLLEAGUE.agent.id,
   name: COLLEAGUE.agent.name,
   email: COLLEAGUE.agent.email,
+  isAnonymous: false,
+};
+
+/** A demo session's identity, as the session hands it to the route (#325). */
+const DEMO = {
+  id: COLLEAGUE.demoVisitor.id,
+  name: COLLEAGUE.demoVisitor.name,
+  email: COLLEAGUE.demoVisitor.email,
+  isAnonymous: true,
 };
 
 /** A message already on the thread, as `ingest.ts` would have stored it —
@@ -224,6 +235,64 @@ describe("sendReply writes a message and an outbox row together", () => {
     expect(result.outcome).toBe(SEND_OUTCOME.noSuchTicket);
     expect(await messageRows()).toHaveLength(0);
     expect(await outboxRows()).toHaveLength(0);
+  });
+});
+
+/* ── A demo visitor's reply ──────────────────────────────────────────────── */
+
+describe("a demo visitor's reply is never sent (R10)", () => {
+  beforeEach(async () => {
+    await seedColleagues("demoVisitor");
+  });
+
+  const demoReply = () => ({
+    ...agentReply(),
+    origin: { kind: REPLY_ORIGIN.agent, author: DEMO },
+  });
+
+  test("the message lands, and its outbox row is withheld rather than queued", async () => {
+    const result = await sendReply(demoReply());
+
+    expect(result.outcome).toBe(SEND_OUTCOME.sent);
+    const [message] = await messageRows();
+    const [email] = await outboxRows();
+
+    // On the thread like anyone's, and on the outbox beside it so an admin can
+    // see what a visitor wrote — but settled, with nothing coming for it.
+    expect(message).toMatchObject({ authorId: DEMO.id, automated: false });
+    expect(email).toMatchObject({
+      kind: OUTBOUND_EMAIL_KIND.reply,
+      messageId: message.id,
+      status: OUTBOUND_EMAIL_STATUS.withheld,
+    });
+    expect(email.lastError).toContain("demo");
+  });
+
+  test("an author whose isAnonymous is null is a colleague, and is queued", async () => {
+    // The column is nullable, and only `true` means a demo: an account from
+    // before the anonymous plugin must not have its mail withheld.
+    await sendReply({
+      ...agentReply(),
+      origin: {
+        kind: REPLY_ORIGIN.agent,
+        author: { ...AGENT, isAnonymous: null },
+      },
+    });
+
+    expect((await outboxRows())[0].status).toBe(OUTBOUND_EMAIL_STATUS.queued);
+  });
+
+  test("it commits with no queue to hand it to, because it is never enqueued", async () => {
+    // The switch that makes `enqueueEmail` throw after its insert. A demo reply
+    // that went through it would roll back; one that never asks for a job does
+    // not notice.
+    sendEmailStub.failAfterWriting = true;
+
+    const result = await sendReply(demoReply());
+
+    expect(result.outcome).toBe(SEND_OUTCOME.sent);
+    expect(await messageRows()).toHaveLength(1);
+    expect((await outboxRows())[0].status).toBe(OUTBOUND_EMAIL_STATUS.withheld);
   });
 });
 

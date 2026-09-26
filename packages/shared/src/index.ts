@@ -2705,12 +2705,15 @@ export const EVAL_MISSED_PLAN_WINDOW_HOURS = 24;
  * one that needs saying out loud: it means no mail provider is configured, so
  * nothing was attempted. That is a supported state — the state this app runs in
  * today — and not a failure, which is why it is not folded into `failed`.
+ * `withheld` is a demo session's email (#325): recorded, and never sent by
+ * anything, the outbox retry included.
  */
 export const OUTBOUND_EMAIL_STATUS = {
   queued: "queued",
   sent: "sent",
   failed: "failed",
   undeliverable: "undeliverable",
+  withheld: "withheld",
 } as const;
 
 export type OutboundEmailStatus =
