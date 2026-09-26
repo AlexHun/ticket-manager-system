@@ -1,7 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { USER_ROLE, type DemoStatusResponse } from "@ticket/shared";
+import {
+  DEMO_START_LIMIT_MESSAGE,
+  USER_ROLE,
+  type DemoStatusResponse,
+} from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { LoginPage } from "./LoginPage";
@@ -259,6 +263,28 @@ describe("LoginPage — demo session", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Demo sessions are not available right now.",
+    );
+    expect(screen.queryByText("HOME")).not.toBeInTheDocument();
+  });
+
+  // R9: this address has started its five this hour. Read off the status
+  // rather than the body, because Better Auth's own limiter answers the same
+  // path with a 429 of its own wording in production, and it means the same.
+  test("says the network has started too many when the start is rate limited", async () => {
+    demoMode(true);
+    mockSignInAnonymous.mockResolvedValue({
+      error: {
+        status: 429,
+        message: "Too many requests. Please try again later.",
+      },
+    });
+    renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", DEMO));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      DEMO_START_LIMIT_MESSAGE,
     );
     expect(screen.queryByText("HOME")).not.toBeInTheDocument();
   });

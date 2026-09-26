@@ -1,9 +1,9 @@
 import * as Sentry from "@sentry/bun";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getIp } from "better-auth/api";
 import { admin, anonymous } from "better-auth/plugins";
-import { USER_ROLE } from "@ticket/shared";
+import { DEMO_START_LIMIT_MESSAGE, USER_ROLE } from "@ticket/shared";
 // A leaf module rather than a constant declared here, and the note on it says
 // why: this file cannot be loaded by a unit test, so anything else that needs
 // the number cannot reach it through this file.
@@ -14,6 +14,7 @@ import {
   DEMO_VISITOR_NAME,
   isDemoModeEnabled,
 } from "./demo/mode";
+import { admitDemoStart } from "./demo/start-limit";
 import { enqueueEmail } from "./jobs/send-email";
 
 const parsedOrigins = process.env.TRUSTED_ORIGINS?.split(",")
@@ -297,11 +298,36 @@ export const auth = betterAuth({
    * refuses the endpoint itself while demo mode is off. It reads the flag per
    * request, so the refusal follows the environment the process actually has.
    * See `docs/adr/0022-a-demo-session-is-an-anonymous-agent.md`.
+   *
+   * **And the per-address start limit, in the same place** (#322, PRD R9):
+   * `DEMO_SESSIONS_PER_IP_PER_HOUR`, five by default. Here rather than in
+   * `rateLimit.customRules` below because that limiter runs only in
+   * production, so a rule written there could not be observed by any test —
+   * and here rather than as Express middleware in front of the handler so the
+   * address is Better Auth's own `getIp`, the one the `/sign-in/email` rule
+   * counts (`demo/start-limit.ts` says why that matters). In production an
+   * address `getIp` cannot resolve — no `X-Forwarded-For`, or a leftmost entry
+   * that is not an address — is not limited, as Better Auth's own limiter
+   * does: counting those together would be one shared bucket for every one of
+   * them. Outside production `getIp` never answers null; it falls back to
+   * `127.0.0.1`, so every request that names no client shares that one
+   * bucket, which is why each demo start under test sends an address of its
+   * own.
    */
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path === "/sign-in/anonymous" && !isDemoModeEnabled()) {
+      if (ctx.path !== "/sign-in/anonymous") return;
+      if (!isDemoModeEnabled()) {
         throw new APIError("FORBIDDEN", { message: "Demo mode is off" });
+      }
+      const requestOrHeaders = ctx.request ?? ctx.headers;
+      const address = requestOrHeaders
+        ? getIp(requestOrHeaders, ctx.context.options)
+        : null;
+      if (address && !admitDemoStart(address)) {
+        throw new APIError("TOO_MANY_REQUESTS", {
+          message: DEMO_START_LIMIT_MESSAGE,
+        });
       }
     }),
   },
@@ -333,8 +359,10 @@ export const auth = betterAuth({
     // Railway (and any other platform proxy) terminates TLS and forwards, so
     // the socket's peer address is the edge, not the caller. Left at its
     // default every request would look like it came from one IP, and the
-    // 5-per-minute rule on `/sign-in/email` above would become a global budget
-    // that any one visitor could exhaust for everybody.
+    // 5-per-minute rule on `/sign-in/email` above — and the demo start limit
+    // in the `before` hook, which reads the address through the same `getIp`
+    // — would become a global budget any one visitor could exhaust for
+    // everybody.
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for"],
     },

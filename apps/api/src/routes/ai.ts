@@ -29,6 +29,7 @@ import {
   secondsUntilDemoAiReset,
 } from "../demo/ai-budget";
 import { requireAuth, sessionOf, type Session } from "../middleware/auth";
+import { slidingWindow } from "../sliding-window";
 
 export const aiRouter = Router();
 
@@ -63,67 +64,16 @@ function budgetKey(budget: Budget, userId: string): string {
 }
 
 /**
- * How often the map is swept, counted in admissions rather than in time.
- *
- * A `setInterval` is the obvious way and the worse one: it needs `.unref()` or
- * it holds the process open, and it keeps waking a server nobody is using.
- * Amortising the sweep over admissions costs exactly nothing while the endpoint
- * is idle, which is most of the time.
- */
-const SWEEP_EVERY = 100;
-
-/**
- * Admission timestamps per budget key, oldest first.
- *
- * In memory, and therefore per *process*: two API instances behind a load
- * balancer allow ten each, and a restart or a `bun --hot` reload clears the
- * lot. That is accepted — this is a cost guard, not a security control. A
- * counter shared across instances means Redis, which `tech-stack.md` defers, and
- * nothing here is protecting data.
+ * The per-user budgets, in memory through `slidingWindow`, and therefore per
+ * *process*: two API instances behind a load balancer allow ten each, and a
+ * restart clears the lot. That is accepted — this is a cost guard, not a
+ * security control, and nothing here is protecting data.
  *
  * Keyed by the session's user id and never by IP: `requireAuth` has already
  * resolved an identity, and an office behind one NAT would otherwise share a
  * single budget between everyone in it.
  */
-const admissions = new Map<string, number[]>();
-let admitted = 0;
-
-/** Forget keys whose whole window has expired, so the map cannot grow without bound. */
-function sweep(now: number): void {
-  for (const [key, times] of admissions) {
-    const last = times[times.length - 1];
-    if (last === undefined || now - last >= WINDOW_MS) admissions.delete(key);
-  }
-}
-
-type Admission =
-  { allowed: true } | { allowed: false; retryAfterSeconds: number };
-
-function admit(key: string): Admission {
-  const now = Date.now();
-  const recent = (admissions.get(key) ?? []).filter(
-    (at) => now - at < WINDOW_MS,
-  );
-
-  if (recent.length >= MAX_PER_WINDOW) {
-    // Store the pruned list even on refusal, so a blocked caller doesn't carry
-    // expired timestamps into their next attempt.
-    admissions.set(key, recent);
-    const oldest = recent[0] ?? now;
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(
-        1,
-        Math.ceil((WINDOW_MS - (now - oldest)) / 1000),
-      ),
-    };
-  }
-
-  recent.push(now);
-  admissions.set(key, recent);
-  if (++admitted % SWEEP_EVERY === 0) sweep(now);
-  return { allowed: true };
-}
+const admit = slidingWindow(WINDOW_MS);
 
 /**
  * Refuse a demo session's AI call once every demo session together has spent
@@ -317,7 +267,7 @@ aiRouter.post(
     // provider consumes a slot. It is never refunded on failure either: a
     // provider that is down, retried ten times a minute, is precisely what this
     // guard is here to stop.
-    const admission = admit(budgetKey(BUDGET.polish, user.id));
+    const admission = admit(budgetKey(BUDGET.polish, user.id), MAX_PER_WINDOW);
     if (!admission.allowed) {
       res.setHeader("Retry-After", String(admission.retryAfterSeconds));
       res.status(429).json({
@@ -515,7 +465,7 @@ aiRouter.post(
     // ticket costs nothing to refuse, so only a request that would actually
     // reach the provider spends a slot. Its own budget, so an agent who has been
     // polishing drafts can still summarise.
-    const admission = admit(budgetKey(BUDGET.summary, user.id));
+    const admission = admit(budgetKey(BUDGET.summary, user.id), MAX_PER_WINDOW);
     if (!admission.allowed) {
       res.setHeader("Retry-After", String(admission.retryAfterSeconds));
       res.status(429).json({

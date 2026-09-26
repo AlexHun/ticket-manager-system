@@ -234,7 +234,10 @@ the week's figures move by one and one.
 - **Per-IP limits under E2E.** Every spec comes from one address, so a limit of 5
   starves every other demo spec. Options: a dedicated server, a raised limit on the
   ordinary server, or a forwarded address the proxy trusts. Timebox 1h; blocks
-  slice 4.
+  slice 4. _Resolved in #322: a forwarded address. No proxy fronts the E2E API,
+  so a context's `X-Forwarded-For` is what `getIp` reads. Every demo start in the
+  suite names a fresh one (`tests/e2e/helpers/client-address.ts`), so the limit
+  runs at its real default on the ordinary server and starves nobody._
 - **Does `cookieCache` keep a session alive past its expiry, or past the off
   switch?** Measure it. Don't assume either way. Timebox 1h; blocks slice 6.
 
