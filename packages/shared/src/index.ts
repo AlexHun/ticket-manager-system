@@ -3255,17 +3255,28 @@ export interface DemoStatusResponse {
  * PRD R14). A demo session is refused them, like the Users page they sit on.
  *
  * The week runs from 00:00 UTC on Monday, the same clock as the nightly reset.
- * A session counts toward the week it started in, so `openedTicket` is always
- * a share of `started`.
+ * A session counts toward the week it started in, so `sessionsOpenedTicket`
+ * is always a share of `sessionsStarted`.
  */
 export interface DemoUsageResponse {
   /** ISO timestamp: 00:00 UTC on this week's Monday. */
   weekStartsAt: string;
   /** Demo sessions started since then. */
-  started: number;
+  sessionsStarted: number;
   /** How many of those opened at least one ticket. */
-  openedTicket: number;
+  sessionsOpenedTicket: number;
 }
+
+/**
+ * The Users page's demo card: its accessible name and its two figures'
+ * labels. Here so the E2E spec reads them rather than retyping them, like
+ * `DEMO_READ_ONLY_NOTE`.
+ */
+export const DEMO_USAGE_LABEL = {
+  title: "Demo sessions this week",
+  sessionsStarted: "Started",
+  sessionsOpenedTicket: "Opened a ticket",
+} as const;
 
 /**
  * Why a demo session's polish or summarise was answered without a model call:

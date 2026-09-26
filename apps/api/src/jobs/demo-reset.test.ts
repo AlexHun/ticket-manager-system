@@ -151,7 +151,10 @@ describe("DEMO_RESET_SWEEP, one night", () => {
   }, NIGHT_TIMEOUT_MS);
 
   test("the admin's weekly demo figures are unchanged", async () => {
-    expect(usageBefore).toMatchObject({ started: 3, openedTicket: 1 });
+    expect(usageBefore).toMatchObject({
+      sessionsStarted: 3,
+      sessionsOpenedTicket: 1,
+    });
     expect(await demoUsageThisWeek()).toEqual(usageBefore);
   });
 

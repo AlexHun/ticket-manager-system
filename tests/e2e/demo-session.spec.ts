@@ -7,6 +7,7 @@ import {
 import {
   DASHBOARD_SCOPE,
   DEMO_READ_ONLY_NOTE,
+  DEMO_USAGE_LABEL,
   EVAL_CORPUS,
   EVAL_RUN_STATUS,
   EVAL_THRESHOLD,
@@ -16,6 +17,7 @@ import {
   TICKET_STATUS,
   TUTORIAL_PAGE_KEY,
   USER_ROLE,
+  type DemoUsageResponse,
   type TicketAssigneesResponse,
   type TicketStatsResponse,
 } from "@ticket/shared";
@@ -136,16 +138,18 @@ function walkthrough(page: Page) {
  */
 async function demoFigures(
   page: Page,
-): Promise<{ started: number; openedTicket: number }> {
+): Promise<
+  Pick<DemoUsageResponse, "sessionsStarted" | "sessionsOpenedTicket">
+> {
   await page.goto(ROUTE.users.path);
-  const card = page.getByRole("region", { name: "Demo sessions this week" });
+  const card = page.getByRole("region", { name: DEMO_USAGE_LABEL.title });
   await expect(card).toBeVisible();
   const text = (await card.textContent()) ?? "";
   const figure = (label: string) =>
     Number(new RegExp(`${label}(\\d+)`).exec(text)?.[1] ?? Number.NaN);
   return {
-    started: figure("Started"),
-    openedTicket: figure("Opened a ticket"),
+    sessionsStarted: figure(DEMO_USAGE_LABEL.sessionsStarted),
+    sessionsOpenedTicket: figure(DEMO_USAGE_LABEL.sessionsOpenedTicket),
   };
 }
 
@@ -581,7 +585,9 @@ test.describe("Demo session", () => {
   // R14. Read off the page before and after rather than asserted as totals:
   // the tally outlives every demo identity by design, so the test database
   // holds whatever earlier runs this week left. `workers: 1` is what makes
-  // "by one" exact.
+  // "by one" exact. A run straddling Monday 00:00 UTC would read a fresh week
+  // after, and fail; the window is the few seconds this test takes, once a
+  // week, and closing it would need a clock the API takes from the request.
   test("a demo that opens a ticket moves the admin's weekly figures by one and one", async ({
     page,
     browser,
@@ -609,8 +615,8 @@ test.describe("Demo session", () => {
       await expect
         .poll(() => demoFigures(admin))
         .toEqual({
-          started: before.started + 1,
-          openedTicket: before.openedTicket + 1,
+          sessionsStarted: before.sessionsStarted + 1,
+          sessionsOpenedTicket: before.sessionsOpenedTicket + 1,
         });
     } finally {
       await adminContext.close();

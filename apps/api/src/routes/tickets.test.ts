@@ -287,14 +287,14 @@ describe("GET /api/tickets/:id — the demo usage tally (#327, PRD R14)", () => 
   });
 
   test("a demo session opening tickets counts once toward the week's figure", async () => {
-    await recordDemoStart("u_other", new Date());
+    await recordDemoStart("u_other", NOW);
 
     await get<TicketDetailResponse>("/1", DEMO);
     await get<TicketDetailResponse>("/2", DEMO);
 
-    expect(await demoUsageThisWeek()).toMatchObject({
-      started: 1,
-      openedTicket: 1,
+    expect(await demoUsageThisWeek(NOW)).toMatchObject({
+      sessionsStarted: 1,
+      sessionsOpenedTicket: 1,
     });
   });
 
@@ -302,12 +302,12 @@ describe("GET /api/tickets/:id — the demo usage tally (#327, PRD R14)", () => 
     // A tally row under a colleague's id is not a state production reaches;
     // it is here so that "not counted" means the route asked nothing, rather
     // than that it had no row to flag.
-    await recordDemoStart("u_other", new Date());
+    await recordDemoStart("u_other", NOW);
 
     const sent = await get<TicketDetailResponse>("/1", OTHER);
 
     expect(sent.status).toBe(200);
-    expect((await demoUsageThisWeek()).openedTicket).toBe(0);
+    expect((await demoUsageThisWeek(NOW)).sessionsOpenedTicket).toBe(0);
   });
 });
 

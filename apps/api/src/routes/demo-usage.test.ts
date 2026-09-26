@@ -55,9 +55,9 @@ describe("GET /api/demo/usage", () => {
     const body = (await res.json()) as DemoUsageResponse;
 
     expect(res.status).toBe(200);
-    expect({ started: body.started, openedTicket: body.openedTicket }).toEqual({
-      started: 2,
-      openedTicket: 1,
+    expect(body).toMatchObject({
+      sessionsStarted: 2,
+      sessionsOpenedTicket: 1,
     });
     const monday = new Date(body.weekStartsAt);
     expect(monday.getUTCDay()).toBe(1);

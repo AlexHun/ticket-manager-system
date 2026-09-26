@@ -26,8 +26,8 @@ describe("demoUsageThisWeek", () => {
   test("a week nobody used the demo in reads zero and zero", async () => {
     expect(await demoUsageThisWeek(WEDNESDAY)).toEqual({
       weekStartsAt: MONDAY,
-      started: 0,
-      openedTicket: 0,
+      sessionsStarted: 0,
+      sessionsOpenedTicket: 0,
     });
   });
 
@@ -38,8 +38,8 @@ describe("demoUsageThisWeek", () => {
     await markDemoTicketOpened("visitor-b");
 
     expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
-      started: 3,
-      openedTicket: 1,
+      sessionsStarted: 3,
+      sessionsOpenedTicket: 1,
     });
   });
 
@@ -50,8 +50,8 @@ describe("demoUsageThisWeek", () => {
     for (let i = 0; i < 3; i += 1) await markDemoTicketOpened("visitor-a");
 
     expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
-      started: 1,
-      openedTicket: 1,
+      sessionsStarted: 1,
+      sessionsOpenedTicket: 1,
     });
   });
 
@@ -62,12 +62,12 @@ describe("demoUsageThisWeek", () => {
 
     expect(await demoUsageThisWeek(SUNDAY_LAST_SECOND)).toEqual({
       weekStartsAt: MONDAY,
-      started: 1,
-      openedTicket: 0,
+      sessionsStarted: 1,
+      sessionsOpenedTicket: 0,
     });
     expect(await demoUsageThisWeek(PREVIOUS_SUNDAY_LAST_SECOND)).toMatchObject({
-      started: 1,
-      openedTicket: 1,
+      sessionsStarted: 1,
+      sessionsOpenedTicket: 1,
     });
   });
 
@@ -78,8 +78,8 @@ describe("demoUsageThisWeek", () => {
     await markDemoTicketOpened("late-night");
 
     expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
-      started: 0,
-      openedTicket: 0,
+      sessionsStarted: 0,
+      sessionsOpenedTicket: 0,
     });
   });
 });
@@ -91,7 +91,7 @@ describe("recordDemoStart", () => {
     await recordDemoStart("visitor-a", WEDNESDAY);
     await recordDemoStart("visitor-a", WEDNESDAY);
 
-    expect((await demoUsageThisWeek(WEDNESDAY)).started).toBe(1);
+    expect((await demoUsageThisWeek(WEDNESDAY)).sessionsStarted).toBe(1);
   });
 });
 
@@ -102,8 +102,8 @@ describe("markDemoTicketOpened", () => {
     await markDemoTicketOpened("minted-before-the-tally");
 
     expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
-      started: 0,
-      openedTicket: 0,
+      sessionsStarted: 0,
+      sessionsOpenedTicket: 0,
     });
   });
 });

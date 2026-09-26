@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import { DAY_MS, utcDay } from "./utc-day";
 
 /**
  * Whether anybody actually uses the demo (#327, PRD R14): demo sessions started
@@ -12,18 +13,15 @@ import { prisma } from "../db";
  * where they were.
  */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 /**
- * 00:00 UTC on the Monday of the week `now` falls in. UTC because the demo's
- * other two clocks — the nightly reset and the AI budget's day — both turn over
- * at 00:00 UTC, and a week in the server's zone would disagree with both.
+ * 00:00 UTC on the Monday of the week `now` falls in. Built on `utcDay`, the
+ * clock the nightly reset and the AI budget's day turn over on, so a week can
+ * never start at a moment neither of them calls midnight.
  */
 function utcWeekStart(now: Date): Date {
-  const midnight = Math.floor(now.getTime() / DAY_MS) * DAY_MS;
   // getUTCDay() is 0 on Sunday, so Monday is 0 days back and Sunday is 6.
   const daysSinceMonday = (now.getUTCDay() + 6) % 7;
-  return new Date(midnight - daysSinceMonday * DAY_MS);
+  return new Date(utcDay(now).getTime() - daysSinceMonday * DAY_MS);
 }
 
 /**
@@ -53,10 +51,11 @@ export async function markDemoTicketOpened(userId: string): Promise<void> {
   });
 }
 
+/** Counts, where the tally row's `openedTicket` is one session's flag. */
 export type DemoUsage = {
   weekStartsAt: Date;
-  started: number;
-  openedTicket: number;
+  sessionsStarted: number;
+  sessionsOpenedTicket: number;
 };
 
 /**
@@ -76,11 +75,11 @@ export async function demoUsageThisWeek(now = new Date()): Promise<DemoUsage> {
       lt: new Date(weekStartsAt.getTime() + 7 * DAY_MS),
     },
   };
-  const [started, openedTicket] = await prisma.$transaction([
+  const [sessionsStarted, sessionsOpenedTicket] = await prisma.$transaction([
     prisma.demoSessionTally.count({ where: thisWeek }),
     prisma.demoSessionTally.count({
       where: { ...thisWeek, openedTicket: true },
     }),
   ]);
-  return { weekStartsAt, started, openedTicket };
+  return { weekStartsAt, sessionsStarted, sessionsOpenedTicket };
 }

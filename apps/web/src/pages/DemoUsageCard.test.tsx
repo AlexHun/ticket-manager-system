@@ -12,8 +12,8 @@ const usageGet = apiStub.get("/api/demo/usage");
 
 const THIS_WEEK: DemoUsageResponse = {
   weekStartsAt: "2026-09-21T00:00:00.000Z",
-  started: 12,
-  openedTicket: 5,
+  sessionsStarted: 12,
+  sessionsOpenedTicket: 5,
 };
 
 beforeEach(() => {

@@ -21,8 +21,8 @@ demoUsageRouter.get(
     const usage = await demoUsageThisWeek();
     res.json({
       weekStartsAt: usage.weekStartsAt.toISOString(),
-      started: usage.started,
-      openedTicket: usage.openedTicket,
+      sessionsStarted: usage.sessionsStarted,
+      sessionsOpenedTicket: usage.sessionsOpenedTicket,
     });
   },
 );

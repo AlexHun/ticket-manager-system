@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { DEMO_USAGE_LABEL } from "@ticket/shared";
 import {
   Card,
   CardContent,
@@ -28,13 +29,19 @@ export function DemoUsageCard() {
   return (
     <Card size="sm" role="region" aria-labelledby={titleId} className="mb-6">
       <CardHeader>
-        <CardTitle id={titleId}>Demo sessions this week</CardTitle>
+        <CardTitle id={titleId}>{DEMO_USAGE_LABEL.title}</CardTitle>
         <CardDescription>Since Monday, 00:00 UTC.</CardDescription>
       </CardHeader>
       <CardContent>
         <dl className="flex gap-8">
-          <Figure label="Started" value={usage.started} />
-          <Figure label="Opened a ticket" value={usage.openedTicket} />
+          <Figure
+            label={DEMO_USAGE_LABEL.sessionsStarted}
+            value={usage.sessionsStarted}
+          />
+          <Figure
+            label={DEMO_USAGE_LABEL.sessionsOpenedTicket}
+            value={usage.sessionsOpenedTicket}
+          />
         </dl>
       </CardContent>
     </Card>
