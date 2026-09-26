@@ -22,7 +22,12 @@ import { DEMO_VISITOR_NAME } from "../../apps/api/src/demo/mode";
 import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { CREDENTIALS } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
-import { startDemo } from "./helpers/demo";
+import {
+  DEMO_BUTTON,
+  backdateDemoSession,
+  lapseSessionCache,
+  startDemo,
+} from "./helpers/demo";
 import { API_URL } from "./helpers/env";
 
 /**
@@ -34,7 +39,7 @@ import { API_URL } from "./helpers/env";
  * mode for `demo-ai-budget.spec.ts`, so both halves of R2's "off" are unit
  * tests: the button's absence is `LoginPage.test.tsx`'s, and the refusal of
  * `/sign-in/anonymous` is `routes/users.test.ts`'s, through the real
- * `auth.handler`.
+ * `auth.handler`. So is the switch ending a session already open (#324).
  */
 
 /** Imported rather than retyped: `demo/mode.ts` is import-free, like `routes.ts`. */
@@ -437,6 +442,53 @@ test.describe("Demo session", () => {
       await testDb.evalRun.delete({ where: { id: run.id } });
     }
   });
+
+  /* ── Two hours, the off switch, the banner (#324) ─────────────────────── */
+
+  // R13. On `/tickets` for the reason the navigation test gives: the
+  // dashboard's walkthrough is a modal, and it hides the rest of the page from
+  // the accessibility tree.
+  test("a banner says this is a demo, and Exit demo returns to the login page with the button", async ({
+    page,
+  }) => {
+    await startDemo(page);
+    await page.goto(ROUTE.tickets.path);
+
+    const banner = page.getByRole("region", { name: "Demo session" });
+    await expect(banner).toContainText("resets every night");
+    await banner.getByRole("button", { name: "Exit demo" }).click();
+
+    await page.waitForURL(ROUTE.login.path);
+    await expect(page.getByRole("button", DEMO_BUTTON)).toBeVisible();
+    // Signed out for real: a protected page sends the browser straight back.
+    await page.goto(ROUTE.tickets.path);
+    await expect(page).toHaveURL(ROUTE.login.path);
+  });
+
+  // R7. The unit tests hold the two hours themselves; this is what the
+  // visitor meets once they are up, by each of the two ways a session is
+  // refused: Better Auth's own expiry (a `null`), and `auth.ts`'s two-hour
+  // rule read off the start (a 401, which the page must read as signed out).
+  // The cache is let lapse first because a row changed behind its back is
+  // served from it for up to its 60 seconds.
+  for (const column of ["expiresAt", "createdAt"] as const) {
+    test(`once its session has ended (${column} backdated), the next navigation lands on the login page with the button`, async ({
+      page,
+    }) => {
+      await startDemo(page);
+      await page.goto(ROUTE.tickets.path);
+      await expect(
+        page.getByRole("region", { name: "Demo session" }),
+      ).toBeVisible();
+
+      await backdateDemoSession(page, column);
+      await lapseSessionCache(page);
+      await page.goto(ROUTE.tickets.path);
+
+      await expect(page).toHaveURL(ROUTE.login.path);
+      await expect(page.getByRole("button", DEMO_BUTTON)).toBeVisible();
+    });
+  }
 
   // R12, and it comes free: each click is a new identity, and walkthrough
   // progress is stored per user.

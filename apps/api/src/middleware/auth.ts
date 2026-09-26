@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { isAPIError } from "better-auth/api";
 import { fromNodeHeaders } from "better-auth/node";
 import { USER_ROLE } from "@ticket/shared";
 import { auth } from "../auth";
@@ -21,15 +22,26 @@ export function sessionOf(res: Response): Session {
 }
 
 /**
+ * A 401 from `getSession` is no session: it is how `auth.ts` ends a demo
+ * session two hours in or once demo mode is off (#324), thrown because a hook
+ * cannot answer `null`. Anything else is a fault, and goes on to the error
+ * handler as it always did.
+ */
+function noSessionOn401(err: unknown): null {
+  if (isAPIError(err) && err.statusCode === 401) return null;
+  throw err;
+}
+
+/**
  * The shape all three guards share: a session or 401, then `allowed` or 403,
  * then the session parked for `sessionOf`. Only the question in the middle
  * differs, so it is the only thing each guard spells out.
  */
 function guard(allowed: (session: Session, req: Request) => boolean) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
-    });
+    const session = await auth.api
+      .getSession({ headers: fromNodeHeaders(req.headers) })
+      .catch(noSessionOn401);
 
     if (!session) {
       res.status(401).json({ error: "Unauthenticated" });

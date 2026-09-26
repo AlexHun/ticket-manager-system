@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/bun";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware, getIp } from "better-auth/api";
+import { deleteSessionCookie } from "better-auth/cookies";
 import { admin, anonymous } from "better-auth/plugins";
 import { DEMO_START_LIMIT_MESSAGE, USER_ROLE } from "@ticket/shared";
 // A leaf module rather than a constant declared here, and the note on it says
@@ -14,6 +15,7 @@ import {
   DEMO_VISITOR_NAME,
   isDemoModeEnabled,
 } from "./demo/mode";
+import { demoSessionEndsAt, demoSessionRefused } from "./demo/session-lifetime";
 import { admitDemoStart } from "./demo/start-limit";
 import { enqueueEmail } from "./jobs/send-email";
 
@@ -153,6 +155,23 @@ if (cookieDomain) {
   }
 }
 
+/**
+ * Whether what a `/get-session` handler answered is a session, rather than
+ * `null` or an error. `ctx.context.returned` is untyped because every endpoint
+ * shares it.
+ */
+function isSessionAnswer(answer: unknown): answer is {
+  session: { token: string; createdAt: Date | string };
+  user: { isAnonymous: boolean | null };
+} {
+  return (
+    typeof answer === "object" &&
+    answer !== null &&
+    "session" in answer &&
+    "user" in answer
+  );
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   trustedOrigins,
@@ -284,9 +303,73 @@ export const auth = betterAuth({
    * until their cookie expires. `maxAge` is the length of that window; 60s is
    * chosen to keep it short enough to be an inconvenience rather than a hole.
    * Raising it lengthens the window — don't, without revisiting that route.
+   *
+   * **A demo session is not bound by that window, and does not rely on it**
+   * (#324, measured in `routes/users.test.ts`). The cached copy carries the
+   * session's `expiresAt` and Better Auth checks it on every cache hit, so a
+   * demo that reaches its two hours ends on time; and the `after` hook below
+   * runs on the cached answer as well as the stored one, so the off switch
+   * ends open demo sessions on their next request rather than a minute later.
+   * What the cache *does* outlive is a row changed behind its back, as above.
    */
   session: {
     cookieCache: { enabled: true, maxAge: 60 },
+  },
+  /**
+   * A demo session's row ends two hours after it started (#324, PRD R7), so
+   * the nightly reset (`jobs/demo-reset.ts`), which keeps an identity while a
+   * session of its has an `expiresAt` ahead, sees the truth.
+   *
+   * **Both halves are needed.** `create` sets the two hours. `update` keeps
+   * them: Better Auth refreshes a session once it is older than `updateAge`
+   * short of `expiresIn` — a day short of seven — which a two-hour session
+   * always is. So the first request read from the database would otherwise push
+   * its end out to a week. The session being refreshed is the one
+   * `/get-session` has just put on `ctx.context.session`, which is the only way
+   * this hook can tell whose it is: the update itself names no session. So it
+   * acts on that path alone, where the two are known to be the same row.
+   *
+   * The `after` hook below is what actually refuses one, off `createdAt`, so
+   * these two keep the row honest rather than hold the line on their own.
+   */
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { isAnonymous: true },
+          });
+          if (user?.isAnonymous !== true) return;
+          return {
+            data: {
+              ...session,
+              expiresAt: demoSessionEndsAt(session.createdAt),
+            },
+          };
+        },
+      },
+      update: {
+        before: async (session, ctx) => {
+          // Only `/get-session`'s refresh, where the current session and the
+          // one being updated are the same row. Anywhere else the current
+          // session is merely the caller's.
+          if (ctx?.path !== "/get-session") return;
+          const current = ctx.context.session;
+          if (!session.expiresAt || !current) return;
+          // The hook's own types know only the core user plus an index
+          // signature, so this reads as `any`; `routes/users.test.ts`'s
+          // refresh test is what fails if the plugin ever renames it.
+          if (current.user.isAnonymous !== true) return;
+          return {
+            data: {
+              ...session,
+              expiresAt: demoSessionEndsAt(new Date(current.session.createdAt)),
+            },
+          };
+        },
+      },
+    },
   },
   /**
    * The demo-mode switch, and the only thing that makes it a switch.
@@ -329,6 +412,49 @@ export const auth = betterAuth({
           message: DEMO_START_LIMIT_MESSAGE,
         });
       }
+    }),
+    /**
+     * The end of a demo session: two hours after it started (#324, PRD R7), or
+     * as soon as demo mode is off (R2). The rule is `demoSessionRefused` in
+     * `demo/session-lifetime.ts`.
+     *
+     * **On `/get-session`, because that is the one question everything asks.**
+     * The page's `useSession` asks it over HTTP, and `requireAuth` and its
+     * siblings ask it through `auth.api.getSession`, so one refusal here ends
+     * the session for the page and the API together. Refusing in the route
+     * guards alone would leave `/login` believing the visitor signed in and
+     * sending them back to a dashboard whose every request answers 401.
+     *
+     * **After the handler, so it sees the cached answer too.** A request the
+     * 60-second cookie cache serves never reads the session row, so deleting
+     * rows when demo mode goes off would leave open sessions working for up to
+     * that minute. This runs on whatever the handler answered, cache or not.
+     *
+     * **A 401, not a `null`.** An after hook cannot replace an answer with
+     * `null` (1.6.13 keeps the handler's answer unless the hook's is truthy),
+     * and a 401 is what the client already reads as signed out: its session
+     * store sets `data` to `null` on exactly that status. `requireAuth` turns
+     * the thrown error into its own 401. The row is deleted and the cookies
+     * expired first, so switching demo mode back on does not revive it.
+     *
+     * **Two things it does not reach.** An event stream already open
+     * (`routes/events.ts`) was authenticated when it connected and lives out
+     * its `STREAM_MAX_MS`, as it does for any revoked session, though every
+     * event it delivers sends the page to a refetch this refuses. And Better
+     * Auth's own session-bound endpoints (`/update-user`, `/list-sessions`, …)
+     * read the session without this hook, so a stranger calling them directly
+     * keeps that reach until the row is gone — which it is from the first
+     * `/get-session` the visitor's page makes, and at two hours regardless.
+     */
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/get-session") return;
+      const answer = ctx.context.returned;
+      if (!isSessionAnswer(answer)) return;
+      if (!demoSessionRefused(answer.user, answer.session)) return;
+
+      await ctx.context.internalAdapter.deleteSession(answer.session.token);
+      deleteSessionCookie(ctx);
+      throw new APIError("UNAUTHORIZED", { message: "Demo session has ended" });
     }),
   },
   rateLimit: {
