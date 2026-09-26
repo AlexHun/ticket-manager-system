@@ -147,7 +147,7 @@ async function refuseSpentDemo(
   if (user.isAnonymous !== true) return false;
   if (!(await demoAiLimitReached())) return false;
 
-  res.setHeader("Retry-After", String(secondsUntilDemoAiReset(new Date())));
+  res.setHeader("Retry-After", String(secondsUntilDemoAiReset()));
   res
     .status(429)
     .json({ error: DEMO_AI_LIMIT_MESSAGE, reason: DEMO_AI_LIMIT_REASON });
@@ -161,13 +161,22 @@ async function refuseSpentDemo(
  * inventing a refund cost the same tokens as one that was kept — and one that
  * never got an answer carries no usage and charges nothing. Awaited before
  * the response goes out, so the visitor's next click already sees it.
+ *
+ * A failed write is logged and swallowed rather than thrown into Express: the
+ * call has already been paid for, and a 500 would throw away the answer it
+ * bought. It fails safe enough — a database that cannot take the write will
+ * not answer `demoAiLimitReached` either, so the next demo call stops there.
  */
 async function chargeDemoCall(
   user: Session["user"],
   result: { usage?: AiUsage },
 ): Promise<void> {
   if (user.isAnonymous !== true) return;
-  await chargeDemoAi(usdFor(result.usage));
+  try {
+    await chargeDemoAi(usdFor(result.usage));
+  } catch (err) {
+    console.error("[ai] could not charge the demo AI budget:", err);
+  }
 }
 
 /** What each failure is worth telling the agent. One sentence, all actionable. */

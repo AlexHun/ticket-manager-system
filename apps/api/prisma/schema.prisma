@@ -1337,7 +1337,7 @@ enum EvalPlannedRunStatus {
 ///
 /// `usd` is `usdFor`'s estimate, added after each call — the same figure the
 /// `[ai]` log line prints, and exactly as stale as `USD_PER_MTOK`. Nothing
-/// bills off it. Admins' calls are never counted here (`demo/ai-budget.ts`).
+/// bills off it. Only demo sessions are counted here (`demo/ai-budget.ts`).
 model DemoAiSpend {
   /// The UTC calendar day the spend belongs to.
   day       DateTime @id @db.Date

@@ -307,21 +307,21 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
    * screen. The `reset()` calls above are what keep this precedence honest:
    * whichever action ran last is the one whose error can still be showing.
    */
+  /**
+   * Every demo session together has spent the day's AI (#321). Kept out of the
+   * alert below: nothing went wrong, and Polish will not work again until
+   * 00:00 UTC, so it reads as a note in the slot the error would take.
+   */
+  const demoLimited = isDemoAiLimit(polish.error);
+
   const alertMessage =
     errors.textBody?.message ??
     (mutation.error
       ? extractErrorMessage(mutation.error, SEND_FAILED)
       : undefined) ??
-    (polish.error && !isDemoAiLimit(polish.error)
+    (polish.error && !demoLimited
       ? extractErrorMessage(polish.error, POLISH_FAILED)
       : undefined);
-
-  /**
-   * Every demo session together has spent the day's AI (#321). Kept out of the
-   * alert above: nothing went wrong, and Polish will not work again until
-   * 00:00 UTC, so it reads as a note in the slot the error would take.
-   */
-  const demoLimited = isDemoAiLimit(polish.error);
 
   const polishHint = polish.isPending
     ? "Rewriting your draft…"

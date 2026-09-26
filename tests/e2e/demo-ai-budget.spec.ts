@@ -12,12 +12,7 @@ import {
 } from "@ticket/shared";
 import { POLISHED_REPLY } from "./fake-openai/constants";
 import { CREDENTIALS } from "./helpers/auth";
-import {
-  resetDemoAiSpend,
-  resetDemoUsers,
-  resetE2eEmails,
-  testDb,
-} from "./helpers/db";
+import { resetDemoAiSpend, resetDemoUsers, testDb } from "./helpers/db";
 
 /**
  * The demo sessions' $1 daily AI budget (#321, PRD R8), end to end through the
@@ -34,7 +29,7 @@ import {
 /** The AI-enabled API — see `playwright.config.ts`. */
 const AI_API_URL = "http://localhost:3003";
 
-/** Every address this spec mails is swept by `resetE2eEmails`. */
+/** The ticket's customer. Polishing sends nothing, so nothing is ever mailed. */
 const CUSTOMER_EMAIL = "e2e-demo-ai-customer@example.com";
 
 let ticketId: number;
@@ -83,7 +78,6 @@ test.afterEach(async () => {
   await demo.dispose();
   await admin.dispose();
   await testDb.ticket.deleteMany({ where: { id: ticketId } });
-  await resetE2eEmails();
   await resetDemoUsers();
   await resetDemoAiSpend();
 });

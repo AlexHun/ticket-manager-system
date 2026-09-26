@@ -6,7 +6,8 @@ import { prisma } from "../db";
  * Every demo visitor together may spend `DEMO_AI_DAILY_USD` of AI a UTC day.
  * `routes/ai.ts` asks `demoAiLimitReached` before a demo's polish or summarise
  * and makes no provider call once it answers true, and adds the call's
- * `usdFor(usage)` with `chargeDemoAi` after it. An admin's calls touch neither.
+ * `usdFor(usage)` with `chargeDemoAi` after it. Only demo sessions are counted:
+ * an admin's or an agent's call touches neither.
  *
  * **Checked before, charged after, and that gap is accepted.** Calls already in
  * flight when the total crosses the limit still land and still charge, so a day
@@ -79,7 +80,7 @@ export async function chargeDemoAi(
  * Seconds until the total rolls over at the next 00:00 UTC, for the refusal's
  * `Retry-After`. Never zero: at midnight itself the next reset is a day away.
  */
-export function secondsUntilDemoAiReset(now: Date): number {
+export function secondsUntilDemoAiReset(now = new Date()): number {
   const next = utcDay(now).getTime() + DAY_MS;
   return Math.ceil((next - now.getTime()) / 1000);
 }
