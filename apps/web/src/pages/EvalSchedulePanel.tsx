@@ -12,6 +12,7 @@ import {
 } from "@ticket/shared";
 import { type EvalScheduleValues, type PlanEvalRunValues } from "@ticket/core";
 import { api } from "@/lib/api";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -105,6 +106,12 @@ const DATE_TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
 
 export function EvalSchedulePanel() {
   const queryClient = useQueryClient();
+  /**
+   * A demo session reads the arrangement and changes none of it (#326, R15):
+   * the owner pauses the schedule on production, and a visitor must not be
+   * able to resume it, plan a run or spend on one.
+   */
+  const readOnly = useDemoReadOnly();
 
   const { data, isPending, error } = useQuery({
     queryKey: evalKeys.schedule(),
@@ -211,7 +218,7 @@ export function EvalSchedulePanel() {
   const plannedAtIsFuture =
     plannedAt !== null && plannedAt.getTime() > Date.now();
 
-  const canRun = data?.evalConfigured !== false;
+  const canPlan = data?.evalConfigured !== false && !readOnly;
 
   if (isPending) return <Skeleton className="h-40 w-full" />;
 
@@ -225,6 +232,7 @@ export function EvalSchedulePanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      <DemoReadOnlyNote />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Nightly schedule</CardTitle>
@@ -250,7 +258,7 @@ export function EvalSchedulePanel() {
                 className="w-36"
                 value={timeValue}
                 onChange={(event) => setEditedTime(event.target.value)}
-                disabled={saveSchedule.isPending}
+                disabled={saveSchedule.isPending || readOnly}
               />
             </div>
 
@@ -262,7 +270,7 @@ export function EvalSchedulePanel() {
                   paused: data.schedule.paused,
                 })
               }
-              disabled={!timeChanged || saveSchedule.isPending}
+              disabled={!timeChanged || saveSchedule.isPending || readOnly}
             >
               {saveSchedule.isPending && (
                 <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -286,7 +294,7 @@ export function EvalSchedulePanel() {
                   storedTime &&
                   saveSchedule.mutate({ ...storedTime, paused: false })
                 }
-                disabled={saveSchedule.isPending}
+                disabled={saveSchedule.isPending || readOnly}
               >
                 <Play className="size-4" aria-hidden />
                 Resume
@@ -295,7 +303,7 @@ export function EvalSchedulePanel() {
               <Button
                 variant="outline"
                 onClick={() => setConfirmingPause(true)}
-                disabled={saveSchedule.isPending}
+                disabled={saveSchedule.isPending || readOnly}
               >
                 <Pause className="size-4" aria-hidden />
                 Pause
@@ -369,7 +377,7 @@ export function EvalSchedulePanel() {
                     id="eval-plan-date"
                     variant="outline"
                     className="w-44 justify-start font-normal"
-                    disabled={!canRun || planRun.isPending}
+                    disabled={!canPlan || planRun.isPending}
                   >
                     <CalendarDays className="size-4" aria-hidden />
                     {planDate ? toDateValue(planDate) : "Pick a date"}
@@ -406,7 +414,7 @@ export function EvalSchedulePanel() {
                 className="w-36"
                 value={planTime}
                 onChange={(event) => setPlanTime(event.target.value)}
-                disabled={!canRun || planRun.isPending}
+                disabled={!canPlan || planRun.isPending}
               />
             </div>
 
@@ -415,7 +423,7 @@ export function EvalSchedulePanel() {
               <Select
                 value={planCorpus}
                 onValueChange={(value) => setPlanCorpus(value as EvalCorpus)}
-                disabled={!canRun || planRun.isPending}
+                disabled={!canPlan || planRun.isPending}
               >
                 <SelectTrigger id="eval-plan-corpus" className="w-44">
                   <SelectValue />
@@ -435,7 +443,7 @@ export function EvalSchedulePanel() {
                 plannedAt &&
                 planRun.mutate({ corpus: planCorpus, runAt: plannedAt })
               }
-              disabled={!canRun || !plannedAtIsFuture || planRun.isPending}
+              disabled={!canPlan || !plannedAtIsFuture || planRun.isPending}
             >
               {planRun.isPending && (
                 <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -456,6 +464,7 @@ export function EvalSchedulePanel() {
                   cancelling={
                     cancelPlan.isPending && cancelPlan.variables === row.id
                   }
+                  readOnly={readOnly}
                 />
               ))}
             </ul>
@@ -479,10 +488,13 @@ function PlannedRow({
   row,
   onCancel,
   cancelling,
+  readOnly,
 }: {
   row: EvalPlannedRunRow;
   onCancel: () => void;
   cancelling: boolean;
+  /** A demo session, which may see a plan and not cancel it (#326). */
+  readOnly: boolean;
 }) {
   const missed = row.status === EVAL_PLANNED_RUN_STATUS.missed;
 
@@ -510,7 +522,7 @@ function PlannedRow({
           size="sm"
           className="ml-auto"
           onClick={onCancel}
-          disabled={cancelling}
+          disabled={cancelling || readOnly}
         >
           {cancelling ? (
             <Loader2 className="size-4 animate-spin" aria-hidden />

@@ -6,6 +6,7 @@ import {
   type AutomationSettings,
   type AutomationSettingsResponse,
 } from "@ticket/shared";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -81,6 +82,8 @@ export function PipelineHandoff() {
   const queryClient = useQueryClient();
   const settings = useSettings();
   const { data: roster, error: rosterError } = useAssigneesQuery();
+  // A demo session sees where tickets go and changes none of it (#326, R5).
+  const readOnly = useDemoReadOnly();
 
   const mutation = useMutation({
     mutationFn: async (value: string) => {
@@ -185,7 +188,7 @@ export function PipelineHandoff() {
                     // that changes nothing and a toast saying so.
                     if (value !== toValue(current)) mutation.mutate(value);
                   }}
-                  disabled={mutation.isPending}
+                  disabled={mutation.isPending || readOnly}
                 >
                   <SelectTrigger
                     aria-labelledby="handoff-label"
@@ -226,6 +229,7 @@ export function PipelineHandoff() {
                 )}
               </div>
               <HandoffStatus settings={current} rosterError={rosterError} />
+              <DemoReadOnlyNote className="mt-1.5" />
             </dd>
           </div>
         </dl>

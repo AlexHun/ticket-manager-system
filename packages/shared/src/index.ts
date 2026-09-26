@@ -3277,3 +3277,10 @@ export interface DemoAiLimitResponse {
  */
 export const DEMO_START_LIMIT_MESSAGE =
   "Too many demo sessions from your network, try again later";
+
+/**
+ * The note beside every save or run control a demo session sees disabled
+ * (#326, PRD R5 and R15). Here rather than in the web app so the E2E spec
+ * reads the same copy the page renders; the API's 403 is the control.
+ */
+export const DEMO_READ_ONLY_NOTE = "Read-only in the demo.";

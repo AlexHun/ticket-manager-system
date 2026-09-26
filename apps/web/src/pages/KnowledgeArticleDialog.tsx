@@ -14,6 +14,7 @@ import {
   type KnowledgeArticleEditResponse,
   type KnowledgeArticleResponse,
 } from "@ticket/shared";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -77,6 +78,7 @@ export function KnowledgeArticleDialog({
   const isEdit = article !== null;
   const [serverError, setServerError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const readOnly = useDemoReadOnly();
 
   const {
     register,
@@ -181,133 +183,142 @@ export function KnowledgeArticleDialog({
           noValidate
           className="flex flex-col gap-5"
         >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${idPrefix}-title`}>Question</Label>
-            <Input
-              id={`${idPrefix}-title`}
-              aria-invalid={Boolean(errors.title)}
-              disabled={isSubmitting}
-              placeholder="How do I cancel the all-access subscription?"
-              {...register("title")}
-            />
-            <p className="text-xs text-muted-foreground">
-              Phrase it the way a customer would ask it — that is what the
-              matching is done on.
-            </p>
-            {errors.title && (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.title.message}
+          {/* A demo session reads the whole article here and changes none of
+              it (#326). A disabled fieldset reaches the Radix Select and the
+              Switch as well as the native fields. */}
+          <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${idPrefix}-title`}>Question</Label>
+              <Input
+                id={`${idPrefix}-title`}
+                aria-invalid={Boolean(errors.title)}
+                disabled={isSubmitting}
+                placeholder="How do I cancel the all-access subscription?"
+                {...register("title")}
+              />
+              <p className="text-xs text-muted-foreground">
+                Phrase it the way a customer would ask it — that is what the
+                matching is done on.
               </p>
-            )}
-          </div>
+              {errors.title && (
+                <p className="text-sm text-destructive" role="alert">
+                  {errors.title.message}
+                </p>
+              )}
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${idPrefix}-category`}>Category</Label>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${idPrefix}-category`}>Category</Label>
+              <Controller
+                control={control}
+                name="category"
+                render={({ field }) => (
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger
+                      id={`${idPrefix}-category`}
+                      className="w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.values(TICKET_CATEGORY).map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {/* Stated rather than left to be discovered. Refund is the one
+                  category the auto-reply refuses outright, in code, whatever
+                  this article's switch says — an author who does not know
+                  that will eventually wonder why their refund article never
+                  fires. */}
+              <p className="text-xs text-muted-foreground">
+                Refund articles are never answered automatically, whatever the
+                switch below says. That refusal lives in code.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${idPrefix}-body`}>Answer</Label>
+              <Textarea
+                id={`${idPrefix}-body`}
+                rows={8}
+                aria-invalid={Boolean(errors.body)}
+                disabled={isSubmitting}
+                {...register("body")}
+              />
+              <p className="text-xs text-muted-foreground">
+                Assume every line of this can be quoted to a customer word for
+                word. Specific facts — "14 days", "5–10 business days" — are
+                what let a draft be checked against it; "promptly" cannot be.{" "}
+                <span className="tabular-nums">
+                  {bodyLength}/{KB_BODY_MAX_LENGTH}
+                </span>
+              </p>
+              {errors.body && (
+                <p className="text-sm text-destructive" role="alert">
+                  {errors.body.message}
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${idPrefix}-note`}>Internal note</Label>
+              <Textarea
+                id={`${idPrefix}-note`}
+                rows={3}
+                aria-invalid={Boolean(errors.internalNote)}
+                disabled={isSubmitting}
+                placeholder="What not to promise, when to escalate, which figure to check first."
+                {...register("internalNote")}
+              />
+              <p className="text-xs text-muted-foreground">
+                For agents only. This is never sent to the assistant and never
+                quoted to a customer — it is stored in a column the reply prompt
+                does not read.
+              </p>
+              {errors.internalNote && (
+                <p className="text-sm text-destructive" role="alert">
+                  {errors.internalNote.message}
+                </p>
+              )}
+            </div>
+
+            {/* Last, and alone. Everything above changes what an article
+                says; this changes who gets to say it. */}
             <Controller
               control={control}
-              name="category"
+              name="autoReply"
               render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger id={`${idPrefix}-category`} className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.values(TICKET_CATEGORY).map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                  <div className="min-w-0">
+                    <Label htmlFor={`${idPrefix}-auto`} className="text-sm">
+                      Let the assistant answer from this
+                    </Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      On, this article goes into the prompt that answers newly
+                      arrived tickets and sends the reply without anyone reading
+                      it. Off, it is only ever read by an agent. Say no whenever
+                      the honest answer needs a fact a person has to look up.
+                    </p>
+                  </div>
+                  <Switch
+                    id={`${idPrefix}-auto`}
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={isSubmitting}
+                  />
+                </div>
               )}
             />
-            {/* Stated rather than left to be discovered. Refund is the one
-                category the auto-reply refuses outright, in code, whatever this
-                article's switch says — an author who does not know that will
-                eventually wonder why their refund article never fires. */}
-            <p className="text-xs text-muted-foreground">
-              Refund articles are never answered automatically, whatever the
-              switch below says. That refusal lives in code.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${idPrefix}-body`}>Answer</Label>
-            <Textarea
-              id={`${idPrefix}-body`}
-              rows={8}
-              aria-invalid={Boolean(errors.body)}
-              disabled={isSubmitting}
-              {...register("body")}
-            />
-            <p className="text-xs text-muted-foreground">
-              Assume every line of this can be quoted to a customer word for
-              word. Specific facts — "14 days", "5–10 business days" — are what
-              let a draft be checked against it; "promptly" cannot be.{" "}
-              <span className="tabular-nums">
-                {bodyLength}/{KB_BODY_MAX_LENGTH}
-              </span>
-            </p>
-            {errors.body && (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.body.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${idPrefix}-note`}>Internal note</Label>
-            <Textarea
-              id={`${idPrefix}-note`}
-              rows={3}
-              aria-invalid={Boolean(errors.internalNote)}
-              disabled={isSubmitting}
-              placeholder="What not to promise, when to escalate, which figure to check first."
-              {...register("internalNote")}
-            />
-            <p className="text-xs text-muted-foreground">
-              For agents only. This is never sent to the assistant and never
-              quoted to a customer — it is stored in a column the reply prompt
-              does not read.
-            </p>
-            {errors.internalNote && (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.internalNote.message}
-              </p>
-            )}
-          </div>
-
-          {/* Last, and alone. Everything above changes what an article says;
-              this changes who gets to say it. */}
-          <Controller
-            control={control}
-            name="autoReply"
-            render={({ field }) => (
-              <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
-                <div className="min-w-0">
-                  <Label htmlFor={`${idPrefix}-auto`} className="text-sm">
-                    Let the assistant answer from this
-                  </Label>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    On, this article goes into the prompt that answers newly
-                    arrived tickets and sends the reply without anyone reading
-                    it. Off, it is only ever read by an agent. Say no whenever
-                    the honest answer needs a fact a person has to look up.
-                  </p>
-                </div>
-                <Switch
-                  id={`${idPrefix}-auto`}
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  disabled={isSubmitting}
-                />
-              </div>
-            )}
-          />
+          </fieldset>
 
           {serverError && (
             <p className="text-sm text-destructive" role="alert">
@@ -315,7 +326,8 @@ export function KnowledgeArticleDialog({
             </p>
           )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
+            <DemoReadOnlyNote className="mr-auto" />
             <Button
               type="button"
               variant="outline"
@@ -324,7 +336,7 @@ export function KnowledgeArticleDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || readOnly}>
               {isSubmitting && <Loader2 className="size-4 animate-spin" />}
               {isEdit
                 ? isSubmitting

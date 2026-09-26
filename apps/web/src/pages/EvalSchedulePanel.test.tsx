@@ -2,8 +2,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 import {
+  DEMO_READ_ONLY_NOTE,
   EVAL_CORPUS,
   EVAL_PLANNED_RUN_STATUS,
+  USER_ROLE,
   type EvalPlannedRunRow,
   type EvalScheduleResponse,
 } from "@ticket/shared";
@@ -26,6 +28,14 @@ import { EvalSchedulePanel } from "./EvalSchedulePanel";
  */
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
+
+const ADMIN = { name: "Ada Admin", role: USER_ROLE.admin };
+const DEMO = { name: "Demo visitor", role: USER_ROLE.agent, isAnonymous: true };
+const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
+
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: { user: session.user }, isPending: false }),
+}));
 
 const scheduleGet = apiStub.get("/api/evals/schedule");
 const schedulePatch = apiStub.patch("/api/evals/schedule");
@@ -75,6 +85,7 @@ function renderPanel() {
 
 beforeEach(() => {
   apiStub.reset();
+  session.user = ADMIN;
   scheduleGet.mockResolvedValue(response());
   schedulePatch.mockResolvedValue({ data: {} });
   plannedPost.mockResolvedValue({ data: plannedRun() });
@@ -90,6 +101,33 @@ test("shows the stored time and who last changed it", async () => {
     "03:47",
   );
   expect(await screen.findByText(/last changed by Ada Admin/i)).toBeVisible();
+});
+
+// #326, R15: the owner pauses the schedule on production; a demo session only
+// reads it. Every control that writes is off, with the note saying why.
+test("is read-only for a demo session: time, pause, plan and cancel disabled", async () => {
+  session.user = DEMO;
+  scheduleGet.mockResolvedValue(response({ plannedRuns: [plannedRun()] }));
+  renderPanel();
+
+  expect(await screen.findByLabelText(/time \(server clock\)/i)).toBeDisabled();
+  expect(screen.getByText(DEMO_READ_ONLY_NOTE)).toBeInTheDocument();
+  for (const name of [/save time/i, /^pause$/i, /^date$/i, /plan run/i]) {
+    expect(screen.getByRole("button", { name })).toBeDisabled();
+  }
+  expect(screen.getByLabelText(/^time$/i)).toBeDisabled();
+  expect(
+    screen.getByRole("combobox", { name: /corpus for this run/i }),
+  ).toBeDisabled();
+  expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+});
+
+test("keeps a paused schedule paused for a demo session: Resume is disabled", async () => {
+  session.user = DEMO;
+  scheduleGet.mockResolvedValue(response({ schedule: { paused: true } }));
+  renderPanel();
+
+  expect(await screen.findByRole("button", { name: /resume/i })).toBeDisabled();
 });
 
 test("says so when nobody has ever changed it", async () => {
