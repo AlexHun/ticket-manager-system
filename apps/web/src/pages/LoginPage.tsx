@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { loginSchema, type LoginValues } from "@ticket/core";
+import { DEMO_START_LIMIT_MESSAGE } from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
@@ -94,7 +95,9 @@ export function LoginPage() {
    *
    * A 403 is demo mode switched off between this page loading and the click.
    * It gets words of its own, because the fallback would describe a form
-   * nobody filled in.
+   * nobody filled in. A 429 is this address's starts for the hour (#322, R9),
+   * read off the status rather than the body: Better Auth's own limiter
+   * answers the same path in production with a 429 worded its own way.
    */
   const startDemo = async () => {
     setServerError(null);
@@ -106,7 +109,9 @@ export function LoginPage() {
       setServerError(
         error.status === 403
           ? "Demo sessions are not available right now."
-          : failureMessage(error, "Could not start a demo session."),
+          : error.status === 429
+            ? DEMO_START_LIMIT_MESSAGE
+            : failureMessage(error, "Could not start a demo session."),
       );
       return;
     }

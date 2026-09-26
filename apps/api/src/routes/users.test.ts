@@ -84,9 +84,11 @@ import {
   describe,
   expect,
   mock,
+  setSystemTime,
   test,
 } from "bun:test";
 import {
+  DEMO_START_LIMIT_MESSAGE,
   OUTBOUND_EMAIL_KIND,
   TICKET_ACTOR_KIND,
   USER_ROLE,
@@ -1169,6 +1171,28 @@ describe("reads per request", () => {
 /* ── Demo sign-in, in auth.ts (#319, ADR-0022) ───────────────────────────── */
 
 /**
+ * A demo start as a visitor at `forwardedFor` sends it: the `X-Forwarded-For`
+ * value Railway's edge writes, client leftmost. The start limit counts in
+ * memory for the life of the process, which is this whole file, so every
+ * caller that is not about the limit takes a `freshAddress()`.
+ */
+const startDemoFrom = (forwardedFor: string) =>
+  auth.handler(
+    new Request(`${process.env.BETTER_AUTH_URL}/api/auth/sign-in/anonymous`, {
+      method: "POST",
+      headers: { "x-forwarded-for": forwardedFor },
+    }),
+  );
+
+/** An address nothing else in this process has started a demo from. */
+let addressesHandedOut = 0;
+const freshAddress = () => {
+  addressesHandedOut += 1;
+  // 198.18.0.0/15 is reserved for benchmarking (RFC 2544): never a visitor.
+  return `198.18.${Math.floor(addressesHandedOut / 256)}.${addressesHandedOut % 256}`;
+};
+
+/**
  * Here rather than in a file of its own because this is the one file in the
  * suite that loads the real `auth.ts` (see the header), and a second one would
  * be a second set of module-scope variables racing this file's for the same
@@ -1187,13 +1211,10 @@ describe("Demo sign-in — auth.ts", () => {
 
   // Through the HTTP handler, which is the door a visitor actually uses: a
   // `before` hook's refusal is thrown past `auth.api`'s `asResponse`, and only
-  // the handler turns it into the 403 the browser sees.
-  const startDemo = () =>
-    auth.handler(
-      new Request(`${process.env.BETTER_AUTH_URL}/api/auth/sign-in/anonymous`, {
-        method: "POST",
-      }),
-    );
+  // the handler turns it into the 403 the browser sees. From a fresh address
+  // each time, so the per-address start limit below is spent only by the
+  // tests that are about it.
+  const startDemo = () => startDemoFrom(freshAddress());
 
   const demoRows = () =>
     prisma.user.findMany({
@@ -1308,4 +1329,104 @@ describe("Demo sign-in — auth.ts", () => {
     expect(res.status).toBe(400);
     expect(await demoRows()).toHaveLength(1);
   });
+});
+
+/* ── Demo start limit, in auth.ts (#322, PRD R9) ─────────────────────────── */
+
+/**
+ * Five demo starts per address per hour. Keyed on what Better Auth's own
+ * `getIp` resolves, so it is the address the `/sign-in/email` rule counts
+ * against: the leftmost `X-Forwarded-For` entry, which Railway's edge writes
+ * (see `backend.md` on the 1.6.13 pin, and the Caddyfile note).
+ *
+ * Each test takes its own `freshAddress()`, because the count lives in memory
+ * for the life of the process and nothing here resets it.
+ */
+describe("Demo start limit — auth.ts", () => {
+  beforeEach(() => {
+    process.env.DEMO_MODE_ENABLED = "true";
+  });
+
+  afterEach(() => {
+    delete process.env.DEMO_MODE_ENABLED;
+    delete process.env.DEMO_SESSIONS_PER_IP_PER_HOUR;
+    setSystemTime();
+  });
+
+  const demoCount = () => prisma.user.count({ where: { isAnonymous: true } });
+
+  test("five starts from one address succeed; the sixth is refused with the message and mints nobody", async () => {
+    const address = freshAddress();
+
+    for (let i = 0; i < 5; i += 1) {
+      expect((await startDemoFrom(address)).status).toBe(200);
+    }
+    const refused = await startDemoFrom(address);
+
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("set-cookie")).toBeNull();
+    expect(((await refused.json()) as { message: string }).message).toBe(
+      DEMO_START_LIMIT_MESSAGE,
+    );
+    expect(await demoCount()).toBe(5);
+  });
+
+  test("a spent address leaves every other address alone", async () => {
+    const spent = freshAddress();
+    for (let i = 0; i < 5; i += 1) await startDemoFrom(spent);
+    expect((await startDemoFrom(spent)).status).toBe(429);
+
+    expect((await startDemoFrom(freshAddress())).status).toBe(200);
+  });
+
+  // The hop Caddy appends on the right differs between requests; the visitor
+  // on the left does not, and is who the sign-in rule counts.
+  test("counts the leftmost X-Forwarded-For entry, whatever hops follow it", async () => {
+    const visitor = freshAddress();
+
+    for (let hop = 1; hop <= 5; hop += 1) {
+      await startDemoFrom(`${visitor}, 100.64.0.${hop}`);
+    }
+
+    expect((await startDemoFrom(`${visitor}, 100.64.0.99`)).status).toBe(429);
+  });
+
+  // A sliding hour from each start, and a refused attempt is not a start: a
+  // visitor who keeps knocking is not kept out for longer by knocking.
+  test("an hour after the first start, the address may start again", async () => {
+    const address = freshAddress();
+    const first = Date.now();
+
+    setSystemTime(new Date(first));
+    for (let i = 0; i < 5; i += 1) await startDemoFrom(address);
+    setSystemTime(new Date(first + 30 * 60 * 1000));
+    expect((await startDemoFrom(address)).status).toBe(429);
+
+    setSystemTime(new Date(first + 60 * 60 * 1000 + 1));
+    expect((await startDemoFrom(address)).status).toBe(200);
+  });
+
+  test("DEMO_SESSIONS_PER_IP_PER_HOUR sets the number", async () => {
+    process.env.DEMO_SESSIONS_PER_IP_PER_HOUR = "2";
+    const address = freshAddress();
+
+    expect((await startDemoFrom(address)).status).toBe(200);
+    expect((await startDemoFrom(address)).status).toBe(200);
+    expect((await startDemoFrom(address)).status).toBe(429);
+  });
+
+  // A typo must not lift the cap, and zero is not how demo mode is turned
+  // off — `DEMO_MODE_ENABLED` is.
+  test.each(["", "0", "-3", "2.5", "five", "Infinity"])(
+    "DEMO_SESSIONS_PER_IP_PER_HOUR=%p means five",
+    async (value) => {
+      process.env.DEMO_SESSIONS_PER_IP_PER_HOUR = value;
+      const address = freshAddress();
+
+      for (let i = 0; i < 5; i += 1) {
+        expect((await startDemoFrom(address)).status).toBe(200);
+      }
+      expect((await startDemoFrom(address)).status).toBe(429);
+    },
+  );
 });

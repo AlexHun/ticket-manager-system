@@ -3266,3 +3266,11 @@ export interface DemoAiLimitResponse {
   error: typeof DEMO_AI_LIMIT_MESSAGE;
   reason: typeof DEMO_AI_LIMIT_REASON;
 }
+
+/**
+ * Why "Use demo session" started nothing: this address has started its
+ * `DEMO_SESSIONS_PER_IP_PER_HOUR` already (#322, PRD R9). The API's 429 carries
+ * it and the login page shows it. One copy, for both apps.
+ */
+export const DEMO_START_LIMIT_MESSAGE =
+  "Too many demo sessions from your network, try again later";

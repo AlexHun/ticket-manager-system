@@ -12,6 +12,7 @@ import {
 } from "@ticket/shared";
 import { POLISHED_REPLY } from "./fake-openai/constants";
 import { CREDENTIALS } from "./helpers/auth";
+import { freshClientAddress, fromAddress } from "./helpers/client-address";
 import { resetDemoAiSpend, resetDemoUsers, testDb } from "./helpers/db";
 
 /**
@@ -59,8 +60,12 @@ test.beforeEach(async () => {
   });
   ticketId = ticket.id;
 
-  // Two contexts, so each keeps its own session cookie.
-  demo = await pwRequest.newContext();
+  // Two contexts, so each keeps its own session cookie. Each demo start comes
+  // from an address of its own, so this file never meets the five-an-hour
+  // start limit (#322) on a server that outlives the run.
+  demo = await pwRequest.newContext({
+    extraHTTPHeaders: fromAddress(freshClientAddress()),
+  });
   const started = await demo.post(`${AI_API_URL}/api/auth/sign-in/anonymous`);
   expect(started.ok()).toBe(true);
 
@@ -110,7 +115,9 @@ test("the first demo polish spends the day, the second makes no call, and an adm
 test("a second demo session finds the day already spent", async () => {
   expect((await polish(demo)).status()).toBe(200);
 
-  const other = await pwRequest.newContext();
+  const other = await pwRequest.newContext({
+    extraHTTPHeaders: fromAddress(freshClientAddress()),
+  });
   try {
     await other.post(`${AI_API_URL}/api/auth/sign-in/anonymous`);
     expect((await polish(other)).status()).toBe(429);
