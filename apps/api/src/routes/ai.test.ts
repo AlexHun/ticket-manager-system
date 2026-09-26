@@ -67,13 +67,16 @@
  * **On usage logging**, which #174 also asked to see asserted as rows: there
  * are none. `logUsage` in `../ai/provider.ts` writes one `console.log` line per
  * model call and the schema has no table behind it — deliberately, per the note
- * on that function. This route writes nothing at all, so what converted here is
- * the read.
+ * on that function. The one row this route writes is a demo session's spend
+ * (#321), asserted through what the next demo call is told rather than by
+ * reading the row; otherwise what converted here is the read.
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  DEMO_AI_LIMIT_MESSAGE,
+  DEMO_AI_LIMIT_REASON,
   MESSAGE_DIRECTION,
   SUMMARY_SENTIMENT,
   TICKET_CATEGORY,
@@ -82,8 +85,9 @@ import {
   type TicketSummary,
 } from "@ticket/shared";
 import * as polishModule from "../ai/polish";
-import { AI_FAILURE } from "../ai/provider";
+import { AI_FAILURE, type AiUsage } from "../ai/provider";
 import * as summarizeModule from "../ai/summarize";
+import { chargeDemoAi } from "../demo/ai-budget";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
 import { dbCalls, prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
@@ -261,7 +265,7 @@ const url = serveRouter("/api/ai", aiRouter);
 
 interface Sent {
   status: number;
-  body: { polished?: string; error?: string };
+  body: { polished?: string; error?: string; reason?: string };
   retryAfter: string | null;
 }
 
@@ -280,7 +284,7 @@ function freshUser(): string {
 
 async function post(
   body: unknown,
-  options: { user?: string; agentName?: string } = {},
+  options: { user?: string; agentName?: string; demo?: boolean } = {},
 ): Promise<Sent> {
   const res = await fetch(url("/polish-reply"), {
     method: "POST",
@@ -288,6 +292,7 @@ async function post(
       "content-type": "application/json",
       "x-test-user": options.user ?? freshUser(),
       ...(options.agentName ? { "x-test-agent-name": options.agentName } : {}),
+      ...(options.demo ? { "x-test-demo": "true" } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -320,6 +325,7 @@ interface Summarised {
     summary?: TicketSummary;
     messageCount?: number;
     error?: string;
+    reason?: string;
   };
   retryAfter: string | null;
 }
@@ -334,13 +340,14 @@ interface Summarised {
  */
 async function postSummary(
   body: unknown,
-  options: { user?: string } = {},
+  options: { user?: string; demo?: boolean } = {},
 ): Promise<Summarised> {
   const res = await fetch(url("/summarize-ticket"), {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-test-user": options.user ?? freshUser(),
+      ...(options.demo ? { "x-test-demo": "true" } : {}),
     },
     body: JSON.stringify(body),
   });
@@ -1003,5 +1010,117 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
     expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(
       200,
     );
+  });
+});
+
+/* ── The demo AI budget (#321) ───────────────────────────────────────────── */
+
+/**
+ * 2,500 output tokens at the published $0.40 per million: $0.001 exactly, so a
+ * limit of `"0.001"` is spent by one call and by nothing less.
+ */
+const COSTLY: AiUsage = {
+  inputTokens: 0,
+  outputTokens: 2_500,
+  totalTokens: 2_500,
+  reasoningTokens: 0,
+  cachedInputTokens: 0,
+};
+
+describe("the demo AI budget", () => {
+  beforeEach(() => {
+    process.env.DEMO_AI_DAILY_USD = "0.001";
+    polishResult = { ok: true, text: "Hi Marta,", usage: COSTLY };
+    summaryResult = { ok: true, summary: SUMMARY, usage: COSTLY };
+  });
+
+  afterEach(() => {
+    delete process.env.DEMO_AI_DAILY_USD;
+  });
+
+  test("a demo's polish is charged, and the next one makes no call", async () => {
+    expect((await post(goodBody(), { demo: true })).status).toBe(200);
+
+    const refused = await post(goodBody(), { demo: true });
+
+    expect(refused.status).toBe(429);
+    expect(refused.body).toEqual({
+      error: DEMO_AI_LIMIT_MESSAGE,
+      reason: DEMO_AI_LIMIT_REASON,
+    });
+    expect(polishReply).toHaveBeenCalledTimes(1);
+  });
+
+  test("so is a demo's summary", async () => {
+    expect(
+      (await postSummary({ ticketId: TICKET }, { demo: true })).status,
+    ).toBe(200);
+
+    const refused = await postSummary({ ticketId: TICKET }, { demo: true });
+
+    expect(refused.status).toBe(429);
+    expect(refused.body).toEqual({
+      error: DEMO_AI_LIMIT_MESSAGE,
+      reason: DEMO_AI_LIMIT_REASON,
+    });
+    expect(summarizeTicket).toHaveBeenCalledTimes(1);
+  });
+
+  // One budget for both features and every demo identity: each visitor is a
+  // fresh user, so a per-user or per-feature total would be a cap per click.
+  test("one total, shared by every demo session and both features", async () => {
+    await post(goodBody(), { demo: true });
+
+    const refused = await postSummary({ ticketId: TICKET }, { demo: true });
+
+    expect(refused.status).toBe(429);
+    expect(summarizeTicket).not.toHaveBeenCalled();
+  });
+
+  // A rewrite the route discards was still paid for.
+  test("a demo polish that failed after the model answered is charged too", async () => {
+    polishResult = {
+      ok: false,
+      reason: POLISH_FAILURE.invented,
+      usage: COSTLY,
+    };
+    expect((await post(goodBody(), { demo: true })).status).toBe(502);
+
+    expect((await post(goodBody(), { demo: true })).status).toBe(429);
+  });
+
+  test("says when it resets, in seconds to 00:00 UTC", async () => {
+    await chargeDemoAi(1);
+
+    const refused = await post(goodBody(), { demo: true });
+
+    const seconds = Number(refused.retryAfter);
+    expect(Number.isInteger(seconds)).toBe(true);
+    expect(seconds).toBeGreaterThan(0);
+    expect(seconds).toBeLessThanOrEqual(24 * 60 * 60);
+  });
+
+  test("is checked after the lookup, so a missing ticket is still a 404", async () => {
+    await chargeDemoAi(1);
+
+    const sent = await post(goodBody({ ticketId: TICKET + 1 }), {
+      demo: true,
+    });
+
+    expect(sent.status).toBe(404);
+  });
+
+  test("never stops a signed-in colleague", async () => {
+    await chargeDemoAi(1);
+
+    expect((await post(goodBody())).status).toBe(200);
+    expect((await postSummary({ ticketId: TICKET })).status).toBe(200);
+  });
+
+  test("and never charges one", async () => {
+    await post(goodBody());
+    await postSummary({ ticketId: TICKET });
+
+    expect((await post(goodBody(), { demo: true })).status).toBe(200);
   });
 });

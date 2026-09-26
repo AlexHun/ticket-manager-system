@@ -101,3 +101,7 @@ advisory ever reaches the `anonymous` plugin at the pinned version. The check at
   AI server runs with it off (`.env.test.ai`), and is where the refusal is
   asserted. No web server in the suite fronts a demo-off API, so the button's
   absence is a component test.
+  - **Superseded by #321:** the demo AI budget needs a demo session on the one
+    server that can reach a model, so the AI server runs with demo mode on too.
+    No E2E server is demo-off now; the refusal is `routes/users.test.ts`'s,
+    through the real `auth.handler`.

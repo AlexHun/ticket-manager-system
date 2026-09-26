@@ -65,7 +65,8 @@ default 7-day session · no reset · no banner · outbox rows treated like anyon
 - A status change sticks.
 - A second browser context sees the walkthrough the first dismissed.
 - `POST /api/auth/sign-in/anonymous` against the AI API server (demo mode off there)
-  is refused.
+  is refused. _Dropped in slice 3 (#321), which needs a demo session on the AI
+  server; the refusal stays covered by `routes/users.test.ts`._
 - The button's absence when demo mode is off is `LoginPage.test.tsx`'s job, because
   no web server fronts a demo-off API.
 

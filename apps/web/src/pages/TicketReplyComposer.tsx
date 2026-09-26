@@ -13,6 +13,7 @@ import {
   type PolishReplyValues,
 } from "@ticket/core";
 import {
+  DEMO_AI_LIMIT_MESSAGE,
   MAX_MESSAGE_BODY_LENGTH,
   TICKET_STATUS,
   type CreateTicketMessageResponse,
@@ -28,7 +29,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { extractErrorMessage } from "@/lib/errors";
+import { extractErrorMessage, isDemoAiLimit } from "@/lib/errors";
 import { ticketKeys } from "@/lib/ticket-queries";
 import { useTicketField } from "@/lib/use-ticket-field";
 
@@ -196,7 +197,10 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
       });
       toast.success("Draft polished");
     },
+    // The demo AI limit is not an error: it is said under the box below, and
+    // a toast would say the same thing twice.
     onError: (err) => {
+      if (isDemoAiLimit(err)) return;
       toast.error(extractErrorMessage(err, POLISH_FAILED));
     },
   });
@@ -303,12 +307,19 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
    * screen. The `reset()` calls above are what keep this precedence honest:
    * whichever action ran last is the one whose error can still be showing.
    */
+  /**
+   * Every demo session together has spent the day's AI (#321). Kept out of the
+   * alert below: nothing went wrong, and Polish will not work again until
+   * 00:00 UTC, so it reads as a note in the slot the error would take.
+   */
+  const demoLimited = isDemoAiLimit(polish.error);
+
   const alertMessage =
     errors.textBody?.message ??
     (mutation.error
       ? extractErrorMessage(mutation.error, SEND_FAILED)
       : undefined) ??
-    (polish.error
+    (polish.error && !demoLimited
       ? extractErrorMessage(polish.error, POLISH_FAILED)
       : undefined);
 
@@ -364,6 +375,12 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
       {alertMessage && (
         <p className="text-sm text-destructive" role="alert">
           {alertMessage}
+        </p>
+      )}
+
+      {!alertMessage && demoLimited && (
+        <p className="text-sm text-muted-foreground" role="status">
+          {DEMO_AI_LIMIT_MESSAGE}
         </p>
       )}
 

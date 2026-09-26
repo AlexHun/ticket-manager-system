@@ -2,20 +2,33 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { polishReplySchema, summarizeTicketSchema } from "@ticket/core";
 import {
+  DEMO_AI_LIMIT_MESSAGE,
+  DEMO_AI_LIMIT_REASON,
   MESSAGE_DIRECTION,
+  type DemoAiLimitResponse,
   type PolishReplyResponse,
   type SummarizeTicketResponse,
 } from "@ticket/shared";
 import { POLISH_FAILURE, type PolishFailure } from "../ai/polish";
 import { isPolishReplyConfigured, polishReply } from "../ai/polish-reply";
-import { AI_FAILURE, type AiFailure } from "../ai/provider";
+import {
+  AI_FAILURE,
+  usdFor,
+  type AiFailure,
+  type AiUsage,
+} from "../ai/provider";
 import {
   isSummarizeConfigured,
   summarizeTicket,
   type SummaryMessage,
 } from "../ai/summarize";
 import { prisma } from "../db";
-import { requireAuth, sessionOf } from "../middleware/auth";
+import {
+  chargeDemoAi,
+  demoAiLimitReached,
+  secondsUntilDemoAiReset,
+} from "../demo/ai-budget";
+import { requireAuth, sessionOf, type Session } from "../middleware/auth";
 
 export const aiRouter = Router();
 
@@ -112,6 +125,60 @@ function admit(key: string): Admission {
   return { allowed: true };
 }
 
+/**
+ * Refuse a demo session's AI call once every demo session together has spent
+ * the day's budget (#321, PRD R8). True when it answered.
+ *
+ * Only a demo is asked about: the budget is the owner's guard against
+ * strangers, and an admin's or an agent's polish never reads or writes it.
+ * Called where the rate limit is, after validation and the lookup and before
+ * the model — a refused request has cost nothing, and a malformed one should
+ * still hear what is wrong with it. Before `admit`, too, so a demo told the
+ * day is spent has not also burned a rate-limit slot on hearing it.
+ *
+ * A 429 like the rate limit's, told apart by `reason`: the panel shows this one
+ * in place of a result rather than as an error, because trying again will not
+ * help until 00:00 UTC. `Retry-After` says exactly when that is.
+ */
+async function refuseSpentDemo(
+  user: Session["user"],
+  res: Response<DemoAiLimitResponse>,
+): Promise<boolean> {
+  if (user.isAnonymous !== true) return false;
+  if (!(await demoAiLimitReached())) return false;
+
+  res.setHeader("Retry-After", String(secondsUntilDemoAiReset()));
+  res
+    .status(429)
+    .json({ error: DEMO_AI_LIMIT_MESSAGE, reason: DEMO_AI_LIMIT_REASON });
+  return true;
+}
+
+/**
+ * Add a demo session's call to the day's demo AI total, whatever it answered.
+ *
+ * Every outcome that reached the model is charged — a rewrite discarded for
+ * inventing a refund cost the same tokens as one that was kept — and one that
+ * never got an answer carries no usage and charges nothing. Awaited before
+ * the response goes out, so the visitor's next click already sees it.
+ *
+ * A failed write is logged and swallowed rather than thrown into Express: the
+ * call has already been paid for, and a 500 would throw away the answer it
+ * bought. It fails safe enough — a database that cannot take the write will
+ * not answer `demoAiLimitReached` either, so the next demo call stops there.
+ */
+async function chargeDemoCall(
+  user: Session["user"],
+  result: { usage?: AiUsage },
+): Promise<void> {
+  if (user.isAnonymous !== true) return;
+  try {
+    await chargeDemoAi(usdFor(result.usage));
+  } catch (err) {
+    console.error("[ai] could not charge the demo AI budget:", err);
+  }
+}
+
 /** What each failure is worth telling the agent. One sentence, all actionable. */
 const FAILURE_RESPONSE: Record<
   PolishFailure,
@@ -169,7 +236,8 @@ const FAILURE_RESPONSE: Record<
  * story even now that this reads a ticket: an agent can already fetch any ticket
  * and its entire thread through `GET /api/tickets/:id`, so a subject line and
  * one inbound message discloses nothing a signed-in caller could not read
- * directly. Nothing is written.
+ * directly. Nothing about the ticket is written; a demo session's call adds
+ * its cost to the day's demo AI total (#321), and nobody else's does.
  *
  * Still `/api/ai` rather than `/api/tickets/:id/polish-reply`, though the second
  * reading is now defensible — the ticket is a genuine input rather than a lie
@@ -183,7 +251,9 @@ aiRouter.post(
   requireAuth,
   async (
     req: Request,
-    res: Response<PolishReplyResponse | { error: string }>,
+    res: Response<
+      PolishReplyResponse | DemoAiLimitResponse | { error: string }
+    >,
   ) => {
     // First, and before the body is even looked at: on a deployment with no key
     // the answer is the same for every request, and saying so plainly beats a
@@ -239,6 +309,8 @@ aiRouter.post(
       return;
     }
 
+    if (await refuseSpentDemo(user, res)) return;
+
     // After validation and the lookup, before the model. The budget exists to
     // cap spend, and neither a malformed body nor a missing ticket costs
     // anything to refuse, so only a request that would actually reach the
@@ -275,6 +347,7 @@ aiRouter.post(
       },
       abort.signal,
     );
+    await chargeDemoCall(user, result);
     if (!result.ok) {
       const { status, error } = FAILURE_RESPONSE[result.reason];
       if (result.reason === POLISH_FAILURE.busy) {
@@ -349,8 +422,9 @@ const SUMMARY_FAILURE_RESPONSE: Record<
  * `requireAuth` and no more, on the same reasoning as the polish endpoint: an
  * agent can already fetch this ticket and its entire thread through
  * `GET /api/tickets/:id`, so a summary of it discloses nothing a signed-in
- * caller could not read directly. Nothing is written, and nothing is cached —
- * every request generates afresh, which is what the panel asks for.
+ * caller could not read directly. Nothing about the ticket is written (a demo
+ * session's call is charged to the demo AI total, as above), and nothing is
+ * cached — every request generates afresh, which is what the panel asks for.
  *
  * Unlike polishing, the thread is read *whole*. That is the feature: a summary
  * of the latest inbound message is not a summary of the conversation. The prompt
@@ -363,7 +437,9 @@ aiRouter.post(
   requireAuth,
   async (
     req: Request,
-    res: Response<SummarizeTicketResponse | { error: string }>,
+    res: Response<
+      SummarizeTicketResponse | DemoAiLimitResponse | { error: string }
+    >,
   ) => {
     // First, and before the body is even looked at: on a deployment with no key
     // the answer is the same for every request.
@@ -432,6 +508,8 @@ aiRouter.post(
       ];
     });
 
+    if (await refuseSpentDemo(user, res)) return;
+
     // After validation and the lookup, before the model — the same order as the
     // endpoint above, and for the same reason: a malformed body or a missing
     // ticket costs nothing to refuse, so only a request that would actually
@@ -464,6 +542,7 @@ aiRouter.post(
       },
       abort.signal,
     );
+    await chargeDemoCall(user, result);
     if (!result.ok) {
       const { status, error } = SUMMARY_FAILURE_RESPONSE[result.reason];
       if (result.reason === AI_FAILURE.busy) {

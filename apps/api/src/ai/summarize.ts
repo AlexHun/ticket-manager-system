@@ -18,6 +18,7 @@ import {
   toAiUsage,
   withoutDashes,
   type AiFailure,
+  type AiUsage,
 } from "./provider";
 
 /**
@@ -218,8 +219,14 @@ export interface SummarizeContext {
   messages: SummaryMessage[];
 }
 
-export type SummarizeResult =
-  { ok: true; summary: TicketSummary } | { ok: false; reason: AiFailure };
+/**
+ * `usage` rides on both branches for the same reason as on `PolishResult`: a
+ * demo session's summary is charged to the day's demo AI budget from it (#321),
+ * and an answer that failed the schema was still paid for.
+ */
+export type SummarizeResult = { usage?: AiUsage } & (
+  { ok: true; summary: TicketSummary } | { ok: false; reason: AiFailure }
+);
 
 /**
  * The shape the model must answer in.
@@ -580,12 +587,14 @@ export async function summarizeTicket(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("summarize", SUMMARY_MODEL, toAiUsage(usage));
+    const aiUsage = toAiUsage(usage);
+    logUsage("summarize", SUMMARY_MODEL, aiUsage);
 
     const summary = tidy(output);
-    if (!summary) return { ok: false, reason: AI_FAILURE.empty };
+    if (!summary)
+      return { ok: false, reason: AI_FAILURE.empty, usage: aiUsage };
 
-    return { ok: true, summary };
+    return { ok: true, summary, usage: aiUsage };
   } catch (err) {
     // The real cause goes to the log; the client gets a sentence. A provider
     // error carries request ids, org names and quota detail, none of which
@@ -601,8 +610,9 @@ export async function summarizeTicket(
     // else in this app.
     if (NoObjectGeneratedError.isInstance(err)) {
       // It still cost what it cost — see the same branch in `classify.ts`.
-      logUsage("summarize", SUMMARY_MODEL, toAiUsage(err.usage));
-      return { ok: false, reason: AI_FAILURE.empty };
+      const failed = toAiUsage(err.usage);
+      logUsage("summarize", SUMMARY_MODEL, failed);
+      return { ok: false, reason: AI_FAILURE.empty, usage: failed };
     }
 
     return { ok: false, reason: classify(err) };

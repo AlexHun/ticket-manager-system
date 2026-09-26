@@ -22,7 +22,7 @@ import {
   test,
 } from "bun:test";
 import * as ai from "ai";
-import { APICallError, RetryError } from "ai";
+import { APICallError, RetryError, type LanguageModelUsage } from "ai";
 
 /** Set before `./polish` is imported below — the module reads it once, at import. */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
@@ -45,7 +45,9 @@ interface GenerateTextOptions {
  * mock stays one function for the whole file, so `.mock.calls` is always the
  * same object and there is no per-runner API surface to get wrong.
  */
-let respond: (options: GenerateTextOptions) => Promise<{ text: string }>;
+let respond: (
+  options: GenerateTextOptions,
+) => Promise<{ text: string; usage?: LanguageModelUsage }>;
 
 const generateText = mock((options: GenerateTextOptions) => respond(options));
 
@@ -77,6 +79,23 @@ function lastCall(): GenerateTextOptions {
 
 function replyWith(text: string): void {
   respond = () => Promise.resolve({ text });
+}
+
+/** A usage report in the SDK's own shape, which `toAiUsage` maps. */
+const USAGE: LanguageModelUsage = {
+  inputTokens: 900,
+  outputTokens: 300,
+  totalTokens: 1_200,
+  inputTokenDetails: {
+    noCacheTokens: 900,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  },
+  outputTokenDetails: { textTokens: 100, reasoningTokens: 200 },
+};
+
+function replyWithUsage(text: string): void {
+  respond = () => Promise.resolve({ text, usage: USAGE });
 }
 
 function failWith(err: unknown): void {
@@ -456,5 +475,52 @@ describe("polishDraft — classifying a failure", () => {
     const result = await polishDraft(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
+  });
+});
+
+/**
+ * What the call cost rides on the result (#321): a demo session's polish is
+ * charged to the day's demo AI budget by the route, and the route can only
+ * charge what it is handed. A rewrite that was discarded still cost what it
+ * cost, so the discarded branches carry it too.
+ */
+describe("polishDraft — what the call cost", () => {
+  test("a rewrite carries the call's usage", async () => {
+    replyWithUsage("Hi Marta,\n\nYour parcel shipped on Friday.");
+
+    const result = await polishDraft(DRAFT, CONTEXT);
+
+    expect(result.ok).toBe(true);
+    expect(result.usage?.inputTokens).toBe(900);
+    expect(result.usage?.outputTokens).toBe(300);
+  });
+
+  test("so does a rewrite that was discarded", async () => {
+    replyWithUsage("We have refunded your order in full.");
+
+    const result = await polishDraft(DRAFT, CONTEXT);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: POLISH_FAILURE.invented,
+    });
+    expect(result.usage?.outputTokens).toBe(300);
+  });
+
+  test("so does an answer with no text in it", async () => {
+    replyWithUsage("   ");
+
+    const result = await polishDraft(DRAFT, CONTEXT);
+
+    expect(result).toMatchObject({ ok: false, reason: POLISH_FAILURE.empty });
+    expect(result.usage?.outputTokens).toBe(300);
+  });
+
+  test("a call that threw carries none", async () => {
+    failWith(apiError(500, "internal error"));
+
+    const result = await polishDraft(DRAFT, CONTEXT);
+
+    expect(result.usage).toBeUndefined();
   });
 });

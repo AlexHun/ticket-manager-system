@@ -1,7 +1,12 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { MAX_MESSAGE_BODY_LENGTH } from "@ticket/shared";
+import {
+  DEMO_AI_LIMIT_MESSAGE,
+  DEMO_AI_LIMIT_REASON,
+  MAX_MESSAGE_BODY_LENGTH,
+} from "@ticket/shared";
+import { toast } from "@/components/ui/sonner";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { TicketReplyComposer } from "./TicketReplyComposer";
@@ -215,6 +220,61 @@ describe("TicketReplyComposer polish — the round trip", () => {
     // The draft is the only copy of what was typed.
     expect(replyBox()).toHaveValue(DRAFT);
     expect(screen.queryByRole("button", { name: "Undo polish" })).toBeNull();
+  });
+});
+
+/**
+ * A demo session once every demo session together has spent the day's AI
+ * budget (#321). The server makes no call and answers 429 with a `reason`; the
+ * composer says so where the rewrite would have gone, as a fact about the demo
+ * rather than an error, because pressing Polish again will not help until
+ * 00:00 UTC.
+ */
+describe("TicketReplyComposer polish — the demo AI limit", () => {
+  const demoLimit = () =>
+    Object.assign(new Error("Request failed"), {
+      isAxiosError: true,
+      response: {
+        status: 429,
+        data: { error: DEMO_AI_LIMIT_MESSAGE, reason: DEMO_AI_LIMIT_REASON },
+      },
+    });
+
+  test("shows the limit as a note, not an error", async () => {
+    // Nothing clears the global sonner mock between tests.
+    vi.mocked(toast.error).mockClear();
+    mockApi({ polishError: demoLimit() });
+    const user = renderComposer();
+    fillDraft(DRAFT);
+
+    await user.click(polishButton());
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      DEMO_AI_LIMIT_MESSAGE,
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(replyBox()).toHaveValue(DRAFT);
+  });
+
+  // Same status, no `reason`: a person leaning on the button, which is worth
+  // retrying in a minute and stays an error.
+  test("leaves the per-user rate limit an error", async () => {
+    mockApi({
+      polishError: makeAxiosError(
+        429,
+        "You've polished a lot of drafts just now — try again in a minute.",
+      ),
+    });
+    const user = renderComposer();
+    fillDraft(DRAFT);
+
+    await user.click(polishButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "try again in a minute",
+    );
+    expect(screen.queryByText(DEMO_AI_LIMIT_MESSAGE)).toBeNull();
   });
 });
 

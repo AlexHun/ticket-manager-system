@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import {
   AI_FAILURE,
+  type AiUsage,
   classify,
   fenced,
   isAiConfigured,
@@ -231,8 +232,16 @@ export const POLISH_FAILURE = {
 export type PolishFailure =
   (typeof POLISH_FAILURE)[keyof typeof POLISH_FAILURE];
 
-export type PolishResult =
-  { ok: true; text: string } | { ok: false; reason: PolishFailure };
+/**
+ * `usage` rides on both branches, as on `AutoReplyResult`, and is absent when
+ * no answer came back. A demo session's polish is charged to the day's demo AI
+ * budget from it (#321), and a rewrite discarded as empty or as inventing a
+ * commitment was still paid for. Optional because accounting is the
+ * provider's to report, not ours to demand.
+ */
+export type PolishResult = { usage?: AiUsage } & (
+  { ok: true; text: string } | { ok: false; reason: PolishFailure }
+);
 
 /** A fence the model was told not to emit, stripped anyway rather than shown to an agent. */
 const CODE_FENCE = /^```[^\n]*\n([\s\S]*?)\n?```$/;
@@ -305,13 +314,14 @@ export async function polishDraft(
       // rejects it on reasoning models. Don't add it "for determinism".
     });
 
-    logUsage("polish", POLISH_MODEL, toAiUsage(usage));
+    const aiUsage = toAiUsage(usage);
+    logUsage("polish", POLISH_MODEL, aiUsage);
 
     const polished = withoutDashes(
       (CODE_FENCE.exec(text.trim())?.[1] ?? text).trim(),
     ).trim();
     if (polished.length === 0)
-      return { ok: false, reason: POLISH_FAILURE.empty };
+      return { ok: false, reason: POLISH_FAILURE.empty, usage: aiUsage };
 
     const invented = inventedCommitments(polished, draft);
     if (invented.length > 0) {
@@ -321,10 +331,10 @@ export async function polishDraft(
       console.error(
         `[polish] discarded a rewrite promising ${invented.join(", ")}; not in the draft`,
       );
-      return { ok: false, reason: POLISH_FAILURE.invented };
+      return { ok: false, reason: POLISH_FAILURE.invented, usage: aiUsage };
     }
 
-    return { ok: true, text: polished };
+    return { ok: true, text: polished, usage: aiUsage };
   } catch (err) {
     // The real cause goes to the log; the client gets a sentence. A provider
     // error carries request ids, org names and quota detail, none of which

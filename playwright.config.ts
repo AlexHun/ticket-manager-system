@@ -20,6 +20,8 @@ const WEB_URL = `http://localhost:${WEB_PORT}`;
 // `FAKE_OPENAI_PORT` must match `tests/e2e/fake-openai/constants.ts`'s
 // `STUB_PORT`. Safe to share the ordinary run's `ticket_manager_test` database
 // only because `workers: 1` below means nothing else is writing concurrently.
+// Since #321 it also runs in demo mode with a tiny `DEMO_AI_DAILY_USD`, for
+// tests/e2e/demo-ai-budget.spec.ts; only demo sessions notice either.
 const AI_API_PORT = 3003;
 const FAKE_OPENAI_PORT = 3999;
 const AI_API_URL = `http://localhost:${AI_API_PORT}`;
