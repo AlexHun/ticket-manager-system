@@ -403,5 +403,15 @@
     "version": "0.1.141",
     "date": "2026-09-26",
     "title": "Review follow-ups for the demo session lifetime"
+  },
+  {
+    "version": "0.1.142",
+    "date": "2026-09-26",
+    "title": "A demo session's email is written to the outbox and never sent"
+  },
+  {
+    "version": "0.1.142",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the demo email"
   }
 ]
