@@ -124,7 +124,7 @@ export function KnowledgePage() {
               Show archived ({archived})
             </Toggle>
           )}
-          {readOnly && <DemoReadOnlyNote />}
+          <DemoReadOnlyNote />
           <div data-tutorial-anchor="new" className="contents">
             <Button onClick={openCreate} disabled={readOnly}>
               New article

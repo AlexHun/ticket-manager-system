@@ -327,7 +327,7 @@ export function KnowledgeArticleDialog({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            {readOnly && <DemoReadOnlyNote className="mr-auto" />}
+            <DemoReadOnlyNote className="mr-auto" />
             <Button
               type="button"
               variant="outline"

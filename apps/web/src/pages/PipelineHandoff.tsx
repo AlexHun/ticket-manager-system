@@ -229,7 +229,7 @@ export function PipelineHandoff() {
                 )}
               </div>
               <HandoffStatus settings={current} rosterError={rosterError} />
-              {readOnly && <DemoReadOnlyNote className="mt-1.5" />}
+              <DemoReadOnlyNote className="mt-1.5" />
             </dd>
           </div>
         </dl>

@@ -946,7 +946,7 @@ export function EvalsPage() {
           title="Evals"
           description="Answer every case whose outcome is written down, five times each, against the real provider — and see whether the unattended path still lands where it should. No ticket is created."
         >
-          {readOnly && <DemoReadOnlyNote />}
+          <DemoReadOnlyNote />
           {/* `display: contents` so the wrapper can carry the anchor without
               becoming a flex item between the selector and the button —
               `Tutorial` walks into the first real box to measure it. */}

@@ -232,7 +232,7 @@ export function EvalSchedulePanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      {readOnly && <DemoReadOnlyNote />}
+      <DemoReadOnlyNote />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Nightly schedule</CardTitle>

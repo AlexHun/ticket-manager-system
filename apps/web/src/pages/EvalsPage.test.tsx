@@ -73,6 +73,7 @@ const scheduleGet = apiStub.get("/api/evals/schedule");
 const tutorialGet = apiStub.get("/api/tutorials/:pageKey");
 
 const ADMIN = { name: "Adele Admin", role: USER_ROLE.admin };
+const DEMO = { name: "Demo visitor", role: USER_ROLE.agent, isAnonymous: true };
 const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
 
 vi.mock("@/lib/auth-client", () => ({
@@ -843,18 +844,14 @@ describe("the corpus control", () => {
   // #326, R15: a demo session browses both series and starts nothing. The
   // selector filters the list, so it stays theirs; the button spends money.
   test("a demo session can switch corpus but not run, and is told why", async () => {
-    session.user = {
-      name: "Demo visitor",
-      role: USER_ROLE.agent,
-      isAnonymous: true,
-    };
+    session.user = DEMO;
 
     render();
 
     await screen.findByRole("button", { name: "Run 7" });
     expect(screen.getByRole("combobox", { name: "Corpus" })).toBeEnabled();
     expect(runButton()).toBeDisabled();
-    // Once beside the Run button, once in the schedule panel.
+    // Once in the page header, once in the schedule panel.
     expect(await screen.findAllByText(DEMO_READ_ONLY_NOTE)).toHaveLength(2);
   });
 

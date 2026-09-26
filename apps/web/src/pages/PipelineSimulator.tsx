@@ -161,7 +161,7 @@ export function PipelineSimulator({
         reserved domain — nothing here can reach a real person.
       </p>
 
-      {readOnly && <DemoReadOnlyNote className="mt-3" />}
+      <DemoReadOnlyNote className="mt-3" />
 
       {!config.simulatorEnabled && !readOnly && (
         <p

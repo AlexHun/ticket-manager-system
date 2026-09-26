@@ -27,6 +27,7 @@ const rejectPost = apiStub.post(
   "/api/knowledge-articles/:id/revisions/:revisionId/reject",
 );
 
+const DEMO = { name: "Demo visitor", role: USER_ROLE.agent, isAnonymous: true };
 const mockUseSession = vi.fn();
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => mockUseSession(),
@@ -158,11 +159,7 @@ describe("KnowledgeRevisionsDialog — a pending revision", () => {
   test("a demo session sees the proposal with Approve and Reject disabled, and the note", async () => {
     mockUseSession.mockReturnValue({
       data: {
-        user: {
-          name: "Demo visitor",
-          role: USER_ROLE.agent,
-          isAnonymous: true,
-        },
+        user: DEMO,
       },
     });
     revisionsGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });

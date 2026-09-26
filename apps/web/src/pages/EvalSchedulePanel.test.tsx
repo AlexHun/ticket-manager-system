@@ -30,6 +30,7 @@ import { EvalSchedulePanel } from "./EvalSchedulePanel";
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
 const ADMIN = { name: "Ada Admin", role: USER_ROLE.admin };
+const DEMO = { name: "Demo visitor", role: USER_ROLE.agent, isAnonymous: true };
 const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
 
 vi.mock("@/lib/auth-client", () => ({
@@ -105,11 +106,7 @@ test("shows the stored time and who last changed it", async () => {
 // #326, R15: the owner pauses the schedule on production; a demo session only
 // reads it. Every control that writes is off, with the note saying why.
 test("is read-only for a demo session: time, pause, plan and cancel disabled", async () => {
-  session.user = {
-    name: "Demo visitor",
-    role: USER_ROLE.agent,
-    isAnonymous: true,
-  };
+  session.user = DEMO;
   scheduleGet.mockResolvedValue(response({ plannedRuns: [plannedRun()] }));
   renderPanel();
 
@@ -123,6 +120,14 @@ test("is read-only for a demo session: time, pause, plan and cancel disabled", a
     screen.getByRole("combobox", { name: /corpus for this run/i }),
   ).toBeDisabled();
   expect(screen.getByRole("button", { name: /cancel/i })).toBeDisabled();
+});
+
+test("keeps a paused schedule paused for a demo session: Resume is disabled", async () => {
+  session.user = DEMO;
+  scheduleGet.mockResolvedValue(response({ schedule: { paused: true } }));
+  renderPanel();
+
+  expect(await screen.findByRole("button", { name: /resume/i })).toBeDisabled();
 });
 
 test("says so when nobody has ever changed it", async () => {
