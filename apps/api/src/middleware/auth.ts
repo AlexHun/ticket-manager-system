@@ -27,7 +27,7 @@ export function sessionOf(res: Response): Session {
  * cannot answer `null`. Anything else is a fault, and goes on to the error
  * handler as it always did.
  */
-function signedOut(err: unknown): null {
+function noSessionOn401(err: unknown): null {
   if (isAPIError(err) && err.statusCode === 401) return null;
   throw err;
 }
@@ -41,7 +41,7 @@ function guard(allowed: (session: Session, req: Request) => boolean) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const session = await auth.api
       .getSession({ headers: fromNodeHeaders(req.headers) })
-      .catch(signedOut);
+      .catch(noSessionOn401);
 
     if (!session) {
       res.status(401).json({ error: "Unauthenticated" });

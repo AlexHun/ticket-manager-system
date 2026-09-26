@@ -26,7 +26,10 @@ session already open is refused on its next request
 sooner than the 60-second `cookieCache` window the plan allowed for: the refusal
 is an `after` hook on `/get-session`, so it runs on an answer the cache served as
 well as on one read from the database. A demo session also ends two hours after
-it started, whatever the switch says.
+it started, whatever the switch says. An event stream the page already has open
+lives out its 15-minute lifetime, as it does for any revoked session
+(`routes/events.ts`), but every event it delivers makes the page refetch, and
+the refetch is refused.
 
 **It also stays off on production until the plan's slices 1–7 have merged.**
 Slice 1 ships the way in and nothing that bounds it: no AI budget, no per-IP

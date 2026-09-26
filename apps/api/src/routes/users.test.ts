@@ -1496,6 +1496,11 @@ describe("Demo session lifetime — auth.ts", () => {
 
   const MINUTE = 60 * 1000;
   const TWO_HOURS = 120 * MINUTE;
+  const WEEK = 7 * 24 * 60 * MINUTE;
+
+  /** Whose session a `/get-session` answer is, if it is anybody's. */
+  const userIdOf = async (res: globalThis.Response) =>
+    ((await res.json()) as { user: { id: string } } | null)?.user.id;
 
   const demoSessionRow = () =>
     prisma.session.findFirstOrThrow({ where: { user: { isAnonymous: true } } });
@@ -1520,9 +1525,8 @@ describe("Demo session lifetime — auth.ts", () => {
     });
     // Within a second: Better Auth reads the clock separately for each of the
     // two, and they have been seen a millisecond apart.
-    const week = 7 * 24 * 60 * MINUTE;
     expect(
-      Math.abs(row.expiresAt.getTime() - row.createdAt.getTime() - week),
+      Math.abs(row.expiresAt.getTime() - row.createdAt.getTime() - WEEK),
     ).toBeLessThan(1000);
   });
 
@@ -1554,9 +1558,7 @@ describe("Demo session lifetime — auth.ts", () => {
     );
     setSystemTime(new Date(start + TWO_HOURS - 1000));
     const before = await getSessionWith(cookie);
-    expect(((await before.json()) as { user?: unknown } | null)?.user).toEqual(
-      expect.anything(),
-    );
+    expect(await userIdOf(before)).toEqual(expect.any(String));
 
     setSystemTime(new Date(start + TWO_HOURS + 1000));
     const after = await getSessionWith(cookie);
@@ -1564,8 +1566,8 @@ describe("Demo session lifetime — auth.ts", () => {
     expect(await after.json()).toBeNull();
   });
 
-  // The other half of the measurement, and the reason the E2E spec waits out
-  // the cache before its backdated session is refused.
+  // The other half of the measurement, and the reason the E2E spec lets the
+  // cache lapse before its backdated session is refused.
   test("a session ended behind the cache's back is served from it for up to 60 seconds", async () => {
     const start = Date.now();
     const cookie = await demoStartedAt(start);
@@ -1576,9 +1578,7 @@ describe("Demo session lifetime — auth.ts", () => {
 
     setSystemTime(new Date(start + MINUTE / 2));
     const cached = await getSessionWith(cookie);
-    expect(((await cached.json()) as { user?: unknown } | null)?.user).toEqual(
-      expect.anything(),
-    );
+    expect(await userIdOf(cached)).toEqual(expect.any(String));
 
     setSystemTime(new Date(start + MINUTE + 1000));
     expect(await (await getSessionWith(cookie)).json()).toBeNull();
@@ -1591,7 +1591,7 @@ describe("Demo session lifetime — auth.ts", () => {
     const cookie = await demoStartedAt(start);
     await prisma.session.updateMany({
       where: { user: { isAnonymous: true } },
-      data: { expiresAt: new Date(start + 7 * 24 * 60 * MINUTE) },
+      data: { expiresAt: new Date(start + WEEK) },
     });
 
     setSystemTime(new Date(start + TWO_HOURS + 1000));
@@ -1649,8 +1649,6 @@ describe("Demo session lifetime — auth.ts", () => {
     const res = await getSessionWith(sessionCookie);
 
     expect(res.status).toBe(200);
-    expect(
-      ((await res.json()) as { user: { id: string } } | null)?.user.id,
-    ).toBe(ADMIN.id);
+    expect(await userIdOf(res)).toBe(ADMIN.id);
   });
 });

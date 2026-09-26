@@ -466,24 +466,29 @@ test.describe("Demo session", () => {
   });
 
   // R7. The unit tests hold the two hours themselves; this is what the
-  // visitor meets once they are up. The cache is let lapse first because a
-  // row ended behind its back is served from it for up to its 60 seconds.
-  test("once its session has ended, the next navigation lands on the login page with the button", async ({
-    page,
-  }) => {
-    await startDemo(page);
-    await page.goto(ROUTE.tickets.path);
-    await expect(
-      page.getByRole("region", { name: "Demo session" }),
-    ).toBeVisible();
+  // visitor meets once they are up, by each of the two ways a session is
+  // refused: Better Auth's own expiry (a `null`), and `auth.ts`'s two-hour
+  // rule read off the start (a 401, which the page must read as signed out).
+  // The cache is let lapse first because a row changed behind its back is
+  // served from it for up to its 60 seconds.
+  for (const column of ["expiresAt", "createdAt"] as const) {
+    test(`once its session has ended (${column} backdated), the next navigation lands on the login page with the button`, async ({
+      page,
+    }) => {
+      await startDemo(page);
+      await page.goto(ROUTE.tickets.path);
+      await expect(
+        page.getByRole("region", { name: "Demo session" }),
+      ).toBeVisible();
 
-    await backdateDemoSession(page);
-    await lapseSessionCache(page);
-    await page.goto(ROUTE.tickets.path);
+      await backdateDemoSession(page, column);
+      await lapseSessionCache(page);
+      await page.goto(ROUTE.tickets.path);
 
-    await expect(page).toHaveURL(ROUTE.login.path);
-    await expect(page.getByRole("button", DEMO_BUTTON)).toBeVisible();
-  });
+      await expect(page).toHaveURL(ROUTE.login.path);
+      await expect(page.getByRole("button", DEMO_BUTTON)).toBeVisible();
+    });
+  }
 
   // R12, and it comes free: each click is a new identity, and walkthrough
   // progress is stored per user.

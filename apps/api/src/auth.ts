@@ -162,7 +162,7 @@ if (cookieDomain) {
  */
 function isSessionAnswer(answer: unknown): answer is {
   session: { token: string; createdAt: Date | string };
-  user: { isAnonymous?: boolean | null };
+  user: { isAnonymous: boolean | null };
 } {
   return (
     typeof answer === "object" &&
@@ -326,7 +326,8 @@ export const auth = betterAuth({
    * always is. So the first request read from the database would otherwise push
    * its end out to a week. The session being refreshed is the one
    * `/get-session` has just put on `ctx.context.session`, which is the only way
-   * this hook can tell whose it is: the update itself names no session.
+   * this hook can tell whose it is: the update itself names no session. So it
+   * acts on that path alone, where the two are known to be the same row.
    *
    * The `after` hook below is what actually refuses one, off `createdAt`, so
    * these two keep the row honest rather than hold the line on their own.
@@ -350,10 +351,16 @@ export const auth = betterAuth({
       },
       update: {
         before: async (session, ctx) => {
-          const current = ctx?.context.session;
+          // Only `/get-session`'s refresh, where the current session and the
+          // one being updated are the same row. Anywhere else the current
+          // session is merely the caller's.
+          if (ctx?.path !== "/get-session") return;
+          const current = ctx.context.session;
           if (!session.expiresAt || !current) return;
-          if ((current.user as { isAnonymous?: boolean }).isAnonymous !== true)
-            return;
+          // The hook's own types know only the core user plus an index
+          // signature, so this reads as `any`; `routes/users.test.ts`'s
+          // refresh test is what fails if the plugin ever renames it.
+          if (current.user.isAnonymous !== true) return;
           return {
             data: {
               ...session,
@@ -429,6 +436,15 @@ export const auth = betterAuth({
      * store sets `data` to `null` on exactly that status. `requireAuth` turns
      * the thrown error into its own 401. The row is deleted and the cookies
      * expired first, so switching demo mode back on does not revive it.
+     *
+     * **Two things it does not reach.** An event stream already open
+     * (`routes/events.ts`) was authenticated when it connected and lives out
+     * its `STREAM_MAX_MS`, as it does for any revoked session, though every
+     * event it delivers sends the page to a refetch this refuses. And Better
+     * Auth's own session-bound endpoints (`/update-user`, `/list-sessions`, …)
+     * read the session without this hook, so a stranger calling them directly
+     * keeps that reach until the row is gone — which it is from the first
+     * `/get-session` the visitor's page makes, and at two hours regardless.
      */
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path !== "/get-session") return;
