@@ -209,6 +209,20 @@ describe("DEMO_RESET_SWEEP, with demo mode off", () => {
   });
 });
 
+describe("DEMO_RESET_SWEEP, on a night the showcase cannot be written", () => {
+  // Nobody a ticket could be handed to, so `seedShowcase` throws. The sweep
+  // has no retry, so ended visitors must already be gone by then.
+  test("still removes the demo visitors whose sessions ended", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+    await resetDb();
+    await seedVisitor("u_demo_gone", new Date(Date.now() - HOUR));
+
+    await expect(DEMO_RESET_SWEEP.run()).rejects.toThrow("No users found");
+
+    expect(await prisma.user.count({ where: { isAnonymous: true } })).toBe(0);
+  });
+});
+
 test("is scheduled for 00:00 every day, which pg-boss reads as UTC", () => {
   expect(DEMO_RESET_SWEEP.cron).toBe("0 0 * * *");
 });

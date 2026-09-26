@@ -710,6 +710,12 @@ function buildRows(assignees: Assignee[], now: number): TicketRow[] {
         : (1 + (i % 5)) * DAY;
 
     const customer = CUSTOMERS[(i * 17) % CUSTOMERS.length];
+    // Every third ticket is unassigned, so the queue has real triage work. The
+    // rest are dealt round in turn by how many assigned rows came before this
+    // one. Dealing by `i` alone skips whoever sits at a multiple of three when
+    // the number of people is itself a multiple of three, because those are
+    // exactly the `i` left unassigned — with three, the oldest got none.
+    const assignedBefore = i - Math.floor(i / 3) - 1;
 
     return {
       subject: ticket.subject,
@@ -717,15 +723,10 @@ function buildRows(assignees: Assignee[], now: number): TicketRow[] {
       status,
       customerName: customer.name,
       customerEmail: customer.email,
-      // Every third ticket is unassigned, so the queue has real triage work.
-      // The rest are dealt round in turn, counting only the assigned rows:
-      // `i % length` would skip whoever sits at a multiple of three whenever
-      // there are exactly three people, since those `i` are the unassigned ones.
       assignedToId:
         i % 3 === 0
           ? null
-          : (assigneeIds[(i - Math.floor(i / 3) - 1) % assigneeIds.length] ??
-            null),
+          : (assigneeIds[assignedBefore % assigneeIds.length] ?? null),
       createdAt,
       // Capped at now for the same reason: a reply gap of hours on
       // yesterday's evening ticket would otherwise end tomorrow morning.
@@ -832,7 +833,10 @@ export async function seedShowcase(
     ),
   ]);
 
-  const backfilled = await backfillThreads(rows, demoKeys, assigneesById);
+  // After a reset every demo ticket was just written with its thread.
+  const backfilled = reset
+    ? { tickets: 0, messages: 0 }
+    : await backfillThreads(rows, demoKeys, assigneesById);
 
   return {
     removed: doomed.length,

@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { TICKET_STATUS } from "@ticket/shared";
 import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
-import { freshClientAddress, fromAddress } from "./helpers/client-address";
 import { resetDemoUsers, resetTickets, testDb } from "./helpers/db";
+import { startDemo } from "./helpers/demo";
 import { runDemoReset } from "./helpers/demo-reset";
 import { WEBHOOK_PASSWORD, WEBHOOK_URL, WEBHOOK_USERNAME } from "./helpers/env";
 
@@ -33,14 +33,6 @@ test.afterAll(async () => {
   await resetTickets();
   await resetDemoUsers();
 });
-
-/** Start a demo from an address of its own, as `demo-session.spec.ts` does. */
-async function startDemo(page: Page): Promise<void> {
-  await page.context().setExtraHTTPHeaders(fromAddress(freshClientAddress()));
-  await page.goto(ROUTE.login.path);
-  await page.getByRole("button", { name: "Use demo session" }).click();
-  await page.waitForURL(ROUTE.dashboard.path);
-}
 
 /** Pick `status` from the detail page's Status control and wait for the save. */
 async function setStatus(page: Page, ticketId: number, status: string) {

@@ -21,8 +21,8 @@ import {
 import { DEMO_VISITOR_NAME } from "../../apps/api/src/demo/mode";
 import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { CREDENTIALS } from "./helpers/auth";
-import { freshClientAddress, fromAddress } from "./helpers/client-address";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
+import { startDemo } from "./helpers/demo";
 import { API_URL } from "./helpers/env";
 
 /**
@@ -39,7 +39,6 @@ import { API_URL } from "./helpers/env";
 
 /** Imported rather than retyped: `demo/mode.ts` is import-free, like `routes.ts`. */
 const DEMO_VISITOR = DEMO_VISITOR_NAME;
-const DEMO_BUTTON = { name: "Use demo session" };
 
 /**
  * A dashboard walkthrough, so R12 has something to show. The test database has
@@ -118,18 +117,6 @@ test.afterAll(async () => {
     });
   }
 });
-
-/**
- * Click the button and wait to land on the dashboard. From an address of its
- * own, so this file's starts never add up to the five-an-hour limit (#322) —
- * that is `demo-rate-limit.spec.ts`'s subject, not this one's.
- */
-async function startDemo(page: Page): Promise<void> {
-  await page.context().setExtraHTTPHeaders(fromAddress(freshClientAddress()));
-  await page.goto(ROUTE.login.path);
-  await page.getByRole("button", DEMO_BUTTON).click();
-  await page.waitForURL(ROUTE.dashboard.path);
-}
 
 /** The walkthrough's dialog, named by its title. */
 function walkthrough(page: Page) {
