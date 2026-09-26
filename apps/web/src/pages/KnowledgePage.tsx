@@ -7,6 +7,7 @@ import type {
   KnowledgeArticleRevisionsResponse,
   KnowledgeArticlesResponse,
 } from "@ticket/shared";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { CategoryBadge } from "@/components/TicketBadges";
 import { Hint } from "@/components/Hint";
 import { Tutorial } from "@/components/Tutorial";
@@ -82,6 +83,7 @@ export function KnowledgePage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [archiving, setArchiving] = useState<KnowledgeArticle | null>(null);
   const [historyOf, setHistoryOf] = useState<KnowledgeArticle | null>(null);
+  const readOnly = useDemoReadOnly();
 
   const visible = useMemo(
     () => (articles ?? []).filter((a) => showArchived || !a.archived),
@@ -122,8 +124,11 @@ export function KnowledgePage() {
               Show archived ({archived})
             </Toggle>
           )}
+          {readOnly && <DemoReadOnlyNote />}
           <div data-tutorial-anchor="new" className="contents">
-            <Button onClick={openCreate}>New article</Button>
+            <Button onClick={openCreate} disabled={readOnly}>
+              New article
+            </Button>
           </div>
         </PageHeader>
 
@@ -164,6 +169,7 @@ export function KnowledgePage() {
                 key={article.id}
                 article={article}
                 pending={pendingByArticle?.has(article.id) ?? false}
+                readOnly={readOnly}
                 onEdit={() => openEdit(article)}
                 onArchive={() => setArchiving(article)}
                 onHistory={() => setHistoryOf(article)}
@@ -207,6 +213,7 @@ export function KnowledgePage() {
 function ArticleRow({
   article,
   pending,
+  readOnly,
   onEdit,
   onArchive,
   onHistory,
@@ -214,6 +221,12 @@ function ArticleRow({
   article: KnowledgeArticle;
   /** Whether a revision on this article is awaiting a second admin. */
   pending: boolean;
+  /**
+   * A demo session (#326). Edit stays open, because the dialog is where the
+   * whole article is readable and it disables its own save; Archive and
+   * Restore are writes with nothing to read behind them.
+   */
+  readOnly: boolean;
   onEdit: () => void;
   onArchive: () => void;
   onHistory: () => void;
@@ -319,7 +332,12 @@ function ArticleRow({
               </span>
             </Hint>
           )}
-          <Button variant="ghost" size="sm" onClick={onArchive}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={readOnly}
+            onClick={onArchive}
+          >
             <ArchiveRestore aria-hidden="true" />
             {article.archived ? "Restore" : "Archive"}
           </Button>

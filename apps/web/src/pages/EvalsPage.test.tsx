@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  DEMO_READ_ONLY_NOTE,
   EVAL_CORPUS,
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
@@ -71,11 +72,11 @@ const scheduleGet = apiStub.get("/api/evals/schedule");
  */
 const tutorialGet = apiStub.get("/api/tutorials/:pageKey");
 
+const ADMIN = { name: "Adele Admin", role: USER_ROLE.admin };
+const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
+
 vi.mock("@/lib/auth-client", () => ({
-  useSession: () => ({
-    data: { user: { name: "Adele Admin", role: USER_ROLE.admin } },
-    isPending: false,
-  }),
+  useSession: () => ({ data: { user: session.user }, isPending: false }),
   authClient: { signOut: vi.fn() },
 }));
 
@@ -248,6 +249,7 @@ function render() {
 
 beforeEach(() => {
   apiStub.reset();
+  session.user = ADMIN;
   runsGet.mockResolvedValue(response());
   runsPost.mockResolvedValue({ data: { runId: 8 } });
   scheduleGet.mockResolvedValue({
@@ -836,6 +838,24 @@ describe("the corpus control", () => {
     await screen.findByRole("button", { name: "Run 7" });
     expect(screen.getByRole("combobox", { name: "Corpus" })).toBeEnabled();
     expect(runButton()).toBeDisabled();
+  });
+
+  // #326, R15: a demo session browses both series and starts nothing. The
+  // selector filters the list, so it stays theirs; the button spends money.
+  test("a demo session can switch corpus but not run, and is told why", async () => {
+    session.user = {
+      name: "Demo visitor",
+      role: USER_ROLE.agent,
+      isAnonymous: true,
+    };
+
+    render();
+
+    await screen.findByRole("button", { name: "Run 7" });
+    expect(screen.getByRole("combobox", { name: "Corpus" })).toBeEnabled();
+    expect(runButton()).toBeDisabled();
+    // Once beside the Run button, once in the schedule panel.
+    expect(await screen.findAllByText(DEMO_READ_ONLY_NOTE)).toHaveLength(2);
   });
 
   test("says the list is capped, and says which series it is capped within", async () => {

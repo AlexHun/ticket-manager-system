@@ -2,9 +2,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  DEMO_READ_ONLY_NOTE,
   KNOWLEDGE_REVISION_ACTION,
   KNOWLEDGE_REVISION_STATUS,
   TICKET_CATEGORY,
+  USER_ROLE,
   type KnowledgeArticle,
   type KnowledgeArticleRevision,
 } from "@ticket/shared";
@@ -150,6 +152,31 @@ describe("KnowledgeRevisionsDialog — a pending revision", () => {
         "/api/knowledge-articles/KB-002/revisions/7/approve",
       );
     });
+  });
+
+  // #326, R5: the proposal is readable, and deciding it is not a demo's.
+  test("a demo session sees the proposal with Approve and Reject disabled, and the note", async () => {
+    mockUseSession.mockReturnValue({
+      data: {
+        user: {
+          name: "Demo visitor",
+          role: USER_ROLE.agent,
+          isAnonymous: true,
+        },
+      },
+    });
+    revisionsGet.mockResolvedValue({ data: { revisions: [PENDING_REVISION] } });
+
+    renderDialog();
+    const dialog = await screen.findByRole("dialog");
+
+    expect(
+      await within(dialog).findByRole("button", { name: "Approve" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Reject" }),
+    ).toBeDisabled();
+    expect(within(dialog).getByText(DEMO_READ_ONLY_NOTE)).toBeInTheDocument();
   });
 
   test("the author may reject their own proposal — only approval is self-restricted", async () => {

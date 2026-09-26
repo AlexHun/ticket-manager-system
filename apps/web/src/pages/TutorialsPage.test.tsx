@@ -1,7 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { TUTORIAL_PAGE_KEY, type TutorialContent } from "@ticket/shared";
+import {
+  DEMO_READ_ONLY_NOTE,
+  TUTORIAL_PAGE_KEY,
+  USER_ROLE,
+  type TutorialContent,
+} from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { TutorialsPage } from "./TutorialsPage";
@@ -9,6 +14,14 @@ import { TutorialsPage } from "./TutorialsPage";
 // --- Mocks ----------------------------------------------------------------
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
+
+const ADMIN = { name: "Ada Admin", role: USER_ROLE.admin };
+const DEMO = { name: "Demo visitor", role: USER_ROLE.agent, isAnonymous: true };
+const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
+
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: { user: session.user }, isPending: false }),
+}));
 
 // The admin roster of tutorials, and the save behind the editor dialog. This
 // is the one page in the app that does *not* mount a `<Tutorial>` of its own,
@@ -54,6 +67,7 @@ async function openEditDialog(name: string) {
 
 beforeEach(() => {
   apiStub.reset();
+  session.user = ADMIN;
 });
 
 afterEach(() => {
@@ -133,6 +147,49 @@ describe("TutorialsPage", () => {
 });
 
 describe("TutorialsPage — editing", () => {
+  // #326, R5: a demo session reads the copy and saves none of it.
+  test("opens read-only for a demo session: fields and Save disabled, with the note", async () => {
+    session.user = DEMO;
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
+    renderTutorialsPage();
+    await screen.findByText("Dashboard");
+
+    await openEditDialog("Edit");
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Title")).toHaveValue(
+      "Reading the dashboard",
+    );
+    expect(within(dialog).getByLabelText("Title")).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Add step" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    ).toBeDisabled();
+    expect(within(dialog).getByText(DEMO_READ_ONLY_NOTE)).toBeInTheDocument();
+    // Cancel is how a visitor leaves, so it stays live.
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toBeEnabled();
+  });
+
+  test("an admin's editor carries no read-only note", async () => {
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
+    renderTutorialsPage();
+    await screen.findByText("Dashboard");
+
+    await openEditDialog("Edit");
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).queryByText(DEMO_READ_ONLY_NOTE),
+    ).not.toBeInTheDocument();
+  });
+
   test("opens the editor pre-filled with the page's existing content", async () => {
     tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     renderTutorialsPage();

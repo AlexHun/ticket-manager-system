@@ -15,6 +15,7 @@ import {
   type TutorialContent,
   type TutorialContentResponse,
 } from "@ticket/shared";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -83,6 +84,7 @@ export function TutorialEditorDialog({
 }) {
   const [serverError, setServerError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const readOnly = useDemoReadOnly();
 
   const {
     register,
@@ -157,142 +159,147 @@ export function TutorialEditorDialog({
           noValidate
           className="flex flex-col gap-5"
         >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${idPrefix}-title`}>Title</Label>
-            <Input
-              id={`${idPrefix}-title`}
-              aria-invalid={Boolean(errors.title)}
-              disabled={isSubmitting}
-              maxLength={TUTORIAL_TITLE_MAX_LENGTH}
-              {...register("title")}
-            />
-            {errors.title && (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.title.message}
-              </p>
-            )}
-          </div>
+          {/* A disabled fieldset rather than a flag on every field: it reaches
+              the Radix triggers and the step buttons too, and a field added
+              later is read-only in a demo without anybody remembering to. */}
+          <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-5">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`${idPrefix}-title`}>Title</Label>
+              <Input
+                id={`${idPrefix}-title`}
+                aria-invalid={Boolean(errors.title)}
+                disabled={isSubmitting}
+                maxLength={TUTORIAL_TITLE_MAX_LENGTH}
+                {...register("title")}
+              />
+              {errors.title && (
+                <p className="text-sm text-destructive" role="alert">
+                  {errors.title.message}
+                </p>
+              )}
+            </div>
 
-          <div className="flex flex-col gap-4">
-            {fields.map((field, index) => (
-              <div key={field.id} className="rounded-lg border p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <Label className="text-sm font-medium">
-                    Step {index + 1}
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={isSubmitting || fields.length <= 1}
-                    onClick={() => remove(index)}
-                  >
-                    <Trash2 aria-hidden="true" />
-                    Remove
-                  </Button>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor={`${idPrefix}-step-${index}-title`}>
-                      Step {index + 1} title
+            <div className="flex flex-col gap-4">
+              {fields.map((field, index) => (
+                <div key={field.id} className="rounded-lg border p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Step {index + 1}
                     </Label>
-                    <Input
-                      id={`${idPrefix}-step-${index}-title`}
-                      aria-invalid={Boolean(errors.steps?.[index]?.title)}
-                      disabled={isSubmitting}
-                      maxLength={TUTORIAL_STEP_TITLE_MAX_LENGTH}
-                      {...register(`steps.${index}.title`)}
-                    />
-                    {errors.steps?.[index]?.title && (
-                      <p className="text-sm text-destructive" role="alert">
-                        {errors.steps[index]?.title?.message}
-                      </p>
-                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isSubmitting || fields.length <= 1}
+                      onClick={() => remove(index)}
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Remove
+                    </Button>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor={`${idPrefix}-step-${index}-body`}>
-                      Step {index + 1} body
-                    </Label>
-                    <Textarea
-                      id={`${idPrefix}-step-${index}-body`}
-                      rows={3}
-                      aria-invalid={Boolean(errors.steps?.[index]?.body)}
-                      disabled={isSubmitting}
-                      maxLength={TUTORIAL_STEP_BODY_MAX_LENGTH}
-                      {...register(`steps.${index}.body`)}
-                    />
-                    {errors.steps?.[index]?.body && (
-                      <p className="text-sm text-destructive" role="alert">
-                        {errors.steps[index]?.body?.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor={`${idPrefix}-step-${index}-anchor`}>
-                      Step {index + 1} points at
-                    </Label>
-                    <Controller
-                      control={control}
-                      name={`steps.${index}.anchor`}
-                      render={({ field }) => (
-                        <Select
-                          value={field.value ?? NO_ANCHOR}
-                          onValueChange={(value) =>
-                            field.onChange(
-                              value === NO_ANCHOR ? undefined : value,
-                            )
-                          }
-                          disabled={isSubmitting}
-                        >
-                          <SelectTrigger
-                            id={`${idPrefix}-step-${index}-anchor`}
-                            className="w-full"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NO_ANCHOR}>
-                              No target (centered)
-                            </SelectItem>
-                            {anchors.map((anchor) => (
-                              <SelectItem key={anchor.id} value={anchor.id}>
-                                {anchor.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor={`${idPrefix}-step-${index}-title`}>
+                        Step {index + 1} title
+                      </Label>
+                      <Input
+                        id={`${idPrefix}-step-${index}-title`}
+                        aria-invalid={Boolean(errors.steps?.[index]?.title)}
+                        disabled={isSubmitting}
+                        maxLength={TUTORIAL_STEP_TITLE_MAX_LENGTH}
+                        {...register(`steps.${index}.title`)}
+                      />
+                      {errors.steps?.[index]?.title && (
+                        <p className="text-sm text-destructive" role="alert">
+                          {errors.steps[index]?.title?.message}
+                        </p>
                       )}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Points the step at that element on the live page with a
-                      dot and a connector line. Leave it centered for a step
-                      that isn't about one specific thing.
-                    </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor={`${idPrefix}-step-${index}-body`}>
+                        Step {index + 1} body
+                      </Label>
+                      <Textarea
+                        id={`${idPrefix}-step-${index}-body`}
+                        rows={3}
+                        aria-invalid={Boolean(errors.steps?.[index]?.body)}
+                        disabled={isSubmitting}
+                        maxLength={TUTORIAL_STEP_BODY_MAX_LENGTH}
+                        {...register(`steps.${index}.body`)}
+                      />
+                      {errors.steps?.[index]?.body && (
+                        <p className="text-sm text-destructive" role="alert">
+                          {errors.steps[index]?.body?.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor={`${idPrefix}-step-${index}-anchor`}>
+                        Step {index + 1} points at
+                      </Label>
+                      <Controller
+                        control={control}
+                        name={`steps.${index}.anchor`}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value ?? NO_ANCHOR}
+                            onValueChange={(value) =>
+                              field.onChange(
+                                value === NO_ANCHOR ? undefined : value,
+                              )
+                            }
+                            disabled={isSubmitting}
+                          >
+                            <SelectTrigger
+                              id={`${idPrefix}-step-${index}-anchor`}
+                              className="w-full"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NO_ANCHOR}>
+                                No target (centered)
+                              </SelectItem>
+                              {anchors.map((anchor) => (
+                                <SelectItem key={anchor.id} value={anchor.id}>
+                                  {anchor.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Points the step at that element on the live page with a
+                        dot and a connector line. Leave it centered for a step
+                        that isn't about one specific thing.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {errors.steps?.message && (
-              <p className="text-sm text-destructive" role="alert">
-                {errors.steps.message}
-              </p>
-            )}
+              {errors.steps?.message && (
+                <p className="text-sm text-destructive" role="alert">
+                  {errors.steps.message}
+                </p>
+              )}
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={isSubmitting || fields.length >= TUTORIAL_MAX_STEPS}
-              onClick={() => append({ ...EMPTY_STEP })}
-            >
-              <Plus aria-hidden="true" />
-              Add step
-            </Button>
-          </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isSubmitting || fields.length >= TUTORIAL_MAX_STEPS}
+                onClick={() => append({ ...EMPTY_STEP })}
+              >
+                <Plus aria-hidden="true" />
+                Add step
+              </Button>
+            </div>
+          </fieldset>
 
           {serverError && (
             <p className="text-sm text-destructive" role="alert">
@@ -300,7 +307,8 @@ export function TutorialEditorDialog({
             </p>
           )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
+            {readOnly && <DemoReadOnlyNote className="mr-auto" />}
             <Button
               type="button"
               variant="outline"
@@ -309,7 +317,7 @@ export function TutorialEditorDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || readOnly}>
               {isSubmitting && <Loader2 className="size-4 animate-spin" />}
               {isSubmitting ? "Saving…" : "Save changes"}
             </Button>

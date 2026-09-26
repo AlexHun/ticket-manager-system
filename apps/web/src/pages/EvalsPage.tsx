@@ -25,6 +25,7 @@ import {
   type TicketCategory,
 } from "@ticket/shared";
 import { api } from "@/lib/api";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Tutorial } from "@/components/Tutorial";
 import { Badge } from "@/components/ui/badge";
@@ -933,6 +934,8 @@ export function EvalsPage() {
   // starting that corpus, and a selector that moved under it would leave the
   // two disagreeing about what was just enqueued.
   const canRun = data?.evalConfigured !== false;
+  // A demo session browses every past run and starts none (#326, R15).
+  const readOnly = useDemoReadOnly();
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -943,6 +946,7 @@ export function EvalsPage() {
           title="Evals"
           description="Answer every case whose outcome is written down, five times each, against the real provider — and see whether the unattended path still lands where it should. No ticket is created."
         >
+          {readOnly && <DemoReadOnlyNote />}
           {/* `display: contents` so the wrapper can carry the anchor without
               becoming a flex item between the selector and the button —
               `Tutorial` walks into the first real box to measure it. */}
@@ -972,7 +976,7 @@ export function EvalsPage() {
           <Button
             data-tutorial-anchor="run"
             onClick={() => start.mutate()}
-            disabled={start.isPending || !canRun}
+            disabled={start.isPending || !canRun || readOnly}
           >
             {start.isPending ? (
               <Loader2 className="size-4 animate-spin" aria-hidden />
