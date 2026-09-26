@@ -73,7 +73,8 @@ outbox like anyone's. Each later slice adds one of those.
   same browser later signs in another way. Either would erase the identity a
   visitor's changes are filed under, leaving the trails naming nobody.
   `disableDeleteAnonymousUser` turns both off. Demo identities are removed by this
-  repo's nightly reset (plan slice 5), not by a visitor.
+  repo's nightly reset (#323, `jobs/demo-reset.ts`) once their sessions have
+  ended, not by a visitor.
 
 ## Considered Options
 

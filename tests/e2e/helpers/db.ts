@@ -44,8 +44,9 @@ export async function resetE2eUsers(): Promise<number> {
  * one per click of "Use demo session".
  *
  * Matched on `isAnonymous` rather than an address prefix, because the plugin
- * picks the address. Nothing in production deletes them yet (the nightly reset
- * is a later slice), so without this every run leaves one per click. Sessions
+ * picks the address. In production the nightly reset deletes those whose
+ * sessions have ended (#323), but nothing runs it between specs, so without
+ * this every run leaves one per click. Sessions
  * cascade; anything a visitor authored or was named on is `SetNull`.
  */
 export async function resetDemoUsers(): Promise<number> {

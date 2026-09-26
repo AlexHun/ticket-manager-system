@@ -166,27 +166,35 @@ admins last edited them.
 
 ```bash
 cd apps/api && bun run db:seed:tickets            # append what's missing
-cd apps/api && bun run db:seed:tickets --reset    # delete the demo rows first
+cd apps/api && bun run db:seed:tickets --reset    # replace the demo rows with fresh ones
 ```
 
-100 tickets from 41 fake customers, across all four categories and every
+100 tickets from 40 fake customers, across all four categories and every
 status except `Processing`, each with a 2–5 message email thread, dates spread
-over ~6 months. Requires `db:seed` to have run first — it assigns tickets to
-real users and throws `No users found` otherwise.
+over ~6 months and none in the future. Requires `db:seed` to have run first — it
+assigns tickets to real users and throws `No users found` otherwise.
 
 Rows are matched on subject + customer email, so both modes leave anything that
 arrived through the webhook (or the `/pipeline` simulator) alone. The plain run
 also backfills threads onto demo tickets seeded before threads existed.
-Assignees are spread across every user that exists when a ticket is created, so
-an account made afterwards owns none until a `--reset`.
+Assignees are spread across every colleague a ticket could be handed to when a
+ticket is created — never the assistant or a demo visitor — so an account made
+afterwards owns none until a `--reset`. `--reset` deletes and re-inserts in one
+transaction, so nobody looking at the desk meanwhile sees it empty.
+
+The script is a thin caller of `seedShowcase` in `src/demo/showcase.ts`, which
+the **nightly reset** runs too (#323): while `DEMO_MODE_ENABLED` is `"true"`,
+`jobs/demo-reset.ts` does a `--reset` at 00:00 UTC every night and deletes the
+demo visitors whose sessions have ended. With demo mode off it does nothing, so
+it never writes demo rows into a desk that takes real mail.
 
 Kept out of `db:seed` on purpose: that one also runs against the **test**
 database, where 100 extra rows would undermine the E2E fixtures.
 
 **On production, only while it is a showcase.** This deployment has no real
 customers — it exists to be shown to HR and clients, and an empty desk demos
-badly — so the seed may run there, with `--reset` between demos to undo what a
-visitor clicked:
+badly — so the seed may run there, with `--reset` before an important demo to
+undo what the day's visitors clicked without waiting for the night:
 
 ```bash
 railway ssh --service api -- 'cd /app/apps/api && bun run db:seed:tickets'
