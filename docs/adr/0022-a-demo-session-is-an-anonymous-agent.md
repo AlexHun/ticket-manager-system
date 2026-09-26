@@ -20,10 +20,13 @@ while no customer on it is a real person.
 **The trigger for turning it off is the first real customer email.** Before
 production's inbound address is pointed at a real support inbox, or a real
 customer is imported, `DEMO_MODE_ENABLED` is set to anything but `"true"`. After
-that the button is absent and `/sign-in/anonymous` answers 403. Until slice 6 of
-the plan lands, a session already open keeps working until it expires. After
-slice 6, turning the switch off also ends open demo sessions within the 60-second
-`cookieCache` window.
+that the button is absent and `/sign-in/anonymous` answers 403, and every demo
+session already open is refused on its next request
+([#324](https://github.com/AlexHun/ticket-manager-system/issues/324)). That is
+sooner than the 60-second `cookieCache` window the plan allowed for: the refusal
+is an `after` hook on `/get-session`, so it runs on an answer the cache served as
+well as on one read from the database. A demo session also ends two hours after
+it started, whatever the switch says.
 
 **It also stays off on production until the plan's slices 1–7 have merged.**
 Slice 1 ships the way in and nothing that bounds it: no AI budget, no per-IP

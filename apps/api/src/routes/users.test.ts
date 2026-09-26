@@ -11,8 +11,10 @@
  * `./admin-activity`'s pure helper (`userEditChanges`) is exercised directly at
  * the top, with no mocking, so a failure in it shows up next to its cause.
  *
- * The last section is not about this router at all: `auth.ts`'s demo sign-in
- * (#319) is tested here because this is the file that loads `auth.ts` for real.
+ * The last three sections are not about this router at all: `auth.ts`'s demo
+ * sign-in (#319), its start limit (#322) and its session lifetime and off
+ * switch (#324) are tested here because this is the file that loads `auth.ts`
+ * for real.
  *
  * ## The seam is the database, and `../auth` is on the real side of it (#172)
  *
@@ -1431,4 +1433,224 @@ describe("Demo start limit — auth.ts", () => {
       expect((await startDemoFrom(address)).status).toBe(429);
     },
   );
+});
+
+/* ── Demo session lifetime and the off switch, in auth.ts (#324) ─────────── */
+
+/**
+ * `cookie` with whatever `res` set laid over it, by cookie name: what a browser
+ * holds after a response that refreshed some of its cookies and not others.
+ */
+function laidOver(cookie: string, res: globalThis.Response): string {
+  const jar = new Map<string, string>();
+  for (const pair of [cookie, cookieHeader(res)].join("; ").split("; ")) {
+    const at = pair.indexOf("=");
+    if (at > 0) jar.set(pair.slice(0, at), pair.slice(at + 1));
+  }
+  return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
+/** `cookie` without the cookie-cache cookie: a browser whose cache lapsed. */
+const withoutCache = (cookie: string) =>
+  cookie
+    .split("; ")
+    .filter((pair) => !pair.includes("session_data="))
+    .join("; ");
+
+/** `/get-session` as the page asks it, with `cookie`. */
+const getSessionWith = (cookie: string) =>
+  auth.handler(
+    new Request(`${process.env.BETTER_AUTH_URL}/api/auth/get-session`, {
+      headers: { cookie },
+    }),
+  );
+
+/**
+ * A demo session lasts two hours from its start (PRD R7), and turning demo mode
+ * off ends every open one (R2). Both are asked of `/get-session`, which is the
+ * question the page's `useSession` and every route guard put, and both with the
+ * 60-second `cookieCache` cookie in hand, because a request served from that
+ * cookie never reads the session row. That is the measurement the ticket asked
+ * for rather than assumed, and it cuts both ways:
+ *
+ *   - **The cache does not carry a session past its own expiry.** The cached
+ *     copy holds `expiresAt`, and Better Auth 1.6.13 checks it on every cache
+ *     hit (`dist/api/routes/session.mjs`), so a session that *reaches* its end
+ *     ends on time, cache or not.
+ *   - **It does carry one past an expiry changed behind its back**, for up to
+ *     the 60 seconds the cached copy lives. A row backdated or deleted in the
+ *     database is invisible to a request the cache answers.
+ *
+ * So the off switch cannot be a change to the session rows. It is a rule run
+ * on whatever `/get-session` answers, cached or not.
+ */
+describe("Demo session lifetime — auth.ts", () => {
+  beforeEach(() => {
+    process.env.DEMO_MODE_ENABLED = "true";
+  });
+
+  afterEach(() => {
+    delete process.env.DEMO_MODE_ENABLED;
+    setSystemTime();
+  });
+
+  const MINUTE = 60 * 1000;
+  const TWO_HOURS = 120 * MINUTE;
+
+  const demoSessionRow = () =>
+    prisma.session.findFirstOrThrow({ where: { user: { isAnonymous: true } } });
+
+  /** Start a demo at `at`, and return the browser's cookies afterwards. */
+  async function demoStartedAt(at: number): Promise<string> {
+    setSystemTime(new Date(at));
+    return cookieHeader(await startDemoFrom(freshAddress()));
+  }
+
+  test("expires two hours after it started", async () => {
+    await demoStartedAt(Date.now());
+
+    const row = await demoSessionRow();
+    expect(row.expiresAt.getTime() - row.createdAt.getTime()).toBe(TWO_HOURS);
+  });
+
+  // The two hours are the demo's alone: a colleague keeps Better Auth's week.
+  test("a colleague's session keeps the default seven days", async () => {
+    const row = await prisma.session.findFirstOrThrow({
+      where: { userId: ADMIN.id },
+    });
+    // Within a second: Better Auth reads the clock separately for each of the
+    // two, and they have been seen a millisecond apart.
+    const week = 7 * 24 * 60 * MINUTE;
+    expect(
+      Math.abs(row.expiresAt.getTime() - row.createdAt.getTime() - week),
+    ).toBeLessThan(1000);
+  });
+
+  // Better Auth refreshes any session older than a day short of its seven, by
+  // its own arithmetic, which a two-hour session always is. Left alone, the
+  // first request read from the database would push the end out to a week.
+  test("using it does not push its end out", async () => {
+    const start = Date.now();
+    const cookie = await demoStartedAt(start);
+
+    setSystemTime(new Date(start + 90 * MINUTE));
+    const res = await getSessionWith(withoutCache(cookie));
+
+    expect(res.status).toBe(200);
+    const row = await demoSessionRow();
+    expect(row.expiresAt.getTime()).toBe(start + TWO_HOURS);
+  });
+
+  test("the cookie cache does not keep it past two hours", async () => {
+    const start = Date.now();
+    const signedIn = await demoStartedAt(start);
+
+    // A cache cookie written 30 seconds before the end, so it is still inside
+    // its own 60 seconds when the session runs out.
+    setSystemTime(new Date(start + TWO_HOURS - MINUTE / 2));
+    const cookie = laidOver(
+      signedIn,
+      await getSessionWith(withoutCache(signedIn)),
+    );
+    setSystemTime(new Date(start + TWO_HOURS - 1000));
+    const before = await getSessionWith(cookie);
+    expect(((await before.json()) as { user?: unknown } | null)?.user).toEqual(
+      expect.anything(),
+    );
+
+    setSystemTime(new Date(start + TWO_HOURS + 1000));
+    const after = await getSessionWith(cookie);
+
+    expect(await after.json()).toBeNull();
+  });
+
+  // The other half of the measurement, and the reason the E2E spec waits out
+  // the cache before its backdated session is refused.
+  test("a session ended behind the cache's back is served from it for up to 60 seconds", async () => {
+    const start = Date.now();
+    const cookie = await demoStartedAt(start);
+    await prisma.session.updateMany({
+      where: { user: { isAnonymous: true } },
+      data: { expiresAt: new Date(start - 1000) },
+    });
+
+    setSystemTime(new Date(start + MINUTE / 2));
+    const cached = await getSessionWith(cookie);
+    expect(((await cached.json()) as { user?: unknown } | null)?.user).toEqual(
+      expect.anything(),
+    );
+
+    setSystemTime(new Date(start + MINUTE + 1000));
+    expect(await (await getSessionWith(cookie)).json()).toBeNull();
+  });
+
+  // A session opened before this rule shipped carries Better Auth's week in
+  // its row. It ends two hours after it started all the same.
+  test("one whose row says a week still ends two hours after it started", async () => {
+    const start = Date.now();
+    const cookie = await demoStartedAt(start);
+    await prisma.session.updateMany({
+      where: { user: { isAnonymous: true } },
+      data: { expiresAt: new Date(start + 7 * 24 * 60 * MINUTE) },
+    });
+
+    setSystemTime(new Date(start + TWO_HOURS + 1000));
+    const res = await getSessionWith(withoutCache(cookie));
+
+    expect(res.status).toBe(401);
+  });
+
+  // R2: the switch ends sessions already open, not only new starts — and
+  // straight away, because the rule runs on the cached answer too.
+  test("turning demo mode off refuses an open session at once, from the cache and from the row", async () => {
+    const cached = await demoStartedAt(Date.now());
+    const stored = withoutCache(await demoStartedAt(Date.now()));
+    delete process.env.DEMO_MODE_ENABLED;
+
+    expect((await getSessionWith(cached)).status).toBe(401);
+    expect((await getSessionWith(stored)).status).toBe(401);
+  });
+
+  // What `requireAuth` and its siblings see: not `null` but a thrown 401,
+  // which `middleware/auth.ts` answers as the 401 it gives no session.
+  test("the route guards' own call is refused with a 401", async () => {
+    const cookie = await demoStartedAt(Date.now());
+    delete process.env.DEMO_MODE_ENABLED;
+
+    const refusal = await auth.api
+      .getSession({ headers: new Headers({ cookie }) })
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+
+    expect(refusal).toMatchObject({ statusCode: 401 });
+  });
+
+  // Refused rather than merely hidden: switching demo mode back on does not
+  // bring a visitor's session back.
+  test("a session refused by the switch is deleted", async () => {
+    const cookie = await demoStartedAt(Date.now());
+    delete process.env.DEMO_MODE_ENABLED;
+    await getSessionWith(cookie);
+
+    process.env.DEMO_MODE_ENABLED = "true";
+    expect(
+      await (await getSessionWith(withoutCache(cookie))).json(),
+    ).toBeNull();
+    expect(
+      await prisma.session.count({ where: { user: { isAnonymous: true } } }),
+    ).toBe(0);
+  });
+
+  test("turning demo mode off leaves a colleague signed in", async () => {
+    delete process.env.DEMO_MODE_ENABLED;
+
+    const res = await getSessionWith(sessionCookie);
+
+    expect(res.status).toBe(200);
+    expect(
+      ((await res.json()) as { user: { id: string } } | null)?.user.id,
+    ).toBe(ADMIN.id);
+  });
 });
