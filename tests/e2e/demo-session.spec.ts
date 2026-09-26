@@ -29,14 +29,12 @@ import { API_URL } from "./helpers/env";
  * called "Demo visitor", no password.
  *
  * Runs against the ordinary :3002 server, which `.env.test` puts in demo mode.
- * The refusal is asserted against the AI server on :3003 instead, the suite's
- * one API with demo mode off (`.env.test.ai`). No web server fronts that one,
- * which is why the *button's* absence is `LoginPage.test.tsx`'s job rather
- * than this file's.
+ * No E2E server runs with demo mode off since #321 put the AI server in demo
+ * mode for `demo-ai-budget.spec.ts`, so both halves of R2's "off" are unit
+ * tests: the button's absence is `LoginPage.test.tsx`'s, and the refusal of
+ * `/sign-in/anonymous` is `routes/users.test.ts`'s, through the real
+ * `auth.handler`.
  */
-
-/** The second, demo-off API — see `playwright.config.ts`. */
-const DEMO_OFF_API_URL = "http://localhost:3003";
 
 /** Imported rather than retyped: `demo/mode.ts` is import-free, like `routes.ts`. */
 const DEMO_VISITOR = DEMO_VISITOR_NAME;
@@ -473,19 +471,5 @@ test.describe("Demo session", () => {
     }
 
     expect(await testDb.user.count({ where: { isAnonymous: true } })).toBe(2);
-  });
-
-  // R2, against a server with demo mode off. The plugin would otherwise mint
-  // a user on every call whatever `disableSignUp` says, so the refusal has to
-  // be the endpoint's own, not the button's absence.
-  test("a demo-off server refuses to start one, and mints nobody", async ({
-    request,
-  }) => {
-    const res = await request.post(
-      `${DEMO_OFF_API_URL}/api/auth/sign-in/anonymous`,
-    );
-
-    expect(res.status()).toBe(403);
-    expect(await testDb.user.count({ where: { isAnonymous: true } })).toBe(0);
   });
 });

@@ -1326,3 +1326,23 @@ enum EvalPlannedRunStatus {
   /// means nothing.
   missed
 }
+
+/// What demo sessions have spent on AI, one row per UTC day (#321, PRD R8).
+///
+/// All demo visitors together get `DEMO_AI_DAILY_USD` a day (default $1.00),
+/// so the figure is shared rather than per identity: each visitor is a fresh
+/// user, and a per-user cap would be a cap per click on the login button. The
+/// day is the key, so the total rolls over at 00:00 UTC by there being no row
+/// for the new day yet, with nothing to sweep or reset.
+///
+/// `usd` is `usdFor`'s estimate, added after each call — the same figure the
+/// `[ai]` log line prints, and exactly as stale as `USD_PER_MTOK`. Nothing
+/// bills off it. Admins' calls are never counted here (`demo/ai-budget.ts`).
+model DemoAiSpend {
+  /// The UTC calendar day the spend belongs to.
+  day       DateTime @id @db.Date
+  usd       Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("demo_ai_spend")
+}

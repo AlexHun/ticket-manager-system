@@ -56,6 +56,16 @@ export async function resetDemoUsers(): Promise<number> {
 }
 
 /**
+ * Forget what demo sessions have spent on AI (#321), so a spec starts with the
+ * day's demo budget untouched. Every row, not just today's: a run that
+ * straddles 00:00 UTC must not start the new day already spent either.
+ */
+export async function resetDemoAiSpend(): Promise<number> {
+  const { count } = await testDb.demoAiSpend.deleteMany();
+  return count;
+}
+
+/**
  * Delete the outbox rows the suite caused.
  *
  * `OutboundEmail` carries no foreign key to `User` — deliberately, so the send

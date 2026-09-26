@@ -3,11 +3,15 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { KNOWLEDGE_ARTICLE_MARKER, STUB_PORT } from "./constants";
+import {
+  KNOWLEDGE_ARTICLE_MARKER,
+  POLISHED_REPLY,
+  STUB_PORT,
+} from "./constants";
 
 /**
- * A fake OpenAI Responses API, for exactly the two shapes of call this app's
- * AI features make — nothing else.
+ * A fake OpenAI Responses API, for exactly the three shapes of call this app's
+ * AI features make here — nothing else.
  *
  * Why this exists at all: `.env.test` deliberately carries no `OPENAI_API_KEY`
  * (see its own comment — a test run must not spend money or depend on the
@@ -32,10 +36,11 @@ import { KNOWLEDGE_ARTICLE_MARKER, STUB_PORT } from "./constants";
  *     (*not* nested under a `json_schema` key — that was the first assumption
  *     that turned out wrong when checked against the actual request-building
  *     code, `getArgs()` around line 6368 of that file);
- *   - the two call sites are told apart by which properties that schema
- *     declares — `category` for `classify.ts`'s `classificationSchema`,
+ *   - the two structured call sites are told apart by which properties that
+ *     schema declares — `category` for `classify.ts`'s `classificationSchema`,
  *     `answered`/`articleIds`/`paragraphs`/`steps` for `auto-reply.ts`'s
- *     `autoReplySchema`;
+ *     `autoReplySchema` — and `polish.ts`, which asks for plain text, sends no
+ *     `text.format` at all (#321, `demo-ai-budget.spec.ts`);
  *   - the prompt's messages arrive as `body.input`, an array of
  *     `{ role, content }`, where `content` is a plain string for the system
  *     message (no cache-breakpoint provider option is set by either feature,
@@ -220,9 +225,11 @@ const server = createServer((req, res) => {
 
     const properties = body.text?.format?.schema?.properties ?? {};
     const text =
-      "category" in properties
-        ? classifyResponse()
-        : autoReplyResponse(systemMessageText(body));
+      body.text?.format === undefined
+        ? POLISHED_REPLY
+        : "category" in properties
+          ? classifyResponse()
+          : autoReplyResponse(systemMessageText(body));
 
     respondWithMessage(res, text);
   });

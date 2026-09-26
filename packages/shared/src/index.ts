@@ -3246,3 +3246,23 @@ export interface DemoStatusResponse {
   /** `DEMO_MODE_ENABLED` is the literal `"true"`. Drives the login button. */
   enabled: boolean;
 }
+
+/**
+ * Why a demo session's polish or summarise was answered without a model call:
+ * every demo session together has spent the day's AI budget (#321, PRD R8).
+ *
+ * Tells this 429 apart from the per-user rate limit's, which carries no
+ * `reason`. The two need different screens: the rate limit is an error worth
+ * retrying in a minute, and this is a fact about the demo until 00:00 UTC.
+ */
+export const DEMO_AI_LIMIT_REASON = "demo-ai-limit";
+
+/** What the panel shows in place of the result. One copy, for both apps. */
+export const DEMO_AI_LIMIT_MESSAGE =
+  "Demo AI limit reached, resets at 00:00 UTC";
+
+/** The body of `POST /api/ai/*`'s 429 once the demo budget is spent. */
+export interface DemoAiLimitResponse {
+  error: typeof DEMO_AI_LIMIT_MESSAGE;
+  reason: typeof DEMO_AI_LIMIT_REASON;
+}
