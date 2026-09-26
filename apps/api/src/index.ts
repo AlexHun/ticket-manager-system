@@ -151,9 +151,10 @@ app.use("/api/changelog", changelogRouter);
 // Admin-only on every write inside it, which is worth knowing here as well as
 // there: this one edits the prompt of the feature that writes to customers
 // unattended. Its reads are `requireAdminView`, open to a demo session (#320),
-// as are the reads of the four routers below.
+// as are the reads of the pipeline, evals, eval-schedule, automation and
+// activity routers below. The outbox's are not.
 app.use("/api/knowledge-articles", knowledgeRouter);
-// Admin-only throughout, like the one above it, and for two reasons rather than
+// Admin-only to write, like the one above it, and for two reasons rather than
 // one: it reads back how the unattended pipeline is behaving, and — behind
 // `PIPELINE_SIMULATOR_ENABLED` — it can post an email into it.
 app.use("/api/pipeline", pipelineRouter);

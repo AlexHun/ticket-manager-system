@@ -52,8 +52,9 @@ import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
  * already write. The write half posts an email through the real ingestion code
  * so somebody can watch one ticket take it.
  *
- * **Admin only, on every route.** The read half exposes the shape of the queue
- * and how the safety checks are firing; the write half creates tickets and
+ * **Admin only, on every route**, apart from a demo session, which may make the
+ * two reads (`requireAdminView`, #320). The read half exposes the shape of the
+ * queue and how the safety checks are firing; the write half creates tickets and
  * spends model calls. Neither is an agent's business, and the second is a
  * capability nothing in this API had before — until now the only ways into the
  * ticket table were the webhook's shared secret and the seed script.

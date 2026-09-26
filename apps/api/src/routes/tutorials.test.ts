@@ -19,6 +19,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  TUTORIAL_PAGE_KEY,
   TUTORIAL_PAGE_KEYS,
   TUTORIAL_PAGE_VERSIONS,
   type TutorialContentResponse,
@@ -42,6 +43,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
       id: req.header("x-test-user") ?? "agent-1",
       name: req.header("x-test-agent-name") ?? "Aaron Agent",
       email: req.header("x-test-user-email") ?? "agent@example.com",
+      isAnonymous: req.header("x-test-demo") === "true",
     },
     session: { id: req.header("x-test-session") ?? "sess-1" },
   };
@@ -268,6 +270,21 @@ describe("GET /api/tutorials", () => {
     expect(
       sent.body.tutorials.find((t) => t.pageKey === "tickets"),
     ).toMatchObject({ title: "", steps: [] });
+  });
+
+  // R3: a demo never sees Users or Outbox, and the editor list would otherwise
+  // name both and show their copy (#320).
+  test("leaves Users and Outbox out for a demo session", async () => {
+    const sent = await get<TutorialContentsResponse>("/", {
+      ...AGENT,
+      "x-test-demo": "true",
+    });
+
+    expect(sent.status).toBe(200);
+    const keys = sent.body.tutorials.map((t) => t.pageKey);
+    expect(keys).not.toContain(TUTORIAL_PAGE_KEY.users);
+    expect(keys).not.toContain(TUTORIAL_PAGE_KEY.outbox);
+    expect(keys).toHaveLength(TUTORIAL_PAGE_KEYS.length - 2);
   });
 });
 

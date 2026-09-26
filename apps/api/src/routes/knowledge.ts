@@ -20,8 +20,10 @@ import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 /**
  * Editing the knowledge base.
  *
- * **Admin only, on every route, without exception.** Whoever can write here can
- * write into the system prompt of the one feature in this product that sends
+ * **Admin only, on every write, without exception.** The three reads are
+ * `requireAdminView`, which a demo session also passes (#320): it may look at
+ * the articles and never change one. Whoever can write here can write into the
+ * system prompt of the one feature in this product that sends
  * prose to customers with nobody reading it first. That is a strictly larger
  * power than editing a document, and the frontend's route guard is UX — this
  * middleware is the control.

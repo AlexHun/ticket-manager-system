@@ -20,75 +20,48 @@ export function sessionOf(res: Response): Session {
   return res.locals.session as Session;
 }
 
-export async function requireAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
+/**
+ * The shape all three guards share: a session or 401, then `allowed` or 403,
+ * then the session parked for `sessionOf`. Only the question in the middle
+ * differs, so it is the only thing each guard spells out.
+ */
+function guard(allowed: (session: Session, req: Request) => boolean) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
 
-  if (!session) {
-    res.status(401).json({ error: "Unauthenticated" });
-    return;
-  }
+    if (!session) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
 
-  res.locals.session = session;
-  next();
+    if (!allowed(session, req)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    res.locals.session = session;
+    next();
+  };
 }
 
-export async function requireAdmin(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
+export const requireAuth = guard(() => true);
 
-  if (!session) {
-    res.status(401).json({ error: "Unauthenticated" });
-    return;
-  }
-
-  if (session.user.role !== USER_ROLE.admin) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
-  res.locals.session = session;
-  next();
-}
+export const requireAdmin = guard(
+  (session) => session.user.role === USER_ROLE.admin,
+);
 
 /**
  * An admin screen's reads, which a demo session may see too (#320, R3).
  *
  * Mounted on the `GET` routes of Pipeline, Knowledge, Evals, Activity and
- * Tutorials, and on nothing else: Users and Outbox keep `requireAdmin` whole,
- * and so does every write. Opt-in per route rather than a demo exception inside
- * `requireAdmin`, so an admin route added later is shut to a stranger until
- * somebody decides otherwise. The rule itself is `mayUseAdminView`.
+ * Tutorials (the automation and eval-schedule reads included), and on nothing
+ * else: Users and Outbox keep `requireAdmin` whole, and so does every write.
+ * Opt-in per route rather than a demo exception inside `requireAdmin`, so an
+ * admin route added later is shut to a stranger until somebody decides
+ * otherwise. The rule itself is `mayUseAdminView`.
  */
-export async function requireAdminView(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  const session = await auth.api.getSession({
-    headers: fromNodeHeaders(req.headers),
-  });
-
-  if (!session) {
-    res.status(401).json({ error: "Unauthenticated" });
-    return;
-  }
-
-  if (!mayUseAdminView(session.user, req.method)) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-
-  res.locals.session = session;
-  next();
-}
+export const requireAdminView = guard((session, req) =>
+  mayUseAdminView(session.user, req.method),
+);

@@ -1,4 +1,5 @@
 import { USER_ROLE } from "@ticket/shared";
+import type { Session } from "../middleware/auth";
 
 /**
  * Who may look at the admin screens, and who may only look (#320, R3).
@@ -11,15 +12,18 @@ import { USER_ROLE } from "@ticket/shared";
  *
  * Its own module, beside `mode.ts`, rather than inside `middleware/auth.ts`:
  * that file imports `../auth`, which every route test replaces, so a rule
- * written there could only be tested through a stub of itself. This one
- * imports nothing but `@ticket/shared`, which nothing mocks.
+ * written there could only be tested through a stub of itself. At runtime this
+ * one imports nothing but `@ticket/shared`, which nothing mocks; the session
+ * type below is erased.
  */
 
-/** The two session fields the decision reads — `isAnonymous` comes from Better Auth's `anonymous` plugin. */
-export interface AdminViewer {
-  role?: string | null;
-  isAnonymous?: boolean | null;
-}
+/**
+ * The two session fields the decision reads, taken from Better Auth's own
+ * session type by name (conventions.md): `isAnonymous` is the `anonymous`
+ * plugin's, and a plugin upgrade that renamed it fails to compile here rather
+ * than quietly shutting every demo out.
+ */
+export type AdminViewer = Pick<Session["user"], "role" | "isAnonymous">;
 
 /**
  * The methods a demo session may send to an admin view. Reads only: the plan

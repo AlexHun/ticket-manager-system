@@ -120,6 +120,8 @@ export interface ModuleEdge {
 
 export const GUARD = {
   admin: "requireAdmin",
+  /** Admins, plus a demo session on reads (#320). */
+  adminView: "requireAdminView",
   auth: "requireAuth",
   webhook: "webhook",
   none: "none",

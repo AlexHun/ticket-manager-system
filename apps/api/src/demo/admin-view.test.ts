@@ -15,8 +15,8 @@ describe("seesAdminScreens", () => {
     expect(seesAdminScreens(agent)).toBe(false);
   });
 
-  test("an unset isAnonymous is not a demo", () => {
-    expect(seesAdminScreens({ role: USER_ROLE.agent })).toBe(false);
+  // Rows created before the plugin was loaded read `null`, not `false`.
+  test("a null isAnonymous is not a demo", () => {
     expect(seesAdminScreens({ role: USER_ROLE.agent, isAnonymous: null })).toBe(
       false,
     );

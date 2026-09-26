@@ -19,7 +19,7 @@ import {
   type TicketStatsResponse,
 } from "@ticket/shared";
 import { DEMO_VISITOR_NAME } from "../../apps/api/src/demo/mode";
-import { ticketDetailPath } from "../../apps/web/src/lib/routes";
+import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { CREDENTIALS } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
 import { API_URL } from "./helpers/env";
@@ -122,9 +122,9 @@ test.afterAll(async () => {
 
 /** Click the button and wait to land on the dashboard. */
 async function startDemo(page: Page): Promise<void> {
-  await page.goto("/login");
+  await page.goto(ROUTE.login.path);
   await page.getByRole("button", DEMO_BUTTON).click();
-  await page.waitForURL("/");
+  await page.waitForURL(ROUTE.dashboard.path);
 }
 
 /** The walkthrough's dialog, named by its title. */
@@ -298,7 +298,7 @@ test.describe("Demo session", () => {
     page,
   }) => {
     await startDemo(page);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     for (const name of [
       "Pipeline",
@@ -328,7 +328,7 @@ test.describe("Demo session", () => {
   }) => {
     await startDemo(page);
 
-    for (const path of ["/users", "/outbox"]) {
+    for (const path of [ROUTE.users.path, ROUTE.outbox.path]) {
       await page.goto(path);
       await expect(
         page.getByRole("heading", { name: "No such page" }),
@@ -360,6 +360,16 @@ test.describe("Demo session", () => {
 
     expect(await statusOf(page.request, "get", "/api/users")).toBe(403);
     expect(await statusOf(page.request, "get", "/api/outbox")).toBe(403);
+    expect(
+      await statusOf(page.request, "post", "/api/users", {
+        name: "Demo invitee",
+        email: "e2e-demo-invitee@example.com",
+        role: USER_ROLE.admin,
+      }),
+    ).toBe(403);
+    expect(await statusOf(page.request, "post", "/api/outbox/1/retry")).toBe(
+      403,
+    );
     expect(
       await statusOf(page.request, "post", "/api/knowledge-articles", {
         title: "Demo edit",
@@ -414,7 +424,7 @@ test.describe("Demo session", () => {
 
     try {
       await startDemo(page);
-      await page.goto("/evals");
+      await page.goto(ROUTE.evals.path);
 
       const card = page.locator('[data-slot="card"]', {
         has: page.getByText(`Run ${run.id}`, { exact: true }),

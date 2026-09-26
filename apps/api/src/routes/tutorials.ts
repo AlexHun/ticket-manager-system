@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { tutorialContentSchema } from "@ticket/core";
 import {
+  TUTORIAL_PAGE_KEY,
   TUTORIAL_PAGE_KEYS,
   TUTORIAL_PAGE_VERSIONS,
   type TutorialContent,
@@ -68,15 +69,28 @@ function defaultContent(pageKey: TutorialPageKey): TutorialContent {
   };
 }
 
+/**
+ * The two pages a demo session never sees (#320, R3), so the editor list leaves
+ * their rows out rather than naming them and showing their copy.
+ */
+const DEMO_HIDDEN_PAGES: ReadonlySet<TutorialPageKey> = new Set([
+  TUTORIAL_PAGE_KEY.users,
+  TUTORIAL_PAGE_KEY.outbox,
+]);
+
 tutorialsRouter.get(
   "/",
   requireAdminView,
   async (_req: Request, res: Response<TutorialContentsResponse>) => {
     const rows = await prisma.tutorialContent.findMany();
     const byKey = new Map(rows.map((row) => [row.pageKey as string, row]));
+    const demo = sessionOf(res).user.isAnonymous === true;
+    const pageKeys = demo
+      ? TUTORIAL_PAGE_KEYS.filter((pageKey) => !DEMO_HIDDEN_PAGES.has(pageKey))
+      : TUTORIAL_PAGE_KEYS;
 
     res.json({
-      tutorials: TUTORIAL_PAGE_KEYS.map((pageKey) => {
+      tutorials: pageKeys.map((pageKey) => {
         const row = byKey.get(pageKey);
         return row ? toWireContent(row) : defaultContent(pageKey);
       }),

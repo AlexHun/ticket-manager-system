@@ -1,4 +1,15 @@
 import type { UserRole } from "@ticket/shared";
+import type { authClient } from "@/lib/auth-client";
+
+/**
+ * The two session fields `viewerOf` reads, taken from the auth client's own
+ * inferred session by name (conventions.md), so a plugin upgrade that renamed
+ * `isAnonymous` fails to compile here rather than hiding the showcase screens.
+ */
+type SessionViewer = Pick<
+  typeof authClient.$Infer.Session.user,
+  "role" | "isAnonymous"
+>;
 
 /**
  * Who is looking, as the navigation and the admin gate need to know it.
@@ -14,8 +25,6 @@ export interface Viewer {
   demo: boolean;
 }
 
-export function viewerOf(
-  user: { role?: UserRole | null; isAnonymous?: boolean | null } | undefined,
-): Viewer {
+export function viewerOf(user: SessionViewer | undefined): Viewer {
   return { role: user?.role ?? undefined, demo: user?.isAnonymous === true };
 }

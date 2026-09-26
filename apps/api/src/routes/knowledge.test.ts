@@ -61,6 +61,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
       id: req.header("x-test-user") ?? "agent-1",
       name: req.header("x-test-agent-name") ?? "Aaron Agent",
       email: req.header("x-test-user-email") ?? "agent@example.com",
+      isAnonymous: req.header("x-test-demo") === "true",
     },
     session: { id: req.header("x-test-session") ?? "sess-1" },
   };
