@@ -44,9 +44,10 @@ export async function resetE2eUsers(): Promise<number> {
  * one per click of "Use demo session".
  *
  * Matched on `isAnonymous` rather than an address prefix, because the plugin
- * picks the address. Nothing in production deletes them yet (the nightly reset
- * is a later slice), so without this every run leaves one per click. Sessions
- * cascade; anything a visitor authored or was named on is `SetNull`.
+ * picks the address. The nightly reset deletes only those whose sessions have
+ * ended (#323), and only `demo-reset.spec.ts` runs it, so without this every
+ * run leaves one per click. Sessions cascade; anything a visitor authored or
+ * was named on is `SetNull`.
  */
 export async function resetDemoUsers(): Promise<number> {
   const { count } = await testDb.user.deleteMany({

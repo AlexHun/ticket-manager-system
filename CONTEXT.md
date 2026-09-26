@@ -273,3 +273,10 @@ One click on the login page that signs a demo visitor in. Offered only while
 demo mode is on, and demo mode is allowed only while production takes no real
 customer mail.
 _Avoid_: guest login, demo login, try-it mode
+
+**Nightly reset**:
+What puts the showcase back at 00:00 UTC while demo mode is on: the seeded
+tickets return to how they were seeded, and demo visitors whose sessions have
+ended are removed. Real tickets and eval runs are left alone. Not a **Reset**,
+which is a password link.
+_Avoid_: wipe, restore, cleanup, reseed

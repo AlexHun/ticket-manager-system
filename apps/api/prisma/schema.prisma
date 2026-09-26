@@ -458,7 +458,8 @@ enum MessageDirection {
 /// revision is evidence for replies already sitting in customers' inboxes, so
 /// what it describes must never be deletable. This is *about* its ticket and
 /// means nothing without it; `Message` cascades for the same reason, and
-/// `prisma/seed-tickets.ts --reset` depends on it.
+/// the showcase's reset (`src/demo/showcase.ts`: `db:seed:tickets --reset` and
+/// the nightly) depends on it.
 model TicketActivity {
   id         Int                  @id @default(autoincrement())
   ticketId   Int

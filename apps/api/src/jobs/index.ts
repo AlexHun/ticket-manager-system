@@ -3,6 +3,7 @@ import { isEvalConfigured } from "../evals/config";
 import { registerAutoReplyTicket } from "./auto-reply-ticket";
 import { startBoss, stopBoss } from "./boss";
 import { registerClassifyTicket } from "./classify-ticket";
+import { registerDemoReset } from "./demo-reset";
 import { registerEvalNightly } from "./eval-nightly";
 import { registerEvalPlannedRun } from "./eval-planned-run";
 import { registerEvalRun } from "./eval-run";
@@ -65,6 +66,10 @@ export async function startJobs(): Promise<void> {
   await registerSendEmail(boss);
   await registerPruneOutbox(boss);
   await registerPruneActivityTrails(boss);
+  // Not gated at boot like the AI consumers: demo mode is read per run, as it
+  // is per request everywhere else, so the night asks the switch itself and a
+  // demo-off deployment's reset does nothing (#323).
+  await registerDemoReset(boss);
 }
 
 export { stopBoss as stopJobs };
