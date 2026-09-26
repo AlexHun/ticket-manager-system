@@ -413,5 +413,15 @@
     "version": "0.1.142",
     "date": "2026-09-26",
     "title": "Review follow-ups for the demo email"
+  },
+  {
+    "version": "0.1.143",
+    "date": "2026-09-26",
+    "title": "Settings are read-only in a demo session"
+  },
+  {
+    "version": "0.1.143",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for read-only settings"
   }
 ]
