@@ -6,6 +6,7 @@ import {
 } from "@playwright/test";
 import {
   DASHBOARD_SCOPE,
+  DEMO_READ_ONLY_NOTE,
   EVAL_CORPUS,
   EVAL_RUN_STATUS,
   EVAL_THRESHOLD,
@@ -131,7 +132,7 @@ function walkthrough(page: Page) {
 /** Status of a request made with the demo's own cookie. */
 async function statusOf(
   request: APIRequestContext,
-  method: "get" | "post" | "patch",
+  method: "get" | "post" | "patch" | "put" | "delete",
   path: string,
   data?: unknown,
 ): Promise<number> {
@@ -334,9 +335,9 @@ test.describe("Demo session", () => {
   });
 
   // The API is the control; the two tests above are UX. Every showcase read
-  // opens to the demo's cookie, Users and Outbox do not, and a write on a
-  // showcase screen stays shut — `requireAdminView` passes a demo on reads only.
-  test("the API opens the showcase reads and refuses Users, Outbox and writes", async ({
+  // opens to the demo's cookie and Users and Outbox do not. The writes on the
+  // showcase screens are the next section's.
+  test("the API opens the showcase reads and refuses Users and Outbox", async ({
     page,
   }) => {
     await startDemo(page);
@@ -366,15 +367,80 @@ test.describe("Demo session", () => {
     expect(await statusOf(page.request, "post", "/api/outbox/1/retry")).toBe(
       403,
     );
-    expect(
-      await statusOf(page.request, "post", "/api/knowledge-articles", {
-        title: "Demo edit",
-        body: "Should never land.",
-      }),
-    ).toBe(403);
-    expect(await statusOf(page.request, "post", "/api/evals/runs", {})).toBe(
-      403,
-    );
+  });
+
+  /* ── Settings are read-only (#326) ─────────────────────────────────────── */
+
+  // R5, R15, and the simulator the plan's Deferred section keeps shut. Every
+  // write behind the showcase screens, sent with the demo's own cookie through
+  // the real guards: the route tests stub them, so this is where a write
+  // mounted on `requireAuth` or `requireAdminView` would show. The ids need
+  // not exist — the guard answers before the handler looks.
+  test("the API refuses every settings write and the pipeline simulator", async ({
+    page,
+  }) => {
+    await startDemo(page);
+
+    const writes = [
+      ["post", "/api/knowledge-articles"],
+      ["patch", "/api/knowledge-articles/KB-001"],
+      ["post", "/api/knowledge-articles/KB-001/archive"],
+      ["post", "/api/knowledge-articles/KB-001/revisions/1/approve"],
+      ["post", "/api/knowledge-articles/KB-001/revisions/1/reject"],
+      ["patch", "/api/automation/handoff"],
+      ["post", "/api/evals/runs"],
+      ["patch", "/api/evals/schedule"],
+      ["post", "/api/evals/planned-runs"],
+      ["delete", "/api/evals/planned-runs/1"],
+      ["put", `/api/tutorials/${TUTORIAL_PAGE_KEY.dashboard}`],
+      ["post", "/api/pipeline/simulate"],
+    ] as const;
+    for (const [method, path] of writes) {
+      expect(
+        await statusOf(page.request, method, path, {}),
+        `${method} ${path}`,
+      ).toBe(403);
+    }
+  });
+
+  // R5 on the page: the article opens, and its save control is off with the
+  // note saying why. Seeded because the test database has no corpus, as
+  // `KB-000`: `nextArticleId` counts on from the highest id, so this one sorts
+  // below every id a concurrent spec's create could be handed.
+  test("a knowledge article opens read-only, its save control disabled", async ({
+    page,
+  }) => {
+    await testDb.knowledgeArticle.deleteMany({ where: { id: "KB-000" } });
+    const article = await testDb.knowledgeArticle.create({
+      data: {
+        id: "KB-000",
+        title: "Can a demo visitor read this article?",
+        category: TICKET_CATEGORY.General,
+        body: "Yes, and change none of it.",
+        autoReply: false,
+      },
+    });
+
+    try {
+      await startDemo(page);
+      await page.goto(ROUTE.knowledge.path);
+
+      await expect(page.getByText(DEMO_READ_ONLY_NOTE)).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "New article" }),
+      ).toBeDisabled();
+
+      const row = page.getByRole("listitem").filter({ hasText: article.title });
+      await row.getByRole("button", { name: "Edit" }).click();
+      const dialog = page.getByRole("dialog", { name: `Edit ${article.id}` });
+      await expect(dialog.getByLabel("Question")).toHaveValue(article.title);
+      await expect(
+        dialog.getByRole("button", { name: "Save changes" }),
+      ).toBeDisabled();
+      await expect(dialog.getByText(DEMO_READ_ONLY_NOTE)).toBeVisible();
+    } finally {
+      await testDb.knowledgeArticle.delete({ where: { id: article.id } });
+    }
   });
 
   // R15: a past run and the cases it answered, on the page itself. Seeded,
