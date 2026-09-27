@@ -16,7 +16,8 @@
   --fl-iron: #161413;
   --fl-ash: #9a9189;
   --fl-bronze: rgba(176, 132, 80, 0.55);
-  --fl-glow-x: 49%;
+  /* The centre of the scene column, as a share of the whole page. */
+  --fl-glow-x: 33%;
 
   position: relative;
   isolation: isolate;
@@ -49,12 +50,12 @@
       rgba(255, 180, 58, 0.16),
       transparent 70%
     ),
-    /* Backlight: the fire mouth itself, behind the anvil, so the anvil's
-       silhouette reads against it. */
+    /* Heat behind the word: the wordmark is the work, and it is lit as if
+       just drawn from the fire. */
     radial-gradient(
-        40% 38% at var(--fl-glow-x) 57%,
-        rgba(255, 150, 60, 0.6),
-        rgba(226, 86, 27, 0.22) 50%,
+        34% 30% at var(--fl-glow-x) 50%,
+        rgba(226, 86, 27, 0.16),
+        rgba(142, 27, 14, 0.08) 50%,
         transparent 78%
       );
   opacity: 0.8;
@@ -62,9 +63,9 @@
 }
 .fl-glow-flare {
   background: radial-gradient(
-    40% 36% at var(--fl-glow-x) 58%,
-    rgba(255, 214, 150, 0.36),
-    rgba(226, 86, 27, 0.14) 45%,
+    38% 34% at var(--fl-glow-x) 48%,
+    rgba(255, 214, 150, 0.4),
+    rgba(226, 86, 27, 0.16) 45%,
     transparent 75%
   );
   opacity: 0;
@@ -92,53 +93,12 @@
   animation: fl-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
-/* The forge: right of centre, its hood running off the top of the scene and
-   its body running on below the floor line, so it reads as a wall-sized
-   hearth rather than an object standing in the room. */
-.fl-hearth {
-  position: absolute;
-  top: -8%;
-  right: -3%;
-  height: 92%;
-  overflow: visible;
-}
-.fl-flame {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: fl-flicker 1s ease-in-out infinite alternate;
-}
-
-.fl-anvil {
-  position: absolute;
-  left: 42%;
-  bottom: -1.5%;
-  width: min(64%, 76vh, 700px);
-  transform: translateX(-50%);
-  overflow: visible;
-}
-.fl-bar-glow {
-  opacity: 0.6;
-  animation: fl-breathe 2.8s ease-in-out infinite alternate;
-}
-.fl-flash,
-.fl-shock {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.is-struck .fl-flash {
-  animation: fl-flash 0.7s ease-out both;
-}
-.is-struck .fl-shock {
-  animation: fl-shock 0.85s cubic-bezier(0.2, 0.7, 0.3, 1) both;
-}
-
-/* ── The lockup ──────────────────────────────────────────────────────── */
+/* ── The lockup: the whole scene ────────────────────────────────────── */
 .fl-lockup {
   position: absolute;
-  z-index: 1; /* in front of the chimney hood where they overlap */
-  top: clamp(1.75rem, 10vh, 7rem);
-  left: clamp(1.25rem, 7vw, 6.5rem);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -54%);
   display: flex;
   flex-direction: column;
   width: max-content;
@@ -175,15 +135,46 @@
 }
 
 .fl-word {
+  position: relative;
   display: grid;
   margin: 0.05em 0 0.1em -0.04em;
-  font-size: clamp(4.5rem, min(15vw, 25vh), 13rem);
+  font-size: clamp(5rem, min(18vw, 32vh), 16rem);
   font-weight: 900;
   line-height: 0.8;
   letter-spacing: 0.015em;
 }
 .fl-w {
   grid-area: 1 / 1;
+}
+
+/* The strike, behind the letters: a flash of white heat and a ring of air
+   thrown off the face. */
+.fl-flash,
+.fl-shock {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+}
+.fl-flash {
+  inset: -90% -28%;
+  background: radial-gradient(
+    closest-side,
+    rgba(255, 246, 224, 0.95),
+    rgba(255, 180, 58, 0.55) 30%,
+    rgba(226, 86, 27, 0.18) 60%,
+    transparent
+  );
+}
+.fl-shock {
+  inset: 28% 22%;
+  border: 2px solid rgba(255, 207, 122, 0.9);
+  border-radius: 50%;
+}
+.is-struck .fl-flash {
+  animation: fl-flash 0.75s ease-out both;
+}
+.is-struck .fl-shock {
+  animation: fl-shock 0.9s cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 /* Cooled: lit iron — pale where the room light catches it, forge-warm
    underneath where the fire does. */
@@ -274,7 +265,7 @@
   .fl-root {
     --fl-glow-x: 50%;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(22rem, 54dvh) auto;
+    grid-template-rows: minmax(17rem, 40dvh) auto;
   }
   .fl-scene {
     min-height: 0;
@@ -283,25 +274,10 @@
   .fl-glow,
   .fl-glow-flare {
     bottom: auto;
-    height: max(22rem, 54dvh);
-  }
-  .fl-lockup {
-    left: 50%;
-    top: 1.5rem;
-    transform: translateX(-50%);
+    height: max(17rem, 40dvh);
   }
   .fl-word {
-    font-size: clamp(4rem, 22vw, 8rem);
-  }
-  .fl-anvil {
-    left: 40%;
-    width: min(78%, 46dvh, 480px);
-    bottom: -3%;
-  }
-  .fl-hearth {
-    top: -4%;
-    right: -4%;
-    height: 88%;
+    font-size: clamp(4rem, 24vw, 9rem);
   }
   .fl-panel {
     border-left: 0;
@@ -317,20 +293,6 @@
   }
   to {
     opacity: 1;
-  }
-}
-@keyframes fl-flicker {
-  0% {
-    opacity: 0.78;
-    transform: scale(1.05, 0.82);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(0.94, 1.08);
-  }
-  100% {
-    opacity: 0.86;
-    transform: scale(1.02, 0.9);
   }
 }
 @keyframes fl-flare {
@@ -365,7 +327,7 @@
   }
   100% {
     opacity: 0;
-    transform: scale(4.2);
+    transform: scale(3.4);
   }
 }
 @keyframes fl-shake {

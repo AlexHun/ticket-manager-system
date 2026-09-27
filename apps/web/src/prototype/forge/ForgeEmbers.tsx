@@ -10,10 +10,10 @@
  * loop stops outright while the tab is hidden. Not mounted at all under reduced
  * motion — the caller decides that.
  */
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef } from "react";
 
 const AMBIENT = 60;
-const BURST = 90;
+const BURST = 120;
 
 /** Incandescence, hottest first: white-hot → yellow → orange → cherry. */
 const RAMP: [number, number, number][] = [
@@ -48,16 +48,17 @@ type Particle = {
   wobble: number;
 };
 
-export type Burst = { x: number; y: number; key: number };
+/** Where the strike landed, and how wide the struck thing is. */
+export type Burst = { x: number; y: number; width: number; key: number };
 
 export function ForgeEmbers({
   burst,
-  sourceRef,
+  sourceX = 0.36,
 }: {
   /** Viewport coordinates of the strike; a new `key` fires a burst. */
   burst: Burst | null;
-  /** The fire mouth; embers are born inside it. */
-  sourceRef: RefObject<SVGGraphicsElement | null>;
+  /** Where along the width the off-screen forge — and so the embers — sits. */
+  sourceX?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particles = useRef<Particle[]>([]);
@@ -81,21 +82,11 @@ export function ForgeEmbers({
     window.addEventListener("resize", resize);
 
     const spawnEmber = (seeded: boolean): Particle => {
-      // Most leave the fire mouth and climb the chimney; the rest drift up
-      // off the floor. Both die on the way up.
-      const mouth = sourceRef.current?.getBoundingClientRect();
-      const fromMouth = mouth && mouth.width > 0 && Math.random() < 0.72;
+      // Up off the forge below the screen, weighted under the wordmark, dying
+      // on the way up — a few reach the letters, most never do.
       const spread = (Math.random() + Math.random() + Math.random()) / 3 - 0.5;
-      let x: number;
-      let y: number;
-      if (fromMouth) {
-        x = mouth.left + mouth.width * (0.5 + spread * 0.9);
-        y = mouth.top + mouth.height * (0.35 + Math.random() * 0.5);
-        if (seeded) y -= Math.random() * mouth.top * 0.8;
-      } else {
-        x = width * 0.4 + spread * width * 1.1;
-        y = seeded ? height * (0.5 + Math.random() * 0.5) : height + 8;
-      }
+      const x = width * sourceX + spread * width * 1.1;
+      const y = seeded ? height * (0.4 + Math.random() * 0.6) : height + 8;
       return {
         x,
         y,
@@ -196,18 +187,23 @@ export function ForgeEmbers({
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [sourceRef]);
+  }, [sourceX]);
 
   useEffect(() => {
     if (!burst) return;
     for (let i = 0; i < BURST; i++) {
-      // Upper half-plane, fanned wide, a few thrown nearly flat.
-      const angle = -Math.PI * (0.06 + Math.random() * 0.88);
-      const speed = 220 + Math.random() * 620;
+      // Thrown off the whole struck face, mostly upward and outward, a few
+      // flung down — the word was hit, not a point on it.
+      const angle =
+        Math.random() < 0.8
+          ? -Math.PI * (0.04 + Math.random() * 0.92)
+          : Math.PI * (0.15 + Math.random() * 0.7);
+      const speed = 200 + Math.random() * 600;
+      const x = burst.x + (Math.random() - 0.5) * burst.width * 0.9;
       particles.current.push({
-        x: burst.x + (Math.random() - 0.5) * 60,
-        y: burst.y,
-        px: burst.x,
+        x,
+        y: burst.y + (Math.random() - 0.5) * 30,
+        px: x,
         py: burst.y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
