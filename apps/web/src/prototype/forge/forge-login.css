@@ -16,7 +16,7 @@
   --fl-iron: #161413;
   --fl-ash: #9a9189;
   --fl-bronze: rgba(176, 132, 80, 0.55);
-  --fl-glow-x: 36%;
+  --fl-glow-x: 49%;
 
   position: relative;
   isolation: isolate;
@@ -49,9 +49,10 @@
       rgba(255, 180, 58, 0.16),
       transparent 70%
     ),
-    /* Backlight: the fire behind the anvil, so its silhouette reads. */
+    /* Backlight: the fire mouth itself, behind the anvil, so the anvil's
+       silhouette reads against it. */
     radial-gradient(
-        40% 34% at var(--fl-glow-x) 70%,
+        40% 38% at var(--fl-glow-x) 57%,
         rgba(255, 150, 60, 0.6),
         rgba(226, 86, 27, 0.22) 50%,
         transparent 78%
@@ -91,11 +92,27 @@
   animation: fl-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
+/* The forge: right of centre, its hood running off the top of the scene and
+   its body running on below the floor line, so it reads as a wall-sized
+   hearth rather than an object standing in the room. */
+.fl-hearth {
+  position: absolute;
+  top: -8%;
+  right: -3%;
+  height: 92%;
+  overflow: visible;
+}
+.fl-flame {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: fl-flicker 1s ease-in-out infinite alternate;
+}
+
 .fl-anvil {
   position: absolute;
-  left: 50%;
+  left: 42%;
   bottom: -1.5%;
-  width: min(84%, 92vh, 880px);
+  width: min(64%, 76vh, 700px);
   transform: translateX(-50%);
   overflow: visible;
 }
@@ -119,6 +136,7 @@
 /* ── The lockup ──────────────────────────────────────────────────────── */
 .fl-lockup {
   position: absolute;
+  z-index: 1; /* in front of the chimney hood where they overlap */
   top: clamp(1.75rem, 10vh, 7rem);
   left: clamp(1.25rem, 7vw, 6.5rem);
   display: flex;
@@ -276,8 +294,14 @@
     font-size: clamp(4rem, 22vw, 8rem);
   }
   .fl-anvil {
-    width: min(94%, 60dvh, 560px);
+    left: 40%;
+    width: min(78%, 46dvh, 480px);
     bottom: -3%;
+  }
+  .fl-hearth {
+    top: -4%;
+    right: -4%;
+    height: 88%;
   }
   .fl-panel {
     border-left: 0;
@@ -293,6 +317,20 @@
   }
   to {
     opacity: 1;
+  }
+}
+@keyframes fl-flicker {
+  0% {
+    opacity: 0.78;
+    transform: scale(1.05, 0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(0.94, 1.08);
+  }
+  100% {
+    opacity: 0.86;
+    transform: scale(1.02, 0.9);
   }
 }
 @keyframes fl-flare {

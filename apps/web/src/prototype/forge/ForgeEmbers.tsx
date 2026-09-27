@@ -10,7 +10,7 @@
  * loop stops outright while the tab is hidden. Not mounted at all under reduced
  * motion — the caller decides that.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 const AMBIENT = 60;
 const BURST = 90;
@@ -52,12 +52,12 @@ export type Burst = { x: number; y: number; key: number };
 
 export function ForgeEmbers({
   burst,
-  sourceX = 0.35,
+  sourceRef,
 }: {
   /** Viewport coordinates of the strike; a new `key` fires a burst. */
   burst: Burst | null;
-  /** Where along the width the forge glow — and so the embers — is centred. */
-  sourceX?: number;
+  /** The fire mouth; embers are born inside it. */
+  sourceRef: RefObject<SVGGraphicsElement | null>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particles = useRef<Particle[]>([]);
@@ -81,12 +81,21 @@ export function ForgeEmbers({
     window.addEventListener("resize", resize);
 
     const spawnEmber = (seeded: boolean): Particle => {
-      // Weighted toward the forge, with a long tail across the page.
+      // Most leave the fire mouth and climb the chimney; the rest drift up
+      // off the floor. Both die on the way up.
+      const mouth = sourceRef.current?.getBoundingClientRect();
+      const fromMouth = mouth && mouth.width > 0 && Math.random() < 0.72;
       const spread = (Math.random() + Math.random() + Math.random()) / 3 - 0.5;
-      const x = width * sourceX + spread * width * 1.1;
-      // Rising from the fire and dying on the way up — most never pass the
-      // anvil's shoulders, a few reach the wordmark.
-      const y = seeded ? height * (0.45 + Math.random() * 0.55) : height + 8;
+      let x: number;
+      let y: number;
+      if (fromMouth) {
+        x = mouth.left + mouth.width * (0.5 + spread * 0.9);
+        y = mouth.top + mouth.height * (0.35 + Math.random() * 0.5);
+        if (seeded) y -= Math.random() * mouth.top * 0.8;
+      } else {
+        x = width * 0.4 + spread * width * 1.1;
+        y = seeded ? height * (0.5 + Math.random() * 0.5) : height + 8;
+      }
       return {
         x,
         y,
@@ -187,7 +196,7 @@ export function ForgeEmbers({
       window.removeEventListener("resize", resize);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [sourceX]);
+  }, [sourceRef]);
 
   useEffect(() => {
     if (!burst) return;

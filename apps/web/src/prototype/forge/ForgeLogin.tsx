@@ -3,6 +3,9 @@
  * `children`) so every behaviour of LoginPage is unchanged; only the frame is
  * new.
  *
+ * Two halves of the name on screen: the forge — the hearth and its fire —
+ * behind, and the anvil with the bar just drawn from it in front.
+ *
  * The sequence: the page opens nearly dark, the hammer lands on the hot bar
  * (flash, shockwave, a short shake, a burst of sparks), and FORGE flashes
  * white-hot and cools through yellow, orange and cherry to lit iron. Then the
@@ -15,6 +18,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { ForgeEmbers, type Burst } from "./ForgeEmbers";
+import { ForgeHearth } from "./ForgeHearth";
 import { ForgeMark } from "./ForgeMarks";
 import "./forge-login.css";
 
@@ -27,6 +31,7 @@ export function ForgeLogin({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>("dark");
   const [burst, setBurst] = useState<Burst | null>(null);
   const barRef = useRef<SVGRectElement>(null);
+  const mouthRef = useRef<SVGPathElement>(null);
 
   useEffect(() => {
     if (reduced) {
@@ -46,7 +51,7 @@ export function ForgeLogin({ children }: { children: ReactNode }) {
     <div className={`fl-root is-${phase}`}>
       <div className="fl-glow" aria-hidden="true" />
       <div className="fl-glow-flare" aria-hidden="true" />
-      {!reduced && <ForgeEmbers burst={burst} sourceX={0.36} />}
+      {!reduced && <ForgeEmbers burst={burst} sourceRef={mouthRef} />}
 
       <section className="fl-scene">
         <div className="fl-scene-inner">
@@ -78,6 +83,7 @@ export function ForgeLogin({ children }: { children: ReactNode }) {
             </span>
           </h1>
 
+          <ForgeHearth mouthRef={mouthRef} />
           <Anvil barRef={barRef} />
         </div>
       </section>
