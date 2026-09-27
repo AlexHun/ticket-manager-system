@@ -13,10 +13,8 @@ import { useSyncExternalStore } from "react";
 export const FORGE_AXES = {
   logo: {
     current: "Current ticket",
-    A: "Hot strike",
-    B: "Spark arc",
-    C: "Bronze coin",
-    D: "Heavy anvil",
+    H1: "Hallmark · bronze",
+    H2: "Hallmark · iron",
   },
   font: {
     current: "Geist (current)",
@@ -30,6 +28,10 @@ export const FORGE_AXES = {
     B: "Warm granite",
     C: "Blackened steel",
   },
+  login: {
+    current: "Current card",
+    forge: "The forge",
+  },
 } as const;
 
 export type ForgeAxis = keyof typeof FORGE_AXES;
@@ -37,7 +39,12 @@ export type ForgeChoice = { [K in ForgeAxis]: keyof (typeof FORGE_AXES)[K] };
 
 const AXES = Object.keys(FORGE_AXES) as ForgeAxis[];
 const STORAGE_KEY = "forge-prototype";
-const DEFAULT: ForgeChoice = { logo: "A", font: "A", palette: "A" };
+const DEFAULT: ForgeChoice = {
+  logo: "H1",
+  font: "A",
+  palette: "A",
+  login: "forge",
+};
 
 export const optionsOf = <K extends ForgeAxis>(axis: K) =>
   Object.keys(FORGE_AXES[axis]) as ForgeChoice[K][];

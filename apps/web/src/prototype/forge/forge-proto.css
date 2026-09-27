@@ -25,6 +25,10 @@
   --forge-steel: oklch(0.86 0.012 250);
   --forge-spark: oklch(0.96 0.1 95);
   --forge-dark: oklch(0.19 0.012 60);
+  /* The hallmark's knock-out and the hot bar on its anvil. The bar is the one
+     place heat appears in the app chrome: a mark, never a signal. */
+  --forge-soot: oklch(0.17 0.01 50);
+  --forge-heat: oklch(0.82 0.16 70);
 }
 
 /* ── The baseline, restated so a panel can opt back into it inside a page

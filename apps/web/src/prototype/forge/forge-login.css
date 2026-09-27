@@ -1,0 +1,396 @@
+/*
+ * PROTOTYPE — the forge login scene. Plain classes, prefixed fl-.
+ *
+ * Every animation moves only opacity and transform. The wordmark's cooling is
+ * four stacked copies cross-faded, not an animated colour or text-shadow, so
+ * it composites instead of repainting glyphs every frame.
+ *
+ * Heat colours are the incandescence ramp and nothing else:
+ *   white-hot #fff6e0 · yellow #ffb43a · orange #e2561b · cherry #8e1b0e
+ * Everything cold is soot and iron; bronze is a hairline, never a fill.
+ */
+@import "@fontsource-variable/big-shoulders-display";
+
+.fl-root {
+  --fl-soot: #0b0a09;
+  --fl-iron: #161413;
+  --fl-ash: #9a9189;
+  --fl-bronze: rgba(176, 132, 80, 0.55);
+  --fl-glow-x: 36%;
+
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(22rem, 27rem);
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--fl-soot);
+  color: #ede6dc;
+}
+
+/* ── The forge: light from below, breathing ─────────────────────────── */
+.fl-glow,
+.fl-glow-flare {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.fl-glow {
+  background:
+    radial-gradient(
+      55% 48% at var(--fl-glow-x) 104%,
+      rgba(226, 86, 27, 0.5),
+      rgba(142, 27, 14, 0.24) 46%,
+      transparent 78%
+    ),
+    radial-gradient(
+      26% 24% at var(--fl-glow-x) 92%,
+      rgba(255, 180, 58, 0.16),
+      transparent 70%
+    ),
+    /* Backlight: the fire behind the anvil, so its silhouette reads. */
+    radial-gradient(
+        40% 34% at var(--fl-glow-x) 70%,
+        rgba(255, 150, 60, 0.6),
+        rgba(226, 86, 27, 0.22) 50%,
+        transparent 78%
+      );
+  opacity: 0.8;
+  animation: fl-breathe 4.6s ease-in-out infinite alternate;
+}
+.fl-glow-flare {
+  background: radial-gradient(
+    40% 36% at var(--fl-glow-x) 58%,
+    rgba(255, 214, 150, 0.36),
+    rgba(226, 86, 27, 0.14) 45%,
+    transparent 75%
+  );
+  opacity: 0;
+}
+.is-struck .fl-glow-flare {
+  animation: fl-flare 1.4s ease-out both;
+}
+
+/* Embers sit above the scene and below the panel. */
+.fl-root > canvas {
+  z-index: 1;
+}
+
+/* ── The scene ───────────────────────────────────────────────────────── */
+.fl-scene {
+  position: relative;
+  z-index: 0;
+  min-height: 100dvh;
+}
+.fl-scene-inner {
+  position: absolute;
+  inset: 0;
+}
+.is-struck .fl-scene-inner {
+  animation: fl-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.fl-anvil {
+  position: absolute;
+  left: 50%;
+  bottom: -1.5%;
+  width: min(84%, 92vh, 880px);
+  transform: translateX(-50%);
+  overflow: visible;
+}
+.fl-bar-glow {
+  opacity: 0.6;
+  animation: fl-breathe 2.8s ease-in-out infinite alternate;
+}
+.fl-flash,
+.fl-shock {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.is-struck .fl-flash {
+  animation: fl-flash 0.7s ease-out both;
+}
+.is-struck .fl-shock {
+  animation: fl-shock 0.85s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* ── The lockup ──────────────────────────────────────────────────────── */
+.fl-lockup {
+  position: absolute;
+  top: clamp(1.75rem, 10vh, 7rem);
+  left: clamp(1.25rem, 7vw, 6.5rem);
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  margin: 0;
+  font-family: "Big Shoulders Display Variable", "Geist Variable", sans-serif;
+  text-transform: uppercase;
+}
+.fl-line {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-size: clamp(0.85rem, 1.5vw, 1.3rem);
+  font-weight: 700;
+  letter-spacing: 0.55em;
+  color: var(--fl-ash);
+}
+.fl-line-end {
+  justify-content: flex-end;
+  margin-right: -0.55em; /* the tracking hangs past the last letter */
+}
+.fl-mark {
+  width: 1.9em;
+  height: 1.9em;
+  flex-shrink: 0;
+}
+.fl-rule {
+  flex: 1;
+  min-width: 2rem;
+  height: 1px;
+  background: linear-gradient(90deg, var(--fl-bronze), transparent);
+}
+.fl-rule-in {
+  background: linear-gradient(270deg, var(--fl-bronze), transparent);
+}
+
+.fl-word {
+  display: grid;
+  margin: 0.05em 0 0.1em -0.04em;
+  font-size: clamp(4.5rem, min(15vw, 25vh), 13rem);
+  font-weight: 900;
+  line-height: 0.8;
+  letter-spacing: 0.015em;
+}
+.fl-w {
+  grid-area: 1 / 1;
+}
+/* Cooled: lit iron — pale where the room light catches it, forge-warm
+   underneath where the fire does. */
+.fl-w-base {
+  background: linear-gradient(
+    180deg,
+    #f4eee6 0%,
+    #b9afa3 50%,
+    #8a7f74 72%,
+    #d06c36 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: 0.1;
+}
+.fl-w-cherry {
+  color: #b3301a;
+  text-shadow: 0 0 0.22em rgba(142, 27, 14, 0.9);
+  opacity: 0;
+}
+.fl-w-orange {
+  color: #ff9a3c;
+  text-shadow:
+    0 0 0.12em rgba(255, 180, 58, 0.8),
+    0 0 0.45em rgba(226, 86, 27, 0.7);
+  opacity: 0;
+}
+.fl-w-white {
+  color: #fff6e0;
+  text-shadow:
+    0 0 0.06em #fff6e0,
+    0 0 0.3em rgba(255, 180, 58, 0.9),
+    0 0 0.9em rgba(226, 86, 27, 0.65);
+  opacity: 0;
+}
+.is-struck .fl-w-white {
+  animation: fl-white 1.15s ease-out both;
+}
+.is-struck .fl-w-orange {
+  animation: fl-orange 2.1s ease-out both;
+}
+.is-struck .fl-w-cherry {
+  animation: fl-cherry 3.3s ease-in-out both;
+}
+.is-struck .fl-w-base {
+  animation: fl-base 3.6s ease-in both;
+}
+.is-cold .fl-w-base {
+  opacity: 1;
+}
+
+/* ── The panel: cast iron, calm ─────────────────────────────────────── */
+.fl-panel {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(1.5rem, 4vw, 3.25rem);
+  /* Cast iron, with the forge reflecting faintly off the edge that faces it. */
+  background:
+    linear-gradient(90deg, rgba(226, 86, 27, 0.09), transparent 22%),
+    linear-gradient(0deg, rgba(226, 86, 27, 0.08), transparent 35%),
+    linear-gradient(180deg, rgba(20, 18, 17, 0.97), rgba(11, 10, 9, 0.98));
+  border-left: 1px solid rgba(176, 132, 80, 0.3);
+  box-shadow: -40px 0 90px rgba(0, 0, 0, 0.55);
+}
+.fl-panel-inner {
+  width: 100%;
+  max-width: 22rem;
+  margin: 0 auto;
+}
+.fl-panel-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.fl-panel-sub {
+  margin: 0.35rem 0 1.75rem;
+  font-size: 0.875rem;
+  color: var(--fl-ash);
+}
+
+/* ── Narrow: the scene becomes a banner above the form ──────────────── */
+@media (max-width: 900px) {
+  .fl-root {
+    --fl-glow-x: 50%;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(22rem, 54dvh) auto;
+  }
+  .fl-scene {
+    min-height: 0;
+  }
+  /* Light the banner, not the form below it. */
+  .fl-glow,
+  .fl-glow-flare {
+    bottom: auto;
+    height: max(22rem, 54dvh);
+  }
+  .fl-lockup {
+    left: 50%;
+    top: 1.5rem;
+    transform: translateX(-50%);
+  }
+  .fl-word {
+    font-size: clamp(4rem, 22vw, 8rem);
+  }
+  .fl-anvil {
+    width: min(94%, 60dvh, 560px);
+    bottom: -3%;
+  }
+  .fl-panel {
+    border-left: 0;
+    border-top: 1px solid rgba(176, 132, 80, 0.3);
+    box-shadow: 0 -30px 70px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────── */
+@keyframes fl-breathe {
+  from {
+    opacity: 0.62;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fl-flare {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes fl-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+@keyframes fl-shock {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.25);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(4.2);
+  }
+}
+@keyframes fl-shake {
+  0% {
+    transform: translate(0, 0);
+  }
+  15% {
+    transform: translate(-3px, 4px);
+  }
+  30% {
+    transform: translate(3px, -2px);
+  }
+  45% {
+    transform: translate(-2px, 2px);
+  }
+  60% {
+    transform: translate(1px, -1px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@keyframes fl-white {
+  0%,
+  14% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes fl-orange {
+  0% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes fl-cherry {
+  0%,
+  28% {
+    opacity: 0;
+  }
+  52% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes fl-base {
+  0%,
+  34% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 1;
+  }
+}

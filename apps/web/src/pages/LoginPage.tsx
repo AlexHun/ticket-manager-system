@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import { signIn, useSession } from "@/lib/auth-client";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
 import { LogoMark } from "@/components/layout/Logo";
+import { useForge } from "@/prototype/forge/forge-proto";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,13 +29,13 @@ import {
  * the same channel, and they need different words. A network failure arrives
  * with no status at all; a server fault arrives as 5xx. Neither says anything
  * about what was typed, and answering both with "Invalid email or password"
- * sends someone off to reset a password that was never the problem — which is
+ * sends someone off to reset a password that was never the problem â€” which is
  * exactly what happened here when the API was down and sign-in returned 500.
  *
  * Only when the status positively says so. A missing status is absence of
  * evidence, not evidence of a transport failure, and defaulting it to
- * "unreachable" would answer a plain rejected credential — which is what
- * Better Auth returns with no status in some paths — by blaming the network.
+ * "unreachable" would answer a plain rejected credential â€” which is what
+ * Better Auth returns with no status in some paths â€” by blaming the network.
  */
 function failureMessage(
   error: { status?: number; message?: string },
@@ -121,15 +122,100 @@ export function LoginPage() {
 
   const busy = isSubmitting || startingDemo;
 
-  return (
+  const body = (
+    <>
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        noValidate
+        className="flex flex-col gap-4"
+      >
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            aria-invalid={Boolean(errors.email)}
+            disabled={busy}
+            {...register("email")}
+          />
+          {errors.email && (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.email.message}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            aria-invalid={Boolean(errors.password)}
+            disabled={busy}
+            {...register("password")}
+          />
+          {errors.password && (
+            <p className="text-sm text-destructive" role="alert">
+              {errors.password.message}
+            </p>
+          )}
+        </div>
+        {serverError && (
+          <p className="text-sm text-destructive" role="alert">
+            {serverError}
+          </p>
+        )}
+        <Button type="submit" disabled={busy}>
+          {isSubmitting && <Loader2 className="size-4 animate-spin" />}
+          {isSubmitting ? "Signing inâ€¦" : "Sign in"}
+        </Button>
+        {/* The only route back in. An admin cannot type a colleague a new
+            password any more, so this link is not a convenience â€” for
+            anyone locked out, it is the whole recovery path. */}
+        <Link
+          to={ROUTE.forgotPassword.path}
+          className="text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Forgot your password?
+        </Link>
+      </form>
+      {/* Only while the API says demo mode is on; absent, not disabled,
+          otherwise. The refusal that matters is the API's â€” this only
+          decides whether to offer. */}
+      {demoEnabled && (
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <Separator className="flex-1" />
+            <span className="text-xs text-muted-foreground">or</span>
+            <Separator className="flex-1" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={startDemo}
+          >
+            {startingDemo && <Loader2 className="size-4 animate-spin" />}
+            {startingDemo ? "Starting demoâ€¦" : "Use demo session"}
+          </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            Look around as a demo visitor. No account needed.
+          </p>
+        </div>
+      )}
+    </>
+  );
+
+  const classic = (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
       {/* The login card is the app's first frame, so it gets the panel entrance
-          rather than the flatter page one — there is no previous screen for it
+          rather than the flatter page one â€” there is no previous screen for it
           to feel continuous with. The mark rides the same animation because it
           is part of that frame, not a decoration laid over it. */}
       <div className="flex w-full max-w-sm flex-col items-center gap-6 animate-panel-in">
         {/* The one screen that had no brand mark at all was the only one seen
-            by someone not yet signed in — the sidebar carries it everywhere
+            by someone not yet signed in â€” the sidebar carries it everywhere
             else. `aria-hidden` is on the mark itself, so the name beside it is
             what gets read. */}
         <div className="flex items-center gap-2.5">
@@ -146,90 +232,38 @@ export function LoginPage() {
               Use your email and password to access the ticket manager.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              noValidate
-              className="flex flex-col gap-4"
-            >
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  aria-invalid={Boolean(errors.email)}
-                  disabled={busy}
-                  {...register("email")}
-                />
-                {errors.email && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {errors.email.message}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  aria-invalid={Boolean(errors.password)}
-                  disabled={busy}
-                  {...register("password")}
-                />
-                {errors.password && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {errors.password.message}
-                  </p>
-                )}
-              </div>
-              {serverError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {serverError}
-                </p>
-              )}
-              <Button type="submit" disabled={busy}>
-                {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-                {isSubmitting ? "Signing in…" : "Sign in"}
-              </Button>
-              {/* The only route back in. An admin cannot type a colleague a new
-                  password any more, so this link is not a convenience — for
-                  anyone locked out, it is the whole recovery path. */}
-              <Link
-                to={ROUTE.forgotPassword.path}
-                className="text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                Forgot your password?
-              </Link>
-            </form>
-            {/* Only while the API says demo mode is on; absent, not disabled,
-                otherwise. The refusal that matters is the API's — this only
-                decides whether to offer. */}
-            {demoEnabled && (
-              <div className="mt-6 flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                  <Separator className="flex-1" />
-                  <span className="text-xs text-muted-foreground">or</span>
-                  <Separator className="flex-1" />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={startDemo}
-                >
-                  {startingDemo && <Loader2 className="size-4 animate-spin" />}
-                  {startingDemo ? "Starting demo…" : "Use demo session"}
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Look around as a demo visitor. No account needed.
-                </p>
-              </div>
-            )}
-          </CardContent>
+          <CardContent>{body}</CardContent>
         </Card>
       </div>
     </main>
+  );
+
+  // PROTOTYPE (forge rebrand): the forge scene wraps the same form body.
+  if (import.meta.env.DEV)
+    return <PrototypeLogin classic={classic}>{body}</PrototypeLogin>;
+  return classic;
+}
+
+const ForgeLogin = import.meta.env.DEV
+  ? lazy(() =>
+      import("@/prototype/forge/ForgeLogin").then((m) => ({
+        default: m.ForgeLogin,
+      })),
+    )
+  : null;
+
+function PrototypeLogin({
+  classic,
+  children,
+}: {
+  classic: ReactNode;
+  children: ReactNode;
+}) {
+  const { login } = useForge();
+  if (login !== "forge" || !ForgeLogin) return classic;
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0b0a09]" />}>
+      <ForgeLogin>{children}</ForgeLogin>
+    </Suspense>
   );
 }

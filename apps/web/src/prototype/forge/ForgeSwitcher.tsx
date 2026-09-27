@@ -21,6 +21,7 @@ const AXIS_LABEL: Record<ForgeAxis, string> = {
   logo: "Logo",
   font: "Font",
   palette: "Palette",
+  login: "Login",
 };
 
 let ORIGINAL_ICON: string | undefined;
@@ -47,9 +48,8 @@ export function ForgeSwitcher() {
         colors={{
           bronze: read("--forge-bronze"),
           iron: read("--forge-iron"),
-          steel: read("--forge-steel"),
-          spark: read("--forge-spark"),
-          dark: read("--forge-dark"),
+          soot: read("--forge-soot"),
+          heat: read("--forge-heat"),
         }}
       />,
     );
@@ -105,7 +105,7 @@ export function ForgeSwitcher() {
               variant="ghost"
               size="xs"
               onClick={() => setActive(axis)}
-              className="min-w-40 font-normal text-white hover:bg-white/20 hover:text-white"
+              className="min-w-32 font-normal text-white hover:bg-white/20 hover:text-white"
             >
               <span className="text-white/60">{AXIS_LABEL[axis]}</span>
               <span className="font-medium">
