@@ -22,6 +22,7 @@ import { ROUTE } from "@/lib/routes";
 import { viewerOf } from "@/lib/viewer";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { LogoMark } from "./Logo";
+import { PrototypeSidebarBrand } from "@/prototype/forge/ForgeSidebarBrand";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
 import { SidebarViews } from "./SidebarViews";
 
@@ -37,32 +38,41 @@ export function AppSidebar() {
   const { data: newFeatureStatuses } = useNewFeatureStatus();
   const markNewFeatureSeen = useMarkNewFeatureSeen();
 
+  const brandRow = (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        {/* Deliberately the default size, not `lg`: `lg` is `h-12`, but the
+            rail forces every button to `size-8!`, so the brand row would
+            jump 48px → 32px on every collapse. Matching the nav rows'
+            height means the only thing that changes is the width. */}
+        <SidebarMenuButton asChild tooltip="Forge Desk">
+          <Link to="/">
+            {/* Sized by the button's own `[&_svg]:size-4`, which outranks a
+                size utility set here — don't pass one, it silently loses. */}
+            <LogoMark className="shrink-0" />
+            {/* sr-only rather than left to overflow-hidden: collapsed, the
+                16px plate plus the 8px gap puts this 8px inside the 32px
+                button, so clipping alone leaked a sliver of the "T". This
+                hides it outright while keeping it as the link's accessible
+                name — the tooltip is not one. */}
+            <span className="forge-wordmark truncate font-semibold group-data-[collapsible=icon]:sr-only">
+              Forge Desk
+            </span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            {/* Deliberately the default size, not `lg`: `lg` is `h-12`, but the
-                rail forces every button to `size-8!`, so the brand row would
-                jump 48px → 32px on every collapse. Matching the nav rows'
-                height means the only thing that changes is the width. */}
-            <SidebarMenuButton asChild tooltip="Forge Desk">
-              <Link to="/">
-                {/* Sized by the button's own `[&_svg]:size-4`, which outranks a
-                    size utility set here — don't pass one, it silently loses. */}
-                <LogoMark className="shrink-0" />
-                {/* sr-only rather than left to overflow-hidden: collapsed, the
-                    16px plate plus the 8px gap puts this 8px inside the 32px
-                    button, so clipping alone leaked a sliver of the "T". This
-                    hides it outright while keeping it as the link's accessible
-                    name — the tooltip is not one. */}
-                <span className="forge-wordmark truncate font-semibold group-data-[collapsible=icon]:sr-only">
-                  Forge Desk
-                </span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {/* PROTOTYPE (forge rebrand): the wordmark lockup replaces this row. */}
+        {import.meta.env.DEV ? (
+          <PrototypeSidebarBrand fallback={brandRow} />
+        ) : (
+          brandRow
+        )}
       </SidebarHeader>
 
       <SidebarContent>

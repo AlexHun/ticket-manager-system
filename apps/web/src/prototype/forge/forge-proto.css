@@ -16,6 +16,94 @@
 @import "@fontsource/marcellus-sc/latin-400.css";
 @import "@fontsource-variable/rokkitt/wght.css";
 @import "@fontsource-variable/archivo/wdth.css";
+@import "@fontsource-variable/big-shoulders-display";
+
+/* ── The sidebar brand: the login lockup at sidebar scale, no mark. One
+      height expanded and collapsed, so the header never jumps. ── */
+.fw-brand {
+  display: flex;
+  align-items: center;
+  height: 5.5rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-md);
+  font-family: "Big Shoulders Display Variable", "Geist Variable", sans-serif;
+  text-transform: uppercase;
+  outline: none;
+}
+.fw-brand:focus-visible {
+  box-shadow: 0 0 0 2px var(--sidebar-ring);
+}
+.fw-lockup {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+}
+.fw-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.46em;
+  color: var(--muted-foreground);
+}
+.fw-end {
+  justify-content: flex-end;
+  margin-right: -0.46em;
+}
+.fw-rule {
+  flex: 1;
+  min-width: 1rem;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--forge-bronze) 65%, transparent),
+    transparent
+  );
+}
+.fw-end .fw-rule {
+  background: linear-gradient(
+    270deg,
+    color-mix(in oklch, var(--forge-bronze) 65%, transparent),
+    transparent
+  );
+}
+/* Lit iron, as FORGE settles on the login page: pale where the room light
+   catches it, forge-warm underneath. */
+.fw-word,
+.fw-mono {
+  font-weight: 900;
+  line-height: 0.82;
+  background: linear-gradient(
+    180deg,
+    #f4eee6 0%,
+    #b9afa3 52%,
+    #8a7f74 74%,
+    #d06c36 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.fw-word {
+  margin: 0.1em 0 0.06em -0.03em;
+  font-size: 3.3rem;
+  letter-spacing: 0.015em;
+}
+.fw-mono {
+  display: none;
+  font-size: 2rem;
+}
+[data-collapsible="icon"] .fw-brand {
+  justify-content: center;
+  padding: 0;
+}
+[data-collapsible="icon"] .fw-lockup {
+  display: none;
+}
+[data-collapsible="icon"] .fw-mono {
+  display: block;
+}
 
 /* Mark colours for the "current" palette, so a new mark on the old palette
    still renders. */
