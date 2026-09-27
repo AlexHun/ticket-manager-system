@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils";
+import { useForge } from "@/prototype/forge/forge-proto";
+import { ForgeMark } from "@/prototype/forge/ForgeMarks";
 
 /**
  * The project mark: the lucide `ticket` glyph on a rounded plate, the same
@@ -12,6 +14,18 @@ import { cn } from "@/lib/utils";
  * the link takes its accessible name from that text, not from here.
  */
 export function LogoMark({ className }: { className?: string }) {
+  // PROTOTYPE (forge rebrand): swap in the candidate mark picked on the bar.
+  if (import.meta.env.DEV) return <PrototypeMark className={className} />;
+  return <TicketMark className={className} />;
+}
+
+function PrototypeMark({ className }: { className?: string }) {
+  const { logo } = useForge();
+  if (logo === "current") return <TicketMark className={className} />;
+  return <ForgeMark variant={logo} className={className} />;
+}
+
+export function TicketMark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"

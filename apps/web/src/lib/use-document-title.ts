@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 /** What every title ends in, so a tab is identifiable as this app at a glance. */
-const APP_NAME = "Ticket Manager";
+const APP_NAME = "Forge Desk";
 
 /**
  * Name the document after what is on screen.

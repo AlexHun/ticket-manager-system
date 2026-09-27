@@ -1,0 +1,296 @@
+/*
+ * PROTOTYPE — throwaway. Palette, wordmark face and material cues for "The
+ * Great Forge Desk", scoped by `data-forge-palette` / `data-forge-font` so the
+ * same rules drive the whole app (on <html>) and the side-by-side panels on
+ * /__dev/forge (on a wrapper div). Values are eyeballed, not measured — the
+ * palette slice measures whichever one wins.
+ *
+ * Tokens that are themselves `var(--other)` in index.css (--viz-ord-*,
+ * --viz-resolved, --viz-accent) are redeclared in every block: a custom
+ * property's var() resolves where it is declared, so overriding --chart-1 on a
+ * child would not move a --viz-ord-1 inherited from :root.
+ *
+ * Ember (--ember-*, --viz-new/open, warning/critical) is deliberately untouched
+ * in every variant: hot still means somebody is waiting.
+ */
+@import "@fontsource/marcellus-sc/latin-400.css";
+@import "@fontsource-variable/rokkitt/wght.css";
+@import "@fontsource-variable/archivo/wdth.css";
+
+/* Mark colours for the "current" palette, so a new mark on the old palette
+   still renders. */
+:root {
+  --forge-bronze: oklch(0.68 0.09 65);
+  --forge-iron: oklch(0.28 0.012 250);
+  --forge-steel: oklch(0.86 0.012 250);
+  --forge-spark: oklch(0.96 0.1 95);
+  --forge-dark: oklch(0.19 0.012 60);
+}
+
+/* ── The baseline, restated so a panel can opt back into it inside a page
+      that has a forge palette on <html>. Copied from index.css. ── */
+[data-forge-palette="current"] {
+  --background: oklch(0.148 0.004 228.8);
+  --foreground: oklch(0.987 0.002 197.1);
+  --card: oklch(0.218 0.008 223.9);
+  --card-foreground: oklch(0.987 0.002 197.1);
+  --popover: oklch(0.218 0.008 223.9);
+  --popover-foreground: oklch(0.987 0.002 197.1);
+  --primary: oklch(0.432 0.095 166.913);
+  --primary-foreground: oklch(0.979 0.021 166.113);
+  --secondary: oklch(0.274 0.006 286.033);
+  --muted: oklch(0.275 0.011 216.9);
+  --muted-foreground: oklch(0.723 0.014 214.4);
+  --accent: oklch(0.275 0.011 216.9);
+  --accent-foreground: oklch(0.987 0.002 197.1);
+  --border: oklch(1 0 0 / 10%);
+  --ring: oklch(0.56 0.021 213.5);
+  --chart-1: oklch(0.845 0.143 164.978);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.596 0.145 163.225);
+  --chart-4: oklch(0.508 0.118 165.612);
+  --chart-5: oklch(0.432 0.095 166.913);
+  --calm: oklch(0.596 0.145 163.225);
+  --viz-closed: oklch(0.508 0.118 165.612);
+  --status-good: #34d399;
+  --status-good-soft: oklch(0.75 0.15 165 / 18%);
+  --ai-shine: oklch(0.9 0.15 165);
+  --ai-shine-core: oklch(0.99 0.04 165);
+  --sidebar: oklch(0.218 0.008 223.9);
+  --sidebar-foreground: oklch(0.987 0.002 197.1);
+  --sidebar-primary: oklch(0.696 0.17 162.48);
+  --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
+  --sidebar-accent: oklch(0.275 0.011 216.9);
+  --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.56 0.021 213.5);
+  --viz-ord-1: var(--chart-1);
+  --viz-ord-2: var(--chart-2);
+  --viz-ord-3: var(--chart-3);
+  --viz-ord-4: var(--chart-4);
+  --viz-resolved: var(--calm);
+  --viz-accent: var(--chart-3);
+}
+
+/* ── Shared by every forge palette: temper-blue action, verdigris "settled",
+      bronze decoration. Neutrals come from each palette below. ── */
+[data-forge-palette="A"],
+[data-forge-palette="B"],
+[data-forge-palette="C"] {
+  --primary-foreground: oklch(0.98 0.01 250);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.64 0.12 250);
+  --sidebar-ring: oklch(0.64 0.12 250);
+
+  /* Temper blue as the ordinal ramp, so charts stop being emerald. */
+  --chart-1: oklch(0.86 0.08 240);
+  --chart-2: oklch(0.74 0.12 245);
+  --chart-3: oklch(0.63 0.13 250);
+  --chart-4: oklch(0.53 0.12 254);
+  --chart-5: oklch(0.44 0.1 257);
+
+  /* Verdigris: the settled half, softened from emerald toward the patina
+     bronze actually grows. */
+  --calm: oklch(0.64 0.095 178);
+  --viz-closed: oklch(0.52 0.075 180);
+  --status-good: oklch(0.8 0.1 176);
+  --status-good-soft: oklch(0.75 0.09 176 / 18%);
+
+  --ai-shine: oklch(0.88 0.11 240);
+  --ai-shine-core: oklch(0.99 0.03 240);
+
+  --forge-spark: oklch(0.96 0.1 95);
+
+  --sidebar-primary: var(--forge-bronze);
+  --sidebar-primary-foreground: var(--forge-dark);
+
+  --viz-ord-1: var(--chart-1);
+  --viz-ord-2: var(--chart-2);
+  --viz-ord-3: var(--chart-3);
+  --viz-ord-4: var(--chart-4);
+  --viz-resolved: var(--calm);
+  --viz-accent: var(--chart-3);
+}
+
+/* A — Cold iron: blue-grey granite, restrained bronze. */
+[data-forge-palette="A"] {
+  --background: oklch(0.155 0.006 250);
+  --foreground: oklch(0.965 0.006 80);
+  --card: oklch(0.21 0.008 250);
+  --card-foreground: oklch(0.965 0.006 80);
+  --popover: oklch(0.21 0.008 250);
+  --popover-foreground: oklch(0.965 0.006 80);
+  --secondary: oklch(0.27 0.01 250);
+  --muted: oklch(0.27 0.01 250);
+  --muted-foreground: oklch(0.74 0.012 250);
+  --accent: oklch(0.27 0.01 250);
+  --accent-foreground: oklch(0.965 0.006 80);
+  --primary: oklch(0.5 0.13 255);
+  --sidebar: oklch(0.19 0.008 250);
+  --sidebar-foreground: oklch(0.965 0.006 80);
+  --sidebar-accent: oklch(0.27 0.01 250);
+  --sidebar-accent-foreground: oklch(0.965 0.006 80);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --forge-bronze: oklch(0.68 0.09 65);
+  --forge-iron: oklch(0.28 0.012 250);
+  --forge-steel: oklch(0.86 0.012 250);
+  --forge-dark: oklch(0.19 0.012 60);
+}
+
+/* B — Warm granite: brown-grey stone, richer bronze. */
+[data-forge-palette="B"] {
+  --background: oklch(0.16 0.008 60);
+  --foreground: oklch(0.965 0.008 80);
+  --card: oklch(0.215 0.01 60);
+  --card-foreground: oklch(0.965 0.008 80);
+  --popover: oklch(0.215 0.01 60);
+  --popover-foreground: oklch(0.965 0.008 80);
+  --secondary: oklch(0.275 0.012 60);
+  --muted: oklch(0.275 0.012 60);
+  --muted-foreground: oklch(0.75 0.014 70);
+  --accent: oklch(0.275 0.012 60);
+  --accent-foreground: oklch(0.965 0.008 80);
+  --primary: oklch(0.52 0.13 250);
+  --sidebar: oklch(0.195 0.01 60);
+  --sidebar-foreground: oklch(0.965 0.008 80);
+  --sidebar-accent: oklch(0.275 0.012 60);
+  --sidebar-accent-foreground: oklch(0.965 0.008 80);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --forge-bronze: oklch(0.7 0.1 62);
+  --forge-iron: oklch(0.29 0.014 60);
+  --forge-steel: oklch(0.87 0.012 70);
+  --forge-dark: oklch(0.2 0.014 55);
+}
+
+/* C — Blackened steel: near-black, highest contrast, the brightest bronze. */
+[data-forge-palette="C"] {
+  --background: oklch(0.12 0.004 260);
+  --foreground: oklch(0.97 0.004 260);
+  --card: oklch(0.18 0.006 260);
+  --card-foreground: oklch(0.97 0.004 260);
+  --popover: oklch(0.18 0.006 260);
+  --popover-foreground: oklch(0.97 0.004 260);
+  --secondary: oklch(0.25 0.008 260);
+  --muted: oklch(0.25 0.008 260);
+  --muted-foreground: oklch(0.72 0.01 260);
+  --accent: oklch(0.25 0.008 260);
+  --accent-foreground: oklch(0.97 0.004 260);
+  --primary: oklch(0.48 0.14 258);
+  --border: oklch(1 0 0 / 8%);
+  --sidebar: oklch(0.155 0.005 260);
+  --sidebar-foreground: oklch(0.97 0.004 260);
+  --sidebar-accent: oklch(0.25 0.008 260);
+  --sidebar-accent-foreground: oklch(0.97 0.004 260);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --forge-bronze: oklch(0.73 0.1 70);
+  --forge-iron: oklch(0.25 0.008 260);
+  --forge-steel: oklch(0.88 0.008 260);
+  --forge-dark: oklch(0.16 0.01 60);
+}
+
+/* ── Material cues: thin bronze edges, a slight bevel on primary buttons.
+      Carried as variables so a "current" panel nested inside a forge page
+      switches them off instead of inheriting them. ── */
+[data-forge-palette="A"],
+[data-forge-palette="B"],
+[data-forge-palette="C"] {
+  --forge-card-edge: color-mix(in oklch, var(--forge-bronze) 26%, transparent);
+  --forge-card-highlight: color-mix(
+    in oklch,
+    var(--forge-bronze) 22%,
+    transparent
+  );
+  --forge-sidebar-edge: color-mix(
+    in oklch,
+    var(--forge-bronze) 32%,
+    transparent
+  );
+  --forge-bevel-image: linear-gradient(
+    to bottom,
+    oklch(1 0 0 / 14%),
+    transparent 55%,
+    oklch(0 0 0 / 16%)
+  );
+  --forge-bevel-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 20%), 0 1px 0 oklch(0 0 0 / 45%);
+}
+[data-forge-palette="current"] {
+  --forge-card-edge: var(--border);
+  --forge-card-highlight: transparent;
+  --forge-sidebar-edge: var(--sidebar-border);
+  --forge-bevel-image: none;
+  --forge-bevel-shadow: none;
+}
+
+[data-forge-palette] [data-slot="card"] {
+  --tw-ring-color: var(--forge-card-edge);
+  box-shadow:
+    inset 0 1px 0 var(--forge-card-highlight),
+    0 0 0 1px var(--forge-card-edge);
+}
+[data-forge-palette] [data-slot="sidebar-container"] {
+  border-color: var(--forge-sidebar-edge);
+}
+[data-forge-palette] [data-slot="button"][data-variant="default"] {
+  background-image: var(--forge-bevel-image);
+  box-shadow: var(--forge-bevel-shadow);
+}
+
+/* ── Wordmark and page-title faces. `.forge-wordmark` / `.forge-title` are
+      added to the sidebar and login name and to PageHeader's <h1>. ── */
+[data-forge-font="A"] {
+  --forge-family: "Marcellus SC", ui-serif, serif;
+  --forge-weight: 400;
+  --forge-stretch: 100%;
+  --forge-tracking: 0.07em;
+  --forge-case: none;
+}
+[data-forge-font="B"] {
+  --forge-family: "Rokkitt Variable", ui-serif, serif;
+  --forge-weight: 700;
+  --forge-stretch: 100%;
+  --forge-tracking: 0.05em;
+  --forge-case: uppercase;
+}
+[data-forge-font="C"] {
+  --forge-family: "Archivo Variable", ui-sans-serif, sans-serif;
+  --forge-weight: 800;
+  --forge-stretch: 125%;
+  --forge-tracking: 0.05em;
+  --forge-case: uppercase;
+}
+[data-forge-font="current"] {
+  --forge-family: var(--font-sans);
+  --forge-weight: 600;
+  --forge-stretch: 100%;
+  --forge-tracking: -0.01em;
+  --forge-case: none;
+}
+
+:is(
+    [data-forge-font="A"],
+    [data-forge-font="B"],
+    [data-forge-font="C"],
+    [data-forge-font="current"]
+  )
+  :is(.forge-wordmark, .forge-title) {
+  font-family: var(--forge-family);
+  font-weight: var(--forge-weight);
+  font-stretch: var(--forge-stretch);
+  letter-spacing: var(--forge-tracking);
+  text-transform: var(--forge-case);
+}
+
+/* Titles take the face a size step down when it is all caps, or "TICKETS"
+   shouts over the content it names. */
+[data-forge-font] {
+  --forge-title-size: 1.5rem;
+}
+[data-forge-font="B"],
+[data-forge-font="C"] {
+  --forge-title-size: 1.3rem;
+}
+[data-forge-font] .forge-title {
+  font-size: var(--forge-title-size);
+}

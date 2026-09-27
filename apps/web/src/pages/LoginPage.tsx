@@ -134,8 +134,8 @@ export function LoginPage() {
             what gets read. */}
         <div className="flex items-center gap-2.5">
           <LogoMark className="size-8" />
-          <span className="text-lg font-semibold tracking-tight">
-            Ticket Manager
+          <span className="forge-wordmark text-lg font-semibold tracking-tight">
+            The Great Forge Desk
           </span>
         </div>
 

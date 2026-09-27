@@ -61,6 +61,8 @@ export const ROUTE = {
   devMap: { path: "/__dev/map" },
   devTests: { path: "/__dev/tests" },
   devUsage: { path: "/__dev/usage" },
+  // PROTOTYPE (forge rebrand) — side-by-side specimen of the candidates.
+  devForge: { path: "/__dev/forge" },
   dev: { path: "/__dev/*" },
 
   /** The 404, which matches whatever nothing above did. */

@@ -46,7 +46,7 @@ export function AppSidebar() {
                 rail forces every button to `size-8!`, so the brand row would
                 jump 48px → 32px on every collapse. Matching the nav rows'
                 height means the only thing that changes is the width. */}
-            <SidebarMenuButton asChild tooltip="Ticket Manager">
+            <SidebarMenuButton asChild tooltip="Forge Desk">
               <Link to="/">
                 {/* Sized by the button's own `[&_svg]:size-4`, which outranks a
                     size utility set here — don't pass one, it silently loses. */}
@@ -56,8 +56,8 @@ export function AppSidebar() {
                     button, so clipping alone leaked a sliver of the "T". This
                     hides it outright while keeping it as the link's accessible
                     name — the tooltip is not one. */}
-                <span className="truncate font-semibold group-data-[collapsible=icon]:sr-only">
-                  Ticket Manager
+                <span className="forge-wordmark truncate font-semibold group-data-[collapsible=icon]:sr-only">
+                  Forge Desk
                 </span>
               </Link>
             </SidebarMenuButton>
