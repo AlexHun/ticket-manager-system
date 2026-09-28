@@ -27,9 +27,9 @@
      * table cell, which is where most subjects are read, and it was drawn for
      * screen text rather than for headlines.
      *
-     * `--font-heading` still exists and still resolves to the sans. Page
-     * headings are chrome — the app naming its own sections — and giving them
-     * the serif would spend the distinction on the least interesting words here.
+     * `--font-heading` still exists and still resolves to the sans, for card
+     * titles, dialogs and section headings. None of them gets the serif, which
+     * would spend the distinction on the least interesting words here.
      *
      * `--font-brand` is the product's own voice rather than a third reading
      * face: Big Shoulders Display, the lockup's letters, used on the lockup and

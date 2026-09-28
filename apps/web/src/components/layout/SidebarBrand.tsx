@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { BRAND_NAME } from "@/lib/brand";
 import { ROUTE } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 
 /**
  * The top of the sidebar: the lockup THE GREAT / FORGE / DESK, with no mark
@@ -16,6 +17,10 @@ import { ROUTE } from "@/lib/routes";
  * clipped to a gradient — so both halves are `aria-hidden` and the link takes
  * its name from `aria-label`, which also survives the collapse.
  */
+/** THE GREAT and DESK: the small spaced lines above and below FORGE. */
+const SMALL_LINE =
+  "flex items-center gap-2 text-[0.74rem] font-bold tracking-[0.46em] text-muted-foreground";
+
 export function SidebarBrand() {
   return (
     <Link
@@ -27,7 +32,7 @@ export function SidebarBrand() {
         aria-hidden="true"
         className="flex w-max flex-col group-data-[collapsible=icon]:hidden"
       >
-        <span className="flex items-center gap-2 text-[0.74rem] font-bold tracking-[0.46em] text-muted-foreground">
+        <span className={SMALL_LINE}>
           <span>The Great</span>
           <i className="brand-rule h-px min-w-4 flex-1" />
         </span>
@@ -35,8 +40,9 @@ export function SidebarBrand() {
           Forge
         </span>
         {/* The negative margin takes back the tracking after the last letter,
-            so DESK ends flush with FORGE rather than 0.46em short of it. */}
-        <span className="-mr-[0.46em] flex items-center justify-end gap-2 text-[0.74rem] font-bold tracking-[0.46em] text-muted-foreground">
+            so DESK ends flush with FORGE rather than 0.46em short of it — keep
+            it equal to SMALL_LINE's tracking. */}
+        <span className={cn(SMALL_LINE, "-mr-[0.46em] justify-end")}>
           <i className="brand-rule h-px min-w-4 flex-1 -scale-x-100" />
           <span>Desk</span>
         </span>
