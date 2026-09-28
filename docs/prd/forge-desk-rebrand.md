@@ -25,7 +25,15 @@ page, and no loss of legibility or contrast.
 | ---------------------------------------------------------------- | ------- | --------------------- |
 | Places the running app shows "Ticket Manager"                    | 10      | 0                     |
 | Visitors who can name the product after a demo                   | unknown | TBD — needs the owner |
-| _Guardrail:_ text/control pairs below WCAG AA on changed screens | unknown | 0                     |
+| _Guardrail:_ text/control pairs below WCAG AA on changed screens | 1       | 0                     |
+
+The guardrail's baseline is `tests/e2e/contrast.spec.ts` (#340), measured
+2026-09-28 with axe-core's `color-contrast` rule on `/login`, `/`, `/tickets`
+and a ticket detail. Its one violation is the ticket detail's customer email
+link, `text-primary` at 2.28:1 against the 4.5:1 AA asks for; the spec
+tolerates it by name until the palette slice. Axe cannot judge the sidebar
+lockup's gradient-clipped text or the dashboard chart's SVG tick labels, so
+neither is in the count; both need checking by eye when their colours change.
 
 ## Scope
 
