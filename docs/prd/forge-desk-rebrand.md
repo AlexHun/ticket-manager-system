@@ -34,6 +34,8 @@ link, `text-primary` at 2.28:1 against the 4.5:1 AA asks for; the spec
 tolerates it by name until the palette slice. Axe cannot judge the sidebar
 lockup's gradient-clipped text or the dashboard chart's SVG tick labels, so
 neither is in the count; both need checking by eye when their colours change.
+The rule measures text only, so the contrast of control boundaries (WCAG
+1.4.11) is not in the count either.
 
 ## Scope
 
