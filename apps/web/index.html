@@ -10,7 +10,9 @@
     <!-- Without an explicit icon link the browser auto-requests /favicon.ico,
          which nothing serves -> 404 in the console on every page load. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Ticket Manager</title>
+    <!-- BRAND_SHORT in src/lib/brand.ts, restated because nothing has run yet
+         when this is read; tests/e2e/brand.spec.ts holds the two together. -->
+    <title>Forge Desk</title>
   </head>
   <body>
     <div id="root"></div>

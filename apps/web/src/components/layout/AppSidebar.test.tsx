@@ -92,6 +92,34 @@ beforeEach(() => {
   newFeatureSeenPost.mockResolvedValue({ data: { ok: true } });
 });
 
+describe("AppSidebar brand", () => {
+  // R4/R5: the lockup's letters are drawn, not read, so the link carries the
+  // name itself — in both states, since collapsed it shows only an "F".
+  test("the brand link is named after the product and leads to the dashboard", () => {
+    renderSidebar();
+
+    const brand = screen.getByRole("link", { name: "The Great Forge Desk" });
+    expect(brand).toHaveAttribute("href", "/");
+  });
+
+  test("keeps its name with the sidebar collapsed", () => {
+    renderRoutes([
+      {
+        path: "/",
+        element: (
+          <SidebarProvider defaultOpen={false}>
+            <AppSidebar />
+          </SidebarProvider>
+        ),
+      },
+    ]);
+
+    expect(
+      screen.getByRole("link", { name: "The Great Forge Desk" }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("AppSidebar navigation", () => {
   const SHOWCASE = [
     "Knowledge base",

@@ -54,11 +54,12 @@ afterEach(() => {
 });
 
 const CARD_DESCRIPTION =
-  "Use your email and password to access the ticket manager.";
+  "Use your email and password to access The Great Forge Desk.";
 
 describe("LoginPage — rendering", () => {
   test("renders the sign-in card with both fields and submit button", () => {
     renderLogin();
+    expect(screen.getByText("The Great Forge Desk")).toBeInTheDocument();
     expect(screen.getByText(CARD_DESCRIPTION)).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
@@ -300,7 +301,7 @@ describe("LoginPage — demo session", () => {
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Can't reach the ticket manager.",
+      "Can't reach The Great Forge Desk.",
     );
   });
 });

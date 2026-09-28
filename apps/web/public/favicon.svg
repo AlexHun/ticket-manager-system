@@ -1,38 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" data-mark="hallmark">
   <!--
-    Ticket glyph from the lucide set, matching the icons used in the app. Same
-    drawing as <LogoMark /> in src/components/layout/Logo.tsx, so the tab and
-    the sidebar read as one identity.
+    The bronze hallmark: a clipped-octagon punch, a soot anvil knocked out of
+    it and a hot bar on the anvil face. Same drawing as <LogoMark /> in
+    src/components/layout/Logo.tsx, so the tab and the app read as one identity.
 
     The colours are duplicated here as literals rather than shared with the app:
     a favicon is fetched as a standalone document and cannot see the page's CSS
-    variables, so --sidebar-primary is unavailable. These are the same two
-    emerald steps those tokens resolve to (light 0.596L = emerald-600, dark
-    0.696L = emerald-500) — change them together or the tab drifts from the app.
+    variables. They are the same three hex values LogoMark draws with — change
+    them together or the tab drifts from the app.
 
-    Inverts with the browser/OS theme, not the app's own toggle: nothing can
-    reach across into a tab strip.
+    One drawing for light and dark tab strips, unlike the ticket glyph this
+    replaced: the punch is a solid mid-tone bronze, which holds against either,
+    and at 16px the shape is what reads — the anvil and bar are the same weight
+    in both. `data-mark` is what tests/e2e/brand.spec.ts checks for.
   -->
-  <style>
-    .plate { fill: #059669; }
-    .mark { stroke: #ecfdf5; }
-    @media (prefers-color-scheme: dark) {
-      .plate { fill: #10b981; }
-      .mark { stroke: #022c22; }
-    }
-  </style>
-  <rect class="plate" width="24" height="24" rx="5" />
-  <g
-    class="mark"
+  <path d="M4.2 0.8H19.8L23.2 4.2V19.8L19.8 23.2H4.2L0.8 19.8V4.2Z" fill="#bf8d5b" />
+  <path
+    d="M5 2.6H19L21.4 5V19L19 21.4H5L2.6 19V5Z"
     fill="none"
-    stroke-width="2.2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    transform="translate(3.6 3.6) scale(0.7)"
-  >
-    <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
-    <path d="M13 5v2" />
-    <path d="M13 11v2" />
-    <path d="M13 17v2" />
-  </g>
+    stroke="#130e0c"
+    stroke-opacity="0.35"
+    stroke-width="0.9"
+  />
+  <path
+    d="M2.6 11.4C4.4 10.6 6 10.4 7.8 10.4H20.6L21.2 10.9V13.2L18.2 13.9C16.8 14.5 16.4 15.6 16.6 16.9L18.8 18.1V19.6H6.6V18.1L8.8 16.9C9 15.6 8.6 14.5 7.4 14C5.6 13.6 4 12.8 2.6 11.4Z"
+    fill="#130e0c"
+  />
+  <path
+    d="M9.4 7.6H18.4Q19.4 7.6 19.4 8.6Q19.4 9.6 18.4 9.6H9.4Q8.4 9.6 8.4 8.6Q8.4 7.6 9.4 7.6Z"
+    fill="#ffaf38"
+  />
 </svg>

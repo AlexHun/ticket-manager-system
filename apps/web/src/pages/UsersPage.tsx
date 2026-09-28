@@ -4,6 +4,7 @@ import { TUTORIAL_PAGE_KEY, type User } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { BRAND_NAME } from "@/lib/brand";
 import { useUsersQuery } from "@/lib/use-users";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DemoUsageCard } from "./DemoUsageCard";
@@ -51,7 +52,7 @@ export function UsersPage() {
       <div className="max-w-5xl">
         <PageHeader
           title="Users"
-          description="Everyone who can sign in to the ticket manager."
+          description={`Everyone who can sign in to ${BRAND_NAME}.`}
         >
           <div data-tutorial-anchor="new" className="contents">
             <Button onClick={openCreate}>New user</Button>

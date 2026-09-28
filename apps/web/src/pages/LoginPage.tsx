@@ -7,8 +7,9 @@ import { loginSchema, type LoginValues } from "@ticket/core";
 import { DEMO_START_LIMIT_MESSAGE } from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
 import { useDemoStatus } from "@/lib/demo-queries";
+import { BRAND_NAME } from "@/lib/brand";
 import { ROUTE } from "@/lib/routes";
-import { LogoMark } from "@/components/layout/Logo";
+import { BrandName, LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,7 +46,7 @@ function failureMessage(
     typeof status === "number" && (status === 0 || status >= 500);
 
   return unreachable
-    ? "Can't reach the ticket manager. Check your connection, or try again in a moment."
+    ? `Can't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
     : (error.message ?? fallback);
 }
 
@@ -134,16 +135,14 @@ export function LoginPage() {
             what gets read. */}
         <div className="flex items-center gap-2.5">
           <LogoMark className="size-8" />
-          <span className="text-lg font-semibold tracking-tight">
-            Ticket Manager
-          </span>
+          <BrandName />
         </div>
 
         <Card className="w-full">
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
             <CardDescription>
-              Use your email and password to access the ticket manager.
+              Use your email and password to access {BRAND_NAME}.
             </CardDescription>
           </CardHeader>
           <CardContent>
