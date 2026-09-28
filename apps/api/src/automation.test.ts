@@ -259,6 +259,14 @@ describe("resolveHandoffUser — a named person", () => {
 
     expect(await resolveHandoffUser()).toMatchObject({ id: FOUNDER.id });
   });
+
+  test("degrades to an admin rather than honouring a demo visitor (#319)", async () => {
+    // The same rule at read time as the route's at write time.
+    await seedColleagues("demoVisitor");
+    await pointAt(HANDOFF_TARGET.user, COLLEAGUE.demoVisitor);
+
+    expect(await resolveHandoffUser()).toMatchObject({ id: FOUNDER.id });
+  });
 });
 
 describe("resolveHandoffUser — unassigned", () => {

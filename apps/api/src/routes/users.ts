@@ -84,7 +84,10 @@ usersRouter.get(
   requireAdmin,
   async (_req: Request, res: Response<UsersListResponse>) => {
     const users = await prisma.user.findMany({
-      where: { deletedAt: null },
+      // A demo visitor is not somebody on the desk (#319, ADR-0022). The
+      // assistant stays listed and flagged; a visitor has nothing here an
+      // admin could do to them, and listing every click would bury the people.
+      where: { deletedAt: null, isAnonymous: false },
       select: {
         id: true,
         name: true,

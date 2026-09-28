@@ -17,6 +17,7 @@ import {
   type PipelineSimulateResponse,
 } from "@ticket/shared";
 import { AiShine } from "@/components/AiShine";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -138,7 +139,11 @@ export function PipelineSimulator({
     });
   });
 
-  const disabled = !config.simulatorEnabled;
+  // Shut to a demo session wherever it is on (#326): its classification and
+  // auto-reply run in background jobs outside the demo's AI budget, and it
+  // feeds a stranger's text through ingestion. `requireAdmin` is the control.
+  const readOnly = useDemoReadOnly();
+  const disabled = !config.simulatorEnabled || readOnly;
   const busy = isSubmitting || mutation.isPending;
 
   return (
@@ -156,7 +161,9 @@ export function PipelineSimulator({
         reserved domain — nothing here can reach a real person.
       </p>
 
-      {disabled && (
+      <DemoReadOnlyNote className="mt-3" />
+
+      {!config.simulatorEnabled && !readOnly && (
         <p
           role="status"
           className="mt-3 rounded-md border border-ember-2/40 bg-ember-2/5 p-3 text-xs leading-relaxed text-ember-2"

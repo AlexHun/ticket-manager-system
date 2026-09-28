@@ -34,6 +34,19 @@ model User {
   /// ticket the machine finished, so the assignee column answers "who dealt with
   /// this" for every ticket instead of going blank on the automated ones.
   automated            Boolean                      @default(false)
+  /// This row is a demo visitor: minted by Better Auth's `anonymous` plugin on
+  /// one click of "Use demo session", with no password and no `Account` row.
+  ///
+  /// The plugin owns the name and writes it, which is why it is spelled the
+  /// plugin's way rather than this schema's. Written `true` only by
+  /// `/sign-in/anonymous`, and that endpoint answers only while
+  /// `DEMO_MODE_ENABLED` is `"true"` (`demo/mode.ts`). A demo identity keeps
+  /// the plugin's default `agent` role and is never `admin`: the admin plugin
+  /// serves its own `/api/auth/admin/*` endpoints to that role without passing
+  /// through `requireAdmin`. Like the assistant, it is never offered as an
+  /// assignee; unlike it, it is never listed on the roster or on the desk's
+  /// Workload panel either. See `docs/adr/0022`.
+  isAnonymous          Boolean                      @default(false)
   banned               Boolean?                     @default(false)
   banReason            String?
   banExpires           DateTime?
@@ -445,7 +458,8 @@ enum MessageDirection {
 /// revision is evidence for replies already sitting in customers' inboxes, so
 /// what it describes must never be deletable. This is *about* its ticket and
 /// means nothing without it; `Message` cascades for the same reason, and
-/// `prisma/seed-tickets.ts --reset` depends on it.
+/// the showcase's reset (`src/demo/showcase.ts`: `db:seed:tickets --reset` and
+/// the nightly) depends on it.
 model TicketActivity {
   id         Int                  @id @default(autoincrement())
   ticketId   Int
@@ -806,11 +820,16 @@ enum OutboundEmailKind {
 /// app runs in today. Collapsing the two would make a working deployment with no
 /// Postmark key look like a broken one, and would hide real failures among
 /// hundreds of rows that were never tried.
+///
+/// `withheld` is a demo session's email (#325, PRD R10): written so the thread
+/// and the outbox both show it, never queued, never handed to a worker, and
+/// refused by the outbox retry — whether or not a provider is configured.
 enum OutboundEmailStatus {
   queued
   sent
   failed
   undeliverable
+  withheld
 }
 
 /// The per-page walkthrough shown the first time (and again after a material
@@ -1312,4 +1331,46 @@ enum EvalPlannedRunStatus {
   /// charges money at a moment nobody chose and stamps a trend point whose date
   /// means nothing.
   missed
+}
+
+/// What demo sessions have spent on AI, one row per UTC day (#321, PRD R8).
+///
+/// All demo visitors together get `DEMO_AI_DAILY_USD` a day (default $1.00),
+/// so the figure is shared rather than per identity: each visitor is a fresh
+/// user, and a per-user cap would be a cap per click on the login button. The
+/// day is the key, so the total rolls over at 00:00 UTC by there being no row
+/// for the new day yet, with nothing to sweep or reset.
+///
+/// `usd` is `usdFor`'s estimate, added after each call — the same figure the
+/// `[ai]` log line prints, and exactly as stale as `USD_PER_MTOK`. Nothing
+/// bills off it. Only demo sessions are counted here (`demo/ai-budget.ts`).
+model DemoAiSpend {
+  /// The UTC calendar day the spend belongs to.
+  day       DateTime @id @db.Date
+  usd       Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("demo_ai_spend")
+}
+
+/// One row per demo session, for the admin's weekly usage figures (#327, PRD
+/// R14): when it started and whether it opened a ticket.
+///
+/// **Keyed by the demo identity's id, and deliberately not related to it.**
+/// The nightly reset (`jobs/demo-reset.ts`) deletes finished demo identities,
+/// and a foreign key would take their tally with them (cascade) or refuse the
+/// delete (restrict). So `userId` is a copy, and the row outlives the user it
+/// names. Each click on "Use demo session" mints a fresh identity with one
+/// session, so an identity and a session are the same count.
+///
+/// Written by `demo/usage.ts` only: created by the `user.create.after` hook in
+/// `auth.ts`, flagged by `GET /api/tickets/:id`. Nothing prunes it; a row is a
+/// few dozen bytes and a visitor is a click.
+model DemoSessionTally {
+  userId       String   @id
+  startedAt    DateTime @default(now())
+  openedTicket Boolean  @default(false)
+
+  @@index([startedAt])
+  @@map("demo_session_tally")
 }

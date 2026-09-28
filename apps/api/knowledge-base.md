@@ -75,9 +75,10 @@ why the notes can be blunt: they are for people.
 Three consequences worth stating before someone builds on this:
 
 - **Editing this content is a privileged action**, and it now has a screen.
-  `/knowledge` is admin-only in the router and `requireAdmin` on every route in
-  `apps/api/src/routes/knowledge.ts`; the frontend guard is UX, that middleware
-  is the control. Whoever can edit an article can write into every draft-reply
+  `/knowledge` is admin-only in the router, apart from a demo session that may
+  only look (#320): `requireAdmin` on every write in
+  `apps/api/src/routes/knowledge.ts` and `requireAdminView` on its reads; the
+  frontend guard is UX, that middleware is the control. Whoever can edit an article can write into every draft-reply
   prompt the system will ever run, which is a strictly larger power than editing
   a document — so every write records who made it in the same transaction, and
   articles are archived rather than deleted, because replies already sent cite

@@ -1,4 +1,4 @@
-# Support Desk
+# The Great Forge Desk
 
 An AI-powered ticket management system. It receives customer email, files it,
 answers what it can from written knowledge, and hands the rest to people.
@@ -111,7 +111,7 @@ cd apps/api
 bun run db:migrate        # apply migrations
 bun run db:seed           # admin (+ a dev agent account outside production)
 bun run db:seed:kb        # knowledge articles — the auto-reply is inert without them
-bun run db:seed:tickets   # optional: 140 fake customers and their threads
+bun run db:seed:tickets   # optional: 100 fake tickets and their threads
 cd ../..
 ```
 

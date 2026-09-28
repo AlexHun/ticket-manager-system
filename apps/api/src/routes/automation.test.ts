@@ -65,6 +65,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
       id: req.header("x-test-user") ?? "agent-1",
       name: req.header("x-test-agent-name") ?? "Aaron Agent",
       email: req.header("x-test-user-email") ?? "agent@example.com",
+      isAnonymous: req.header("x-test-demo") === "true",
     },
     session: { id: req.header("x-test-session") ?? "sess-1" },
   };
@@ -74,6 +75,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
 mock.module("../middleware/auth", () => ({
   requireAuth: fakeGuard,
   requireAdmin: fakeGuard,
+  requireAdminView: fakeGuard,
   sessionOf: (res: Response) => res.locals.session,
 }));
 
@@ -322,6 +324,21 @@ describe("PATCH /api/automation/handoff — who may be named", () => {
     const sent = await patch({
       target: HANDOFF_TARGET.user,
       userId: ASSISTANT.id,
+    });
+
+    expect(sent.status).toBe(400);
+    expect(sent.body.error).toBe("Assignee not found");
+    expect(await settingsRow()).toBeNull();
+  });
+
+  test("refuses a demo visitor (#319)", async () => {
+    // Nobody may hand a ticket to one — the same rule `ASSIGNABLE_USER` keeps
+    // for the assignee picker, which is also what this page's picker draws on.
+    await seedColleagues("demoVisitor");
+
+    const sent = await patch({
+      target: HANDOFF_TARGET.user,
+      userId: COLLEAGUE.demoVisitor.id,
     });
 
     expect(sent.status).toBe(400);

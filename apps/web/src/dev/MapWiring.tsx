@@ -1,4 +1,10 @@
-import { CornerDownRight, KeyRound, ShieldCheck, Webhook } from "lucide-react";
+import {
+  CornerDownRight,
+  Eye,
+  KeyRound,
+  ShieldCheck,
+  Webhook,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +47,11 @@ const GUARD_VISUAL: Record<
     icon: <ShieldCheck />,
     // Status colours, and status colours only, carry state here — and each one
     // ships with a word, never the colour alone.
+    className: "text-status-good",
+  },
+  [GUARD.adminView]: {
+    label: "admin, demo reads",
+    icon: <Eye />,
     className: "text-status-good",
   },
   [GUARD.auth]: {

@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { RotateCw, Sparkles } from "lucide-react";
 import type { SummarizeTicketValues } from "@ticket/core";
 import {
+  DEMO_AI_LIMIT_MESSAGE,
   SUMMARY_SENTIMENT,
   type SummarizeTicketResponse,
   type SummarySentiment,
@@ -14,7 +15,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import { api } from "@/lib/api";
-import { extractErrorMessage } from "@/lib/errors";
+import { extractErrorMessage, isDemoAiLimit } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
 /** The sparkles icon, breathing while the model works. */
@@ -101,12 +102,16 @@ export function TicketSummaryPanel({
     // rewritten textarea is easy to miss; here the panel visibly fills with the
     // thing that was asked for, and a toast saying so would be the same news
     // twice.
+    // The demo AI limit is not an error: it is shown in the panel below, in
+    // place of the summary, and a toast would say the same thing twice.
     onError: (err) => {
+      if (isDemoAiLimit(err)) return;
       toast.error(extractErrorMessage(err, SUMMARY_FAILED));
     },
   });
 
   const result = summarize.data;
+  const demoLimited = isDemoAiLimit(summarize.error);
 
   return (
     // shrink-0 for the reason spelled out at the call site: this card sits in a
@@ -173,9 +178,18 @@ export function TicketSummaryPanel({
 
         {summarize.isPending && <SummarySkeleton />}
 
-        {!summarize.isPending && summarize.error && (
+        {!summarize.isPending && summarize.error && !demoLimited && (
           <p className="text-sm text-destructive" role="alert">
             {extractErrorMessage(summarize.error, SUMMARY_FAILED)}
+          </p>
+        )}
+
+        {/* Every demo session together has spent the day's AI (#321). Status
+            rather than alert, and muted rather than red: nothing went wrong,
+            and Summarise will not work again until 00:00 UTC. */}
+        {!summarize.isPending && demoLimited && (
+          <p className="text-sm text-muted-foreground" role="status">
+            {DEMO_AI_LIMIT_MESSAGE}
           </p>
         )}
 

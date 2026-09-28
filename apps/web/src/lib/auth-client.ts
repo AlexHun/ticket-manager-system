@@ -1,5 +1,8 @@
 import { createAuthClient } from "better-auth/react";
-import { inferAdditionalFields } from "better-auth/client/plugins";
+import {
+  anonymousClient,
+  inferAdditionalFields,
+} from "better-auth/client/plugins";
 import { USER_ROLE } from "@ticket/shared";
 
 export const authClient = createAuthClient({
@@ -10,6 +13,9 @@ export const authClient = createAuthClient({
         role: { type: [USER_ROLE.admin, USER_ROLE.agent] },
       },
     }),
+    // `signIn.anonymous()` — "Use demo session" on the login page (#319). The
+    // server refuses it unless demo mode is on; see `apps/api/src/auth.ts`.
+    anonymousClient(),
   ],
 });
 

@@ -1,13 +1,23 @@
 import * as Sentry from "@sentry/bun";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { admin } from "better-auth/plugins";
-import { USER_ROLE } from "@ticket/shared";
+import { APIError, createAuthMiddleware, getIp } from "better-auth/api";
+import { deleteSessionCookie } from "better-auth/cookies";
+import { admin, anonymous } from "better-auth/plugins";
+import { DEMO_START_LIMIT_MESSAGE, USER_ROLE } from "@ticket/shared";
 // A leaf module rather than a constant declared here, and the note on it says
 // why: this file cannot be loaded by a unit test, so anything else that needs
 // the number cannot reach it through this file.
 import { RESET_TOKEN_TTL_SECONDS } from "./auth-tokens";
 import { prisma } from "./db";
+import {
+  DEMO_EMAIL_DOMAIN,
+  DEMO_VISITOR_NAME,
+  isDemoModeEnabled,
+} from "./demo/mode";
+import { demoSessionEndsAt, demoSessionRefused } from "./demo/session-lifetime";
+import { admitDemoStart } from "./demo/start-limit";
+import { recordDemoStart } from "./demo/usage";
 import { enqueueEmail } from "./jobs/send-email";
 
 const parsedOrigins = process.env.TRUSTED_ORIGINS?.split(",")
@@ -146,6 +156,23 @@ if (cookieDomain) {
   }
 }
 
+/**
+ * Whether what a `/get-session` handler answered is a session, rather than
+ * `null` or an error. `ctx.context.returned` is untyped because every endpoint
+ * shares it.
+ */
+function isSessionAnswer(answer: unknown): answer is {
+  session: { token: string; createdAt: Date | string };
+  user: { isAnonymous: boolean | null };
+} {
+  return (
+    typeof answer === "object" &&
+    answer !== null &&
+    "session" in answer &&
+    "user" in answer
+  );
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   trustedOrigins,
@@ -180,7 +207,7 @@ export const auth = betterAuth({
       // handing out. Failures still surface — they just surface to us.
       void (async () => {
         /**
-         * Two accounts that must never receive one of these, checked here
+         * Three accounts that must never receive one of these, checked here
          * because this is the one place every door leads to.
          *
          * **The assistant.** `/request-password-reset` is public — that is what
@@ -195,12 +222,23 @@ export const auth = betterAuth({
          *
          * **A deleted colleague.** `deletedAt` is set on accounts that are gone;
          * mailing one an invitation would be inviting them back.
+         *
+         * **A demo visitor** (ADR-0022). Their placeholder address is in their
+         * own session, so a stranger could ask for a link to it. Following one
+         * would create the credential row ADR-0011 says only an account's
+         * owner may hold, on an account a stranger can already sign into.
          */
         const account = await prisma.user.findUnique({
           where: { id: user.id },
-          select: { automated: true, deletedAt: true },
+          select: { automated: true, deletedAt: true, isAnonymous: true },
         });
-        if (!account || account.automated || account.deletedAt !== null) return;
+        if (
+          !account ||
+          account.automated ||
+          account.isAnonymous ||
+          account.deletedAt !== null
+        )
+          return;
 
         const credential = await prisma.account.findFirst({
           where: { userId: user.id, providerId: "credential" },
@@ -266,9 +304,176 @@ export const auth = betterAuth({
    * until their cookie expires. `maxAge` is the length of that window; 60s is
    * chosen to keep it short enough to be an inconvenience rather than a hole.
    * Raising it lengthens the window — don't, without revisiting that route.
+   *
+   * **A demo session is not bound by that window, and does not rely on it**
+   * (#324, measured in `routes/users.test.ts`). The cached copy carries the
+   * session's `expiresAt` and Better Auth checks it on every cache hit, so a
+   * demo that reaches its two hours ends on time; and the `after` hook below
+   * runs on the cached answer as well as the stored one, so the off switch
+   * ends open demo sessions on their next request rather than a minute later.
+   * What the cache *does* outlive is a row changed behind its back, as above.
    */
   session: {
     cookieCache: { enabled: true, maxAge: 60 },
+  },
+  /**
+   * A demo session's row ends two hours after it started (#324, PRD R7), so
+   * the nightly reset (`jobs/demo-reset.ts`), which keeps an identity while a
+   * session of its has an `expiresAt` ahead, sees the truth.
+   *
+   * **Both halves are needed.** `create` sets the two hours. `update` keeps
+   * them: Better Auth refreshes a session once it is older than `updateAge`
+   * short of `expiresIn` — a day short of seven — which a two-hour session
+   * always is. So the first request read from the database would otherwise push
+   * its end out to a week. The session being refreshed is the one
+   * `/get-session` has just put on `ctx.context.session`, which is the only way
+   * this hook can tell whose it is: the update itself names no session. So it
+   * acts on that path alone, where the two are known to be the same row.
+   *
+   * The `after` hook below is what actually refuses one, off `createdAt`, so
+   * these two keep the row honest rather than hold the line on their own.
+   */
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { isAnonymous: true },
+          });
+          if (user?.isAnonymous !== true) return;
+          return {
+            data: {
+              ...session,
+              expiresAt: demoSessionEndsAt(session.createdAt),
+            },
+          };
+        },
+      },
+      update: {
+        before: async (session, ctx) => {
+          // Only `/get-session`'s refresh, where the current session and the
+          // one being updated are the same row. Anywhere else the current
+          // session is merely the caller's.
+          if (ctx?.path !== "/get-session") return;
+          const current = ctx.context.session;
+          if (!session.expiresAt || !current) return;
+          // The hook's own types know only the core user plus an index
+          // signature, so this reads as `any`; `routes/users.test.ts`'s
+          // refresh test is what fails if the plugin ever renames it.
+          if (current.user.isAnonymous !== true) return;
+          return {
+            data: {
+              ...session,
+              expiresAt: demoSessionEndsAt(new Date(current.session.createdAt)),
+            },
+          };
+        },
+      },
+    },
+    /**
+     * A demo start is tallied for the admin's weekly figures (#327, PRD R14).
+     * On the user rather than the session because each click mints a fresh
+     * identity with exactly one session, and the user's `isAnonymous` is what
+     * this hook is handed: the plugin writes it in the same `createUser`.
+     */
+    user: {
+      create: {
+        after: async (user) => {
+          // Typed as the core user plus an index signature, as in the session
+          // `update` above; the tally test in `routes/users.test.ts` fails if
+          // the plugin ever renames the field.
+          if (user.isAnonymous !== true) return;
+          await recordDemoStart(user.id, user.createdAt);
+        },
+      },
+    },
+  },
+  /**
+   * The demo-mode switch, and the only thing that makes it a switch.
+   *
+   * Better Auth's `anonymous` plugin creates a user on every call to
+   * `/sign-in/anonymous` **regardless of `disableSignUp`** (read in the
+   * installed 1.6.13 source). So loading the plugin opens a public
+   * user-creation endpoint, and hiding the button would leave it open. This
+   * refuses the endpoint itself while demo mode is off. It reads the flag per
+   * request, so the refusal follows the environment the process actually has.
+   * See `docs/adr/0022-a-demo-session-is-an-anonymous-agent.md`.
+   *
+   * **And the per-address start limit, in the same place** (#322, PRD R9):
+   * `DEMO_SESSIONS_PER_IP_PER_HOUR`, five by default. Here rather than in
+   * `rateLimit.customRules` below because that limiter runs only in
+   * production, so a rule written there could not be observed by any test —
+   * and here rather than as Express middleware in front of the handler so the
+   * address is Better Auth's own `getIp`, the one the `/sign-in/email` rule
+   * counts (`demo/start-limit.ts` says why that matters). In production an
+   * address `getIp` cannot resolve — no `X-Forwarded-For`, or a leftmost entry
+   * that is not an address — is not limited, as Better Auth's own limiter
+   * does: counting those together would be one shared bucket for every one of
+   * them. Outside production `getIp` never answers null; it falls back to
+   * `127.0.0.1`, so every request that names no client shares that one
+   * bucket, which is why each demo start under test sends an address of its
+   * own.
+   */
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/sign-in/anonymous") return;
+      if (!isDemoModeEnabled()) {
+        throw new APIError("FORBIDDEN", { message: "Demo mode is off" });
+      }
+      const requestOrHeaders = ctx.request ?? ctx.headers;
+      const address = requestOrHeaders
+        ? getIp(requestOrHeaders, ctx.context.options)
+        : null;
+      if (address && !admitDemoStart(address)) {
+        throw new APIError("TOO_MANY_REQUESTS", {
+          message: DEMO_START_LIMIT_MESSAGE,
+        });
+      }
+    }),
+    /**
+     * The end of a demo session: two hours after it started (#324, PRD R7), or
+     * as soon as demo mode is off (R2). The rule is `demoSessionRefused` in
+     * `demo/session-lifetime.ts`.
+     *
+     * **On `/get-session`, because that is the one question everything asks.**
+     * The page's `useSession` asks it over HTTP, and `requireAuth` and its
+     * siblings ask it through `auth.api.getSession`, so one refusal here ends
+     * the session for the page and the API together. Refusing in the route
+     * guards alone would leave `/login` believing the visitor signed in and
+     * sending them back to a dashboard whose every request answers 401.
+     *
+     * **After the handler, so it sees the cached answer too.** A request the
+     * 60-second cookie cache serves never reads the session row, so deleting
+     * rows when demo mode goes off would leave open sessions working for up to
+     * that minute. This runs on whatever the handler answered, cache or not.
+     *
+     * **A 401, not a `null`.** An after hook cannot replace an answer with
+     * `null` (1.6.13 keeps the handler's answer unless the hook's is truthy),
+     * and a 401 is what the client already reads as signed out: its session
+     * store sets `data` to `null` on exactly that status. `requireAuth` turns
+     * the thrown error into its own 401. The row is deleted and the cookies
+     * expired first, so switching demo mode back on does not revive it.
+     *
+     * **Two things it does not reach.** An event stream already open
+     * (`routes/events.ts`) was authenticated when it connected and lives out
+     * its `STREAM_MAX_MS`, as it does for any revoked session, though every
+     * event it delivers sends the page to a refetch this refuses. And Better
+     * Auth's own session-bound endpoints (`/update-user`, `/list-sessions`, …)
+     * read the session without this hook, so a stranger calling them directly
+     * keeps that reach until the row is gone — which it is from the first
+     * `/get-session` the visitor's page makes, and at two hours regardless.
+     */
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/get-session") return;
+      const answer = ctx.context.returned;
+      if (!isSessionAnswer(answer)) return;
+      if (!demoSessionRefused(answer.user, answer.session)) return;
+
+      await ctx.context.internalAdapter.deleteSession(answer.session.token);
+      deleteSessionCookie(ctx);
+      throw new APIError("UNAUTHORIZED", { message: "Demo session has ended" });
+    }),
   },
   rateLimit: {
     enabled: isProduction,
@@ -298,8 +503,10 @@ export const auth = betterAuth({
     // Railway (and any other platform proxy) terminates TLS and forwards, so
     // the socket's peer address is the edge, not the caller. Left at its
     // default every request would look like it came from one IP, and the
-    // 5-per-minute rule on `/sign-in/email` above would become a global budget
-    // that any one visitor could exhaust for everybody.
+    // 5-per-minute rule on `/sign-in/email` above — and the demo start limit
+    // in the `before` hook, which reads the address through the same `getIp`
+    // — would become a global budget any one visitor could exhaust for
+    // everybody.
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for"],
     },
@@ -308,6 +515,30 @@ export const auth = betterAuth({
     admin({
       defaultRole: USER_ROLE.agent,
       adminRoles: [USER_ROLE.admin],
+    }),
+    /**
+     * "Use demo session": one click, a fresh identity, no password (#319,
+     * ADR-0022). Refused while demo mode is off by the `before` hook above.
+     *
+     * - **The role is the admin plugin's `defaultRole`, `agent`, and must
+     *   stay so.** That plugin serves `/api/auth/admin/*` (set role, remove
+     *   user, impersonate) to `adminRoles` without ever passing through
+     *   `requireAdmin`. So a demo identity holding `admin` would reach those
+     *   endpoints directly.
+     * - **Every visitor is called the same thing**, which is what the top bar
+     *   and every trail their changes leave will say (R11).
+     * - **The placeholder address sits under a reserved domain.** The plugin's
+     *   default is `temp@<id>.com`, a real top-level domain.
+     * - **Deleting is off.** The plugin ships `/delete-anonymous-user` and a
+     *   hook that deletes the demo identity when the browser signs in some
+     *   other way. Either would erase the identity a visitor's changes are
+     *   filed under, and the trails would then name nobody. Demo identities
+     *   are removed by this repo, not by a visitor.
+     */
+    anonymous({
+      generateName: () => DEMO_VISITOR_NAME,
+      emailDomainName: DEMO_EMAIL_DOMAIN,
+      disableDeleteAnonymousUser: true,
     }),
   ],
 });

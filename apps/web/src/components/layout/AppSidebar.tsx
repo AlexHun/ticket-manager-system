@@ -1,4 +1,4 @@
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useSession } from "@/lib/auth-client";
 import {
   Sidebar,
@@ -19,15 +19,16 @@ import {
   useNewFeatureStatus,
 } from "@/lib/new-feature-queries";
 import { ROUTE } from "@/lib/routes";
+import { viewerOf } from "@/lib/viewer";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
-import { LogoMark } from "./Logo";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
+import { SidebarBrand } from "./SidebarBrand";
 import { SidebarViews } from "./SidebarViews";
 
 export function AppSidebar() {
   const { data: session } = useSession();
   const { pathname } = useLocation();
-  const items = navItemsFor(session?.user.role);
+  const items = navItemsFor(viewerOf(session?.user));
   // Unread count for the "Tickets" row only — see the badge below for why
   // this is a different question from any of `SidebarViews`'s counts.
   const { data: unread } = useUnreadAssignments();
@@ -39,29 +40,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            {/* Deliberately the default size, not `lg`: `lg` is `h-12`, but the
-                rail forces every button to `size-8!`, so the brand row would
-                jump 48px → 32px on every collapse. Matching the nav rows'
-                height means the only thing that changes is the width. */}
-            <SidebarMenuButton asChild tooltip="Ticket Manager">
-              <Link to="/">
-                {/* Sized by the button's own `[&_svg]:size-4`, which outranks a
-                    size utility set here — don't pass one, it silently loses. */}
-                <LogoMark className="shrink-0" />
-                {/* sr-only rather than left to overflow-hidden: collapsed, the
-                    16px plate plus the 8px gap puts this 8px inside the 32px
-                    button, so clipping alone leaked a sliver of the "T". This
-                    hides it outright while keeping it as the link's accessible
-                    name — the tooltip is not one. */}
-                <span className="truncate font-semibold group-data-[collapsible=icon]:sr-only">
-                  Ticket Manager
-                </span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <SidebarBrand />
       </SidebarHeader>
 
       <SidebarContent>
@@ -187,9 +166,8 @@ export function AppSidebar() {
         {/* `VITE_SENTRY_RELEASE` is already `web@<version>+<commit>[-dirty]` —
             see the comment on `releaseName()` in vite.config.ts — so this reads
             it rather than tracking a second version string. sr-only rather than
-            hidden outright when collapsed, same reasoning as the brand text
-            above: still in the accessible tree, just not fighting the icon
-            rail for width. */}
+            hidden outright when collapsed: still in the accessible tree, just
+            not fighting the icon rail for width. */}
         <span
           className="truncate px-2 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:sr-only"
           title={import.meta.env.VITE_SENTRY_RELEASE}

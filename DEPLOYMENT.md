@@ -59,18 +59,21 @@ policy, and — for `api` — the pre-deploy migration command. They also set
 
 ### `api`
 
-| Variable                                       | Value                        | Notes                                                                                                                                                                                                      |
-| ---------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                 | `${{Postgres.DATABASE_URL}}` | Reference variable. pg-boss opens its own small pool against the same string, in its own `pgboss` schema.                                                                                                  |
-| `BETTER_AUTH_SECRET`                           | `openssl rand -base64 32`    | Validated at boot: ≥32 chars or the process refuses to start.                                                                                                                                              |
-| `BETTER_AUTH_URL`                              | `https://<web-domain>`       | The origin the **browser** reaches this API on. Behind the `/api/*` proxy that is the _web_ service's domain, not this one's — and it is what tells the API it is same-origin and may keep `SameSite=Lax`. |
-| `TRUSTED_ORIGINS`                              | `https://<web-domain>`       | The web service's public URL. Drives both CORS and Better Auth's origin check; an origin missing here cannot sign in.                                                                                      |
-| `COOKIE_DOMAIN`                                | _(empty)_                    | See [Cookies](#cookies-read-this-before-the-first-login) below. Empty is correct behind the proxy.                                                                                                         |
-| `INBOUND_EMAIL_WEBHOOK_USERNAME` / `_PASSWORD` | your choice                  | Empty values reject every webhook request.                                                                                                                                                                 |
-| `OPENAI_API_KEY`                               | your key                     | Optional. Empty ⇒ the two AI endpoints answer 503 and new tickets stay uncategorised in `New`.                                                                                                             |
-| `AUTO_REPLY_ENABLED`                           | `true` / `false`             | The kill switch for the one feature that writes to customers unattended.                                                                                                                                   |
-| `PIPELINE_SIMULATOR_ENABLED`                   | `false` unless wanted        | Default off; only the literal `"true"` turns it on.                                                                                                                                                        |
-| `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`      | optional                     | Unset ⇒ the SDK never initialises.                                                                                                                                                                         |
+| Variable                                       | Value                        | Notes                                                                                                                                                                                                                  |
+| ---------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                 | `${{Postgres.DATABASE_URL}}` | Reference variable. pg-boss opens its own small pool against the same string, in its own `pgboss` schema.                                                                                                              |
+| `BETTER_AUTH_SECRET`                           | `openssl rand -base64 32`    | Validated at boot: ≥32 chars or the process refuses to start.                                                                                                                                                          |
+| `BETTER_AUTH_URL`                              | `https://<web-domain>`       | The origin the **browser** reaches this API on. Behind the `/api/*` proxy that is the _web_ service's domain, not this one's — and it is what tells the API it is same-origin and may keep `SameSite=Lax`.             |
+| `TRUSTED_ORIGINS`                              | `https://<web-domain>`       | The web service's public URL. Drives both CORS and Better Auth's origin check; an origin missing here cannot sign in.                                                                                                  |
+| `COOKIE_DOMAIN`                                | _(empty)_                    | See [Cookies](#cookies-read-this-before-the-first-login) below. Empty is correct behind the proxy.                                                                                                                     |
+| `INBOUND_EMAIL_WEBHOOK_USERNAME` / `_PASSWORD` | your choice                  | Empty values reject every webhook request.                                                                                                                                                                             |
+| `OPENAI_API_KEY`                               | your key                     | Optional. Empty ⇒ the two AI endpoints answer 503 and new tickets stay uncategorised in `New`.                                                                                                                         |
+| `AUTO_REPLY_ENABLED`                           | `true` / `false`             | The kill switch for the one feature that writes to customers unattended.                                                                                                                                               |
+| `PIPELINE_SIMULATOR_ENABLED`                   | `false` unless wanted        | Default off; only the literal `"true"` turns it on.                                                                                                                                                                    |
+| `DEMO_MODE_ENABLED`                            | `false` unless wanted        | "Use demo session" on `/login`: a password-free way in. Default off; only `"true"` turns it on. Only while production takes no real customer mail ([ADR-0022](docs/adr/0022-a-demo-session-is-an-anonymous-agent.md)). |
+| `DEMO_AI_DAILY_USD`                            | `1.00`                       | What all demo sessions together may spend on AI per UTC day (estimated). Once reached, demo polish and summarise make no call until 00:00 UTC; only demo sessions are counted.                                         |
+| `DEMO_SESSIONS_PER_IP_PER_HOUR`                | `5`                          | Demo sessions one client address may start per hour, keyed like the sign-in rate limit. One more is refused and creates nobody. In memory: a restart forgets the hour.                                                 |
+| `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`      | optional                     | Unset ⇒ the SDK never initialises.                                                                                                                                                                                     |
 
 `PORT` and `NODE_ENV` are **not** set here: Railway injects `PORT`, and the
 Dockerfile pins `NODE_ENV=production` so that secure cookies, the rate limiter
@@ -211,6 +214,27 @@ a deploy that adds a page**, not only on the first one. An unseeded page is
 silent rather than broken: its tutorial has no steps, so it simply never pops
 up, and nothing on screen says it is missing.
 
+### A demo login, while this is a showcase
+
+This production has no real customers; it is shown to HR and clients, who get a
+login of their own rather than the admin's. `db:seed` cannot make it — the
+skipped demo agent above is exactly the published-password account a deployed
+database must not carry — so it is made the way any colleague is:
+
+1. Sign in as the admin, **Users** → add e.g. `demo@<your-domain>` with role
+   **agent**.
+2. **Outbox** → copy the invitation link from that row. With no mail provider
+   bound, that row is the only place the link exists.
+3. Open it in a private window and set the password.
+
+Keep it an agent. An admin can read the Outbox, and every unexpired invitation
+there is a working credential for somebody else's account.
+
+Then fill the desk with demo tickets, which production allows only while it is a
+showcase — the `db:seed:tickets` section of `SCRIPTS.md` has the condition
+and the between-demos `--reset`. Run it after the demo login exists, so the
+demo agent is among the assignees.
+
 ## 6. Postmark
 
 Point the inbound webhook at
@@ -284,6 +308,7 @@ there.
 railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed'
 railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:kb'
 railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:tutorials'
+railway ssh --service api-ticket-manager --environment develop -- 'cd /app/apps/api && bun run db:seed:tickets'
 ```
 
 ---

@@ -43,6 +43,8 @@ const STATUS_LABEL: Record<OutboundEmailStatus, string> = {
   sent: "Sent",
   failed: "Failed",
   undeliverable: "Not sent",
+  // A demo session's email (#325): recorded here, never sent, never retried.
+  withheld: "Not sent (demo)",
 };
 
 const KIND_LABEL: Record<OutboundEmailKind, string> = {
@@ -200,7 +202,8 @@ export function OutboxPage() {
 /**
  * The two states the worker settles a row into when it could not deliver it.
  * Mirrors `RETRYABLE_STATUS` in `routes/outbox.ts`, which is the one that
- * actually decides — this only governs whether a button is drawn.
+ * actually decides — this only governs whether a button is drawn. A demo
+ * session's `withheld` row is never offered one.
  */
 function isRetryable(status: OutboundEmailStatus): boolean {
   return status === "undeliverable" || status === "failed";

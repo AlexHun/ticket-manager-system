@@ -10,6 +10,7 @@ import {
   type KnowledgeRevisionApprovalResponse,
   type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
+import { DemoReadOnlyNote, useDemoReadOnly } from "@/components/DemoReadOnly";
 import { Hint } from "@/components/Hint";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -233,6 +234,8 @@ function PendingRevisionCard({
 
   const busy = approve.isPending || reject.isPending;
   const diff = changedFields(article, revision);
+  // A demo session reads the proposal and decides nothing (#326).
+  const readOnly = useDemoReadOnly();
 
   return (
     <div className="mb-4 rounded-lg border border-status-warning/40 bg-status-warning-soft/40 p-4">
@@ -271,12 +274,13 @@ function PendingRevisionCard({
         ))}
       </dl>
 
-      <div className="mt-4 flex justify-end gap-2">
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <DemoReadOnlyNote className="mr-auto" />
         <Button
           type="button"
           variant="outline"
           size="sm"
-          disabled={busy}
+          disabled={busy || readOnly}
           onClick={() => reject.mutate()}
         >
           {reject.isPending && <Loader2 className="size-4 animate-spin" />}
@@ -293,7 +297,7 @@ function PendingRevisionCard({
             <Button
               type="button"
               size="sm"
-              disabled={busy || isOwnRevision}
+              disabled={busy || isOwnRevision || readOnly}
               onClick={() => approve.mutate()}
             >
               {approve.isPending && <Loader2 className="size-4 animate-spin" />}

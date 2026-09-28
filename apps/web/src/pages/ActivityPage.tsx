@@ -33,7 +33,8 @@ import {
 import { TicketsPagination } from "./TicketsPagination";
 
 /**
- * The unified admin activity feed, at `/activity` — admin only.
+ * The unified admin activity feed, at `/activity` — admin only, and a demo
+ * session may look (#320).
  *
  * `GET /api/activity` (built for #51) is a query-time merge of five sources
  * that already keep their own trail: `TicketActivity`, outbound replies,

@@ -25,11 +25,11 @@ vi.mock("@/lib/api", () => import("@/test/api-stub"));
 const activityGet = apiStub.get("/api/activity");
 const usersGet = apiStub.get("/api/users");
 
+const ADMIN_USER = { name: "Aaron Admin", role: USER_ROLE.admin };
+const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
+
 vi.mock("@/lib/auth-client", () => ({
-  useSession: () => ({
-    data: { user: { name: "Aaron Admin", role: USER_ROLE.admin } },
-    isPending: false,
-  }),
+  useSession: () => ({ data: { user: session.user }, isPending: false }),
   authClient: { signOut: vi.fn() },
 }));
 
@@ -125,6 +125,7 @@ function renderActivityPage() {
 // --- Tests ------------------------------------------------------------------
 
 beforeEach(() => {
+  session.user = ADMIN_USER;
   apiStub.reset();
 });
 
@@ -308,6 +309,25 @@ describe("ActivityPage filtering", () => {
 
     await waitFor(() => expect(activityGet).toHaveBeenCalledTimes(2));
     expect(activityParamsOfCall(1)).toMatchObject({ actorId: "user-1" });
+  });
+
+  // `GET /api/users` is refused to a demo session (#320), so the filter that
+  // would ask it is not drawn at all rather than opening onto an empty list.
+  test("offers no actor filter in a demo session", async () => {
+    session.user = {
+      name: "Demo visitor",
+      role: USER_ROLE.agent,
+      isAnonymous: true,
+    };
+    await renderLoaded();
+
+    expect(
+      screen.queryByRole("combobox", { name: "Actor" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Entity" }),
+    ).toBeInTheDocument();
+    expect(usersGet).not.toHaveBeenCalled();
   });
 
   test("labels the automated assistant distinctly in the actor list", async () => {

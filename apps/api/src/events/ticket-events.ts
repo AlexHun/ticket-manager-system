@@ -66,9 +66,9 @@ export function publishPipelineChanged(ticketId: number): void {
  * reaches the code that writes a ticket, so there is no ticket id to carry and
  * inventing one would be the first lie on this channel.
  *
- * Admin-only by `EVENT_AUDIENCE`, matching `requireAdmin` on every route in
- * `routes/evals.ts` — an event that outran its own endpoint would be a leak no
- * route guard could catch.
+ * Admin-only by `EVENT_AUDIENCE` (a demo session is in that audience, #320),
+ * matching the guards on `routes/evals.ts` — an event that outran its own
+ * endpoint would be a leak no route guard could catch.
  *
  * Both rules at the top of this file apply unchanged. It is published *after*
  * the transaction that recorded the verdict, and the enforcement at the seam

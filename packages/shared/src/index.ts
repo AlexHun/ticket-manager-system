@@ -781,9 +781,9 @@ export const TICKET_EVENT = {
   /**
    * An eval run started, finished, or failed.
    *
-   * Admin-only for exactly the reason `pipeline_changed` is: every route in
-   * `apps/api/src/routes/evals.ts` is `requireAdmin`, and an event that outran
-   * its own endpoint would be a leak no route guard could catch.
+   * Admin-only for exactly the reason `pipeline_changed` is: no route in
+   * `apps/api/src/routes/evals.ts` is open to an agent, and an event that
+   * outran its own endpoint would be a leak no route guard could catch.
    *
    * It is also the first kind that is **not about a ticket**, which is what
    * makes `TicketEvent` below a union rather than one interface. See the note
@@ -913,10 +913,11 @@ export type EventOfKind<K extends TicketEventKind> =
  * somebody says who is allowed to receive it. Getting that wrong is a disclosure
  * bug, and this is the only place it can be decided.
  *
- * `pipeline_changed` is `admin` because every route in `routes/pipeline.ts` is
- * `requireAdmin` — an event that outran its own endpoint would be a leak that no
- * route guard could catch. `eval_run_changed` is `admin` for exactly that
- * reason, against `routes/evals.ts`.
+ * `pipeline_changed` is `admin` because no route in `routes/pipeline.ts` is
+ * open to an agent — an event that outran its own endpoint would be a leak that
+ * no route guard could catch. `eval_run_changed` is `admin` for exactly that
+ * reason, against `routes/evals.ts`. A demo session is in the `admin` audience
+ * without holding the role, because it may read both (`requireAdminView`, #320).
  */
 export const EVENT_AUDIENCE: Record<TicketEventKind, UserRole | "all"> = {
   ticket_created: "all",
@@ -2704,12 +2705,15 @@ export const EVAL_MISSED_PLAN_WINDOW_HOURS = 24;
  * one that needs saying out loud: it means no mail provider is configured, so
  * nothing was attempted. That is a supported state — the state this app runs in
  * today — and not a failure, which is why it is not folded into `failed`.
+ * `withheld` is a demo session's email (#325): recorded, and never sent by
+ * anything, the outbox retry included.
  */
 export const OUTBOUND_EMAIL_STATUS = {
   queued: "queued",
   sent: "sent",
   failed: "failed",
   undeliverable: "undeliverable",
+  withheld: "withheld",
 } as const;
 
 export type OutboundEmailStatus =
@@ -3234,3 +3238,77 @@ export const CHANGELOG_LATEST_VERSION: string | null = CHANGELOG_ENTRIES.reduce<
 export interface ChangelogStatusResponse {
   shouldShow: boolean;
 }
+
+/**
+ * `GET /api/demo`: whether this deployment offers a demo session (#319).
+ *
+ * Public, because the login page asks before anyone has signed in. A presence
+ * boolean like `PipelineConfig`'s, never the env value behind it.
+ */
+export interface DemoStatusResponse {
+  /** `DEMO_MODE_ENABLED` is the literal `"true"`. Drives the login button. */
+  enabled: boolean;
+}
+
+/**
+ * `GET /api/demo/usage`: this week's demo figures, for an admin only (#327,
+ * PRD R14). A demo session is refused them, like the Users page they sit on.
+ *
+ * The week runs from 00:00 UTC on Monday, the same clock as the nightly reset.
+ * A session counts toward the week it started in, so `sessionsOpenedTicket`
+ * is always a share of `sessionsStarted`.
+ */
+export interface DemoUsageResponse {
+  /** ISO timestamp: 00:00 UTC on this week's Monday. */
+  weekStartsAt: string;
+  /** Demo sessions started since then. */
+  sessionsStarted: number;
+  /** How many of those opened at least one ticket. */
+  sessionsOpenedTicket: number;
+}
+
+/**
+ * The Users page's demo card: its accessible name and its two figures'
+ * labels. Here so the E2E spec reads them rather than retyping them, like
+ * `DEMO_READ_ONLY_NOTE`.
+ */
+export const DEMO_USAGE_LABEL = {
+  title: "Demo sessions this week",
+  sessionsStarted: "Started",
+  sessionsOpenedTicket: "Opened a ticket",
+} as const;
+
+/**
+ * Why a demo session's polish or summarise was answered without a model call:
+ * every demo session together has spent the day's AI budget (#321, PRD R8).
+ *
+ * Tells this 429 apart from the per-user rate limit's, which carries no
+ * `reason`. The two need different screens: the rate limit is an error worth
+ * retrying in a minute, and this is a fact about the demo until 00:00 UTC.
+ */
+export const DEMO_AI_LIMIT_REASON = "demo-ai-limit";
+
+/** What the panel shows in place of the result. One copy, for both apps. */
+export const DEMO_AI_LIMIT_MESSAGE =
+  "Demo AI limit reached, resets at 00:00 UTC";
+
+/** The body of `POST /api/ai/*`'s 429 once the demo budget is spent. */
+export interface DemoAiLimitResponse {
+  error: typeof DEMO_AI_LIMIT_MESSAGE;
+  reason: typeof DEMO_AI_LIMIT_REASON;
+}
+
+/**
+ * Why "Use demo session" started nothing: this address has started its
+ * `DEMO_SESSIONS_PER_IP_PER_HOUR` already (#322, PRD R9). The API's 429 carries
+ * it and the login page shows it. One copy, for both apps.
+ */
+export const DEMO_START_LIMIT_MESSAGE =
+  "Too many demo sessions from your network, try again later";
+
+/**
+ * The note beside every save or run control a demo session sees disabled
+ * (#326, PRD R5 and R15). Here rather than in the web app so the E2E spec
+ * reads the same copy the page renders; the API's 403 is the control.
+ */
+export const DEMO_READ_ONLY_NOTE = "Read-only in the demo.";

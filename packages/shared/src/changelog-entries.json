@@ -343,5 +343,95 @@
     "version": "0.1.134",
     "date": "2026-09-24",
     "title": "Address #314 review — strip gate credentials from spawned suites, stale docs"
+  },
+  {
+    "version": "0.1.136",
+    "date": "2026-09-25",
+    "title": "One-click demo session as a demo visitor"
+  },
+  {
+    "version": "0.1.136",
+    "date": "2026-09-25",
+    "title": "One assignable-user predicate for assignee and handoff"
+  },
+  {
+    "version": "0.1.137",
+    "date": "2026-09-26",
+    "title": "Admin screens for a demo session without the admin role"
+  },
+  {
+    "version": "0.1.137",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for demo admin screens"
+  },
+  {
+    "version": "0.1.138",
+    "date": "2026-09-26",
+    "title": "A daily AI budget shared by every demo session"
+  },
+  {
+    "version": "0.1.138",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the demo AI budget"
+  },
+  {
+    "version": "0.1.139",
+    "date": "2026-09-26",
+    "title": "Five demo starts per address per hour"
+  },
+  {
+    "version": "0.1.139",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the demo start limit"
+  },
+  {
+    "version": "0.1.140",
+    "date": "2026-09-26",
+    "title": "Put the showcase back every night at 00:00 UTC"
+  },
+  {
+    "version": "0.1.140",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the nightly reset"
+  },
+  {
+    "version": "0.1.141",
+    "date": "2026-09-26",
+    "title": "End a demo session after two hours or when demo mode goes off"
+  },
+  {
+    "version": "0.1.141",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the demo session lifetime"
+  },
+  {
+    "version": "0.1.142",
+    "date": "2026-09-26",
+    "title": "A demo session's email is written to the outbox and never sent"
+  },
+  {
+    "version": "0.1.142",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the demo email"
+  },
+  {
+    "version": "0.1.143",
+    "date": "2026-09-26",
+    "title": "Settings are read-only in a demo session"
+  },
+  {
+    "version": "0.1.143",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for read-only settings"
+  },
+  {
+    "version": "0.1.144",
+    "date": "2026-09-26",
+    "title": "Weekly usage figures for the admin"
+  },
+  {
+    "version": "0.1.144",
+    "date": "2026-09-26",
+    "title": "Review follow-ups for the usage figures"
   }
 ]

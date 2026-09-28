@@ -21,7 +21,7 @@ import {
   cancelPlannedRunJob,
   enqueuePlannedRun,
 } from "../jobs/eval-planned-run";
-import { requireAdmin, sessionOf } from "../middleware/auth";
+import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 import type { EvalsConfig } from "./evals";
 
 /**
@@ -45,9 +45,11 @@ import type { EvalsConfig } from "./evals";
  * each test file on the specifiers it actually needs, which is the narrow-seam
  * rule this repo keeps for measured reasons (testing-api.md).
  *
- * **Admin only, on every route**, matching the rest of the harness: a planned
+ * **Admin only, on every write**, matching the rest of the harness: a planned
  * run spends money, and retiming the schedule decides when the deployment
- * spends it. `AdminRoute` on the client is UX; these guards are the control.
+ * spends it. Reading the schedule is `requireAdminView`, which a demo session
+ * passes (#320). `AdminViewRoute` on the client is UX; these guards are the
+ * control.
  */
 
 /** The row shape the panel reads a schedule as. */
@@ -158,7 +160,7 @@ export function createEvalScheduleRouter(config: EvalsConfig): Router {
   /** The arrangement in force, and what is coming. */
   router.get(
     "/schedule",
-    requireAdmin,
+    requireAdminView,
     async (_req: Request, res: Response<EvalScheduleResponse>) => {
       const stored = await prisma.evalSchedule.findUnique({
         where: { id: EVAL_SCHEDULE_ID },

@@ -25,6 +25,13 @@ The non-human identity that machine-written work is filed under. It is an
 account nobody can sign in as, not a kind of agent.
 _Avoid_: bot, AI user, system user, robot
 
+**Demo visitor**:
+A stranger looking around the showcase through a demo session. Signed in as an
+agent with no password, a new identity on every visit, and never offered as
+anyone a ticket could be handed to. Sees the admin screens except Users and
+Outbox, and may look at them but not change them.
+_Avoid_: guest, anonymous user, trial user, demo account
+
 ### The desk
 
 **Ticket**:
@@ -260,3 +267,16 @@ _Avoid_: welcome email, activation, signup link, onboarding
 The link that lets a colleague who has lost their password choose another. The
 same mechanism as an invitation, told apart by whether they ever had one.
 _Avoid_: recovery, forgot-password, change password
+
+**Demo session**:
+One click on the login page that signs a demo visitor in. Offered only while
+demo mode is on, and demo mode is allowed only while production takes no real
+customer mail.
+_Avoid_: guest login, demo login, try-it mode
+
+**Nightly reset**:
+What puts the showcase back at 00:00 UTC while demo mode is on: the seeded
+tickets return to how they were seeded, and demo visitors whose sessions have
+ended are removed. Real tickets and eval runs are left alone. Not a **Reset**,
+which is a password link.
+_Avoid_: wipe, restore, cleanup, reseed

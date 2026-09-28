@@ -327,9 +327,14 @@ export async function ticketStatsHandler(
     ) a
   `;
 
+  // The whole desk leaves demo visitors out (#319). The panel lists every
+  // account, zero-ticket ones included, so every click of "Use demo session"
+  // would add a "Demo visitor" row beside the people, though no ticket can be
+  // filed under a visitor (`ASSIGNABLE_USER`). "Mine" is the caller's own row
+  // whoever they are, so a visitor still sees their empty workload.
   const scopeUser = isMine
     ? Prisma.sql`AND u.id = ${session.user.id}`
-    : Prisma.empty;
+    : Prisma.sql`AND NOT u."isAnonymous"`;
 
   // Two things here are easy to get wrong and both are silent:
   //   COUNT(s.id), never COUNT(*) — over the LEFT JOIN an agent with no tickets

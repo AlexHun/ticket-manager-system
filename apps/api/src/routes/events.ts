@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { USER_ROLE, type TicketEvent } from "@ticket/shared";
+import { seesAdminScreens } from "../demo/admin-view";
 import { subscribe } from "../events/hub";
 import { requireAuth, sessionOf } from "../middleware/auth";
 
@@ -50,11 +51,11 @@ const HEARTBEAT_MS = 25_000;
  *
  * `requireAuth` runs once, at connect. After that the stream is a capability held
  * by a socket: signing out does not close it, deleting the user does not close
- * it, and the `role` captured below for the audience filter is frozen at whatever
+ * it, and the `audience` captured below for the filter is frozen at whatever
  * it was. Every ordinary request re-checks, so revocation elsewhere is bounded at
  * 60s by Better Auth's `cookieCache`. Ending the stream on a timer is what gives
  * this the same bound — `EventSource` reconnects on its own, and the reconnect
- * re-runs `requireAuth` and re-reads the role.
+ * re-runs `requireAuth` and re-reads it.
  *
  * Rejected the alternative of re-validating on each heartbeat: a `getSession` per
  * connection every 25s is far more database traffic than one reconnect a quarter
@@ -83,10 +84,12 @@ const MAX_BUFFERED_BYTES = 64 * 1024;
 
 eventsRouter.get("/", requireAuth, (req: Request, res: Response) => {
   // Frozen for the life of the connection, which is what `STREAM_MAX_MS` bounds.
-  const role =
-    sessionOf(res).user.role === USER_ROLE.admin
-      ? USER_ROLE.admin
-      : USER_ROLE.agent;
+  // A demo session joins the admin audience without holding the role: it reads
+  // the pipeline and eval runs those events are about (#320), and the audience
+  // is this repo's to decide, unlike the admin plugin's `adminRoles`.
+  const audience = seesAdminScreens(sessionOf(res).user)
+    ? USER_ROLE.admin
+    : USER_ROLE.agent;
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
@@ -123,7 +126,7 @@ eventsRouter.get("/", requireAuth, (req: Request, res: Response) => {
   res.write(": ping\n\n");
 
   const unsubscribe = subscribe({
-    role,
+    role: audience,
     send,
     close: () => res.end(),
   });

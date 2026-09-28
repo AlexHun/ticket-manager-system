@@ -117,8 +117,9 @@
 	#     the leftmost entry is not attacker-controlled and needs no defending.
 	#   - **Better Auth reads the leftmost entry** (`value.split(",")[0]` in
 	#     `utils/get-request-ip.mjs`), and that is what the 5-per-minute rule on
-	#     /sign-in/email is keyed on. Caddy appending its own peer on the right
-	#     does not disturb it.
+	#     /sign-in/email is keyed on — and, through the same `getIp`, the
+	#     five-an-hour demo start limit. Caddy appending its own peer on the
+	#     right does not disturb it.
 	#   - Rewriting the header to `{client_ip}` looked like the careful thing to
 	#     do and was the opposite: Railway's inner hop (`152.233.43.33`) is a
 	#     *public* address, so it is not in `trusted_proxies` and `{client_ip}`

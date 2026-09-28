@@ -157,7 +157,9 @@ export function toAiUsage(
  *
  * **The estimate will go stale**, exactly as `USD_PER_MTOK` says. Nothing bills
  * off it; it is here so a number appears beside a run that would otherwise spend
- * money with nobody watching.
+ * money with nobody watching. The demo sessions' daily AI budget is charged in
+ * it too (#321, `demo/ai-budget.ts`), so a stale price list moves when that cap
+ * bites, never whether the owner is billed.
  */
 export function usdFor(usage: AiUsage | undefined): number {
   if (!usage) return 0;

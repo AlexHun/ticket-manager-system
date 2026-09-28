@@ -1,7 +1,12 @@
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resetE2eEmails, resetE2eUsers, testDb } from "./helpers/db";
+import {
+  resetDemoUsers,
+  resetE2eEmails,
+  resetE2eUsers,
+  testDb,
+} from "./helpers/db";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
@@ -29,6 +34,11 @@ export default async function globalSetup() {
   const removed = await resetE2eUsers();
   if (removed > 0) {
     console.log(`[global-setup] Removed ${removed} leftover e2e user(s).`);
+  }
+
+  const visitors = await resetDemoUsers();
+  if (visitors > 0) {
+    console.log(`[global-setup] Removed ${visitors} leftover demo visitor(s).`);
   }
 
   // Swept separately because the outbox has no foreign key to User — deleting

@@ -59,8 +59,9 @@ export function cspDirectives(
     // toast and chart in the app breaks.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
-    // Geist is bundled by @fontsource-variable and emitted into /assets, so
-    // there is no font CDN to allow.
+    // Every face (Geist, Source Serif 4, Big Shoulders Display) is bundled by
+    // @fontsource-variable and emitted into /assets, so there is no font CDN
+    // to allow — a new face comes the same way, never from a font host.
     "font-src 'self'",
     `connect-src ${connectSources.join(" ")}`,
     "object-src 'none'",

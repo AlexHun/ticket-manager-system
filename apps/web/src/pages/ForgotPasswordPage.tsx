@@ -6,7 +6,7 @@ import { Loader2, MailCheck } from "lucide-react";
 import { forgotPasswordSchema, type ForgotPasswordValues } from "@ticket/core";
 import { authClient } from "@/lib/auth-client";
 import { ROUTE } from "@/lib/routes";
-import { LogoMark } from "@/components/layout/Logo";
+import { BrandName, LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,9 +59,7 @@ export function ForgotPasswordPage() {
       <div className="flex w-full max-w-sm flex-col items-center gap-6 animate-panel-in">
         <div className="flex items-center gap-2.5">
           <LogoMark className="size-8" />
-          <span className="text-lg font-semibold tracking-tight">
-            Ticket Manager
-          </span>
+          <BrandName />
         </div>
 
         <Card className="w-full">

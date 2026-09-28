@@ -1,11 +1,10 @@
-import { useNavigate } from "react-router-dom";
 import { HelpCircle } from "lucide-react";
-import { authClient, useSession } from "@/lib/auth-client";
+import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Hint } from "@/components/Hint";
 import { ChangelogPopover } from "@/components/layout/ChangelogPopover";
-import { ROUTE } from "@/lib/routes";
+import { useSignOut } from "@/lib/use-sign-out";
 import { useTutorialTrigger } from "@/lib/tutorial-trigger";
 
 /**
@@ -25,23 +24,9 @@ import { useTutorialTrigger } from "@/lib/tutorial-trigger";
  * separator that used to divide the trigger from the title went with it.
  */
 export function AppTopBar() {
-  const navigate = useNavigate();
-  const { data: session, refetch: refetchSession } = useSession();
+  const { data: session } = useSession();
   const tutorialTrigger = useTutorialTrigger();
-
-  const handleSignOut = async () => {
-    await authClient.signOut();
-    // `signOut` resolving means the *server* has dropped the session; the
-    // client's session store still holds the old one until its own refetch
-    // lands, and that refetch does not begin until after this navigation.
-    // Navigating on that gap sends LoginPage a session that still reads as
-    // signed in, so it bounces to `/` — and `/` bounces straight back once
-    // the store catches up, remounting LoginPage and wiping whatever had
-    // been typed into it. Awaiting the refetch here closes the gap, so
-    // LoginPage only ever mounts against a settled, signed-out store.
-    await refetchSession();
-    navigate(ROUTE.login.path, { replace: true });
-  };
+  const handleSignOut = useSignOut();
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">

@@ -54,8 +54,9 @@ import { PipelineSimulator } from "./PipelineSimulator";
  * the lower half of this diagram dead, and from every other screen in the app
  * that is indistinguishable from a quiet week.
  *
- * Admin-only. `requireAdmin` on every route in `apps/api/src/routes/pipeline.ts`
- * is the control; the `AdminRoute` wrapper around this is UX.
+ * Admins, and a demo session that may only look (#320). The guards on
+ * `apps/api/src/routes/pipeline.ts` are the control — the simulator is
+ * `requireAdmin` — and the `AdminViewRoute` wrapper around this is UX.
  */
 
 const RANGES: { value: DashboardRange; label: string }[] = [

@@ -32,11 +32,13 @@
 import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type {
+  TicketAssigneesResponse,
   TicketDetailResponse,
   TicketUnreadResponse,
   UpdateTicketResponse,
 } from "@ticket/shared";
-import { seedTicket } from "../test/fixtures";
+import { demoUsageThisWeek, recordDemoStart } from "../demo/usage";
+import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
@@ -50,6 +52,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
       id: req.header("x-test-user") ?? "u_agent",
       name: req.header("x-test-agent-name") ?? "Aaron Agent",
       email: req.header("x-test-user-email") ?? "agent@example.com",
+      isAnonymous: req.header("x-test-demo") === "true",
     },
     session: { id: "sess-1" },
   };
@@ -59,6 +62,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
 mock.module("../middleware/auth", () => ({
   requireAuth: fakeGuard,
   requireAdmin: fakeGuard,
+  requireAdminView: fakeGuard,
   sessionOf: (res: Response) => res.locals.session,
 }));
 
@@ -272,6 +276,41 @@ describe("GET /api/tickets/:id — assignmentSeenAt side effect", () => {
   });
 });
 
+/* ── GET /:id tallies a demo session's first ticket ─────────────────────── */
+
+describe("GET /api/tickets/:id — the demo usage tally (#327, PRD R14)", () => {
+  const DEMO = { ...OTHER, "x-test-demo": "true" };
+
+  beforeEach(async () => {
+    await makeTicket({ id: 1 });
+    await makeTicket({ id: 2 });
+  });
+
+  test("a demo session opening tickets counts once toward the week's figure", async () => {
+    await recordDemoStart("u_other", NOW);
+
+    await get<TicketDetailResponse>("/1", DEMO);
+    await get<TicketDetailResponse>("/2", DEMO);
+
+    expect(await demoUsageThisWeek(NOW)).toMatchObject({
+      sessionsStarted: 1,
+      sessionsOpenedTicket: 1,
+    });
+  });
+
+  test("a colleague opening a ticket is not a demo session", async () => {
+    // A tally row under a colleague's id is not a state production reaches;
+    // it is here so that "not counted" means the route asked nothing, rather
+    // than that it had no row to flag.
+    await recordDemoStart("u_other", NOW);
+
+    const sent = await get<TicketDetailResponse>("/1", OTHER);
+
+    expect(sent.status).toBe(200);
+    expect((await demoUsageThisWeek(NOW)).sessionsOpenedTicket).toBe(0);
+  });
+});
+
 /* ── PATCH /:id/assignee clears assignmentSeenAt ────────────────────────── */
 
 describe("PATCH /api/tickets/:id/assignee — assignmentSeenAt reset", () => {
@@ -348,6 +387,41 @@ describe("PATCH /api/tickets/:id/assignee — assignmentSeenAt reset", () => {
     });
 
     const sent = await patch("/1/assignee", { assignedToId: "u_other" });
+
+    expect(sent.status).toBe(400);
+    expect(await assigneeOf(1)).toBeNull();
+  });
+});
+
+/* ── A demo visitor is never an assignee (#319, R11) ─────────────────────── */
+
+/**
+ * `ASSIGNABLE_USER` builds the picker and validates what comes back, so both
+ * halves are asserted: the visitor is not offered, and an id typed past the
+ * picker is refused. Either one alone would let a ticket be filed under
+ * "Demo visitor", which reads as a colleague in every trail that names it.
+ */
+describe("A demo visitor and the assignee picker", () => {
+  beforeEach(async () => {
+    await seedColleagues("demoVisitor");
+  });
+
+  test("is not offered", async () => {
+    const sent = await get<TicketAssigneesResponse>("/assignees");
+
+    expect(sent.status).toBe(200);
+    expect(sent.body.assignees.map((a) => a.id)).toEqual([
+      "u_agent",
+      "u_other",
+    ]);
+  });
+
+  test("is refused when named anyway", async () => {
+    await makeTicket({ id: 1 });
+
+    const sent = await patch("/1/assignee", {
+      assignedToId: COLLEAGUE.demoVisitor.id,
+    });
 
     expect(sent.status).toBe(400);
     expect(await assigneeOf(1)).toBeNull();

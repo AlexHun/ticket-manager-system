@@ -11,6 +11,11 @@
  * `./admin-activity`'s pure helper (`userEditChanges`) is exercised directly at
  * the top, with no mocking, so a failure in it shows up next to its cause.
  *
+ * The last three sections are not about this router at all: `auth.ts`'s demo
+ * sign-in (#319), its start limit (#322) and its session lifetime and off
+ * switch (#324) are tested here because this is the file that loads `auth.ts`
+ * for real.
+ *
  * ## The seam is the database, and `../auth` is on the real side of it (#172)
  *
  * This was the last file in the suite mocking the Prisma client (#152), and the
@@ -74,8 +79,18 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  setSystemTime,
+  test,
+} from "bun:test";
+import {
+  DEMO_START_LIMIT_MESSAGE,
   OUTBOUND_EMAIL_KIND,
   TICKET_ACTOR_KIND,
   USER_ROLE,
@@ -203,6 +218,7 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
       id: req.header("x-test-user") ?? "agent-1",
       name: req.header("x-test-agent-name") ?? "Aaron Agent",
       email: req.header("x-test-user-email") ?? "agent@example.com",
+      isAnonymous: req.header("x-test-demo") === "true",
     },
     session: { id: req.header("x-test-session") ?? "sess-1" },
   };
@@ -212,10 +228,12 @@ const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
 mock.module("../middleware/auth", () => ({
   requireAuth: fakeGuard,
   requireAdmin: fakeGuard,
+  requireAdminView: fakeGuard,
   sessionOf: (res: Response) => res.locals.session,
 }));
 
 const { appOrigin, auth } = await import("../auth");
+const { DEMO_EMAIL_DOMAIN, DEMO_VISITOR_NAME } = await import("../demo/mode");
 const { usersRouter } = await import("./users");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
@@ -240,6 +258,20 @@ const PASSWORD = "correct-horse-battery-staple";
  */
 let sessionRow: Prisma.SessionUncheckedCreateInput;
 let sessionCookie = "";
+
+/**
+ * The `cookie` request header that replays what a Better Auth response set.
+ *
+ * `set-cookie` may carry several cookies in one header; split on the comma
+ * that precedes a `name=` and keep the name and value of each.
+ */
+function cookieHeader(res: globalThis.Response): string {
+  return (res.headers.get("set-cookie") ?? "")
+    .split(/,(?=[^;=]+=)/)
+    .map((cookie) => cookie.split(";")[0]?.trim())
+    .filter(Boolean)
+    .join("; ");
+}
 
 /**
  * Give an account a password, the way Better Auth would.
@@ -274,13 +306,7 @@ beforeAll(async () => {
     throw new Error(`could not mint a session: ${res.status}`);
   }
 
-  // `set-cookie` may carry several cookies in one header; split on the comma
-  // that precedes a `name=` and keep the name and value of each.
-  sessionCookie = (res.headers.get("set-cookie") ?? "")
-    .split(/,(?=[^;=]+=)/)
-    .map((cookie) => cookie.split(";")[0]?.trim())
-    .filter(Boolean)
-    .join("; ");
+  sessionCookie = cookieHeader(res);
 
   sessionRow = await prisma.session.findFirstOrThrow({
     where: { userId: ADMIN.id },
@@ -1068,6 +1094,18 @@ describe("GET /api/users", () => {
     const { users } = await roster();
     expect(users.map((user) => user.id)).not.toContain(AGENT.id);
   });
+
+  // Unlike the assistant, which is listed and flagged: an admin has a reason
+  // to see what tickets are filed under, and none to see every stranger who
+  // clicked the demo button — nor a single thing on this screen to do to one.
+  test("a demo visitor is never on it (#319)", async () => {
+    await seedColleagues("demoVisitor");
+
+    const { users } = await roster();
+    expect(users.map((user) => user.id)).not.toContain(
+      COLLEAGUE.demoVisitor.id,
+    );
+  });
 });
 
 /* ── How many times one request reads the same row (#115) ────────────────── */
@@ -1129,5 +1167,509 @@ describe("reads per request", () => {
 
     expect(dbCalls("user.findUnique")).toBe(1);
     expect(dbCalls("user.findUniqueOrThrow")).toBe(0);
+  });
+});
+
+/* ── Demo sign-in, in auth.ts (#319, ADR-0022) ───────────────────────────── */
+
+/**
+ * A demo start as a visitor at `forwardedFor` sends it: the `X-Forwarded-For`
+ * value Railway's edge writes, client leftmost. The start limit counts in
+ * memory for the life of the process, which is this whole file, so every
+ * caller that is not about the limit takes a `freshAddress()`.
+ */
+const startDemoFrom = (forwardedFor: string) =>
+  auth.handler(
+    new Request(`${process.env.BETTER_AUTH_URL}/api/auth/sign-in/anonymous`, {
+      method: "POST",
+      headers: { "x-forwarded-for": forwardedFor },
+    }),
+  );
+
+/** An address nothing else in this process has started a demo from. */
+let addressesHandedOut = 0;
+const freshAddress = () => {
+  addressesHandedOut += 1;
+  // 198.18.0.0/15 is reserved for benchmarking (RFC 2544): never a visitor.
+  return `198.18.${Math.floor(addressesHandedOut / 256)}.${addressesHandedOut % 256}`;
+};
+
+/**
+ * Here rather than in a file of its own because this is the one file in the
+ * suite that loads the real `auth.ts` (see the header), and a second one would
+ * be a second set of module-scope variables racing this file's for the same
+ * import. The router above is not involved; these call Better Auth directly.
+ *
+ * **The refusal is the sharp one.** Better Auth's `anonymous` plugin creates a
+ * user on every call to `/sign-in/anonymous` regardless of `disableSignUp` —
+ * read in the installed 1.6.13 source, not assumed — so loading the plugin at
+ * all opens a public user-creation endpoint, and the `before` hook in `auth.ts`
+ * is the only thing that closes it while demo mode is off.
+ */
+describe("Demo sign-in — auth.ts", () => {
+  afterEach(() => {
+    delete process.env.DEMO_MODE_ENABLED;
+  });
+
+  // Through the HTTP handler, which is the door a visitor actually uses: a
+  // `before` hook's refusal is thrown past `auth.api`'s `asResponse`, and only
+  // the handler turns it into the 403 the browser sees. From a fresh address
+  // each time, so the per-address start limit below is spent only by the
+  // tests that are about it.
+  const startDemo = () => startDemoFrom(freshAddress());
+
+  const demoRows = () =>
+    prisma.user.findMany({
+      where: { isAnonymous: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+  // Only the literal "true" opens it, like `PIPELINE_SIMULATOR_ENABLED`: a
+  // deployment that never considered demo mode, or typed something close, is
+  // one nobody can walk into.
+  test.each([undefined, "false", "1", "TRUE", "yes"])(
+    "is refused while DEMO_MODE_ENABLED is %p, and mints nobody",
+    async (value) => {
+      if (value === undefined) delete process.env.DEMO_MODE_ENABLED;
+      else process.env.DEMO_MODE_ENABLED = value;
+
+      const res = await startDemo();
+
+      expect(res.status).toBe(403);
+      expect(res.headers.get("set-cookie")).toBeNull();
+      expect(await demoRows()).toEqual([]);
+    },
+  );
+
+  test("mints an agent called Demo visitor, with no credential behind it", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+
+    const res = await startDemo();
+
+    expect(res.status).toBe(200);
+    const [visitor, ...rest] = await demoRows();
+    expect(rest).toEqual([]);
+    expect(visitor).toMatchObject({
+      name: DEMO_VISITOR_NAME,
+      // Never admin: the admin plugin serves `/api/auth/admin/*` to that role
+      // without passing through `requireAdmin`.
+      role: USER_ROLE.agent,
+      isAnonymous: true,
+      automated: false,
+    });
+    expect(visitor?.email.endsWith(`@${DEMO_EMAIL_DOMAIN}`)).toBe(true);
+    // ADR-0011: no password exists for anyone to know.
+    expect(await prisma.account.count({ where: { userId: visitor?.id } })).toBe(
+      0,
+    );
+  });
+
+  // R12 comes free with this: walkthrough progress, "seen" flags and the
+  // dashboard layout are all per user, so a fresh identity has none of them.
+  test("every start is a separate identity", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+
+    await startDemo();
+    await startDemo();
+
+    const rows = await demoRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.id).not.toBe(rows[1]?.id);
+  });
+
+  // PRD R14: the admin's weekly figure is a count of these, one per start.
+  test("every start is tallied for the admin's weekly figures", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+
+    await startDemo();
+    await startDemo();
+
+    const rows = await demoRows();
+    const tally = await prisma.demoSessionTally.findMany({
+      orderBy: { startedAt: "asc" },
+    });
+    expect(tally.map((row) => row.userId)).toEqual(rows.map((row) => row.id));
+    expect(tally.every((row) => !row.openedTicket)).toBe(true);
+  });
+
+  test("a refused start is not tallied", async () => {
+    await startDemo();
+
+    expect(await prisma.demoSessionTally.count()).toBe(0);
+  });
+
+  test("its session is refused by Better Auth's own admin endpoints", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+    const cookie = cookieHeader(await startDemo());
+
+    const res = await auth.api.listUsers({
+      headers: new Headers({ cookie }),
+      query: {},
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  /**
+   * `/request-password-reset` is public, and a visitor's address is in their
+   * own session. A link would create the credential row ADR-0011 says nobody
+   * else may hold, on an account a stranger can already sign into — so the
+   * guard that refuses the assistant refuses this too.
+   *
+   * The agent's request after it is the control that makes "nothing arrived"
+   * mean something: both run the same un-awaited task, the demo's first.
+   */
+  test("is never sent a reset link", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+    await startDemo();
+    const [visitor] = await demoRows();
+
+    for (const email of [visitor?.email ?? "", AGENT.email]) {
+      await auth.api.requestPasswordReset({
+        body: { email, redirectTo: `${appOrigin}/reset-password` },
+      });
+    }
+
+    await waitForOutbox();
+    await settle();
+    const sent = await prisma.outboundEmail.findMany();
+    expect(sent.map((row) => row.toEmail)).toEqual([AGENT.email]);
+  });
+
+  // The plugin ships `/delete-anonymous-user`. Left on, a visitor could erase
+  // the identity every change they made is attributed to (R11), and the
+  // trails would fall back to naming nobody.
+  test("cannot delete itself", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+    const cookie = cookieHeader(await startDemo());
+
+    const res = await auth.api.deleteAnonymousUser({
+      headers: new Headers({ cookie }),
+      asResponse: true,
+    });
+
+    expect(res.status).toBe(400);
+    expect(await demoRows()).toHaveLength(1);
+  });
+});
+
+/* ── Demo start limit, in auth.ts (#322, PRD R9) ─────────────────────────── */
+
+/**
+ * Five demo starts per address per hour. Keyed on what Better Auth's own
+ * `getIp` resolves, so it is the address the `/sign-in/email` rule counts
+ * against: the leftmost `X-Forwarded-For` entry, which Railway's edge writes
+ * (see `backend.md` on the 1.6.13 pin, and the Caddyfile note).
+ *
+ * Each test takes its own `freshAddress()`, because the count lives in memory
+ * for the life of the process and nothing here resets it.
+ */
+describe("Demo start limit — auth.ts", () => {
+  beforeEach(() => {
+    process.env.DEMO_MODE_ENABLED = "true";
+  });
+
+  afterEach(() => {
+    delete process.env.DEMO_MODE_ENABLED;
+    delete process.env.DEMO_SESSIONS_PER_IP_PER_HOUR;
+    setSystemTime();
+  });
+
+  const demoCount = () => prisma.user.count({ where: { isAnonymous: true } });
+
+  test("five starts from one address succeed; the sixth is refused with the message and mints nobody", async () => {
+    const address = freshAddress();
+
+    for (let i = 0; i < 5; i += 1) {
+      expect((await startDemoFrom(address)).status).toBe(200);
+    }
+    const refused = await startDemoFrom(address);
+
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("set-cookie")).toBeNull();
+    expect(((await refused.json()) as { message: string }).message).toBe(
+      DEMO_START_LIMIT_MESSAGE,
+    );
+    expect(await demoCount()).toBe(5);
+  });
+
+  test("a spent address leaves every other address alone", async () => {
+    const spent = freshAddress();
+    for (let i = 0; i < 5; i += 1) await startDemoFrom(spent);
+    expect((await startDemoFrom(spent)).status).toBe(429);
+
+    expect((await startDemoFrom(freshAddress())).status).toBe(200);
+  });
+
+  // The hop Caddy appends on the right differs between requests; the visitor
+  // on the left does not, and is who the sign-in rule counts.
+  test("counts the leftmost X-Forwarded-For entry, whatever hops follow it", async () => {
+    const visitor = freshAddress();
+
+    for (let hop = 1; hop <= 5; hop += 1) {
+      expect((await startDemoFrom(`${visitor}, 100.64.0.${hop}`)).status).toBe(
+        200,
+      );
+    }
+
+    expect((await startDemoFrom(`${visitor}, 100.64.0.99`)).status).toBe(429);
+  });
+
+  // A sliding hour from each start, and a refused attempt is not a start: a
+  // visitor who keeps knocking is not kept out for longer by knocking.
+  test("an hour after the first start, the address may start again", async () => {
+    const address = freshAddress();
+    const first = Date.now();
+
+    setSystemTime(new Date(first));
+    for (let i = 0; i < 5; i += 1) await startDemoFrom(address);
+    setSystemTime(new Date(first + 30 * 60 * 1000));
+    expect((await startDemoFrom(address)).status).toBe(429);
+
+    setSystemTime(new Date(first + 60 * 60 * 1000 + 1));
+    expect((await startDemoFrom(address)).status).toBe(200);
+  });
+
+  test("DEMO_SESSIONS_PER_IP_PER_HOUR sets the number", async () => {
+    process.env.DEMO_SESSIONS_PER_IP_PER_HOUR = "2";
+    const address = freshAddress();
+
+    expect((await startDemoFrom(address)).status).toBe(200);
+    expect((await startDemoFrom(address)).status).toBe(200);
+    expect((await startDemoFrom(address)).status).toBe(429);
+  });
+
+  // A typo must not lift the cap, and zero is not how demo mode is turned
+  // off — `DEMO_MODE_ENABLED` is.
+  test.each(["", "0", "-3", "2.5", "five", "Infinity"])(
+    "DEMO_SESSIONS_PER_IP_PER_HOUR=%p means five",
+    async (value) => {
+      process.env.DEMO_SESSIONS_PER_IP_PER_HOUR = value;
+      const address = freshAddress();
+
+      for (let i = 0; i < 5; i += 1) {
+        expect((await startDemoFrom(address)).status).toBe(200);
+      }
+      expect((await startDemoFrom(address)).status).toBe(429);
+    },
+  );
+});
+
+/* ── Demo session lifetime and the off switch, in auth.ts (#324) ─────────── */
+
+/**
+ * `cookie` with whatever `res` set laid over it, by cookie name: what a browser
+ * holds after a response that refreshed some of its cookies and not others.
+ */
+function laidOver(cookie: string, res: globalThis.Response): string {
+  const jar = new Map<string, string>();
+  for (const pair of [cookie, cookieHeader(res)].join("; ").split("; ")) {
+    const at = pair.indexOf("=");
+    if (at > 0) jar.set(pair.slice(0, at), pair.slice(at + 1));
+  }
+  return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
+/** `cookie` without the cookie-cache cookie: a browser whose cache lapsed. */
+const withoutCache = (cookie: string) =>
+  cookie
+    .split("; ")
+    .filter((pair) => !pair.includes("session_data="))
+    .join("; ");
+
+/** `/get-session` as the page asks it, with `cookie`. */
+const getSessionWith = (cookie: string) =>
+  auth.handler(
+    new Request(`${process.env.BETTER_AUTH_URL}/api/auth/get-session`, {
+      headers: { cookie },
+    }),
+  );
+
+/**
+ * A demo session lasts two hours from its start (PRD R7), and turning demo mode
+ * off ends every open one (R2). Both are asked of `/get-session`, which is the
+ * question the page's `useSession` and every route guard put, and both with the
+ * 60-second `cookieCache` cookie in hand, because a request served from that
+ * cookie never reads the session row. That is the measurement the ticket asked
+ * for rather than assumed, and it cuts both ways:
+ *
+ *   - **The cache does not carry a session past its own expiry.** The cached
+ *     copy holds `expiresAt`, and Better Auth 1.6.13 checks it on every cache
+ *     hit (`dist/api/routes/session.mjs`), so a session that *reaches* its end
+ *     ends on time, cache or not.
+ *   - **It does carry one past an expiry changed behind its back**, for up to
+ *     the 60 seconds the cached copy lives. A row backdated or deleted in the
+ *     database is invisible to a request the cache answers.
+ *
+ * So the off switch cannot be a change to the session rows. It is a rule run
+ * on whatever `/get-session` answers, cached or not.
+ */
+describe("Demo session lifetime — auth.ts", () => {
+  beforeEach(() => {
+    process.env.DEMO_MODE_ENABLED = "true";
+  });
+
+  afterEach(() => {
+    delete process.env.DEMO_MODE_ENABLED;
+    setSystemTime();
+  });
+
+  const MINUTE = 60 * 1000;
+  const TWO_HOURS = 120 * MINUTE;
+  const WEEK = 7 * 24 * 60 * MINUTE;
+
+  /** Whose session a `/get-session` answer is, if it is anybody's. */
+  const userIdOf = async (res: globalThis.Response) =>
+    ((await res.json()) as { user: { id: string } } | null)?.user.id;
+
+  const demoSessionRow = () =>
+    prisma.session.findFirstOrThrow({ where: { user: { isAnonymous: true } } });
+
+  /** Start a demo at `at`, and return the browser's cookies afterwards. */
+  async function demoStartedAt(at: number): Promise<string> {
+    setSystemTime(new Date(at));
+    return cookieHeader(await startDemoFrom(freshAddress()));
+  }
+
+  test("expires two hours after it started", async () => {
+    await demoStartedAt(Date.now());
+
+    const row = await demoSessionRow();
+    expect(row.expiresAt.getTime() - row.createdAt.getTime()).toBe(TWO_HOURS);
+  });
+
+  // The two hours are the demo's alone: a colleague keeps Better Auth's week.
+  test("a colleague's session keeps the default seven days", async () => {
+    const row = await prisma.session.findFirstOrThrow({
+      where: { userId: ADMIN.id },
+    });
+    // Within a second: Better Auth reads the clock separately for each of the
+    // two, and they have been seen a millisecond apart.
+    expect(
+      Math.abs(row.expiresAt.getTime() - row.createdAt.getTime() - WEEK),
+    ).toBeLessThan(1000);
+  });
+
+  // Better Auth refreshes any session older than a day short of its seven, by
+  // its own arithmetic, which a two-hour session always is. Left alone, the
+  // first request read from the database would push the end out to a week.
+  test("using it does not push its end out", async () => {
+    const start = Date.now();
+    const cookie = await demoStartedAt(start);
+
+    setSystemTime(new Date(start + 90 * MINUTE));
+    const res = await getSessionWith(withoutCache(cookie));
+
+    expect(res.status).toBe(200);
+    const row = await demoSessionRow();
+    expect(row.expiresAt.getTime()).toBe(start + TWO_HOURS);
+  });
+
+  test("the cookie cache does not keep it past two hours", async () => {
+    const start = Date.now();
+    const signedIn = await demoStartedAt(start);
+
+    // A cache cookie written 30 seconds before the end, so it is still inside
+    // its own 60 seconds when the session runs out.
+    setSystemTime(new Date(start + TWO_HOURS - MINUTE / 2));
+    const cookie = laidOver(
+      signedIn,
+      await getSessionWith(withoutCache(signedIn)),
+    );
+    setSystemTime(new Date(start + TWO_HOURS - 1000));
+    const before = await getSessionWith(cookie);
+    expect(await userIdOf(before)).toEqual(expect.any(String));
+
+    setSystemTime(new Date(start + TWO_HOURS + 1000));
+    const after = await getSessionWith(cookie);
+
+    expect(await after.json()).toBeNull();
+  });
+
+  // The other half of the measurement, and the reason the E2E spec lets the
+  // cache lapse before its backdated session is refused.
+  test("a session ended behind the cache's back is served from it for up to 60 seconds", async () => {
+    const start = Date.now();
+    const cookie = await demoStartedAt(start);
+    await prisma.session.updateMany({
+      where: { user: { isAnonymous: true } },
+      data: { expiresAt: new Date(start - 1000) },
+    });
+
+    setSystemTime(new Date(start + MINUTE / 2));
+    const cached = await getSessionWith(cookie);
+    expect(await userIdOf(cached)).toEqual(expect.any(String));
+
+    setSystemTime(new Date(start + MINUTE + 1000));
+    expect(await (await getSessionWith(cookie)).json()).toBeNull();
+  });
+
+  // A session opened before this rule shipped carries Better Auth's week in
+  // its row. It ends two hours after it started all the same.
+  test("one whose row says a week still ends two hours after it started", async () => {
+    const start = Date.now();
+    const cookie = await demoStartedAt(start);
+    await prisma.session.updateMany({
+      where: { user: { isAnonymous: true } },
+      data: { expiresAt: new Date(start + WEEK) },
+    });
+
+    setSystemTime(new Date(start + TWO_HOURS + 1000));
+    const res = await getSessionWith(withoutCache(cookie));
+
+    expect(res.status).toBe(401);
+  });
+
+  // R2: the switch ends sessions already open, not only new starts — and
+  // straight away, because the rule runs on the cached answer too.
+  test("turning demo mode off refuses an open session at once, from the cache and from the row", async () => {
+    const cached = await demoStartedAt(Date.now());
+    const stored = withoutCache(await demoStartedAt(Date.now()));
+    delete process.env.DEMO_MODE_ENABLED;
+
+    expect((await getSessionWith(cached)).status).toBe(401);
+    expect((await getSessionWith(stored)).status).toBe(401);
+  });
+
+  // What `requireAuth` and its siblings see: not `null` but a thrown 401,
+  // which `middleware/auth.ts` answers as the 401 it gives no session.
+  test("the route guards' own call is refused with a 401", async () => {
+    const cookie = await demoStartedAt(Date.now());
+    delete process.env.DEMO_MODE_ENABLED;
+
+    const refusal = await auth.api
+      .getSession({ headers: new Headers({ cookie }) })
+      .then(
+        () => null,
+        (err: unknown) => err,
+      );
+
+    expect(refusal).toMatchObject({ statusCode: 401 });
+  });
+
+  // Refused rather than merely hidden: switching demo mode back on does not
+  // bring a visitor's session back.
+  test("a session refused by the switch is deleted", async () => {
+    const cookie = await demoStartedAt(Date.now());
+    delete process.env.DEMO_MODE_ENABLED;
+    await getSessionWith(cookie);
+
+    process.env.DEMO_MODE_ENABLED = "true";
+    expect(
+      await (await getSessionWith(withoutCache(cookie))).json(),
+    ).toBeNull();
+    expect(
+      await prisma.session.count({ where: { user: { isAnonymous: true } } }),
+    ).toBe(0);
+  });
+
+  test("turning demo mode off leaves a colleague signed in", async () => {
+    delete process.env.DEMO_MODE_ENABLED;
+
+    const res = await getSessionWith(sessionCookie);
+
+    expect(res.status).toBe(200);
+    expect(await userIdOf(res)).toBe(ADMIN.id);
   });
 });

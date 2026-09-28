@@ -113,8 +113,9 @@ export const EVENT_EFFECT: {
    *
    * One invalidate for the whole prefix: the page shows the rail counts, the
    * live queue depths and one ticket's trace at once, and any of the three can
-   * move without the others. Admin-only at the server, so a non-admin never
-   * receives this and the key is never touched on their tabs.
+   * move without the others. Admin-only at the server (a demo session counts,
+   * #320), so an agent never receives this and the key is never touched on
+   * their tabs.
    */
   [TICKET_EVENT.pipeline_changed]: (queryClient) => {
     void queryClient.invalidateQueries({ queryKey: pipelineKeys.all });
@@ -126,8 +127,9 @@ export const EVENT_EFFECT: {
    * One invalidate for the whole prefix, and the run id is deliberately not
    * used to narrow it: the page shows the list of runs and each run's case
    * results together, and a run appearing moves the list while a run finishing
-   * moves the rows inside it. Admin-only at the server, so a non-admin never
-   * receives this and the key is never touched on their tabs.
+   * moves the rows inside it. Admin-only at the server (a demo session counts,
+   * #320), so an agent never receives this and the key is never touched on
+   * their tabs.
    */
   [TICKET_EVENT.eval_run_changed]: (queryClient) => {
     void queryClient.invalidateQueries({ queryKey: evalKeys.all });

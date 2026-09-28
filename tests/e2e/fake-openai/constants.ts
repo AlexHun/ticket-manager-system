@@ -26,3 +26,12 @@ export const STUB_PORT = 3999;
  * increase and the current run's article is always the newest.
  */
 export const KNOWLEDGE_ARTICLE_MARKER = "E2E-AUTO-REPLY-MARKER";
+
+/**
+ * What the stub answers a polish with (#321): a fixed rewrite, plain prose
+ * with no money in it, so it passes `polishDraft`'s invented-commitment check
+ * whatever the draft said. Here rather than in `server.ts` so a spec can
+ * assert on it without importing the module that starts the server.
+ */
+export const POLISHED_REPLY =
+  "Hi there,\n\nThanks for your patience. Your parcel is on its way.";

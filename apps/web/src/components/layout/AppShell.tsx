@@ -7,6 +7,7 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { TutorialTriggerProvider } from "@/lib/tutorial-trigger";
 import { AppSidebar } from "./AppSidebar";
 import { AppTopBar } from "./AppTopBar";
+import { DemoBanner } from "./DemoBanner";
 import { sectionTitle } from "./nav-items";
 
 /**
@@ -139,6 +140,10 @@ export function AppShell() {
           className="min-w-0 overflow-hidden outline-none"
         >
           <TutorialTriggerProvider>
+            {/* Above the top bar, and on every page: a demo visitor is never
+                on a screen that does not say so (R13). Nothing for anyone
+                else. */}
+            <DemoBanner />
             <AppTopBar />
             {/* A second boundary, inside the shell. App.tsx's outer one would
                 unmount the sidebar and top bar every time a route's chunk was

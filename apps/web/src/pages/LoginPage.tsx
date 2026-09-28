@@ -4,12 +4,16 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { loginSchema, type LoginValues } from "@ticket/core";
+import { DEMO_START_LIMIT_MESSAGE } from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
+import { useDemoStatus } from "@/lib/demo-queries";
+import { BRAND_NAME } from "@/lib/brand";
 import { ROUTE } from "@/lib/routes";
-import { LogoMark } from "@/components/layout/Logo";
+import { BrandName, LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
   Card,
   CardContent,
@@ -18,10 +22,40 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+/**
+ * What to say when Better Auth turns a sign-in down, for either way in.
+ *
+ * Better Auth reports the transport failure and the rejected request through
+ * the same channel, and they need different words. A network failure arrives
+ * with no status at all; a server fault arrives as 5xx. Neither says anything
+ * about what was typed, and answering both with "Invalid email or password"
+ * sends someone off to reset a password that was never the problem — which is
+ * exactly what happened here when the API was down and sign-in returned 500.
+ *
+ * Only when the status positively says so. A missing status is absence of
+ * evidence, not evidence of a transport failure, and defaulting it to
+ * "unreachable" would answer a plain rejected credential — which is what
+ * Better Auth returns with no status in some paths — by blaming the network.
+ */
+function failureMessage(
+  error: { status?: number; message?: string },
+  fallback: string,
+): string {
+  const status = error.status;
+  const unreachable =
+    typeof status === "number" && (status === 0 || status >= 500);
+
+  return unreachable
+    ? `Can't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
+    : (error.message ?? fallback);
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const { data: session, isPending: sessionPending } = useSession();
+  const { data: demoEnabled } = useDemoStatus();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [startingDemo, setStartingDemo] = useState(false);
 
   const {
     register,
@@ -48,32 +82,45 @@ export function LoginPage() {
     const { error } = await signIn.email(values);
 
     if (error) {
-      // Better Auth reports the transport failure and the rejected credential
-      // through the same channel, and they need different words. A network
-      // failure arrives with no status at all; a server fault arrives as 5xx.
-      // Neither says anything about what was typed, and answering both with
-      // "Invalid email or password" sends someone off to reset a password that
-      // was never the problem — which is exactly what happened here when the
-      // API was down and sign-in returned 500.
-      // Only when the status positively says so. A missing status is absence of
-      // evidence, not evidence of a transport failure, and defaulting it to
-      // "unreachable" would answer a plain rejected credential — which is what
-      // Better Auth returns with no status in some paths — by blaming the
-      // network.
-      const status = error.status;
-      const unreachable =
-        typeof status === "number" && (status === 0 || status >= 500);
+      setServerError(failureMessage(error, "Invalid email or password"));
+      return;
+    }
 
+    navigate("/", { replace: true });
+  };
+
+  /**
+   * One click, no credential: the API mints a fresh demo identity and sets its
+   * session cookie (#319). A fresh identity every time, which is what makes
+   * every visitor a first-time user (R12).
+   *
+   * A 403 is demo mode switched off between this page loading and the click.
+   * It gets words of its own, because the fallback would describe a form
+   * nobody filled in. A 429 is this address's starts for the hour (#322, R9),
+   * read off the status rather than the body: Better Auth's own limiter
+   * answers the same path in production with a 429 worded its own way.
+   */
+  const startDemo = async () => {
+    setServerError(null);
+    setStartingDemo(true);
+    const { error } = await signIn.anonymous();
+
+    if (error) {
+      setStartingDemo(false);
       setServerError(
-        unreachable
-          ? "Can't reach the ticket manager. Check your connection, or try again in a moment."
-          : (error.message ?? "Invalid email or password"),
+        error.status === 403
+          ? "Demo sessions are not available right now."
+          : error.status === 429
+            ? DEMO_START_LIMIT_MESSAGE
+            : failureMessage(error, "Could not start a demo session."),
       );
       return;
     }
 
     navigate("/", { replace: true });
   };
+
+  const busy = isSubmitting || startingDemo;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -88,16 +135,14 @@ export function LoginPage() {
             what gets read. */}
         <div className="flex items-center gap-2.5">
           <LogoMark className="size-8" />
-          <span className="text-lg font-semibold tracking-tight">
-            Ticket Manager
-          </span>
+          <BrandName />
         </div>
 
         <Card className="w-full">
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
             <CardDescription>
-              Use your email and password to access the ticket manager.
+              Use your email and password to access {BRAND_NAME}.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -113,7 +158,7 @@ export function LoginPage() {
                   type="email"
                   autoComplete="email"
                   aria-invalid={Boolean(errors.email)}
-                  disabled={isSubmitting}
+                  disabled={busy}
                   {...register("email")}
                 />
                 {errors.email && (
@@ -129,7 +174,7 @@ export function LoginPage() {
                   type="password"
                   autoComplete="current-password"
                   aria-invalid={Boolean(errors.password)}
-                  disabled={isSubmitting}
+                  disabled={busy}
                   {...register("password")}
                 />
                 {errors.password && (
@@ -143,7 +188,7 @@ export function LoginPage() {
                   {serverError}
                 </p>
               )}
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={busy}>
                 {isSubmitting && <Loader2 className="size-4 animate-spin" />}
                 {isSubmitting ? "Signing in…" : "Sign in"}
               </Button>
@@ -157,6 +202,30 @@ export function LoginPage() {
                 Forgot your password?
               </Link>
             </form>
+            {/* Only while the API says demo mode is on; absent, not disabled,
+                otherwise. The refusal that matters is the API's — this only
+                decides whether to offer. */}
+            {demoEnabled && (
+              <div className="mt-6 flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <Separator className="flex-1" />
+                  <span className="text-xs text-muted-foreground">or</span>
+                  <Separator className="flex-1" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={startDemo}
+                >
+                  {startingDemo && <Loader2 className="size-4 animate-spin" />}
+                  {startingDemo ? "Starting demo…" : "Use demo session"}
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Look around as a demo visitor. No account needed.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

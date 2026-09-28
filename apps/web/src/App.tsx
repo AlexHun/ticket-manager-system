@@ -1,6 +1,6 @@
 import { createBrowserRouter, type RouteObject } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { AdminRoute } from "@/components/AdminRoute";
+import { AdminRoute, AdminViewRoute } from "@/components/AdminRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { RouteFallback } from "@/components/RouteFallback";
 import { LoginPage } from "@/pages/LoginPage";
@@ -140,6 +140,11 @@ export const router = createBrowserRouter([
                 // repeat the session check: inside the shell the admin gate is
                 // just the role check it always was, and /users stops tearing
                 // down and rebuilding the sidebar on every visit.
+                //
+                // The strict gate: a demo session gets the not-found page
+                // here (#320, R3). Users lists real colleagues, and the outbox
+                // holds live single-use links; `requireAdmin` on both routers
+                // is the control.
                 Component: AdminRoute,
                 children: [
                   {
@@ -149,19 +154,6 @@ export const router = createBrowserRouter([
                         Component: m.UsersPage,
                       })),
                   },
-                  // The knowledge base is admin-only for a stronger reason
-                  // than the user list is: editing an article writes into the
-                  // system prompt of the feature that answers customers
-                  // unattended. This guard is UX — `requireAdmin` on every
-                  // route in `apps/api/src/routes/knowledge.ts` is the
-                  // control.
-                  {
-                    path: ROUTE.knowledge.path,
-                    lazy: () =>
-                      import("@/pages/KnowledgePage").then((m) => ({
-                        Component: m.KnowledgePage,
-                      })),
-                  },
                   {
                     path: ROUTE.outbox.path,
                     lazy: () =>
@@ -169,10 +161,31 @@ export const router = createBrowserRouter([
                         Component: m.OutboxPage,
                       })),
                   },
+                ],
+              },
+              {
+                // The showcase gate: an admin, or a demo session (#320, R3).
+                // The API opens only these screens' reads to a demo, with
+                // `requireAdminView`; every write keeps `requireAdmin`.
+                Component: AdminViewRoute,
+                children: [
+                  // The knowledge base is admin-only for a stronger reason
+                  // than the user list is: editing an article writes into the
+                  // system prompt of the feature that answers customers
+                  // unattended. This guard is UX — the guards on
+                  // `apps/api/src/routes/knowledge.ts` are the control, and
+                  // every write there is `requireAdmin`.
+                  {
+                    path: ROUTE.knowledge.path,
+                    lazy: () =>
+                      import("@/pages/KnowledgePage").then((m) => ({
+                        Component: m.KnowledgePage,
+                      })),
+                  },
                   // Admin-only for two reasons at once: it reads back how the
                   // unattended pipeline is behaving, and it can post an email
-                  // into it. `requireAdmin` on every route in
-                  // `apps/api/src/routes/pipeline.ts` is the control.
+                  // into it. The guards on `apps/api/src/routes/pipeline.ts`
+                  // are the control; the simulator is `requireAdmin`.
                   {
                     path: ROUTE.pipeline.path,
                     lazy: () =>
@@ -183,8 +196,8 @@ export const router = createBrowserRouter([
                   // Admin-only for the pipeline's two reasons, sharpened:
                   // starting a run spends model calls, and the results
                   // describe how the unattended path's own safety checks are
-                  // holding. `requireAdmin` on every route in
-                  // `apps/api/src/routes/evals.ts` is the control.
+                  // holding. The guards on `apps/api/src/routes/evals.ts` are
+                  // the control; starting a run is `requireAdmin`.
                   {
                     path: ROUTE.evals.path,
                     lazy: () =>
@@ -194,9 +207,9 @@ export const router = createBrowserRouter([
                   },
                   // Admin-only for the same reason knowledge and pipeline
                   // are: it reads across account and automation history an
-                  // agent has no route to elsewhere. `requireAdmin` on every
-                  // route in `apps/api/src/routes/activity.ts` is the
-                  // control; this guard is UX.
+                  // agent has no route to elsewhere. `requireAdminView` on
+                  // `apps/api/src/routes/activity.ts` is the control; this
+                  // guard is UX.
                   {
                     path: ROUTE.activity.path,
                     lazy: () =>
@@ -206,9 +219,9 @@ export const router = createBrowserRouter([
                   },
                   // Admin-only for the same reason the knowledge base is:
                   // this is where the copy shown to every user gets written.
-                  // No separate API guard note needed beyond `requireAdmin`
-                  // on `GET /api/tutorials` and `PUT /api/tutorials/:pageKey`
-                  // — see `apps/api/src/routes/tutorials.ts`.
+                  // `requireAdminView` on `GET /api/tutorials` and
+                  // `requireAdmin` on `PUT /api/tutorials/:pageKey` are the
+                  // control — see `apps/api/src/routes/tutorials.ts`.
                   {
                     path: ROUTE.tutorials.path,
                     lazy: () =>
