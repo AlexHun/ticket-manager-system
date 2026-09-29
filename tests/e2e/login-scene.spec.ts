@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { BRAND_NAME } from "../../apps/web/src/lib/brand";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
@@ -17,23 +17,25 @@ function signInPanel(page: Page) {
   return page.getByRole("region", { name: "Sign in" });
 }
 
-async function boxOf(page: Page, which: "lockup" | "panel") {
-  const locator = which === "lockup" ? lockup(page) : signInPanel(page);
+async function boxOf(locator: Locator) {
   await expect(locator).toBeVisible();
   const box = await locator.boundingBox();
-  if (!box) throw new Error(`${which} is not laid out`);
+  if (!box) throw new Error(`${locator} is not laid out`);
   return box;
 }
+
+const DESKTOP = { width: 1280, height: 800 };
+const PHONE = { width: 390, height: 844 };
 
 test.describe("login scene", () => {
   test("at 1280px the lockup and the form sit side by side", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.setViewportSize(DESKTOP);
     await page.goto(ROUTE.login.path);
 
-    const word = await boxOf(page, "lockup");
-    const form = await boxOf(page, "panel");
+    const word = await boxOf(lockup(page));
+    const form = await boxOf(signInPanel(page));
 
     // Lockup wholly left of the form, and the two share a band of height.
     expect(word.x + word.width).toBeLessThanOrEqual(form.x);
@@ -44,16 +46,23 @@ test.describe("login scene", () => {
   test("at 390px the lockup is a banner above the form, with no sideways scroll", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize(PHONE);
     await page.goto(ROUTE.login.path);
 
-    const word = await boxOf(page, "lockup");
-    const form = await boxOf(page, "panel");
+    const word = await boxOf(lockup(page));
+    const form = await boxOf(signInPanel(page));
 
     expect(word.y + word.height).toBeLessThanOrEqual(form.y);
-    // The lockup fits the width rather than being cropped by the scene.
-    expect(word.x).toBeGreaterThanOrEqual(0);
-    expect(word.x + word.width).toBeLessThanOrEqual(390);
+
+    // The lockup fits rather than being cropped. Its own box cannot say so —
+    // `max-w-full` clamps it while the letters spill past — and the scene's
+    // `overflow-hidden` keeps a spill off the page's scroll width. So ask the
+    // scene whether anything inside it overflows.
+    const scene = await lockup(page).evaluate((h1) => {
+      const scene = h1.parentElement!;
+      return { scrollWidth: scene.scrollWidth, clientWidth: scene.clientWidth };
+    });
+    expect(scene.scrollWidth).toBe(scene.clientWidth);
 
     const overflow = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,

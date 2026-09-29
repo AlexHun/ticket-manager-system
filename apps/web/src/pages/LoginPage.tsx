@@ -137,88 +137,86 @@ export function LoginPage() {
               Use your email and password to access {BRAND_NAME}.
             </p>
           </div>
-          <div>
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              noValidate
-              className="flex flex-col gap-4"
-            >
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  aria-invalid={Boolean(errors.email)}
-                  disabled={busy}
-                  {...register("email")}
-                />
-                {errors.email && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {errors.email.message}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  aria-invalid={Boolean(errors.password)}
-                  disabled={busy}
-                  {...register("password")}
-                />
-                {errors.password && (
-                  <p className="text-sm text-destructive" role="alert">
-                    {errors.password.message}
-                  </p>
-                )}
-              </div>
-              {serverError && (
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            noValidate
+            className="flex flex-col gap-4"
+          >
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                aria-invalid={Boolean(errors.email)}
+                disabled={busy}
+                {...register("email")}
+              />
+              {errors.email && (
                 <p className="text-sm text-destructive" role="alert">
-                  {serverError}
+                  {errors.email.message}
                 </p>
               )}
-              <Button type="submit" disabled={busy}>
-                {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-                {isSubmitting ? "Signing in…" : "Sign in"}
-              </Button>
-              {/* The only route back in. An admin cannot type a colleague a new
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                aria-invalid={Boolean(errors.password)}
+                disabled={busy}
+                {...register("password")}
+              />
+              {errors.password && (
+                <p className="text-sm text-destructive" role="alert">
+                  {errors.password.message}
+                </p>
+              )}
+            </div>
+            {serverError && (
+              <p className="text-sm text-destructive" role="alert">
+                {serverError}
+              </p>
+            )}
+            <Button type="submit" disabled={busy}>
+              {isSubmitting && <Loader2 className="size-4 animate-spin" />}
+              {isSubmitting ? "Signing in…" : "Sign in"}
+            </Button>
+            {/* The only route back in. An admin cannot type a colleague a new
                   password any more, so this link is not a convenience — for
                   anyone locked out, it is the whole recovery path. */}
-              <Link
-                to={ROUTE.forgotPassword.path}
-                className="text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                Forgot your password?
-              </Link>
-            </form>
-            {/* Only while the API says demo mode is on; absent, not disabled,
+            <Link
+              to={ROUTE.forgotPassword.path}
+              className="text-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Forgot your password?
+            </Link>
+          </form>
+          {/* Only while the API says demo mode is on; absent, not disabled,
                 otherwise. The refusal that matters is the API's — this only
                 decides whether to offer. */}
-            {demoEnabled && (
-              <div className="mt-6 flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                  <Separator className="flex-1" />
-                  <span className="text-xs text-muted-foreground">or</span>
-                  <Separator className="flex-1" />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={startDemo}
-                >
-                  {startingDemo && <Loader2 className="size-4 animate-spin" />}
-                  {startingDemo ? "Starting demo…" : "Use demo session"}
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Look around as a demo visitor. No account needed.
-                </p>
+          {demoEnabled && (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground">or</span>
+                <Separator className="flex-1" />
               </div>
-            )}
-          </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={startDemo}
+              >
+                {startingDemo && <Loader2 className="size-4 animate-spin" />}
+                {startingDemo ? "Starting demo…" : "Use demo session"}
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                Look around as a demo visitor. No account needed.
+              </p>
+            </div>
+          )}
         </div>
       </section>
     </main>
