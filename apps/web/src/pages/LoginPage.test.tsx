@@ -53,24 +53,35 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const CARD_DESCRIPTION =
+const FORM_DESCRIPTION =
   "Use your email and password to access The Great Forge Desk.";
 
 describe("LoginPage — rendering", () => {
-  test("renders the sign-in card with both fields and submit button", () => {
+  test("renders the sign-in form with both fields and submit button", () => {
     renderLogin();
     expect(screen.getByText("The Great Forge Desk")).toBeInTheDocument();
-    expect(screen.getByText(CARD_DESCRIPTION)).toBeInTheDocument();
+    expect(screen.getByText(FORM_DESCRIPTION)).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+  });
+
+  // The lockup is drawn across three lines, but it reads as one name.
+  test("heads the page with the product's name and labels the form's panel", () => {
+    renderLogin();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "The Great Forge Desk" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Sign in" })).toContainElement(
+      screen.getByLabelText("Email"),
+    );
   });
 
   test("renders nothing but a loading spinner while the session is pending", () => {
     mockUseSession.mockReturnValue({ data: null, isPending: true });
     renderLogin();
 
-    expect(screen.queryByText(CARD_DESCRIPTION)).not.toBeInTheDocument();
+    expect(screen.queryByText(FORM_DESCRIPTION)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   });
 
@@ -82,7 +93,7 @@ describe("LoginPage — rendering", () => {
     renderLogin();
 
     expect(await screen.findByText("HOME")).toBeInTheDocument();
-    expect(screen.queryByText(CARD_DESCRIPTION)).not.toBeInTheDocument();
+    expect(screen.queryByText(FORM_DESCRIPTION)).not.toBeInTheDocument();
   });
 
   test("pre-fills email and password in DEV mode", () => {
