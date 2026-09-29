@@ -22,15 +22,6 @@ Branch every change from a freshly fetched main —
 `git fetch origin && git switch -c <branch> origin/main` — since local `main`
 lags whatever merged since the last session.
 
-**Exception: the Forge Desk rebrand** (`docs/plans/forge-desk-rebrand.md`,
-issues #339–#343) is collected on `develop` and merges to `main` only once the
-whole rebrand is done. Its tickets branch with
-`git fetch origin && git switch -c <branch> origin/develop` and open their PR
-against `develop` (`gh pr create --base develop`). Their issues stay open after
-the PR merges, because `Closes #<n>` fires only on `main`; that is expected, so
-don't re-implement a ticket whose PR already merged into `develop`. Remove this
-paragraph when `develop` merges into `main`.
-
 **Self-check before every commit.** Search for each reference the change leaves
 stale: old symbol names, moved paths, mentions in docs and comments. Re-read
 every edited range after the last edit, its delimiters (`*/`, brackets) and
