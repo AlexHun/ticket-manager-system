@@ -166,14 +166,20 @@ describe("TicketsTable column resizing", () => {
   // browser to re-lay the table out from a `<col>` change alone.
   it("writes each column's width onto its header cell as well as its <col>", () => {
     mount();
+    const before = subjectWidth();
     const steps = dragSteps(resizeHandle(), DRAG_FROM, DRAG_BY);
     act(() => steps.forEach((step) => step()));
 
     const cols = Array.from(document.querySelectorAll("col"));
-    const headers = Array.from(document.querySelectorAll("th[aria-label]"));
-    expect(headers.map((th) => (th as HTMLElement).style.width)).toEqual(
+    const headers = Array.from(
+      document.querySelectorAll<HTMLElement>("th[aria-label]"),
+    );
+    expect(headers.map((th) => th.style.width)).toEqual(
       cols.map((col) => col.style.width),
     );
-    expect(subjectWidth()).toBeGreaterThan(0);
+    // The dragged width in particular, not just a match at rest.
+    expect(
+      screen.getByRole("columnheader", { name: "Subject" }).style.width,
+    ).toBe(`${before + DRAG_BY}px`);
   });
 });

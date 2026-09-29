@@ -488,43 +488,64 @@ async function dragHandle(
   // legitimately be one frame stale.
   //
   // #263 argued that this made a bare `expect` after `dragHandle` correct by
-  // construction. #313 showed it is not: twice on CI (runs 35584773994 and
-  // 36008583266) the drag tests read the default width after a drag, and the
-  // second run's traces held the dragged `<col>` widths in the DOM while
-  // `getBoundingClientRect` still read the old layout — missing the whole drag
-  // in one attempt, its second half in another. The state was right; the
-  // measurement trailed it. So the drag tests read the settled width through
-  // `settledSubjectWidth` rather than once, and the header cells carry their
-  // width as well as the `<col>`s (see `HeaderCell` in `TicketsTable.tsx`).
+  // construction. #313 showed it is not: on CI the layout can trail `<col>`
+  // widths the DOM already holds (the column-sizing note in
+  // `docs/standards/frontend.md` has the evidence). So the drag tests read the
+  // width through `settledSubjectWidth`, which waits for the layout to match.
   await expect(handle).toHaveAttribute("data-resizing", "false");
 }
 
 /**
- * Subject's width once it has moved off `from` in the given direction and read
- * the same twice running — a poll, not one read, for the lag #313 recorded
- * after a drag. Moved-off alone is not enough: one CI trace read only the
- * first half of the drag, which is already wider than `from`. A drag that
- * did nothing still fails, on the poll's timeout.
+ * Subject's rendered width and the width its `<col>` implies: fixed layout
+ * hands the table's width out in proportion to the `<col>` widths, so a laid
+ * out header reads `col × table ÷ Σcols`.
+ */
+async function subjectLayout(
+  page: Page,
+): Promise<{ rendered: number; implied: number }> {
+  await page.locator('th[aria-label="Subject"]').waitFor();
+  return page.locator("table").evaluate((table) => {
+    const headers = Array.from(table.querySelectorAll("th[aria-label]"));
+    const index = headers.findIndex(
+      (th) => th.getAttribute("aria-label") === "Subject",
+    );
+    const cols = Array.from(table.querySelectorAll("col")).map((col) =>
+      parseFloat((col as HTMLElement).style.width),
+    );
+    const total = cols.reduce((a, b) => a + b, 0);
+    return {
+      rendered: headers[index]!.getBoundingClientRect().width,
+      implied: (cols[index]! * table.getBoundingClientRect().width) / total,
+    };
+  });
+}
+
+/**
+ * Subject's width once it has moved off `from` in the given direction *and*
+ * the layout has caught up with the `<col>` widths — a poll, not one read, for
+ * the lag #313 recorded after a drag. Moved-off alone is not enough: one CI
+ * trace read only the first half of the drag, already wider than `from` and
+ * steady, while the DOM held the whole of it. A drag that did nothing still
+ * fails, on the poll's timeout.
  */
 async function settledSubjectWidth(
   page: Page,
   from: number,
   direction: "wider" | "narrower",
 ): Promise<number> {
-  let last = Number.NaN;
+  let rendered = Number.NaN;
   await expect
     .poll(
       async () => {
-        const width = (await columnWidths(page)).Subject;
-        const settled = width === last;
-        last = width;
-        const moved = direction === "wider" ? width > from : width < from;
-        return moved && settled;
+        const layout = await subjectLayout(page);
+        rendered = layout.rendered;
+        const moved = direction === "wider" ? rendered > from : rendered < from;
+        return moved && Math.abs(rendered - layout.implied) < 0.5;
       },
       { message: `Subject never settled ${direction} than ${from}px` },
     )
     .toBe(true);
-  return last;
+  return rendered;
 }
 
 /**

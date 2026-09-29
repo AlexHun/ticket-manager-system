@@ -298,11 +298,10 @@ function HeaderCell({
   ariaLabel?: string;
   ariaSort?: "ascending" | "descending" | "none";
   /**
-   * The column's width, repeated from its `<col>` (issue #313). On CI a drag's
-   * sizes reached the `<col>`s while the measured layout still read the old
-   * widths; a width on the cell restyles the cell itself, so the header row
-   * does not depend on the browser re-laying the table out from a `<col>`
-   * change alone.
+   * The column's width, repeated from its `<col>`. Fixed layout already reads
+   * the `<col>`, so this changes nothing on screen; it is an unproven defence
+   * against the CI layout lag in #313 — see the column-sizing note in
+   * `docs/standards/frontend.md`.
    */
   width: number;
   children: ReactNode;
