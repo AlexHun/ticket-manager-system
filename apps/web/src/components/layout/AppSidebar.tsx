@@ -71,10 +71,10 @@ export function AppSidebar() {
                         asChild
                         isActive={isNavItemActive(item, pathname)}
                         tooltip={item.label}
-                        // The accent fill alone measures 1.13:1 in light mode.
-                        // Tinting the icon gives the active state a second,
-                        // stronger cue (3.36:1) that also survives the icon rail,
-                        // where the label is clipped away.
+                        // The accent fill alone is a faint cue. Tinting the
+                        // icon temper blue gives the active state a second,
+                        // stronger one (6.60:1 on that fill) that also survives
+                        // the icon rail, where the label is clipped away.
                         className="data-[active=true]:[&>svg]:text-sidebar-primary"
                       >
                         <NavLink

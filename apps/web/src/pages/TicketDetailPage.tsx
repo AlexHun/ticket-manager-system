@@ -231,7 +231,7 @@ function TicketDetailView({ ticket }: { ticket: TicketDetail }) {
                   <p className="font-medium">{ticket.customerName}</p>
                   <a
                     href={`mailto:${ticket.customerEmail}`}
-                    className="inline-flex items-center gap-1.5 text-sm break-all text-primary underline-offset-4 hover:underline"
+                    className="inline-flex items-center gap-1.5 text-sm break-all text-link underline-offset-4 hover:underline"
                   >
                     <Mail aria-hidden="true" className="size-3.5 shrink-0" />
                     {ticket.customerEmail}

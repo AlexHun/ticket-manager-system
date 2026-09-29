@@ -26,9 +26,9 @@ export function BrandName({ className }: { className?: string }) {
  * the piece being worked, which is what a ticket is here. The same drawing as
  * `public/favicon.svg`, so the tab and the app read as one identity.
  *
- * The colours are literals, and the same three as the favicon's, which cannot
- * read the page's CSS variables at all. The palette slice of the rebrand turns
- * them into tokens here; the favicon keeps its copies — change them together.
+ * The colours are the `--hallmark`, `--soot` and `--heat` tokens, whose values
+ * are the favicon's literals: that file cannot read the page's CSS variables
+ * at all, so it keeps its own copies — change them together.
  *
  * `aria-hidden` because every place this renders pairs it with the product's
  * name — the link or heading takes its accessible name from that text.
@@ -44,24 +44,24 @@ export function LogoMark({ className }: { className?: string }) {
       {/* The punch: a square with its corners struck off. */}
       <path
         d="M4.2 0.8H19.8L23.2 4.2V19.8L19.8 23.2H4.2L0.8 19.8V4.2Z"
-        fill="#bf8d5b"
+        className="fill-hallmark"
       />
       <path
         d="M5 2.6H19L21.4 5V19L19 21.4H5L2.6 19V5Z"
         fill="none"
-        stroke="#130e0c"
+        className="stroke-soot"
         strokeOpacity={0.35}
         strokeWidth={0.9}
       />
       {/* Side-view anvil: horn left, flat face, pinched waist, splayed feet. */}
       <path
         d="M2.6 11.4C4.4 10.6 6 10.4 7.8 10.4H20.6L21.2 10.9V13.2L18.2 13.9C16.8 14.5 16.4 15.6 16.6 16.9L18.8 18.1V19.6H6.6V18.1L8.8 16.9C9 15.6 8.6 14.5 7.4 14C5.6 13.6 4 12.8 2.6 11.4Z"
-        fill="#130e0c"
+        className="fill-soot"
       />
       {/* The work: a hot bar on the face. */}
       <path
         d="M9.4 7.6H18.4Q19.4 7.6 19.4 8.6Q19.4 9.6 18.4 9.6H9.4Q8.4 9.6 8.4 8.6Q8.4 7.6 9.4 7.6Z"
-        fill="#ffaf38"
+        className="fill-heat"
       />
     </svg>
   );

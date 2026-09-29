@@ -38,7 +38,7 @@ const STATUS_BADGE: Record<
     className: "border-transparent bg-ember-2/15 text-ember-2",
   },
   // Neutral: a worker holds it for a few seconds and nobody can act on it.
-  // Deliberately neither family — a green Processing would read as settled.
+  // Deliberately neither family — a verdigris Processing would read as settled.
   [TICKET_STATUS.Processing]: {
     variant: "outline",
     className: "border-transparent bg-muted text-foreground/70",

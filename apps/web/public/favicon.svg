@@ -6,8 +6,9 @@
 
     The colours are duplicated here as literals rather than shared with the app:
     a favicon is fetched as a standalone document and cannot see the page's CSS
-    variables. They are the same three hex values LogoMark draws with — change
-    them together or the tab drifts from the app.
+    variables. They are the values of the `hallmark`, `soot` and `heat` tokens
+    LogoMark draws with (src/index.css) — change them together or the tab
+    drifts from the app.
 
     One drawing for light and dark tab strips, unlike the ticket glyph this
     replaced: the punch is a solid mid-tone bronze, which holds against either,
