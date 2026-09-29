@@ -487,19 +487,44 @@ async function dragHandle(
   // has committed the render it caused, so a width read on the next line can
   // legitimately be one frame stale.
   //
-  // This is where #263's "why does the keyboard test poll and these don't?"
-  // lands. The answer is that the two `expect.poll`s in this file are not drag
-  // assertions at all — they follow a `dblclick()` and a `keyboard.press()`,
-  // neither of which has a resize gesture to bracket — so the fix is not to
-  // sprinkle polls over the drag tests but to make the end of a drag as
-  // observable as its start, once, here. A bare `expect` after `dragHandle` is
-  // then correct by construction.
-  //
-  // Worth keeping separate from the bug this issue was really about: that one
-  // was in the component and no amount of waiting would have caught it (see
-  // the note on `columnSizing` in `TicketsTable.tsx`). This is the smaller,
-  // genuine race beside it.
+  // #263 argued that this made a bare `expect` after `dragHandle` correct by
+  // construction. #313 showed it is not: twice on CI (runs 35584773994 and
+  // 36008583266) the drag tests read the default width after a drag, and the
+  // second run's traces held the dragged `<col>` widths in the DOM while
+  // `getBoundingClientRect` still read the old layout — missing the whole drag
+  // in one attempt, its second half in another. The state was right; the
+  // measurement trailed it. So the drag tests read the settled width through
+  // `settledSubjectWidth` rather than once, and the header cells carry their
+  // width as well as the `<col>`s (see `HeaderCell` in `TicketsTable.tsx`).
   await expect(handle).toHaveAttribute("data-resizing", "false");
+}
+
+/**
+ * Subject's width once it has moved off `from` in the given direction and read
+ * the same twice running — a poll, not one read, for the lag #313 recorded
+ * after a drag. Moved-off alone is not enough: one CI trace read only the
+ * first half of the drag, which is already wider than `from`. A drag that
+ * did nothing still fails, on the poll's timeout.
+ */
+async function settledSubjectWidth(
+  page: Page,
+  from: number,
+  direction: "wider" | "narrower",
+): Promise<number> {
+  let last = Number.NaN;
+  await expect
+    .poll(
+      async () => {
+        const width = (await columnWidths(page)).Subject;
+        const settled = width === last;
+        last = width;
+        const moved = direction === "wider" ? width > from : width < from;
+        return moved && settled;
+      },
+      { message: `Subject never settled ${direction} than ${from}px` },
+    )
+    .toBe(true);
+  return last;
 }
 
 /**
@@ -2166,9 +2191,9 @@ test.describe("Tickets page", () => {
     // legitimately stops redistributing and starts scrolling sideways instead,
     // which is a different behaviour with its own test below.
     await dragHandle(page, "Subject", 60);
+    await settledSubjectWidth(page, before.Subject, "wider");
     const after = await columnWidths(page);
 
-    expect(after.Subject).toBeGreaterThan(before.Subject);
     // The table stays full width, so widening one column narrows the rest
     // rather than adding to the total.
     const sum = (w: Record<string, number>) =>
@@ -2183,19 +2208,18 @@ test.describe("Tickets page", () => {
 
     const before = await columnWidths(page);
     await dragHandle(page, "Subject", -600);
-    const after = await columnWidths(page);
 
     // The edge actually moved. Without this the test is blind to the one
     // failure mode this whole group has ever had (#263): a drag that does
     // nothing leaves the column at its default 227px, which satisfies the
     // minimum below and passes green through the exact bug the other two tests
     // were failing on.
-    expect(after.Subject).toBeLessThan(before.Subject);
+    const after = await settledSubjectWidth(page, before.Subject, "narrower");
     // minSize is 160; without it the column would collapse to nothing. The
     // threshold is under 160 because the table still stretches to fill the
     // frame, so the rendered width is the clamped size plus a share of the
     // leftover space.
-    expect(after.Subject).toBeGreaterThanOrEqual(150);
+    expect(after).toBeGreaterThanOrEqual(150);
   });
 
   test("double-clicking a handle restores the default width", async ({
@@ -2207,7 +2231,7 @@ test.describe("Tickets page", () => {
 
     const before = await columnWidths(page);
     await dragHandle(page, "Subject", 120);
-    expect((await columnWidths(page)).Subject).toBeGreaterThan(before.Subject);
+    await settledSubjectWidth(page, before.Subject, "wider");
 
     await resizeHandleFor(page, "Subject").dblclick();
     await expect
@@ -2235,8 +2259,9 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
+    const before = await columnWidths(page);
     await dragHandle(page, "Subject", 90);
-    const resized = (await columnWidths(page)).Subject;
+    const resized = await settledSubjectWidth(page, before.Subject, "wider");
 
     await page.getByRole("button", { name: "Next page" }).click();
     await expect(page.getByRole("row").nth(1)).toContainText("Ticket 05");

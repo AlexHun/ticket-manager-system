@@ -292,10 +292,19 @@ const HEAD = "sticky top-0 z-10 bg-muted text-left font-medium";
 function HeaderCell({
   ariaLabel,
   ariaSort,
+  width,
   children,
 }: {
   ariaLabel?: string;
   ariaSort?: "ascending" | "descending" | "none";
+  /**
+   * The column's width, repeated from its `<col>` (issue #313). On CI a drag's
+   * sizes reached the `<col>`s while the measured layout still read the old
+   * widths; a width on the cell restyles the cell itself, so the header row
+   * does not depend on the browser re-laying the table out from a `<col>`
+   * change alone.
+   */
+  width: number;
   children: ReactNode;
 }) {
   return (
@@ -303,6 +312,7 @@ function HeaderCell({
       scope="col"
       aria-label={ariaLabel}
       aria-sort={ariaSort}
+      style={{ width }}
       // No `relative` here: it would fight `sticky` for the position
       // property. Sticky is already a containing block for the
       // absolutely-positioned resize handle.
@@ -425,6 +435,7 @@ export function TicketsTable({
                     // Explicit, so the resize handle's own label doesn't get
                     // concatenated into the header's accessible name.
                     ariaLabel={label}
+                    width={header.getSize()}
                     ariaSort={
                       direction === false ? "none" : ARIA_SORT[direction]
                     }
@@ -598,9 +609,9 @@ export function TicketsTableSkeleton({
         <thead className="text-muted-foreground">
           <tr>
             {columns.map((column) => {
-              const { label } = COLUMN_META[column.id];
+              const { label, size } = COLUMN_META[column.id];
               return (
-                <HeaderCell key={column.id}>
+                <HeaderCell key={column.id} width={size}>
                   <span className="truncate">{label}</span>
                 </HeaderCell>
               );

@@ -159,4 +159,21 @@ describe("TicketsTable column resizing", () => {
     // rather than adding to it — +60 from `before`, not +76.
     expect(subjectWidth()).toBe(before + DRAG_BY);
   });
+
+  // Issue #313: on CI the drag's state reached the `<col>`s while the measured
+  // layout still read the old widths. Each header cell carries the width too,
+  // so a resize restyles the cells themselves rather than leaning on the
+  // browser to re-lay the table out from a `<col>` change alone.
+  it("writes each column's width onto its header cell as well as its <col>", () => {
+    mount();
+    const steps = dragSteps(resizeHandle(), DRAG_FROM, DRAG_BY);
+    act(() => steps.forEach((step) => step()));
+
+    const cols = Array.from(document.querySelectorAll("col"));
+    const headers = Array.from(document.querySelectorAll("th[aria-label]"));
+    expect(headers.map((th) => (th as HTMLElement).style.width)).toEqual(
+      cols.map((col) => col.style.width),
+    );
+    expect(subjectWidth()).toBeGreaterThan(0);
+  });
 });
