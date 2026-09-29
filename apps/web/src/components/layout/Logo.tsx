@@ -2,9 +2,10 @@ import { BRAND_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 /**
- * The product's name set in its own face, beside the mark on the pages seen
- * before sign-in. After sign-in the sidebar's lockup (`SidebarBrand`) carries
- * it instead.
+ * The product's name set in its own face, beside the mark on the
+ * forgot-password and reset-password pages. The login page carries the large
+ * lockup (`LoginLockup`) instead, and after sign-in the sidebar's
+ * (`SidebarBrand`).
  */
 export function BrandName({ className }: { className?: string }) {
   return (

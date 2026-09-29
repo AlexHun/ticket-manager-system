@@ -9,18 +9,11 @@ import { signIn, useSession } from "@/lib/auth-client";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { BRAND_NAME } from "@/lib/brand";
 import { ROUTE } from "@/lib/routes";
-import { BrandName, LogoMark } from "@/components/layout/Logo";
+import { LoginLockup } from "@/components/layout/LoginLockup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 /**
  * What to say when Better Auth turns a sign-in down, for either way in.
@@ -123,29 +116,28 @@ export function LoginPage() {
   const busy = isSubmitting || startingDemo;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-6">
-      {/* The login card is the app's first frame, so it gets the panel entrance
-          rather than the flatter page one — there is no previous screen for it
-          to feel continuous with. The mark rides the same animation because it
-          is part of that frame, not a decoration laid over it. */}
-      <div className="flex w-full max-w-sm flex-col items-center gap-6 animate-panel-in">
-        {/* The one screen that had no brand mark at all was the only one seen
-            by someone not yet signed in — the sidebar carries it everywhere
-            else. `aria-hidden` is on the mark itself, so the name beside it is
-            what gets read. */}
-        <div className="flex items-center gap-2.5">
-          <LogoMark className="size-8" />
-          <BrandName />
-        </div>
+    // The lockup beside the form; below `lg` it is a banner above it. Nothing
+    // enters or animates: the form is the one thing a visitor came to use, so
+    // it is there, focusable, on the first paint.
+    <main className="grid min-h-dvh bg-background lg:grid-cols-[minmax(0,1fr)_minmax(22rem,27rem)]">
+      <LoginLockup />
 
-        <Card className="w-full">
-          <CardHeader>
-            <CardTitle>Sign in</CardTitle>
-            <CardDescription>
+      {/* Cast iron: a solid surface, so every word on it has one backdrop
+          the contrast check can measure. The glow stays on the scene's side. */}
+      <section
+        aria-labelledby="sign-in-title"
+        className="flex flex-col justify-center border-t bg-card px-6 py-10 text-card-foreground shadow-[0_-30px_70px_rgb(0_0_0/0.55)] sm:px-10 lg:border-t-0 lg:border-l lg:shadow-[-40px_0_90px_rgb(0_0_0/0.55)]"
+      >
+        <div className="mx-auto flex w-full max-w-sm flex-col gap-6">
+          <div className="flex flex-col gap-1.5">
+            <h2 id="sign-in-title" className="text-xl font-semibold">
+              Sign in
+            </h2>
+            <p className="text-sm text-muted-foreground">
               Use your email and password to access {BRAND_NAME}.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </p>
+          </div>
+          <div>
             <form
               onSubmit={handleSubmit(onSubmit)}
               noValidate
@@ -226,9 +218,9 @@ export function LoginPage() {
                 </p>
               </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

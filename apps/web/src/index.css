@@ -502,6 +502,31 @@
   color: transparent;
 }
 
+/* The login scene's forge (`LoginLockup`): heat from a fire off-screen below,
+   and a little behind the word it lights. Heat colours are the incandescence
+   ramp — orange #e2561b, cherry #8e1b0e, yellow #ffb43a — and nothing else.
+   Still: the strike slice adds motion, and reduced motion keeps this. */
+@utility forge-glow {
+  background-image:
+    radial-gradient(
+      60% 50% at 50% 106%,
+      rgb(226 86 27 / 0.42),
+      rgb(142 27 14 / 0.2) 46%,
+      transparent 78%
+    ),
+    radial-gradient(
+      28% 24% at 50% 94%,
+      rgb(255 180 58 / 0.14),
+      transparent 70%
+    ),
+    radial-gradient(
+      36% 32% at 50% 50%,
+      rgb(226 86 27 / 0.12),
+      rgb(142 27 14 / 0.06) 50%,
+      transparent 78%
+    );
+}
+
 /* The bronze hairline beside THE GREAT and DESK, fading away from the word.
    Drawn left to right; the DESK side mirrors it with `-scale-x-100`. */
 @utility brand-rule {
