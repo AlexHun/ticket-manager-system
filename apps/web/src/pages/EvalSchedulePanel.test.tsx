@@ -304,14 +304,15 @@ test("plans a run at a picked time, against the chosen corpus", async () => {
   // `<label for>` pointing at a button *is* that button's accessible name, so
   // the trigger is named "Date" whatever it currently reads.
   await user.click(await screen.findByLabelText("Date"));
-  // The day cell by its number, the way `ActivityPage.test.tsx` picks one:
-  // react-day-picker names its day buttons with a full formatted date, so the
-  // number is the text inside rather than the accessible name.
+  // The day button by the full date the calendar writes into `data-day`, not
+  // by its number: the grid also shows the neighbouring months' days, so on
+  // the 29th "30" matched both 30 August and 30 September and the test threw.
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const day = screen
-    .getByText(String(tomorrow.getDate()), { selector: "[data-day]" })
-    .closest("button");
-  await user.click(day!);
+  const day = document.querySelector<HTMLButtonElement>(
+    `button[data-day="${tomorrow.toLocaleDateString()}"]`,
+  );
+  if (!day) throw new Error("no day button for tomorrow");
+  await user.click(day);
 
   await user.type(screen.getByLabelText(/^time$/i), "14:30");
 
