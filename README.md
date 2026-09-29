@@ -1,4 +1,4 @@
-# Support Desk
+# The Great Forge Desk
 
 An AI-powered ticket management system. It receives customer email, files it,
 answers what it can from written knowledge, and hands the rest to people.

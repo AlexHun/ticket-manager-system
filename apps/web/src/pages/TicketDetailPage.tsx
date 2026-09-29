@@ -146,7 +146,11 @@ export function TicketDetailPage() {
           role="alert", because nothing went wrong for AT to interrupt over. */}
       {isNotFoundError(error) && (
         <div>
-          <h1 className="mb-2 text-2xl font-semibold">Ticket not found</h1>
+          {/* A page title, so the brand face `PageHeader` uses — unlike the
+              found ticket's `<h1>` below, which is the customer's subject. */}
+          <h1 className="mb-2 font-brand text-3xl leading-tight font-bold tracking-wide">
+            Ticket not found
+          </h1>
           <p className="text-sm text-muted-foreground">
             This ticket may have been deleted, or the link may be wrong.
           </p>

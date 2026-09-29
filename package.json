@@ -28,6 +28,7 @@
     "db:test:reset": "cd apps/api && bun run db:test:reset"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.62.1",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",

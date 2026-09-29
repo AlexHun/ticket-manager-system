@@ -1,13 +1,17 @@
 import { useEffect } from "react";
+import { BRAND_SHORT } from "@/lib/brand";
 
-/** What every title ends in, so a tab is identifiable as this app at a glance. */
-const APP_NAME = "Ticket Manager";
+/**
+ * What every title ends in, so a tab is identifiable as this app at a glance.
+ * The short form, because a tab is the one place the full name does not fit.
+ */
+const APP_NAME = BRAND_SHORT;
 
 /**
  * Name the document after what is on screen.
  *
- * Every route used to be "Ticket Manager", which costs more than it looks: the
- * browser's tab strip, its history menu and its back-button long-press all
+ * Every route used to carry the bare app name, which costs more than it looks:
+ * the browser's tab strip, its history menu and its back-button long-press all
  * identify a page by this string, so three open tickets and a dashboard were
  * four entries with one name. Window switchers and screen readers announce it
  * too — it is the first thing said on arrival.

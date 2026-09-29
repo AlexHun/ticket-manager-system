@@ -173,9 +173,8 @@ export function navItemsFor(viewer: Viewer): NavItem[] {
  * places until the ticket loads and names the tab after its subject.
  *
  * `null` for a route in no section, which today is only the 404. That is what
- * `useDocumentTitle` wants: it appends the app name itself, so returning
- * "Ticket Manager" here — as this used to — produced "Ticket Manager · Ticket
- * Manager" in the tab strip.
+ * `useDocumentTitle` wants: it appends the app name itself, so returning the
+ * app name here — as this used to — printed it twice in the tab strip.
  *
  * Nothing here feeds the top bar any more. Pages name themselves now, in a
  * heading you can actually see; see `PageHeader`.

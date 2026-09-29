@@ -12,12 +12,13 @@ import { cn } from "@/lib/utils";
  * naming pages entirely (see `AppTopBar`) so this is the only place it happens,
  * and nothing is said twice.
  *
- * `font-heading` rather than the serif, and this is the one deliberate omission
- * in the type system: the serif is reserved for the customer's own subject line
- * (see the note in `index.css`). A page heading is the app naming its own
- * furniture, which is the least interesting text on the screen — giving it the
- * display face would spend the distinction on chrome and leave the subject with
- * nothing of its own.
+ * `font-brand` — the lockup's face — rather than the serif. The serif is
+ * reserved for the customer's own subject line (see the note in `index.css`):
+ * a page heading is the app naming its own furniture, and giving it the serif
+ * would spend that distinction on chrome and leave the subject with nothing of
+ * its own. The brand face is the opposite claim — the app's own voice, which
+ * is exactly what a page title is — and it is a size step up from the old
+ * `text-2xl` because a condensed cut sets narrower at the same size.
  *
  * `children` are the page's controls — a filter row, a primary action. They sit
  * on the heading's line rather than a row of their own, which is what keeps the
@@ -48,7 +49,7 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">
+        <h1 className="font-brand text-3xl leading-tight font-bold tracking-wide">
           {title}
         </h1>
         {description && (

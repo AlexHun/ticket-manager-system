@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/big-shoulders-display";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -26,12 +27,19 @@
      * table cell, which is where most subjects are read, and it was drawn for
      * screen text rather than for headlines.
      *
-     * `--font-heading` still exists and still resolves to the sans. Page
-     * headings are chrome — the app naming its own sections — and giving them
-     * the serif would spend the distinction on the least interesting words here.
+     * `--font-heading` still exists and still resolves to the sans, for card
+     * titles, dialogs and section headings. None of them gets the serif, which
+     * would spend the distinction on the least interesting words here.
+     *
+     * `--font-brand` is the product's own voice rather than a third reading
+     * face: Big Shoulders Display, the lockup's letters, used on the lockup and
+     * on the page titles `PageHeader` draws, and never on a sentence, a label
+     * or a control. It is a condensed display cut, so card titles and dialogs
+     * stay on `--font-heading`.
      */
   --font-display: "Source Serif 4 Variable", ui-serif, Georgia, serif;
   --font-heading: var(--font-sans);
+  --font-brand: "Big Shoulders Display Variable", var(--font-sans);
   --font-sans: "Geist Variable", sans-serif;
   /* Elapsed silence, in four steps. See the values in :root for what each one
        means and what it was measured at. */
@@ -477,6 +485,56 @@
 
 @utility animate-ai-glow {
   animation: ai-glow 1.4s ease-in-out infinite;
+}
+
+/* The lockup's finish (`SidebarBrand`): lit iron, pale where the room light
+   catches it and forge-warm underneath. Literal colours for now — the palette
+   slice of the rebrand turns these and the bronze below into tokens. */
+@utility lit-iron {
+  background-image: linear-gradient(
+    180deg,
+    #f4eee6 0%,
+    #b9afa3 52%,
+    #8a7f74 74%,
+    #d06c36 100%
+  );
+  background-clip: text;
+  color: transparent;
+}
+
+/* The login scene's forge (`LoginLockup`): heat from a fire off-screen below,
+   and a little behind the word it lights. Heat colours are the incandescence
+   ramp — orange #e2561b, cherry #8e1b0e, yellow #ffb43a — and nothing else.
+   Still: the strike slice adds motion, and reduced motion keeps this. */
+@utility forge-glow {
+  background-image:
+    radial-gradient(
+      60% 50% at 50% 106%,
+      rgb(226 86 27 / 0.42),
+      rgb(142 27 14 / 0.2) 46%,
+      transparent 78%
+    ),
+    radial-gradient(
+      28% 24% at 50% 94%,
+      rgb(255 180 58 / 0.14),
+      transparent 70%
+    ),
+    radial-gradient(
+      36% 32% at 50% 50%,
+      rgb(226 86 27 / 0.12),
+      rgb(142 27 14 / 0.06) 50%,
+      transparent 78%
+    );
+}
+
+/* The bronze hairline beside THE GREAT and DESK, fading away from the word.
+   Drawn left to right; the DESK side mirrors it with `-scale-x-100`. */
+@utility brand-rule {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklch, oklch(0.68 0.09 65) 65%, transparent),
+    transparent
+  );
 }
 
 @layer base {
