@@ -6,7 +6,7 @@ import {
 } from "@ticket/shared";
 import { classifyTicket } from "../ai/classify";
 import { isAiConfigured } from "../ai/provider";
-import { prisma } from "../db";
+import { prisma, type Prisma } from "../db";
 import {
   publishPipelineChanged,
   publishTicketUpdated,
@@ -81,34 +81,35 @@ const RECONCILE_CRON = "*/15 * * * *";
  * here — the handler is idempotent, which is the property that makes all of this
  * safe — but harmless is not free, and each one is a model call.
  *
- * The ceiling is exported for `classifierWillStillAct` below, for its test, and
- * for `pipelineCounts` in `routes/pipeline.ts`, which restates it as a query.
+ * The ceiling is read through `classifierWillStillAct` below and nowhere else
+ * in the app. It is exported for the tests that seed a row either side of it.
  */
 export const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
 
 /**
- * Whether this queue will still act on an unstamped ticket, given a key.
+ * The tickets this queue will still act on at `now`, given a key, as a `where`.
  *
- * The two questions `handle` and `reconcile` ask, in one place so `/pipeline`
- * cannot drift from them: `handle` skips a ticket a person already filed, and
- * the sweep stops re-offering one past `RECONCILE_MAX_AGE_MS` — its `gte`, so
- * the boundary itself is still inside. Every exit of a job that ran stamps
- * `classifiedAt`, so past the window nothing is coming, bar a job the sweep
- * sent just inside it landing minutes later.
+ * No verdict yet, no category a person filed (`handle` skips one), and created
+ * no earlier than `RECONCILE_MAX_AGE_MS` before `now`: the sweep stops
+ * re-offering a ticket past that, and `gte` keeps the boundary itself inside.
+ * Every exit of a job that ran stamps `classifiedAt`, so past the window nothing
+ * is coming, bar a job the sweep sent just inside it landing minutes later.
  *
- * `pipelineCounts` in `routes/pipeline.ts` asks the same question of a whole
- * window as a query, for the rail's `classifyPending` (#355). Change one and
- * change the other.
+ * **The one statement of that rule** (#361), and a query rather than a
+ * predicate because all three readers can run one. `reconcile` below narrows it
+ * with its floor. `routes/pipeline.ts` counts it for the rail's
+ * `classifyPending` and asks it of the listed tickets for their outcome, so the
+ * rail and Recent arrivals are the same answer from the same engine. A row
+ * predicate beside it would be a second statement to keep in step, which is
+ * what this replaced. Changing the window is an edit here and nowhere else.
  */
-export function classifierWillStillAct(
-  ticket: { category: string | null; createdAt: Date },
-  now: number,
-): boolean {
-  return (
-    ticket.category === null &&
-    now - ticket.createdAt.getTime() <= RECONCILE_MAX_AGE_MS
-  );
+export function classifierWillStillAct(now: Date): Prisma.TicketWhereInput {
+  return {
+    classifiedAt: null,
+    category: null,
+    createdAt: { gte: new Date(now.getTime() - RECONCILE_MAX_AGE_MS) },
+  };
 }
 
 /** How many stragglers one sweep may pick up. Bounded so a bad day cannot become a bill. */
@@ -316,19 +317,18 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
  * needs doing, so this stays correct even for work that was never enqueued.
  */
 async function reconcile(): Promise<void> {
-  const now = Date.now();
+  const now = new Date();
 
   const stale = await prisma.ticket.findMany({
     where: {
       // Never reached a verdict: not filed, and not abandoned. A ticket an agent
       // deliberately un-categorised has `classifiedAt` set and is left alone,
-      // which is the distinction this column exists to draw.
-      classifiedAt: null,
-      category: null,
-      createdAt: {
-        gte: new Date(now - RECONCILE_MAX_AGE_MS),
-        lt: new Date(now - RECONCILE_MIN_AGE_MS),
-      },
+      // which is the distinction this column exists to draw. `AND` rather than
+      // a spread, which would let the floor's `createdAt` replace the ceiling's.
+      AND: [
+        classifierWillStillAct(now),
+        { createdAt: { lt: new Date(now.getTime() - RECONCILE_MIN_AGE_MS) } },
+      ],
     },
     select: { id: true },
     orderBy: { createdAt: "asc" },

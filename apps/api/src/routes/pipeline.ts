@@ -43,7 +43,6 @@ import { getBoss } from "../jobs/boss";
 import {
   CLASSIFY_QUEUE,
   classifierWillStillAct,
-  RECONCILE_MAX_AGE_MS,
 } from "../jobs/classify-ticket";
 import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
@@ -195,11 +194,15 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 /**
  * Rebuild one ticket's trip down the rail.
  *
- * Every branch here is a fact a column records, read at `now`, the one instant
- * the caller pins. What it deliberately does *not* do is guess: a ticket with
- * no classification verdict that nothing will classify — no API key, a category
- * a person filed first, or older than the reconcile window — is `notOffered`,
- * not "still thinking", because nothing is scheduled to think about it.
+ * Every branch here is a fact a column records. The one fact that depends on
+ * the clock, whether the classifier will still act on this row, arrives as
+ * `awaitingClassifier`: the caller asks it of the database through
+ * `classifierWillStillAct` (`classifierQueue` below), the statement the reconcile
+ * sweep and the rail's count read too. What this deliberately does *not* do is
+ * guess: a ticket with no classification verdict that nothing will classify —
+ * no API key, a category a person filed first, or older than the reconcile
+ * window — is `notOffered`, not "still thinking", because nothing is scheduled
+ * to think about it.
  *
  * The one thing this cannot see is a reopen. A customer replying to a
  * machine-resolved ticket clears `autoResolvedAt` (see `ingest.ts`), so such a
@@ -217,7 +220,7 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 export function toRun(
   row: RunRow,
   config: PipelineConfig,
-  now: number,
+  awaitingClassifier: boolean,
 ): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = row.classifiedAt !== null && row.category !== null;
@@ -237,8 +240,7 @@ export function toRun(
   // rule: a category a person already filed, or a ticket past the reconcile
   // window, is one nothing will classify. Asking only the key drew every such
   // ticket as pending forever, the showcase seed's whole desk among them (#353).
-  const classifierWillRun =
-    config.aiConfigured && classifierWillStillAct(row, now);
+  const classifierWillRun = config.aiConfigured && awaitingClassifier;
   // The auto-reply's half asks the row alone. `enqueueAutoReply` records the
   // offer in the transaction that sends the job, and the handler never re-reads
   // the switches, so what they say today changes nothing. Guessing from *today's*
@@ -413,23 +415,19 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * header), and the split below is a claim about rows that only a real database
  * can check.
  *
- * `classifyPending` restates `classifierWillStillAct` in `jobs/classify-ticket.ts`
- * as a query: no `category` filed, and created no earlier than
- * `RECONCILE_MAX_AGE_MS` before `to` — `gte`, the same inclusive boundary as
- * that function's `<=` and the sweep's own `gte`. Change one and change the
- * other, or the rail and the Recent arrivals list beside it disagree about the
- * same tickets (#355); `pipeline.test.ts` asks both of the same rows. The
- * count does not read the key — with none, the rail labels this exit as the
- * missing key rather than as queued. Every other unstamped ticket is `classifyNotOffered`,
- * taken as the remainder so the four classify counts always add up to
- * `received`.
+ * `classifyPending` counts `classifierWillStillAct` from `jobs/classify-ticket.ts`
+ * at `to`, the statement `classifierQueue` asks of each listed ticket, so the
+ * rail and the Recent arrivals list beside it cannot disagree about the same
+ * tickets (#355, #361). The count does not read the key — with none, the rail
+ * labels this exit as the missing key rather than as queued. Every other
+ * unstamped ticket is `classifyNotOffered`, taken as the remainder so the four
+ * classify counts always add up to `received`.
  */
 export async function pipelineCounts(
   from: Date,
   to: Date,
 ): Promise<PipelineCounts> {
   const window = { createdAt: { gte: from, lt: to } };
-  const reconcileFrom = new Date(to.getTime() - RECONCILE_MAX_AGE_MS);
 
   const [
     received,
@@ -451,11 +449,7 @@ export async function pipelineCounts(
       where: { ...window, classifiedAt: { not: null }, category: null },
     }),
     prisma.ticket.count({
-      where: {
-        AND: [window, { createdAt: { gte: reconcileFrom } }],
-        classifiedAt: null,
-        category: null,
-      },
+      where: { AND: [window, classifierWillStillAct(to)] },
     }),
     prisma.ticket.count({
       where: { ...window, autoResolvedAt: { not: null } },
@@ -487,6 +481,22 @@ export async function pipelineCounts(
     autoResolved,
     declines,
   };
+}
+
+/**
+ * Which of `ticketIds` the classifier will still act on at `now` — the
+ * `awaitingClassifier` answer `toRun` takes, asked through the same
+ * `classifierWillStillAct` statement `pipelineCounts` counts.
+ */
+async function classifierQueue(
+  ticketIds: number[],
+  now: Date,
+): Promise<Set<number>> {
+  const rows = await prisma.ticket.findMany({
+    where: { AND: [{ id: { in: ticketIds } }, classifierWillStillAct(now)] },
+    select: { id: true },
+  });
+  return new Set(rows.map((row) => row.id));
 }
 
 pipelineRouter.get(
@@ -524,6 +534,13 @@ pipelineRouter.get(
       ],
     );
 
+    // After the rows rather than beside them: it asks about the listed ids
+    // alone, at the same `to` the count reads.
+    const awaiting = await classifierQueue(
+      recentRows.map((row) => row.id),
+      to,
+    );
+
     res.json({
       config,
       range,
@@ -531,7 +548,7 @@ pipelineRouter.get(
       to: to.toISOString(),
       counts,
       queues: { classify, autoReply },
-      recent: recentRows.map((row) => toRun(row, config, to.getTime())),
+      recent: recentRows.map((row) => toRun(row, config, awaiting.has(row.id))),
     });
   },
 );
@@ -551,12 +568,13 @@ pipelineRouter.get(
       return;
     }
 
-    const [config, row] = await Promise.all([
+    const [config, row, awaiting] = await Promise.all([
       readConfig(),
       prisma.ticket.findUnique({
         where: { id: parsed.data },
         select: RUN_SELECT,
       }),
+      classifierQueue([parsed.data], new Date()),
     ]);
 
     if (!row) {
@@ -564,7 +582,7 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: toRun(row, config, Date.now()) });
+    res.json({ run: toRun(row, config, awaiting.has(row.id)) });
   },
 );
 
