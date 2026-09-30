@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 /** The sparkles icon, breathing while the model works. */
 function sparkleClass(pending: boolean): string {
-  return cn("size-4 text-primary", pending && "animate-ai-glow");
+  return cn("size-4 text-link", pending && "animate-ai-glow");
 }
 
 const SUMMARY_FAILED = "Failed to summarise this ticket";
@@ -30,9 +30,10 @@ const SUMMARY_FAILED = "Failed to summarise this ticket";
  *
  * Same construction as `CATEGORY_BADGE`: an explicit hue per value at a matched
  * lightness, with `dark:` text so each stays legible on both themes. The ramp is
- * ordered here rather than arbitrary — green, grey, amber, red is the
+ * ordered here rather than arbitrary — verdigris, grey, amber, red is the
  * temperature this reads as, and it is the one thing on the panel an agent takes
- * in before reading a word.
+ * in before reading a word. Positive is the theme's own verdigris rather than a
+ * Tailwind green, because calm is what that hue means everywhere else.
  *
  * `neutral` deliberately gets no colour at all. Colouring it would put four
  * competing tints on a card whose job is to be scanned, and the state worth
@@ -40,7 +41,7 @@ const SUMMARY_FAILED = "Failed to summarise this ticket";
  */
 const SENTIMENT_BADGE: Record<SummarySentiment, string> = {
   [SUMMARY_SENTIMENT.positive]:
-    "border-transparent bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+    "border-transparent bg-status-good-soft text-status-good",
   [SUMMARY_SENTIMENT.neutral]: "border-transparent bg-muted text-foreground/70",
   // amber-700 measures 4.5:1 on the light tint — one step darker to clear AA,
   // exactly as the Refund category badge does.

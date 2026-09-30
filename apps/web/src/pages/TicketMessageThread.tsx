@@ -309,8 +309,7 @@ export function TicketMessageThread({
                 <Avatar>
                   <AvatarFallback
                     className={cn(
-                      outbound &&
-                        "bg-primary/10 text-primary dark:bg-primary/20",
+                      outbound && "bg-primary/10 text-link dark:bg-primary/20",
                     )}
                   >
                     {initialsOf(message.senderName)}
@@ -379,7 +378,7 @@ export function TicketMessageThread({
                     //
                     // A tint, not a removal: direction is still carried by the
                     // side, the avatar, the name and the sr-only label, and the
-                    // green keeps "ours" legible at a glance down a long thread.
+                    // blue keeps "ours" legible at a glance down a long thread.
                     // Text goes to `text-foreground` on both sides, so contrast
                     // no longer depends on the accent's own lightness.
                     outbound

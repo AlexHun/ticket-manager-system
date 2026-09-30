@@ -346,9 +346,11 @@ describe("TicketsPage", () => {
     // calm means settled, neutral means nobody can act. Open and Resolved are
     // therefore in different families rather than two steps of one green ramp,
     // which is what they used to be — and what made them hard to tell apart in
-    // the Status mix meter.
+    // the Status mix meter. Closed is settled too (#342), and recedes by
+    // losing the tint rather than the hue.
     expect(open.className).toContain("ember-2");
     expect(resolved.className).toContain("calm");
+    expect(closed.className).toContain("text-calm");
     expect(closed.className).toContain("bg-muted");
 
     // Whatever the styling, the three must not collapse into one look.

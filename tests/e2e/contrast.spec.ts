@@ -16,9 +16,10 @@ import { testDb } from "./helpers/db";
  *
  * Each screen tolerates exactly the violations listed by name in `TOLERATED`,
  * and the comparison is `toEqual`, so a new violation fails and so does a
- * fixed one left on the list: the palette slice empties it rather than it
- * quietly going stale. Axe also reports some nodes as *incomplete* — text it
- * cannot judge, which it does not count as a violation. Today that is the
+ * fixed one left on the list. The palette slice (#342) emptied it; a
+ * violation added here needs its reason written beside it. Axe also reports
+ * some nodes as *incomplete* — text it cannot judge, which it does not count
+ * as a violation. Today that is the
  * sidebar lockup (gradient-clipped text) and the dashboard chart's SVG tick
  * labels; they are not covered here and need eyes when their colours change.
  * Nor is the contrast of control boundaries (WCAG 1.4.11): the rule is text
@@ -41,14 +42,7 @@ const TOLERATED: Record<Screen, Tolerated[]> = {
   login: [],
   dashboard: [],
   tickets: [],
-  "ticket detail": [
-    // 2.28:1 — `text-primary` #006045 on the #161b1d card, needs 4.5:1.
-    // TicketDetailPage's customer email link.
-    {
-      name: "customer email link",
-      htmlIncludes: `href="mailto:${CUSTOMER_EMAIL}"`,
-    },
-  ],
+  "ticket detail": [],
 };
 
 let ticketId: number;
