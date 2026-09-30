@@ -5,9 +5,14 @@ import {
   type APIRequestContext,
 } from "@playwright/test";
 import {
+  AUTO_REPLY_DECLINE,
+  MESSAGE_DIRECTION,
   PIPELINE_OUTCOME,
+  PIPELINE_STAGE,
+  PIPELINE_STAGE_STATE,
   TICKET_CATEGORY,
   TICKET_STATUS,
+  type PipelineOutcome,
   type PipelineOverviewResponse,
   type PipelineRun,
 } from "@ticket/shared";
@@ -24,6 +29,10 @@ import { resetTickets, testDb } from "./helpers/db";
  * `knowledge-auto-reply-approval.spec.ts` for why that server exists), through
  * the real `GET /api/pipeline` and so through its real `getBoss()`, which no
  * unit test reaches. `request`-level only: the web app on :4001 talks to :3002.
+ *
+ * #361 adds the last test: the rail's counts and the per-ticket outcomes, read
+ * off one response, agree over a mix covering every outcome — the one place the
+ * real `GET /` is asked both halves at once.
  *
  * The corpus has to hold an auto-replyable article for the whole file. Without
  * one the old code read "nothing will run" from the settings, and the first
@@ -169,5 +178,148 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
     expect([PIPELINE_OUTCOME.resolved, PIPELINE_OUTCOME.declined]).toContain(
       (await runOf(ctx, ticketId)).outcome,
     );
+  });
+
+  test("the rail's counts and Recent arrivals agree, one response", async () => {
+    // R6 (#361). The rail counts the classifier's rule over the whole window
+    // and each listed ticket is asked the same rule for its outcome; this reads
+    // both off one `GET /api/pipeline`, over a mix covering every outcome and
+    // every way an unstamped ticket can go.
+    const now = Date.now();
+    const at = (msAgo: number) => new Date(now - msAgo);
+    const MINUTE = 60 * 1_000;
+    const HOUR = 60 * MINUTE;
+    const DAY = 24 * HOUR;
+    const classified = {
+      category: TICKET_CATEGORY.General,
+      classifiedAt: at(HOUR),
+      createdAt: at(HOUR),
+    };
+
+    const seeds = [
+      // resolved, by the knowledge base.
+      {
+        ...classified,
+        status: TICKET_STATUS.Resolved,
+        autoReplyOfferedAt: at(HOUR),
+        autoResolvedAt: at(HOUR),
+      },
+      // declined: a verdict.
+      {
+        ...classified,
+        status: TICKET_STATUS.Open,
+        autoReplyOfferedAt: at(HOUR),
+        autoReplyDecline: AUTO_REPLY_DECLINE.notCovered,
+        autoReplyDeclinedAt: at(HOUR),
+      },
+      // abandoned by the auto-reply: an outage is not a verdict.
+      {
+        ...classified,
+        status: TICKET_STATUS.Open,
+        autoReplyOfferedAt: at(HOUR),
+        autoReplyDecline: AUTO_REPLY_DECLINE.unavailable,
+        autoReplyDeclinedAt: at(HOUR),
+      },
+      // abandoned by the classifier: stamped, no category.
+      {
+        status: TICKET_STATUS.New,
+        classifiedAt: at(HOUR),
+        createdAt: at(HOUR),
+      },
+      // pending on the auto-reply: offered, still New.
+      {
+        ...classified,
+        status: TICKET_STATUS.New,
+        autoReplyOfferedAt: at(HOUR),
+      },
+      // notOffered by the auto-reply: classified, never offered.
+      { ...classified, status: TICKET_STATUS.New },
+      // pending on the classifier: unfiled, inside the window. Five minutes
+      // old, under the reconcile sweep's ten-minute floor, so this server's
+      // sweep cannot classify it between the seed and the read.
+      { status: TICKET_STATUS.New, createdAt: at(5 * MINUTE) },
+      // notOffered by the classifier: unfiled, past the window.
+      { status: TICKET_STATUS.New, createdAt: at(DAY + HOUR) },
+      // notOffered by the classifier: a category filed by hand.
+      {
+        status: TICKET_STATUS.New,
+        category: TICKET_CATEGORY.Technical,
+        createdAt: at(HOUR),
+      },
+    ];
+    const customer = {
+      customerEmail: "e2e-pipeline-offer@example.com",
+      customerName: "E2E Offer Customer",
+    };
+    for (const [i, data] of seeds.entries()) {
+      await testDb.ticket.create({
+        data: { subject: `Pipeline mix ${i}`, ...customer, ...data },
+      });
+    }
+
+    // Reopened: machine-resolved, then the customer wrote back, which clears
+    // `autoResolvedAt` (`ingest.ts`). Answered and offered, so `notOffered`.
+    const reopened = await testDb.ticket.create({
+      data: {
+        subject: "Pipeline mix reopened",
+        ...customer,
+        ...classified,
+        status: TICKET_STATUS.Open,
+        autoReplyOfferedAt: at(HOUR),
+      },
+    });
+    await testDb.message.create({
+      data: {
+        ticketId: reopened.id,
+        messageId: `e2e-pipeline-reopened.${now}@tickets.example.com`,
+        senderEmail: "support@tickets.example.com",
+        senderName: "Support",
+        textBody: "Hold the button for ten seconds.",
+        direction: MESSAGE_DIRECTION.outbound,
+        automated: true,
+        createdAt: at(HOUR),
+      },
+    });
+
+    const res = await ctx.get(`${AI_API_URL}/api/pipeline`);
+    expect(res.status()).toBe(200);
+    const { counts, recent } = (await res.json()) as PipelineOverviewResponse;
+
+    // Every row is listed, so the counts describe exactly these runs.
+    expect(recent).toHaveLength(seeds.length + 1);
+    expect(counts.received).toBe(recent.length);
+    // And the mix is not vacuous: every outcome is on screen.
+    expect(new Set(recent.map((r) => r.outcome))).toEqual(
+      new Set(Object.values(PIPELINE_OUTCOME)),
+    );
+
+    const classifiedStop = (run: PipelineRun) =>
+      run.stages.find((s) => s.stage === PIPELINE_STAGE.classified)!;
+    const unstamped = recent.filter((r) => classifiedStop(r).at === null);
+    const stamped = recent.filter((r) => classifiedStop(r).at !== null);
+    const classifyExit = (r: PipelineRun) =>
+      classifiedStop(r).state === PIPELINE_STAGE_STATE.exited;
+    const count = (runs: PipelineRun[], outcome: PipelineOutcome) =>
+      runs.filter((r) => r.outcome === outcome).length;
+
+    expect({
+      machineClassified: counts.machineClassified,
+      classifyAbandoned: counts.classifyAbandoned,
+      classifyPending: counts.classifyPending,
+      classifyNotOffered: counts.classifyNotOffered,
+      autoResolved: counts.autoResolved,
+      declines: Object.values(counts.declines).reduce((a, b) => a + b, 0),
+    }).toEqual({
+      machineClassified: stamped.filter((r) => !classifyExit(r)).length,
+      classifyAbandoned: stamped.filter(classifyExit).length,
+      classifyPending: count(unstamped, PIPELINE_OUTCOME.pending),
+      classifyNotOffered: count(unstamped, PIPELINE_OUTCOME.notOffered),
+      autoResolved: count(recent, PIPELINE_OUTCOME.resolved),
+      declines: recent.filter((r) => r.decline !== null).length,
+    });
+    // Literals beside the agreement, so both sides drifting together is still
+    // caught: one inside the window, two it will never act on.
+    expect(counts.classifyPending).toBe(1);
+    expect(counts.classifyNotOffered).toBe(2);
   });
 });
