@@ -11,7 +11,9 @@ is **evidence**-backed — it traces to a commit, PR, issue, doc or test in this
 repo, and every number is recounted from that source before it ships.
 
 Files live in `docs/linkedin/`, which is gitignored: the repo is public, and
-drafts and the CV stay on the author's machine.
+drafts and the CV stay out of it. The folder is its own private git
+repository; after writing to it, commit and push there
+(`git -C docs/linkedin add -A && git -C docs/linkedin commit -m "…" && git -C docs/linkedin push`).
 
 - `profile.md` — the author's career facts, transcribed from the CV. Personal
   claims (dates, team size, past results) are checked against it, as project
