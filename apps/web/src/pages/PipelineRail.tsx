@@ -356,6 +356,16 @@ function AggregateRail({
             muted
           />
         )}
+        {/* Nothing is coming for these with or without a key, so the wording
+            does not branch on one (#355). */}
+        {counts.classifyNotOffered > 0 && (
+          <Exit
+            label="Not offered — filed by hand, or too old to reconcile"
+            count={counts.classifyNotOffered}
+            tone="text-muted-foreground"
+            muted
+          />
+        )}
       </Stop>
 
       <Stop

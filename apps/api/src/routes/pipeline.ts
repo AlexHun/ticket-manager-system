@@ -40,7 +40,11 @@ import {
 } from "../ingest";
 import { AUTO_REPLY_QUEUE } from "../jobs/auto-reply-ticket";
 import { getBoss } from "../jobs/boss";
-import { CLASSIFY_QUEUE } from "../jobs/classify-ticket";
+import {
+  CLASSIFY_QUEUE,
+  classifierWillStillAct,
+  RECONCILE_MAX_AGE_MS,
+} from "../jobs/classify-ticket";
 import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
@@ -190,10 +194,11 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 /**
  * Rebuild one ticket's trip down the rail.
  *
- * Every branch here is a fact a column records. What it deliberately does *not*
- * do is guess: a ticket with no classification verdict and a deployment with no
- * API key is `notOffered`, not "still thinking", because nothing is scheduled to
- * think about it.
+ * Every branch here is a fact a column records, read at `now`, the one instant
+ * the caller pins. What it deliberately does *not* do is guess: a ticket with
+ * no classification verdict that nothing will classify — no API key, a category
+ * a person filed first, or older than the reconcile window — is `notOffered`,
+ * not "still thinking", because nothing is scheduled to think about it.
  *
  * The one thing this cannot see is a reopen. A customer replying to a
  * machine-resolved ticket clears `autoResolvedAt` (see `ingest.ts`), so such a
@@ -208,7 +213,11 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
  * found by reading rather than by a failure. `pipeline.test.ts` pins every
  * decline reason against `DECLINE_OUTCOME` as values.
  */
-export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
+export function toRun(
+  row: RunRow,
+  config: PipelineConfig,
+  now: number,
+): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = row.classifiedAt !== null && row.category !== null;
   // The classifier's own terminal path: it stamped a time and never filed a
@@ -224,7 +233,13 @@ export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
   // auto-reply on their own. A ticket waiting on a stage nothing will ever run
   // is `notOffered`, never `pending`: "still thinking" about work that is not
   // scheduled is the one lie this page must not tell.
-  const classifierWillRun = config.aiConfigured;
+  //
+  // The classifier's half also asks the ticket, through the job's own rule:
+  // a category a person already filed, or a ticket past the reconcile window,
+  // is one nothing will classify. Asking only the key drew every such ticket as
+  // pending forever, the showcase seed's whole desk among them (#353).
+  const classifierWillRun =
+    config.aiConfigured && classifierWillStillAct(row, now);
   const autoReplyWillRun =
     config.aiConfigured &&
     config.autoReplyEnabled &&
@@ -376,6 +391,90 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
   };
 }
 
+/**
+ * The overview's raw facts for tickets created in `[from, to)`.
+ *
+ * **Exported for its test**, for the reason `toRun` is: `GET /` also reads queue
+ * depth through `getBoss()`, which `pipeline.test.ts` cannot reach (see its
+ * header), and the split below is a claim about rows that only a real database
+ * can check.
+ *
+ * `classifyPending` restates `classifierWillStillAct` in `jobs/classify-ticket.ts`
+ * as a query: no `category` filed, and created no earlier than
+ * `RECONCILE_MAX_AGE_MS` before `to` — `gte`, the same inclusive boundary as
+ * that function's `<=` and the sweep's own `gte`. Change one and change the
+ * other, or the rail and the Recent arrivals list beside it disagree about the
+ * same tickets (#355); `pipeline.test.ts` asks both of the same rows. The
+ * count does not read the key — with none, the rail labels this exit as the
+ * missing key rather than as queued. Every other unstamped ticket is `classifyNotOffered`,
+ * taken as the remainder so the four classify counts always add up to
+ * `received`.
+ */
+export async function pipelineCounts(
+  from: Date,
+  to: Date,
+): Promise<PipelineCounts> {
+  const window = { createdAt: { gte: from, lt: to } };
+  const reconcileFrom = new Date(to.getTime() - RECONCILE_MAX_AGE_MS);
+
+  const [
+    received,
+    machineClassified,
+    classifyAbandoned,
+    classifyPending,
+    autoResolved,
+    declineGroups,
+  ] = await Promise.all([
+    prisma.ticket.count({ where: window }),
+    prisma.ticket.count({
+      where: {
+        ...window,
+        classifiedAt: { not: null },
+        category: { not: null },
+      },
+    }),
+    prisma.ticket.count({
+      where: { ...window, classifiedAt: { not: null }, category: null },
+    }),
+    prisma.ticket.count({
+      where: {
+        AND: [window, { createdAt: { gte: reconcileFrom } }],
+        classifiedAt: null,
+        category: null,
+      },
+    }),
+    prisma.ticket.count({
+      where: { ...window, autoResolvedAt: { not: null } },
+    }),
+    prisma.ticket.groupBy({
+      by: ["autoReplyDecline"],
+      where: { ...window, autoReplyDecline: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  // Every reason, including the zeroes. A zero here is information — it is the
+  // difference between "that check has never fired" and "we do not measure it".
+  const declines = Object.fromEntries(
+    AUTO_REPLY_DECLINES.map((d) => [d, 0]),
+  ) as Record<AutoReplyDecline, number>;
+  for (const group of declineGroups) {
+    const reason = asAutoReplyDecline(group.autoReplyDecline);
+    if (reason) declines[reason] += group._count._all;
+  }
+
+  return {
+    received,
+    machineClassified,
+    classifyAbandoned,
+    classifyPending,
+    classifyNotOffered:
+      received - machineClassified - classifyAbandoned - classifyPending,
+    autoResolved,
+    declines,
+  };
+}
+
 pipelineRouter.get(
   "/",
   requireAdminView,
@@ -395,67 +494,21 @@ pipelineRouter.get(
     // Pinned once, so every number in the response describes the same window.
     const to = new Date();
     const from = new Date(to.getTime() - days * DAY_MS);
-    const window = { createdAt: { gte: from, lt: to } };
 
-    const [
-      config,
-      received,
-      machineClassified,
-      classifyAbandoned,
-      autoResolved,
-      declineGroups,
-      recentRows,
-      classify,
-      autoReply,
-    ] = await Promise.all([
-      readConfig(),
-      prisma.ticket.count({ where: window }),
-      prisma.ticket.count({
-        where: {
-          ...window,
-          classifiedAt: { not: null },
-          category: { not: null },
-        },
-      }),
-      prisma.ticket.count({
-        where: { ...window, classifiedAt: { not: null }, category: null },
-      }),
-      prisma.ticket.count({
-        where: { ...window, autoResolvedAt: { not: null } },
-      }),
-      prisma.ticket.groupBy({
-        by: ["autoReplyDecline"],
-        where: { ...window, autoReplyDecline: { not: null } },
-        _count: { _all: true },
-      }),
-      prisma.ticket.findMany({
-        where: window,
-        select: RUN_SELECT,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: PIPELINE_RECENT_LIMIT,
-      }),
-      queueDepth(CLASSIFY_QUEUE),
-      queueDepth(AUTO_REPLY_QUEUE),
-    ]);
-
-    // Every reason, including the zeroes. A zero here is information — it is the
-    // difference between "that check has never fired" and "we do not measure it".
-    const declines = Object.fromEntries(
-      AUTO_REPLY_DECLINES.map((d) => [d, 0]),
-    ) as Record<AutoReplyDecline, number>;
-    for (const group of declineGroups) {
-      const reason = asAutoReplyDecline(group.autoReplyDecline);
-      if (reason) declines[reason] += group._count._all;
-    }
-
-    const counts: PipelineCounts = {
-      received,
-      machineClassified,
-      classifyAbandoned,
-      classifyPending: received - machineClassified - classifyAbandoned,
-      autoResolved,
-      declines,
-    };
+    const [config, counts, recentRows, classify, autoReply] = await Promise.all(
+      [
+        readConfig(),
+        pipelineCounts(from, to),
+        prisma.ticket.findMany({
+          where: { createdAt: { gte: from, lt: to } },
+          select: RUN_SELECT,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: PIPELINE_RECENT_LIMIT,
+        }),
+        queueDepth(CLASSIFY_QUEUE),
+        queueDepth(AUTO_REPLY_QUEUE),
+      ],
+    );
 
     res.json({
       config,
@@ -464,7 +517,7 @@ pipelineRouter.get(
       to: to.toISOString(),
       counts,
       queues: { classify, autoReply },
-      recent: recentRows.map((row) => toRun(row, config)),
+      recent: recentRows.map((row) => toRun(row, config, to.getTime())),
     });
   },
 );
@@ -497,7 +550,7 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: toRun(row, config) });
+    res.json({ run: toRun(row, config, Date.now()) });
   },
 );
 

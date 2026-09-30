@@ -80,9 +80,36 @@ const RECONCILE_CRON = "*/15 * * * *";
  * considering it would only produce a duplicate job. Duplicates are *harmless*
  * here — the handler is idempotent, which is the property that makes all of this
  * safe — but harmless is not free, and each one is a model call.
+ *
+ * The ceiling is exported for `classifierWillStillAct` below, for its test, and
+ * for `pipelineCounts` in `routes/pipeline.ts`, which restates it as a query.
  */
-const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+export const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
+
+/**
+ * Whether this queue will still act on an unstamped ticket, given a key.
+ *
+ * The two questions `handle` and `reconcile` ask, in one place so `/pipeline`
+ * cannot drift from them: `handle` skips a ticket a person already filed, and
+ * the sweep stops re-offering one past `RECONCILE_MAX_AGE_MS` — its `gte`, so
+ * the boundary itself is still inside. Every exit of a job that ran stamps
+ * `classifiedAt`, so past the window nothing is coming, bar a job the sweep
+ * sent just inside it landing minutes later.
+ *
+ * `pipelineCounts` in `routes/pipeline.ts` asks the same question of a whole
+ * window as a query, for the rail's `classifyPending` (#355). Change one and
+ * change the other.
+ */
+export function classifierWillStillAct(
+  ticket: { category: string | null; createdAt: Date },
+  now: number,
+): boolean {
+  return (
+    ticket.category === null &&
+    now - ticket.createdAt.getTime() <= RECONCILE_MAX_AGE_MS
+  );
+}
 
 /** How many stragglers one sweep may pick up. Bounded so a bad day cannot become a bill. */
 const RECONCILE_BATCH = 50;
