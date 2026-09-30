@@ -23,7 +23,9 @@ import {
 import { prisma, resetDb } from "../test/pg";
 
 /**
- * All four scheduled sweeps, called directly — no pg-boss anywhere.
+ * All four scheduled sweeps, called directly — no pg-boss anywhere. Also
+ * `enqueueAutoReply`, which the recovery sweep calls: it needs the same two
+ * seams, and a second file stubbing either is the registry hazard below.
  *
  * That is the property under test as much as the outcomes are (#158). Each one
  * is now a `SweepSpec`, which is a value, so `run` is a plain function over the
@@ -92,11 +94,24 @@ mock.module("../ai/provider", () => ({
 let enqueued: { queue: string; ticketId: number }[] = [];
 
 /**
+ * Whether each send, in the same order, named a `db` to enqueue through: the
+ * caller's transaction, when it passed `fromPrisma(tx)`.
+ */
+let sentThroughDb: boolean[] = [];
+
+/**
  * The queue a test is watching, or `undefined` for "behave like the real
  * module". Set by `watchQueue()` and cleared in `beforeEach`.
  */
 let watchedQueue:
-  { send: (queue: string, data: unknown) => Promise<string> } | undefined;
+  | {
+      send: (
+        queue: string,
+        data: unknown,
+        options?: { db?: unknown },
+      ) => Promise<string>;
+    }
+  | undefined;
 
 const bossModule = { ...(await import("./boss")) };
 mock.module("./boss", () => ({
@@ -115,11 +130,12 @@ mock.module("./boss", () => ({
  */
 function watchQueue({ failing = false } = {}): void {
   watchedQueue = {
-    send: async (queue: string, data: unknown) => {
+    send: async (queue, data, options) => {
       enqueued.push({
         queue,
         ticketId: (data as { ticketId: number }).ticketId,
       });
+      sentThroughDb.push(options?.db !== undefined);
       if (failing) throw new Error("queue insert failed");
       return "fake-job-id";
     },
@@ -225,6 +241,7 @@ const autoReplySwitch = process.env.AUTO_REPLY_ENABLED;
 beforeEach(async () => {
   await resetDb();
   enqueued = [];
+  sentThroughDb = [];
   aiConfigured = undefined;
   watchedQueue = undefined;
   process.env.AUTO_REPLY_ENABLED = "true";
@@ -379,10 +396,6 @@ describe("AUTO_REPLY_RECOVER_SWEEP", () => {
 /* ── The auto-reply's offer ──────────────────────────────────────────────── */
 
 describe("enqueueAutoReply", () => {
-  // Not a sweep, but it lives here because this file owns the `./boss` and
-  // `../ai/provider` seams it needs. A second file stubbing either is the
-  // registry hazard in the header. The recovery sweep above calls it.
-
   test("records the offer on the ticket when it sends the job", async () => {
     aiConfigured = true;
     await autoReplyArticle();
@@ -392,6 +405,8 @@ describe("enqueueAutoReply", () => {
     await enqueueAutoReply(id);
 
     expect(enqueued).toEqual([{ queue: AUTO_REPLY_QUEUE, ticketId: id }]);
+    // Through the transaction that wrote the stamp, so the two commit together.
+    expect(sentThroughDb).toEqual([true]);
     expect(await offeredAt(id)).toBeInstanceOf(Date);
   });
 

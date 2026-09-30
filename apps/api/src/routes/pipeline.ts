@@ -248,9 +248,10 @@ export function toRun(
   // time are mislabelled that way, and they settle within seconds.
   const autoReplyOffered = row.autoReplyOfferedAt !== null;
 
-  // Already answered by somebody, and not currently claimed. The auto-reply is
-  // enqueued exactly once, from the classify handler, so nothing is coming back
-  // for this ticket however healthy the switches are.
+  // Already answered by somebody, and not currently claimed. The classify
+  // handler offers a ticket once, and the recovery sweep re-offers only one
+  // stuck in `Processing`, so nothing is coming back for this ticket even if
+  // it was offered.
   //
   // This is the shape a *reopened* ticket takes, and it is why the case needs
   // handling rather than falling through to `pending`. A customer replying to a
