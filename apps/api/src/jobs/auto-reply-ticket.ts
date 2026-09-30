@@ -1,4 +1,4 @@
-import type { PgBoss } from "pg-boss";
+import { fromPrisma, type PgBoss } from "pg-boss";
 import {
   AUTO_REPLY_DECLINE,
   MESSAGE_DIRECTION,
@@ -128,16 +128,36 @@ async function autoReplyEnabled(): Promise<boolean> {
 }
 
 /**
- * Offer a ticket to the auto-reply.
+ * Offer a ticket to the auto-reply, and record on the ticket that it was.
  *
- * No `db` parameter, unlike `enqueueClassification`: this is only ever called
- * from inside the classify handler, which is not in a transaction and has
- * nothing to tie the enqueue to. If a future caller needs the transactional
- * form, take the same `Db` the classifier does.
+ * The record is `autoReplyOfferedAt`, written in the same transaction as the
+ * job through `fromPrisma(tx)`, so the two commit together or not at all. A
+ * record with no job would read `pending` on `/pipeline` forever; a job with no
+ * record would read `notOffered` while a verdict was on its way. When the
+ * feature is off, nothing is sent and nothing is recorded. That absence is the
+ * record of the decision not to offer, and it is what `toRun` reads (#360).
+ *
+ * A re-offer from `recoverStuck` keeps the first stamp. It is the same decision
+ * sent again, not a new one, and the conditional `updateMany` also makes a
+ * ticket deleted in the meantime cost nothing rather than throw.
+ *
+ * No `db` parameter, unlike `enqueueClassification`: both callers, the classify
+ * handler and the recovery sweep, are outside any transaction, so this opens
+ * its own.
  */
 export async function enqueueAutoReply(ticketId: number): Promise<void> {
   if (!(await autoReplyEnabled())) return;
-  await getBoss().send(AUTO_REPLY_QUEUE, { ticketId } satisfies AutoReplyJob);
+  await prisma.$transaction(async (tx) => {
+    await tx.ticket.updateMany({
+      where: { id: ticketId, autoReplyOfferedAt: null },
+      data: { autoReplyOfferedAt: new Date() },
+    });
+    await getBoss().send(
+      AUTO_REPLY_QUEUE,
+      { ticketId } satisfies AutoReplyJob,
+      { db: fromPrisma(tx) },
+    );
+  });
 }
 
 /**
