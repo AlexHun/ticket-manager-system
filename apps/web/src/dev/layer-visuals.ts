@@ -2,15 +2,18 @@
  * How the map paints and names each layer.
  *
  * The palette is local to this module rather than added to `index.css` on
- * purpose. `index.css` documents a single dark theme with one hue family, and
- * these are eight categorical hues that exist only on a dev page — putting them
- * in the app's token set would imply the product may use them, which it may not.
+ * purpose. `index.css` documents a single dark theme whose hue families each
+ * mean one thing, and these are eight categorical hues that exist only on a dev
+ * page — putting them in the app's token set would imply the product may use
+ * them, which it may not.
  *
  * The eight hexes are the reference categorical palette's dark steps, in their
- * documented slot order, and they were re-validated against *this* surface
- * (`--card`, `#161b1d`) rather than assumed: lightness band, chroma floor,
+ * documented slot order, and they were re-validated against the card as it then
+ * was (`#161b1d`) rather than assumed: lightness band, chroma floor,
  * adjacent-pair CVD separation (worst 8.4 ΔE protan), normal-vision separation
- * (worst 19.3) and ≥3:1 contrast all pass. A CVD figure in the 6–8 band is only
+ * (worst 19.3) and ≥3:1 contrast all passed. Cold iron's card (`#16191c`,
+ * #342) is slightly darker, so contrast against it can only have risen; the
+ * separations are between the hexes and do not depend on it. A CVD figure in the 6–8 band is only
  * legal alongside secondary encoding, and there is some everywhere: every node in
  * the graph carries its filename, every row carries the layer's name in text, and
  * the legend spells all of them out. Colour is the fast channel here, never the

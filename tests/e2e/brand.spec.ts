@@ -315,63 +315,83 @@ test.describe("Cold iron", () => {
     await signIn(page, "agent");
     await page.goto(ROUTE.tickets.path);
 
-    // Computed through a real element, so a token that now resolves somewhere
-    // else — a `var()` left pointing at a moved one — shows up here.
-    const ramp = await page.evaluate(() =>
-      [1, 2, 3].map((step) => {
-        const probe = document.createElement("i");
-        probe.style.color = `var(--ember-${step})`;
-        document.body.append(probe);
-        const colour = getComputedStyle(probe).color;
-        probe.remove();
-        return colour;
-      }),
-    );
+    const ramp: string[] = [];
+    for (const step of [1, 2, 3]) {
+      ramp.push(await resolveToken(page, `--ember-${step}`));
+    }
     expect(ramp).toEqual(EMBER_RAMP_BEFORE);
   });
 
-  test("nothing clickable, counted or stated is bronze", async ({ page }) => {
-    await signIn(page, "agent");
-    await page.goto(ROUTE.tickets.path);
-    await expect(
-      page.getByRole("link", { name: new RegExp(UNREAD_SUBJECT) }).first(),
-    ).toBeVisible();
+  // Compared for equality with the token rather than by a hue window: bronze
+  // sits at 65°, between ember-1 and ember-2, so any window wide enough to be
+  // useful would also catch the ember badges that are meant to be there.
+  for (const screen of ["tickets", "dashboard"] as const) {
+    test(`nothing clickable, counted or stated on ${screen} is bronze`, async ({
+      page,
+    }) => {
+      await signIn(page, "agent");
+      await page.goto(ROUTE[screen].path);
+      if (screen === "tickets") {
+        await expect(
+          page.getByRole("link", { name: new RegExp(UNREAD_SUBJECT) }).first(),
+        ).toBeVisible();
+      } else {
+        // As `contrast.spec.ts` waits: heading first, then the panels' data.
+        await expect(
+          page.getByRole("heading", { name: "Dashboard" }),
+        ).toBeVisible();
+        await page.waitForLoadState("networkidle");
+      }
+      await expectNoBronzeControls(page);
+    });
+  }
+});
 
-    const offenders = await page.evaluate(() => {
-      const probe = document.createElement("i");
-      probe.style.color = "var(--bronze)";
-      document.body.append(probe);
-      const bronze = getComputedStyle(probe).color;
-      probe.remove();
+/**
+ * A token's computed colour, read through a real element so that a token
+ * resolving somewhere unexpected — a `var()` left pointing at a moved one —
+ * shows up as its actual value.
+ */
+async function resolveToken(page: Page, token: string): Promise<string> {
+  return page.evaluate((name) => {
+    const probe = document.createElement("i");
+    probe.style.color = `var(${name})`;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, token);
+}
 
-      const controls = document.querySelectorAll(
-        'a, button, [role="button"], [role="combobox"], [data-slot="badge"], [data-sidebar="menu-badge"]',
-      );
-      const found: string[] = [];
-      for (const control of controls) {
-        for (const el of [control, ...control.querySelectorAll("*")]) {
-          const style = getComputedStyle(el);
-          for (const value of [
-            style.color,
-            style.backgroundColor,
-            style.borderTopColor,
-            style.outlineColor,
-            style.fill,
-            style.stroke,
-          ]) {
-            if (value === bronze) found.push(control.outerHTML.slice(0, 120));
-          }
+async function expectNoBronzeControls(page: Page): Promise<void> {
+  const bronze = await resolveToken(page, "--bronze");
+  // An undefined `--bronze` falls back to the inherited colour, and then every
+  // comparison below would be against the body text instead.
+  expect(bronze).not.toBe(
+    await page.evaluate(() => getComputedStyle(document.body).color),
+  );
+
+  const found = await page.evaluate((bronze) => {
+    const controls = document.querySelectorAll(
+      'a, button, [role="button"], [role="combobox"], [data-slot="badge"], [data-sidebar="menu-badge"]',
+    );
+    const found: string[] = [];
+    for (const control of controls) {
+      for (const el of [control, ...control.querySelectorAll("*")]) {
+        const style = getComputedStyle(el);
+        for (const value of [
+          style.color,
+          style.backgroundColor,
+          style.borderTopColor,
+          style.outlineColor,
+          style.fill,
+          style.stroke,
+        ]) {
+          if (value === bronze) found.push(control.outerHTML.slice(0, 120));
         }
       }
-      return {
-        bronze,
-        inherited: getComputedStyle(document.body).color,
-        found,
-      };
-    });
-    // An undefined `--bronze` falls back to the inherited colour, and then
-    // every comparison above is against the body text instead.
-    expect(offenders.bronze).not.toBe(offenders.inherited);
-    expect(offenders.found).toEqual([]);
-  });
-});
+    }
+    return found;
+  }, bronze);
+  expect(found).toEqual([]);
+}

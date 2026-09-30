@@ -191,8 +191,8 @@
        "this is the thing you can act on" in the same hue as the button. */
   --ring: oklch(0.64 0.12 250);
   /* Temper blue as text: links, the customer's address, the summary icon.
-       7.76:1 on the card and 7.23:1 on a `primary/10` wash. The same step as
-       `--chart-2` and `--sidebar-primary`. */
+       7.76:1 on the card and 6.58:1 on the outbound avatar's `primary/20`
+       wash. The same step as `--chart-2` and `--sidebar-primary`. */
   --link: oklch(0.74 0.12 245);
 
   /* Temper blue as the ordinal ramp, so a chart's primary series is the
@@ -280,8 +280,9 @@
      * 5.52, Closed 3.35 — so the queue's emphasis order is intact: unfinished
      * work is always louder than finished work. A calm that put Resolved above
      * Open would make the settled half of the queue the first thing the eye
-     * caught. It also clears 4.5:1 as badge text on its own `/12` wash (4.78),
-     * which is the tighter of its two jobs; 0.62 fell to 4.45 there.
+     * caught. It also clears 4.5:1 as badge text on its own `/12` wash (4.70)
+     * and on `--muted` (4.69, the Closed badge); 0.62 fell to 4.39 on the
+     * wash.
      */
   --calm: oklch(0.64 0.095 178);
   --ember-1: oklch(0.85 0.14 85);
@@ -311,9 +312,9 @@
   --ai-shine-core: oklch(0.99 0.03 240);
 
   /* Chart furniture — quieter than every mark drawn on top of it. */
-  --viz-grid: oklch(1 0 0 / 5%); /* 1.82:1 — what border/50 resolved to */
-  --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
-  --viz-tooltip-edge: oklch(1 0 0 / 5%); /* = border/50, unchanged */
+  --viz-grid: oklch(1 0 0 / 5%); /* 1.14:1 on the card; --border is 1.29 */
+  --viz-cursor: var(--muted);
+  --viz-tooltip-edge: oklch(1 0 0 / 5%); /* the grid's step, not --border's */
 
   /*
      * Status. A small reserved scale for state — never a series colour, and
@@ -322,14 +323,16 @@
      * These are *text* steps, held to 4.5:1 on the card (#16191c) rather than
      * the 3:1 a filled mark would need: good 9.89, warning 10.61, critical
      * 6.13, re-measured on Cold iron's card (#342). Re-measure rather than
-     * eyeball if they or the card change. The canonical status hexes are deliberately
-     * not used — #fab219 and #ec835a were picked against a light surface.
+     * eyeball if they or the card change. The canonical status hexes are
+     * deliberately not used — #fab219 and #ec835a were picked against a light
+     * surface.
      *
      * These now sit in the same two families as everything else, which is what
      * the calm/ember split bought: good is verdigris like calm, warning and
-     * critical are ember hues (85° and 22°, against the ramp's 85 / 45 / 25). They are separate
-     * tokens rather than aliases because they are *text* at 4.5:1 while the ramp
-     * is ~3:1 marks — the same hue at two different jobs, not two palettes.
+     * critical are ember hues (85° and 22°, against the ramp's 85 / 45 / 25).
+     * They are separate tokens rather than aliases because they are *text* at
+     * 4.5:1 while the ramp is ~3:1 marks — the same hue at two different jobs,
+     * not two palettes.
      *
      * The old note here said hue could not carry meaning because everything was
      * green, and that every use therefore had to ship an icon and a word. Hue
@@ -367,8 +370,8 @@
      * `--bronze` is the rule beside THE GREAT and DESK (`brand-rule`). It is
      * decoration only — a hue of 65° sits between ember-1 and ember-2, so a
      * bronze count or badge would read as a ticket somebody is waiting on.
-     * `brand.spec.ts` checks that nothing clickable on the tickets page is
-     * drawn in it.
+     * `brand.spec.ts` checks that nothing clickable, counted or stated on the
+     * tickets page or the dashboard is drawn in it.
      *
      * The hallmark's three (`LogoMark`) are the favicon's literals, which that
      * file cannot read from here: `public/favicon.svg` keeps its own copies,

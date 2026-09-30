@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 
 /**
  * Status is a progression, so it reads as emphasis: New and Open are solid and
- * loud, Resolved is a soft accent tint, Closed recedes to neutral. Scanning a
+ * loud, Resolved is a soft accent tint, Closed recedes to a neutral fill. Scanning a
  * page of tickets, the ones still needing work are the ones that stand out.
  *
  * New is the *only* one that takes a hue of its own rather than a tint, because
@@ -43,16 +43,16 @@ const STATUS_BADGE: Record<
     variant: "outline",
     className: "border-transparent bg-muted text-foreground/70",
   },
-  // Calm: settled. Resolved keeps presence, Closed recedes.
+  // Calm: settled, both of them. Resolved keeps presence with its own tint;
+  // Closed recedes onto the neutral fill but keeps the verdigris word, since
+  // it is settled rather than nobody's (4.69:1 on --muted).
   [TICKET_STATUS.Resolved]: {
     variant: "outline",
     className: "border-transparent bg-calm/12 text-calm",
   },
   [TICKET_STATUS.Closed]: {
     variant: "outline",
-    // foreground/70 rather than muted-foreground: the theme's own
-    // muted-foreground-on-muted pairing measures 4.1:1, under AA for text-xs.
-    className: "border-transparent bg-muted text-foreground/70",
+    className: "border-transparent bg-muted text-calm",
   },
 };
 

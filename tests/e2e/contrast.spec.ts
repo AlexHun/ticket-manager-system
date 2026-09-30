@@ -17,8 +17,9 @@ import { testDb } from "./helpers/db";
  * Each screen tolerates exactly the violations listed by name in `TOLERATED`,
  * and the comparison is `toEqual`, so a new violation fails and so does a
  * fixed one left on the list. The palette slice (#342) emptied it; a
- * violation added here needs its reason written beside it. Axe also reports some nodes as *incomplete* — text it
- * cannot judge, which it does not count as a violation. Today that is the
+ * violation added here needs its reason written beside it. Axe also reports
+ * some nodes as *incomplete* — text it cannot judge, which it does not count
+ * as a violation. Today that is the
  * sidebar lockup (gradient-clipped text) and the dashboard chart's SVG tick
  * labels; they are not covered here and need eyes when their colours change.
  * Nor is the contrast of control boundaries (WCAG 1.4.11): the rule is text
