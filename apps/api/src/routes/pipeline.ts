@@ -423,9 +423,9 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * none, nothing is coming for those tickets either, so they are not offered and
  * the key is named as the cause (#362). That is the `aiConfigured &&` that
  * `toRun` applies per ticket, and the key arrives as a parameter here for the
- * reason `toRun` takes its config as one. Every other
- * unstamped ticket is `filedOrStale`, taken as the remainder so the classify
- * counts always add up to `received`.
+ * reason `toRun` takes its config as one. Every other unstamped ticket is
+ * `filedOrStale`, taken as the remainder so the classify counts always add up
+ * to `received`.
  */
 export async function pipelineCounts(
   from: Date,
@@ -438,7 +438,7 @@ export async function pipelineCounts(
     received,
     machineClassified,
     classifyAbandoned,
-    classifierWouldAct,
+    classifierRuleMatches,
     autoResolved,
     declineGroups,
   ] = await Promise.all([
@@ -476,7 +476,7 @@ export async function pipelineCounts(
     if (reason) declines[reason] += group._count._all;
   }
 
-  const classifyPending = aiConfigured ? classifierWouldAct : 0;
+  const classifyPending = aiConfigured ? classifierRuleMatches : 0;
 
   return {
     received,
@@ -484,9 +484,12 @@ export async function pipelineCounts(
     classifyAbandoned,
     classifyPending,
     classifyNotOffered: {
-      [CLASSIFY_NOT_OFFERED.noKey]: classifierWouldAct - classifyPending,
+      [CLASSIFY_NOT_OFFERED.noKey]: classifierRuleMatches - classifyPending,
       [CLASSIFY_NOT_OFFERED.filedOrStale]:
-        received - machineClassified - classifyAbandoned - classifierWouldAct,
+        received -
+        machineClassified -
+        classifyAbandoned -
+        classifierRuleMatches,
     },
     autoResolved,
     declines,

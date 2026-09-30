@@ -50,6 +50,8 @@ import { resetTickets, testDb } from "./helpers/db";
  */
 
 const AI_API_URL = "http://localhost:3003";
+/** The web app's own API: no key, auto-reply off (`playwright.config.ts`). */
+const API_URL = "http://localhost:3002";
 const ADMIN = CREDENTIALS.admin;
 
 /** Pinned an hour back, per the time-sliced-rows rule in `testing-api.md`. */
@@ -377,7 +379,18 @@ test.describe("Pipeline: the API decides the no-key classify exit", () => {
     const exit = page
       .getByRole("listitem")
       .filter({ hasText: noKey, hasNot: page.getByRole("listitem") });
-    await expect(exit).toHaveText(new RegExp(`${noKey}\\s*1$`));
+    // Escaped, so a label that ever carries a metacharacter still matches.
+    const literal = noKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    await expect(exit).toHaveText(new RegExp(`${literal}\\s*1$`));
     await expect(page.getByText(CLASSIFY_PENDING_LABEL)).toHaveCount(0);
+
+    // The rendered words were the same before #362, when the browser relabelled
+    // a still-coming count. The count itself is what changed, so it is read
+    // off the same server, with the page's own session.
+    const res = await page.request.get(`${API_URL}/api/pipeline`);
+    expect(res.status()).toBe(200);
+    const { counts } = (await res.json()) as PipelineOverviewResponse;
+    expect(counts.classifyPending).toBe(0);
+    expect(counts.classifyNotOffered[CLASSIFY_NOT_OFFERED.noKey]).toBe(1);
   });
 });

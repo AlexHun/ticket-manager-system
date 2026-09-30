@@ -101,9 +101,9 @@ const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
  * with its floor. `routes/pipeline.ts` counts it for the rail's
  * `classifyPending` (or, with no key, its `noKey` not-offered exit) and asks it
  * of the listed tickets for their outcome, so the rail and Recent arrivals are
- * the same answer from the same engine. A row
- * predicate beside it would be a second statement to keep in step, which is
- * what this replaced. Changing the window is an edit here and nowhere else.
+ * the same answer from the same engine. A row predicate beside it would be a
+ * second statement to keep in step, which is what this replaced. Changing the
+ * window is an edit here and nowhere else.
  */
 export function classifierWillStillAct(now: Date): Prisma.TicketWhereInput {
   return {
