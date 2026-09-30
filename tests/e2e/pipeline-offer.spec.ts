@@ -369,6 +369,15 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
     // reopened ticket in neither — the rail's remainder.
     expect(counts.autoReplyPending).toBe(1);
     expect(counts.autoReplyNotOffered).toBe(1);
+    // And the checked stop adds up: what the rail subtracts to draw its
+    // remainder leaves exactly the reopened ticket, not a negative it clamps.
+    const noVerdict =
+      counts.machineClassified -
+      Object.values(counts.declines).reduce((a, b) => a + b, 0) -
+      counts.autoResolved;
+    expect(
+      noVerdict - counts.autoReplyPending! - counts.autoReplyNotOffered!,
+    ).toBe(1);
     // Literals beside the agreement, so both sides drifting together is still
     // caught: one inside the window, two it will never act on — and this
     // server has a key, so neither of those is the key's doing.

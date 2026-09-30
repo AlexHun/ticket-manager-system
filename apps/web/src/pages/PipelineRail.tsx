@@ -320,8 +320,8 @@ function AggregateRail({ counts }: { counts: PipelineCounts }) {
   // Classified tickets that carry neither a resolve nor a decline, split the way
   // the received stop splits its own (#363): still coming (offered, nobody has
   // answered), never offered (no offer recorded), and the remainder. Both
-  // counts are the API's, read off the offer record, so the page decides no
-  // exit itself.
+  // counts are the API's, read off the offer record; the page only subtracts
+  // them to draw what is left.
   //
   // The remainder is shown rather than absorbed, because the alternative is a
   // diagram whose last two numbers do not subtract — the fastest way to make a

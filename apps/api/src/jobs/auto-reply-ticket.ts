@@ -12,7 +12,7 @@ import { gateDecline } from "../ai/auto-reply-gates";
 import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
 import { assistantUser, resolveHandoff } from "../automation";
-import { prisma } from "../db";
+import { prisma, type Prisma } from "../db";
 import {
   publishPipelineChanged,
   publishTicketMessage,
@@ -158,6 +158,35 @@ export async function enqueueAutoReply(ticketId: number): Promise<void> {
       { db: fromPrisma(tx) },
     );
   });
+}
+
+/**
+ * The tickets this queue will still reach a verdict on, as a `where`.
+ *
+ * Offered (`enqueueAutoReply` stamped it), no verdict yet, and nobody has
+ * answered it — unless the reply on the thread is being written by the worker
+ * that holds the claim right now. An answered ticket is not coming back: the
+ * classify handler offers once, and `recoverStuck` re-offers only a ticket
+ * stuck in `Processing`. That is also the reopened ticket's shape, since a
+ * customer's reply clears `autoResolvedAt`.
+ *
+ * **The one statement of that rule** (#363), a query for the reason
+ * `classifierWillStillAct` is one: `routes/pipeline.ts` counts it for the
+ * rail's `autoReplyPending` and asks it of the listed tickets for their
+ * outcome, so the two are one answer. It does not see the gap the domain notes
+ * record — an offered ticket a person assigned or moved out of `New` without
+ * replying, which the claim then skips.
+ */
+export function autoReplyWillStillAct(): Prisma.TicketWhereInput {
+  return {
+    autoReplyOfferedAt: { not: null },
+    autoResolvedAt: null,
+    autoReplyDecline: null,
+    OR: [
+      { messages: { none: { direction: MESSAGE_DIRECTION.outbound } } },
+      { status: TICKET_STATUS.Processing },
+    ],
+  };
 }
 
 /**
