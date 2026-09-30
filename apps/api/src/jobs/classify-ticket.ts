@@ -81,7 +81,8 @@ const RECONCILE_CRON = "*/15 * * * *";
  * here — the handler is idempotent, which is the property that makes all of this
  * safe — but harmless is not free, and each one is a model call.
  *
- * The ceiling is exported for `classifierWillStillAct` below and its test.
+ * The ceiling is exported for `classifierWillStillAct` below, its test, and
+ * the count `pipelineCounts` in `routes/pipeline.ts` restates it as.
  */
 export const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
@@ -95,6 +96,10 @@ const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
  * the boundary itself is still inside. Every exit of a job that ran stamps
  * `classifiedAt`, so past the window nothing is coming, bar a job the sweep
  * sent just inside it landing minutes later.
+ *
+ * `pipelineCounts` in `routes/pipeline.ts` asks the same question of a whole
+ * window as a query, for the rail's `classifyPending` (#355). Change one and
+ * change the other.
  */
 export function classifierWillStillAct(
   ticket: { category: string | null; createdAt: Date },

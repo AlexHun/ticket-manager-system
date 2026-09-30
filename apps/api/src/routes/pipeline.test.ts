@@ -24,14 +24,15 @@
  *     terminal path against the real columns rather than seeding the state
  *     somebody believes that path writes.
  *
- * `GET /` is not covered here, and that is a limitation worth naming rather
- * than working around: it reads queue depth through `getBoss()`, which throws
- * with no queue started, and the seam that would answer it — `./boss` — is
- * already owned by `jobs/sweeps.test.ts` with a *stateful* factory. A second
+ * `GET /` is not reached over a socket, and that is a limitation worth naming
+ * rather than working around: it reads queue depth through `getBoss()`, which
+ * throws with no queue started, and the seam that would answer it — `./boss` —
+ * is already owned by `jobs/sweeps.test.ts` with a *stateful* factory. A second
  * factory on that specifier is the process-wide registry hazard
- * `docs/standards/testing-api.md` describes, not a tidier arrangement. What the
- * overview does with a row is `toRun(row, config, now)` per row, which is exactly
- * what the table below covers.
+ * `docs/standards/testing-api.md` describes, not a tidier arrangement. Its two
+ * halves are called here instead: what it does with a row is
+ * `toRun(row, config, now)` per row, and its counts are `pipelineCounts`, run
+ * against the real Postgres (#355).
  */
 
 import type { NextFunction, Request, Response } from "express";
@@ -91,7 +92,7 @@ mock.module("../middleware/auth", () => ({
   sessionOf: (res: Response) => res.locals.session,
 }));
 
-const { pipelineRouter, toRun } = await import("./pipeline");
+const { pipelineCounts, pipelineRouter, toRun } = await import("./pipeline");
 const { AUTO_REPLY_WORKER } = await import("../jobs/auto-reply-ticket");
 const { RECONCILE_MAX_AGE_MS } = await import("../jobs/classify-ticket");
 
@@ -333,6 +334,49 @@ beforeEach(async () => {
   // The handoff target and the actor `release` records the decline as: both are
   // real rows the job reads, not stand-ins this file could type for itself.
   await seedColleagues("admin", "assistant");
+});
+
+describe("pipelineCounts — an unstamped ticket", () => {
+  // Pinned, as the overview pins its `to`: the reconcile boundary is read at
+  // this instant, so a row an hour inside it is inside it whenever this runs.
+  const TO = new Date("2026-09-10T12:00:00.000Z");
+  const FROM = new Date(TO.getTime() - 30 * 24 * 60 * 60 * 1_000);
+  const AN_HOUR_AGO = new Date(TO.getTime() - 60 * 60 * 1_000);
+
+  test("is pending only while the classifier will still act on it", async () => {
+    // Fresh and unfiled: the ingest enqueue or the sweep is still coming.
+    await seedTicket({ createdAt: AN_HOUR_AGO });
+    // Exactly at the boundary: the sweep's `gte` still takes it.
+    await seedTicket({
+      createdAt: new Date(TO.getTime() - RECONCILE_MAX_AGE_MS),
+    });
+    // Filed by a person: `handle` skips it.
+    await seedTicket({
+      createdAt: AN_HOUR_AGO,
+      category: TICKET_CATEGORY.Technical,
+    });
+    // Unfiled and a millisecond past the window: nothing re-offers it.
+    await seedTicket({
+      createdAt: new Date(TO.getTime() - RECONCILE_MAX_AGE_MS - 1),
+    });
+    // The two stamped shapes, so the split is read beside them.
+    await seedTicket({
+      createdAt: AN_HOUR_AGO,
+      category: TICKET_CATEGORY.Technical,
+      classifiedAt: AN_HOUR_AGO,
+    });
+    await seedTicket({ createdAt: AN_HOUR_AGO, classifiedAt: AN_HOUR_AGO });
+
+    const counts = await pipelineCounts(FROM, TO);
+
+    expect(counts).toMatchObject({
+      received: 6,
+      machineClassified: 1,
+      classifyAbandoned: 1,
+      classifyPending: 2,
+      classifyNotOffered: 2,
+    });
+  });
 });
 
 describe("GET /api/pipeline/runs/:id", () => {

@@ -1724,8 +1724,19 @@ export interface PipelineCounts {
   machineClassified: number;
   /** Attempted and given up on: `classifiedAt` set, `category` still null. */
   classifyAbandoned: number;
-  /** Neither yet. In flight, queued, or never offered. */
+  /**
+   * Neither yet, and the classifier will still act on it: no `category` filed
+   * and no older than the reconcile window at the overview's `to`. Queued or
+   * in flight, given a key; with none, nothing will offer it.
+   */
   classifyPending: number;
+  /**
+   * Neither yet, and nothing will offer it to the classifier: a person filed a
+   * `category` first, or it is past the reconcile window. With
+   * `machineClassified`, `classifyAbandoned` and `classifyPending`, every
+   * ticket in `received` is counted exactly once.
+   */
+  classifyNotOffered: number;
   /** Answered from the knowledge base and resolved. */
   autoResolved: number;
   /** Every decline reason, including the zeroes — a zero is information here. */

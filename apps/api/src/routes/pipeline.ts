@@ -43,6 +43,7 @@ import { getBoss } from "../jobs/boss";
 import {
   CLASSIFY_QUEUE,
   classifierWillStillAct,
+  RECONCILE_MAX_AGE_MS,
 } from "../jobs/classify-ticket";
 import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
@@ -390,6 +391,88 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
   };
 }
 
+/**
+ * The overview's raw facts for tickets created in `[from, to)`.
+ *
+ * **Exported for its test**, for the reason `toRun` is: `GET /` also reads queue
+ * depth through `getBoss()`, which `pipeline.test.ts` cannot reach (see its
+ * header), and the split below is a claim about rows that only a real database
+ * can check.
+ *
+ * `classifyPending` restates `classifierWillStillAct` in `jobs/classify-ticket.ts`
+ * as a query: no `category` filed, and created no earlier than
+ * `RECONCILE_MAX_AGE_MS` before `to` — `gte`, the same inclusive boundary as
+ * that function's `<=` and the sweep's own `gte`. Change one and change the
+ * other, or the rail and the Recent arrivals list beside it disagree about the
+ * same tickets (#355). Every other unstamped ticket is `classifyNotOffered`,
+ * taken as the remainder so the four classify counts always add up to
+ * `received`.
+ */
+export async function pipelineCounts(
+  from: Date,
+  to: Date,
+): Promise<PipelineCounts> {
+  const window = { createdAt: { gte: from, lt: to } };
+  const reconcileFrom = new Date(to.getTime() - RECONCILE_MAX_AGE_MS);
+
+  const [
+    received,
+    machineClassified,
+    classifyAbandoned,
+    classifyPending,
+    autoResolved,
+    declineGroups,
+  ] = await Promise.all([
+    prisma.ticket.count({ where: window }),
+    prisma.ticket.count({
+      where: {
+        ...window,
+        classifiedAt: { not: null },
+        category: { not: null },
+      },
+    }),
+    prisma.ticket.count({
+      where: { ...window, classifiedAt: { not: null }, category: null },
+    }),
+    prisma.ticket.count({
+      where: {
+        AND: [window, { createdAt: { gte: reconcileFrom } }],
+        classifiedAt: null,
+        category: null,
+      },
+    }),
+    prisma.ticket.count({
+      where: { ...window, autoResolvedAt: { not: null } },
+    }),
+    prisma.ticket.groupBy({
+      by: ["autoReplyDecline"],
+      where: { ...window, autoReplyDecline: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  // Every reason, including the zeroes. A zero here is information — it is the
+  // difference between "that check has never fired" and "we do not measure it".
+  const declines = Object.fromEntries(
+    AUTO_REPLY_DECLINES.map((d) => [d, 0]),
+  ) as Record<AutoReplyDecline, number>;
+  for (const group of declineGroups) {
+    const reason = asAutoReplyDecline(group.autoReplyDecline);
+    if (reason) declines[reason] += group._count._all;
+  }
+
+  return {
+    received,
+    machineClassified,
+    classifyAbandoned,
+    classifyPending,
+    classifyNotOffered:
+      received - machineClassified - classifyAbandoned - classifyPending,
+    autoResolved,
+    declines,
+  };
+}
+
 pipelineRouter.get(
   "/",
   requireAdminView,
@@ -409,67 +492,21 @@ pipelineRouter.get(
     // Pinned once, so every number in the response describes the same window.
     const to = new Date();
     const from = new Date(to.getTime() - days * DAY_MS);
-    const window = { createdAt: { gte: from, lt: to } };
 
-    const [
-      config,
-      received,
-      machineClassified,
-      classifyAbandoned,
-      autoResolved,
-      declineGroups,
-      recentRows,
-      classify,
-      autoReply,
-    ] = await Promise.all([
-      readConfig(),
-      prisma.ticket.count({ where: window }),
-      prisma.ticket.count({
-        where: {
-          ...window,
-          classifiedAt: { not: null },
-          category: { not: null },
-        },
-      }),
-      prisma.ticket.count({
-        where: { ...window, classifiedAt: { not: null }, category: null },
-      }),
-      prisma.ticket.count({
-        where: { ...window, autoResolvedAt: { not: null } },
-      }),
-      prisma.ticket.groupBy({
-        by: ["autoReplyDecline"],
-        where: { ...window, autoReplyDecline: { not: null } },
-        _count: { _all: true },
-      }),
-      prisma.ticket.findMany({
-        where: window,
-        select: RUN_SELECT,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: PIPELINE_RECENT_LIMIT,
-      }),
-      queueDepth(CLASSIFY_QUEUE),
-      queueDepth(AUTO_REPLY_QUEUE),
-    ]);
-
-    // Every reason, including the zeroes. A zero here is information — it is the
-    // difference between "that check has never fired" and "we do not measure it".
-    const declines = Object.fromEntries(
-      AUTO_REPLY_DECLINES.map((d) => [d, 0]),
-    ) as Record<AutoReplyDecline, number>;
-    for (const group of declineGroups) {
-      const reason = asAutoReplyDecline(group.autoReplyDecline);
-      if (reason) declines[reason] += group._count._all;
-    }
-
-    const counts: PipelineCounts = {
-      received,
-      machineClassified,
-      classifyAbandoned,
-      classifyPending: received - machineClassified - classifyAbandoned,
-      autoResolved,
-      declines,
-    };
+    const [config, counts, recentRows, classify, autoReply] = await Promise.all(
+      [
+        readConfig(),
+        pipelineCounts(from, to),
+        prisma.ticket.findMany({
+          where: { createdAt: { gte: from, lt: to } },
+          select: RUN_SELECT,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: PIPELINE_RECENT_LIMIT,
+        }),
+        queueDepth(CLASSIFY_QUEUE),
+        queueDepth(AUTO_REPLY_QUEUE),
+      ],
+    );
 
     res.json({
       config,
