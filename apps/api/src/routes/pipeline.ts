@@ -246,6 +246,16 @@ export function toRun(
   // forever once it was switched back on (#360). A row from before the column
   // has no record and reads as not offered; only tickets in flight at deploy
   // time are mislabelled that way, and they settle within seconds.
+  //
+  // **A known gap, not closed here.** The record says the job was sent, not
+  // that it will act. The claim takes only a `New`, unassigned ticket, so if a
+  // person assigns an offered ticket or moves it out of `New` before the job
+  // runs, without replying, the job does nothing and writes no verdict, yet
+  // this still reads `pending` — until somebody replies, which
+  // `answeredAlready` below catches. The window is the time between
+  // classification and the job, normally seconds and longer while it retries.
+  // It read `pending` before #360 too. The plan defers it as "offered and then
+  // lost": a sweep's job, not a report's.
   const autoReplyOffered = row.autoReplyOfferedAt !== null;
 
   // Already answered by somebody, and not currently claimed. The classify
