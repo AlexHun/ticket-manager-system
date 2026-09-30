@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import {
   AUTO_REPLY_DECLINES,
+  CLASSIFY_NOT_OFFERED,
+  CLASSIFY_NOT_OFFERED_LABEL,
+  CLASSIFY_PENDING_LABEL,
   DECLINE_STAGE,
   PIPELINE_OUTCOME,
   PIPELINE_STAGE,
@@ -9,7 +12,6 @@ import {
   pipelineStageCounts,
   TICKET_STATUS,
   type AutoReplyDecline,
-  type PipelineConfig,
   type PipelineCounts,
   type PipelineRun,
   type PipelineStage,
@@ -286,30 +288,22 @@ function Stamp({ at }: { at: string | null }) {
   );
 }
 
+/**
+ * Takes no `PipelineConfig`, on purpose: which exit a count belongs to is the
+ * API's answer, and a rail that could read a setting could re-decide it (#362).
+ */
 export function PipelineRail({
   counts,
-  config,
   run,
 }: {
   counts: PipelineCounts;
-  config: PipelineConfig;
   /** Non-null switches the whole rail into trace mode. */
   run?: PipelineRun | null;
 }) {
-  return run ? (
-    <TraceRail run={run} />
-  ) : (
-    <AggregateRail counts={counts} config={config} />
-  );
+  return run ? <TraceRail run={run} /> : <AggregateRail counts={counts} />;
 }
 
-function AggregateRail({
-  counts,
-  config,
-}: {
-  counts: PipelineCounts;
-  config: PipelineConfig;
-}) {
+function AggregateRail({ counts }: { counts: PipelineCounts }) {
   const stages = pipelineStageCounts(counts);
   const top = counts.received;
 
@@ -346,25 +340,25 @@ function AggregateRail({
       >
         {counts.classifyPending > 0 && (
           <Exit
-            label={
-              config.aiConfigured
-                ? "Queued, or being classified now"
-                : "Never offered — no API key on this deployment"
-            }
+            label={CLASSIFY_PENDING_LABEL}
             count={counts.classifyPending}
             tone="text-muted-foreground"
             muted
           />
         )}
-        {/* Nothing is coming for these with or without a key, so the wording
-            does not branch on one (#355). */}
-        {counts.classifyNotOffered > 0 && (
-          <Exit
-            label="Not offered — filed by hand, or too old to reconcile"
-            count={counts.classifyNotOffered}
-            tone="text-muted-foreground"
-            muted
-          />
+        {/* One exit per cause the API names. The page reads no setting to
+            decide which exit a ticket is under (#362). */}
+        {Object.values(CLASSIFY_NOT_OFFERED).map(
+          (cause) =>
+            counts.classifyNotOffered[cause] > 0 && (
+              <Exit
+                key={cause}
+                label={CLASSIFY_NOT_OFFERED_LABEL[cause]}
+                count={counts.classifyNotOffered[cause]}
+                tone="text-muted-foreground"
+                muted
+              />
+            ),
         )}
       </Stop>
 

@@ -6,18 +6,23 @@ import {
 } from "@playwright/test";
 import {
   AUTO_REPLY_DECLINE,
+  CLASSIFY_NOT_OFFERED,
+  CLASSIFY_NOT_OFFERED_LABEL,
+  CLASSIFY_PENDING_LABEL,
   MESSAGE_DIRECTION,
   PIPELINE_OUTCOME,
   PIPELINE_STAGE,
   PIPELINE_STAGE_STATE,
   TICKET_CATEGORY,
   TICKET_STATUS,
+  USER_ROLE,
   type PipelineOutcome,
   type PipelineOverviewResponse,
   type PipelineRun,
 } from "@ticket/shared";
+import { ROUTE } from "../../apps/web/src/lib/routes";
 import { KNOWLEDGE_ARTICLE_MARKER } from "./fake-openai/constants";
-import { CREDENTIALS } from "./helpers/auth";
+import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetTickets, testDb } from "./helpers/db";
 
 /**
@@ -25,21 +30,28 @@ import { resetTickets, testDb } from "./helpers/db";
  * ticket itself (`autoReplyOfferedAt`), never off today's settings.
  *
  * The bug is only visible on a deployment where the auto-reply *could* run, so
- * every assertion is made against the AI-enabled API on :3003 (see
- * `knowledge-auto-reply-approval.spec.ts` for why that server exists), through
- * the real `GET /api/pipeline` and so through its real `getBoss()`, which no
- * unit test reaches. `request`-level only: the web app on :4001 talks to :3002.
+ * the first block's assertions are made against the AI-enabled API on :3003
+ * (see `knowledge-auto-reply-approval.spec.ts` for why that server exists),
+ * through the real `GET /api/pipeline` and so through its real `getBoss()`,
+ * which no unit test reaches. `request`-level only: the web app on :4001 talks
+ * to :3002.
  *
- * #361 adds the last test: the rail's counts and the per-ticket outcomes, read
- * off one response, agree over a mix covering every outcome — the one place the
- * real `GET /` is asked both halves at once.
+ * #361 adds that block's last test: the rail's counts and the per-ticket
+ * outcomes, read off one response, agree over a mix covering every outcome —
+ * the one place the real `GET /` is asked both halves at once.
  *
- * The corpus has to hold an auto-replyable article for the whole file. Without
- * one the old code read "nothing will run" from the settings, and the first
- * test would pass for the wrong reason instead of failing before the fix.
+ * The corpus has to hold an auto-replyable article for that whole block.
+ * Without one the old code read "nothing will run" from the settings, and the
+ * first test would pass for the wrong reason instead of failing before the fix.
+ *
+ * #362 adds the second block, the one test not on :3003: with no key, the
+ * rendered rail on the web app's own API draws an unclassified ticket under the
+ * no-key exit the counts name, and no "Queued" exit at all.
  */
 
 const AI_API_URL = "http://localhost:3003";
+/** The web app's own API: no key, auto-reply off (`playwright.config.ts`). */
+const API_URL = "http://localhost:3002";
 const ADMIN = CREDENTIALS.admin;
 
 /** Pinned an hour back, per the time-sliced-rows rule in `testing-api.md`. */
@@ -306,7 +318,10 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
       machineClassified: counts.machineClassified,
       classifyAbandoned: counts.classifyAbandoned,
       classifyPending: counts.classifyPending,
-      classifyNotOffered: counts.classifyNotOffered,
+      classifyNotOffered: Object.values(counts.classifyNotOffered).reduce(
+        (a, b) => a + b,
+        0,
+      ),
       autoResolved: counts.autoResolved,
       declines: Object.values(counts.declines).reduce((a, b) => a + b, 0),
     }).toEqual({
@@ -318,8 +333,64 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
       declines: recent.filter((r) => r.decline !== null).length,
     });
     // Literals beside the agreement, so both sides drifting together is still
-    // caught: one inside the window, two it will never act on.
+    // caught: one inside the window, two it will never act on — and this
+    // server has a key, so neither of those is the key's doing.
     expect(counts.classifyPending).toBe(1);
-    expect(counts.classifyNotOffered).toBe(2);
+    expect(counts.classifyNotOffered).toEqual({
+      [CLASSIFY_NOT_OFFERED.noKey]: 0,
+      [CLASSIFY_NOT_OFFERED.filedOrStale]: 2,
+    });
+  });
+});
+
+test.describe("Pipeline: the API decides the no-key classify exit", () => {
+  // R5 (#362), through the rendered rail on the web app's own API, :3002,
+  // which has no key. The rail takes no setting, so what it draws is the
+  // exits the counts name and nothing it decided for itself.
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test.afterAll(async () => {
+    await resetTickets();
+  });
+
+  test("a recent unclassified ticket is never offered, and nothing reads as queued", async ({
+    page,
+  }) => {
+    // Inside the reconcile window: with a key, this is the one ticket the
+    // classifier would still take.
+    await testDb.ticket.create({
+      data: {
+        subject: "Unclassified, no key",
+        customerEmail: "e2e-pipeline-offer@example.com",
+        customerName: "E2E Offer Customer",
+        status: TICKET_STATUS.New,
+        createdAt: new Date(Date.now() - 5 * 60 * 1_000),
+      },
+    });
+
+    await signIn(page, USER_ROLE.admin);
+    await page.goto(ROUTE.pipeline.path);
+
+    // The exit's own item, not the stop it hangs off: a stop is a list item
+    // holding its exits.
+    const noKey = CLASSIFY_NOT_OFFERED_LABEL[CLASSIFY_NOT_OFFERED.noKey];
+    const exit = page
+      .getByRole("listitem")
+      .filter({ hasText: noKey, hasNot: page.getByRole("listitem") });
+    // Escaped, so a label that ever carries a metacharacter still matches.
+    const literal = noKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    await expect(exit).toHaveText(new RegExp(`${literal}\\s*1$`));
+    await expect(page.getByText(CLASSIFY_PENDING_LABEL)).toHaveCount(0);
+
+    // The rendered words were the same before #362, when the browser relabelled
+    // a still-coming count. The count itself is what changed, so it is read
+    // off the same server, with the page's own session.
+    const res = await page.request.get(`${API_URL}/api/pipeline`);
+    expect(res.status()).toBe(200);
+    const { counts } = (await res.json()) as PipelineOverviewResponse;
+    expect(counts.classifyPending).toBe(0);
+    expect(counts.classifyNotOffered[CLASSIFY_NOT_OFFERED.noKey]).toBe(1);
   });
 });

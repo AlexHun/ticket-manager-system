@@ -99,10 +99,11 @@ const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
  * **The one statement of that rule** (#361), and a query rather than a
  * predicate because all three readers can run one. `reconcile` below narrows it
  * with its floor. `routes/pipeline.ts` counts it for the rail's
- * `classifyPending` and asks it of the listed tickets for their outcome, so the
- * rail and Recent arrivals are the same answer from the same engine. A row
- * predicate beside it would be a second statement to keep in step, which is
- * what this replaced. Changing the window is an edit here and nowhere else.
+ * `classifyPending` (or, with no key, its `noKey` not-offered exit) and asks it
+ * of the listed tickets for their outcome, so the rail and Recent arrivals are
+ * the same answer from the same engine. A row predicate beside it would be a
+ * second statement to keep in step, which is what this replaced. Changing the
+ * window is an edit here and nowhere else.
  */
 export function classifierWillStillAct(now: Date): Prisma.TicketWhereInput {
   return {

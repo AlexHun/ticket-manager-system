@@ -42,6 +42,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   AUTO_REPLY_DECLINES,
+  CLASSIFY_NOT_OFFERED,
   DECLINE_OUTCOME,
   DECLINE_STAGE,
   MESSAGE_DIRECTION,
@@ -403,14 +404,43 @@ describe("pipelineCounts — an unstamped ticket", () => {
     });
     await seedTicket({ createdAt: AN_HOUR_AGO, classifiedAt: AN_HOUR_AGO });
 
-    const counts = await pipelineCounts(FROM, TO);
+    const counts = await pipelineCounts(FROM, TO, true);
 
     expect(counts).toMatchObject({
       received: 6,
       machineClassified: 1,
       classifyAbandoned: 1,
       classifyPending: 2,
-      classifyNotOffered: 2,
+      classifyNotOffered: {
+        [CLASSIFY_NOT_OFFERED.noKey]: 0,
+        [CLASSIFY_NOT_OFFERED.filedOrStale]: 2,
+      },
+    });
+  });
+
+  test("with no key, is never pending, and says the key is why", async () => {
+    // R5: the same two tickets the classifier's rule would take, but nothing
+    // will run it. They are not coming, so they are counted as not offered,
+    // under the cause the rail names — the page chooses no exit itself.
+    await seedTicket({ createdAt: AN_HOUR_AGO });
+    await seedTicket({
+      createdAt: new Date(TO.getTime() - RECONCILE_MAX_AGE_MS),
+    });
+    // Out of reach with or without a key, so its cause does not change.
+    await seedTicket({
+      createdAt: AN_HOUR_AGO,
+      category: TICKET_CATEGORY.Technical,
+    });
+
+    const counts = await pipelineCounts(FROM, TO, false);
+
+    expect(counts).toMatchObject({
+      received: 3,
+      classifyPending: 0,
+      classifyNotOffered: {
+        [CLASSIFY_NOT_OFFERED.noKey]: 2,
+        [CLASSIFY_NOT_OFFERED.filedOrStale]: 1,
+      },
     });
   });
 });
