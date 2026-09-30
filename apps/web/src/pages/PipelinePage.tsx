@@ -503,12 +503,14 @@ function RunVerdict({
       ) : run.outcome === PIPELINE_OUTCOME.notOffered ? (
         <p className="text-xs leading-relaxed text-muted-foreground">
           {pipelineLive
-            ? // Not the switches — this ticket has simply already been through.
-              // The commonest way to see it is a customer replying to a ticket
-              // the machine resolved: that reopens the ticket and clears the
-              // column that recorded the answer, so the trace above genuinely
-              // cannot show what happened. Said out loud rather than guessed at.
-              "Nothing further is scheduled. The auto-reply is offered a ticket once, when it is first classified — so an answered or reopened ticket is not waiting for anything."
+            ? // Not the switches — this ticket is past where the machine would
+              // take it: filed by hand before the classifier got there, too old
+              // for the reconcile sweep (#353), or already through. The last is
+              // most often a customer replying to a ticket the machine
+              // resolved: that reopens the ticket and clears the column that
+              // recorded the answer, so the trace above genuinely cannot show
+              // what happened. Said out loud rather than guessed at.
+              "Nothing further is scheduled. The auto-reply is offered a ticket once, when the classifier files it — so a ticket that was answered, reopened, filed by hand, or never classified within a day is not waiting for anything."
             : "Nothing is scheduled to run this — see the switches above."}
         </p>
       ) : (

@@ -81,12 +81,30 @@ const RECONCILE_CRON = "*/15 * * * *";
  * here — the handler is idempotent, which is the property that makes all of this
  * safe — but harmless is not free, and each one is a model call.
  *
- * The ceiling is exported because `/pipeline` reads it too: past it, an
- * unstamped ticket has nothing left that will offer it to the classifier, so
- * `toRun` must stop calling it pending.
+ * The ceiling is exported for `classifierWillStillAct` below and its test.
  */
 export const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
+
+/**
+ * Whether this queue will still act on an unstamped ticket, given a key.
+ *
+ * The two questions `handle` and `reconcile` ask, in one place so `/pipeline`
+ * cannot drift from them: `handle` skips a ticket a person already filed, and
+ * the sweep stops re-offering one past `RECONCILE_MAX_AGE_MS` — its `gte`, so
+ * the boundary itself is still inside. Every exit of a job that ran stamps
+ * `classifiedAt`, so past the window nothing is coming, bar a job the sweep
+ * sent just inside it landing minutes later.
+ */
+export function classifierWillStillAct(
+  ticket: { category: string | null; createdAt: Date },
+  now: number,
+): boolean {
+  return (
+    ticket.category === null &&
+    now - ticket.createdAt.getTime() <= RECONCILE_MAX_AGE_MS
+  );
+}
 
 /** How many stragglers one sweep may pick up. Bounded so a bad day cannot become a bill. */
 const RECONCILE_BATCH = 50;

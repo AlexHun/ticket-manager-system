@@ -40,7 +40,10 @@ import {
 } from "../ingest";
 import { AUTO_REPLY_QUEUE } from "../jobs/auto-reply-ticket";
 import { getBoss } from "../jobs/boss";
-import { CLASSIFY_QUEUE, RECONCILE_MAX_AGE_MS } from "../jobs/classify-ticket";
+import {
+  CLASSIFY_QUEUE,
+  classifierWillStillAct,
+} from "../jobs/classify-ticket";
 import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
@@ -190,10 +193,11 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 /**
  * Rebuild one ticket's trip down the rail.
  *
- * Every branch here is a fact a column records. What it deliberately does *not*
- * do is guess: a ticket with no classification verdict and a deployment with no
- * API key is `notOffered`, not "still thinking", because nothing is scheduled to
- * think about it.
+ * Every branch here is a fact a column records, read at `now`, the one instant
+ * the caller pins. What it deliberately does *not* do is guess: a ticket with
+ * no classification verdict that nothing will classify — no API key, a category
+ * a person filed first, or older than the reconcile window — is `notOffered`,
+ * not "still thinking", because nothing is scheduled to think about it.
  *
  * The one thing this cannot see is a reopen. A customer replying to a
  * machine-resolved ticket clears `autoResolvedAt` (see `ingest.ts`), so such a
@@ -211,7 +215,7 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 export function toRun(
   row: RunRow,
   config: PipelineConfig,
-  now: number = Date.now(),
+  now: number,
 ): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = row.classifiedAt !== null && row.category !== null;
@@ -229,17 +233,12 @@ export function toRun(
   // is `notOffered`, never `pending`: "still thinking" about work that is not
   // scheduled is the one lie this page must not tell.
   //
-  // The classifier's half also asks the ticket, with the job's own two
-  // questions. `handle` in `classify-ticket.ts` returns without a call when a
-  // person has already filed a category, and the reconcile sweep stops offering
-  // an unstamped ticket once it is `RECONCILE_MAX_AGE_MS` old — every exit of a
-  // job that actually ran stamps `classifiedAt`, so one that old was never
-  // offered and never will be. Asking only the key drew every such ticket as
+  // The classifier's half also asks the ticket, through the job's own rule:
+  // a category a person already filed, or a ticket past the reconcile window,
+  // is one nothing will classify. Asking only the key drew every such ticket as
   // pending forever, the showcase seed's whole desk among them (#353).
   const classifierWillRun =
-    config.aiConfigured &&
-    row.category === null &&
-    now - row.createdAt.getTime() < RECONCILE_MAX_AGE_MS;
+    config.aiConfigured && classifierWillStillAct(row, now);
   const autoReplyWillRun =
     config.aiConfigured &&
     config.autoReplyEnabled &&
@@ -512,7 +511,7 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: toRun(row, config) });
+    res.json({ run: toRun(row, config, Date.now()) });
   },
 );
 
