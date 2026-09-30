@@ -40,7 +40,10 @@ import {
 } from "../ingest";
 import { AUTO_REPLY_QUEUE } from "../jobs/auto-reply-ticket";
 import { getBoss } from "../jobs/boss";
-import { CLASSIFY_QUEUE } from "../jobs/classify-ticket";
+import {
+  CLASSIFY_QUEUE,
+  classifierWillStillAct,
+} from "../jobs/classify-ticket";
 import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
 
 /**
@@ -190,10 +193,11 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 /**
  * Rebuild one ticket's trip down the rail.
  *
- * Every branch here is a fact a column records. What it deliberately does *not*
- * do is guess: a ticket with no classification verdict and a deployment with no
- * API key is `notOffered`, not "still thinking", because nothing is scheduled to
- * think about it.
+ * Every branch here is a fact a column records, read at `now`, the one instant
+ * the caller pins. What it deliberately does *not* do is guess: a ticket with
+ * no classification verdict that nothing will classify — no API key, a category
+ * a person filed first, or older than the reconcile window — is `notOffered`,
+ * not "still thinking", because nothing is scheduled to think about it.
  *
  * The one thing this cannot see is a reopen. A customer replying to a
  * machine-resolved ticket clears `autoResolvedAt` (see `ingest.ts`), so such a
@@ -208,7 +212,11 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
  * found by reading rather than by a failure. `pipeline.test.ts` pins every
  * decline reason against `DECLINE_OUTCOME` as values.
  */
-export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
+export function toRun(
+  row: RunRow,
+  config: PipelineConfig,
+  now: number,
+): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = row.classifiedAt !== null && row.category !== null;
   // The classifier's own terminal path: it stamped a time and never filed a
@@ -224,7 +232,13 @@ export function toRun(row: RunRow, config: PipelineConfig): PipelineRun {
   // auto-reply on their own. A ticket waiting on a stage nothing will ever run
   // is `notOffered`, never `pending`: "still thinking" about work that is not
   // scheduled is the one lie this page must not tell.
-  const classifierWillRun = config.aiConfigured;
+  //
+  // The classifier's half also asks the ticket, through the job's own rule:
+  // a category a person already filed, or a ticket past the reconcile window,
+  // is one nothing will classify. Asking only the key drew every such ticket as
+  // pending forever, the showcase seed's whole desk among them (#353).
+  const classifierWillRun =
+    config.aiConfigured && classifierWillStillAct(row, now);
   const autoReplyWillRun =
     config.aiConfigured &&
     config.autoReplyEnabled &&
@@ -464,7 +478,7 @@ pipelineRouter.get(
       to: to.toISOString(),
       counts,
       queues: { classify, autoReply },
-      recent: recentRows.map((row) => toRun(row, config)),
+      recent: recentRows.map((row) => toRun(row, config, to.getTime())),
     });
   },
 );
@@ -497,7 +511,7 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: toRun(row, config) });
+    res.json({ run: toRun(row, config, Date.now()) });
   },
 );
 

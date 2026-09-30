@@ -1522,8 +1522,10 @@ export const PIPELINE_STAGES = [
  * How far one ticket got, as a verdict.
  *
  * `notOffered` is the honest answer for a ticket nothing will ever pick up —
- * no API key, the switch off, an empty corpus — and it exists so the page never
- * draws a ticket as "still thinking" about work that is not scheduled.
+ * no API key, the switch off, an empty corpus, a category a person filed before
+ * the classifier did, or a ticket past the classifier's reconcile window — and
+ * it exists so the page never draws a ticket as "still thinking" about work
+ * that is not scheduled.
  */
 export const PIPELINE_OUTCOME = {
   pending: "pending",
@@ -1538,7 +1540,10 @@ export const PIPELINE_OUTCOME = {
    * (`docs/adr/0019`).
    */
   abandoned: "abandoned",
-  /** Nothing will run: the feature is off, unkeyed, or has no corpus. */
+  /**
+   * Nothing will run: the feature is off, unkeyed or has no corpus, or the
+   * ticket is already answered, filed by hand, or too old to be offered.
+   */
   notOffered: "notOffered",
 } as const;
 

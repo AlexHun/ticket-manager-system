@@ -30,7 +30,7 @@
  * already owned by `jobs/sweeps.test.ts` with a *stateful* factory. A second
  * factory on that specifier is the process-wide registry hazard
  * `docs/standards/testing-api.md` describes, not a tidier arrangement. What the
- * overview does with a row is `toRun(row, config)` per row, which is exactly
+ * overview does with a row is `toRun(row, config, now)` per row, which is exactly
  * what the table below covers.
  */
 
@@ -93,6 +93,7 @@ mock.module("../middleware/auth", () => ({
 
 const { pipelineRouter, toRun } = await import("./pipeline");
 const { AUTO_REPLY_WORKER } = await import("../jobs/auto-reply-ticket");
+const { RECONCILE_MAX_AGE_MS } = await import("../jobs/classify-ticket");
 
 type RunRow = Parameters<typeof toRun>[0];
 
@@ -100,6 +101,8 @@ type RunRow = Parameters<typeof toRun>[0];
 
 const CREATED_AT = new Date("2026-09-01T09:00:00.000Z");
 const CLASSIFIED_AT = new Date("2026-09-01T09:00:12.000Z");
+/** The instant `toRun` reads at: a minute after arrival, well inside every window. */
+const NOW = CREATED_AT.getTime() + 60 * 1_000;
 
 /** Everything on and nothing withheld: the deployment where the pipeline runs. */
 const LIVE: PipelineConfig = {
@@ -147,7 +150,7 @@ describe("toRun — the outcome it derives from a decline", () => {
   test.each([...AUTO_REPLY_DECLINES])(
     "%s answers the outcome `DECLINE_OUTCOME` names for it",
     (decline) => {
-      expect(toRun(declinedRow(decline), LIVE).outcome).toBe(
+      expect(toRun(declinedRow(decline), LIVE, NOW).outcome).toBe(
         DECLINE_OUTCOME[decline],
       );
     },
@@ -161,7 +164,7 @@ describe("toRun — the outcome it derives from a decline", () => {
     // reasoning, a provider that could not be reached) and none of them is a
     // verdict about the ticket: nothing was decided, so nothing may be reported
     // as the knowledge base having been consulted and found wanting.
-    const run = toRun(declinedRow(AUTO_REPLY_DECLINE.unavailable), LIVE);
+    const run = toRun(declinedRow(AUTO_REPLY_DECLINE.unavailable), LIVE, NOW);
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.abandoned);
     expect(run.decline).toBe(AUTO_REPLY_DECLINE.unavailable);
@@ -172,7 +175,7 @@ describe("toRun — the outcome it derives from a decline", () => {
     // every real decline alone.
     for (const decline of AUTO_REPLY_DECLINES) {
       if (decline === AUTO_REPLY_DECLINE.unavailable) continue;
-      expect(toRun(declinedRow(decline), LIVE).outcome).toBe(
+      expect(toRun(declinedRow(decline), LIVE, NOW).outcome).toBe(
         PIPELINE_OUTCOME.declined,
       );
     }
@@ -184,7 +187,7 @@ describe("toRun — the outcome it derives from a decline", () => {
     // that is where the attempt died — which is why the exit could never have
     // been read as the verdict in the first place.
     for (const decline of AUTO_REPLY_DECLINES) {
-      const run = toRun(declinedRow(decline), LIVE);
+      const run = toRun(declinedRow(decline), LIVE, NOW);
       const exited = run.stages.find(
         (stage) => stage.state === PIPELINE_STAGE_STATE.exited,
       );
@@ -196,7 +199,7 @@ describe("toRun — the outcome it derives from a decline", () => {
     // `terminal` keys off "not pending", so an outcome moving from `declined` to
     // `abandoned` must not put a stop back in flight on a ticket nothing is
     // coming back for.
-    const run = toRun(declinedRow(AUTO_REPLY_DECLINE.unavailable), LIVE);
+    const run = toRun(declinedRow(AUTO_REPLY_DECLINE.unavailable), LIVE, NOW);
     const below = PIPELINE_STAGES.indexOf(PIPELINE_STAGE.drafted) + 1;
 
     expect(run.stages.slice(below).map((stage) => stage.state)).toEqual(
@@ -216,6 +219,7 @@ describe("toRun — the rest of the outcomes", () => {
         messages: [{ automated: true, citedArticleIds: ["KB-001"] }],
       }),
       LIVE,
+      NOW,
     );
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.resolved);
@@ -226,14 +230,14 @@ describe("toRun — the rest of the outcomes", () => {
     // The other road to `abandoned`, and the reason its wording has to be true
     // of more than one thing: a stamped `classifiedAt` with no category is the
     // classifier's terminal path, which never reached the auto-reply at all.
-    const run = toRun(row({ category: null }), LIVE);
+    const run = toRun(row({ category: null }), LIVE, NOW);
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.abandoned);
     expect(run.decline).toBeNull();
   });
 
   test("waiting on a stage that will run is `pending`", () => {
-    const run = toRun(row({ status: TICKET_STATUS.New }), LIVE);
+    const run = toRun(row({ status: TICKET_STATUS.New }), LIVE, NOW);
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
   });
 
@@ -241,10 +245,75 @@ describe("toRun — the rest of the outcomes", () => {
     // An empty corpus reached *before* the ticket is enqueued: nothing is
     // scheduled, which is a different true statement from "this one was tried
     // and got nowhere" (ADR-0019). The two must not be collapsed.
-    const run = toRun(row({ status: TICKET_STATUS.New }), {
-      ...LIVE,
-      autoReplyArticleCount: 0,
+    const run = toRun(
+      row({ status: TICKET_STATUS.New }),
+      { ...LIVE, autoReplyArticleCount: 0 },
+      NOW,
+    );
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
+  });
+});
+
+/* ── A ticket the classifier has not stamped ─────────────────────────────── */
+
+describe("toRun — a ticket with no classification verdict", () => {
+  /** Never stamped by the classifier, in whatever state the caller needs. */
+  function unstamped(overrides: Partial<RunRow> = {}): RunRow {
+    return row({
+      status: TICKET_STATUS.New,
+      category: null,
+      classifiedAt: null,
+      ...overrides,
     });
+  }
+
+  const INSIDE_WINDOW = CREATED_AT.getTime() + 60 * 60 * 1_000;
+  const PAST_WINDOW = CREATED_AT.getTime() + RECONCILE_MAX_AGE_MS + 1;
+
+  test("unfiled and inside the reconcile window is `pending`", () => {
+    // The ingest enqueue or, failing that, the reconcile sweep is still going
+    // to offer it to the classifier.
+    const run = toRun(unstamped(), LIVE, INSIDE_WINDOW);
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
+  });
+
+  test("unfiled and already answered is still `pending`", () => {
+    // The classifier reads neither status nor thread, so a person replying
+    // does not stop it filing the ticket — reporting this one as finished
+    // would be the opposite lie.
+    const run = toRun(
+      unstamped({
+        status: TICKET_STATUS.Closed,
+        messages: [{ automated: false, citedArticleIds: [] }],
+      }),
+      LIVE,
+      INSIDE_WINDOW,
+    );
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
+  });
+
+  test("filed by a person before the classifier got to it is `notOffered`", () => {
+    // The classify handler returns without a call when `category` is already
+    // set, and the auto-reply is only ever enqueued from that handler — so
+    // nothing is scheduled, however fresh and untouched the ticket. The
+    // showcase seed writes this shape for every demo ticket it files.
+    const run = toRun(
+      unstamped({ category: TICKET_CATEGORY.Technical }),
+      LIVE,
+      INSIDE_WINDOW,
+    );
+
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
+    expect(run.stages.map((stage) => stage.state)).not.toContain(
+      PIPELINE_STAGE_STATE.pending,
+    );
+  });
+
+  test("unfiled and older than the reconcile window is `notOffered`", () => {
+    // A job that ran would have stamped `classifiedAt` on every exit, and the
+    // sweep stops looking after a day — so a ticket this old that was never
+    // stamped was never offered, and nothing is going to offer it now.
+    const run = toRun(unstamped(), LIVE, PAST_WINDOW);
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
   });
 });
