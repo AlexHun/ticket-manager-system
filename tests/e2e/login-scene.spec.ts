@@ -55,8 +55,8 @@ test.describe("login scene", () => {
 
     expect(word.y + word.height).toBeLessThanOrEqual(form.y);
 
-    // The lockup fits rather than being cropped. Its own box cannot say so â€”
-    // `max-w-full` clamps it while the letters spill past â€” and the scene's
+    // The lockup fits rather than being cropped. Its own box cannot say so —
+    // `max-w-full` clamps it while the letters spill past — and the scene's
     // `overflow-hidden` keeps a spill off the page's scroll width. So ask the
     // scene whether anything inside it overflows.
     const scene = await lockup(page).evaluate((h1) => {
@@ -160,8 +160,10 @@ test.describe("login scene with motion", () => {
     await page.goto(ROUTE.login.path);
     await expect(scene(page)).toHaveAttribute("data-strike", "playing");
 
+    // A click, not `focus()`: an overlay from the strike that caught the
+    // pointer is how this would break. Select-all clears the dev prefill.
     const email = page.getByLabel("Email");
-    await email.focus();
+    await email.click();
     await email.press("ControlOrMeta+a");
     await page.keyboard.type("visitor@example.com");
 
@@ -181,7 +183,7 @@ test.describe("login scene with motion", () => {
     const visible = await sampleEmbers(page, 3_000);
     expect(Math.max(...visible)).toBeLessThanOrEqual(60);
     expect(Math.min(...visible)).toBeGreaterThan(0);
-    // Live, not a constant written once â€” else the hidden check means nothing.
+    // Live, not a constant written once — else the hidden check means nothing.
     expect(new Set(visible).size).toBeGreaterThan(1);
 
     // Playwright cannot background a tab, so report hidden the way a browser
@@ -200,22 +202,24 @@ test.describe("login scene with motion", () => {
   test("a signed-in load of the tickets page fetches none of the login scene", async ({
     page,
   }) => {
-    const scripts: string[] = [];
+    // Stylesheets too: built, `login-scene.css` is a request of its own.
+    const fetched: string[] = [];
     page.on("request", (request) => {
-      if (request.resourceType() === "script") scripts.push(request.url());
+      if (["script", "stylesheet"].includes(request.resourceType()))
+        fetched.push(request.url());
     });
 
     // The matcher has to be able to fail: signing in loads the scene.
     await signIn(page, "admin");
-    expect(scripts.filter(isLoginScene)).not.toEqual([]);
+    expect(fetched.filter(isLoginScene)).not.toEqual([]);
 
-    scripts.length = 0;
+    fetched.length = 0;
     await page.goto(ROUTE.tickets.path);
     await expect(
       page.getByRole("heading", { name: "Tickets", level: 1 }),
     ).toBeVisible();
 
-    expect(scripts.filter(isLoginScene)).toEqual([]);
+    expect(fetched.filter(isLoginScene)).toEqual([]);
   });
 });
 

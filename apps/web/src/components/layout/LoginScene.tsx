@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { FORGE_BOX, type StrikingWordProps } from "./LoginLockup";
+import {
+  FORGE_BOX,
+  type EmberFieldProps,
+  type StrikingWordProps,
+} from "./LoginLockup";
 import "./login-scene.css";
 
 /**
@@ -104,7 +108,7 @@ type Particle = {
  * capped at `MAX_PIXEL_RATIO`, and the loop stopped outright while the tab is
  * hidden. The caller does not mount it under reduced motion.
  */
-export function EmberField({ struckAt }: { struckAt: DOMRect | null }) {
+export function EmberField({ struckAt }: EmberFieldProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particles = useRef<Particle[]>([]);
 

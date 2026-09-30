@@ -28,6 +28,9 @@ export type StrikingWordProps = {
   onCooled: () => void;
 };
 
+/** Where the strike landed, in viewport coordinates, once it has. */
+export type EmberFieldProps = { struckAt: DOMRect | null };
+
 /**
  * The strike and the embers, in a chunk of their own: every other page loads
  * this file, and none of them may download the effect (#343). A chunk that
@@ -36,7 +39,7 @@ export type StrikingWordProps = {
 const scene = () =>
   import("./LoginScene").catch(() => ({
     StrikingWord: CoolAtOnce,
-    EmberField: (_: { struckAt: DOMRect | null }) => null,
+    EmberField: (_: EmberFieldProps) => null,
   }));
 const StrikingWord = lazy(() =>
   scene().then((m) => ({ default: m.StrikingWord })),
