@@ -107,10 +107,13 @@ type RunRow = Parameters<typeof toRun>[0];
 const CREATED_AT = new Date("2026-09-01T09:00:00.000Z");
 const CLASSIFIED_AT = new Date("2026-09-01T09:00:12.000Z");
 /**
- * `toRun`'s `awaitingClassifier` for a stamped row. The rule it answers asks for
- * no verdict yet, so the database answers false for every row `row()` builds.
+ * `toRun`'s `awaiting` when neither half will still act. The classifier's rule
+ * asks for no verdict yet, so the database answers false for every stamped row
+ * `row()` builds; the auto-reply's answers false for one never offered.
  */
-const NOT_AWAITING = false;
+const NOT_AWAITING = { classifier: false, autoReply: false };
+/** The auto-reply was offered the row and nobody has answered it since. */
+const AWAITING_AUTO_REPLY = { classifier: false, autoReply: true };
 
 /** Everything on and nothing withheld: the deployment where the pipeline runs. */
 const LIVE: PipelineConfig = {
@@ -138,15 +141,11 @@ function row(overrides: Partial<RunRow> = {}): RunRow {
     autoResolvedAt: null,
     autoReplyDecline: null,
     autoReplyDeclinedAt: null,
-    autoReplyOfferedAt: null,
     createdAt: CREATED_AT,
     messages: [],
     ...overrides,
   };
 }
-
-/** When `enqueueAutoReply` recorded the offer, in rows that need one. */
-const OFFERED_AT = new Date("2026-09-01T09:00:12.500Z");
 
 /** A ticket handed back with one reason, exactly as `release` stamps it. */
 function declinedRow(decline: AutoReplyDecline): RunRow {
@@ -258,17 +257,22 @@ describe("toRun — the rest of the outcomes", () => {
 
   test("waiting on a stage that will run is `pending`", () => {
     const run = toRun(
-      row({ status: TICKET_STATUS.New, autoReplyOfferedAt: OFFERED_AT }),
+      row({ status: TICKET_STATUS.New }),
       LIVE,
-      NOT_AWAITING,
+      AWAITING_AUTO_REPLY,
     );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
   });
 });
 
-/* ── Whether the auto-reply was offered the ticket ───────────────────────── */
+/* ── Whether the auto-reply will still act ───────────────────────────────── */
 
 describe("toRun — the auto-reply's offer is read off the row", () => {
+  // Which rows the auto-reply will still act on is the database's answer
+  // (`autoReplyWillStillAct`), pinned against real rows under
+  // `GET /api/pipeline/runs/:id` below. What `toRun` decides is that the
+  // settings have no say in it.
+
   test("classified with no offer recorded is `notOffered`, on a deployment where it is on today", () => {
     // R1, the bug this record exists for (#360). A ticket classified while the
     // auto-reply was switched off, or before its corpus had an article, was
@@ -288,32 +292,16 @@ describe("toRun — the auto-reply's offer is read off the row", () => {
     // is already queued and the handler never re-reads the switch, so a verdict
     // is coming whatever the deployment says today.
     const run = toRun(
-      row({ status: TICKET_STATUS.New, autoReplyOfferedAt: OFFERED_AT }),
+      row({ status: TICKET_STATUS.New }),
       {
         ...LIVE,
         aiConfigured: false,
         autoReplyEnabled: false,
         autoReplyArticleCount: 0,
       },
-      NOT_AWAITING,
+      AWAITING_AUTO_REPLY,
     );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
-  });
-
-  test("offered, and answered by somebody since, is `notOffered`", () => {
-    // A record of an offer is not a promise of a verdict once somebody has
-    // replied: this is the reopened ticket's shape, and one an agent answered
-    // by hand, and `toRun` reads both as nothing more to come.
-    const run = toRun(
-      row({
-        status: TICKET_STATUS.Open,
-        autoReplyOfferedAt: OFFERED_AT,
-        messages: [{ automated: false, citedArticleIds: [] }],
-      }),
-      LIVE,
-      NOT_AWAITING,
-    );
-    expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
   });
 });
 
@@ -334,13 +322,15 @@ describe("toRun — a ticket with no classification verdict", () => {
   // rows under `GET /api/pipeline/runs/:id` below. What `toRun` still decides
   // is what that answer means beside the deployment's key.
 
+  const AWAITING_CLASSIFIER = { classifier: true, autoReply: false };
+
   test("awaited by the classifier is `pending`", () => {
-    const run = toRun(unstamped(), LIVE, true);
+    const run = toRun(unstamped(), LIVE, AWAITING_CLASSIFIER);
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
   });
 
   test("not awaited is `notOffered`, with nothing left in flight", () => {
-    const run = toRun(unstamped(), LIVE, false);
+    const run = toRun(unstamped(), LIVE, NOT_AWAITING);
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
     expect(run.stages.map((stage) => stage.state)).not.toContain(
@@ -351,7 +341,11 @@ describe("toRun — a ticket with no classification verdict", () => {
   test("awaited, on a deployment with no key, is `notOffered`", () => {
     // `enqueueClassification` sends nothing without a key, so the rule being
     // true of the row schedules nothing.
-    const run = toRun(unstamped(), { ...LIVE, aiConfigured: false }, true);
+    const run = toRun(
+      unstamped(),
+      { ...LIVE, aiConfigured: false },
+      AWAITING_CLASSIFIER,
+    );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
   });
 });
@@ -441,6 +435,99 @@ describe("pipelineCounts — an unstamped ticket", () => {
         [CLASSIFY_NOT_OFFERED.noKey]: 2,
         [CLASSIFY_NOT_OFFERED.filedOrStale]: 1,
       },
+    });
+  });
+});
+
+describe("pipelineCounts — a classified ticket with no verdict", () => {
+  const TO = new Date("2026-09-10T12:00:00.000Z");
+  const FROM = new Date(TO.getTime() - 30 * 24 * 60 * 60 * 1_000);
+  const AN_HOUR_AGO = new Date(TO.getTime() - 60 * 60 * 1_000);
+
+  const classified = {
+    createdAt: AN_HOUR_AGO,
+    category: TICKET_CATEGORY.Technical,
+    classifiedAt: AN_HOUR_AGO,
+  };
+  let replies = 0;
+  /** One message on the thread, in the given direction. */
+  const reply = (
+    direction: (typeof MESSAGE_DIRECTION)[keyof typeof MESSAGE_DIRECTION],
+    automated = false,
+  ) => ({
+    messages: {
+      create: {
+        messageId: `pipeline-counts-${++replies}@example.com`,
+        senderEmail: "support@example.com",
+        senderName: "Support",
+        textBody: "Hold the button for ten seconds.",
+        direction,
+        automated,
+        createdAt: AN_HOUR_AGO,
+      },
+    },
+  });
+
+  test("splits into still coming and never offered, reading the offer record", async () => {
+    // R8. Still coming: offered, and nobody has answered. A customer's own
+    // follow-up is not an answer, and a claimed ticket is being answered now.
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.New,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.inbound),
+    });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Processing,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.outbound),
+    });
+    // Never offered: no record, whether or not a person answered since.
+    await seedTicket({ ...classified, status: TICKET_STATUS.New });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      ...reply(MESSAGE_DIRECTION.outbound),
+    });
+    // Neither — the rail's remainder: offered, then answered by hand, or
+    // resolved by the machine and reopened, which clears `autoResolvedAt`.
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.outbound),
+    });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.outbound, true),
+    });
+    // Verdicts, which are in neither count.
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Resolved,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      autoResolvedAt: AN_HOUR_AGO,
+    });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      autoReplyDecline: AUTO_REPLY_DECLINE.notCovered,
+      autoReplyDeclinedAt: AN_HOUR_AGO,
+    });
+    // Unstamped, so the classifier's half, not this one.
+    await seedTicket({ createdAt: AN_HOUR_AGO, status: TICKET_STATUS.New });
+
+    const counts = await pipelineCounts(FROM, TO, true);
+
+    expect(counts).toMatchObject({
+      received: 9,
+      machineClassified: 8,
+      autoReplyPending: 2,
+      autoReplyNotOffered: 2,
     });
   });
 });
@@ -552,6 +639,72 @@ describe("GET /api/pipeline/runs/:id", () => {
         createdAt: ago(RECONCILE_MAX_AGE_MS + HOUR),
       });
       expect(await outcomeOf(ticket.id)).toBe(PIPELINE_OUTCOME.notOffered);
+    });
+  });
+
+  describe("a classified ticket with no auto-reply verdict", () => {
+    // The auto-reply's half, through the route and so through
+    // `autoReplyWillStillAct`, the statement the rail's `autoReplyPending`
+    // counts (#363).
+    async function outcomeOf(ticketId: number) {
+      const res = await fetch(url(`/runs/${ticketId}`), { headers: ADMIN });
+      expect(res.status).toBe(200);
+      return ((await res.json()) as PipelineRunResponse).run.outcome;
+    }
+    const classified = {
+      category: TICKET_CATEGORY.Technical,
+      classifiedAt: CLASSIFIED_AT,
+    };
+    const answered = (ticketId: number) =>
+      prisma.message.create({
+        data: {
+          ticketId,
+          messageId: `${ticketId}.reply@tickets.example.com`,
+          senderEmail: COLLEAGUE.admin.email,
+          senderName: COLLEAGUE.admin.name,
+          direction: MESSAGE_DIRECTION.outbound,
+          textBody: "Sorted by hand.",
+        },
+      });
+
+    test("offered and unanswered is `pending`", async () => {
+      const ticket = await seedTicket({
+        ...classified,
+        status: TICKET_STATUS.New,
+        autoReplyOfferedAt: CLASSIFIED_AT,
+      });
+      expect(await outcomeOf(ticket.id)).toBe(PIPELINE_OUTCOME.pending);
+    });
+
+    test("never offered is `notOffered`", async () => {
+      // R1 and R7: no record, whatever the switches say today.
+      const ticket = await seedTicket({
+        ...classified,
+        status: TICKET_STATUS.New,
+      });
+      expect(await outcomeOf(ticket.id)).toBe(PIPELINE_OUTCOME.notOffered);
+    });
+
+    test("offered, and answered by somebody since, is `notOffered`", async () => {
+      // The reopened ticket's shape, and one an agent answered by hand:
+      // nothing is coming back for either.
+      const ticket = await seedTicket({
+        ...classified,
+        status: TICKET_STATUS.Open,
+        autoReplyOfferedAt: CLASSIFIED_AT,
+      });
+      await answered(ticket.id);
+      expect(await outcomeOf(ticket.id)).toBe(PIPELINE_OUTCOME.notOffered);
+    });
+
+    test("offered, with a reply on the thread, while the worker holds it is `pending`", async () => {
+      const ticket = await seedTicket({
+        ...classified,
+        status: TICKET_STATUS.Processing,
+        autoReplyOfferedAt: CLASSIFIED_AT,
+      });
+      await answered(ticket.id);
+      expect(await outcomeOf(ticket.id)).toBe(PIPELINE_OUTCOME.pending);
     });
   });
 

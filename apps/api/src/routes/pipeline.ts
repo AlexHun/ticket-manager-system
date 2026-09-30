@@ -39,7 +39,10 @@ import {
   INGEST_OUTCOME,
   ingestInboundEmail,
 } from "../ingest";
-import { AUTO_REPLY_QUEUE } from "../jobs/auto-reply-ticket";
+import {
+  AUTO_REPLY_QUEUE,
+  autoReplyWillStillAct,
+} from "../jobs/auto-reply-ticket";
 import { getBoss } from "../jobs/boss";
 import {
   CLASSIFY_QUEUE,
@@ -160,8 +163,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 
 /**
  * Which columns a run is rebuilt from. Exactly the ones the jobs write, plus
- * enough of the thread to answer "did anyone reply, and what did the machine
- * cite".
+ * enough of the thread to answer "what did the machine cite". Whether each half
+ * will still act — which reads `autoReplyOfferedAt` and the whole thread — is
+ * asked of the database by `awaitingOf` instead.
  */
 const RUN_SELECT = {
   id: true,
@@ -173,11 +177,9 @@ const RUN_SELECT = {
   autoResolvedAt: true,
   autoReplyDecline: true,
   autoReplyDeclinedAt: true,
-  autoReplyOfferedAt: true,
   createdAt: true,
-  // The newest reply of any kind. Two questions at once: what the machine cited
-  // (when it was the machine), and whether this ticket has been answered at all
-  // — which is what tells a finished ticket apart from one still waiting.
+  // The newest reply of any kind, for what the machine cited when it was the
+  // machine.
   messages: {
     where: { direction: MESSAGE_DIRECTION.outbound },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -193,13 +195,20 @@ const RUN_SELECT = {
 type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 
 /**
+ * Whether each half of the pipeline will still act on a row: the database's
+ * answers to `classifierWillStillAct` and `autoReplyWillStillAct`, asked by
+ * `awaitingOf` below.
+ */
+type Awaiting = { classifier: boolean; autoReply: boolean };
+
+/**
  * Rebuild one ticket's trip down the rail.
  *
- * Every branch here is a fact a column records. The one fact that depends on
- * the clock, whether the classifier will still act on this row, arrives as
- * `awaitingClassifier`: the caller asks the database, through the function of
- * that name below, which runs `classifierWillStillAct` — the statement the
- * reconcile sweep and the rail's count read too. What this deliberately does *not* do is
+ * Every branch here is a fact a column records. Whether each half will still
+ * act on this row arrives as `awaiting`: the caller asks the database, through
+ * `awaitingOf` below, which runs `classifierWillStillAct` and
+ * `autoReplyWillStillAct` — the statements the rail's counts read too, and the
+ * first the reconcile sweep. What this deliberately does *not* do is
  * guess: a ticket with no classification verdict that nothing will classify —
  * no API key, a category a person filed first, or older than the reconcile
  * window — is `notOffered`, not "still thinking", because nothing is scheduled
@@ -221,7 +230,7 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 export function toRun(
   row: RunRow,
   config: PipelineConfig,
-  awaitingClassifier: boolean,
+  awaiting: Awaiting,
 ): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = row.classifiedAt !== null && row.category !== null;
@@ -241,40 +250,19 @@ export function toRun(
   // rule: a category a person already filed, or a ticket past the reconcile
   // window, is one nothing will classify. Asking only the key drew every such
   // ticket as pending forever, the showcase seed's whole desk among them (#353).
-  const classifierWillRun = config.aiConfigured && awaitingClassifier;
-  // The auto-reply's half asks the row alone. `enqueueAutoReply` records the
-  // offer in the transaction that sends the job, and the handler never re-reads
-  // the switches, so what they say today changes nothing. Guessing from *today's*
-  // settings drew a ticket classified while the auto-reply was off as pending
-  // forever once it was switched back on (#360). A row from before the column
-  // has no record and reads as not offered; only tickets in flight at deploy
-  // time are mislabelled that way, and they settle within seconds.
-  //
-  // **A known gap, not closed here.** The record says the job was sent, not
-  // that it will act. The claim takes only a `New`, unassigned ticket, so if a
-  // person assigns an offered ticket or moves it out of `New` before the job
-  // runs, without replying, the job does nothing and writes no verdict, yet
-  // this still reads `pending` — until somebody replies, which
-  // `answeredAlready` below catches. The window is the time between
-  // classification and the job, normally seconds and longer while it retries.
-  // It read `pending` before #360 too. The plan defers it as "offered and then
-  // lost": a sweep's job, not a report's.
-  const autoReplyOffered = row.autoReplyOfferedAt !== null;
-
-  // Already answered by somebody, and not currently claimed. The classify
-  // handler offers a ticket once, and the recovery sweep re-offers only one
-  // stuck in `Processing`, so nothing is coming back for this ticket even if
-  // it was offered.
-  //
-  // This is the shape a *reopened* ticket takes, and it is why the case needs
-  // handling rather than falling through to `pending`. A customer replying to a
-  // machine-resolved ticket clears `autoResolvedAt` (see `ingest.ts`), so the
-  // one column that proved the machine answered is gone — leaving a classified,
-  // unresolved, undeclined ticket that would otherwise be reported as still
-  // being worked on, forever. It is also the shape of a ticket an agent simply
-  // answered by hand.
-  const answeredAlready =
-    row.messages.length > 0 && row.status !== TICKET_STATUS.Processing;
+  const classifierWillRun = config.aiConfigured && awaiting.classifier;
+  // The auto-reply's half asks the row alone, through `autoReplyWillStillAct`:
+  // offered, and not answered since by anybody but the worker holding the
+  // claim. `enqueueAutoReply` records the offer in the transaction that sends
+  // the job, and the handler never re-reads the switches, so what they say
+  // today changes nothing. Guessing from *today's* settings drew a ticket
+  // classified while the auto-reply was off as pending forever once it was
+  // switched back on (#360). A row from before the column has no record and
+  // reads as not offered; only tickets in flight at deploy time are mislabelled
+  // that way, and they settle within seconds. An answered ticket — one an agent
+  // replied to by hand, or a reopened one, whose `autoResolvedAt` the
+  // customer's reply cleared — is not coming back, so it is `notOffered` rather
+  // than pending forever. That rule's one known gap is recorded beside it.
 
   // A decline's outcome comes out of `DECLINE_OUTCOME`, never from
   // `decline !== null`. Nine of the ten reasons are verdicts and `unavailable`
@@ -292,7 +280,7 @@ export function toRun(
           ? classifierWillRun
             ? PIPELINE_OUTCOME.pending
             : PIPELINE_OUTCOME.notOffered
-          : autoReplyOffered && !answeredAlready
+          : awaiting.autoReply
             ? PIPELINE_OUTCOME.pending
             : PIPELINE_OUTCOME.notOffered;
 
@@ -417,7 +405,7 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * can check.
  *
  * The classifier's rule is `classifierWillStillAct` from `jobs/classify-ticket.ts`
- * at `to`, the statement `awaitingClassifier` asks of each listed ticket, so the
+ * at `to`, the statement `awaitingOf` asks of each listed ticket, so the
  * rail and the Recent arrivals list beside it cannot disagree about the same
  * tickets (#355, #361). With a key, what it matches is `classifyPending`. With
  * none, nothing is coming for those tickets either, so they are not offered and
@@ -426,6 +414,12 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * reason `toRun` takes its config as one. Every other unstamped ticket is
  * `filedOrStale`, taken as the remainder so the classify counts always add up
  * to `received`.
+ *
+ * The auto-reply half reads the row alone, as `toRun` does (#363): a classified
+ * ticket with no verdict is `autoReplyPending` when `autoReplyWillStillAct`
+ * matches it — the statement `toRun`'s `awaiting.autoReply` answers too — and
+ * `autoReplyNotOffered` when no offer is recorded. Neither takes the key: an
+ * offer is only ever recorded where one could run.
  */
 export async function pipelineCounts(
   from: Date,
@@ -433,6 +427,18 @@ export async function pipelineCounts(
   aiConfigured: boolean,
 ): Promise<PipelineCounts> {
   const window = { createdAt: { gte: from, lt: to } };
+  const machineFiled = {
+    classifiedAt: { not: null },
+    category: { not: null },
+  } satisfies Prisma.TicketWhereInput;
+  // Machine-classified, with neither a resolve nor a decline: what the two
+  // auto-reply counts split by the offer record (#363).
+  const noAutoReplyVerdict = {
+    ...window,
+    ...machineFiled,
+    autoResolvedAt: null,
+    autoReplyDecline: null,
+  } satisfies Prisma.TicketWhereInput;
 
   const [
     received,
@@ -441,15 +447,11 @@ export async function pipelineCounts(
     classifierRuleMatches,
     autoResolved,
     declineGroups,
+    autoReplyPending,
+    autoReplyNotOffered,
   ] = await Promise.all([
     prisma.ticket.count({ where: window }),
-    prisma.ticket.count({
-      where: {
-        ...window,
-        classifiedAt: { not: null },
-        category: { not: null },
-      },
-    }),
+    prisma.ticket.count({ where: { ...window, ...machineFiled } }),
     prisma.ticket.count({
       where: { ...window, classifiedAt: { not: null }, category: null },
     }),
@@ -463,6 +465,12 @@ export async function pipelineCounts(
       by: ["autoReplyDecline"],
       where: { ...window, autoReplyDecline: { not: null } },
       _count: { _all: true },
+    }),
+    prisma.ticket.count({
+      where: { AND: [noAutoReplyVerdict, autoReplyWillStillAct()] },
+    }),
+    prisma.ticket.count({
+      where: { ...noAutoReplyVerdict, autoReplyOfferedAt: null },
     }),
   ]);
 
@@ -493,23 +501,36 @@ export async function pipelineCounts(
     },
     autoResolved,
     declines,
+    autoReplyPending,
+    autoReplyNotOffered,
   };
 }
 
 /**
- * Which of `ticketIds` the classifier will still act on at `now` — the
- * `awaitingClassifier` answer `toRun` takes, asked through the same
- * `classifierWillStillAct` statement `pipelineCounts` counts.
+ * What each half of the pipeline will still act on among `ticketIds` at `now`
+ * — the `awaiting` answer `toRun` takes, asked through the same
+ * `classifierWillStillAct` and `autoReplyWillStillAct` statements
+ * `pipelineCounts` counts.
  */
-async function awaitingClassifier(
+async function awaitingOf(
   ticketIds: number[],
   now: Date,
-): Promise<Set<number>> {
-  const rows = await prisma.ticket.findMany({
-    where: { AND: [{ id: { in: ticketIds } }, classifierWillStillAct(now)] },
-    select: { id: true },
+): Promise<(ticketId: number) => Awaiting> {
+  const matching = async (rule: Prisma.TicketWhereInput) => {
+    const rows = await prisma.ticket.findMany({
+      where: { AND: [{ id: { in: ticketIds } }, rule] },
+      select: { id: true },
+    });
+    return new Set(rows.map((row) => row.id));
+  };
+  const [classifier, autoReply] = await Promise.all([
+    matching(classifierWillStillAct(now)),
+    matching(autoReplyWillStillAct()),
+  ]);
+  return (ticketId) => ({
+    classifier: classifier.has(ticketId),
+    autoReply: autoReply.has(ticketId),
   });
-  return new Set(rows.map((row) => row.id));
 }
 
 pipelineRouter.get(
@@ -550,7 +571,7 @@ pipelineRouter.get(
 
     // After the rows rather than beside them: it asks about the listed ids
     // alone, at the same `to` the count reads.
-    const awaiting = await awaitingClassifier(
+    const awaiting = await awaitingOf(
       recentRows.map((row) => row.id),
       to,
     );
@@ -562,7 +583,7 @@ pipelineRouter.get(
       to: to.toISOString(),
       counts,
       queues: { classify, autoReply },
-      recent: recentRows.map((row) => toRun(row, config, awaiting.has(row.id))),
+      recent: recentRows.map((row) => toRun(row, config, awaiting(row.id))),
     });
   },
 );
@@ -588,7 +609,7 @@ pipelineRouter.get(
         where: { id: parsed.data },
         select: RUN_SELECT,
       }),
-      awaitingClassifier([parsed.data], new Date()),
+      awaitingOf([parsed.data], new Date()),
     ]);
 
     if (!row) {
@@ -596,7 +617,7 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: toRun(row, config, awaiting.has(row.id)) });
+    res.json({ run: toRun(row, config, awaiting(row.id)) });
   },
 );
 

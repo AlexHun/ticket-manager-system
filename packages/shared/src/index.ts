@@ -1749,6 +1749,13 @@ export const CLASSIFY_NOT_OFFERED_LABEL: Record<ClassifyNotOffered, string> = {
 };
 
 /**
+ * The rail's words for `autoReplyPending` and `autoReplyNotOffered`, here for
+ * the reason the classify labels are: the E2E spec reads the rendered exit.
+ */
+export const AUTO_REPLY_PENDING_LABEL = "Offered, verdict still coming";
+export const AUTO_REPLY_NOT_OFFERED_LABEL = "Never offered to the auto-reply";
+
+/**
  * The raw facts the overview reports. Stage numbers are **derived** from these
  * by `pipelineStageCounts` rather than sent, so the arithmetic exists once.
  */
@@ -1776,6 +1783,22 @@ export interface PipelineCounts {
   autoResolved: number;
   /** Every decline reason, including the zeroes — a zero is information here. */
   declines: Record<AutoReplyDecline, number>;
+  /**
+   * Machine-classified with no verdict, and one is still coming: the auto-reply
+   * was offered it (`autoReplyOfferedAt`) and nobody has answered it, unless
+   * the answer is the worker's own claim. `toRun`'s auto-reply `pending`.
+   *
+   * Optional, as is `autoReplyNotOffered`, so a rail deployed ahead of its API
+   * still draws (#363). Both are always sent; make them required once a release
+   * has shipped them.
+   */
+  autoReplyPending?: number;
+  /**
+   * Machine-classified with no verdict, and no offer recorded: nothing will
+   * ever enqueue it. What is left after these two and the verdicts is only
+   * offered tickets somebody answered by hand, or that were reopened.
+   */
+  autoReplyNotOffered?: number;
 }
 
 /** How many tickets were still on the rail at each stop. */
