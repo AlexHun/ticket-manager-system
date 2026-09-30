@@ -64,12 +64,12 @@ import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
  * ticket table were the webhook's shared secret and the seed script.
  *
  * Nothing here writes anything a job would not have written. There is no
- * `/pipeline` column, no simulated-ticket flag and no migration behind this
- * file: every number below is derived from `classifiedAt`, `category`, `status`,
- * `autoResolvedAt`, `autoReplyDecline` and the messages' `direction` /
- * `automated` / `citedArticleIds`. That the whole trace was already recoverable
- * is a property the schema had before this page existed; this is the first thing
- * to read it.
+ * `/pipeline` column and no simulated-ticket flag: every number below is
+ * derived from `classifiedAt`, `category`, `status`, `autoResolvedAt`,
+ * `autoReplyDecline`, `autoReplyOfferedAt` and the messages' `direction` /
+ * `automated` / `citedArticleIds`. The one column added since the page existed,
+ * `autoReplyOfferedAt` (#360), is the job's record of a decision it made, like
+ * `autoReplyDecline`, and is not written for the page's benefit.
  */
 
 export const pipelineRouter = Router();
@@ -173,6 +173,7 @@ const RUN_SELECT = {
   autoResolvedAt: true,
   autoReplyDecline: true,
   autoReplyDeclinedAt: true,
+  autoReplyOfferedAt: true,
   createdAt: true,
   // The newest reply of any kind. Two questions at once: what the machine cited
   // (when it was the machine), and whether this ticket has been answered at all
@@ -228,22 +229,24 @@ export function toRun(
   const resolved = row.autoResolvedAt !== null;
 
   // Is anything still going to happen to this ticket? Two different answers,
-  // because the two halves of the pipeline are switched off independently — one
-  // key gates the classifier, and the kill switch plus an empty corpus gate the
-  // auto-reply on their own. A ticket waiting on a stage nothing will ever run
-  // is `notOffered`, never `pending`: "still thinking" about work that is not
-  // scheduled is the one lie this page must not tell.
+  // one per half of the pipeline. A ticket waiting on a stage nothing will ever
+  // run is `notOffered`, never `pending`: "still thinking" about work that is
+  // not scheduled is the one lie this page must not tell.
   //
-  // The classifier's half also asks the ticket, through the job's own rule:
-  // a category a person already filed, or a ticket past the reconcile window,
-  // is one nothing will classify. Asking only the key drew every such ticket as
-  // pending forever, the showcase seed's whole desk among them (#353).
+  // The classifier's half asks the key, and the ticket through the job's own
+  // rule: a category a person already filed, or a ticket past the reconcile
+  // window, is one nothing will classify. Asking only the key drew every such
+  // ticket as pending forever, the showcase seed's whole desk among them (#353).
   const classifierWillRun =
     config.aiConfigured && classifierWillStillAct(row, now);
-  const autoReplyWillRun =
-    config.aiConfigured &&
-    config.autoReplyEnabled &&
-    config.autoReplyArticleCount > 0;
+  // The auto-reply's half asks the row alone. `enqueueAutoReply` records the
+  // offer in the transaction that sends the job, and the handler never re-reads
+  // the switches, so what they say today changes nothing. Guessing from *today's*
+  // settings drew a ticket classified while the auto-reply was off as pending
+  // forever once it was switched back on (#360). A row from before the column
+  // has no record and reads as not offered; only tickets in flight at deploy
+  // time are mislabelled that way, and they settle within seconds.
+  const autoReplyOffered = row.autoReplyOfferedAt !== null;
 
   // Already answered by somebody, and not currently claimed. The auto-reply is
   // enqueued exactly once, from the classify handler, so nothing is coming back
@@ -275,7 +278,7 @@ export function toRun(
           ? classifierWillRun
             ? PIPELINE_OUTCOME.pending
             : PIPELINE_OUTCOME.notOffered
-          : autoReplyWillRun && !answeredAlready
+          : autoReplyOffered && !answeredAlready
             ? PIPELINE_OUTCOME.pending
             : PIPELINE_OUTCOME.notOffered;
 

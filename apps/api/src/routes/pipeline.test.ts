@@ -16,8 +16,8 @@
  *
  *   - **`toRun` as a function**, over rows built here. It is total over its
  *     evidence and takes its `PipelineConfig` as a parameter, so every branch —
- *     including the two that depend on a deployment's switches — is reachable
- *     without a database or an environment.
+ *     including the classifier's, which depends on a deployment's key — is
+ *     reachable without a database or an environment.
  *   - **`GET /runs/:id` over a real socket and a real Postgres** (`../test/pg`,
  *     ADR-0014), for the one claim a value table cannot make: that a ticket
  *     *handed back by `onExhausted`* reads as `abandoned`. It runs the job's own
@@ -132,11 +132,15 @@ function row(overrides: Partial<RunRow> = {}): RunRow {
     autoResolvedAt: null,
     autoReplyDecline: null,
     autoReplyDeclinedAt: null,
+    autoReplyOfferedAt: null,
     createdAt: CREATED_AT,
     messages: [],
     ...overrides,
   };
 }
+
+/** When `enqueueAutoReply` recorded the offer, in rows that need one. */
+const OFFERED_AT = new Date("2026-09-01T09:00:12.500Z");
 
 /** A ticket handed back with one reason, exactly as `release` stamps it. */
 function declinedRow(decline: AutoReplyDecline): RunRow {
@@ -239,17 +243,60 @@ describe("toRun — the rest of the outcomes", () => {
   });
 
   test("waiting on a stage that will run is `pending`", () => {
+    const run = toRun(
+      row({ status: TICKET_STATUS.New, autoReplyOfferedAt: OFFERED_AT }),
+      LIVE,
+      NOW,
+    );
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
+  });
+});
+
+/* ── Whether the auto-reply was offered the ticket ───────────────────────── */
+
+describe("toRun — the auto-reply's offer is read off the row", () => {
+  test("classified with no offer recorded is `notOffered`, on a deployment where it is on today", () => {
+    // R1, the bug this record exists for (#360). A ticket classified while the
+    // auto-reply was switched off, or before its corpus had an article, was
+    // never enqueued, and nothing will enqueue it now. Guessed from today's
+    // settings it read `pending` forever once the switch went back on. A row
+    // from before the column reads the same way, which is R7.
     const run = toRun(row({ status: TICKET_STATUS.New }), LIVE, NOW);
+
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
+    expect(run.stages.map((stage) => stage.state)).not.toContain(
+      PIPELINE_STAGE_STATE.pending,
+    );
+  });
+
+  test("offered, and the switch turned off since, is still `pending`", () => {
+    // The other half of reading the record rather than the settings. The job
+    // is already queued and the handler never re-reads the switch, so a verdict
+    // is coming whatever the deployment says today.
+    const run = toRun(
+      row({ status: TICKET_STATUS.New, autoReplyOfferedAt: OFFERED_AT }),
+      {
+        ...LIVE,
+        aiConfigured: false,
+        autoReplyEnabled: false,
+        autoReplyArticleCount: 0,
+      },
+      NOW,
+    );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
   });
 
-  test("waiting on a stage nothing will run is `notOffered`", () => {
-    // An empty corpus reached *before* the ticket is enqueued: nothing is
-    // scheduled, which is a different true statement from "this one was tried
-    // and got nowhere" (ADR-0019). The two must not be collapsed.
+  test("offered, and answered by somebody since, is `notOffered`", () => {
+    // A record of an offer is not a promise of a verdict once somebody has
+    // replied: this is the reopened ticket's shape, and one an agent answered
+    // by hand, and `toRun` reads both as nothing more to come.
     const run = toRun(
-      row({ status: TICKET_STATUS.New }),
-      { ...LIVE, autoReplyArticleCount: 0 },
+      row({
+        status: TICKET_STATUS.Open,
+        autoReplyOfferedAt: OFFERED_AT,
+        messages: [{ automated: false, citedArticleIds: [] }],
+      }),
+      LIVE,
       NOW,
     );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);

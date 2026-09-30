@@ -108,14 +108,19 @@ mock.module("./boss", () => ({
   getBoss: () => watchedQueue ?? bossModule.getBoss(),
 }));
 
-/** Record what the sweep enqueues, instead of letting `getBoss()` throw. */
-function watchQueue(): void {
+/**
+ * Record what the sweep enqueues, instead of letting `getBoss()` throw. With
+ * `failing`, the send throws after recording, the way a queue insert that
+ * fails inside the caller's transaction does.
+ */
+function watchQueue({ failing = false } = {}): void {
   watchedQueue = {
     send: async (queue: string, data: unknown) => {
       enqueued.push({
         queue,
         ticketId: (data as { ticketId: number }).ticketId,
       });
+      if (failing) throw new Error("queue insert failed");
       return "fake-job-id";
     },
   };
@@ -123,7 +128,8 @@ function watchQueue(): void {
 
 const { CLASSIFY_QUEUE, CLASSIFY_RECONCILE_SWEEP } =
   await import("./classify-ticket");
-const { AUTO_REPLY_RECOVER_SWEEP } = await import("./auto-reply-ticket");
+const { AUTO_REPLY_QUEUE, AUTO_REPLY_RECOVER_SWEEP, enqueueAutoReply } =
+  await import("./auto-reply-ticket");
 const { PRUNE_OUTBOX_SWEEP } = await import("./prune-outbox");
 const { PRUNE_ACTIVITY_TRAILS_SWEEP } = await import("./prune-activity-trails");
 
@@ -208,11 +214,20 @@ async function outboxIds(): Promise<number[]> {
 /** Quiet: every sweep here logs when it finds something, which is every test. */
 let quiet: ReturnType<typeof spyOn>[] = [];
 
+/**
+ * The auto-reply's kill switch, pinned on for every test and put back after.
+ * Bun loads `apps/api/.env` into the test process, and a developer's copy may
+ * switch the feature off, which would make the offer tests pass or fail by
+ * machine. `enqueueAutoReply` reads it per call, so setting it here is enough.
+ */
+const autoReplySwitch = process.env.AUTO_REPLY_ENABLED;
+
 beforeEach(async () => {
   await resetDb();
   enqueued = [];
   aiConfigured = undefined;
   watchedQueue = undefined;
+  process.env.AUTO_REPLY_ENABLED = "true";
   quiet = [
     spyOn(console, "log").mockImplementation(() => {}),
     spyOn(console, "warn").mockImplementation(() => {}),
@@ -228,6 +243,8 @@ afterEach(() => {
   // switched on or off.
   aiConfigured = undefined;
   watchedQueue = undefined;
+  if (autoReplySwitch === undefined) delete process.env.AUTO_REPLY_ENABLED;
+  else process.env.AUTO_REPLY_ENABLED = autoReplySwitch;
 });
 
 /* ── The classifier's reconcile ──────────────────────────────────────────── */
@@ -337,7 +354,100 @@ describe("AUTO_REPLY_RECOVER_SWEEP", () => {
 
     expect(await statusOf(id)).toBe(TICKET_STATUS.Processing);
   });
+
+  test("re-offers a released ticket and keeps its first recorded offer", async () => {
+    // A re-offer is the same decision sent again, not a new one, so the stamp
+    // `/pipeline` reads keeps the instant the ticket was first offered.
+    aiConfigured = true;
+    await autoReplyArticle();
+    watchQueue();
+    const firstOffer = ago(HOUR);
+    const id = await newTicket({ status: TICKET_STATUS.Processing });
+    await prisma.ticket.update({
+      where: { id },
+      data: { autoReplyOfferedAt: firstOffer },
+    });
+    await backdate(id, ago(HOUR), ago(10 * MINUTE));
+
+    await AUTO_REPLY_RECOVER_SWEEP.run();
+
+    expect(enqueued).toEqual([{ queue: AUTO_REPLY_QUEUE, ticketId: id }]);
+    expect(await offeredAt(id)).toEqual(firstOffer);
+  });
 });
+
+/* ── The auto-reply's offer ──────────────────────────────────────────────── */
+
+describe("enqueueAutoReply", () => {
+  // Not a sweep, but it lives here because this file owns the `./boss` and
+  // `../ai/provider` seams it needs. A second file stubbing either is the
+  // registry hazard in the header. The recovery sweep above calls it.
+
+  test("records the offer on the ticket when it sends the job", async () => {
+    aiConfigured = true;
+    await autoReplyArticle();
+    watchQueue();
+    const id = await newTicket();
+
+    await enqueueAutoReply(id);
+
+    expect(enqueued).toEqual([{ queue: AUTO_REPLY_QUEUE, ticketId: id }]);
+    expect(await offeredAt(id)).toBeInstanceOf(Date);
+  });
+
+  test.each([
+    ["switched off", { enabled: false, key: true, corpus: true }],
+    ["no key", { enabled: true, key: false, corpus: true }],
+    ["an empty corpus", { enabled: true, key: true, corpus: false }],
+  ])("records nothing and sends nothing with %s", async (_, deployment) => {
+    // No queue is watched, so a send would reach the real `getBoss()` and
+    // throw: "sent nothing" is asserted by the call returning at all.
+    aiConfigured = deployment.key;
+    if (deployment.corpus) await autoReplyArticle();
+    if (!deployment.enabled) process.env.AUTO_REPLY_ENABLED = "false";
+    const id = await newTicket();
+
+    await enqueueAutoReply(id);
+
+    expect(await offeredAt(id)).toBeNull();
+  });
+
+  test("a send that fails takes the record with it", async () => {
+    // One transaction, so the record never claims an offer no job carries,
+    // which would read `pending` forever: the bug this column exists to fix,
+    // arriving by another road.
+    aiConfigured = true;
+    await autoReplyArticle();
+    watchQueue({ failing: true });
+    const id = await newTicket();
+
+    await expect(enqueueAutoReply(id)).rejects.toThrow("queue insert failed");
+
+    expect(enqueued).toEqual([{ queue: AUTO_REPLY_QUEUE, ticketId: id }]);
+    expect(await offeredAt(id)).toBeNull();
+  });
+});
+
+async function offeredAt(id: number): Promise<Date | null> {
+  const row = await prisma.ticket.findUniqueOrThrow({
+    where: { id },
+    select: { autoReplyOfferedAt: true },
+  });
+  return row.autoReplyOfferedAt;
+}
+
+/** One article the auto-reply may answer from, so its corpus is not empty. */
+async function autoReplyArticle(): Promise<void> {
+  await prisma.knowledgeArticle.create({
+    data: {
+      id: "KB-001",
+      title: "How do I reset my password?",
+      category: TICKET_CATEGORY.Technical,
+      body: "Use the link on the sign-in page.",
+      autoReply: true,
+    },
+  });
+}
 
 /* ── The outbox sweep ────────────────────────────────────────────────────── */
 
