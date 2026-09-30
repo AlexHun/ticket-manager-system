@@ -5,6 +5,7 @@ import { simulateEmailSchema } from "@ticket/core";
 import {
   asAutoReplyDecline,
   AUTO_REPLY_DECLINES,
+  CLASSIFY_NOT_OFFERED,
   DASHBOARD_RANGE,
   DASHBOARD_RANGE_DAYS,
   DECLINE_OUTCOME,
@@ -415,17 +416,21 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * header), and the split below is a claim about rows that only a real database
  * can check.
  *
- * `classifyPending` counts `classifierWillStillAct` from `jobs/classify-ticket.ts`
+ * The classifier's rule is `classifierWillStillAct` from `jobs/classify-ticket.ts`
  * at `to`, the statement `awaitingClassifier` asks of each listed ticket, so the
  * rail and the Recent arrivals list beside it cannot disagree about the same
- * tickets (#355, #361). The count does not read the key — with none, the rail
- * labels this exit as the missing key rather than as queued. Every other
- * unstamped ticket is `classifyNotOffered`, taken as the remainder so the four
- * classify counts always add up to `received`.
+ * tickets (#355, #361). With a key, what it matches is `classifyPending`. With
+ * none, nothing is coming for those tickets either, so they are not offered and
+ * the key is named as the cause (#362). That is the `aiConfigured &&` that
+ * `toRun` applies per ticket, and the key arrives as a parameter here for the
+ * reason `toRun` takes its config as one. Every other
+ * unstamped ticket is `filedOrStale`, taken as the remainder so the classify
+ * counts always add up to `received`.
  */
 export async function pipelineCounts(
   from: Date,
   to: Date,
+  aiConfigured: boolean,
 ): Promise<PipelineCounts> {
   const window = { createdAt: { gte: from, lt: to } };
 
@@ -433,7 +438,7 @@ export async function pipelineCounts(
     received,
     machineClassified,
     classifyAbandoned,
-    classifyPending,
+    classifierWouldAct,
     autoResolved,
     declineGroups,
   ] = await Promise.all([
@@ -471,13 +476,18 @@ export async function pipelineCounts(
     if (reason) declines[reason] += group._count._all;
   }
 
+  const classifyPending = aiConfigured ? classifierWouldAct : 0;
+
   return {
     received,
     machineClassified,
     classifyAbandoned,
     classifyPending,
-    classifyNotOffered:
-      received - machineClassified - classifyAbandoned - classifyPending,
+    classifyNotOffered: {
+      [CLASSIFY_NOT_OFFERED.noKey]: classifierWouldAct - classifyPending,
+      [CLASSIFY_NOT_OFFERED.filedOrStale]:
+        received - machineClassified - classifyAbandoned - classifierWouldAct,
+    },
     autoResolved,
     declines,
   };
@@ -522,7 +532,8 @@ pipelineRouter.get(
     const [config, counts, recentRows, classify, autoReply] = await Promise.all(
       [
         readConfig(),
-        pipelineCounts(from, to),
+        // The key `readConfig` reports: `provider.ts` reads it once, at import.
+        pipelineCounts(from, to, isAiConfigured()),
         prisma.ticket.findMany({
           where: { createdAt: { gte: from, lt: to } },
           select: RUN_SELECT,
