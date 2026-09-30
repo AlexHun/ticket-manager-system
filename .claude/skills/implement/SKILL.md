@@ -15,7 +15,7 @@ invoke it.
    a literal `@-`, the spec was written up before the issue was filed: grep
    `docs/adr/`, then `docs/plans/` and `docs/prd/`, for `#<n>`. Check its
    **Blocked by** list: an open blocker means stop and tell the user.
-2. **Branch** `<type>/<n>-<slug>` from a freshly fetched `origin/main`.
+2. **Branch** `<type>/<n>-<slug>` from a freshly fetched `origin/develop`.
    `bun run tokens` joins transcripts to issues through that branch name, so
    the number in it makes the ticket measurable.
 3. **Load the standards.** Call the Skill tool with `coding-standards` and read
@@ -25,8 +25,8 @@ invoke it.
    test file as you go; run `bun run typecheck` and both suites once at the end.
 5. **Commit** after the self-check in CLAUDE.md.
 6. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
-   `origin/main`. Fix every finding, or write down why one stands.
-7. **Ship.** Push, open a PR whose body says `Closes #<n>`, and take it to
+   `origin/develop`. Fix every finding, or write down why one stands.
+7. **Ship.** Push, open a PR into `develop` whose body says `Closes #<n>`, and take it to
    green in CI as CLAUDE.md's Workflow describes.
 
 Done when the PR is open, closes the issue, and every CI job is green. Report

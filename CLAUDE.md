@@ -18,9 +18,15 @@ fill the slot `/mattpocock-skills:to-spec` holds elsewhere. `to-tickets` and
 unlike the plugin versions they can be invoked by the agent; use them rather
 than the `mattpocock-skills:` versions.
 
-Branch every change from a freshly fetched main —
-`git fetch origin && git switch -c <branch> origin/main` — since local `main`
-lags whatever merged since the last session.
+**`develop` is staging; `main` is production.** Branch every change from a
+freshly fetched develop —
+`git fetch origin && git switch -c <branch> origin/develop` — since local
+`develop` lags whatever merged since the last session — and open its PR into
+`develop` (the repo's default branch, so `gh pr create` targets it and
+`Closes #<n>` closes the ticket on merge). Nothing merges into `main` except a
+release: one PR from `develop` into `main`, opened only when the user asks for
+it, once CI on `develop`'s tip is green. `main` is what Railway deploys and
+where the version bump runs.
 
 **Self-check before every commit.** Search for each reference the change leaves
 stale: old symbol names, moved paths, mentions in docs and comments. Re-read
