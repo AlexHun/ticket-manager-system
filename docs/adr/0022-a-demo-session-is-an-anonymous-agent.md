@@ -81,6 +81,39 @@ outbox like anyone's. Each later slice adds one of those.
   `disableDeleteAnonymousUser` turns both off. Demo identities are removed by this
   repo's nightly reset (#323, `jobs/demo-reset.ts`) once their sessions have
   ended, not by a visitor.
+- **A visitor cannot rename themselves, and nor can anyone else**
+  ([#357](https://github.com/AlexHun/ticket-manager-system/issues/357)). Better
+  Auth serves `/update-user` to every signed-in session, and it writes the
+  caller's own `name` and `image`. Ticket history and replies read the name at
+  display time, so a visitor renamed to a colleague would have every trail they
+  left read as that colleague's (R11). The `before` hook in `auth.ts` refuses
+  the path with 403 for every caller, agents and admins included. A name is
+  changed by an admin on the Users screen, which writes a `user_edited` entry.
+  The plugin's other session-bound endpoints were read at 1.6.13 for anything
+  else that writes the user row, and none does under this config:
+  - `/change-email` answers 400 unless `user.changeEmail.enabled`, which is off.
+  - `/delete-user` and its callback answer 404 unless `user.deleteUser.enabled`,
+    which is off.
+  - `/change-password` writes the `account` row, not the user, and needs the
+    current password, which a visitor has none of.
+  - `/unlink-account` deletes an `account` row and refuses the last one.
+  - `/link-social` answers 404 with no social provider configured.
+  - `/update-session` writes only the session's additional fields, and none
+    is configured.
+  - `/send-verification-email` answers 400 with no `sendVerificationEmail`, so
+    `/verify-email` has no token to accept.
+  - The rest (`/get-session`, `/list-sessions`, `/sign-out`, the three
+    `/revoke-*`, `/verify-password`, `/list-accounts`, `/account-info`,
+    `/get-access-token`, `/refresh-token`) read, or delete the caller's own
+    sessions.
+  - The admin plugin's `/admin/update-user`, `/admin/set-role`,
+    `/admin/ban-user` and `/admin/unban-user` do write the user row, but only
+    for `adminRoles`, which a demo identity never holds. The Users screen
+    reaches the first through `auth.api` on the server, so it cannot be
+    refused by path. An admin who calls it over HTTP directly can still rename
+    anyone, themselves included, without the `user_edited` entry the Users
+    screen writes. That is an admin's own audit gap, not a way for a visitor
+    to change what a trail says, and is left open here.
 - **A visitor's email is never sent** (#325). A demo reply lands on the thread
   and on `/outbox`, but its outbox row is born `withheld`: never queued, never
   handed to a worker, and refused by the outbox retry. That holds with a mail
