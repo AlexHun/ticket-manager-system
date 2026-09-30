@@ -28,8 +28,7 @@ interface StatTileProps {
 
 /** Only the two states that mean "act on this" tint the number itself. `good`
  *  deliberately does not: a dashboard where the healthy case is also coloured
- *  has no quiet state left to contrast against, and the green would land in the
- *  same hue family as every series on the page. */
+ *  has no quiet state left to contrast against. */
 const TINTED: Record<KpiStatus, string | undefined> = {
   [KPI_STATUS.good]: undefined,
   [KPI_STATUS.warning]: "text-status-warning",

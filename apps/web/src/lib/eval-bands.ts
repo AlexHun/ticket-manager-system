@@ -15,9 +15,9 @@ import {
  * **A band is never the only cue.** Every judgement carries a `label`, and the
  * page prints it in the caption under the figure, so the judgement survives
  * colour-blindness, a greyscale screenshot and a screen reader. That is the
- * same rule `StatusPill` keeps on the dashboard, and for the same reason: this
- * theme is monochrome green, so a green figure sits in the hue family of half
- * the app.
+ * same rule `StatusPill` keeps on the dashboard, and for the same reason:
+ * roughly one reader in twelve cannot tell verdigris from ember by hue, so a
+ * colour alone is a judgement they cannot read.
  *
  * **`null` is an unjudged rendering and it is not a failure.** A metric that
  * measured nothing has nothing to be judged, and a green 100% where nothing was

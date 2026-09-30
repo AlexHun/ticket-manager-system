@@ -47,6 +47,14 @@
   --color-ember-2: var(--ember-2);
   --color-ember-3: var(--ember-3);
   --color-calm: var(--calm);
+  /* Temper blue as text — see `--link` in :root. */
+  --color-link: var(--link);
+  /* Decoration and the hallmark. See the values in :root for why none of
+       these is ever a control, a count or a status. */
+  --color-bronze: var(--bronze);
+  --color-hallmark: var(--hallmark);
+  --color-soot: var(--soot);
+  --color-heat: var(--heat);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -135,33 +143,69 @@
        browser, not by these tokens. Without this it renders light and the
        near-white option text lands on a white popup. */
   color-scheme: dark;
-  --background: oklch(0.148 0.004 228.8);
-  --foreground: oklch(0.987 0.002 197.1);
-  --card: oklch(0.218 0.008 223.9);
-  --card-foreground: oklch(0.987 0.002 197.1);
-  --popover: oklch(0.218 0.008 223.9);
-  --popover-foreground: oklch(0.987 0.002 197.1);
-  --primary: oklch(0.432 0.095 166.913);
-  --primary-foreground: oklch(0.979 0.021 166.113);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.275 0.011 216.9);
-  --muted-foreground: oklch(0.723 0.014 214.4);
-  --accent: oklch(0.275 0.011 216.9);
-  --accent-foreground: oklch(0.987 0.002 197.1);
+
+  /*
+     * Cold iron (#342): near-black iron with a faint blue cast, and four hue
+     * families that each mean one thing.
+     *
+     *   temper blue   anything you can act on or select — primary buttons,
+     *                 links, focus rings, active nav icons, the charts' primary
+     *                 series, the sidebar's unread count and "New" badge
+     *   verdigris     settled and calm — resolved, closed, healthy (`--calm`)
+     *   ember         somebody is waiting — unchanged by the rebrand
+     *   bronze        decorative edges and rules, and the hallmark. Never a
+     *                 control, a count or a status: it sits at an ember hue,
+     *                 so anywhere it could be read it would read as urgency.
+     *
+     * Every value that sits behind or in front of text was measured against
+     * the card (oklch 0.21 0.008 250), not eyeballed; the figures are beside
+     * each group. `tests/e2e/contrast.spec.ts` holds the AA line on four
+     * screens and `brand.spec.ts` holds the families.
+     *
+     * Every derived token below (`--viz-*: var(--chart-N)` and the like) lives
+     * in this same block on purpose. A custom property defined with `var()`
+     * resolves where it is declared, so one moved to another selector keeps
+     * whatever the referenced token was there, silently.
+     */
+  --background: oklch(0.155 0.006 250);
+  --foreground: oklch(0.965 0.006 80);
+  --card: oklch(0.21 0.008 250);
+  --card-foreground: oklch(0.965 0.006 80);
+  --popover: oklch(0.21 0.008 250);
+  --popover-foreground: oklch(0.965 0.006 80);
+  /* A fill under near-white text (5.71:1), and too dark to be text itself on
+       the card (2.93:1) — which is why `--link` exists. */
+  --primary: oklch(0.5 0.13 255);
+  --primary-foreground: oklch(0.98 0.01 250);
+  --secondary: oklch(0.27 0.01 250);
+  --secondary-foreground: oklch(0.965 0.006 80);
+  --muted: oklch(0.27 0.01 250);
+  /* 7.69:1 on the card, 6.54:1 on --muted. */
+  --muted-foreground: oklch(0.74 0.012 250);
+  --accent: oklch(0.27 0.01 250);
+  --accent-foreground: oklch(0.965 0.006 80);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.56 0.021 213.5);
-  --chart-1: oklch(0.845 0.143 164.978);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.596 0.145 163.225);
-  --chart-4: oklch(0.508 0.118 165.612);
-  --chart-5: oklch(0.432 0.095 166.913);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  /* 5.29:1 on the card — a focus ring is a control boundary, and it now says
+       "this is the thing you can act on" in the same hue as the button. */
+  --ring: oklch(0.64 0.12 250);
+  /* Temper blue as text: links, the customer's address, the summary icon.
+       7.76:1 on the card and 6.58:1 on the outbound avatar's `primary/20`
+       wash. The same step as `--chart-2` and `--sidebar-primary`. */
+  --link: oklch(0.74 0.12 245);
+
+  /* Temper blue as the ordinal ramp, so a chart's primary series is the
+       action colour rather than the settled one. */
+  --chart-1: oklch(0.86 0.08 240);
+  --chart-2: oklch(0.74 0.12 245);
+  --chart-3: oklch(0.63 0.13 250);
+  --chart-4: oklch(0.53 0.12 254);
+  --chart-5: oklch(0.44 0.1 257);
 
   /* The ordinal window starts at --chart-1 and runs down, because --chart-5
-       measures only 2.28:1 on this card and would vanish into it. Contrasts:
-       11.42 / 7.02 / 4.76 / 3.24. */
+       measures only 2.27:1 on this card and would vanish into it. Contrasts:
+       11.68 / 7.76 / 5.08 / 3.35. */
   --viz-ord-1: var(--chart-1);
   --viz-ord-2: var(--chart-2);
   --viz-ord-3: var(--chart-3);
@@ -188,14 +232,14 @@
        Processing moves off `--chart-5` and onto a true neutral. It was on the
        one step the ordinal ramp refuses to use for being near-invisible, which
        was a fair call while everything was green — but with hue meaning
-       something, a *green* Processing would now read as settled, which is the
+       something, a *verdigris* Processing would now read as settled, which is the
        opposite of true. Grey says "not yours to act on" without claiming a side.
 
        Measured on the card, not eyeballed — see the check in the header above. */
   --viz-new: var(--ember-1);
   --viz-open: var(--ember-2);
   --viz-resolved: var(--calm);
-  --viz-closed: oklch(0.508 0.118 165.612);
+  --viz-closed: oklch(0.52 0.075 180);
   --viz-processing: oklch(0.55 0.012 220);
 
   --viz-accent: var(--chart-3);
@@ -206,35 +250,41 @@
      * Green used to mean status, series, brand, primary action and "good" at the
      * same time, which is another way of saying it meant nothing — every use had
      * to ship an icon and a word to be legible, and the file said so. The split
-     * gives hue a job it can actually do on a support desk: **green is settled,
-     * warm is somebody waiting.**
+     * gives hue a job it can actually do on a support desk: **verdigris is
+     * settled, warm is somebody waiting.** Brand, series and primary action
+     * left the green altogether in #342 and are temper blue — see the map at
+     * the top of this block.
      *
-     * `--calm` is the existing emerald, unchanged in feel: answered, resolved,
-     * ours, done.
+     * `--calm` is verdigris since the rebrand (#342): the emerald it was,
+     * softened toward the patina bronze actually grows, and still answered,
+     * resolved, ours, done. It moved off the emerald so it could not be read
+     * as the old brand green, which is now temper blue.
      *
      * The ember ramp is elapsed silence, and its three steps are not chosen by
      * eye — they are the `AGE_BUCKET` boundaries the dashboard already reports
      * against (1d / 3d / 7d), so the meter on a ticket row and the backlog-age
      * panel are the same measurement drawn twice. A ticket under a day old gets
-     * no ember at all; the absence is the first step.
+     * no ember at all; the absence is the first step. The rebrand left these
+     * three values alone on purpose, and `brand.spec.ts` holds them as literals.
      *
      * Hue travels 85° → 45° → 25° as it heats, and lightness *falls* while
      * chroma rises. That is deliberate on a dark ground: going lighter as well
      * as hotter would make a week-old ticket the brightest thing on a page of
      * fifty rows and turn the queue into a hazard sign. These are ~3:1 marks,
-     * not text — measured on the card below, and re-measure rather than eyeball
-     * if they move. Measured: ember-1 10.92, ember-2 5.62, ember-3 4.32.
+     * not text — measured on the card, and re-measure rather than eyeball if
+     * they or the card move. Measured: ember-1 11.12, ember-2 5.72,
+     * ember-3 4.39.
      *
-     * `--calm` is deliberately the *dimmer* emerald step (0.596), not the
-     * brighter 0.696 the charts use elsewhere, and that is a measured choice
-     * rather than taste. On this card the ramp lands at New 10.92, Open 5.62,
-     * Resolved 4.76, Closed 3.24 — so the queue's emphasis order is intact:
-     * unfinished work is always louder than finished work. The brighter calm
-     * measures 7.02 and put Resolved *above* Open, which would have made the
-     * settled half of the queue the first thing the eye caught. It still clears
-     * 4.5:1, so it is safe as badge text as well as as a mark.
+     * `--calm` is held *below* Open, and that is a measured choice rather than
+     * taste. On this card the ramp lands at New 11.12, Open 5.72, Resolved
+     * 5.52, Closed 3.35 — so the queue's emphasis order is intact: unfinished
+     * work is always louder than finished work. A calm that put Resolved above
+     * Open would make the settled half of the queue the first thing the eye
+     * caught. It also clears 4.5:1 as badge text on its own `/12` wash (4.70)
+     * and on `--muted` (4.69, the Closed badge); 0.62 fell to 4.39 on the
+     * wash.
      */
-  --calm: oklch(0.596 0.145 163.225);
+  --calm: oklch(0.64 0.095 178);
   --ember-1: oklch(0.85 0.14 85);
   --ember-2: oklch(0.68 0.19 45);
   --ember-3: oklch(0.62 0.21 25);
@@ -243,10 +293,10 @@
      * The AI shine, and the one place in this file where a colour is chosen to
      * be *light* rather than to hold a contrast ratio.
      *
-     * Deliberately not `--primary`. That token is oklch(0.432 …) — a deep, low
-     * chroma green picked to sit under near-white text on a button. Run it
-     * through a one-pixel beam on a card whose own background is oklch(0.218 …)
-     * and you get a faint olive line: correct by the palette, invisible as
+     * Deliberately not `--primary`. That token is oklch(0.5 …) — a mid-dark
+     * temper blue picked to sit under near-white text on a button. Run it
+     * through a one-pixel beam on a card whose own background is oklch(0.21 …)
+     * and you get a dim slate line: correct by the palette, invisible as
      * light. These two are the same hue family taken to the top of the
      * lightness range, where a moving highlight actually reads as one.
      *
@@ -258,29 +308,31 @@
      * Neither is a text or a fill colour and neither is held to a contrast
      * ratio — they are never behind type. Don't reach for them as accents.
      */
-  --ai-shine: oklch(0.9 0.15 165);
-  --ai-shine-core: oklch(0.99 0.04 165);
+  --ai-shine: oklch(0.88 0.11 240);
+  --ai-shine-core: oklch(0.99 0.03 240);
 
   /* Chart furniture — quieter than every mark drawn on top of it. */
-  --viz-grid: oklch(1 0 0 / 5%); /* 1.82:1 — what border/50 resolved to */
-  --viz-cursor: oklch(0.275 0.011 216.9); /* = --muted, unchanged */
-  --viz-tooltip-edge: oklch(1 0 0 / 5%); /* = border/50, unchanged */
+  --viz-grid: oklch(1 0 0 / 5%); /* 1.14:1 on the card; --border is 1.29 */
+  --viz-cursor: var(--muted);
+  --viz-tooltip-edge: oklch(1 0 0 / 5%); /* the grid's step, not --border's */
 
   /*
      * Status. A small reserved scale for state — never a series colour, and
      * never "the fourth thing on the chart".
      *
-     * These are *text* steps, held to 4.5:1 on the card (#161b1d) rather than
-     * the 3:1 a filled mark would need, and measured with the data-viz
-     * validator: good 9.04, warning 10.41, critical 6.02. Re-measure rather
-     * than eyeball if they change. The canonical status hexes are deliberately
-     * not used — #fab219 and #ec835a were picked against a light surface.
+     * These are *text* steps, held to 4.5:1 on the card (#16191c) rather than
+     * the 3:1 a filled mark would need: good 9.89, warning 10.61, critical
+     * 6.13, re-measured on Cold iron's card (#342). Re-measure rather than
+     * eyeball if they or the card change. The canonical status hexes are
+     * deliberately not used — #fab219 and #ec835a were picked against a light
+     * surface.
      *
      * These now sit in the same two families as everything else, which is what
-     * the calm/ember split bought: good is calm, warning and critical are ember
-     * hues (85° and 22°, against the ramp's 85 / 45 / 25). They are separate
-     * tokens rather than aliases because they are *text* at 4.5:1 while the ramp
-     * is ~3:1 marks — the same hue at two different jobs, not two palettes.
+     * the calm/ember split bought: good is verdigris like calm, warning and
+     * critical are ember hues (85° and 22°, against the ramp's 85 / 45 / 25).
+     * They are separate tokens rather than aliases because they are *text* at
+     * 4.5:1 while the ramp is ~3:1 marks — the same hue at two different jobs,
+     * not two palettes.
      *
      * The old note here said hue could not carry meaning because everything was
      * green, and that every use therefore had to ship an icon and a word. Hue
@@ -291,21 +343,52 @@
      * The -soft steps are chip fills, not text: low-alpha washes of the same
      * hue that sit under the label on top of them.
      */
-  --status-good: #34d399;
+  --status-good: oklch(0.8 0.1 176);
   --status-warning: #fbbf24;
   --status-critical: #ff6467;
-  --status-good-soft: oklch(0.75 0.15 165 / 18%);
+  --status-good-soft: oklch(0.75 0.09 176 / 18%);
   --status-warning-soft: oklch(0.83 0.16 85 / 18%);
   --status-critical-soft: oklch(0.7 0.19 22 / 20%);
 
-  --sidebar: oklch(0.218 0.008 223.9);
-  --sidebar-foreground: oklch(0.987 0.002 197.1);
-  --sidebar-primary: oklch(0.696 0.17 162.48);
-  --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
-  --sidebar-accent: oklch(0.275 0.011 216.9);
-  --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.56 0.021 213.5);
+  --sidebar: oklch(0.19 0.008 250);
+  --sidebar-foreground: oklch(0.965 0.006 80);
+  /* Temper blue for the active nav icon (6.60:1 on the active item's
+       --sidebar-accent fill) and for the fill of the unread count and "New"
+       badge, whose dark text reads 8.09:1 on it. Lighter than --primary
+       because an icon is drawn in it rather than text on top of it. */
+  --sidebar-primary: oklch(0.74 0.12 245);
+  --sidebar-primary-foreground: oklch(0.19 0.02 255);
+  --sidebar-accent: oklch(0.27 0.01 250);
+  --sidebar-accent-foreground: oklch(0.965 0.006 80);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.64 0.12 250);
+
+  /*
+     * Bronze, and the brand's own finishes. None of these is ever behind or in
+     * front of text that has to be read, so none is held to a contrast ratio.
+     *
+     * `--bronze` is the rule beside THE GREAT and DESK (`brand-rule`). It is
+     * decoration only — a hue of 65° sits between ember-1 and ember-2, so a
+     * bronze count or badge would read as a ticket somebody is waiting on.
+     * `brand.spec.ts` checks that nothing clickable, counted or stated on the
+     * tickets page or the dashboard is drawn in it.
+     *
+     * The hallmark's three (`LogoMark`) are the favicon's literals, which that
+     * file cannot read from here: `public/favicon.svg` keeps its own copies,
+     * so change them together. `--heat` is the bar on the anvil — the one
+     * place heat appears in the chrome, a mark and never a signal.
+     *
+     * The lit-iron stops are the lockup's finish (`lit-iron`): pale where the
+     * room light catches the letters, forge-warm along their foot.
+     */
+  --bronze: oklch(0.68 0.09 65);
+  --hallmark: #bf8d5b;
+  --soot: #130e0c;
+  --heat: #ffaf38;
+  --lit-iron-light: #f4eee6;
+  --lit-iron-mid: #b9afa3;
+  --lit-iron-shade: #8a7f74;
+  --lit-iron-heat: #d06c36;
 
   --radius: 0.45rem;
 }
@@ -487,16 +570,16 @@
   animation: ai-glow 1.4s ease-in-out infinite;
 }
 
-/* The lockup's finish (`SidebarBrand`): lit iron, pale where the room light
-   catches it and forge-warm underneath. Literal colours for now — the palette
-   slice of the rebrand turns these and the bronze below into tokens. */
+/* The lockup's finish (`SidebarBrand`, `LoginLockup`): lit iron, pale where
+   the room light catches it and forge-warm underneath. The stops are tokens
+   in :root. */
 @utility lit-iron {
   background-image: linear-gradient(
     180deg,
-    #f4eee6 0%,
-    #b9afa3 52%,
-    #8a7f74 74%,
-    #d06c36 100%
+    var(--lit-iron-light) 0%,
+    var(--lit-iron-mid) 52%,
+    var(--lit-iron-shade) 74%,
+    var(--lit-iron-heat) 100%
   );
   background-clip: text;
   color: transparent;
@@ -504,8 +587,10 @@
 
 /* The login scene's forge (`LoginLockup`): heat from a fire off-screen below,
    and a little behind the word it lights. Heat colours are the incandescence
-   ramp — orange #e2561b, cherry #8e1b0e, yellow #ffb43a — and nothing else.
-   Still: the strike slice adds motion, and reduced motion keeps this. */
+   ramp (white-hot #fff6e0, yellow #ffb43a, orange #e2561b, cherry #8e1b0e)
+   and nothing else; the glow is the ramp's cooler three.
+   Still in every state: the strike and the embers (`LoginScene`) move over
+   it, never it. */
 @utility forge-glow {
   background-image:
     radial-gradient(
@@ -532,7 +617,7 @@
 @utility brand-rule {
   background-image: linear-gradient(
     90deg,
-    color-mix(in oklch, oklch(0.68 0.09 65) 65%, transparent),
+    color-mix(in oklch, var(--bronze) 65%, transparent),
     transparent
   );
 }

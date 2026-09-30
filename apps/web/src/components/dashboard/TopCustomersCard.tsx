@@ -24,9 +24,9 @@ import {
  * answered, and a customer with two tickets, both waiting, were indistinguishable
  * here and are now opposites.
  *
- * Ember rather than the accent green, per the palette split in `index.css`: this
- * is somebody waiting, and green on this screen means settled. An empty track is
- * the honest picture of a customer with nothing outstanding.
+ * Ember rather than the accent blue, per the palette split in `index.css`: this
+ * is somebody waiting, and blue on this screen means a series or a control. An
+ * empty track is the honest picture of a customer with nothing outstanding.
  */
 export function TopCustomersCard({
   customers,

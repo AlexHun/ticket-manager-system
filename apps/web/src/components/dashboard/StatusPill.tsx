@@ -41,10 +41,10 @@ const PILL: Record<
  * A state badge: tinted chip, icon, and a word.
  *
  * All three channels are mandatory, and the icon differs per state rather than
- * being one shape in three colours — this theme is monochrome green, so a green
- * "good" pill sits in the same hue family as every series colour on the page and
- * cannot carry its meaning by fill alone. The word is what actually says it; the
- * colour only makes it findable.
+ * being one shape in three colours — roughly one reader in twelve cannot tell
+ * the verdigris "good" from the ember "warning" by hue, so the fill alone cannot
+ * carry the meaning. The word is what actually says it; the colour only makes it
+ * findable.
  *
  * `label` is the visible word. Keep it to one or two — this sits under a stat
  * value in a tile that is already carrying a number and a line of context.
