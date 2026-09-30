@@ -488,5 +488,15 @@
     "version": "0.1.150",
     "date": "2026-09-30",
     "title": "Review follow-ups for the pipeline pending fix"
+  },
+  {
+    "version": "0.1.151",
+    "date": "2026-09-30",
+    "title": "Pipeline rail stops counting unofferable tickets as classifying"
+  },
+  {
+    "version": "0.1.151",
+    "date": "2026-09-30",
+    "title": "Review follow-ups for the pipeline pending split"
   }
 ]
