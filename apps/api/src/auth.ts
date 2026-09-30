@@ -414,9 +414,25 @@ export const auth = betterAuth({
    * `127.0.0.1`, so every request that names no client shares that one
    * bucket, which is why each demo start under test sends an address of its
    * own.
+   *
+   * **And `/update-user`, for everybody** (#357, PRD R11). Better Auth serves
+   * it to any signed-in session, and it writes the caller's own `name` and
+   * `image`. Ticket history and replies read the name at display time, so a
+   * demo visitor could rename "Demo visitor" to a colleague and every trail
+   * they left would read as that colleague's. Nobody changes their own profile
+   * this way, demo or not: a name is changed by an admin on the Users screen
+   * (`PATCH /api/users/:id`, through the admin plugin's `/admin/update-user`),
+   * which writes a `user_edited` entry. It is the only session-bound endpoint
+   * that writes the user row under this config; ADR-0022 lists why the others
+   * are harmless.
    */
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/update-user") {
+        throw new APIError("FORBIDDEN", {
+          message: "Profiles are changed by an admin on the Users screen",
+        });
+      }
       if (ctx.path !== "/sign-in/anonymous") return;
       if (!isDemoModeEnabled()) {
         throw new APIError("FORBIDDEN", { message: "Demo mode is off" });
@@ -459,10 +475,12 @@ export const auth = betterAuth({
      * (`routes/events.ts`) was authenticated when it connected and lives out
      * its `STREAM_MAX_MS`, as it does for any revoked session, though every
      * event it delivers sends the page to a refetch this refuses. And Better
-     * Auth's own session-bound endpoints (`/update-user`, `/list-sessions`, …)
-     * read the session without this hook, so a stranger calling them directly
-     * keeps that reach until the row is gone — which it is from the first
-     * `/get-session` the visitor's page makes, and at two hours regardless.
+     * Auth's own session-bound endpoints (`/list-sessions`, `/revoke-session`,
+     * …) read the session without this hook, so a stranger calling them
+     * directly keeps that reach until the row is gone — which it is from the
+     * first `/get-session` the visitor's page makes, and at two hours
+     * regardless. None of them writes the user row: `/update-user`, the one
+     * that would, is refused to everybody by the `before` hook above.
      */
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path !== "/get-session") return;
