@@ -93,6 +93,7 @@ mock.module("../middleware/auth", () => ({
 
 const { pipelineRouter, toRun } = await import("./pipeline");
 const { AUTO_REPLY_WORKER } = await import("../jobs/auto-reply-ticket");
+const { RECONCILE_MAX_AGE_MS } = await import("../jobs/classify-ticket");
 
 type RunRow = Parameters<typeof toRun>[0];
 
@@ -245,6 +246,59 @@ describe("toRun — the rest of the outcomes", () => {
       ...LIVE,
       autoReplyArticleCount: 0,
     });
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
+  });
+});
+
+/* ── A ticket the classifier has not stamped ─────────────────────────────── */
+
+describe("toRun — a ticket with no classification verdict", () => {
+  /** Never stamped by the classifier, in whatever state the caller needs. */
+  function unstamped(overrides: Partial<RunRow> = {}): RunRow {
+    return row({
+      status: TICKET_STATUS.New,
+      category: null,
+      classifiedAt: null,
+      ...overrides,
+    });
+  }
+
+  const INSIDE_WINDOW = CREATED_AT.getTime() + 60 * 60 * 1_000;
+  const PAST_WINDOW = CREATED_AT.getTime() + RECONCILE_MAX_AGE_MS + 1;
+
+  test("unfiled and inside the reconcile window is `pending`", () => {
+    // The ingest enqueue or, failing that, the reconcile sweep is still going
+    // to offer it to the classifier.
+    const run = toRun(unstamped(), LIVE, INSIDE_WINDOW);
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
+  });
+
+  test("filed by a person before the classifier got to it is `notOffered`", () => {
+    // The classify handler returns without a call when `category` is already
+    // set, and the auto-reply is only ever enqueued from that handler — so
+    // nothing is scheduled, however fresh the ticket. The showcase seed writes
+    // exactly this shape for every demo ticket it files.
+    const run = toRun(
+      unstamped({
+        status: TICKET_STATUS.Closed,
+        category: TICKET_CATEGORY.Technical,
+        messages: [{ automated: false, citedArticleIds: [] }],
+      }),
+      LIVE,
+      INSIDE_WINDOW,
+    );
+
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
+    expect(run.stages.map((stage) => stage.state)).not.toContain(
+      PIPELINE_STAGE_STATE.pending,
+    );
+  });
+
+  test("unfiled and older than the reconcile window is `notOffered`", () => {
+    // A job that ran would have stamped `classifiedAt` on every exit, and the
+    // sweep stops looking after a day — so a ticket this old that was never
+    // stamped was never offered, and nothing is going to offer it now.
+    const run = toRun(unstamped(), LIVE, PAST_WINDOW);
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
   });
 });

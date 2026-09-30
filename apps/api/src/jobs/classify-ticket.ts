@@ -80,8 +80,12 @@ const RECONCILE_CRON = "*/15 * * * *";
  * considering it would only produce a duplicate job. Duplicates are *harmless*
  * here — the handler is idempotent, which is the property that makes all of this
  * safe — but harmless is not free, and each one is a model call.
+ *
+ * The ceiling is exported because `/pipeline` reads it too: past it, an
+ * unstamped ticket has nothing left that will offer it to the classifier, so
+ * `toRun` must stop calling it pending.
  */
-const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+export const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;
 
 /** How many stragglers one sweep may pick up. Bounded so a bad day cannot become a bill. */
