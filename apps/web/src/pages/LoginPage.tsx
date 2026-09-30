@@ -116,9 +116,9 @@ export function LoginPage() {
   const busy = isSubmitting || startingDemo;
 
   return (
-    // The lockup beside the form; below `lg` it is a banner above it. Nothing
-    // enters or animates: the form is the one thing a visitor came to use, so
-    // it is there, focusable, on the first paint.
+    // The lockup beside the form; below `lg` it is a banner above it. The
+    // scene may strike, but the form never enters or animates: it is the one
+    // thing a visitor came to use, so it is there, focusable, on first paint.
     <main className="grid min-h-dvh bg-background lg:grid-cols-[minmax(0,1fr)_minmax(22rem,27rem)]">
       <LoginLockup />
 

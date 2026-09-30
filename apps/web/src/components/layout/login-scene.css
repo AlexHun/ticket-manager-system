@@ -1,0 +1,165 @@
+/*
+ * The strike on FORGE (`StrikingWord` in LoginScene.tsx). Loaded with that
+ * module's chunk, so no other page downloads it.
+ *
+ * Every animation moves only opacity and transform. The cooling is four
+ * stacked copies of the word cross-faded, not an animated colour or
+ * text-shadow, so it composites instead of repainting glyphs every frame.
+ *
+ * Heat colours are the incandescence ramp and nothing else:
+ *   white-hot #fff6e0 · yellow #ffb43a · orange #e2561b · cherry #8e1b0e
+ *
+ * The base copy's fade-in is the longest animation here and ends 3.2 s after
+ * the strike, well inside the 4 s the cooling is allowed; its `animationend`
+ * is what hands the lockup back to the still word.
+ */
+
+.strike-copy {
+  grid-area: 1 / 1;
+  /* Positioned, so the copies paint over the flash and the ring behind them. */
+  position: relative;
+  opacity: 0;
+}
+
+/* Dark until struck: the forge's light has not reached the word yet. */
+.strike-base {
+  opacity: 0.1;
+}
+
+.strike-cherry {
+  color: #8e1b0e;
+  text-shadow: 0 0 0.22em rgb(226 86 27 / 0.7);
+}
+
+.strike-orange {
+  color: #e2561b;
+  text-shadow:
+    0 0 0.12em rgb(255 180 58 / 0.8),
+    0 0 0.45em rgb(226 86 27 / 0.7);
+}
+
+.strike-white {
+  color: #fff6e0;
+  text-shadow:
+    0 0 0.06em #fff6e0,
+    0 0 0.3em rgb(255 180 58 / 0.9),
+    0 0 0.9em rgb(226 86 27 / 0.65);
+}
+
+/* A flash of white heat and a ring of air thrown off the face. */
+.strike-flash,
+.strike-ring {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.strike-flash {
+  inset: -90% -28%;
+  background: radial-gradient(
+    closest-side,
+    rgb(255 246 224 / 0.95),
+    rgb(255 180 58 / 0.55) 30%,
+    rgb(226 86 27 / 0.18) 60%,
+    transparent
+  );
+}
+
+.strike-ring {
+  inset: 28% 22%;
+  border: 2px solid rgb(255 180 58 / 0.9);
+  border-radius: 50%;
+}
+
+.is-struck .strike-flash {
+  animation: strike-flash 0.75s ease-out both;
+}
+.is-struck .strike-ring {
+  animation: strike-ring 0.9s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.is-struck .strike-white {
+  animation: strike-white 1s ease-out both;
+}
+.is-struck .strike-orange {
+  animation: strike-orange 1.9s ease-out both;
+}
+.is-struck .strike-cherry {
+  animation: strike-cherry 2.9s ease-in-out both;
+}
+.is-struck .strike-base {
+  animation: strike-base 3.2s ease-in both;
+}
+
+@keyframes strike-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes strike-ring {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.25);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.4);
+  }
+}
+
+@keyframes strike-white {
+  0%,
+  14% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes strike-orange {
+  0% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes strike-cherry {
+  0%,
+  28% {
+    opacity: 0;
+  }
+  52% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes strike-base {
+  0%,
+  34% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 1;
+  }
+}

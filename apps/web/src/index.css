@@ -587,8 +587,10 @@
 
 /* The login scene's forge (`LoginLockup`): heat from a fire off-screen below,
    and a little behind the word it lights. Heat colours are the incandescence
-   ramp — orange #e2561b, cherry #8e1b0e, yellow #ffb43a — and nothing else.
-   Still: the strike slice adds motion, and reduced motion keeps this. */
+   ramp (white-hot #fff6e0, yellow #ffb43a, orange #e2561b, cherry #8e1b0e)
+   and nothing else; the glow is the ramp's cooler three.
+   Still in every state: the strike and the embers (`LoginScene`) move over
+   it, never it. */
 @utility forge-glow {
   background-image:
     radial-gradient(
