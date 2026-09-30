@@ -28,7 +28,7 @@ intuition for.
 
 `bun run tokens` scores the forecasts against what was actually spent, joining
 transcripts to issues through the branch name — so `<type>/<issue>-<slug>` is
-what makes an issue measurable at all. Work done straight on `main` belongs to
+what makes an issue measurable at all. Work done straight on `develop` or `main` belongs to
 no issue and is invisible to it.
 
 ## Pull requests as a triage surface

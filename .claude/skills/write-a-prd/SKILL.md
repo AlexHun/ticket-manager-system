@@ -74,7 +74,8 @@ git checkout -b docs/prd-<slug>
 gh pr create --title "docs(prd): <feature>" --body "..."
 ```
 
-Never commit a PRD straight to `main` — it is a proposal until someone reviews it.
+Never commit a PRD straight to `develop` or `main` — it is a proposal until
+someone reviews it. Branch from `origin/develop` and open the PR into it.
 
 ## Rules
 
