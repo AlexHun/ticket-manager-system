@@ -290,6 +290,17 @@ model Ticket {
   // Cleared when a reply eventually succeeds, so a ticket never carries both.
   autoReplyDecline    String?
   autoReplyDeclinedAt DateTime?
+  // When this ticket was offered to the auto-reply: stamped by
+  // `enqueueAutoReply` in the same transaction as the job it sends, and never
+  // when it declines to send one (switched off, no key, an empty corpus).
+  //
+  // The job's evidence of a decision, like `autoReplyDecline`, and what
+  // `/pipeline` reads to tell `pending` from `notOffered` (#360). Before it,
+  // that page guessed from *today's* settings, so a ticket classified while the
+  // auto-reply was off read `pending` forever once it was switched back on.
+  // Records only *that* it was offered, not why a ticket was not. Null on every
+  // row from before the column, which reads as not offered; no backfill.
+  autoReplyOfferedAt  DateTime?
   customerEmail       String
   customerName        String
   lastMessageAt       DateTime         @default(now())

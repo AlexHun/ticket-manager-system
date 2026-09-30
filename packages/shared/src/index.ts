@@ -1714,6 +1714,48 @@ export interface PipelineConfig {
 }
 
 /**
+ * Why nothing will offer an unstamped ticket to the classifier. The API names
+ * the cause and the rail draws one exit per cause, so the page applies no rule
+ * of its own to decide which exit a ticket belongs to (#362).
+ */
+export const CLASSIFY_NOT_OFFERED = {
+  /**
+   * The classifier would take it — no `category` filed, inside the reconcile
+   * window — but there is no API key, so nothing ever runs it.
+   */
+  noKey: "noKey",
+  /** A person filed a `category` first, or it is past the reconcile window. */
+  filedOrStale: "filedOrStale",
+} as const;
+
+export type ClassifyNotOffered =
+  (typeof CLASSIFY_NOT_OFFERED)[keyof typeof CLASSIFY_NOT_OFFERED];
+
+/**
+ * The rail's words for `classifyPending`. Here rather than in the page because
+ * the E2E spec asserts it is absent and cannot import a `.tsx` module: a
+ * retyped label would leave that assertion passing against nothing.
+ */
+export const CLASSIFY_PENDING_LABEL = "Queued, or being classified now";
+
+/**
+ * The rail's words for each not-offered cause, here for the same reason. A
+ * `Record`, so a third cause does not compile until somebody names its exit.
+ */
+export const CLASSIFY_NOT_OFFERED_LABEL: Record<ClassifyNotOffered, string> = {
+  [CLASSIFY_NOT_OFFERED.noKey]: "Never offered — no API key on this deployment",
+  [CLASSIFY_NOT_OFFERED.filedOrStale]:
+    "Not offered — filed by hand, or too old to reconcile",
+};
+
+/**
+ * The rail's words for `autoReplyPending` and `autoReplyNotOffered`, here for
+ * the reason the classify labels are: the E2E spec reads the rendered exit.
+ */
+export const AUTO_REPLY_PENDING_LABEL = "Offered, verdict still coming";
+export const AUTO_REPLY_NOT_OFFERED_LABEL = "Never offered to the auto-reply";
+
+/**
  * The raw facts the overview reports. Stage numbers are **derived** from these
  * by `pipelineStageCounts` rather than sent, so the arithmetic exists once.
  */
@@ -1725,24 +1767,38 @@ export interface PipelineCounts {
   /** Attempted and given up on: `classifiedAt` set, `category` still null. */
   classifyAbandoned: number;
   /**
-   * Neither yet, and the classifier will still act on it: no `category` filed
-   * and no older than the reconcile window at the overview's `to`. Queued or
-   * in flight, given a key. Counted the same way without one, so the rail can
-   * say it is the missing key that holds these back; per ticket, `toRun` then
-   * reads them as `notOffered`.
+   * Neither yet, and the classifier will still act on it: there is a key, no
+   * `category` filed and no older than the reconcile window at the overview's
+   * `to`. Queued or in flight. Always zero with no key — those are
+   * `classifyNotOffered.noKey`, because nothing is coming for them.
    */
   classifyPending: number;
   /**
-   * Neither yet, and nothing will offer it to the classifier: a person filed a
-   * `category` first, or it is past the reconcile window. With
-   * `machineClassified`, `classifyAbandoned` and `classifyPending`, every
-   * ticket in `received` is counted exactly once.
+   * Neither yet, and nothing will offer it to the classifier, by cause (see
+   * `CLASSIFY_NOT_OFFERED`). With `machineClassified`, `classifyAbandoned` and
+   * `classifyPending`, every ticket in `received` is counted exactly once.
    */
-  classifyNotOffered: number;
+  classifyNotOffered: Record<ClassifyNotOffered, number>;
   /** Answered from the knowledge base and resolved. */
   autoResolved: number;
   /** Every decline reason, including the zeroes — a zero is information here. */
   declines: Record<AutoReplyDecline, number>;
+  /**
+   * Machine-classified with no verdict, and one is still coming: the auto-reply
+   * was offered it (`autoReplyOfferedAt`) and nobody has answered it, unless
+   * the answer is the worker's own claim. `toRun`'s auto-reply `pending`.
+   *
+   * Optional, as is `autoReplyNotOffered`, so a rail deployed ahead of its API
+   * still draws (#363). Both are always sent; make them required once a release
+   * has shipped them.
+   */
+  autoReplyPending?: number;
+  /**
+   * Machine-classified with no verdict, and no offer recorded: nothing will
+   * ever enqueue it. What is left after these two and the verdicts is only
+   * offered tickets somebody answered by hand, or that were reopened.
+   */
+  autoReplyNotOffered?: number;
 }
 
 /** How many tickets were still on the rail at each stop. */

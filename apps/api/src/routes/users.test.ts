@@ -11,10 +11,10 @@
  * `./admin-activity`'s pure helper (`userEditChanges`) is exercised directly at
  * the top, with no mocking, so a failure in it shows up next to its cause.
  *
- * The last three sections are not about this router at all: `auth.ts`'s demo
- * sign-in (#319), its start limit (#322) and its session lifetime and off
- * switch (#324) are tested here because this is the file that loads `auth.ts`
- * for real.
+ * The last four sections are not about this router at all: `auth.ts`'s demo
+ * sign-in (#319), its start limit (#322), its session lifetime and off switch
+ * (#324), and its refusal of self-service profile updates (#357) are tested
+ * here because this is the file that loads `auth.ts` for real.
  *
  * ## The seam is the database, and `../auth` is on the real side of it (#172)
  *
@@ -1671,5 +1671,87 @@ describe("Demo session lifetime — auth.ts", () => {
 
     expect(res.status).toBe(200);
     expect(await userIdOf(res)).toBe(ADMIN.id);
+  });
+});
+
+/* ── Self-service profile update, in auth.ts (#357, PRD R11) ─────────────── */
+
+/**
+ * Better Auth serves `/update-user` to any signed-in session, and it writes the
+ * caller's own `name` and `image`. Ticket history and replies read the name at
+ * display time, so a demo visitor could rename "Demo visitor" to a colleague's
+ * name and every trail they left would read as that colleague's (R11). Nobody
+ * changes their own profile that way: a name is changed by an admin on the
+ * Users screen, which writes a `user_edited` entry. So the `before` hook
+ * refuses the path for every caller, and these assert it for each kind of
+ * session. The Users screen itself is `PATCH /api/users/:id` above, whose
+ * tests are unchanged.
+ *
+ * Through `auth.handler`, as a browser would reach it: a `before` hook's
+ * refusal only becomes a status on the way out of the handler.
+ */
+describe("Self-service profile update — auth.ts", () => {
+  afterEach(() => {
+    delete process.env.DEMO_MODE_ENABLED;
+  });
+
+  const updateOwnProfile = (cookie: string) =>
+    auth.handler(
+      new Request(`${process.env.BETTER_AUTH_URL}/api/auth/update-user`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Grace Hopper",
+          image: "https://example.com/grace.png",
+        }),
+      }),
+    );
+
+  const profileOf = (id: string) =>
+    prisma.user.findUniqueOrThrow({
+      where: { id },
+      select: { name: true, image: true },
+    });
+
+  test("is refused for a demo session, which stays Demo visitor", async () => {
+    process.env.DEMO_MODE_ENABLED = "true";
+    const cookie = cookieHeader(await startDemoFrom(freshAddress()));
+    const visitor = await prisma.user.findFirstOrThrow({
+      where: { isAnonymous: true },
+    });
+
+    const res = await updateOwnProfile(cookie);
+
+    expect(res.status).toBe(403);
+    expect(await profileOf(visitor.id)).toEqual({
+      name: DEMO_VISITOR_NAME,
+      image: null,
+    });
+  });
+
+  test("is refused for an ordinary agent", async () => {
+    await givePassword(AGENT.id);
+    const signIn = await auth.api.signInEmail({
+      body: { email: AGENT.email, password: PASSWORD },
+      asResponse: true,
+    });
+
+    const res = await updateOwnProfile(cookieHeader(signIn));
+
+    expect(res.status).toBe(403);
+    expect(await profileOf(AGENT.id)).toEqual({
+      name: AGENT.name,
+      image: null,
+    });
+  });
+
+  test("is refused for an admin", async () => {
+    const res = await updateOwnProfile(sessionCookie);
+
+    expect(res.status).toBe(403);
+    expect(await profileOf(ADMIN.id)).toEqual({
+      name: ADMIN.name,
+      image: null,
+    });
   });
 });

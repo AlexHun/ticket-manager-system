@@ -8,8 +8,10 @@
 name: CI
 
 on:
+  # `develop` is the integration branch every ticket merges into; a push there
+  # is checked so a release PR into `main` starts from a known-green tip.
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 # A superseded push has nothing to tell us. Never cancel on main, where the run

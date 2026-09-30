@@ -78,7 +78,7 @@ see work end to end.* Hardcode the rest; that list becomes slices 2..n.
 ### 4. Order the rest by risk retired
 
 Earliest slices retire the **most dangerous unknown**, not the easiest work.
-Each slice must be independently mergeable and leave `main` shippable.
+Each slice must be independently mergeable and leave `develop` shippable.
 
 ### 5. Check coverage, then write
 

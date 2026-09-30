@@ -283,7 +283,6 @@ export function PipelinePage() {
 
               <PipelineRail
                 counts={overview.data.counts}
-                config={config}
                 run={run.data ?? null}
               />
             </section>

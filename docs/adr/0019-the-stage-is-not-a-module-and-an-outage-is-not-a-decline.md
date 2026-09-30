@@ -227,6 +227,19 @@ columns and a config record, and the second has to answer `pending` and
 ticket and which the first cannot ask. A function taking both shapes is a
 function with two bodies behind one name.
 
+> **Follow-up (2026-09-30, [#360](https://github.com/AlexHun/ticket-manager-system/issues/360)).**
+> For the auto-reply half, "a question about the deployment" gave the wrong
+> answer: asked _today_, it could not describe a decision made _then_, so a
+> ticket classified while the auto-reply was off read `pending` forever once it
+> was switched back on. `enqueueAutoReply` now records the offer on the ticket
+> (`autoReplyOfferedAt`, in the job's own transaction), and `toRun` reads that
+> instead of the switches. That also replaces the `autoReplyArticleCount` gate
+> described under "`abandoned` and `notOffered` on an empty corpus" above; the
+> reading it gave is unchanged, since a ticket classified while the corpus is
+> empty is still never offered. The classifier's half is still asked of the
+> deployment and the row. The decision stands: `toRun` and `verdictOf` still
+> share no parameter, and there is no `Outcome` module.
+
 **A hand-kept `decline !== "unavailable"` guard in `toRun`.** The one-line fix,
 and rejected as the _form_ of the fix even though it is the right behaviour.
 Nine sites already carry a hand-kept guard, comment or special-cased label about
