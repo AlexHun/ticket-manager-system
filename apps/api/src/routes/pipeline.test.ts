@@ -319,13 +319,12 @@ describe("toRun — the auto-reply's offer is read off the row", () => {
 /* ── A ticket the classifier has not stamped ─────────────────────────────── */
 
 describe("toRun — a ticket with no classification verdict", () => {
-  /** Never stamped by the classifier, in whatever state the caller needs. */
-  function unstamped(overrides: Partial<RunRow> = {}): RunRow {
+  /** Never stamped by the classifier, and not filed by a person either. */
+  function unstamped(): RunRow {
     return row({
       status: TICKET_STATUS.New,
       category: null,
       classifiedAt: null,
-      ...overrides,
     });
   }
 

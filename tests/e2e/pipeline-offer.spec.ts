@@ -12,6 +12,7 @@ import {
   PIPELINE_STAGE_STATE,
   TICKET_CATEGORY,
   TICKET_STATUS,
+  type PipelineOutcome,
   type PipelineOverviewResponse,
   type PipelineRun,
 } from "@ticket/shared";
@@ -246,14 +247,13 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
         createdAt: at(HOUR),
       },
     ];
+    const customer = {
+      customerEmail: "e2e-pipeline-offer@example.com",
+      customerName: "E2E Offer Customer",
+    };
     for (const [i, data] of seeds.entries()) {
       await testDb.ticket.create({
-        data: {
-          subject: `Pipeline mix ${i}`,
-          customerEmail: "e2e-pipeline-offer@example.com",
-          customerName: "E2E Offer Customer",
-          ...data,
-        },
+        data: { subject: `Pipeline mix ${i}`, ...customer, ...data },
       });
     }
 
@@ -262,8 +262,7 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
     const reopened = await testDb.ticket.create({
       data: {
         subject: "Pipeline mix reopened",
-        customerEmail: "e2e-pipeline-offer@example.com",
-        customerName: "E2E Offer Customer",
+        ...customer,
         ...classified,
         status: TICKET_STATUS.Open,
         autoReplyOfferedAt: at(HOUR),
@@ -300,7 +299,7 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
     const stamped = recent.filter((r) => classifiedStop(r).at !== null);
     const classifyExit = (r: PipelineRun) =>
       classifiedStop(r).state === PIPELINE_STAGE_STATE.exited;
-    const count = (runs: PipelineRun[], outcome: string) =>
+    const count = (runs: PipelineRun[], outcome: PipelineOutcome) =>
       runs.filter((r) => r.outcome === outcome).length;
 
     expect({

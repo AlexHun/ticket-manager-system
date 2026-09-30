@@ -196,9 +196,9 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
  *
  * Every branch here is a fact a column records. The one fact that depends on
  * the clock, whether the classifier will still act on this row, arrives as
- * `awaitingClassifier`: the caller asks it of the database through
- * `classifierWillStillAct` (`classifierQueue` below), the statement the reconcile
- * sweep and the rail's count read too. What this deliberately does *not* do is
+ * `awaitingClassifier`: the caller asks the database, through the function of
+ * that name below, which runs `classifierWillStillAct` — the statement the
+ * reconcile sweep and the rail's count read too. What this deliberately does *not* do is
  * guess: a ticket with no classification verdict that nothing will classify —
  * no API key, a category a person filed first, or older than the reconcile
  * window — is `notOffered`, not "still thinking", because nothing is scheduled
@@ -416,7 +416,7 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * can check.
  *
  * `classifyPending` counts `classifierWillStillAct` from `jobs/classify-ticket.ts`
- * at `to`, the statement `classifierQueue` asks of each listed ticket, so the
+ * at `to`, the statement `awaitingClassifier` asks of each listed ticket, so the
  * rail and the Recent arrivals list beside it cannot disagree about the same
  * tickets (#355, #361). The count does not read the key — with none, the rail
  * labels this exit as the missing key rather than as queued. Every other
@@ -488,7 +488,7 @@ export async function pipelineCounts(
  * `awaitingClassifier` answer `toRun` takes, asked through the same
  * `classifierWillStillAct` statement `pipelineCounts` counts.
  */
-async function classifierQueue(
+async function awaitingClassifier(
   ticketIds: number[],
   now: Date,
 ): Promise<Set<number>> {
@@ -536,7 +536,7 @@ pipelineRouter.get(
 
     // After the rows rather than beside them: it asks about the listed ids
     // alone, at the same `to` the count reads.
-    const awaiting = await classifierQueue(
+    const awaiting = await awaitingClassifier(
       recentRows.map((row) => row.id),
       to,
     );
@@ -574,7 +574,7 @@ pipelineRouter.get(
         where: { id: parsed.data },
         select: RUN_SELECT,
       }),
-      classifierQueue([parsed.data], new Date()),
+      awaitingClassifier([parsed.data], new Date()),
     ]);
 
     if (!row) {
