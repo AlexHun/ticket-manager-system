@@ -1727,7 +1727,9 @@ export interface PipelineCounts {
   /**
    * Neither yet, and the classifier will still act on it: no `category` filed
    * and no older than the reconcile window at the overview's `to`. Queued or
-   * in flight, given a key; with none, nothing will offer it.
+   * in flight, given a key. Counted the same way without one, so the rail can
+   * say it is the missing key that holds these back; per ticket, `toRun` then
+   * reads them as `notOffered`.
    */
   classifyPending: number;
   /**

@@ -94,7 +94,8 @@ mock.module("../middleware/auth", () => ({
 
 const { pipelineCounts, pipelineRouter, toRun } = await import("./pipeline");
 const { AUTO_REPLY_WORKER } = await import("../jobs/auto-reply-ticket");
-const { RECONCILE_MAX_AGE_MS } = await import("../jobs/classify-ticket");
+const { classifierWillStillAct, RECONCILE_MAX_AGE_MS } =
+  await import("../jobs/classify-ticket");
 
 type RunRow = Parameters<typeof toRun>[0];
 
@@ -376,6 +377,16 @@ describe("pipelineCounts — an unstamped ticket", () => {
       classifyPending: 2,
       classifyNotOffered: 2,
     });
+
+    // The query restates `classifierWillStillAct`, so ask the function too:
+    // the literals above could drift with the query, this cannot.
+    const unstamped = await prisma.ticket.findMany({
+      where: { classifiedAt: null },
+      select: { category: true, createdAt: true },
+    });
+    expect(
+      unstamped.filter((t) => classifierWillStillAct(t, TO.getTime())).length,
+    ).toBe(counts.classifyPending);
   });
 });
 

@@ -81,8 +81,8 @@ const RECONCILE_CRON = "*/15 * * * *";
  * here — the handler is idempotent, which is the property that makes all of this
  * safe — but harmless is not free, and each one is a model call.
  *
- * The ceiling is exported for `classifierWillStillAct` below, its test, and
- * the count `pipelineCounts` in `routes/pipeline.ts` restates it as.
+ * The ceiling is exported for `classifierWillStillAct` below, for its test, and
+ * for `pipelineCounts` in `routes/pipeline.ts`, which restates it as a query.
  */
 export const RECONCILE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const RECONCILE_MIN_AGE_MS = 10 * 60 * 1_000;

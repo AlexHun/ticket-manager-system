@@ -404,7 +404,9 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * `RECONCILE_MAX_AGE_MS` before `to` — `gte`, the same inclusive boundary as
  * that function's `<=` and the sweep's own `gte`. Change one and change the
  * other, or the rail and the Recent arrivals list beside it disagree about the
- * same tickets (#355). Every other unstamped ticket is `classifyNotOffered`,
+ * same tickets (#355); `pipeline.test.ts` asks both of the same rows. The
+ * count does not read the key — with none, the rail labels this exit as the
+ * missing key rather than as queued. Every other unstamped ticket is `classifyNotOffered`,
  * taken as the remainder so the four classify counts always add up to
  * `received`.
  */
