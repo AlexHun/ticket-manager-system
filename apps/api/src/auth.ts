@@ -390,7 +390,9 @@ export const auth = betterAuth({
     },
   },
   /**
-   * The demo-mode switch, and the only thing that makes it a switch.
+   * The paths refused before Better Auth handles them: the demo-mode switch,
+   * which is the only thing that makes it a switch, and `/update-user`, which
+   * is refused to everybody (last paragraph).
    *
    * Better Auth's `anonymous` plugin creates a user on every call to
    * `/sign-in/anonymous` **regardless of `disableSignUp`** (read in the
@@ -422,9 +424,10 @@ export const auth = betterAuth({
    * they left would read as that colleague's. Nobody changes their own profile
    * this way, demo or not: a name is changed by an admin on the Users screen
    * (`PATCH /api/users/:id`, through the admin plugin's `/admin/update-user`),
-   * which writes a `user_edited` entry. It is the only session-bound endpoint
-   * that writes the user row under this config; ADR-0022 lists why the others
-   * are harmless.
+   * which writes a `user_edited` entry. Outside the admin plugin's own
+   * `/admin/*` routes, which answer only `adminRoles`, it is the only
+   * endpoint a session can use to write its user row under this config;
+   * ADR-0022 lists why the others are harmless.
    */
   hooks: {
     before: createAuthMiddleware(async (ctx) => {

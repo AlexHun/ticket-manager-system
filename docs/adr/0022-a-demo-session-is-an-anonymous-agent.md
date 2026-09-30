@@ -102,9 +102,18 @@ outbox like anyone's. Each later slice adds one of those.
     is configured.
   - `/send-verification-email` answers 400 with no `sendVerificationEmail`, so
     `/verify-email` has no token to accept.
-  - The rest (`/list-sessions`, the three `/revoke-*`, `/list-accounts`,
-    `/account-info`, `/get-access-token`, `/refresh-token`) read, or delete the
-    caller's own sessions.
+  - The rest (`/get-session`, `/list-sessions`, `/sign-out`, the three
+    `/revoke-*`, `/verify-password`, `/list-accounts`, `/account-info`,
+    `/get-access-token`, `/refresh-token`) read, or delete the caller's own
+    sessions.
+  - The admin plugin's `/admin/update-user`, `/admin/set-role`,
+    `/admin/ban-user` and `/admin/unban-user` do write the user row, but only
+    for `adminRoles`, which a demo identity never holds. The Users screen
+    reaches the first through `auth.api` on the server, so it cannot be
+    refused by path. An admin who calls it over HTTP directly can still rename
+    anyone, themselves included, without the `user_edited` entry the Users
+    screen writes. That is an admin's own audit gap, not a way for a visitor
+    to change what a trail says, and is left open here.
 - **A visitor's email is never sent** (#325). A demo reply lands on the thread
   and on `/outbox`, but its outbox row is born `withheld`: never queued, never
   handed to a worker, and refused by the outbox retry. That holds with a mail
