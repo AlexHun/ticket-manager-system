@@ -445,6 +445,99 @@ describe("pipelineCounts — an unstamped ticket", () => {
   });
 });
 
+describe("pipelineCounts — a classified ticket with no verdict", () => {
+  const TO = new Date("2026-09-10T12:00:00.000Z");
+  const FROM = new Date(TO.getTime() - 30 * 24 * 60 * 60 * 1_000);
+  const AN_HOUR_AGO = new Date(TO.getTime() - 60 * 60 * 1_000);
+
+  const classified = {
+    createdAt: AN_HOUR_AGO,
+    category: TICKET_CATEGORY.Technical,
+    classifiedAt: AN_HOUR_AGO,
+  };
+  let replies = 0;
+  /** One message on the thread, in the given direction. */
+  const reply = (
+    direction: (typeof MESSAGE_DIRECTION)[keyof typeof MESSAGE_DIRECTION],
+    automated = false,
+  ) => ({
+    messages: {
+      create: {
+        messageId: `pipeline-counts-${++replies}@example.com`,
+        senderEmail: "support@example.com",
+        senderName: "Support",
+        textBody: "Hold the button for ten seconds.",
+        direction,
+        automated,
+        createdAt: AN_HOUR_AGO,
+      },
+    },
+  });
+
+  test("splits into still coming and never offered, reading the offer record", async () => {
+    // R8. Still coming: offered, and nobody has answered. A customer's own
+    // follow-up is not an answer, and a claimed ticket is being answered now.
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.New,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.inbound),
+    });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Processing,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.outbound),
+    });
+    // Never offered: no record, whether or not a person answered since.
+    await seedTicket({ ...classified, status: TICKET_STATUS.New });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      ...reply(MESSAGE_DIRECTION.outbound),
+    });
+    // Neither — the rail's remainder: offered, then answered by hand, or
+    // resolved by the machine and reopened, which clears `autoResolvedAt`.
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.outbound),
+    });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      ...reply(MESSAGE_DIRECTION.outbound, true),
+    });
+    // Verdicts, which are neither either.
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Resolved,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      autoResolvedAt: AN_HOUR_AGO,
+    });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      autoReplyDecline: AUTO_REPLY_DECLINE.notCovered,
+      autoReplyDeclinedAt: AN_HOUR_AGO,
+    });
+    // Unstamped, so the classifier's half, not this one.
+    await seedTicket({ createdAt: AN_HOUR_AGO, status: TICKET_STATUS.New });
+
+    const counts = await pipelineCounts(FROM, TO, true);
+
+    expect(counts).toMatchObject({
+      received: 9,
+      machineClassified: 8,
+      autoReplyPending: 2,
+      autoReplyNotOffered: 2,
+    });
+  });
+});
+
 describe("GET /api/pipeline/runs/:id", () => {
   test("a ticket handed back by `onExhausted` reads as abandoned", async () => {
     // End to end through the job's own terminal path, because the claim is

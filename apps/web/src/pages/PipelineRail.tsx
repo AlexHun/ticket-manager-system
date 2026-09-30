@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import {
   AUTO_REPLY_DECLINES,
+  AUTO_REPLY_NOT_OFFERED_LABEL,
+  AUTO_REPLY_PENDING_LABEL,
   CLASSIFY_NOT_OFFERED,
   CLASSIFY_NOT_OFFERED_LABEL,
   CLASSIFY_PENDING_LABEL,
@@ -315,21 +317,31 @@ function AggregateRail({ counts }: { counts: PipelineCounts }) {
     0,
   );
 
-  // The remainder between the last check and the bottom: classified tickets that
-  // carry neither a resolve nor a decline.
+  // Classified tickets that carry neither a resolve nor a decline, split the way
+  // the received stop splits its own (#363): still coming (offered, nobody has
+  // answered), never offered (no offer recorded), and the remainder. Both
+  // counts are the API's, read off the offer record, so the page decides no
+  // exit itself.
   //
-  // Shown rather than absorbed, because the alternative is a diagram whose last
-  // two numbers do not subtract — the fastest way to make a reader stop trusting
-  // the rest of it. Deliberately *not* labelled "in flight", which is only one of
-  // the things it can be: a ticket answered by an agent before the machine got
-  // there, a ticket that predates the auto-reply, and a ticket reopened by a
-  // customer reply (which clears `autoResolvedAt`) all land here too. The queue
-  // depths at the top of the page are what tell you whether any of it is
-  // actually moving.
+  // The remainder is shown rather than absorbed, because the alternative is a
+  // diagram whose last two numbers do not subtract — the fastest way to make a
+  // reader stop trusting the rest of it. It is now only offered tickets a
+  // person answered first, and machine-resolved ones a customer reopened
+  // (which clears `autoResolvedAt`). The queue depths at the top of the page
+  // are what tell you whether the still-coming ones are actually moving.
+  //
+  // An API from before #363 sends neither count, and then the remainder is the
+  // whole unsplit number and keeps the wording it had.
   const noVerdict = Math.max(
     0,
     stages[PIPELINE_STAGE.checked] - declinedAtChecked - counts.autoResolved,
   );
+  const { autoReplyPending, autoReplyNotOffered } = counts;
+  const split =
+    autoReplyPending !== undefined && autoReplyNotOffered !== undefined;
+  const remainder = split
+    ? Math.max(0, noVerdict - autoReplyPending - autoReplyNotOffered)
+    : noVerdict;
 
   return (
     <ol className="relative">
@@ -415,10 +427,30 @@ function AggregateRail({ counts }: { counts: PipelineCounts }) {
             muted={counts.declines[decline] === 0}
           />
         ))}
-        {noVerdict > 0 && (
+        {split && autoReplyPending > 0 && (
           <Exit
-            label="No verdict recorded — in flight, answered by hand, or reopened"
-            count={noVerdict}
+            label={AUTO_REPLY_PENDING_LABEL}
+            count={autoReplyPending}
+            tone="text-muted-foreground"
+            muted
+          />
+        )}
+        {split && autoReplyNotOffered > 0 && (
+          <Exit
+            label={AUTO_REPLY_NOT_OFFERED_LABEL}
+            count={autoReplyNotOffered}
+            tone="text-muted-foreground"
+            muted
+          />
+        )}
+        {remainder > 0 && (
+          <Exit
+            label={
+              split
+                ? "No verdict recorded — answered by hand, or reopened"
+                : "No verdict recorded — in flight, answered by hand, or reopened"
+            }
+            count={remainder}
             tone="text-muted-foreground"
             muted
           />

@@ -3,9 +3,12 @@ import {
   request as pwRequest,
   test,
   type APIRequestContext,
+  type Page,
 } from "@playwright/test";
 import {
   AUTO_REPLY_DECLINE,
+  AUTO_REPLY_NOT_OFFERED_LABEL,
+  AUTO_REPLY_PENDING_LABEL,
   CLASSIFY_NOT_OFFERED,
   CLASSIFY_NOT_OFFERED_LABEL,
   CLASSIFY_PENDING_LABEL,
@@ -44,9 +47,12 @@ import { resetTickets, testDb } from "./helpers/db";
  * Without one the old code read "nothing will run" from the settings, and the
  * first test would pass for the wrong reason instead of failing before the fix.
  *
- * #362 adds the second block, the one test not on :3003: with no key, the
+ * #362 adds the second block, the tests not on :3003: with no key, the
  * rendered rail on the web app's own API draws an unclassified ticket under the
  * no-key exit the counts name, and no "Queued" exit at all.
+ *
+ * #363 adds a test to each block: the counts' auto-reply half on :3003 (and in
+ * the agreement test), and its never-offered exit on the rendered rail.
  */
 
 const AI_API_URL = "http://localhost:3003";
@@ -76,6 +82,18 @@ async function seedClassified(
     select: { id: true },
   });
   return ticket.id;
+}
+
+/** The rail's exit under `label` reads `count`. */
+async function expectExit(page: Page, label: string, count: number) {
+  // The exit's own item, not the stop it hangs off: a stop is a list item
+  // holding its exits.
+  const exit = page
+    .getByRole("listitem")
+    .filter({ hasText: label, hasNot: page.getByRole("listitem") });
+  // Escaped, so a label that ever carries a metacharacter still matches.
+  const literal = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await expect(exit).toHaveText(new RegExp(`${literal}\\s*${count}$`));
 }
 
 async function runOf(
@@ -166,6 +184,17 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
     const id = await seedClassified("Offered and waiting", AN_HOUR_AGO());
 
     expect((await runOf(ctx, id)).outcome).toBe(PIPELINE_OUTCOME.pending);
+  });
+
+  test("the counts report an offered, unsettled ticket as still coming", async () => {
+    // R8 (#363): the auto-reply half's counts read the same record.
+    await seedClassified("Offered and waiting", AN_HOUR_AGO());
+
+    const res = await ctx.get(`${AI_API_URL}/api/pipeline`);
+    expect(res.status()).toBe(200);
+    const { counts } = (await res.json()) as PipelineOverviewResponse;
+    expect(counts.autoReplyPending).toBe(1);
+    expect(counts.autoReplyNotOffered).toBe(0);
   });
 
   test("a simulated ticket gets its offer recorded and settles to a verdict", async () => {
@@ -313,6 +342,7 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
       classifiedStop(r).state === PIPELINE_STAGE_STATE.exited;
     const count = (runs: PipelineRun[], outcome: PipelineOutcome) =>
       runs.filter((r) => r.outcome === outcome).length;
+    const machineClassified = stamped.filter((r) => !classifyExit(r));
 
     expect({
       machineClassified: counts.machineClassified,
@@ -324,14 +354,21 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
       ),
       autoResolved: counts.autoResolved,
       declines: Object.values(counts.declines).reduce((a, b) => a + b, 0),
+      autoReplyPending: counts.autoReplyPending,
     }).toEqual({
-      machineClassified: stamped.filter((r) => !classifyExit(r)).length,
+      machineClassified: machineClassified.length,
       classifyAbandoned: stamped.filter(classifyExit).length,
       classifyPending: count(unstamped, PIPELINE_OUTCOME.pending),
       classifyNotOffered: count(unstamped, PIPELINE_OUTCOME.notOffered),
       autoResolved: count(recent, PIPELINE_OUTCOME.resolved),
       declines: recent.filter((r) => r.decline !== null).length,
+      // #363: still coming is exactly the auto-reply half's `pending`.
+      autoReplyPending: count(machineClassified, PIPELINE_OUTCOME.pending),
     });
+    // The auto-reply half: one offered and waiting, one never offered, and the
+    // reopened ticket in neither — the rail's remainder.
+    expect(counts.autoReplyPending).toBe(1);
+    expect(counts.autoReplyNotOffered).toBe(1);
     // Literals beside the agreement, so both sides drifting together is still
     // caught: one inside the window, two it will never act on — and this
     // server has a key, so neither of those is the key's doing.
@@ -343,10 +380,10 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
   });
 });
 
-test.describe("Pipeline: the API decides the no-key classify exit", () => {
-  // R5 (#362), through the rendered rail on the web app's own API, :3002,
-  // which has no key. The rail takes no setting, so what it draws is the
-  // exits the counts name and nothing it decided for itself.
+test.describe("Pipeline: the rail draws the exits the API names", () => {
+  // R5 (#362) and R8 (#363), through the rendered rail on the web app's own
+  // API, :3002, which has no key. The rail takes no setting, so what it draws
+  // is the exits the counts name and nothing it decided for itself.
   test.beforeEach(async () => {
     await resetTickets();
   });
@@ -373,15 +410,11 @@ test.describe("Pipeline: the API decides the no-key classify exit", () => {
     await signIn(page, USER_ROLE.admin);
     await page.goto(ROUTE.pipeline.path);
 
-    // The exit's own item, not the stop it hangs off: a stop is a list item
-    // holding its exits.
-    const noKey = CLASSIFY_NOT_OFFERED_LABEL[CLASSIFY_NOT_OFFERED.noKey];
-    const exit = page
-      .getByRole("listitem")
-      .filter({ hasText: noKey, hasNot: page.getByRole("listitem") });
-    // Escaped, so a label that ever carries a metacharacter still matches.
-    const literal = noKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    await expect(exit).toHaveText(new RegExp(`${literal}\\s*1$`));
+    await expectExit(
+      page,
+      CLASSIFY_NOT_OFFERED_LABEL[CLASSIFY_NOT_OFFERED.noKey],
+      1,
+    );
     await expect(page.getByText(CLASSIFY_PENDING_LABEL)).toHaveCount(0);
 
     // The rendered words were the same before #362, when the browser relabelled
@@ -392,5 +425,19 @@ test.describe("Pipeline: the API decides the no-key classify exit", () => {
     const { counts } = (await res.json()) as PipelineOverviewResponse;
     expect(counts.classifyPending).toBe(0);
     expect(counts.classifyNotOffered[CLASSIFY_NOT_OFFERED.noKey]).toBe(1);
+  });
+
+  test("a classified ticket with no offer shows under the auto-reply's never-offered exit", async ({
+    page,
+  }) => {
+    // R8 (#363): the auto-reply half draws its own exits from the counts, so
+    // this ticket is no longer part of an unlabelled remainder.
+    await seedClassified("Classified, never offered", null);
+
+    await signIn(page, USER_ROLE.admin);
+    await page.goto(ROUTE.pipeline.path);
+
+    await expectExit(page, AUTO_REPLY_NOT_OFFERED_LABEL, 1);
+    await expect(page.getByText(AUTO_REPLY_PENDING_LABEL)).toHaveCount(0);
   });
 });

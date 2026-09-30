@@ -426,6 +426,11 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * reason `toRun` takes its config as one. Every other unstamped ticket is
  * `filedOrStale`, taken as the remainder so the classify counts always add up
  * to `received`.
+ *
+ * The auto-reply half reads the row alone, as `toRun` does: a classified ticket
+ * with no verdict is `autoReplyPending` when an offer is recorded and nobody has
+ * answered it, and `autoReplyNotOffered` when none is (#363). Neither takes the
+ * key — an offer is only ever recorded where one could run.
  */
 export async function pipelineCounts(
   from: Date,
@@ -433,6 +438,15 @@ export async function pipelineCounts(
   aiConfigured: boolean,
 ): Promise<PipelineCounts> {
   const window = { createdAt: { gte: from, lt: to } };
+  // Machine-classified, with neither a resolve nor a decline: what the two
+  // auto-reply counts split by the offer record (#363).
+  const noAutoReplyVerdict = {
+    ...window,
+    classifiedAt: { not: null },
+    category: { not: null },
+    autoResolvedAt: null,
+    autoReplyDecline: null,
+  } satisfies Prisma.TicketWhereInput;
 
   const [
     received,
@@ -441,6 +455,8 @@ export async function pipelineCounts(
     classifierRuleMatches,
     autoResolved,
     declineGroups,
+    autoReplyPending,
+    autoReplyNotOffered,
   ] = await Promise.all([
     prisma.ticket.count({ where: window }),
     prisma.ticket.count({
@@ -463,6 +479,23 @@ export async function pipelineCounts(
       by: ["autoReplyDecline"],
       where: { ...window, autoReplyDecline: { not: null } },
       _count: { _all: true },
+    }),
+    prisma.ticket.count({
+      where: {
+        ...noAutoReplyVerdict,
+        autoReplyOfferedAt: { not: null },
+        // `toRun`'s `answeredAlready`, negated: no reply on the thread, or the
+        // worker holds the claim. The E2E spec's agreement test pins the two.
+        OR: [
+          {
+            messages: { none: { direction: MESSAGE_DIRECTION.outbound } },
+          },
+          { status: TICKET_STATUS.Processing },
+        ],
+      },
+    }),
+    prisma.ticket.count({
+      where: { ...noAutoReplyVerdict, autoReplyOfferedAt: null },
     }),
   ]);
 
@@ -493,6 +526,8 @@ export async function pipelineCounts(
     },
     autoResolved,
     declines,
+    autoReplyPending,
+    autoReplyNotOffered,
   };
 }
 
