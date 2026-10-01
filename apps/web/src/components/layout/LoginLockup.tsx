@@ -11,9 +11,14 @@ const SMALL_LINE =
  * FORGE's size and place in the lockup, without its finish. The strike stacks
  * its heat copies inside a box of exactly this shape, so they sit on the
  * cooled word glyph for glyph.
+ *
+ * The capitals stand taller than the 0.8em line, and `lit-iron` paints only
+ * inside the box, so the tops of O, R and G came out flat. `pt-[0.1em]` is
+ * headroom for them, taken back from the margin so nothing moves; the strike's
+ * copies carry the same headroom in `login-scene.css` — keep the two equal.
  */
 export const FORGE_BOX =
-  "mt-[0.05em] mb-[0.1em] -ml-[0.04em] text-[clamp(4.5rem,24vw,9rem)] leading-[0.8] font-black tracking-[0.015em] lg:text-[clamp(7rem,min(14vw,30vh),14rem)]";
+  "-mt-[0.05em] pt-[0.1em] mb-[0.1em] -ml-[0.04em] text-[clamp(4.5rem,24vw,9rem)] leading-[0.8] font-black tracking-[0.015em] lg:text-[clamp(7rem,min(14vw,30vh),14rem)]";
 
 /**
  * Where the strike is. `cooled` is the still lockup, which is also the only
