@@ -29,7 +29,7 @@ const USER_HEADER = "x-test-user";
 const CACHED_HEADER = "x-test-cached";
 
 /** Who a request with no `x-test-user` header is from. */
-export const DEFAULT_CALLER: ColleagueKey = "agent";
+const DEFAULT_CALLER: ColleagueKey = "agent";
 
 /** An id no `user` row will ever have. */
 const NOBODY = "u_nobody_signed_in";
@@ -74,7 +74,9 @@ type UserRow = NonNullable<Awaited<ReturnType<typeof callerRow>>>;
 
 /**
  * The cookie cache's copy of a colleague: the row as `seedColleagues` wrote
- * it, with the columns the fixture leaves to their defaults.
+ * it, with the columns the fixture leaves to their defaults. Those defaults
+ * restate `prisma/schema.prisma`'s `User`; a new column there is a type error
+ * here until it is added.
  */
 function cachedCopy(id: string): UserRow {
   const seeded = Object.values(COLLEAGUE).find((c) => c.id === id);

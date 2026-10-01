@@ -95,6 +95,16 @@ async function post<T>(
 /* ── GET /status ─────────────────────────────────────────────────────────── */
 
 describe("GET /api/changelog/status", () => {
+  // The real `requireAuth` (#366): a request naming no row has no session.
+  test("refuses a caller with no session", async () => {
+    const sent = await get<ChangelogStatusResponse>(
+      "/status",
+      asCaller("nobody"),
+    );
+
+    expect(sent.status).toBe(401);
+  });
+
   test("shows when nobody has seen anything yet", async () => {
     const sent = await get<ChangelogStatusResponse>("/status");
 

@@ -2,7 +2,7 @@
  * Unit tests for `./demo` — the public presence boolean the login page reads
  * to decide whether to offer "Use demo session" (#319).
  *
- * No guard to stub: the route is public on purpose, because nobody asking it
+ * No guard and no caller: the route is public on purpose, because nobody asking it
  * has signed in yet. The switch is read per request from `../demo/mode`, a
  * leaf nothing mocks, so flipping `process.env` here is the whole setup.
  */
