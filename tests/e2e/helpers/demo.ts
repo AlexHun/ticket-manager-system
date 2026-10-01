@@ -20,9 +20,11 @@ export const DEMO_BUTTON = { name: "Use demo session" };
  * only whatever the table says.
  *
  * Typed as a `Record`, but nothing typechecks this directory, so
- * `showcaseReads` makes the same demand at run time.
+ * `showcaseReads` makes the same demand at run time. Not the API's
+ * `screenReads`: that one registers a router's unit tests, and this one only
+ * lists paths.
  */
-export const SCREEN_READS: Record<AdminScreen, readonly string[]> = {
+export const ADMIN_SCREEN_READS: Record<AdminScreen, readonly string[]> = {
   [ADMIN_SCREEN.users]: ["/api/users"],
   [ADMIN_SCREEN.knowledge]: [
     "/api/knowledge-articles",
@@ -37,24 +39,24 @@ export const SCREEN_READS: Record<AdminScreen, readonly string[]> = {
 
 /**
  * Every read a demo visitor must be able to send: the `reads` of each screen
- * `seen` opens. A screen opened with no reads listed throws by name, so a
- * screen added to the table cannot slip past the spec with nothing asserted.
+ * `seen` opens. Any screen in `seen` with no reads listed throws by name, open
+ * or not, so a screen added to the table cannot slip past the spec with
+ * nothing asserted. Keyed by `string` rather than `AdminScreen` so the spec can
+ * hand it a screen the table does not have.
  */
 export function showcaseReads(
   seen: Readonly<Record<string, boolean>>,
   reads: Readonly<Partial<Record<string, readonly string[]>>>,
 ): string[] {
-  return Object.entries(seen)
-    .filter(([, open]) => open)
-    .flatMap(([screen]) => {
-      const paths = reads[screen] ?? [];
-      if (paths.length === 0) {
-        throw new Error(
-          `the ${screen} screen is open to a demo visitor and SCREEN_READS lists none of its reads`,
-        );
-      }
-      return paths;
-    });
+  return Object.entries(seen).flatMap(([screen, open]) => {
+    const paths = reads[screen] ?? [];
+    if (paths.length === 0) {
+      throw new Error(
+        `the ${screen} screen is in DEMO_SEES_ADMIN_SCREEN and ADMIN_SCREEN_READS lists none of its reads`,
+      );
+    }
+    return open ? paths : [];
+  });
 }
 
 /**

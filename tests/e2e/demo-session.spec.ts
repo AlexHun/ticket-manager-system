@@ -29,7 +29,7 @@ import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
 import {
   DEMO_BUTTON,
-  SCREEN_READS,
+  ADMIN_SCREEN_READS,
   backdateDemoSession,
   lapseSessionCache,
   showcaseReads,
@@ -372,7 +372,13 @@ test.describe("Demo session", () => {
   }) => {
     await startDemo(page);
 
-    for (const path of showcaseReads(DEMO_SEES_ADMIN_SCREEN, SCREEN_READS)) {
+    const reads = showcaseReads(DEMO_SEES_ADMIN_SCREEN, ADMIN_SCREEN_READS);
+    // A floor, so a derivation that drops every screen cannot pass by
+    // sending nothing: at least one read per screen the table opens.
+    expect(reads.length).toBeGreaterThanOrEqual(
+      Object.values(DEMO_SEES_ADMIN_SCREEN).filter(Boolean).length,
+    );
+    for (const path of reads) {
       expect(await statusOf(page.request, "get", path), path).toBe(200);
     }
 
@@ -390,20 +396,25 @@ test.describe("Demo session", () => {
     );
   });
 
-  // R8's guard on its own generator: a screen the table opens with no reads
-  // listed must fail the spec, not leave the loop above with less to send.
-  test("a screen opened to a demo with no reads listed fails the spec", () => {
-    const opened = { ...DEMO_SEES_ADMIN_SCREEN, reports: true };
-
-    expect(() => showcaseReads(opened, SCREEN_READS)).toThrow(
-      "the reports screen is open to a demo visitor",
-    );
+  // The derivation's guard on itself (#369, R8 of the demo-visitor-boundaries
+  // PRD): a screen added to the table with no reads listed must fail the spec,
+  // not leave the loop above with less to send. A unit test in an E2E file
+  // because nothing else runs `tests/e2e/helpers`; it sends no request.
+  test("a screen added to the table with no reads listed fails the spec", () => {
+    for (const open of [true, false]) {
+      expect(() =>
+        showcaseReads(
+          { ...DEMO_SEES_ADMIN_SCREEN, reports: open },
+          ADMIN_SCREEN_READS,
+        ),
+      ).toThrow("the reports screen is in DEMO_SEES_ADMIN_SCREEN");
+    }
     expect(() =>
       showcaseReads(DEMO_SEES_ADMIN_SCREEN, {
-        ...SCREEN_READS,
+        ...ADMIN_SCREEN_READS,
         [ADMIN_SCREEN.activity]: [],
       }),
-    ).toThrow("the activity screen is open to a demo visitor");
+    ).toThrow("the activity screen is in DEMO_SEES_ADMIN_SCREEN");
   });
 
   /* ── Settings are read-only (#326) ─────────────────────────────────────── */
