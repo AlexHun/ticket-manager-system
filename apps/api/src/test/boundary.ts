@@ -7,7 +7,7 @@
  *
  * - `refusesAgentAndDemo` — an admin-only route (`requireAdmin`) answers 403 to
  *   an agent and to a demo visitor. Every admin write is one, and so are the
- *   reads behind Users and Outbox.
+ *   three admin-only reads: Users, Outbox and the demo usage figures.
  * - `opensToDemo` — a showcase read (`requireAdminView`) answers 200 to a demo
  *   visitor and 403 to an agent.
  *
@@ -41,6 +41,9 @@ import { requireAdmin } from "../middleware/auth";
 import { asCaller } from "./caller";
 import { COLLEAGUE, type ColleagueKey } from "./fixtures";
 import { prisma } from "./pg";
+import type { serveRouter } from "./route-app";
+
+type Url = ReturnType<typeof serveRouter>;
 
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -93,7 +96,7 @@ function guardOf(router: Router, endpoint: Endpoint): unknown {
 
 /** Send `endpoint` as `who`, with the two callers this table uses seeded. */
 async function sendAs(
-  url: (path?: string) => string,
+  url: Url,
   endpoint: Endpoint,
   who: Extract<ColleagueKey, "agent" | "demoVisitor">,
 ) {
@@ -112,7 +115,9 @@ async function sendAs(
   let body: unknown = text;
   try {
     body = JSON.parse(text);
-  } catch {}
+  } catch {
+    // Not JSON: kept as text, which no 403 assertion will mistake for one.
+  }
   return { status: res.status, body };
 }
 
@@ -121,7 +126,7 @@ async function sendAs(
  * is mounted on `requireAdmin` in `router`.
  */
 export function refusesAgentAndDemo(
-  url: (path?: string) => string,
+  url: Url,
   router: Router,
   endpoints: readonly Endpoint[],
 ) {
@@ -146,35 +151,33 @@ export function refusesAgentAndDemo(
 }
 
 /** Every one of `reads` answers 200 to a demo and the guard's 403 to an agent. */
-export function opensToDemo(
-  url: (path?: string) => string,
-  reads: readonly ShowcaseRead[],
-) {
+export function opensToDemo(url: Url, reads: readonly ShowcaseRead[]) {
   describe("who it refuses — showcase reads", () => {
-    const named = reads.map((read) =>
+    // Each shape read once, into the three things a row needs.
+    const rows = reads.map((read) =>
       typeof read === "string"
-        ? ([read, read] as const)
-        : ([read.route, read] as const),
-    );
-    const request = (read: ShowcaseRead) =>
-      typeof read === "string"
-        ? read
+        ? { route: read, request: async () => read, reachable: true }
         : "seed" in read
-          ? read.seed()
-          : read.route;
+          ? { route: read.route, request: read.seed, reachable: true }
+          : {
+              route: read.route,
+              request: async () => read.route,
+              reachable: false,
+            },
+    );
 
-    test.each(named)("%s opens to a demo visitor", async (_, read) => {
-      const sent = await sendAs(url, await request(read), "demoVisitor");
+    test.each(rows)("$route opens to a demo visitor", async (row) => {
+      const sent = await sendAs(url, await row.request(), "demoVisitor");
 
-      if (typeof read !== "string" && "unreachable" in read) {
-        expect([401, 403]).not.toContain(sent.status);
-      } else {
+      if (row.reachable) {
         expect(sent.status).toBe(200);
+      } else {
+        expect([401, 403]).not.toContain(sent.status);
       }
     });
 
-    test.each(named)("%s answers 403 to an agent", async (_, read) => {
-      expect(await sendAs(url, await request(read), "agent")).toEqual({
+    test.each(rows)("$route answers 403 to an agent", async (row) => {
+      expect(await sendAs(url, await row.request(), "agent")).toEqual({
         status: 403,
         body: FORBIDDEN,
       });
