@@ -8,9 +8,10 @@
  * files, so two files registering their own factory for `../jobs/send-email`
  * would not be independent: whichever loaded first would decide what the other
  * one got. `docs/standards/testing.md` describes the hazard and the two ways
- * out of it — write the two stubs *deliberately identical* (what the four
- * `../middleware/auth` stubs do), or put the callers in one file. Neither fits
- * here. This stub is not header constants; it holds **state** — the
+ * out of it — write the two stubs *deliberately identical* (what the route
+ * tests' `../middleware/auth` stubs did until #366), or put the callers in one
+ * file. Neither fits here. This stub is not header constants; it holds
+ * **state** — the
  * `failAfterWriting` switch `outbound.test.ts` flips to test a rollback — and
  * two identical copies of a stateful stub are two boxes, of which the registry
  * keeps one and the other file's switch then does nothing. So there is one

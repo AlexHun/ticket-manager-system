@@ -15,45 +15,23 @@
  * before a `GET` reads it, so the response really is the stored layout.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   DEFAULT_DASHBOARD_LAYOUT,
   type DashboardLayoutResponse,
   type DashboardPanelPlacement,
 } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
+import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
-
-/* ── The world behind the router ─────────────────────────────────────────── */
-
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 const { dashboardLayoutRouter } = await import("./dashboard-layout");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-const AGENT = { "x-test-user": COLLEAGUE.agent.id };
-const OTHER_AGENT = { "x-test-user": COLLEAGUE.other.id };
+const AGENT = asCaller("agent");
+const OTHER_AGENT = asCaller("other");
 
 const REVERSED_LAYOUT = [...DEFAULT_DASHBOARD_LAYOUT].reverse();
 

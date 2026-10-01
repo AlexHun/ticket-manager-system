@@ -3,11 +3,11 @@
  *
  * **A leaf with no imports, and that is the point of the file.** `auth.ts`
  * reads it to refuse `/sign-in/anonymous`, and `auth.ts` is the module a unit
- * test cannot always load for real — `routes/*.test.ts` replace
- * `../middleware/auth`, which is how it is reached. Nothing mocks a module with
- * no dependencies, so a route test and the auth test can both read the same
- * switch without one of them being handed the other's stub (see the registry
- * hazard in `testing-api.md`).
+ * test cannot always load for real — the test preload replaces
+ * `../middleware/session`, which is how a route reaches it. Nothing mocks a
+ * module with no dependencies, so a route test and the auth test can both read
+ * the same switch without one of them being handed the other's stub (see the
+ * registry hazard in `testing-api.md`).
  *
  * See `docs/adr/0022-a-demo-session-is-an-anonymous-agent.md`.
  */

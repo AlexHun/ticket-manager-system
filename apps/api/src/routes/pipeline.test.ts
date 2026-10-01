@@ -37,8 +37,7 @@
  * `tests/e2e/pipeline-offer.spec.ts`, against a server whose queue is running.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   AUTO_REPLY_DECLINES,
@@ -56,6 +55,7 @@ import {
   type PipelineConfig,
   type PipelineRunResponse,
 } from "@ticket/shared";
+import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
@@ -73,28 +73,6 @@ import { serveRouter } from "../test/route-app";
  * Nothing here depends on the value: `toRun` takes its config as a parameter.
  */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
-
-/** Deliberately identical to `knowledge.test.ts` / `tutorials.test.ts` — see
- *  the registry note in `docs/standards/testing-api.md`. */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 const { pipelineCounts, pipelineRouter, toRun } = await import("./pipeline");
 const { AUTO_REPLY_WORKER } = await import("../jobs/auto-reply-ticket");
@@ -354,11 +332,7 @@ describe("toRun — a ticket with no classification verdict", () => {
 
 const url = serveRouter("/api/pipeline", pipelineRouter);
 
-const ADMIN = {
-  "x-test-user": COLLEAGUE.admin.id,
-  "x-test-agent-name": COLLEAGUE.admin.name,
-  "x-test-user-email": COLLEAGUE.admin.email,
-};
+const ADMIN = asCaller("admin");
 
 beforeEach(async () => {
   await resetDb();

@@ -216,6 +216,20 @@ export const prisma = new Proxy(client, {
 });
 
 /**
+ * The caller's row, read without being counted — for `./caller.ts`'s session
+ * lookup and nothing else (#366).
+ *
+ * The guards ask who is calling before the route runs, and the counts above
+ * are about what the *route* reads. In production that question usually
+ * reads no row at all, because Better Auth answers it from the signed cookie
+ * cache; counting the test's stand-in for it would add one `user.findUnique`
+ * to every request that the route never made.
+ */
+export function callerRow(id: string) {
+  return client.user.findUnique({ where: { id } });
+}
+
+/**
  * `DELETE FROM` every table and restart every sequence, in one round trip.
  *
  * Not `TRUNCATE ... RESTART IDENTITY`, which does the same job: measured on

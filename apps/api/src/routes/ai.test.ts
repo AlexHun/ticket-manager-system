@@ -72,7 +72,6 @@
  * reading the row; otherwise what converted here is the read.
  */
 
-import type { NextFunction, Request, Response } from "express";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   DEMO_AI_LIMIT_MESSAGE,
@@ -81,6 +80,7 @@ import {
   SUMMARY_SENTIMENT,
   TICKET_CATEGORY,
   TICKET_STATUS,
+  USER_ROLE,
   type MessageDirection,
   type TicketSummary,
 } from "@ticket/shared";
@@ -88,6 +88,7 @@ import * as polishModule from "../ai/polish";
 import { AI_FAILURE, type AiUsage } from "../ai/provider";
 import * as summarizeModule from "../ai/summarize";
 import { chargeDemoAi } from "../demo/ai-budget";
+import { asCaller } from "../test/caller";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
 import { dbCalls, prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
@@ -122,42 +123,6 @@ const summarizeTicket = mock(
   (_context: SummarizeContext, _signal?: AbortSignal) =>
     Promise.resolve(summaryResult),
 );
-
-// The real `requireAuth` would pull in `../auth`, which throws at import unless
-// BETTER_AUTH_SECRET is set — and the identity it resolves is not what this
-// route's behaviour turns on. The user id comes off a header so each test can
-// have its own, which matters: the rate limiter's budget is per user and lives
-// for the lifetime of the module.
-//
-// `mock.module` registrations are **process-global and permanent**, and this
-// factory does not spread the real module — so from the moment it runs, this
-// object *is* `../middleware/auth` for every test file `bun test` loads after
-// it. That is why `requireAdmin` is here despite no route in this file using
-// one: `routes/automation.test.ts` imports a router that needs it, and without
-// this line that file dies at import with "Export named 'requireAdmin' not
-// found". Deliberately identical to the stub in `./automation.test.ts`,
-// `./knowledge.test.ts`, `./activity.test.ts`, `./tutorials.test.ts` and
-// `./users.test.ts` — same headers, same defaults — so it does not matter
-// which file's registration a given router bound against.
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 // `../ai/polish-reply`, never `../ai/polish`: `ai/polish.test.ts` tests the
 // real `polishDraft`, and a factory on its specifier is what that file imports
@@ -245,7 +210,7 @@ function seedMessage(
   });
 }
 
-/** The colleague whose name outbound messages carry. Matches `fakeGuard`. */
+/** The colleague whose name outbound messages carry, and `freshUser`'s. */
 const AGENT_NAME = "Aaron Agent";
 const AGENT_EMAIL = "agent@example.com";
 
@@ -270,29 +235,46 @@ interface Sent {
 }
 
 /**
- * One request, with a caller nobody else in this file shares.
+ * A caller nobody else in this file shares, seeded as a row because the guard
+ * is the real `requireAuth` (#366) and reads it.
  *
  * The counter is the point: ten polishes per minute per user is module state
  * that outlives a test — and outlives `resetDb()`, which only reaches the
  * database — so a shared id would make the eleventh test in a describe block
- * fail for reasons that have nothing to do with it.
+ * fail for reasons that have nothing to do with it. A demo caller is a row
+ * shaped like `COLLEAGUE.demoVisitor`'s, because `isAnonymous` is read off it.
  */
 let callers = 0;
-function freshUser(): string {
-  return `agent-${++callers}`;
+async function freshUser(
+  over: { name?: string; demo?: boolean } = {},
+): Promise<string> {
+  const id = `agent-${++callers}`;
+  await prisma.user.create({
+    data: {
+      id,
+      name: over.name ?? AGENT_NAME,
+      email: `${id}@example.com`,
+      emailVerified: true,
+      role: USER_ROLE.agent,
+      isAnonymous: over.demo ?? false,
+    },
+  });
+  return id;
 }
 
+/** One request. With no `user`, from a caller of its own. */
 async function post(
   body: unknown,
   options: { user?: string; agentName?: string; demo?: boolean } = {},
 ): Promise<Sent> {
+  const user =
+    options.user ??
+    (await freshUser({ name: options.agentName, demo: options.demo }));
   const res = await fetch(url("/polish-reply"), {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-test-user": options.user ?? freshUser(),
-      ...(options.agentName ? { "x-test-agent-name": options.agentName } : {}),
-      ...(options.demo ? { "x-test-demo": "true" } : {}),
+      ...asCaller({ id: user }),
     },
     body: JSON.stringify(body),
   });
@@ -342,12 +324,12 @@ async function postSummary(
   body: unknown,
   options: { user?: string; demo?: boolean } = {},
 ): Promise<Summarised> {
+  const user = options.user ?? (await freshUser({ demo: options.demo }));
   const res = await fetch(url("/summarize-ticket"), {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-test-user": options.user ?? freshUser(),
-      ...(options.demo ? { "x-test-demo": "true" } : {}),
+      ...asCaller({ id: user }),
     },
     body: JSON.stringify(body),
   });
@@ -454,9 +436,6 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
   });
 
   test("names the customer, the agent and the subject", async () => {
-    // ASCII on purpose: this fixture's name travels in a request header, and
-    // headers are latin-1 on the wire. A "ö" here would fail on the transport
-    // rather than on anything the route does.
     await post(goodBody(), { agentName: "Bea Bergstrom" });
 
     expect(lastContext()).toEqual({
@@ -650,7 +629,7 @@ describe("POST /api/ai/polish-reply — answering", () => {
 
 describe("POST /api/ai/polish-reply — the per-user budget", () => {
   test("allows ten in a window and refuses the eleventh", async () => {
-    const user = freshUser();
+    const user = await freshUser();
 
     for (let i = 0; i < 10; i++) {
       expect((await post(goodBody(), { user })).status).toBe(200);
@@ -665,16 +644,18 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
   });
 
   test("counts per user, not per process", async () => {
-    const user = freshUser();
+    const user = await freshUser();
     for (let i = 0; i < 10; i++) await post(goodBody(), { user });
     expect((await post(goodBody(), { user })).status).toBe(429);
 
     // A colleague on the same server still has their own ten.
-    expect((await post(goodBody(), { user: freshUser() })).status).toBe(200);
+    expect((await post(goodBody(), { user: await freshUser() })).status).toBe(
+      200,
+    );
   });
 
   test("spends a slot only on a request that would reach the model", async () => {
-    const user = freshUser();
+    const user = await freshUser();
 
     for (let i = 0; i < 12; i++) {
       expect(
@@ -688,7 +669,7 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
   });
 
   test("does not refund a slot when the provider fails", async () => {
-    const user = freshUser();
+    const user = await freshUser();
     polishResult = { ok: false, reason: POLISH_FAILURE.provider };
 
     for (let i = 0; i < 10; i++) {
@@ -954,7 +935,7 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
 
 describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
   test("allows ten in a window and refuses the eleventh", async () => {
-    const user = freshUser();
+    const user = await freshUser();
 
     for (let i = 0; i < 10; i++) {
       expect((await postSummary({ ticketId: TICKET }, { user })).status).toBe(
@@ -973,7 +954,7 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
     // The claim the two-bucket design exists to make. A shared counter would
     // let ten polishes lock an agent out of summarising — a feature they have
     // not touched and a limit they cannot see the reason for.
-    const user = freshUser();
+    const user = await freshUser();
 
     for (let i = 0; i < 10; i++) {
       expect((await post(goodBody(), { user })).status).toBe(200);
@@ -986,7 +967,7 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
   });
 
   test("and it runs the other way too", async () => {
-    const user = freshUser();
+    const user = await freshUser();
 
     for (let i = 0; i < 10; i++) {
       await postSummary({ ticketId: TICKET }, { user });
@@ -999,7 +980,7 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
   });
 
   test("spends a slot only on a request that would reach the model", async () => {
-    const user = freshUser();
+    const user = await freshUser();
 
     for (let i = 0; i < 12; i++) {
       expect(

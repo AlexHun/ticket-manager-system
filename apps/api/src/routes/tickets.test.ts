@@ -29,8 +29,7 @@
  * hazard (`docs/standards/testing.md`).
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type {
   TicketAssigneesResponse,
   TicketDetailResponse,
@@ -38,40 +37,17 @@ import type {
   UpdateTicketResponse,
 } from "@ticket/shared";
 import { demoUsageThisWeek, recordDemoStart } from "../demo/usage";
+import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
-
-/* ── The world behind the router ─────────────────────────────────────────── */
-
-/** Deliberately identical in shape to every other route test's stub — see
- *  the file header and `docs/standards/testing.md`. */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "u_agent",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 const { ticketsRouter } = await import("./tickets");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-const AGENT = { "x-test-user": "u_agent", "x-test-agent-name": "Aaron Agent" };
-const OTHER = { "x-test-user": "u_other", "x-test-agent-name": "Olivia Other" };
+const AGENT = asCaller("agent");
+const OTHER = asCaller("other");
 
 const NOW = new Date("2026-08-27T12:00:00.000Z");
 
@@ -279,15 +255,16 @@ describe("GET /api/tickets/:id — assignmentSeenAt side effect", () => {
 /* ── GET /:id tallies a demo session's first ticket ─────────────────────── */
 
 describe("GET /api/tickets/:id — the demo usage tally (#327, PRD R14)", () => {
-  const DEMO = { ...OTHER, "x-test-demo": "true" };
+  const DEMO = asCaller("demoVisitor");
 
   beforeEach(async () => {
+    await seedColleagues("demoVisitor");
     await makeTicket({ id: 1 });
     await makeTicket({ id: 2 });
   });
 
   test("a demo session opening tickets counts once toward the week's figure", async () => {
-    await recordDemoStart("u_other", NOW);
+    await recordDemoStart(COLLEAGUE.demoVisitor.id, NOW);
 
     await get<TicketDetailResponse>("/1", DEMO);
     await get<TicketDetailResponse>("/2", DEMO);
