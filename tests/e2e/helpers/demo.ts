@@ -1,10 +1,63 @@
 import type { Page } from "@playwright/test";
+import { ADMIN_SCREEN, type AdminScreen } from "@ticket/shared";
 import { ROUTE } from "../../../apps/web/src/lib/routes";
 import { freshClientAddress, fromAddress } from "./client-address";
 import { testDb } from "./db";
 
 /** The one control that starts a demo session on `/login`. */
 export const DEMO_BUTTON = { name: "Use demo session" };
+
+/**
+ * The `GET`s each admin screen sends to draw itself (#369), beside
+ * `DEMO_SEES_ADMIN_SCREEN`, which says whether a demo visitor sees the screen.
+ * The screens it says `true` for are where `showcaseReads` takes the demo
+ * spec's showcase reads from.
+ *
+ * Users and Outbox are listed too, though a demo sees neither: should the table
+ * ever open one, its reads join the showcase at once, and the spec's literal
+ * 403s for them go red beside it. The demo usage figures drawn on Users are
+ * not here, for `apps/api/src/test/boundary.ts`'s reason: they stay admin
+ * only whatever the table says.
+ *
+ * Typed as a `Record`, but nothing typechecks this directory, so
+ * `showcaseReads` makes the same demand at run time. Not the API's
+ * `screenReads`: that one registers a router's unit tests, and this one only
+ * lists paths.
+ */
+export const ADMIN_SCREEN_READS: Record<AdminScreen, readonly string[]> = {
+  [ADMIN_SCREEN.users]: ["/api/users"],
+  [ADMIN_SCREEN.knowledge]: [
+    "/api/knowledge-articles",
+    "/api/knowledge-articles/pending-revisions",
+  ],
+  [ADMIN_SCREEN.outbox]: ["/api/outbox"],
+  [ADMIN_SCREEN.pipeline]: ["/api/pipeline", "/api/automation"],
+  [ADMIN_SCREEN.evals]: ["/api/evals/runs", "/api/evals/schedule"],
+  [ADMIN_SCREEN.activity]: ["/api/activity"],
+  [ADMIN_SCREEN.tutorials]: ["/api/tutorials"],
+};
+
+/**
+ * Every read a demo visitor must be able to send: the `reads` of each screen
+ * `seen` opens. Any screen in `seen` with no reads listed throws by name, open
+ * or not, so a screen added to the table cannot slip past the spec with
+ * nothing asserted. Keyed by `string` rather than `AdminScreen` so the spec can
+ * hand it a screen the table does not have.
+ */
+export function showcaseReads(
+  seen: Readonly<Record<string, boolean>>,
+  reads: Readonly<Partial<Record<string, readonly string[]>>>,
+): string[] {
+  return Object.entries(seen).flatMap(([screen, open]) => {
+    const paths = reads[screen] ?? [];
+    if (paths.length === 0) {
+      throw new Error(
+        `the ${screen} screen is in DEMO_SEES_ADMIN_SCREEN and ADMIN_SCREEN_READS lists none of its reads`,
+      );
+    }
+    return open ? paths : [];
+  });
+}
 
 /**
  * Click the button and wait to land on the dashboard. From an address of its

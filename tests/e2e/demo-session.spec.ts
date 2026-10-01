@@ -5,8 +5,10 @@ import {
   type Page,
 } from "@playwright/test";
 import {
+  ADMIN_SCREEN,
   DASHBOARD_SCOPE,
   DEMO_READ_ONLY_NOTE,
+  DEMO_SEES_ADMIN_SCREEN,
   DEMO_USAGE_LABEL,
   EVAL_CORPUS,
   EVAL_RUN_STATUS,
@@ -27,8 +29,10 @@ import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
 import {
   DEMO_BUTTON,
+  ADMIN_SCREEN_READS,
   backdateDemoSession,
   lapseSessionCache,
+  showcaseReads,
   startDemo,
 } from "./helpers/demo";
 import { API_URL } from "./helpers/env";
@@ -359,23 +363,22 @@ test.describe("Demo session", () => {
   });
 
   // The API is the control; the two tests above are UX. Every showcase read
-  // opens to the demo's cookie and Users and Outbox do not. The writes on the
-  // showcase screens are the next section's.
+  // opens to the demo's cookie and Users and Outbox do not. The showcase reads
+  // come from `DEMO_SEES_ADMIN_SCREEN` (#369); the refusals stay literal, so a
+  // bug in that derivation cannot quiet them. The writes on the showcase
+  // screens are the next section's, literal for the same reason.
   test("the API opens the showcase reads and refuses Users and Outbox", async ({
     page,
   }) => {
     await startDemo(page);
 
-    for (const path of [
-      "/api/pipeline",
-      "/api/automation",
-      "/api/knowledge-articles",
-      "/api/knowledge-articles/pending-revisions",
-      "/api/evals/runs",
-      "/api/evals/schedule",
-      "/api/activity",
-      "/api/tutorials",
-    ]) {
+    const reads = showcaseReads(DEMO_SEES_ADMIN_SCREEN, ADMIN_SCREEN_READS);
+    // A floor, so a derivation that drops every screen cannot pass by
+    // sending nothing: at least one read per screen the table opens.
+    expect(reads.length).toBeGreaterThanOrEqual(
+      Object.values(DEMO_SEES_ADMIN_SCREEN).filter(Boolean).length,
+    );
+    for (const path of reads) {
       expect(await statusOf(page.request, "get", path), path).toBe(200);
     }
 
@@ -391,6 +394,27 @@ test.describe("Demo session", () => {
     expect(await statusOf(page.request, "post", "/api/outbox/1/retry")).toBe(
       403,
     );
+  });
+
+  // The derivation's guard on itself (#369, R8 of the demo-visitor-boundaries
+  // PRD): a screen added to the table with no reads listed must fail the spec,
+  // not leave the loop above with less to send. A unit test in an E2E file
+  // because nothing else runs `tests/e2e/helpers`; it sends no request.
+  test("a screen added to the table with no reads listed fails the spec", () => {
+    for (const open of [true, false]) {
+      expect(() =>
+        showcaseReads(
+          { ...DEMO_SEES_ADMIN_SCREEN, reports: open },
+          ADMIN_SCREEN_READS,
+        ),
+      ).toThrow("the reports screen is in DEMO_SEES_ADMIN_SCREEN");
+    }
+    expect(() =>
+      showcaseReads(DEMO_SEES_ADMIN_SCREEN, {
+        ...ADMIN_SCREEN_READS,
+        [ADMIN_SCREEN.activity]: [],
+      }),
+    ).toThrow("the activity screen is in DEMO_SEES_ADMIN_SCREEN");
   });
 
   /* ── Settings are read-only (#326) ─────────────────────────────────────── */

@@ -1649,7 +1649,9 @@ export type AdminScreen = (typeof ADMIN_SCREEN)[keyof typeof ADMIN_SCREEN];
  * A `Record` for `DECLINE_STAGE`'s reason: an eighth screen is a compile error
  * until somebody answers, and there is no default that opens one. The web
  * derives its gate (`AdminScreenRoute`), the navigation (`navItemsFor`) and the
- * tutorial editor's list (`routes/tutorials.ts`) from it. The API's guards are
+ * tutorial editor's list (`routes/tutorials.ts`) from it, and
+ * `demo-session.spec.ts` its showcase reads, through `showcaseReads` in
+ * `tests/e2e/helpers/demo.ts` (#369). The API's guards are
  * **checked against** it rather than derived from it: a guard stays chosen
  * where the route is mounted, so an admin route added later is shut to a
  * stranger until somebody decides otherwise, and each router's test file names
