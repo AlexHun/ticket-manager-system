@@ -15,10 +15,12 @@ import {
 } from "lucide-react";
 import { matchPath } from "react-router-dom";
 import {
+  ADMIN_SCREEN,
+  DEMO_SEES_ADMIN_SCREEN,
   NEW_FEATURE_KEY,
   USER_ROLE,
+  type AdminScreen,
   type NewFeatureKey,
-  type UserRole,
 } from "@ticket/shared";
 import { ROUTE, type RoutePath } from "@/lib/routes";
 import type { Viewer } from "@/lib/viewer";
@@ -38,13 +40,12 @@ export interface NavItem {
    * you are on `/tickets/42`.
    */
   end?: boolean;
-  /** Absent means everyone sees it. */
-  role?: UserRole;
   /**
-   * A demo session sees this admin item too (#320, R3), without holding the
-   * role. Users and Outbox leave it off: a visitor never sees either.
+   * The admin screen this item opens; absent means everyone sees it. An admin
+   * sees every screen, and a demo session (#320, R3) the ones
+   * `DEMO_SEES_ADMIN_SCREEN` says it does (#368), without holding the role.
    */
-  demo?: true;
+  screen?: AdminScreen;
   /**
    * The "new" badge (issue #45): present means `AppSidebar` renders a dot on
    * this item while `NEW_FEATURE_VERSIONS[newFeatureKey]` in `@ticket/shared`
@@ -66,49 +67,44 @@ export const NAV_ITEMS: readonly NavItem[] = [
     to: ROUTE.users.path,
     label: "Users",
     icon: UsersIcon,
-    role: USER_ROLE.admin,
+    screen: ADMIN_SCREEN.users,
   },
   {
     to: ROUTE.knowledge.path,
     label: "Knowledge base",
-    demo: true,
     icon: BookTextIcon,
-    role: USER_ROLE.admin,
+    screen: ADMIN_SCREEN.knowledge,
   },
   {
     to: ROUTE.outbox.path,
     label: "Outbox",
     icon: SendIcon,
-    role: USER_ROLE.admin,
+    screen: ADMIN_SCREEN.outbox,
   },
   {
     to: ROUTE.pipeline.path,
     label: "Pipeline",
-    demo: true,
     icon: WorkflowIcon,
-    role: USER_ROLE.admin,
+    screen: ADMIN_SCREEN.pipeline,
   },
   {
     to: ROUTE.evals.path,
     label: "Evals",
-    demo: true,
     icon: GaugeIcon,
-    role: USER_ROLE.admin,
+    screen: ADMIN_SCREEN.evals,
   },
   {
     to: ROUTE.activity.path,
     label: "Activity",
-    demo: true,
     icon: HistoryIcon,
-    role: USER_ROLE.admin,
+    screen: ADMIN_SCREEN.activity,
     newFeatureKey: NEW_FEATURE_KEY.activityPage,
   },
   {
     to: ROUTE.tutorials.path,
     label: "Tutorials",
-    demo: true,
     icon: GraduationCapIcon,
-    role: USER_ROLE.admin,
+    screen: ADMIN_SCREEN.tutorials,
   },
 ] as const;
 
@@ -159,9 +155,9 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
 export function navItemsFor(viewer: Viewer): NavItem[] {
   return NAV_ITEMS.filter(
     (item) =>
-      !item.role ||
-      item.role === viewer.role ||
-      (viewer.demo && item.demo === true),
+      !item.screen ||
+      viewer.role === USER_ROLE.admin ||
+      (viewer.demo && DEMO_SEES_ADMIN_SCREEN[item.screen]),
   );
 }
 

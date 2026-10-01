@@ -56,7 +56,7 @@ import { PipelineSimulator } from "./PipelineSimulator";
  *
  * Admins, and a demo session that may only look (#320). The guards on
  * `apps/api/src/routes/pipeline.ts` are the control — the simulator is
- * `requireAdmin` — and the `AdminViewRoute` wrapper around this is UX.
+ * `requireAdmin` — and the `AdminScreenRoute` wrapper around this is UX.
  */
 
 const RANGES: { value: DashboardRange; label: string }[] = [

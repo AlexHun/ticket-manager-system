@@ -579,7 +579,7 @@ const LAZY_COMPONENT_RE =
   /lazy:\s*\(\)\s*=>\s*import\(\s*["']([^"']+)["']\s*\)\s*\.then\(\s*\(?\s*\w+\s*\)?\s*=>\s*\(\{\s*Component:\s*\w+\.(\w+)/;
 
 /** A route object's own `Component: Name` — a statically imported page or a
- *  wrapper (`ProtectedRoute`, `AdminRoute`, `AppShell`). */
+ *  wrapper (`ProtectedRoute`, `AdminScreenRoute`, `AppShell`). */
 const STATIC_COMPONENT_RE = /(?:^|[{,\s])Component:\s*(\w+)/;
 
 /**
@@ -646,7 +646,8 @@ function routePathIn(
  * gated, and it says `public` only when the chain is empty — so a wrapper that
  * sits above *every* route adds the same badge to every row while turning off
  * the one signal that distinguishes `/login` from `/users`. `ProtectedRoute`,
- * `AdminRoute` and `AppShell` all wrap a real subset of the tree and stay.
+ * `AdminScreenRoute` and `AppShell` all wrap a real subset of the tree and
+ * stay.
  *
  * A name list because nothing in the route object itself distinguishes a gate
  * from a pass-through — this is regex over source, not a running router. Keep
@@ -718,7 +719,7 @@ function splitTopLevel(inner: string): string[] {
  *
  * Nesting is tracked with a stack rather than matched by regex, which is what
  * lets a leaf route report the wrappers above it — the difference between
- * "`/users` exists" and "`/users` is behind `AdminRoute`".
+ * "`/users` exists" and "`/users` is behind `AdminScreenRoute`".
  */
 function extractRoutes(
   sources: Map<string, string>,
@@ -825,9 +826,9 @@ function extractRoutes(
         continue;
       }
 
-      // A pathless wrapper (`ProtectedRoute`, `AdminRoute`, `AppShell`) — or a
-      // pass-through, which is a wrapper the "Behind" column is better off not
-      // naming (see PASS_THROUGH_WRAPPERS).
+      // A pathless wrapper (`ProtectedRoute`, `AdminScreenRoute`, `AppShell`) —
+      // or a pass-through, which is a wrapper the "Behind" column is better off
+      // not naming (see PASS_THROUGH_WRAPPERS).
       const wrapper =
         component && !PASS_THROUGH_WRAPPERS.has(component) ? component : null;
       if (wrapper) stack.push(wrapper);

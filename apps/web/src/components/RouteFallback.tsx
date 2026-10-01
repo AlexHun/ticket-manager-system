@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 /**
  * The holding screen for a route that can't render yet — either its code is
  * still downloading (the `Suspense` boundaries in `App.tsx` and `AppShell`) or
- * its session check hasn't answered (`ProtectedRoute` / `AdminRoute`).
+ * its session check hasn't answered (`ProtectedRoute` / `AdminScreenRoute`).
  *
  * One component for all of them on purpose: they happen back to back on a cold
  * load, and different-looking placeholders would read as separate waits.

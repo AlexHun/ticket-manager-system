@@ -49,7 +49,7 @@ import { requireAdmin, requireAdminView } from "../middleware/auth";
  * path is holding — which is the shape of the system's own defences, not an
  * agent's business. Starting a run is `requireAdmin`; reading them back is
  * `requireAdminView`, which a demo session also passes (#320, R15).
- * `AdminViewRoute` on the client is UX; these two guards are the control.
+ * `AdminScreenRoute` on the client is UX; these two guards are the control.
  *
  * The write half creates a row and returns. It does **not** wait for the run: a
  * full set is ~175 model calls and several minutes, so an admin holding an HTTP

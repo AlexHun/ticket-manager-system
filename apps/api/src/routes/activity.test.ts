@@ -35,6 +35,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   ACTIVITY_ENTITY_TYPE,
   ADMIN_ACTIVITY_ACTION,
   DEFAULT_PAGE_SIZE,
@@ -53,7 +54,7 @@ import {
   type MessageDirection,
   type TicketActivityAction,
 } from "@ticket/shared";
-import { opensToDemo } from "../test/boundary";
+import { screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
@@ -348,7 +349,7 @@ beforeEach(async () => {
 
 /* ── Who it refuses (#367) ───────────────────────────────────────────────── */
 
-opensToDemo(url, ["GET /"]);
+screenReads(url, activityRouter, ADMIN_SCREEN.activity, ["GET /"]);
 
 /* ── Validation ──────────────────────────────────────────────────────────── */
 

@@ -24,6 +24,7 @@
 
 import { beforeEach, expect, mock, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   EVAL_CORPUS,
   EVAL_PLAN_HORIZON_DAYS,
   EVAL_PLANNED_RUN_STATUS,
@@ -32,7 +33,7 @@ import {
   type EvalScheduleRow,
 } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
-import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
@@ -99,7 +100,7 @@ refusesAgentAndDemo(url, scheduleRouter, [
   "POST /planned-runs",
   "DELETE /planned-runs/1",
 ]);
-opensToDemo(url, ["GET /schedule"]);
+screenReads(url, scheduleRouter, ADMIN_SCREEN.evals, ["GET /schedule"]);
 
 /** The whole panel, as the page asks for it. */
 async function getPanel(): Promise<EvalScheduleResponse> {

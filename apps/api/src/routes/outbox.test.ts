@@ -10,8 +10,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { OUTBOUND_EMAIL_KIND, OUTBOUND_EMAIL_STATUS } from "@ticket/shared";
-import { refusesAgentAndDemo } from "../test/boundary";
+import {
+  ADMIN_SCREEN,
+  OUTBOUND_EMAIL_KIND,
+  OUTBOUND_EMAIL_STATUS,
+} from "@ticket/shared";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { CUSTOMER, seedColleagues } from "../test/fixtures";
 import { mailTransportStub, stubMailTransport } from "../test/mail-transport";
@@ -42,7 +46,8 @@ afterEach(() => {
 
 /* ── Who it refuses (#367) ───────────────────────────────────────────────── */
 
-refusesAgentAndDemo(url, outboxRouter, ["GET /", "POST /1/retry"]);
+screenReads(url, outboxRouter, ADMIN_SCREEN.outbox, ["GET /"]);
+refusesAgentAndDemo(url, outboxRouter, ["POST /1/retry"]);
 
 /* ── Retry ───────────────────────────────────────────────────────────────── */
 

@@ -15,8 +15,8 @@ import { DAY_MS, utcDay } from "./utc-day";
 
 /**
  * 00:00 UTC on the Monday of the week `now` falls in. Built on `utcDay`, the
- * clock the nightly reset and the AI budget's day turn over on, so a week can
- * never start at a moment neither of them calls midnight.
+ * clock the AI budget's day turns over on, so a week can never start at a
+ * moment that budget does not call midnight.
  */
 function utcWeekStart(now: Date): Date {
   // getUTCDay() is 0 on Sunday, so Monday is 0 days back and Sunday is 6.

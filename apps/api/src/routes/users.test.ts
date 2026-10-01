@@ -86,13 +86,14 @@ import {
   test,
 } from "bun:test";
 import {
+  ADMIN_SCREEN,
   DEMO_START_LIMIT_MESSAGE,
   OUTBOUND_EMAIL_KIND,
   TICKET_ACTOR_KIND,
   USER_ROLE,
 } from "@ticket/shared";
 import { userEditChanges } from "../admin-activity";
-import { refusesAgentAndDemo } from "../test/boundary";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { Prisma, dbCalls, prisma, resetDb } from "../test/pg";
@@ -303,8 +304,8 @@ const url = serveRouter("/api/users", usersRouter);
 
 /* ── Who it refuses (#367) ───────────────────────────────────────────────── */
 
+screenReads(url, usersRouter, ADMIN_SCREEN.users, ["GET /"]);
 refusesAgentAndDemo(url, usersRouter, [
-  "GET /",
   "POST /",
   `PATCH /${COLLEAGUE.other.id}`,
   `POST /${COLLEAGUE.other.id}/invite`,

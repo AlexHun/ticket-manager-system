@@ -1,9 +1,9 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { USER_ROLE } from "@ticket/shared";
+import { ADMIN_SCREEN, USER_ROLE } from "@ticket/shared";
 import { renderRoutes } from "@/test/render";
 import { ROUTE } from "@/lib/routes";
-import { AdminRoute, AdminViewRoute } from "./AdminRoute";
+import { AdminScreenRoute, adminScreen } from "./AdminScreenRoute";
 
 const session = vi.hoisted(() => ({ user: {} as Record<string, unknown> }));
 
@@ -17,22 +17,29 @@ const AGENT = { id: "agent-1", role: USER_ROLE.agent, isAnonymous: false };
 const DEMO = { id: "demo-1", role: USER_ROLE.agent, isAnonymous: true };
 
 /**
- * The two gates as `App.tsx` mounts them: Users behind the strict one, the
- * knowledge base behind the one a demo session passes. The dashboard is here so
- * a redirect has somewhere visible to land.
+ * The gate as `App.tsx` mounts it: Users, which `DEMO_SEES_ADMIN_SCREEN` keeps
+ * from a demo, the knowledge base, which it opens, and one route that names no
+ * screen at all. The dashboard is here so a redirect has somewhere visible to
+ * land.
  */
 function renderAt(path: string) {
   return renderRoutes(
     [
       { path: ROUTE.dashboard.path, element: <p>dashboard</p> },
       {
-        Component: AdminRoute,
-        children: [{ path: ROUTE.users.path, element: <p>users page</p> }],
-      },
-      {
-        Component: AdminViewRoute,
+        Component: AdminScreenRoute,
         children: [
-          { path: ROUTE.knowledge.path, element: <p>knowledge page</p> },
+          {
+            path: ROUTE.users.path,
+            handle: adminScreen(ADMIN_SCREEN.users),
+            element: <p>users page</p>,
+          },
+          {
+            path: ROUTE.knowledge.path,
+            handle: adminScreen(ADMIN_SCREEN.knowledge),
+            element: <p>knowledge page</p>,
+          },
+          { path: ROUTE.outbox.path, element: <p>unnamed page</p> },
         ],
       },
     ],
@@ -44,20 +51,20 @@ beforeEach(() => {
   session.user = ADMIN;
 });
 
-describe("AdminRoute and AdminViewRoute", () => {
-  test("an admin passes the strict gate", () => {
+describe("AdminScreenRoute", () => {
+  test("an admin passes on a screen a demo is kept from", () => {
     renderAt(ROUTE.users.path);
     expect(screen.getByText("users page")).toBeInTheDocument();
   });
 
-  test("an admin passes the showcase gate", () => {
+  test("an admin passes on a screen a demo sees", () => {
     renderAt(ROUTE.knowledge.path);
     expect(screen.getByText("knowledge page")).toBeInTheDocument();
   });
 
   // R3: a typed URL to Users or Outbox is not found, not a redirect that
   // would hint the page exists.
-  test("a demo session gets the not-found page at the strict gate", () => {
+  test("a demo session gets the not-found page on a screen it is kept from", () => {
     session.user = DEMO;
     renderAt(ROUTE.users.path);
 
@@ -67,13 +74,25 @@ describe("AdminRoute and AdminViewRoute", () => {
     expect(screen.queryByText("users page")).not.toBeInTheDocument();
   });
 
-  test("a demo session passes the showcase gate", () => {
+  test("a demo session passes on a screen it sees", () => {
     session.user = DEMO;
     renderAt(ROUTE.knowledge.path);
     expect(screen.getByText("knowledge page")).toBeInTheDocument();
   });
 
-  test("an agent is still sent to the dashboard from either gate", () => {
+  // Nothing defaults to open (#368): a route that names no screen is shut to
+  // a demo, as an admin route added to the API is.
+  test("a demo session is kept from a route that names no screen", () => {
+    session.user = DEMO;
+    renderAt(ROUTE.outbox.path);
+
+    expect(
+      screen.getByRole("heading", { name: "No such page" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("unnamed page")).not.toBeInTheDocument();
+  });
+
+  test("an agent is still sent to the dashboard from any screen", () => {
     session.user = AGENT;
     renderAt(ROUTE.knowledge.path);
     expect(screen.getByText("dashboard")).toBeInTheDocument();
