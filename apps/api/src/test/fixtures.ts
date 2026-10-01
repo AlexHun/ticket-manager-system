@@ -18,13 +18,11 @@
  * until the caller exists. That made the same `createMany` block appear in file
  * after file, which is what this module is for.
  *
- * **It owns the rows, not the request headers.** The `../middleware/auth`
- * stub that turns a header into a session is deliberately re-typed in every
- * test file — `docs/standards/testing.md` explains why, and it is the
- * process-wide `mock.module` registry, not tidiness, that requires it — so the
- * header constants stay next to the stub that reads them. What each file
- * imports from here is the identity those headers name, which is what stops a
- * header and a seeded row drifting apart into a foreign-key failure.
+ * **It owns the rows, not the request headers.** `./caller.ts` turns a header
+ * into a session, and it does so by reading the row seeded here (#366), so a
+ * route test's caller is one of these rows or nobody. That is what stops a
+ * header and a seeded row drifting apart, into a foreign-key failure or a role
+ * the table does not have.
  *
  * **Every colleague carries a pinned `createdAt`, and the order of them is
  * load-bearing** (#173). `now()` in Postgres is transaction time, so the

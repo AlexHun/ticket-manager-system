@@ -14,17 +14,13 @@
  * the version comparison is the whole subject of half this file. Everything
  * else is spread from the real module (`...actual`) so no other test file
  * sharing this process sees anything different from the genuine package.
- *
- * The `../middleware/auth` stub is deliberately identical to
- * `new-features.test.ts`'s, for the reason explained there: `mock.module`
- * registrations are process-wide.
  */
 
-import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ChangelogStatusResponse } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
-import { COLLEAGUE, seedColleagues } from "../test/fixtures";
+import { asCaller } from "../test/caller";
+import { seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
@@ -39,42 +35,12 @@ mock.module("@ticket/shared", () => ({
   CHANGELOG_LATEST_VERSION: LATEST_VERSION,
 }));
 
-/** Deliberately identical to `new-features.test.ts` — see this file's header. */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
-
 const { changelogRouter } = await import("./changelog");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-const AGENT = {
-  "x-test-user": COLLEAGUE.agent.id,
-  "x-test-agent-name": COLLEAGUE.agent.name,
-  "x-test-user-email": COLLEAGUE.agent.email,
-};
-
-const ADMIN = {
-  "x-test-user": COLLEAGUE.admin.id,
-  "x-test-agent-name": COLLEAGUE.admin.name,
-  "x-test-user-email": COLLEAGUE.admin.email,
-};
+const AGENT = asCaller("agent");
+const ADMIN = asCaller("admin");
 
 /** `ChangelogSeen.userId` is a foreign key, so the caller has to be a real
  *  colleague — itself something the old fake could not have told us. */
@@ -129,6 +95,16 @@ async function post<T>(
 /* ── GET /status ─────────────────────────────────────────────────────────── */
 
 describe("GET /api/changelog/status", () => {
+  // The real `requireAuth` (#366): a request naming no row has no session.
+  test("refuses a caller with no session", async () => {
+    const sent = await get<ChangelogStatusResponse>(
+      "/status",
+      asCaller("nobody"),
+    );
+
+    expect(sent.status).toBe(401);
+  });
+
   test("shows when nobody has seen anything yet", async () => {
     const sent = await get<ChangelogStatusResponse>("/status");
 

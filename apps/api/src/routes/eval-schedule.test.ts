@@ -20,12 +20,8 @@
  * that would reach `getBoss()` — `EVAL_PLANNED_RUN_WORKER` stays real, and that
  * file keeps its subject. The snapshot is taken eagerly, above the
  * registration, or the factory spreads itself.
- *
- * The `../middleware/auth` stub is deliberately the same shape as
- * `evals.test.ts`'s and `tutorials.test.ts`'s, for the reason in their headers.
  */
 
-import type { NextFunction, Request, Response } from "express";
 import { beforeEach, expect, mock, test } from "bun:test";
 import {
   EVAL_CORPUS,
@@ -36,31 +32,12 @@ import {
   type EvalScheduleRow,
 } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
+import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 import type { EvalScheduleTime } from "../evals/schedule";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
-
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? COLLEAGUE.admin.id,
-      name: req.header("x-test-user-name") ?? COLLEAGUE.admin.name,
-      email: req.header("x-test-user-email") ?? COLLEAGUE.admin.email,
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 let applied: EvalScheduleTime[] = [];
 mock.module("../evals/schedule-queue", () => ({
@@ -98,8 +75,7 @@ const url = serveRouter("/api/evals", createEvalScheduleRouter(config));
 
 const ADMIN = {
   "content-type": "application/json",
-  "x-test-user": COLLEAGUE.admin.id,
-  "x-test-user-name": COLLEAGUE.admin.name,
+  ...asCaller("admin"),
 };
 
 const MINUTE = 60 * 1000;

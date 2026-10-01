@@ -51,6 +51,7 @@
  * connection failures, not green and not silently slow.
  */
 import { mock } from "bun:test";
+import { testSession } from "./caller";
 import { Prisma, prisma } from "./pg";
 
 // Deliberately before the registration below. `import` statements hoist above
@@ -76,3 +77,12 @@ process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
 process.env.OPENAI_BASE_URL = "http://127.0.0.1:1/v1";
 
 mock.module("../db", () => ({ Prisma, prisma }));
+
+// Who is asking (#366). Every route test runs the real guards in
+// `../middleware/auth`; this is the one question they ask that a test answers,
+// from the `x-test-user` header `asCaller` writes and the `user` row it names.
+// Here rather than in each file for `../db`'s reason above: fifteen files
+// used to stub the guards themselves, and while any one of them did, the
+// registry could hand another file that stub instead of the real guards.
+// Same depth caveat as `"../db"`: this resolves from `src/test/`.
+mock.module("../middleware/session", () => ({ lookupSession: testSession }));

@@ -19,8 +19,8 @@
  *
  * The router is stood up around the bare handler rather than importing
  * `./tickets`, which mounts it behind `requireAuth`: the guard is not what is
- * under test, and reaching for it would pull `../auth` and the
- * `../middleware/auth` stub every other route test owns a copy of.
+ * under test, and reaching for it would make every request here name a caller
+ * (`../test/caller`) for nothing.
  */
 
 import { Router } from "express";

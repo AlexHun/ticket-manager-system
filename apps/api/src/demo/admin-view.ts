@@ -11,10 +11,11 @@ import type { Session } from "../middleware/auth";
  * repo's, so a demo holding `admin` would reach those directly (ADR-0022).
  *
  * Its own module, beside `mode.ts`, rather than inside `middleware/auth.ts`:
- * that file imports `../auth`, which every route test replaces, so a rule
- * written there could only be tested through a stub of itself. At runtime this
- * one imports nothing but `@ticket/shared`, which nothing mocks; the session
- * type below is erased.
+ * that file imported `../auth`, and every route test replaced it, so a rule
+ * written there could only have been tested through a stub of itself. Since
+ * #366 the guards run for real under test, and this stays a leaf so that a
+ * test can ask it the question directly. At runtime it imports nothing but
+ * `@ticket/shared`, which nothing mocks; the session type below is erased.
  */
 
 /**

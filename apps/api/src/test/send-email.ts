@@ -7,14 +7,12 @@
  * `mock.module`'s registry is one process wide and nothing resets it between
  * files, so two files registering their own factory for `../jobs/send-email`
  * would not be independent: whichever loaded first would decide what the other
- * one got. `docs/standards/testing.md` describes the hazard and the two ways
- * out of it — write the two stubs *deliberately identical* (what the four
- * `../middleware/auth` stubs do), or put the callers in one file. Neither fits
- * here. This stub is not header constants; it holds **state** — the
- * `failAfterWriting` switch `outbound.test.ts` flips to test a rollback — and
- * two identical copies of a stateful stub are two boxes, of which the registry
- * keeps one and the other file's switch then does nothing. So there is one
- * module, registered once, and both files flip the same box.
+ * one got (`docs/standards/testing-api.md`). Writing the copies identical is no
+ * way out here, because this stub holds **state** — the `failAfterWriting`
+ * switch `outbound.test.ts` flips to test a rollback — and two identical
+ * copies of a stateful stub are two boxes, of which the registry keeps one and
+ * the other file's switch then does nothing. So there is one module,
+ * registered once, and both files flip the same box.
  *
  * That is the same move #189 made on the route-test server, and it is available
  * for the same reason: the thing being shared is machinery, not identity.
