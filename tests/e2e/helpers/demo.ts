@@ -1,10 +1,61 @@
 import type { Page } from "@playwright/test";
+import { ADMIN_SCREEN, type AdminScreen } from "@ticket/shared";
 import { ROUTE } from "../../../apps/web/src/lib/routes";
 import { freshClientAddress, fromAddress } from "./client-address";
 import { testDb } from "./db";
 
 /** The one control that starts a demo session on `/login`. */
 export const DEMO_BUTTON = { name: "Use demo session" };
+
+/**
+ * The `GET`s each admin screen sends to draw itself (#369), beside
+ * `DEMO_SEES_ADMIN_SCREEN`, which says whether a demo visitor sees the screen.
+ * The screens it says `true` for are where `showcaseReads` takes the demo
+ * spec's showcase reads from.
+ *
+ * Users and Outbox are listed too, though a demo sees neither: should the table
+ * ever open one, its reads join the showcase at once, and the spec's literal
+ * 403s for them go red beside it. The demo usage figures drawn on Users are
+ * not here, for `apps/api/src/test/boundary.ts`'s reason: they stay admin
+ * only whatever the table says.
+ *
+ * Typed as a `Record`, but nothing typechecks this directory, so
+ * `showcaseReads` makes the same demand at run time.
+ */
+export const SCREEN_READS: Record<AdminScreen, readonly string[]> = {
+  [ADMIN_SCREEN.users]: ["/api/users"],
+  [ADMIN_SCREEN.knowledge]: [
+    "/api/knowledge-articles",
+    "/api/knowledge-articles/pending-revisions",
+  ],
+  [ADMIN_SCREEN.outbox]: ["/api/outbox"],
+  [ADMIN_SCREEN.pipeline]: ["/api/pipeline", "/api/automation"],
+  [ADMIN_SCREEN.evals]: ["/api/evals/runs", "/api/evals/schedule"],
+  [ADMIN_SCREEN.activity]: ["/api/activity"],
+  [ADMIN_SCREEN.tutorials]: ["/api/tutorials"],
+};
+
+/**
+ * Every read a demo visitor must be able to send: the `reads` of each screen
+ * `seen` opens. A screen opened with no reads listed throws by name, so a
+ * screen added to the table cannot slip past the spec with nothing asserted.
+ */
+export function showcaseReads(
+  seen: Readonly<Record<string, boolean>>,
+  reads: Readonly<Partial<Record<string, readonly string[]>>>,
+): string[] {
+  return Object.entries(seen)
+    .filter(([, open]) => open)
+    .flatMap(([screen]) => {
+      const paths = reads[screen] ?? [];
+      if (paths.length === 0) {
+        throw new Error(
+          `the ${screen} screen is open to a demo visitor and SCREEN_READS lists none of its reads`,
+        );
+      }
+      return paths;
+    });
+}
 
 /**
  * Click the button and wait to land on the dashboard. From an address of its

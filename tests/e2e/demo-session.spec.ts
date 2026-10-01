@@ -5,8 +5,10 @@ import {
   type Page,
 } from "@playwright/test";
 import {
+  ADMIN_SCREEN,
   DASHBOARD_SCOPE,
   DEMO_READ_ONLY_NOTE,
+  DEMO_SEES_ADMIN_SCREEN,
   DEMO_USAGE_LABEL,
   EVAL_CORPUS,
   EVAL_RUN_STATUS,
@@ -27,8 +29,10 @@ import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetDemoUsers, resetE2eEmails, testDb } from "./helpers/db";
 import {
   DEMO_BUTTON,
+  SCREEN_READS,
   backdateDemoSession,
   lapseSessionCache,
+  showcaseReads,
   startDemo,
 } from "./helpers/demo";
 import { API_URL } from "./helpers/env";
@@ -359,23 +363,16 @@ test.describe("Demo session", () => {
   });
 
   // The API is the control; the two tests above are UX. Every showcase read
-  // opens to the demo's cookie and Users and Outbox do not. The writes on the
-  // showcase screens are the next section's.
+  // opens to the demo's cookie and Users and Outbox do not. The showcase reads
+  // come from `DEMO_SEES_ADMIN_SCREEN` (#369); the refusals stay literal, so a
+  // bug in that derivation cannot quiet them. The writes on the showcase
+  // screens are the next section's, literal for the same reason.
   test("the API opens the showcase reads and refuses Users and Outbox", async ({
     page,
   }) => {
     await startDemo(page);
 
-    for (const path of [
-      "/api/pipeline",
-      "/api/automation",
-      "/api/knowledge-articles",
-      "/api/knowledge-articles/pending-revisions",
-      "/api/evals/runs",
-      "/api/evals/schedule",
-      "/api/activity",
-      "/api/tutorials",
-    ]) {
+    for (const path of showcaseReads(DEMO_SEES_ADMIN_SCREEN, SCREEN_READS)) {
       expect(await statusOf(page.request, "get", path), path).toBe(200);
     }
 
@@ -391,6 +388,22 @@ test.describe("Demo session", () => {
     expect(await statusOf(page.request, "post", "/api/outbox/1/retry")).toBe(
       403,
     );
+  });
+
+  // R8's guard on its own generator: a screen the table opens with no reads
+  // listed must fail the spec, not leave the loop above with less to send.
+  test("a screen opened to a demo with no reads listed fails the spec", () => {
+    const opened = { ...DEMO_SEES_ADMIN_SCREEN, reports: true };
+
+    expect(() => showcaseReads(opened, SCREEN_READS)).toThrow(
+      "the reports screen is open to a demo visitor",
+    );
+    expect(() =>
+      showcaseReads(DEMO_SEES_ADMIN_SCREEN, {
+        ...SCREEN_READS,
+        [ADMIN_SCREEN.activity]: [],
+      }),
+    ).toThrow("the activity screen is open to a demo visitor");
   });
 
   /* ── Settings are read-only (#326) ─────────────────────────────────────── */
