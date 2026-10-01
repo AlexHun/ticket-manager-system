@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { DemoUsageResponse } from "@ticket/shared";
+import { refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { seedColleagues } from "../test/fixtures";
 import { resetDb } from "../test/pg";
@@ -23,6 +24,10 @@ beforeEach(async () => {
   await resetDb();
   await seedColleagues("admin");
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, demoUsageRouter, ["GET /"]);
 
 describe("GET /api/demo/usage", () => {
   test("answers this week's two figures and the Monday they count from", async () => {

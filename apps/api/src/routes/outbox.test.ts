@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { OUTBOUND_EMAIL_KIND, OUTBOUND_EMAIL_STATUS } from "@ticket/shared";
+import { refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { CUSTOMER, seedColleagues } from "../test/fixtures";
 import { mailTransportStub, stubMailTransport } from "../test/mail-transport";
@@ -38,6 +39,10 @@ beforeEach(async () => {
 afterEach(() => {
   mailTransportStub.bound = false;
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, outboxRouter, ["GET /", "POST /1/retry"]);
 
 /* ── Retry ───────────────────────────────────────────────────────────────── */
 

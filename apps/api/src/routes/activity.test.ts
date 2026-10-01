@@ -53,6 +53,7 @@ import {
   type MessageDirection,
   type TicketActivityAction,
 } from "@ticket/shared";
+import { opensToDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
@@ -344,6 +345,10 @@ beforeEach(async () => {
   await seedTicket({ id: TICKET_ID });
   await seedArticle();
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+opensToDemo(url, ["GET /"]);
 
 /* ── Validation ──────────────────────────────────────────────────────────── */
 

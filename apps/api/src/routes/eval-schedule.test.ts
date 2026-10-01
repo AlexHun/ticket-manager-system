@@ -32,6 +32,7 @@ import {
   type EvalScheduleRow,
 } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
+import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
@@ -71,7 +72,8 @@ const config = { evalConfigured: () => configured };
 
 const { createEvalScheduleRouter } = await import("./eval-schedule");
 
-const url = serveRouter("/api/evals", createEvalScheduleRouter(config));
+const scheduleRouter = createEvalScheduleRouter(config);
+const url = serveRouter("/api/evals", scheduleRouter);
 
 const ADMIN = {
   "content-type": "application/json",
@@ -89,6 +91,15 @@ beforeEach(async () => {
   enqueued = [];
   cancelledJobs = [];
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, scheduleRouter, [
+  "PATCH /schedule",
+  "POST /planned-runs",
+  "DELETE /planned-runs/1",
+]);
+opensToDemo(url, ["GET /schedule"]);
 
 /** The whole panel, as the page asks for it. */
 async function getPanel(): Promise<EvalScheduleResponse> {

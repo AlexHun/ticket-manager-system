@@ -20,6 +20,7 @@ import {
   type TutorialPageKey,
   type TutorialStatusResponse,
 } from "@ticket/shared";
+import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
 import { seedColleagues } from "../test/fixtures";
@@ -73,6 +74,13 @@ function progressRows() {
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
 const url = serveRouter("/api/tutorials", tutorialsRouter);
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, tutorialsRouter, [
+  `PUT /${TUTORIAL_PAGE_KEY.dashboard}`,
+]);
+opensToDemo(url, ["GET /"]);
 
 interface Sent<T> {
   status: number;

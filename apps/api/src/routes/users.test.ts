@@ -92,6 +92,7 @@ import {
   USER_ROLE,
 } from "@ticket/shared";
 import { userEditChanges } from "../admin-activity";
+import { refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { Prisma, dbCalls, prisma, resetDb } from "../test/pg";
@@ -299,6 +300,16 @@ beforeEach(async () => {
 /* ── The route ───────────────────────────────────────────────────────────── */
 
 const url = serveRouter("/api/users", usersRouter);
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, usersRouter, [
+  "GET /",
+  "POST /",
+  `PATCH /${COLLEAGUE.other.id}`,
+  `POST /${COLLEAGUE.other.id}/invite`,
+  `DELETE /${COLLEAGUE.other.id}`,
+]);
 
 /**
  * Both halves of "the admin is making this request": the `x-test-user` header
