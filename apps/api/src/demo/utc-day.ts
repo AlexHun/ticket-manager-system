@@ -1,8 +1,9 @@
 /**
- * The demo's one clock: days turn over at 00:00 UTC, for the nightly reset,
- * the AI budget's day (`ai-budget.ts`) and the usage figures' week
- * (`usage.ts`). One module so the three cannot disagree about where a day
- * starts. A leaf with no imports, like `mode.ts`, so nothing mocks it.
+ * Where a demo day starts: 00:00 UTC, for the AI budget's day (`ai-budget.ts`)
+ * and the usage figures' week (`usage.ts`). One module so the two cannot
+ * disagree about it. The nightly reset does not read it: it keeps its own cron
+ * in `jobs/demo-reset.ts`. A leaf with no imports, like `mode.ts`, so nothing
+ * mocks it.
  */
 
 export const DAY_MS = 24 * 60 * 60 * 1000;

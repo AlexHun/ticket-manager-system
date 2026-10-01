@@ -8,65 +8,29 @@
  * that used to live here is gone, so the `featureKey: { in: … }` filter and
  * the `@@unique([userId, featureKey])` behind the upsert are Postgres' own
  * answers rather than a `filter`/`findIndex` written above the assertions.
- *
- * The `../middleware/auth` stub is deliberately identical to
- * `tutorials.test.ts`'s, for the reason explained in that file's header:
- * `mock.module` registrations are process-wide, and a stub that disagreed
- * about where the identity comes from would make one file's tests pass alone
- * and fail in the suite.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   NEW_FEATURE_KEYS,
   NEW_FEATURE_VERSIONS,
   type NewFeatureStatusResponse,
 } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
-import { COLLEAGUE, seedColleagues } from "../test/fixtures";
+import { asCaller } from "../test/caller";
+import { seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
 const NOW = new Date("2026-08-29T12:00:00.000Z");
 
-/** Deliberately identical to `tutorials.test.ts` — see this file's header. */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
-
 const { newFeaturesRouter } = await import("./new-features");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-const AGENT = {
-  "x-test-user": COLLEAGUE.agent.id,
-  "x-test-agent-name": COLLEAGUE.agent.name,
-  "x-test-user-email": COLLEAGUE.agent.email,
-};
-
-const ADMIN = {
-  "x-test-user": COLLEAGUE.admin.id,
-  "x-test-agent-name": COLLEAGUE.admin.name,
-  "x-test-user-email": COLLEAGUE.admin.email,
-};
+const AGENT = asCaller("agent");
+const ADMIN = asCaller("admin");
 
 const KEY = NEW_FEATURE_KEYS[0];
 const CURRENT_VERSION = NEW_FEATURE_VERSIONS[KEY];

@@ -2,9 +2,12 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { tutorialContentSchema } from "@ticket/core";
 import {
+  ADMIN_SCREEN,
+  DEMO_SEES_ADMIN_SCREEN,
   TUTORIAL_PAGE_KEY,
   TUTORIAL_PAGE_KEYS,
   TUTORIAL_PAGE_VERSIONS,
+  type AdminScreen,
   type TutorialContent,
   type TutorialContentResponse,
   type TutorialContentsResponse,
@@ -70,13 +73,34 @@ function defaultContent(pageKey: TutorialPageKey): TutorialContent {
 }
 
 /**
- * The two pages a demo session never sees (#320, R3), so the editor list leaves
- * their rows out rather than naming them and showing their copy.
+ * The admin screen each tutorial page is, or `null` for a page every signed-in
+ * user opens. A `Record`, so a tenth page is a compile error here until
+ * somebody says which it is: read as `null` by default, an admin-only page's
+ * copy would be shown to a demo session.
  */
-const DEMO_HIDDEN_PAGES: ReadonlySet<TutorialPageKey> = new Set([
-  TUTORIAL_PAGE_KEY.users,
-  TUTORIAL_PAGE_KEY.outbox,
-]);
+const TUTORIAL_PAGE_SCREEN: Record<TutorialPageKey, AdminScreen | null> = {
+  [TUTORIAL_PAGE_KEY.dashboard]: null,
+  [TUTORIAL_PAGE_KEY.tickets]: null,
+  [TUTORIAL_PAGE_KEY.ticketDetail]: null,
+  [TUTORIAL_PAGE_KEY.pipeline]: ADMIN_SCREEN.pipeline,
+  [TUTORIAL_PAGE_KEY.knowledge]: ADMIN_SCREEN.knowledge,
+  [TUTORIAL_PAGE_KEY.users]: ADMIN_SCREEN.users,
+  [TUTORIAL_PAGE_KEY.activity]: ADMIN_SCREEN.activity,
+  [TUTORIAL_PAGE_KEY.outbox]: ADMIN_SCREEN.outbox,
+  [TUTORIAL_PAGE_KEY.evals]: ADMIN_SCREEN.evals,
+};
+
+/**
+ * The pages a demo session never sees (#320, R3) — those whose screen
+ * `DEMO_SEES_ADMIN_SCREEN` keeps from it — so the editor list leaves their rows
+ * out rather than naming them and showing their copy.
+ */
+const DEMO_HIDDEN_PAGES: ReadonlySet<TutorialPageKey> = new Set(
+  TUTORIAL_PAGE_KEYS.filter((pageKey) => {
+    const screen = TUTORIAL_PAGE_SCREEN[pageKey];
+    return screen !== null && !DEMO_SEES_ADMIN_SCREEN[screen];
+  }),
+);
 
 tutorialsRouter.get(
   "/",

@@ -8,17 +8,11 @@
  * live here — `tutorialContent` and `tutorialProgress` — are gone, so the
  * `@@unique([userId, pageKey])` behind `/seen`, the `pageKey` enum, and the
  * `updatedById` foreign key onto the editor are all Postgres' own answers now.
- *
- * The `../middleware/auth` stub is deliberately identical to
- * `knowledge.test.ts`'s and `automation.test.ts`'s, for the reason explained
- * in their headers: `mock.module` registrations are process-wide, and a stub
- * that disagreed about where the identity comes from would make one file's
- * tests pass alone and fail in the suite.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   TUTORIAL_PAGE_KEY,
   TUTORIAL_PAGE_KEYS,
   TUTORIAL_PAGE_VERSIONS,
@@ -27,51 +21,22 @@ import {
   type TutorialPageKey,
   type TutorialStatusResponse,
 } from "@ticket/shared";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
+import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
-import { COLLEAGUE, seedColleagues } from "../test/fixtures";
+import { seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
 const NOW = new Date("2026-08-24T12:00:00.000Z");
 
-/** Deliberately identical to `knowledge.test.ts` / `automation.test.ts` — see
- *  this file's header comment. */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
-
 const { tutorialsRouter } = await import("./tutorials");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-const AGENT = {
-  "x-test-user": COLLEAGUE.agent.id,
-  "x-test-agent-name": COLLEAGUE.agent.name,
-  "x-test-user-email": COLLEAGUE.agent.email,
-};
-
-const ADMIN = {
-  "x-test-user": COLLEAGUE.admin.id,
-  "x-test-agent-name": COLLEAGUE.admin.name,
-  "x-test-user-email": COLLEAGUE.admin.email,
-};
+const AGENT = asCaller("agent");
+const ADMIN = asCaller("admin");
 
 const CONTENT_BODY = {
   title: "Welcome to the dashboard",
@@ -110,6 +75,13 @@ function progressRows() {
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
 const url = serveRouter("/api/tutorials", tutorialsRouter);
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, tutorialsRouter, [
+  `PUT /${TUTORIAL_PAGE_KEY.dashboard}`,
+]);
+screenReads(url, tutorialsRouter, ADMIN_SCREEN.tutorials, ["GET /"]);
 
 interface Sent<T> {
   status: number;
@@ -275,10 +247,12 @@ describe("GET /api/tutorials", () => {
   // R3: a demo never sees Users or Outbox, and the editor list would otherwise
   // name both and show their copy (#320).
   test("leaves Users and Outbox out for a demo session", async () => {
-    const sent = await get<TutorialContentsResponse>("/", {
-      ...AGENT,
-      "x-test-demo": "true",
-    });
+    await seedColleagues("demoVisitor");
+
+    const sent = await get<TutorialContentsResponse>(
+      "/",
+      asCaller("demoVisitor"),
+    );
 
     expect(sent.status).toBe(200);
     const keys = sent.body.tutorials.map((t) => t.pageKey);

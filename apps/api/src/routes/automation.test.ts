@@ -27,57 +27,24 @@
  *     not distinguish a commit from a rollback. See the last two tests.
  *   - **The audit columns are foreign keys.** `updatedById` and `changedById`
  *     point at `user`, so the admin these requests are sent as has to be a
- *     seeded row rather than a string typed into a header constant — which is
- *     why the headers are derived from `COLLEAGUE`.
+ *     seeded row — which the real guards read anyway (#366).
  *
- * What is *not* covered, and cannot be: `requireAdmin` is stubbed out, so
- * nothing below says anything about who may reach these routes. That guard is
- * one line on each route in the source, and a stubbed copy of it would only
- * assert that the stub runs.
+ * The guards are the real `requireAdmin` and `requireAdminView`, so a request
+ * from anyone but an admin is refused before the route runs. No test here
+ * asserts a refusal yet.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { HANDOFF_TARGET, type HandoffTarget } from "@ticket/shared";
-import { COLLEAGUE, seedColleagues, type ColleagueKey } from "../test/fixtures";
+import { beforeEach, describe, expect, test } from "bun:test";
+import {
+  ADMIN_SCREEN,
+  HANDOFF_TARGET,
+  type HandoffTarget,
+} from "@ticket/shared";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
+import { asCaller } from "../test/caller";
+import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
-
-/* ── The world behind the router ─────────────────────────────────────────── */
-
-/**
- * The session the audit columns are written from.
- *
- * The real `requireAdmin` pulls in `../auth`, which throws at import without
- * `BETTER_AUTH_SECRET`. **Deliberately identical to the stubs in
- * `./ai.test.ts`, `./knowledge.test.ts`, `./activity.test.ts`,
- * `./tutorials.test.ts` and `./users.test.ts`, headers and defaults and all**
- * — `mock.module`
- * registrations are process-global and none of those factories spreads the real
- * module, so whichever file `bun test` loads last owns `../middleware/auth` for
- * every router imported after it. Two stubs that disagreed about where the
- * identity comes from would make one file's tests pass alone and fail in the
- * suite. If one changes, change them all.
- */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 const { automationRouter } = await import("./automation");
 const { SETTINGS_ID } = await import("../automation");
@@ -92,23 +59,7 @@ const AGENT = COLLEAGUE.agent;
 const GONE = COLLEAGUE.other;
 const ASSISTANT = COLLEAGUE.assistant;
 
-/**
- * Headers naming a seeded colleague, rather than three strings beside them.
- *
- * `updatedById` and `changedById` are foreign keys, so a header that drifted
- * from the seeded row would surface as a constraint violation in whichever test
- * wrote first rather than as the identity mix-up it actually is.
- */
-function headersFor(who: ColleagueKey) {
-  const { id, name, email } = COLLEAGUE[who];
-  return {
-    "x-test-user": id,
-    "x-test-agent-name": name,
-    "x-test-user-email": email,
-  };
-}
-
-const AS_ADMIN = headersFor("admin");
+const AS_ADMIN = asCaller("admin");
 
 beforeEach(async () => {
   await resetDb();
@@ -122,6 +73,11 @@ beforeEach(async () => {
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
 const url = serveRouter("/api/automation", automationRouter);
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, automationRouter, ["PATCH /handoff"]);
+screenReads(url, automationRouter, ADMIN_SCREEN.pipeline, ["GET /"]);
 
 interface Sent {
   status: number;
@@ -444,7 +400,8 @@ describe("PATCH /api/automation/handoff — the revision trail", () => {
 
   test("a change that cannot be audited takes the setting back with it", async () => {
     // The admin's session outlived the row it names — the account was hard
-    // deleted while the page was open. Both halves of the transaction write
+    // deleted while the page was open, and the cookie cache still answers for
+    // it (`asCaller`'s `cached`). Both halves of the transaction write
     // that id (`automation_settings.updatedById` and
     // `automation_settings_revision.changedById`, both foreign keys), so the
     // batch is refused as a unit and the setting that was in force stands, with
@@ -462,14 +419,11 @@ describe("PATCH /api/automation/handoff — the revision trail", () => {
     // A green run therefore prints one `prisma:error … Foreign key constraint
     // violated`. That line is this test working, not a failure that got through.
     await patch({ target: HANDOFF_TARGET.unassigned, userId: null });
+    await prisma.user.delete({ where: { id: SECOND_ADMIN.id } });
 
     const res = await sendPatch(
       { target: HANDOFF_TARGET.user, userId: AGENT.id },
-      {
-        "x-test-user": "u_deleted",
-        "x-test-agent-name": "Gone Admin",
-        "x-test-user-email": "gone@example.com",
-      },
+      asCaller("otherAdmin", { cached: true }),
     );
 
     expect(res.status).toBe(500);

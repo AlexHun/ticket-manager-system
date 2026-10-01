@@ -74,3 +74,7 @@ desktop.ini
 .claude/agent-memory/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# --- Personal LinkedIn drafts (docs/linkedin/) ------------------------------
+# Unpublished posts and the author's CV profile; the repo is public.
+docs/linkedin/

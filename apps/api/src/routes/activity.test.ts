@@ -28,17 +28,14 @@
  * five source tables and read which entries come back, so "which branches are
  * included" is a fact about the feed rather than about the query string.
  *
- * `../middleware/auth` is still stubbed, and the stub is deliberately identical
- * to the ones in `./automation.test.ts`, `./ai.test.ts`, `./knowledge.test.ts`,
- * `./tutorials.test.ts` and `./users.test.ts` — see `docs/standards/testing.md`.
- * None of those factories spreads the real module and the registry is
- * process-wide, so all six have to agree on every header and default.
+ * The guard is the real `requireAdminView` (#366), so every request asks as
+ * the seeded admin.
  */
 
 import { randomUUID } from "node:crypto";
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   ACTIVITY_ENTITY_TYPE,
   ADMIN_ACTIVITY_ACTION,
   DEFAULT_PAGE_SIZE,
@@ -57,33 +54,11 @@ import {
   type MessageDirection,
   type TicketActivityAction,
 } from "@ticket/shared";
+import { screenReads } from "../test/boundary";
+import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
-
-/* ── The world behind the route ──────────────────────────────────────────── */
-
-/** Deliberately identical to `./automation.test.ts`, `./ai.test.ts` and
- *  `routes/knowledge.test.ts` — see this file's header comment. */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 const { activityRouter, toActivityEntry } = await import("./activity");
 
@@ -152,7 +127,9 @@ interface Sent {
 }
 
 async function get(qs = ""): Promise<Sent> {
-  const res = await fetch(url(qs ? `?${qs}` : ""));
+  const res = await fetch(url(qs ? `?${qs}` : ""), {
+    headers: asCaller("admin"),
+  });
   return { status: res.status, body: (await res.json()) as Sent["body"] };
 }
 
@@ -369,6 +346,10 @@ beforeEach(async () => {
   await seedTicket({ id: TICKET_ID });
   await seedArticle();
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+screenReads(url, activityRouter, ADMIN_SCREEN.activity, ["GET /"]);
 
 /* ── Validation ──────────────────────────────────────────────────────────── */
 

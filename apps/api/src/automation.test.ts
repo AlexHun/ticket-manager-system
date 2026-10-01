@@ -37,11 +37,9 @@
  * `where` key it did not model, so a query it did not understand failed rather
  * than quietly matching. A schema does that better, and for every column.
  *
- * `./middleware/auth` is deliberately *not* stubbed here — nothing in
- * `./automation` imports it, and a stub registered by a file that does not need
- * one is a stub every file loaded afterwards gets anyway, the registry being
- * process-wide. `./routes/automation.test.ts` registers it, identically to the
- * other route tests.
+ * No guard is reached here — nothing in `./automation` imports
+ * `./middleware/auth`. `./routes/automation.test.ts` runs the real guards, as
+ * every route test does since #366.
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";

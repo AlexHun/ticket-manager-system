@@ -5,17 +5,19 @@
  * The retry refuses everything outright while no mail provider is configured,
  * which is every deployment today, so a refusal read through the real
  * transport would be that refusal and prove nothing about a demo row. A
- * provider is stood in by `../test/mail-transport`, the shared stub.
- *
- * The `../middleware/auth` stub is deliberately identical to
- * `new-features.test.ts`'s, for the reason explained there: `mock.module`
- * registrations are process-wide.
+ * provider is stood in by `../test/mail-transport`, the shared stub. The guard
+ * is the real `requireAdmin` (#366), so the retry asks as the seeded admin.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { OUTBOUND_EMAIL_KIND, OUTBOUND_EMAIL_STATUS } from "@ticket/shared";
-import { CUSTOMER } from "../test/fixtures";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  ADMIN_SCREEN,
+  OUTBOUND_EMAIL_KIND,
+  OUTBOUND_EMAIL_STATUS,
+} from "@ticket/shared";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
+import { asCaller } from "../test/caller";
+import { CUSTOMER, seedColleagues } from "../test/fixtures";
 import { mailTransportStub, stubMailTransport } from "../test/mail-transport";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
@@ -23,27 +25,6 @@ import { serveRouter } from "../test/route-app";
 /* ── The world behind the router ─────────────────────────────────────────── */
 
 await stubMailTransport();
-
-/** Deliberately identical to `new-features.test.ts` — see this file's header. */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 const { withholdEmail } = await import("../jobs/send-email");
 const { outboxRouter } = await import("./outbox");
@@ -54,6 +35,7 @@ beforeEach(async () => {
   mailTransportStub.bound = true;
   mailTransportStub.delivered.length = 0;
   await resetDb();
+  await seedColleagues("admin");
 });
 
 // Unbound again after every test, so no file loaded after this one inherits a
@@ -61,6 +43,11 @@ beforeEach(async () => {
 afterEach(() => {
   mailTransportStub.bound = false;
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+screenReads(url, outboxRouter, ADMIN_SCREEN.outbox, ["GET /"]);
+refusesAgentAndDemo(url, outboxRouter, ["POST /1/retry"]);
 
 /* ── Retry ───────────────────────────────────────────────────────────────── */
 
@@ -78,7 +65,10 @@ describe("POST /api/outbox/:id/retry", () => {
       ),
     );
 
-    const res = await fetch(url(`/${id}/retry`), { method: "POST" });
+    const res = await fetch(url(`/${id}/retry`), {
+      method: "POST",
+      headers: asCaller("admin"),
+    });
     const body = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(409);

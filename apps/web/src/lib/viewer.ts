@@ -1,4 +1,9 @@
-import type { UserRole } from "@ticket/shared";
+import {
+  DEMO_SEES_ADMIN_SCREEN,
+  USER_ROLE,
+  type AdminScreen,
+  type UserRole,
+} from "@ticket/shared";
 import type { authClient } from "@/lib/auth-client";
 
 /**
@@ -27,4 +32,18 @@ export interface Viewer {
 
 export function viewerOf(user: SessionViewer | undefined): Viewer {
   return { role: user?.role ?? undefined, demo: user?.isAnonymous === true };
+}
+
+/**
+ * Whether this viewer sees an admin screen: an admin sees every one, a demo
+ * session those `DEMO_SEES_ADMIN_SCREEN` opens to it (#368), and an agent
+ * none. `null` is a screen nobody named, which only an admin sees — nothing
+ * defaults to open. The one rule both the gate and the navigation ask.
+ */
+export function seesAdminScreen(
+  viewer: Viewer,
+  screen: AdminScreen | null,
+): boolean {
+  if (viewer.role === USER_ROLE.admin) return true;
+  return viewer.demo && screen !== null && DEMO_SEES_ADMIN_SCREEN[screen];
 }

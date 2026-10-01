@@ -26,9 +26,9 @@
  * question, so passing a value does not reach it.
  */
 
-import type { NextFunction, Request, Response } from "express";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   EVAL_CORPUS,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
@@ -46,31 +46,14 @@ import {
   type TicketCategory,
 } from "@ticket/shared";
 import { AUTO_REPLY_CASES } from "@ticket/core";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
+import { asCaller } from "../test/caller";
+import { seedColleagues } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 import type { StoredVerdict } from "../evals/stored-verdict";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
-
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "admin-1",
-      name: "Adele Admin",
-      email: "admin@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 // **The seam under test in spike #209**, second shape. No `mock.module` here:
 // the router is handed its configuration, so this file owns it outright.
@@ -123,18 +106,28 @@ const {
   reachedFrom,
 } = await import("./evals");
 
-const url = serveRouter("/api/evals", createEvalsRouter(config));
+const evalsRouter = createEvalsRouter(config);
+const url = serveRouter("/api/evals", evalsRouter);
+
+/** The guards are the real ones (#366), and every route here is an admin's. */
+const ADMIN = asCaller("admin");
 
 beforeEach(async () => {
   await resetDb();
+  await seedColleagues("admin");
   configured = true;
   enqueued = [];
 });
 
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, evalsRouter, ["POST /runs"]);
+screenReads(url, evalsRouter, ADMIN_SCREEN.evals, ["GET /runs"]);
+
 async function post(body: unknown = {}) {
   return fetch(url("/runs"), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...ADMIN },
     body: JSON.stringify(body),
   });
 }
@@ -390,7 +383,9 @@ async function finishedRun(
  * is what they were already seeding.
  */
 async function runs(corpus?: EvalCorpus): Promise<EvalRunsResponse> {
-  const res = await fetch(url(corpus ? `/runs?corpus=${corpus}` : "/runs"));
+  const res = await fetch(url(corpus ? `/runs?corpus=${corpus}` : "/runs"), {
+    headers: ADMIN,
+  });
   return (await res.json()) as EvalRunsResponse;
 }
 
@@ -415,7 +410,7 @@ describe("GET /runs", () => {
   test("is empty, and says whether a run could be started at all", async () => {
     configured = false;
 
-    const res = await fetch(url("/runs"));
+    const res = await fetch(url("/runs"), { headers: ADMIN });
     const body = (await res.json()) as EvalRunsResponse;
 
     expect(res.status).toBe(200);
@@ -446,7 +441,7 @@ describe("GET /runs", () => {
       },
     });
 
-    const res = await fetch(url("/runs"));
+    const res = await fetch(url("/runs"), { headers: ADMIN });
     const body = (await res.json()) as EvalRunsResponse;
 
     expect(body.runs.map((r) => r.id)).toEqual([newer.id, older.id]);
@@ -740,7 +735,7 @@ describe("GET /runs", () => {
       },
     });
 
-    const res = await fetch(url("/runs"));
+    const res = await fetch(url("/runs"), { headers: ADMIN });
     const body = (await res.json()) as EvalRunsResponse;
 
     expect(body.runs[0]?.cacheable).toBe(8);
@@ -777,7 +772,7 @@ describe("GET /runs", () => {
       },
     });
 
-    const res = await fetch(url("/runs"));
+    const res = await fetch(url("/runs"), { headers: ADMIN });
     const body = (await res.json()) as EvalRunsResponse;
 
     expect(body.runs[0]?.results[0]?.expectedDecline).toBeNull();
@@ -803,7 +798,7 @@ describe("GET /runs", () => {
       },
     });
 
-    const res = await fetch(url("/runs"));
+    const res = await fetch(url("/runs"), { headers: ADMIN });
     const body = (await res.json()) as EvalRunsResponse;
 
     expect(res.status).toBe(200);
@@ -1032,7 +1027,7 @@ describe("GET /runs — the corpus filter", () => {
     // 400 rather than a silent fallback to frozen: a hand-typed `?corpus=fozen`
     // answered with the frozen series would be a page captioned with a corpus
     // nobody asked for.
-    const res = await fetch(url("/runs?corpus=fozen"));
+    const res = await fetch(url("/runs?corpus=fozen"), { headers: ADMIN });
 
     expect(res.status).toBe(400);
   });

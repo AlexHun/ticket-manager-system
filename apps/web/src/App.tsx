@@ -1,6 +1,7 @@
 import { createBrowserRouter, type RouteObject } from "react-router-dom";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { AdminRoute, AdminViewRoute } from "@/components/AdminRoute";
+import { ADMIN_SCREEN } from "@ticket/shared";
+import { AdminScreenRoute, adminScreen } from "@/components/AdminScreenRoute";
 import { AppShell } from "@/components/layout/AppShell";
 import { RouteFallback } from "@/components/RouteFallback";
 import { LoginPage } from "@/pages/LoginPage";
@@ -141,34 +142,34 @@ export const router = createBrowserRouter([
                 // just the role check it always was, and /users stops tearing
                 // down and rebuilding the sidebar on every visit.
                 //
-                // The strict gate: a demo session gets the not-found page
-                // here (#320, R3). Users lists real colleagues, and the outbox
-                // holds live single-use links; `requireAdmin` on both routers
-                // is the control.
-                Component: AdminRoute,
+                // One gate for every admin screen. Each route names its screen
+                // in `handle`, and whether a demo session passes is
+                // `DEMO_SEES_ADMIN_SCREEN`'s answer, not this file's (#368):
+                // where it says no, a demo gets the not-found page (#320, R3).
+                // The API opens a screen's reads to a demo with
+                // `requireAdminView`; every write keeps `requireAdmin`.
+                Component: AdminScreenRoute,
                 children: [
+                  // Users lists real colleagues; `requireAdmin` on its router
+                  // is the control.
                   {
                     path: ROUTE.users.path,
+                    handle: adminScreen(ADMIN_SCREEN.users),
                     lazy: () =>
                       import("@/pages/UsersPage").then((m) => ({
                         Component: m.UsersPage,
                       })),
                   },
+                  // The outbox holds live single-use links; `requireAdmin` on
+                  // its router is the control.
                   {
                     path: ROUTE.outbox.path,
+                    handle: adminScreen(ADMIN_SCREEN.outbox),
                     lazy: () =>
                       import("@/pages/OutboxPage").then((m) => ({
                         Component: m.OutboxPage,
                       })),
                   },
-                ],
-              },
-              {
-                // The showcase gate: an admin, or a demo session (#320, R3).
-                // The API opens only these screens' reads to a demo, with
-                // `requireAdminView`; every write keeps `requireAdmin`.
-                Component: AdminViewRoute,
-                children: [
                   // The knowledge base is admin-only for a stronger reason
                   // than the user list is: editing an article writes into the
                   // system prompt of the feature that answers customers
@@ -177,6 +178,7 @@ export const router = createBrowserRouter([
                   // every write there is `requireAdmin`.
                   {
                     path: ROUTE.knowledge.path,
+                    handle: adminScreen(ADMIN_SCREEN.knowledge),
                     lazy: () =>
                       import("@/pages/KnowledgePage").then((m) => ({
                         Component: m.KnowledgePage,
@@ -188,6 +190,7 @@ export const router = createBrowserRouter([
                   // are the control; the simulator is `requireAdmin`.
                   {
                     path: ROUTE.pipeline.path,
+                    handle: adminScreen(ADMIN_SCREEN.pipeline),
                     lazy: () =>
                       import("@/pages/PipelinePage").then((m) => ({
                         Component: m.PipelinePage,
@@ -200,6 +203,7 @@ export const router = createBrowserRouter([
                   // the control; starting a run is `requireAdmin`.
                   {
                     path: ROUTE.evals.path,
+                    handle: adminScreen(ADMIN_SCREEN.evals),
                     lazy: () =>
                       import("@/pages/EvalsPage").then((m) => ({
                         Component: m.EvalsPage,
@@ -212,6 +216,7 @@ export const router = createBrowserRouter([
                   // guard is UX.
                   {
                     path: ROUTE.activity.path,
+                    handle: adminScreen(ADMIN_SCREEN.activity),
                     lazy: () =>
                       import("@/pages/ActivityPage").then((m) => ({
                         Component: m.ActivityPage,
@@ -224,6 +229,7 @@ export const router = createBrowserRouter([
                   // control — see `apps/api/src/routes/tutorials.ts`.
                   {
                     path: ROUTE.tutorials.path,
+                    handle: adminScreen(ADMIN_SCREEN.tutorials),
                     lazy: () =>
                       import("@/pages/TutorialsPage").then((m) => ({
                         Component: m.TutorialsPage,

@@ -48,7 +48,7 @@ import type { EvalsConfig } from "./evals";
  * **Admin only, on every write**, matching the rest of the harness: a planned
  * run spends money, and retiming the schedule decides when the deployment
  * spends it. Reading the schedule is `requireAdminView`, which a demo session
- * passes (#320). `AdminViewRoute` on the client is UX; these guards are the
+ * passes (#320). `AdminScreenRoute` on the client is UX; these guards are the
  * control.
  */
 

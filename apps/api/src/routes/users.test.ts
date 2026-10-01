@@ -62,14 +62,12 @@
  * `../db` is the shared client every converted file binds — no longer a hazard,
  * since sharing it is the point (`docs/standards/testing.md`).
  *
- * `../middleware/auth` is **deliberately identical** to the one in
- * `./automation.test.ts`, `./ai.test.ts`, `./knowledge.test.ts` and
- * `./activity.test.ts`, for the reason given there: the `mock.module` registry
- * is one process wide, so if one changes, change all of them. Note the seam
- * this leaves: the *route's* guard is stubbed, as in every other route test,
- * while Better Auth's own permission check is not — which is why a request here
- * carries both the `x-test-*` headers and a genuine session cookie, and why the
- * two must name the same admin.
+ * `../middleware/session`, the route guard's session lookup, is answered by the
+ * preload from the `x-test-user` header, as in every other route test (#366).
+ * Note the seam this leaves: the guard runs for real but asks the preload who
+ * is calling, while Better Auth's own permission check reads the cookie — which
+ * is why a request here carries both the header and a genuine session cookie,
+ * and why the two must name the same admin.
  *
  * `../jobs/send-email` is stubbed through `../test/send-email`, shared with
  * `../outbound.test.ts` so that one factory serves both files. Without it the
@@ -78,24 +76,25 @@
  * started and takes the row down with it. That module's header has the rest.
  */
 
-import type { NextFunction, Request, Response } from "express";
 import {
   afterEach,
   beforeAll,
   beforeEach,
   describe,
   expect,
-  mock,
   setSystemTime,
   test,
 } from "bun:test";
 import {
+  ADMIN_SCREEN,
   DEMO_START_LIMIT_MESSAGE,
   OUTBOUND_EMAIL_KIND,
   TICKET_ACTOR_KIND,
   USER_ROLE,
 } from "@ticket/shared";
 import { userEditChanges } from "../admin-activity";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
+import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { Prisma, dbCalls, prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
@@ -208,30 +207,6 @@ process.env.BETTER_AUTH_URL = "http://127.0.0.1:3999";
 
 await stubSendEmail();
 
-/**
- * Deliberately identical to `./automation.test.ts`, `./ai.test.ts`,
- * `./knowledge.test.ts` and `./activity.test.ts` — see the file header.
- */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
-
 const { appOrigin, auth } = await import("../auth");
 const { DEMO_EMAIL_DOMAIN, DEMO_VISITOR_NAME } = await import("../demo/mode");
 const { usersRouter } = await import("./users");
@@ -327,17 +302,25 @@ beforeEach(async () => {
 
 const url = serveRouter("/api/users", usersRouter);
 
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+screenReads(url, usersRouter, ADMIN_SCREEN.users, ["GET /"]);
+refusesAgentAndDemo(url, usersRouter, [
+  "POST /",
+  `PATCH /${COLLEAGUE.other.id}`,
+  `POST /${COLLEAGUE.other.id}/invite`,
+  `DELETE /${COLLEAGUE.other.id}`,
+]);
+
 /**
- * Both halves of "the admin is making this request": the `x-test-*` headers the
- * stubbed route guard reads, and the real cookie Better Auth's own check reads.
- * They name the same account on purpose — the audit trail's actor comes from
- * the first and the permission from the second, and a test where those differed
- * would be describing a request that cannot happen.
+ * Both halves of "the admin is making this request": the `x-test-user` header
+ * the route guard's session lookup reads (#366), and the real cookie Better
+ * Auth's own check reads. They name the same account on purpose — the audit
+ * trail's actor comes from the first and the permission from the second, and a
+ * test where those differed would be describing a request that cannot happen.
  */
 const asAdmin = () => ({
-  "x-test-user": ADMIN.id,
-  "x-test-agent-name": ADMIN.name,
-  "x-test-user-email": ADMIN.email,
+  ...asCaller("admin"),
   cookie: sessionCookie,
 });
 
@@ -1035,17 +1018,22 @@ describe("DELETE /api/users/:id", () => {
    * account is no longer there, which the actor foreign keys refuse —
    * `TicketActivity.actorId` trips first, being earlier in the array, and
    * `AdminActivity.actorId` would have. Nothing else in the request notices —
-   * the guard is stubbed, the target reads fine, the cookie is still valid — so
+   * the guard is answered from the cookie cache's copy (`asCaller`'s
+   * `cached`), the target reads fine, the cookie is still valid — so
    * the failure arrives where it matters, inside the `$transaction([...])`. The
    * route has no handler of its own, so it surfaces as a 500; the status is
    * incidental here, the empty tables are the point.
    */
   test("one failing statement takes the whole delete with it", async () => {
     await agentAtWork();
+    await prisma.user.delete({ where: { id: OTHER_ADMIN.id } });
 
     const res = await fetch(url(`/${AGENT.id}`), {
       method: "DELETE",
-      headers: { ...asAdmin(), "x-test-user": "u_admin_who_is_gone" },
+      headers: {
+        ...asAdmin(),
+        ...asCaller("otherAdmin", { cached: true }),
+      },
     });
 
     expect(res.status).toBe(500);
@@ -1633,7 +1621,8 @@ describe("Demo session lifetime — auth.ts", () => {
   });
 
   // What `requireAuth` and its siblings see: not `null` but a thrown 401,
-  // which `middleware/auth.ts` answers as the 401 it gives no session.
+  // which `middleware/session.ts` turns into no session, and the guard into
+  // its 401.
   test("the route guards' own call is refused with a 401", async () => {
     const cookie = await demoStartedAt(Date.now());
     delete process.env.DEMO_MODE_ENABLED;

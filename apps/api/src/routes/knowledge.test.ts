@@ -20,23 +20,16 @@
  *     rather than a `findIndex` written twenty lines above the assertion.
  *   - **Foreign keys are real.** `editorId` and `approvedById` point at `user`,
  *     so the admins these tests act as have to exist — hence `seedColleagues`,
- *     and hence the headers being derived from the seeded rows rather than
- *     invented beside them.
- *
- * `../middleware/auth` is still stubbed, and the `fakeGuard` here is
- * **deliberately identical** to the one in `./ai.test.ts` and
- * `./automation.test.ts` — `mock.module` registrations are process-global, so
- * a stub that disagreed about where the identity comes from would make one
- * file's tests pass alone and fail in the suite.
+ *     which the real guards read the callers' roles from as well (#366).
  *
  * What is *not* here: the `Restrict` that makes an article undeletable and the
  * `SetNull` that keeps the editor's name after their account goes. Postgres
  * enforces those, not this router, so they live in `../schema.test.ts`.
  */
 
-import type { NextFunction, Request, Response } from "express";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   KNOWLEDGE_REVISION_ACTION,
   KNOWLEDGE_REVISION_STATUS,
   TICKET_CATEGORY,
@@ -45,60 +38,19 @@ import {
   type KnowledgeRevisionApprovalResponse,
   type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
+import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
-import { COLLEAGUE, seedColleagues, type ColleagueKey } from "../test/fixtures";
+import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
-
-/* ── The world behind the router ─────────────────────────────────────────── */
-
-/**
- * Deliberately identical to `./ai.test.ts` and `./automation.test.ts` — see
- * the file header.
- */
-const fakeGuard = (req: Request, res: Response, next: NextFunction) => {
-  res.locals.session = {
-    user: {
-      id: req.header("x-test-user") ?? "agent-1",
-      name: req.header("x-test-agent-name") ?? "Aaron Agent",
-      email: req.header("x-test-user-email") ?? "agent@example.com",
-      isAnonymous: req.header("x-test-demo") === "true",
-    },
-    session: { id: req.header("x-test-session") ?? "sess-1" },
-  };
-  next();
-};
-
-mock.module("../middleware/auth", () => ({
-  requireAuth: fakeGuard,
-  requireAdmin: fakeGuard,
-  requireAdminView: fakeGuard,
-  sessionOf: (res: Response) => res.locals.session,
-}));
 
 const { knowledgeRouter } = await import("./knowledge");
 
 /* ── Fixtures ────────────────────────────────────────────────────────────── */
 
-/**
- * The two admins the gate needs, named by the colleague each one is.
- *
- * Taking a `ColleagueKey` rather than the three fields: `editorId` and
- * `approvedById` are foreign keys, so headers that drifted from the seeded row
- * would surface as a constraint violation in whichever test wrote first rather
- * than as the identity mix-up it actually is. Going through the key means the
- * only way to name an identity here is to name one `seedColleagues` can seed.
- */
-function headersFor(who: ColleagueKey) {
-  const { id, name, email } = COLLEAGUE[who];
-  return {
-    "x-test-user": id,
-    "x-test-agent-name": name,
-    "x-test-user-email": email,
-  };
-}
-
-const SUBMITTER = headersFor("admin");
-const REVIEWER = headersFor("otherAdmin");
+/** The two admins the gate needs, named by the colleague each one is. */
+const SUBMITTER = asCaller("admin");
+const REVIEWER = asCaller("otherAdmin");
 
 function seedArticle(
   id: string,
@@ -152,6 +104,21 @@ beforeEach(async () => {
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
 const url = serveRouter("/api/knowledge-articles", knowledgeRouter);
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, knowledgeRouter, [
+  "POST /",
+  "PATCH /KB-001",
+  "POST /KB-001/archive",
+  "POST /KB-001/revisions/1/approve",
+  "POST /KB-001/revisions/1/reject",
+]);
+screenReads(url, knowledgeRouter, ADMIN_SCREEN.knowledge, [
+  "GET /",
+  "GET /KB-001/revisions",
+  "GET /pending-revisions",
+]);
 
 interface Sent<T> {
   status: number;
@@ -288,7 +255,8 @@ describe("PATCH /api/knowledge-articles/:id", () => {
   });
 
   test("a revision that cannot be written takes the article edit back with it", async () => {
-    // The editor's account is gone — the session outlived the row it names.
+    // The editor's account is gone — the session outlived the row it names,
+    // served by the cookie cache (`asCaller`'s `cached`).
     // `editorId` is a foreign key, so the revision insert is refused *after*
     // the article update has already run inside the same transaction. This is
     // the assertion no fake `$transaction` could make: the old in-memory table
@@ -298,11 +266,12 @@ describe("PATCH /api/knowledge-articles/:id", () => {
     // A green run therefore prints one `prisma:error … Foreign key constraint
     // violated on … knowledge_article_revision_editorId_fkey`. That line is
     // this test working, not a failure that got through.
-    const res = await sendPatch("KB-001", EDIT_BODY, {
-      "x-test-user": "u_deleted",
-      "x-test-agent-name": "Gone Admin",
-      "x-test-user-email": "gone@example.com",
-    });
+    await prisma.user.delete({ where: { id: COLLEAGUE.otherAdmin.id } });
+    const res = await sendPatch(
+      "KB-001",
+      EDIT_BODY,
+      asCaller("otherAdmin", { cached: true }),
+    );
 
     expect(res.status).toBe(500);
     expect(await articleRow("KB-001")).toMatchObject({

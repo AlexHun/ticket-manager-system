@@ -1627,6 +1627,52 @@ export const DECLINE_OUTCOME: Record<AutoReplyDecline, PipelineOutcome> = {
 };
 
 /**
+ * The admin screens, by name. A key of its own rather than a route path or a
+ * tutorial page key, because neither covers them all: paths live in the web
+ * app, and the tutorial editor has no tutorial of its own.
+ */
+export const ADMIN_SCREEN = {
+  users: "users",
+  knowledge: "knowledge",
+  outbox: "outbox",
+  pipeline: "pipeline",
+  evals: "evals",
+  activity: "activity",
+  tutorials: "tutorials",
+} as const;
+
+export type AdminScreen = (typeof ADMIN_SCREEN)[keyof typeof ADMIN_SCREEN];
+
+/**
+ * Whether a demo visitor sees each admin screen (#320, #368) — said once, here.
+ *
+ * A `Record` for `DECLINE_STAGE`'s reason: an eighth screen is a compile error
+ * until somebody answers, and there is no default that opens one. The web
+ * derives its gate (`AdminScreenRoute`), the navigation (`navItemsFor`) and the
+ * tutorial editor's list (`routes/tutorials.ts`) from it, and
+ * `demo-session.spec.ts` its showcase reads, through `showcaseReads` in
+ * `tests/e2e/helpers/demo.ts` (#369). The API's guards are
+ * **checked against** it rather than derived from it: a guard stays chosen
+ * where the route is mounted, so an admin route added later is shut to a
+ * stranger until somebody decides otherwise, and each router's test file names
+ * its screen through `screenReads` in `src/test/boundary.ts`, which goes red if
+ * the read guard and this table disagree.
+ *
+ * `true` opens the screen's reads to a demo through `requireAdminView`; every
+ * write stays `requireAdmin` either way. Users lists real colleagues and the
+ * outbox holds live single-use links, so both say `false`.
+ */
+export const DEMO_SEES_ADMIN_SCREEN: Record<AdminScreen, boolean> = {
+  [ADMIN_SCREEN.users]: false,
+  [ADMIN_SCREEN.knowledge]: true,
+  [ADMIN_SCREEN.outbox]: false,
+  [ADMIN_SCREEN.pipeline]: true,
+  [ADMIN_SCREEN.evals]: true,
+  [ADMIN_SCREEN.activity]: true,
+  [ADMIN_SCREEN.tutorials]: true,
+};
+
+/**
  * Render order for the declines within a stage, and the whole list elsewhere.
  *
  * `Object.keys` on the record above would order by insertion, which happens to
