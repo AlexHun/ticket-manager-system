@@ -1,4 +1,5 @@
-// PreToolUse guard: refuses a shell command that would skip the husky hooks.
+// PreToolUse guard: refuses a shell command that would skip the husky hooks,
+// or hide their exit code.
 // .husky/pre-push is the only local run of the API suite, and sessions have
 // committed past it more than once. Exit 2 blocks the call and hands stderr to
 // Claude as the reason.
@@ -23,6 +24,20 @@ if (bypasses.some((pattern) => pattern.test(command))) {
     "Blocked: this command skips the husky hooks. Run it with the hooks on; " +
       "when one fails, fix what it reports and run the command again. " +
       "A commit message that has to mention the flag goes in a file: `git commit -F <file>`.\n",
+  );
+  process.exit(2);
+}
+
+// A hook-running or test command followed by `; echo` or `|| true` reports the
+// echo's exit code, not its own: a pre-push exit 3 once read as success that way.
+const masked =
+  /\b(?:git\s+(?:commit|push)|bun\b[^\n;|&]*\b(?:test|typecheck))\b[^\n]*?(?:\|\|\s*(?:true\b|exit\s+0\b|:(?=\s|$))|;\s*(?:echo|Write-(?:Host|Output))\b)/i;
+
+if (masked.test(command)) {
+  process.stderr.write(
+    "Blocked: the trailing `; echo` / `|| true` replaces this command's exit code with its own. " +
+      "End the line on the git or test command so a failing hook or suite is reported as one; " +
+      "chain follow-ups with `if ($?) { … }` or `&&`.\n",
   );
   process.exit(2);
 }
