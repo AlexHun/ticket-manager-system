@@ -19,6 +19,11 @@
   /* Positioned, so the copies paint over the flash and the ring behind them. */
   position: relative;
   opacity: 0;
+  /* FORGE_BOX's headroom, so the lit-iron base is not clipped flat across the
+     tops of its capitals and every copy sits where the still word does. Pulled
+     up into the box's own padding, so the cell is no taller. */
+  padding-top: 0.1em;
+  margin-top: -0.1em;
 }
 
 /* Dark until struck: the forge's light has not reached the word yet. */

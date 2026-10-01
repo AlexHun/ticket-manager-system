@@ -36,7 +36,9 @@ export function SidebarBrand() {
           <span>The Great</span>
           <i className="brand-rule h-px min-w-4 flex-1" />
         </span>
-        <span className="lit-iron mt-[0.1em] mb-[0.06em] -ml-[0.03em] text-[3.3rem] leading-[0.82] font-black tracking-[0.015em]">
+        {/* Padding, not margin: `lit-iron` paints only inside the box, and
+            the capitals stand taller than the 0.82em line. */}
+        <span className="lit-iron pt-[0.1em] mb-[0.06em] -ml-[0.03em] text-[3.3rem] leading-[0.82] font-black tracking-[0.015em]">
           Forge
         </span>
         {/* The negative margin takes back the tracking after the last letter,
@@ -49,7 +51,7 @@ export function SidebarBrand() {
       </span>
       <span
         aria-hidden="true"
-        className="lit-iron hidden text-[2rem] leading-[0.82] font-black group-data-[collapsible=icon]:block"
+        className="lit-iron -mt-[0.1em] hidden pt-[0.1em] text-[2rem] leading-[0.82] font-black group-data-[collapsible=icon]:block"
       >
         F
       </span>
