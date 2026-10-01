@@ -36,6 +36,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { HANDOFF_TARGET, type HandoffTarget } from "@ticket/shared";
+import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
@@ -68,6 +69,11 @@ beforeEach(async () => {
 /* ── The app ─────────────────────────────────────────────────────────────── */
 
 const url = serveRouter("/api/automation", automationRouter);
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, automationRouter, ["PATCH /handoff"]);
+opensToDemo(url, ["GET /"]);
 
 interface Sent {
   status: number;

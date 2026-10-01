@@ -45,6 +45,7 @@ import {
   type TicketCategory,
 } from "@ticket/shared";
 import { AUTO_REPLY_CASES } from "@ticket/core";
+import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { seedColleagues } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
@@ -104,7 +105,8 @@ const {
   reachedFrom,
 } = await import("./evals");
 
-const url = serveRouter("/api/evals", createEvalsRouter(config));
+const evalsRouter = createEvalsRouter(config);
+const url = serveRouter("/api/evals", evalsRouter);
 
 /** The guards are the real ones (#366), and every route here is an admin's. */
 const ADMIN = asCaller("admin");
@@ -115,6 +117,11 @@ beforeEach(async () => {
   configured = true;
   enqueued = [];
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, evalsRouter, ["POST /runs"]);
+opensToDemo(url, ["GET /runs"]);
 
 async function post(body: unknown = {}) {
   return fetch(url("/runs"), {

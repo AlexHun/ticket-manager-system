@@ -55,6 +55,7 @@ import {
   type PipelineConfig,
   type PipelineRunResponse,
 } from "@ticket/shared";
+import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
@@ -340,6 +341,20 @@ beforeEach(async () => {
   // real rows the job reads, not stand-ins this file could type for itself.
   await seedColleagues("admin", "assistant");
 });
+
+/* ── Who it refuses (#367) ───────────────────────────────────────────────── */
+
+refusesAgentAndDemo(url, pipelineRouter, ["POST /simulate"]);
+opensToDemo(url, [
+  {
+    route: "GET /",
+    unreachable: "queue depth goes through `getBoss()` (see the header)",
+  },
+  {
+    route: "GET /runs/:id",
+    seed: async () => `GET /runs/${(await seedTicket()).id}`,
+  },
+]);
 
 describe("pipelineCounts — an unstamped ticket", () => {
   // Pinned, as the overview pins its `to`: the reconcile boundary is read at
