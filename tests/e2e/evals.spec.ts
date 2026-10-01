@@ -374,8 +374,8 @@ test.describe("the evals screen", () => {
 
   test("an agent has no way in, by link or by address", async ({ page }) => {
     // The guard half matters as much as the happy path: this route spends
-    // money. `AdminViewRoute` is UX and the API guards are the control — both are
-    // asserted, here and below.
+    // money. `AdminScreenRoute` is UX and the API guards are the control —
+    // both are asserted, here and below.
     await signIn(page, "agent");
 
     await expect(page.getByRole("link", { name: "Evals" })).toHaveCount(0);

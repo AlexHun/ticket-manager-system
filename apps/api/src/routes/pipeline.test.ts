@@ -39,6 +39,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   AUTO_REPLY_DECLINE,
   AUTO_REPLY_DECLINES,
   CLASSIFY_NOT_OFFERED,
@@ -55,7 +56,7 @@ import {
   type PipelineConfig,
   type PipelineRunResponse,
 } from "@ticket/shared";
-import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
@@ -345,7 +346,7 @@ beforeEach(async () => {
 /* ── Who it refuses (#367) ───────────────────────────────────────────────── */
 
 refusesAgentAndDemo(url, pipelineRouter, ["POST /simulate"]);
-opensToDemo(url, [
+screenReads(url, pipelineRouter, ADMIN_SCREEN.pipeline, [
   {
     route: "GET /",
     unreachable: "queue depth goes through `getBoss()` (see the header)",

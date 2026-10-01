@@ -53,12 +53,13 @@ export const requireAdmin = guard(
 /**
  * An admin screen's reads, which a demo session may see too (#320, R3).
  *
- * Mounted on the `GET` routes of Pipeline, Knowledge, Evals, Activity and
- * Tutorials (the automation and eval-schedule reads included), and on nothing
- * else: Users and Outbox keep `requireAdmin` whole, and so does every write.
- * Opt-in per route rather than a demo exception inside `requireAdmin`, so an
- * admin route added later is shut to a stranger until somebody decides
- * otherwise. The rule itself is `mayUseAdminView`.
+ * Mounted on the `GET` routes of the screens `DEMO_SEES_ADMIN_SCREEN` in
+ * `@ticket/shared` says a demo sees (#368) — the automation and eval-schedule
+ * reads included — and on nothing else: the other screens keep `requireAdmin`
+ * whole, and so does every write. Opt-in per route rather than a demo exception
+ * inside `requireAdmin`, so an admin route added later is shut to a stranger
+ * until somebody decides otherwise; each router's test checks its reads
+ * against that table. The rule itself is `mayUseAdminView`.
  */
 export const requireAdminView = guard((session, req) =>
   mayUseAdminView(session.user, req.method),

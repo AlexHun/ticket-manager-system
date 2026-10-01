@@ -29,6 +29,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   KNOWLEDGE_REVISION_ACTION,
   KNOWLEDGE_REVISION_STATUS,
   TICKET_CATEGORY,
@@ -37,7 +38,7 @@ import {
   type KnowledgeRevisionApprovalResponse,
   type KnowledgeRevisionRejectionResponse,
 } from "@ticket/shared";
-import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
 import { COLLEAGUE, seedColleagues } from "../test/fixtures";
@@ -113,7 +114,11 @@ refusesAgentAndDemo(url, knowledgeRouter, [
   "POST /KB-001/revisions/1/approve",
   "POST /KB-001/revisions/1/reject",
 ]);
-opensToDemo(url, ["GET /", "GET /KB-001/revisions", "GET /pending-revisions"]);
+screenReads(url, knowledgeRouter, ADMIN_SCREEN.knowledge, [
+  "GET /",
+  "GET /KB-001/revisions",
+  "GET /pending-revisions",
+]);
 
 interface Sent<T> {
   status: number;

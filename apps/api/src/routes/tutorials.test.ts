@@ -12,6 +12,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   TUTORIAL_PAGE_KEY,
   TUTORIAL_PAGE_KEYS,
   TUTORIAL_PAGE_VERSIONS,
@@ -20,7 +21,7 @@ import {
   type TutorialPageKey,
   type TutorialStatusResponse,
 } from "@ticket/shared";
-import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { prisma, resetDb } from "../test/pg";
 import { seedColleagues } from "../test/fixtures";
@@ -80,7 +81,7 @@ const url = serveRouter("/api/tutorials", tutorialsRouter);
 refusesAgentAndDemo(url, tutorialsRouter, [
   `PUT /${TUTORIAL_PAGE_KEY.dashboard}`,
 ]);
-opensToDemo(url, ["GET /"]);
+screenReads(url, tutorialsRouter, ADMIN_SCREEN.tutorials, ["GET /"]);
 
 interface Sent<T> {
   status: number;

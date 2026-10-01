@@ -28,6 +28,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
+  ADMIN_SCREEN,
   EVAL_CORPUS,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
@@ -45,7 +46,7 @@ import {
   type TicketCategory,
 } from "@ticket/shared";
 import { AUTO_REPLY_CASES } from "@ticket/core";
-import { opensToDemo, refusesAgentAndDemo } from "../test/boundary";
+import { refusesAgentAndDemo, screenReads } from "../test/boundary";
 import { asCaller } from "../test/caller";
 import { seedColleagues } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
@@ -121,7 +122,7 @@ beforeEach(async () => {
 /* ── Who it refuses (#367) ───────────────────────────────────────────────── */
 
 refusesAgentAndDemo(url, evalsRouter, ["POST /runs"]);
-opensToDemo(url, ["GET /runs"]);
+screenReads(url, evalsRouter, ADMIN_SCREEN.evals, ["GET /runs"]);
 
 async function post(body: unknown = {}) {
   return fetch(url("/runs"), {
