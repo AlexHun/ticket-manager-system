@@ -523,5 +523,10 @@
     "version": "0.1.153",
     "date": "2026-10-01",
     "title": "A LinkedIn content manager skill"
+  },
+  {
+    "version": "0.1.154",
+    "date": "2026-10-01",
+    "title": "FORGE's capitals no longer clipped flat at the top"
   }
 ]
