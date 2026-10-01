@@ -1,13 +1,9 @@
 import { Navigate, Outlet, useMatches } from "react-router-dom";
-import {
-  DEMO_SEES_ADMIN_SCREEN,
-  USER_ROLE,
-  type AdminScreen,
-} from "@ticket/shared";
+import type { AdminScreen } from "@ticket/shared";
 import { RouteFallback } from "@/components/RouteFallback";
 import { useSession } from "@/lib/auth-client";
 import { ROUTE } from "@/lib/routes";
-import { viewerOf } from "@/lib/viewer";
+import { seesAdminScreen, viewerOf } from "@/lib/viewer";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 /** What an admin screen's route carries as its `handle`: which screen it is. */
@@ -49,16 +45,10 @@ export function AdminScreenRoute() {
   if (!session) return <Navigate to={ROUTE.login.path} replace />;
 
   const viewer = viewerOf(session.user);
-  if (viewer.role === USER_ROLE.admin) return <Outlet />;
+  if (seesAdminScreen(viewer, screen)) return <Outlet />;
   // Not found rather than a redirect, so a typed URL to a screen a demo is
   // kept from says nothing about what is there (R3).
-  if (viewer.demo) {
-    return screen !== null && DEMO_SEES_ADMIN_SCREEN[screen] ? (
-      <Outlet />
-    ) : (
-      <NotFoundPage />
-    );
-  }
+  if (viewer.demo) return <NotFoundPage />;
   // An agent: unchanged by the demo.
   return <Navigate to={ROUTE.dashboard.path} replace />;
 }

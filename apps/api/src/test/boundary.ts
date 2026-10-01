@@ -7,12 +7,13 @@
  *
  * - `refusesAgentAndDemo` — an admin-only route (`requireAdmin`) answers 403 to
  *   an agent and to a demo visitor. Every admin write is one, and so is the
- *   demo usage figures' read, which belongs to no screen of its own.
+ *   demo usage figures' read: drawn on Users, but kept off `screenReads`
+ *   because it stays `requireAdmin` whatever the table says about Users.
  * - `screenReads` — a screen's reads, named by their `AdminScreen` (#368).
  *   Whether they are showcase reads (`requireAdminView`: 200 to a demo
  *   visitor, 403 to an agent) or admin only, like a write, is
  *   `DEMO_SEES_ADMIN_SCREEN`'s answer and not the file's, so the guard and the
- *   table disagreeing is red. Users and Outbox are the two it answers `false`.
+ *   table disagreeing is red.
  *
  * **The 403 is the guard's own `{ error: "Forbidden" }`, never just the
  * status.** A handler that refuses on its own (the assistant's row in
@@ -56,7 +57,9 @@ type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 export type Endpoint = `${Method} /${string}`;
 
 /**
- * A showcase read, in one of three shapes, each named by its `route`:
+ * A screen's read, in one of three shapes, each named by its `route`. The two
+ * object shapes matter only on a screen a demo sees, where the read must reach
+ * 200; on one it does not, only the `route` is sent, and the guard refuses it:
  *
  * - the request itself, which answers a demo 200;
  * - `seed`, for a path that names a row: `GET /runs/:id` answers 404 for an id
@@ -65,7 +68,7 @@ export type Endpoint = `${Method} /${string}`;
  *   The demo is then asserted past the guard — neither 401 nor 403 — which is
  *   the half of the claim this suite can see.
  */
-export type ShowcaseRead =
+export type ScreenRead =
   | Endpoint
   | { route: Endpoint; seed: () => Promise<Endpoint> }
   | { route: Endpoint; unreachable: string };
@@ -169,7 +172,7 @@ export function screenReads(
   url: Url,
   router: Router,
   screen: AdminScreen,
-  reads: readonly ShowcaseRead[],
+  reads: readonly ScreenRead[],
 ) {
   describe(`the ${screen} screen's reads, as DEMO_SEES_ADMIN_SCREEN says`, () => {
     if (DEMO_SEES_ADMIN_SCREEN[screen]) {
@@ -188,7 +191,7 @@ export function screenReads(
  * Every one of `reads` answers 200 to a demo and the guard's 403 to an agent,
  * and is mounted on `requireAdminView` in `router`.
  */
-function opensToDemo(url: Url, router: Router, reads: readonly ShowcaseRead[]) {
+function opensToDemo(url: Url, router: Router, reads: readonly ScreenRead[]) {
   describe("who it refuses — showcase reads", () => {
     // Each shape read once, into the three things a row needs.
     const rows = reads.map((read) =>

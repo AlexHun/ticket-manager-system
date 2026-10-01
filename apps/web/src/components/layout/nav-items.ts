@@ -16,14 +16,12 @@ import {
 import { matchPath } from "react-router-dom";
 import {
   ADMIN_SCREEN,
-  DEMO_SEES_ADMIN_SCREEN,
   NEW_FEATURE_KEY,
-  USER_ROLE,
   type AdminScreen,
   type NewFeatureKey,
 } from "@ticket/shared";
 import { ROUTE, type RoutePath } from "@/lib/routes";
-import type { Viewer } from "@/lib/viewer";
+import { seesAdminScreen, type Viewer } from "@/lib/viewer";
 
 export interface NavItem {
   /**
@@ -154,10 +152,7 @@ export function isNavItemActive(item: NavItem, pathname: string): boolean {
 /** Nav items this viewer is allowed to see. An `undefined` role sees only the public ones. */
 export function navItemsFor(viewer: Viewer): NavItem[] {
   return NAV_ITEMS.filter(
-    (item) =>
-      !item.screen ||
-      viewer.role === USER_ROLE.admin ||
-      (viewer.demo && DEMO_SEES_ADMIN_SCREEN[item.screen]),
+    (item) => !item.screen || seesAdminScreen(viewer, item.screen),
   );
 }
 
