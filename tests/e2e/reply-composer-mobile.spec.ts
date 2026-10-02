@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { MESSAGE_DIRECTION, TICKET_STATUS } from "@ticket/shared";
 import { ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { signIn } from "./helpers/auth";
@@ -11,10 +11,24 @@ import { testDb } from "./helpers/db";
  * (#397). jsdom has no layout, so only a browser can hold this.
  */
 
+const DESKTOP = { width: 1280, height: 800 };
 const PHONE = { width: 390, height: 844 };
+/** WCAG 2.5.8's minimum target size, in CSS pixels. */
+const MIN_TARGET = 24;
+const ACTIONS = ["Polish", "Send & resolve", "Send reply"] as const;
 const SUBJECT = "E2E reply composer on a phone";
 const CUSTOMER = "e2e-composer-mobile@example.com";
 const HINT = "⌘/Ctrl + Enter to send";
+
+async function boxOf(locator: Locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error(`${locator} is not laid out`);
+  return box;
+}
+
+const action = (page: Page, name: (typeof ACTIONS)[number]) =>
+  page.getByRole("button", { name, exact: true });
 
 test.describe("reply composer on a phone", () => {
   let ticketId: number;
@@ -42,17 +56,23 @@ test.describe("reply composer on a phone", () => {
   });
 
   test.afterAll(async () => {
-    await testDb.ticket.deleteMany({ where: { subject: SUBJECT } });
+    await testDb.ticket.deleteMany({ where: { id: ticketId } });
   });
 
-  /** The nearest scrolling ancestor of the composer: the page's own scroller. */
+  /**
+   * Scroll and client widths of the page's own scroller — the composer's
+   * nearest scrolling ancestor — and of the document.
+   */
   async function pageOverflow(page: Page) {
-    return page.evaluate(() => {
-      const form = document.querySelector("form:has(textarea)")!;
-      let scroller = form.parentElement!;
-      while (scroller !== document.body) {
+    const reply = page.getByPlaceholder("Write a reply…");
+    return reply.evaluate((textarea) => {
+      let scroller = textarea.closest("form")!.parentElement!;
+      for (;;) {
         const style = getComputedStyle(scroller);
         if (/auto|scroll/.test(style.overflowX + style.overflowY)) break;
+        if (scroller === document.body) {
+          throw new Error("the composer has no scrolling ancestor");
+        }
         scroller = scroller.parentElement!;
       }
       return {
@@ -71,26 +91,33 @@ test.describe("reply composer on a phone", () => {
       overflow.documentClientWidth,
     );
 
-    for (const name of ["Polish", "Send & resolve", "Send reply"]) {
-      const box = await page
-        .getByRole("button", { name, exact: true })
-        .boundingBox();
-      expect(box, name).not.toBeNull();
-      expect(box!.x, name).toBeGreaterThanOrEqual(0);
-      expect(box!.x + box!.width, name).toBeLessThanOrEqual(PHONE.width);
-      expect(box!.height, name).toBeGreaterThanOrEqual(24);
+    for (const name of ACTIONS) {
+      const box = await boxOf(action(page, name));
+      expect(box.x, name).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, name).toBeLessThanOrEqual(PHONE.width);
+      expect(box.height, name).toBeGreaterThanOrEqual(MIN_TARGET);
     }
 
-    // One line box, or not rendered at all — never one word per line.
-    const hintLines = await page
-      .getByText(HINT)
-      .evaluate((el) => el.getClientRects().length);
-    expect(hintLines).toBeLessThanOrEqual(1);
+    // The hint is a flex item, so the span itself reports one box however
+    // many lines it wraps to. A Range over its text reports one rect per
+    // line, which is what tells one line from one word per line.
+    const hint = page.getByText(HINT);
+    await expect(hint).toBeVisible();
+    const hintLines = await hint.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set(
+        [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+      ).size;
+    });
+    expect(hintLines).toBe(1);
   }
 
   test("the action row fits at 390px, at rest and with Undo showing", async ({
     page,
   }) => {
+    // Stubbed so the test reaches the Undo state without a model call; only
+    // the layout after a polish is under test here, not the polish itself.
     await page.route("**/api/ai/polish-reply", (route) =>
       route.fulfill({
         json: { polished: "Thanks for waiting — it ships today." },
@@ -104,7 +131,7 @@ test.describe("reply composer on a phone", () => {
     await reply.fill("it ships today");
     await expectFitsThePhone(page);
 
-    await page.getByRole("button", { name: "Polish", exact: true }).click();
+    await action(page, "Polish").click();
     await expect(
       page.getByRole("button", { name: "Undo polish" }),
     ).toBeVisible();
@@ -114,7 +141,7 @@ test.describe("reply composer on a phone", () => {
   test("at 1280px the hint and every button still share one row", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.setViewportSize(DESKTOP);
     await signIn(page, "agent");
     await page.goto(ticketDetailPath(ticketId));
     await page.getByPlaceholder("Write a reply…").fill("it ships today");
@@ -122,11 +149,9 @@ test.describe("reply composer on a phone", () => {
     const centres: number[] = [];
     for (const target of [
       page.getByText(HINT),
-      page.getByRole("button", { name: "Polish", exact: true }),
-      page.getByRole("button", { name: "Send & resolve", exact: true }),
-      page.getByRole("button", { name: "Send reply", exact: true }),
+      ...ACTIONS.map((name) => action(page, name)),
     ]) {
-      const box = (await target.boundingBox())!;
+      const box = await boxOf(target);
       centres.push(box.y + box.height / 2);
     }
     for (const centre of centres) expect(centre).toBeCloseTo(centres[0]!, 0);

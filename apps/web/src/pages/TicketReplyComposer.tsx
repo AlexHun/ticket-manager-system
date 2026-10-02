@@ -396,9 +396,9 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
           ⌘/Ctrl + Enter to send
         </span>
 
-        {/* The controls travel together on the right; the row above keeps the
-            hint pinned left. Undo only exists after a polish, so this is three
-            buttons wide at rest. */}
+        {/* The controls travel together on the right, and `ml-auto` keeps
+            them there once they wrap below the hint. Undo only exists after a
+            polish, so this is three buttons wide at rest. */}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {prePolish !== null && (
             <Hint content="Put back the draft you had before polishing">
