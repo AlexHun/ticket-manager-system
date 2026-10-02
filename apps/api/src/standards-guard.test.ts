@@ -59,10 +59,15 @@ const isTest = (file: string) => file.endsWith(".test.ts");
 const isProduction = (file: string) =>
   !isTest(file) && !file.startsWith("src/test/");
 
-const ROLE = `["'](?:admin|agent)["']`;
+const ROLE = "[\"'`](?:admin|agent)[\"'`]";
+/** The fields a role is written into: the user's own, and the two sides of a
+ *  `role_changed` activity row. */
+const ROLE_KEY = String.raw`\b(?:role|fromValue|toValue)`;
 /** A module specifier in an import, a re-export, a dynamic import or a
  *  require — the quote that opens it, so a form can name what follows. */
 const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']`;
+/** A field of the SDK's usage object or of `AiUsage`, as a whole word. */
+const USAGE_FIELD = String.raw`(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b`;
 
 const SOURCE_RULES: SourceRule[] = [
   {
@@ -70,10 +75,15 @@ const SOURCE_RULES: SourceRule[] = [
     standard: "conventions.md",
     // Where a role is meant, not the word: `asCaller("admin")` and
     // `seedColleagues("admin")` name a test fixture, and `REPLY_ORIGIN.agent`
-    // is a different enum, so none of those match.
+    // is a different enum, so none of those match. The web guard's forms,
+    // plus a quoted or optional key, a backtick literal and an assignment,
+    // which review of this file found missing.
     forms: [
-      new RegExp(String.raw`\brole\s*:\s*${ROLE}`),
-      new RegExp(String.raw`\b(?:fromValue|toValue)\s*:\s*${ROLE}`),
+      // `role: "admin"`, `"role": "admin"`, `role?: "admin"`.
+      new RegExp(String.raw`${ROLE_KEY}["']?\s*\??\s*:\s*${ROLE}`),
+      new RegExp(String.raw`${ROLE_KEY}\s*=(?!=)\s*${ROLE}`),
+      // Anything typed as a role and given a literal: `let r: UserRole = "agent"`.
+      new RegExp(String.raw`:\s*UserRole\s*=(?!=)\s*${ROLE}`),
       new RegExp(String.raw`[=!]==?\s*${ROLE}`),
       new RegExp(String.raw`${ROLE}\s*[=!]==?`),
       new RegExp(String.raw`\.(?:toBe|toEqual|includes)\(\s*${ROLE}\s*\)`),
@@ -84,6 +94,10 @@ const SOURCE_RULES: SourceRule[] = [
     catches: [
       `const stop = subscribe({ role: "admin", send, close });`,
       `{ action: "role_changed", fromValue: "agent", toValue: "admin" },`,
+      `const body = JSON.stringify({ "role": "admin" });`,
+      `type Caller = { role?: "agent" };`,
+      `function seed(role = \`admin\`) {}`,
+      `let fallback: UserRole = "agent";`,
       `if (session.user.role !== "admin") return;`,
       `expect(body.role).toBe("agent");`,
       `case "admin":`,
@@ -111,7 +125,12 @@ const SOURCE_RULES: SourceRule[] = [
     // what checking the seam takes; the rule is about production code.
     forms: [
       /\bLanguageModelUsage\b/,
-      /\.(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b/,
+      new RegExp(String.raw`\.${USAGE_FIELD}`),
+      new RegExp(String.raw`\[\s*["'\`]${USAGE_FIELD}["'\`]\s*\]`),
+      // A destructuring read: `const { cachedInputTokens } = usage`.
+      new RegExp(
+        String.raw`\b(?:const|let|var)\s*\{[^}]*${USAGE_FIELD}[^}]*\}\s*=`,
+      ),
     ],
     applies: isProduction,
     allowed: ["src/ai/provider.ts"],
@@ -119,6 +138,8 @@ const SOURCE_RULES: SourceRule[] = [
       `import type { LanguageModelUsage } from "ai";`,
       `const hit = (result.usage?.cachedInputTokens ?? 0) > 0;`,
       `const cached = usage.inputTokenDetails.cacheReadTokens;`,
+      `const reasoning = usage["reasoningTokens"];`,
+      `const { inputTokens, outputTokens } = result.usage!;`,
     ],
     ignores: `// Was \`(result.usage?.cachedInputTokens ?? 0) > 0\`, inline.`,
   },
@@ -146,13 +167,20 @@ const SOURCE_RULES: SourceRule[] = [
     ignores: `// The only module that will ever import "postmark" is mail/transport.ts.`,
   },
   {
-    name: "No test file registers ../db or ../middleware/auth with mock.module: the preload binds the database and the session seam once",
+    name: "No test file registers ../db, ../middleware/auth or the session seam ../middleware/session with mock.module: the preload binds the database and who is asking once",
     standard: "testing-api.md",
-    forms: [/\bmock\.module\(\s*["'](?:\.{1,2}\/)+(?:db|middleware\/auth)["']/],
+    // `session` beside the two the bullet names: it is the specifier the
+    // preload actually binds for the guards (#366), so a file re-registering
+    // it is the per-file default the bullet warns about.
+    forms: [
+      /\bmock\.module\(\s*["'](?:\.{1,2}\/)+(?:db|middleware\/(?:auth|session))(?:\.ts|\/index(?:\.ts)?)?["']/,
+    ],
     allowed: ["src/test/preload.ts"],
     catches: [
       `mock.module("../db", () => ({ Prisma, prisma }));`,
       `mock.module("../../middleware/auth", () => stub);`,
+      `mock.module("../middleware/session.ts", () => ({ lookupSession }));`,
+      `mock.module("./db/index", () => ({}));`,
     ],
     ignores: `/** Not \`mock.module("../db", …)\`: the preload already bound it. */`,
   },
@@ -249,24 +277,24 @@ for (const rule of SOURCE_RULES) {
 
 /* ── Repo config ─────────────────────────────────────────────────────────── */
 
-/** The files a config rule reads, by repo-relative path. */
-type Files = Record<string, string>;
+/** What a config rule reads: each file's text, keyed by repo-relative path. */
+type FileContents = Record<string, string>;
 
 interface ConfigRule {
   name: string;
   standard: string;
-  /** Repo-relative paths, or a directory whose `.md` files are all read. */
-  read: () => Files;
+  /** The rule's files as they are in the repo. */
+  read: () => FileContents;
   /** What is wrong with these files; empty when the rule holds. */
-  problems: (files: Files) => string[];
+  problems: (files: FileContents) => string[];
   /** File sets that break the rule, each of which must be caught. */
-  catches: Files[];
+  catches: FileContents[];
   /** A set that only mentions the form where it does not count, and must
    *  pass. */
-  ignores?: Files;
+  ignores?: FileContents;
 }
 
-const readRepo = (...paths: string[]): Files =>
+const readRepo = (...paths: string[]): FileContents =>
   Object.fromEntries(
     paths.map((p) => [p, readFileSync(path.join(REPO_ROOT, p), "utf8")]),
   );
@@ -352,7 +380,10 @@ const CONFIG_RULES: ConfigRule[] = [
       };
       const server = json.mcpServers?.["chrome-devtools"];
       if (!server) return [".mcp.json has no chrome-devtools server"];
-      return server.args?.includes("--redactNetworkHeaders")
+      const args = server.args ?? [];
+      // A later `--redactNetworkHeaders=false` would switch it back off.
+      return args.includes("--redactNetworkHeaders") &&
+        !args.some((arg) => arg.startsWith("--redactNetworkHeaders="))
         ? []
         : ["chrome-devtools runs without --redactNetworkHeaders"];
     },
@@ -364,6 +395,9 @@ const CONFIG_RULES: ConfigRule[] = [
         // Named in another server's args is not the chrome-devtools server
         // having it.
         ".mcp.json": `{ "mcpServers": { "chrome-devtools": { "args": [] }, "other": { "args": ["--redactNetworkHeaders"] } } }`,
+      },
+      {
+        ".mcp.json": `{ "mcpServers": { "chrome-devtools": { "args": ["--redactNetworkHeaders", "--redactNetworkHeaders=false"] } } }`,
       },
     ],
   },

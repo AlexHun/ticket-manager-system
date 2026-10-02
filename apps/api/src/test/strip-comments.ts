@@ -7,7 +7,8 @@
  * must let a file explain *why* it avoids one. The same scanner as
  * `apps/web/dev/scan.ts`'s `stripComments`, copied rather than imported: that
  * module is the web workspace's project-map scanner, it imports the web's
- * protocol types, and the API's `tsconfig` does not reach outside `src/`.
+ * protocol types, and the API's `tsconfig` does not reach outside `src/`. A
+ * fix to either copy belongs in both.
  *
  * A character scanner rather than a line-based one, because a string can hold
  * what looks like a comment opener — `"/__dev/*"` — and a scanner that does not
