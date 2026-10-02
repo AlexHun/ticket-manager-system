@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { MESSAGE_DIRECTION, TICKET_STATUS } from "@ticket/shared";
+import { MESSAGE_DIRECTION, TICKET_STATUS, USER_ROLE } from "@ticket/shared";
+import { ROUTE } from "../../apps/web/src/lib/routes";
 import { signIn } from "./helpers/auth";
 import { testDb } from "./helpers/db";
 
@@ -8,7 +9,7 @@ import { testDb } from "./helpers/db";
  * card's width on a phone. It sat in shadcn's `CardAction`, a second grid
  * column spanning both header rows at every width, so at 390px "Time to first
  * reply" wrapped to two lines and its description to five beside
- * "median 6.0h · p90 24h" (#400). jsdom has no layout, so only a browser can
+ * "median 6.0h Â· p90 24h" (#400). jsdom has no layout, so only a browser can
  * hold this.
  */
 
@@ -41,6 +42,19 @@ async function linesOf(locator: Locator) {
   });
 }
 
+/** The element's width inside its horizontal padding. */
+async function contentWidthOf(locator: Locator) {
+  await expect(locator).toBeVisible();
+  return locator.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return (
+      el.clientWidth -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight)
+    );
+  });
+}
+
 /** The first-response panel, found by its title. Cards carry no role. */
 const card = (page: Page) =>
   page
@@ -54,17 +68,9 @@ const toggle = (page: Page) =>
   card(page).getByRole("button", { name: "Show data table" });
 const header = (page: Page) => card(page).locator('[data-slot="card-header"]');
 
-/** The element's width inside its horizontal padding. */
-async function contentWidthOf(locator: Locator) {
-  await expect(locator).toBeVisible();
-  return locator.evaluate((el) => {
-    const style = getComputedStyle(el);
-    return (
-      el.clientWidth -
-      parseFloat(style.paddingLeft) -
-      parseFloat(style.paddingRight)
-    );
-  });
+async function openDashboard(page: Page) {
+  await signIn(page, USER_ROLE.admin);
+  await page.goto(ROUTE.dashboard.path);
 }
 
 test.describe("chart card headline on a phone", () => {
@@ -115,7 +121,7 @@ test.describe("chart card headline on a phone", () => {
     page,
   }) => {
     await page.setViewportSize(PHONE);
-    await signIn(page, "admin");
+    await openDashboard(page);
 
     const titleBox = await boxOf(title(page));
     const descriptionBox = await boxOf(description(page));
@@ -148,7 +154,7 @@ test.describe("chart card headline on a phone", () => {
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
-    await signIn(page, "admin");
+    await openDashboard(page);
 
     const titleBox = await boxOf(title(page));
     const descriptionBox = await boxOf(description(page));

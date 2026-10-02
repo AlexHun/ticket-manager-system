@@ -63,22 +63,21 @@ export function ChartCard({
   // A viewport breakpoint, not a container query: the narrow dashboard panels
   // are about 320px wide at 1280px and keep the corner there. Without a figure
   // the toggle alone fits the corner at any width, so nothing moves.
+  // The two class strings work only as a pair: change the breakpoint in both.
+  // Not `stat &&`: a figure of 0 is a figure and still renders.
+  const hasStat = stat !== undefined && stat !== null && stat !== false;
+  const stackedHeader =
+    "has-data-[slot=card-action]:grid-cols-1 sm:has-data-[slot=card-action]:grid-cols-[1fr_auto]";
+  const stackedAction =
+    "col-start-1 row-span-1 row-start-auto justify-between justify-self-stretch sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end";
+
   return (
     <Card className={className}>
-      <CardHeader
-        className={cn(
-          stat &&
-            "has-data-[slot=card-action]:grid-cols-1 sm:has-data-[slot=card-action]:grid-cols-[1fr_auto]",
-        )}
-      >
+      <CardHeader className={cn(hasStat && stackedHeader)}>
         <CardTitle>{title}</CardTitle>
         {subtitle && <CardDescription>{subtitle}</CardDescription>}
         <CardAction
-          className={cn(
-            "flex items-center gap-3",
-            stat &&
-              "col-start-1 row-span-1 row-start-auto justify-between justify-self-stretch sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end",
-          )}
+          className={cn("flex items-center gap-3", hasStat && stackedAction)}
         >
           {stat}
           {!isEmpty && (
