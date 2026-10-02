@@ -498,5 +498,75 @@
     "version": "0.1.151",
     "date": "2026-09-30",
     "title": "Review follow-ups for the pipeline pending split"
+  },
+  {
+    "version": "0.1.152",
+    "date": "2026-09-30",
+    "title": "Refuse self-service profile updates for every session"
+  },
+  {
+    "version": "0.1.152",
+    "date": "2026-09-30",
+    "title": "Record the auto-reply offer on the ticket"
+  },
+  {
+    "version": "0.1.152",
+    "date": "2026-09-30",
+    "title": "The API decides the no-key classify exit"
+  },
+  {
+    "version": "0.1.152",
+    "date": "2026-09-30",
+    "title": "The auto-reply half of the rail says what is coming"
+  },
+  {
+    "version": "0.1.153",
+    "date": "2026-10-01",
+    "title": "A LinkedIn content manager skill"
+  },
+  {
+    "version": "0.1.154",
+    "date": "2026-10-01",
+    "title": "FORGE's capitals no longer clipped flat at the top"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Finishing a tutorial on a phone no longer leaves a gap under the page"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "The reply composer's buttons fit a phone screen"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "The pagination bar's labels hold one line on a phone"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Knowledge base previews read as plain text"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Strip preview Markdown that spans a hard wrap"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Chart card headline takes its own line on a phone"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "What's new popover keeps a gutter on a phone"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Changelog dates keep clear of the list's scrollbar"
   }
 ]
