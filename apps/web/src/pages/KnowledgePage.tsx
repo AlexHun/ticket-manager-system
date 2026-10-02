@@ -19,6 +19,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { api } from "@/lib/api";
 import { extractErrorMessage } from "@/lib/errors";
 import { knowledgeKeys } from "@/lib/knowledge-queries";
+import { markdownPreview } from "@/lib/markdown-preview";
 import { KnowledgeArchiveDialog } from "./KnowledgeArchiveDialog";
 import { KnowledgeArticleDialog } from "./KnowledgeArticleDialog";
 import { KnowledgeRevisionsDialog } from "./KnowledgeRevisionsDialog";
@@ -290,8 +291,11 @@ function ArticleRow({
           <h2 className="font-display text-lg font-semibold wrap-break-word">
             {article.title}
           </h2>
+          {/* Plain text on purpose (#399): the body is Markdown written for
+              the auto-reply's corpus, and this row is a glance at it, not a
+              rendering of it — see `markdownPreview`. */}
           <p className="mt-1 line-clamp-2 max-w-prose text-sm text-muted-foreground">
-            {article.body}
+            {markdownPreview(article.body)}
           </p>
           {article.internalNote && (
             <p className="mt-2 max-w-prose border-l-2 border-border pl-3 text-sm text-muted-foreground">

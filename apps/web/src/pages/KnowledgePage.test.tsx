@@ -116,3 +116,29 @@ describe("KnowledgePage — an admin", () => {
     ).toBeEnabled();
   });
 });
+
+// #399: the row previews the body as plain text, and the editor still gets
+// the stored Markdown.
+describe("KnowledgePage — the article preview", () => {
+  const MARKDOWN: KnowledgeArticle = {
+    ...LIVE,
+    body: "Use **Forgot password?** on the [sign-in page](https://example.com/login).",
+  };
+
+  test("shows the words without the Markdown, and edits the stored body", async () => {
+    articlesGet.mockResolvedValue({ data: { articles: [MARKDOWN] } });
+    renderKnowledgePage();
+
+    expect(
+      await screen.findByText("Use Forgot password? on the sign-in page."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Edit ${MARKDOWN.id}`,
+    });
+    expect(within(dialog).getByDisplayValue(MARKDOWN.body)).toBeInTheDocument();
+  });
+});
