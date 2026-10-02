@@ -37,12 +37,13 @@ interface Rule {
   standard: string;
   /** The banned forms. Each is matched against comment-stripped source. */
   forms: RegExp[];
-  /** Which files the rule reads, as paths relative to `apps/web`. */
-  applies: (file: string) => boolean;
+  /** Which files the rule reads, as paths relative to `apps/web`. Every
+   *  scanned file when absent. */
+  applies?: (file: string) => boolean;
   /** Files where the form is the point rather than a violation. */
   allowed?: string[];
-  /** A line that breaks the rule, and must be caught. */
-  catches: string;
+  /** Lines that break the rule, each of which must be caught. */
+  catches: string[];
   /** A comment that only mentions the form, and must be ignored. */
   ignores: string;
 }
@@ -52,18 +53,30 @@ const ROLE = `["'](?:admin|agent)["']`;
 
 const RULES: Rule[] = [
   {
-    name: "A route's path is declared once, in ROUTE: navigate(), <Navigate to> and <Link to> read ROUTE.<name>.path or ticketDetailPath, never a path literal",
+    name: "A route's path is declared once, in ROUTE: navigate(), <Navigate to>, <Link to> and a pathname comparison read ROUTE.<name>.path or ticketDetailPath, never a path literal",
     standard: "frontend.md",
+    // A quoted literal, or a template that does not start by reading something
+    // — `${ROUTE.tickets.path}?status=…` is the record plus a query.
     forms: [
-      // A quoted literal, or a template that does not start by reading
-      // something — `${ROUTE.tickets.path}?status=…` is the record plus a query.
-      /\bnavigate\(\s*(?:["']|`(?!\$\{))/,
-      /<(?:Navigate|Link|NavLink)\b[^<>]*?\bto=\{?\s*(?:["']|`(?!\$\{))/,
+      // `useNavigate()`'s function, not `router.navigate(…)`, which a test may
+      // drive by URL.
+      /(?<![\w$.])navigate\(\s*(?:["']|`(?!\$\{))/,
+      // `[^<]`, not `[^<>]`: an arrow-function handler before `to=` has a `>`.
+      /<(?:Navigate|Link|NavLink)\b[^<]*?\bto=\{?\s*(?:["']|`(?!\$\{))/,
+      /<(?:Navigate|Link|NavLink)\b[^<]*?\bto=\{\{\s*pathname:\s*(?:["']|`(?!\$\{))/,
+      /\bpathname\s*[=!]==\s*(?:["']|`(?!\$\{))/,
+      /(?:["']|`)\s*[=!]==\s*(?:[\w$]+\.)*pathname\b/,
     ],
-    // `src/test/` exercises the router helper with synthetic routes of its own,
-    // which by construction are not in the app's record.
-    applies: (file) => !file.startsWith("src/test/"),
-    catches: `navigate("/", { replace: true });`,
+    // Client routes live in `src/`; the node half under `dev/` answers server
+    // paths (`/health`). `src/test/` exercises the router helper with synthetic
+    // routes of its own, which by construction are not in the app's record.
+    applies: (file) => file.startsWith("src/") && !file.startsWith("src/test/"),
+    catches: [
+      `navigate("/", { replace: true });`,
+      `<Link onClick={() => track()} to="/tickets">`,
+      `<Navigate to={{ pathname: "/login" }} />`,
+      `if (location.pathname === "/tickets") return;`,
+    ],
     ignores: `// This used to be \`<Navigate to="/" replace />\`.`,
   },
   {
@@ -71,19 +84,21 @@ const RULES: Rule[] = [
     standard: "frontend.md",
     forms: [
       /<select[\s>/]/,
-      /<input\b[^<>]*?\btype=\{?\s*["'](?:checkbox|radio)["']/,
+      /<input\b[^<]*?\btype=\{?\s*["'](?:checkbox|radio)["']/,
     ],
     applies: (file) => !file.startsWith("src/components/ui/"),
-    catches: `<input type="checkbox" checked={on} />`,
+    catches: [
+      `<select value={v}>`,
+      `<input onChange={(e) => set(e.target.checked)} type="checkbox" />`,
+    ],
     ignores: `/** shadcn's \`Select\`, not a native \`<select>\` or \`<input type="radio">\`. */`,
   },
   {
     name: "Never render email HTML: dangerouslySetInnerHTML appears only in the shadcn chart component",
     standard: "security.md",
     forms: [/\bdangerouslySetInnerHTML\s*[=:]/],
-    applies: () => true,
     allowed: ["src/components/ui/chart.tsx"],
-    catches: `<div dangerouslySetInnerHTML={{ __html: html }} />`,
+    catches: [`<div dangerouslySetInnerHTML={{ __html: html }} />`],
     ignores: `{/* Plain text in a text node, never \`dangerouslySetInnerHTML={…}\`. */}`,
   },
   {
@@ -92,8 +107,7 @@ const RULES: Rule[] = [
     // Not `prefetch(` or `refetch(`, which are react-query's, and not
     // `fetchQuery(`, which is a different word.
     forms: [/(?<![\w$])fetch\s*\(/],
-    applies: () => true,
-    catches: `const res = await fetch("/api/tickets");`,
+    catches: [`const res = await fetch("/api/tickets");`],
     ignores: `// Don't use fetch() directly.`,
   },
   {
@@ -105,38 +119,53 @@ const RULES: Rule[] = [
     // the names mean nothing else.
     forms: [/\b(?:execFileSync|spawnSync|execSync)\b/],
     applies: (file) => file.startsWith("dev/"),
-    catches: `import { execFileSync as run } from "node:child_process";`,
+    catches: [
+      `import { execFileSync as run } from "node:child_process";`,
+      `const out = child_process.spawnSync("gh", args);`,
+    ],
     ignores: `/** \`execFileSync\` in a middleware is wrong twice over: execFileSync(…) */`,
   },
   {
     name: "Temper blue as text is text-link, not text-primary (text-primary-foreground is fine)",
     standard: "frontend.md",
     forms: [/(?<![\w-])text-primary(?![\w-])/],
-    applies: () => true,
-    catches: `<a className="text-primary hover:underline">`,
+    catches: [
+      `<a className="text-primary hover:underline">`,
+      `cn("hover:text-primary/80", cls)`,
+    ],
     ignores: `// Was text-primary, a fill at 2.93:1 on the card.`,
   },
   {
     name: "Respect prefers-reduced-motion through useReducedMotion: the media query appears only in that hook and the test setup",
     standard: "frontend.md",
     forms: [/prefers-reduced-motion/],
-    applies: () => true,
     allowed: ["src/lib/use-reduced-motion.ts", "src/test/setup.ts"],
-    catches: `window.matchMedia("(prefers-reduced-motion: reduce)")`,
+    catches: [`window.matchMedia("(prefers-reduced-motion: reduce)")`],
     ignores: `/** The test setup answers \`matches: true\` to \`prefers-reduced-motion\`. */`,
   },
   {
-    name: 'Role values read USER_ROLE from @ticket/shared: no bare "admin" / "agent" in a role field, a comparison, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
+    name: 'Role values read USER_ROLE from @ticket/shared: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
     forms: [
       new RegExp(`\\brole\\s*:\\s*${ROLE}`),
       new RegExp(`\\b(?:fromValue|toValue)\\s*:\\s*${ROLE}`),
       new RegExp(`[=!]==?\\s*${ROLE}`),
       new RegExp(`${ROLE}\\s*[=!]==?`),
-      new RegExp(`\\.(?:toBe|toEqual)\\(\\s*${ROLE}\\s*\\)`),
+      new RegExp(`\\.(?:toBe|toEqual|includes)\\(\\s*${ROLE}\\s*\\)`),
+      new RegExp(`\\bcase\\s+${ROLE}\\s*:`),
+      // An inline cast, and the union spelled out as a list — conventions.md
+      // bans both by name.
+      new RegExp(`\\bas\\s+${ROLE}`),
+      new RegExp(`\\[\\s*${ROLE}\\s*,\\s*${ROLE}\\s*\\]`),
     ],
-    applies: () => true,
-    catches: `const ADMIN = { name: "Aaron", role: "admin" };`,
+    catches: [
+      `const ADMIN = { name: "Aaron", role: "admin" };`,
+      `if (user.role === "agent") return;`,
+      `expect(body.role).toBe("admin");`,
+      `case "agent":`,
+      `const r = value as "admin" | "agent";`,
+      `roles: ["admin", "agent"],`,
+    ],
     ignores: `// a placeholder span instead of a button for role === "admin".`,
   },
 ];
@@ -158,15 +187,18 @@ function sourceFiles(): string[] {
   return files.filter((file) => file !== SELF);
 }
 
-/** `line N` for every place in `code` one of the rule's forms matches. */
-function matches(rule: Rule, code: string): number[] {
-  const lines: number[] = [];
+/** The 1-based line numbers in `code` where any of the rule's forms matches,
+ *  each once however many forms match it. */
+function offendingLines(rule: Rule, code: string): number[] {
+  const lines = new Set<number>();
   for (const form of rule.forms) {
-    for (const match of code.matchAll(new RegExp(form.source, "g"))) {
-      lines.push(code.slice(0, match.index).split("\n").length);
+    // The form's own flags kept: a `/u` or `/i` form must not lose them here.
+    const global = new RegExp(form.source, `${form.flags.replace("g", "")}g`);
+    for (const match of code.matchAll(global)) {
+      lines.add(code.slice(0, match.index).split("\n").length);
     }
   }
-  return lines.sort((a, b) => a - b);
+  return [...lines].sort((a, b) => a - b);
 }
 
 const FILES = sourceFiles();
@@ -190,8 +222,10 @@ describe.each(RULES)("$standard: $name", (rule) => {
   test("holds across src/ and dev/", () => {
     const offenders: string[] = [];
     for (const file of FILES) {
-      if (!rule.applies(file) || rule.allowed?.includes(file)) continue;
-      for (const line of matches(rule, CODE.get(file)!)) {
+      if (rule.applies?.(file) === false || rule.allowed?.includes(file)) {
+        continue;
+      }
+      for (const line of offendingLines(rule, CODE.get(file)!)) {
         offenders.push(`${file}:${line}`);
       }
     }
@@ -206,8 +240,11 @@ describe.each(RULES)("$standard: $name", (rule) => {
     for (const file of rule.allowed ?? []) expect(FILES).toContain(file);
   });
 
-  test("catches the form and ignores a comment that mentions it", () => {
-    expect(matches(rule, stripComments(rule.catches).code)).not.toEqual([]);
-    expect(matches(rule, stripComments(rule.ignores).code)).toEqual([]);
+  test.each(rule.catches)("catches %s", (line) => {
+    expect(offendingLines(rule, stripComments(line).code)).toEqual([1]);
+  });
+
+  test("ignores a comment that only mentions the form", () => {
+    expect(offendingLines(rule, stripComments(rule.ignores).code)).toEqual([]);
   });
 });
