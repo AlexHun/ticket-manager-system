@@ -1,7 +1,9 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import {
+  DEFAULT_PAGE_SIZE,
   TICKET_ACTIVITY_ACTION,
   TICKET_ACTOR_KIND,
+  USER_ROLE,
   type UserRole,
 } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
@@ -21,16 +23,23 @@ const PHONE = { width: 390, height: 844 };
 /** WCAG 2.5.8's minimum target size, in CSS pixels. */
 const MIN_TARGET = 24;
 /**
+ * Sub-pixel slack between the vertical centres of items on one row. A wrap
+ * moves an item a whole row (over 30px), so this cannot hide one.
+ */
+const ROW_SLACK = 2;
+/**
  * More than one default page on both lists, so the count reads "Page 1 of N"
  * with N above one and Next is live.
  */
-const TICKETS = 30;
+const TICKETS = DEFAULT_PAGE_SIZE + 5;
 const SUBJECT = "E2E pagination on a phone";
 
 const PAGES: ReadonlyArray<{ path: string; role: UserRole }> = [
-  { path: ROUTE.tickets.path, role: "agent" },
-  { path: ROUTE.activity.path, role: "admin" },
+  { path: ROUTE.tickets.path, role: USER_ROLE.agent },
+  { path: ROUTE.activity.path, role: USER_ROLE.admin },
 ];
+
+const centreOf = (box: { y: number; height: number }) => box.y + box.height / 2;
 
 async function boxOf(locator: Locator) {
   await expect(locator).toBeVisible();
@@ -60,10 +69,12 @@ const perPage = (page: Page) =>
   bar(page).getByText("Per page", { exact: true });
 const pageCount = (page: Page) => bar(page).getByText(/^Page \d+ of \d+$/);
 const previous = (page: Page) =>
-  page.getByRole("button", { name: "Previous page" });
-const next = (page: Page) => page.getByRole("button", { name: "Next page" });
+  bar(page).getByRole("button", { name: "Previous page" });
+const next = (page: Page) =>
+  bar(page).getByRole("button", { name: "Next page" });
 
-async function open(page: Page, path: string, role: UserRole) {
+/** Sign in, open the list, and wait until it spans more than one page. */
+async function openPagedList(page: Page, path: string, role: UserRole) {
   await signIn(page, role);
   await page.goto(path);
   await expect(pageCount(page)).toHaveText(/^Page 1 of (?:[2-9]|\d{2,})$/);
@@ -101,21 +112,25 @@ test.describe("pagination bar on a phone", () => {
   });
 
   for (const { path, role } of PAGES) {
-    test(`at 390px on ${path} each label holds one line`, async ({ page }) => {
+    test(`at ${PHONE.width}px on ${path} each label holds one line`, async ({
+      page,
+    }) => {
       await page.setViewportSize(PHONE);
-      await open(page, path, role);
+      await openPagedList(page, path, role);
 
       expect(await linesOf(perPage(page)), "Per page").toBe(1);
       expect(await linesOf(pageCount(page)), "page count").toBe(1);
 
-      const prev = await boxOf(previous(page));
-      const nxt = await boxOf(next(page));
+      const before = await boxOf(previous(page));
+      const after = await boxOf(next(page));
       // Side by side: one row, Previous first.
-      expect(nxt.y + nxt.height / 2).toBeCloseTo(prev.y + prev.height / 2, 0);
-      expect(nxt.x).toBeGreaterThanOrEqual(prev.x + prev.width);
+      expect(Math.abs(centreOf(after) - centreOf(before))).toBeLessThan(
+        ROW_SLACK,
+      );
+      expect(after.x).toBeGreaterThanOrEqual(before.x + before.width);
       for (const [name, box] of [
-        ["Previous page", prev],
-        ["Next page", nxt],
+        ["Previous page", before],
+        ["Next page", after],
       ] as const) {
         expect(box.height, name).toBeGreaterThanOrEqual(MIN_TARGET);
         expect(box.x, name).toBeGreaterThanOrEqual(0);
@@ -123,9 +138,11 @@ test.describe("pagination bar on a phone", () => {
       }
     });
 
-    test(`at 1280px on ${path} the bar keeps one row`, async ({ page }) => {
+    test(`at ${DESKTOP.width}px on ${path} the bar keeps one row`, async ({
+      page,
+    }) => {
       await page.setViewportSize(DESKTOP);
-      await open(page, path, role);
+      await openPagedList(page, path, role);
 
       const centres: number[] = [];
       for (const target of [
@@ -136,9 +153,11 @@ test.describe("pagination bar on a phone", () => {
         next(page),
       ]) {
         const box = await boxOf(target);
-        centres.push(box.y + box.height / 2);
+        centres.push(centreOf(box));
       }
-      for (const centre of centres) expect(centre).toBeCloseTo(centres[0]!, 0);
+      for (const centre of centres) {
+        expect(Math.abs(centre - centres[0]!)).toBeLessThan(ROW_SLACK);
+      }
     });
   }
 });
