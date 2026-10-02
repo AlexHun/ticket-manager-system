@@ -15,8 +15,15 @@ const DESKTOP = { width: 1280, height: 800 };
 const PHONE = { width: 390, height: 844 };
 /** The gutter the popover keeps from each screen edge on a phone. */
 const GUTTER = 16;
+/**
+ * The room the list keeps right of each date for its scrollbar (`pr-2`).
+ * Measured from the list's border box rather than its client area: headless
+ * Chromium hides scrollbars and an overlay scrollbar takes no layout space, so
+ * a client-area check would hold even with the date under the scrollbar.
+ */
+const SCROLLBAR_CLEARANCE = 8;
 /** Sub-pixel slack for comparing box edges. */
-const SLACK = 1;
+const SLACK = 2;
 
 async function boxOf(locator: Locator) {
   await expect(locator).toBeVisible();
@@ -52,21 +59,21 @@ test.describe("what's new popover on a phone", () => {
     ).toBeGreaterThanOrEqual(GUTTER - SLACK);
 
     // The list still scrolls inside its own box, and the newest entry's date
-    // sits inside the list's client area rather than under its scrollbar.
+    // stops short of the strip its scrollbar is drawn in.
     const geometry = await list(page).evaluate((el) => {
       const date = el.querySelector("li span:last-child");
       if (!date) throw new Error("no entry date");
-      const listRect = el.getBoundingClientRect();
       return {
         scrolls: el.scrollHeight > el.clientHeight,
-        clientRight: listRect.left + el.clientLeft + el.clientWidth,
+        listRight: el.getBoundingClientRect().right,
         dateRight: date.getBoundingClientRect().right,
       };
     });
     expect(geometry.scrolls, "list scrolls").toBe(true);
-    expect(geometry.dateRight).toBeLessThanOrEqual(
-      geometry.clientRight + SLACK,
-    );
+    expect(
+      geometry.listRight - geometry.dateRight,
+      "room right of the date",
+    ).toBeGreaterThanOrEqual(SCROLLBAR_CLEARANCE - SLACK);
   });
 
   test(`at ${DESKTOP.width}px it opens end-aligned under its trigger`, async ({

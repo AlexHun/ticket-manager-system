@@ -56,7 +56,7 @@ export function ChangelogPopover() {
         </PopoverTrigger>
       </Hint>
       {/* End-aligned under a trigger near the right of the top bar, so on a
-          phone a 320px panel overflows the left edge; the padding keeps a
+          phone a 320px panel overflows the left edge; `collisionPadding` keeps a
           16px gutter there and the width cap shrinks it to fit (#401). */}
       <PopoverContent
         align="end"
@@ -67,7 +67,9 @@ export function ChangelogPopover() {
         {SORTED_ENTRIES.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing new yet.</p>
         ) : (
-          <ul className="flex max-h-80 flex-col gap-3 overflow-y-auto">
+          // `pr-2` keeps each entry's date clear of the scrollbar, which an
+          // overlay scrollbar would otherwise draw over (#401).
+          <ul className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-2">
             {SORTED_ENTRIES.map((entry) => (
               <li
                 key={`${entry.version}-${entry.title}`}
