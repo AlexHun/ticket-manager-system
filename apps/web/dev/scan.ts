@@ -187,8 +187,13 @@ function skipRegex(source: string, start: number): number {
  *
  * Template contents are *preserved*, not blanked — `api.get(\`/api/tickets/${id}\`)`
  * is read back out of this text by the endpoint matcher.
+ *
+ * Exported for `standards-guard.test.ts`, which matches banned forms against
+ * the same text so a comment explaining a rule never breaks it (#390).
+ * `apps/api/src/test/strip-comments.ts` is a copy for the API's guard (#391),
+ * which cannot import this module; a fix here belongs there too.
  */
-function stripComments(source: string): StrippedSource {
+export function stripComments(source: string): StrippedSource {
   const chars = source.split("");
   const blank = (from: number, to: number): void => {
     for (let at = from; at < to && at < chars.length; at += 1) {

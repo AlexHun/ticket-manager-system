@@ -55,7 +55,7 @@ export function NotFoundPage() {
             <Link to={ROUTE.tickets.path}>Go to tickets</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link to="/">Go to dashboard</Link>
+            <Link to={ROUTE.dashboard.path}>Go to dashboard</Link>
           </Button>
         </CardContent>
       </Card>

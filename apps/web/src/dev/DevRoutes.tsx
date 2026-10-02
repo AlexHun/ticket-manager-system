@@ -84,7 +84,7 @@ export function DevRoutes() {
             ))}
           </nav>
           <Button asChild variant="outline" size="sm" className="ml-auto">
-            <Link to="/">
+            <Link to={ROUTE.dashboard.path}>
               <ArrowLeft aria-hidden="true" />
               Back to app
             </Link>

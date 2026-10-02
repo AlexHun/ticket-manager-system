@@ -68,7 +68,7 @@ export function LoginPage() {
       </main>
     );
   }
-  if (session) return <Navigate to="/" replace />;
+  if (session) return <Navigate to={ROUTE.dashboard.path} replace />;
 
   const onSubmit = async (values: LoginValues) => {
     setServerError(null);
@@ -79,7 +79,7 @@ export function LoginPage() {
       return;
     }
 
-    navigate("/", { replace: true });
+    navigate(ROUTE.dashboard.path, { replace: true });
   };
 
   /**
@@ -110,7 +110,7 @@ export function LoginPage() {
       return;
     }
 
-    navigate("/", { replace: true });
+    navigate(ROUTE.dashboard.path, { replace: true });
   };
 
   const busy = isSubmitting || startingDemo;

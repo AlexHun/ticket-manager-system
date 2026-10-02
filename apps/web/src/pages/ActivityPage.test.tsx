@@ -5,6 +5,7 @@ import {
   ACTIVITY_ENTITY_TYPE,
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
+  HANDOFF_TARGET,
   USER_ROLE,
   type ActivityEntry,
   type ActivityFeedResponse,
@@ -91,8 +92,11 @@ const automationEntry = makeEntry({
   entityType: ACTIVITY_ENTITY_TYPE.automation,
   entityId: null,
   action: "handoff_changed",
-  fromValue: "unassigned",
-  toValue: "admin",
+  // Handoff targets, not roles: the feed reads `fromTarget`/`toTarget` here
+  // unless a side names a person. `HANDOFF_TARGET.admin` happens to spell the
+  // same word as `USER_ROLE.admin`, which is why the guard caught it (#390).
+  fromValue: HANDOFF_TARGET.unassigned,
+  toValue: HANDOFF_TARGET.admin,
 });
 
 /** What the two endpoints this page reads answer with. */
