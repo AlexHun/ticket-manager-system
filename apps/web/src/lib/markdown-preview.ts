@@ -13,11 +13,22 @@
  * The stored body is untouched — this is a view of it, not an edit.
  */
 
-// Private-use characters, which no article contains, to fence off text that
-// must survive the emphasis passes untouched: escaped characters and code spans.
-const HOLD_OPEN = "";
-const HOLD_CLOSE = "";
+// Text that must come through the inline passes untouched — code, and escaped
+// characters — is swapped for a numbered marker built from two private-use
+// characters and swapped back at the end. Written as code points rather than
+// literals so the source shows what they are. Any already in the body are
+// dropped first: they render as nothing, and left in they could forge a marker.
+const HOLD_OPEN = String.fromCharCode(0xe000);
+const HOLD_CLOSE = String.fromCharCode(0xe001);
+const HOLD_CHARS = new RegExp(`[${HOLD_OPEN}${HOLD_CLOSE}]`, "g");
 const HELD = new RegExp(`${HOLD_OPEN}(\\d+)${HOLD_CLOSE}`, "g");
+
+const FENCE = /^\s*(```|~~~)/;
+const BULLET = /^\s*[-*+]\s+/;
+// The number is captured so a wrapped line that merely starts with one ("2024.
+// was the year…") is not read as a list: CommonMark lets an ordered list
+// interrupt a paragraph only when it starts at 1.
+const ORDERED = /^\s*(\d{1,9})[.)]\s+/;
 
 export function markdownPreview(body: string): string {
   const held: string[] = [];
@@ -26,28 +37,51 @@ export function markdownPreview(body: string): string {
     return `${HOLD_OPEN}${held.length - 1}${HOLD_CLOSE}`;
   };
 
-  const lines = body
-    // `\*` is a literal asterisk, not the start of emphasis.
-    .replace(/\\([\\`*_{}[\]()#+\-.!~>|<])/g, (_, ch: string) => hold(ch))
-    .split(/\r?\n/)
-    .map((line) =>
-      line
-        // Code fence delimiters; the code between them is kept as text.
-        .replace(/^\s*(```|~~~).*$/, "")
-        // Horizontal rules.
-        .replace(/^\s*([-*_])(\s*\1){2,}\s*$/, "")
-        .replace(/^\s*(>\s?)+/, "")
-        .replace(/^\s{0,3}#{1,6}\s+/, "")
-        .replace(/^\s*([-*+]|\d+[.)])\s+/, ""),
-    );
+  // Block syntax is a property of a line, so it goes before the lines are
+  // joined. Everything after the join may span a hard wrap — stored bodies
+  // keep theirs, as in KB-007's "**5–10\nbusiness days**".
+  const lines: string[] = [];
+  let inFence = false;
+  let previous = "";
+  for (const line of body.replace(HOLD_CHARS, "").split(/\r?\n/)) {
+    if (FENCE.test(line)) {
+      inFence = !inFence;
+    } else if (inFence) {
+      lines.push(hold(line.trim()));
+    } else {
+      const ordered = ORDERED.exec(line);
+      const startsBlock =
+        previous.trim() === "" ||
+        BULLET.test(previous) ||
+        ORDERED.test(previous);
+      lines.push(
+        line
+          // Horizontal rules and setext heading underlines.
+          .replace(/^\s*(([-*_])(\s*\2){2,}|=+)\s*$/, "")
+          // Reference-style link definitions: the URL is not prose.
+          .replace(/^\s{0,3}\[[^\]]+\]:\s+\S.*$/, "")
+          .replace(/^\s*(>\s?)+/, "")
+          .replace(/^\s{0,3}#{1,6}\s+/, "")
+          .replace(BULLET, "")
+          .replace(ORDERED, (marker) =>
+            ordered && (startsBlock || ordered[1] === "1") ? "" : marker,
+          ),
+      );
+    }
+    previous = line;
+  }
 
   const text = lines
-    .join("\n")
+    .join(" ")
+    // Code first, so a backslash inside it stays a backslash.
     .replace(/(`+)(.+?)\1/g, (_, _ticks: string, code: string) =>
       hold(code.trim()),
     )
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    // `\*` is a literal asterisk, not the start of emphasis.
+    .replace(/\\([\\`*_{}[\]()#+\-.!~>|<])/g, (_, ch: string) => hold(ch))
+    // One level of parentheses inside a URL, as in a Wikipedia link.
+    .replace(/!\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\((?:[^()]|\([^()]*\))*\)/g, "$1")
     .replace(/\[([^\]]+)\]\[[^\]]*\]/g, "$1")
     .replace(/<((?:https?|mailto):[^>\s]+|[^>\s@]+@[^>\s]+)>/g, "$1")
     .replace(/(?<![\w*])\*\*(?=\S)(.+?)(?<=\S)\*\*(?![\w*])/g, "$1")
@@ -58,5 +92,7 @@ export function markdownPreview(body: string): string {
     .replace(/\s+/g, " ")
     .trim();
 
+  // Markers never nest — code is held before escapes, so no held text
+  // contains one — and a single pass restores every one.
   return text.replace(HELD, (_, i: string) => held[Number(i)] ?? "");
 }
