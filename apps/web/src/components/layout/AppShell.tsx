@@ -36,7 +36,7 @@ function readSidebarDefaultOpen(): boolean {
  * `focus()` will scroll it whenever something inside overflows it — and an
  * absolutely positioned `sr-only` element escapes a page's own scroller
  * whenever no positioned ancestor sits between them. The tutorial pointing at
- * the ticket composer on a phone did exactly that: `<main>` slid up 300px and
+ * the ticket composer on a phone did exactly that: `<main>` slid up ~300px and
  * left a black band below the page that nothing could scroll back.
  * `tests/e2e/tutorial-scroll.spec.ts` holds it.
  */

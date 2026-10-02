@@ -11,15 +11,11 @@ import { testDb } from "./helpers/db";
 
 /**
  * A tutorial step scrolls its target into view, and finishing the tutorial
- * must leave the app's frame where it was. On a phone the ticket detail page
- * scrolls inside its own root, and the reply composer is the last thing in
- * it — so `scrollIntoView({ block: "center" })` cannot centre it there and
- * hands the remainder to the next scrollable ancestor. `<main>` was
- * `overflow-hidden`, which clips but is still a scroll container, and an
- * `sr-only` label in the composer (absolutely positioned against the
- * page-transition wrapper's transform, outside the page's own scroller)
- * gave it hundreds of pixels to scroll by. The page slid up and left a
- * black band under the composer that nothing could scroll back.
+ * must leave the app's frame where it was. The reply composer is the last
+ * thing in the ticket detail page, so on a phone `scrollIntoView` cannot
+ * centre it inside the page's own scroller and hands the remainder up to
+ * `<main>` — which must not be scrollable. Why it was, and the fix, are in
+ * the doc comment on `AppShell`.
  */
 
 const PHONE = { width: 390, height: 844 };
@@ -105,13 +101,13 @@ test.describe("tutorial scrolling", () => {
 
     // The page's own scroller did the scrolling it could; wait for it to
     // settle so a smooth scroll still in flight cannot pass the check early.
+    let previous = -1;
     await expect
       .poll(async () => {
-        const before = (await frameGeometry(page)).pageScrollTop;
-        await page.waitForTimeout(200);
-        return (
-          before > 0 && before === (await frameGeometry(page)).pageScrollTop
-        );
+        const current = (await frameGeometry(page)).pageScrollTop;
+        const settled = current > 0 && current === previous;
+        previous = current;
+        return settled;
       })
       .toBe(true);
 
