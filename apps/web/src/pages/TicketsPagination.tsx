@@ -45,9 +45,14 @@ export function TicketsPagination({
         {first}–{last} of {total}
       </p>
 
-      <div className="flex items-center gap-4">
+      {/* On a phone the page-size picker and the pager don't fit one row, so
+          this group wraps them onto two rather than squeezing the labels one
+          word per line (#398). Each half stays whole: its labels never wrap. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
-          <Label htmlFor="ticket-page-size">Per page</Label>
+          <Label htmlFor="ticket-page-size" className="whitespace-nowrap">
+            Per page
+          </Label>
           <Select
             value={String(pageSize)}
             onValueChange={(value) => onPageSizeChange(Number(value))}
@@ -66,7 +71,10 @@ export function TicketsPagination({
         </div>
 
         <div className="flex items-center gap-2">
-          <span aria-live="polite" className="text-muted-foreground">
+          <span
+            aria-live="polite"
+            className="whitespace-nowrap text-muted-foreground"
+          >
             Page {page} of {pageCount}
           </span>
           <Button
