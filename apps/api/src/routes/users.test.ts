@@ -153,7 +153,11 @@ describe("userEditChanges", () => {
     });
 
     expect(entries).toEqual([
-      { action: "role_changed", fromValue: "agent", toValue: "admin" },
+      {
+        action: "role_changed",
+        fromValue: USER_ROLE.agent,
+        toValue: USER_ROLE.admin,
+      },
     ]);
   });
 
@@ -168,7 +172,7 @@ describe("userEditChanges", () => {
     expect(entries.map((e) => e.toValue)).toEqual([
       "Name: Aaron A. Gent",
       "Email: aaron@new-example.com",
-      "admin",
+      USER_ROLE.admin,
     ]);
   });
 });

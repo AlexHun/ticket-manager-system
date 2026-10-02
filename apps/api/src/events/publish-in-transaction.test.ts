@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   TICKET_EVENT,
+  USER_ROLE,
   type TicketEvent,
   type TicketScopedEvent,
 } from "@ticket/shared";
@@ -48,7 +49,7 @@ function event(
 function collect(): { heard: TicketEvent[]; stop: () => void } {
   const heard: TicketEvent[] = [];
   const stop = subscribe({
-    role: "admin",
+    role: USER_ROLE.admin,
     send: (received) => heard.push(received),
     close: () => {},
   });
