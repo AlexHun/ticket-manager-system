@@ -1,3 +1,8 @@
+---
+name: write-a-skill
+description: Write a new agent skill — gather requirements, draft SKILL.md with a trigger-rich description, split reference files and scripts, review with the user. Use when the user wants to create, write or scaffold a skill.
+---
+
 # Writing Skills
 
 ## Process

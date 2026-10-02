@@ -12,7 +12,8 @@ Take the skill's _narrowest_ matching row and read that file in full; a question
 
 Feature work runs in this order, unbroken in one context up to the tickets:
 `/write-a-prd` → `/prd-to-plan` → `/to-tickets`, then one `/implement` per
-ticket. `write-a-prd` and `prd-to-plan` are this repo's tuned spec pair and
+ticket — or `/chain` to run them all in sequence, each ticket in a fresh
+subagent, merged before the next starts. `write-a-prd` and `prd-to-plan` are this repo's tuned spec pair and
 fill the slot `/mattpocock-skills:to-spec` holds elsewhere. `to-tickets` and
 `implement` are local copies of the plugin skills, adapted to this repo, and
 unlike the plugin versions they can be invoked by the agent; use them rather
@@ -45,8 +46,21 @@ starts in a fresh context. Context cost per turn climbs steeply with session
 length, and past roughly 150k tokens reasoning degrades — a ticket that
 outgrows its window wants splitting, not compacting.
 
+**Resume from the repo, not from memory.** After an API error, a restore or a
+`Continue`, read `git status`, the current branch and `gh pr view` before the
+next action, and tell the user where things stand.
+
 A bug, a flake, or a regression starts at `/mattpocock-skills:diagnosing-bugs`,
 which earns a red feedback loop before it theorises.
+
+## Shell
+
+Run `git`, `gh` and `bun` through PowerShell: on this Windows machine the Bash
+tool has none of them on its path. Write every multi-line message to a file in
+the scratchpad and pass the file — `git commit -F`, `gh pr create --body-file`,
+`gh issue comment --body-file` — so quoting never reaches the text. End a line
+on the hook-running or test command so its exit code is the one reported;
+`.claude/hooks/block-no-verify.mjs` refuses a trailing `; echo` or `|| true`.
 
 ## Agent skills
 

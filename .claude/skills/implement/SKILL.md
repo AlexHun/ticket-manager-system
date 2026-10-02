@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Implement one GitHub issue end-to-end in this repo — branch, test-first build, two-axis review, PR, green CI. Use when the user says implement, build, take or do issue/ticket #N, or "the next ticket", or when an orchestrator hands over a ticket.
+description: 'Implement one GitHub issue end-to-end in this repo — branch, test-first build, two-axis review, PR, green CI. Use when the user says implement, build, take or do issue/ticket #N, or "the next ticket", or when an orchestrator hands over a ticket.'
 ---
 
 # Implement
