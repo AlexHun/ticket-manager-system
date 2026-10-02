@@ -100,7 +100,7 @@ describe("toActivityEntry", () => {
       actorId: null,
       actorName: "Ada Admin",
       fromValue: null,
-      toValue: "admin",
+      toValue: HANDOFF_TARGET.admin,
       createdAt: new Date("2026-08-01T00:00:00.000Z"),
     };
 

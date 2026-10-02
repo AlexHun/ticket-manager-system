@@ -26,6 +26,7 @@ import {
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
   TICKET_EVENT,
+  USER_ROLE,
   type TicketEvent,
 } from "@ticket/shared";
 import { prisma, resetDb } from "../test/pg";
@@ -163,7 +164,7 @@ async function newRun(
 function collect(): { heard: TicketEvent[]; stop: () => void } {
   const heard: TicketEvent[] = [];
   const stop = subscribe({
-    role: "admin",
+    role: USER_ROLE.admin,
     send: (event) => heard.push(event),
     close: () => {},
   });

@@ -10,7 +10,8 @@ import { stripComments } from "./scan.ts";
  * Built the way `apps/api/src/jobs/boss.test.ts` guards the jobs directory: read
  * the source tree, fail on a banned pattern. Every rule names the standards file
  * its bullet lives in, and that bullet says this file holds it — so a reader of
- * either knows the other exists.
+ * either knows the other exists. The API's rules, and the repo-wide config
+ * ones, are `apps/api/src/standards-guard.test.ts` (#391).
  *
  * **Each rule matches a form, not a word.** `boss.test.ts` bans `.work(` and
  * `retryLimit:` rather than the bare names, and this file does the same for the
