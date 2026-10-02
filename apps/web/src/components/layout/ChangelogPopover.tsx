@@ -55,7 +55,14 @@ export function ChangelogPopover() {
           </Button>
         </PopoverTrigger>
       </Hint>
-      <PopoverContent align="end" className="w-80">
+      {/* End-aligned under a trigger near the right of the top bar, so on a
+          phone a 320px panel overflows the left edge; the padding keeps a
+          16px gutter there and the width cap shrinks it to fit (#401). */}
+      <PopoverContent
+        align="end"
+        collisionPadding={16}
+        className="w-80 max-w-[calc(100vw-2rem)]"
+      >
         <div className="mb-1 text-sm font-medium">What's new</div>
         {SORTED_ENTRIES.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing new yet.</p>
