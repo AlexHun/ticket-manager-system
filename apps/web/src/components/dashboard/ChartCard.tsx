@@ -17,7 +17,8 @@ interface ChartCardProps {
   title: string;
   /** One line under the title. Say what the numbers cover, not what they are. */
   subtitle?: string;
-  /** A headline figure for the top-right — a median, a total — where one exists. */
+  /** A headline figure — a median, a total — where one exists. Top-right from
+   *  `sm` up; on its own line under the heading on a phone. */
   stat?: ReactNode;
   /** The chart. Rendered only when `isEmpty` is false. */
   children: ReactNode;
@@ -55,12 +56,29 @@ export function ChartCard({
   const [showTable, setShowTable] = useState(false);
   const panelId = useId();
 
+  // A headline figure in `CardAction`'s second column squeezes the title and
+  // description into what is left of a phone's width (#400). Below `sm` the
+  // header is one column and the action row drops under the heading, figure
+  // left and toggle right; from `sm` it is shadcn's top-right corner again.
+  // A viewport breakpoint, not a container query: the narrow dashboard panels
+  // are about 320px wide at 1280px and keep the corner there. Without a figure
+  // the toggle alone fits the corner at any width, so nothing moves.
+  // The two class strings work only as a pair: change the breakpoint in both.
+  // Not `stat &&`: a figure of 0 is a figure and still renders.
+  const hasStat = stat !== undefined && stat !== null && stat !== false;
+  const stackedHeader =
+    "has-data-[slot=card-action]:grid-cols-1 sm:has-data-[slot=card-action]:grid-cols-[1fr_auto]";
+  const stackedAction =
+    "col-start-1 row-span-1 row-start-auto justify-between justify-self-stretch sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end";
+
   return (
     <Card className={className}>
-      <CardHeader>
+      <CardHeader className={cn(hasStat && stackedHeader)}>
         <CardTitle>{title}</CardTitle>
         {subtitle && <CardDescription>{subtitle}</CardDescription>}
-        <CardAction className="flex items-center gap-3">
+        <CardAction
+          className={cn("flex items-center gap-3", hasStat && stackedAction)}
+        >
           {stat}
           {!isEmpty && (
             <Button

@@ -24,12 +24,21 @@ function readSidebarDefaultOpen(): boolean {
  * The app shell: sidebar, top bar, and the frame every authenticated page
  * renders into.
  *
- * The height chain is load-bearing and easy to break. `h-dvh overflow-hidden`
+ * The height chain is load-bearing and easy to break. `h-dvh overflow-clip`
  * here is the only definite height in the app; the inset stretches to it, the
  * top bar refuses to shrink, and each page root takes `min-h-0 flex-1` so it
  * can be shorter than its content and scroll inside the frame rather than
  * growing the window. Pages that own their scrolling (the ticket list, the
  * ticket detail panes) depend on that chain terminating here.
+ *
+ * `overflow-clip`, not `overflow-hidden`, on both the frame and the inset.
+ * `hidden` clips but is still a scroll container, so `scrollIntoView` and
+ * `focus()` will scroll it whenever something inside overflows it — and an
+ * absolutely positioned `sr-only` element escapes a page's own scroller
+ * whenever no positioned ancestor sits between them. The tutorial pointing at
+ * the ticket composer on a phone did exactly that: `<main>` slid up ~300px and
+ * left a black band below the page that nothing could scroll back.
+ * `tests/e2e/tutorial-scroll.spec.ts` holds it.
  */
 export function AppShell() {
   const { pathname } = useLocation();
@@ -97,7 +106,7 @@ export function AppShell() {
     <TooltipProvider delayDuration={2000} skipDelayDuration={0}>
       <SidebarProvider
         defaultOpen={readSidebarDefaultOpen()}
-        className="h-dvh overflow-hidden"
+        className="h-dvh overflow-clip"
       >
         {/* First focusable thing in the document, so one Tab from a cold load
             offers it. Hidden until focused — `sr-only` alone would leave it
@@ -137,7 +146,7 @@ export function AppShell() {
           ref={mainRef}
           id="main-content"
           tabIndex={-1}
-          className="min-w-0 overflow-hidden outline-none"
+          className="min-w-0 overflow-clip outline-none"
         >
           <TutorialTriggerProvider>
             {/* Above the top bar, and on every page: a demo visitor is never

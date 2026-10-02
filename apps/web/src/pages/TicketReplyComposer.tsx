@@ -384,15 +384,22 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-muted-foreground">
+      {/* Both levels wrap, which is what fits a phone (#397): unwrapped, the
+          row ran "Send reply" 16px past a 390px screen and squeezed the hint
+          one word per line. The hint never breaks inside itself, so when the
+          row runs out it takes a line of its own and the buttons drop below
+          it, still pinned right by `ml-auto`; with Undo showing they wrap
+          among themselves too. At desktop widths nothing wraps and the row
+          is unchanged. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <span className="text-xs whitespace-nowrap text-muted-foreground">
           ⌘/Ctrl + Enter to send
         </span>
 
-        {/* The controls travel together on the right; the row above keeps the
-            hint pinned left. Undo only exists after a polish, so this is two
-            buttons wide at rest. */}
-        <div className="flex items-center gap-2">
+        {/* The controls travel together on the right, and `ml-auto` keeps
+            them there once they wrap below the hint. Undo only exists after a
+            polish, so this is three buttons wide at rest. */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {prePolish !== null && (
             <Hint content="Put back the draft you had before polishing">
               {/* type="button" — the default inside a <form> is submit, which
