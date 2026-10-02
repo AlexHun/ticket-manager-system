@@ -528,5 +528,45 @@
     "version": "0.1.154",
     "date": "2026-10-01",
     "title": "FORGE's capitals no longer clipped flat at the top"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Finishing a tutorial on a phone no longer leaves a gap under the page"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "The reply composer's buttons fit a phone screen"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "The pagination bar's labels hold one line on a phone"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Knowledge base previews read as plain text"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Strip preview Markdown that spans a hard wrap"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Chart card headline takes its own line on a phone"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "What's new popover keeps a gutter on a phone"
+  },
+  {
+    "version": "0.1.157",
+    "date": "2026-10-02",
+    "title": "Changelog dates keep clear of the list's scrollbar"
   }
 ]
