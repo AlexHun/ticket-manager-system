@@ -44,8 +44,8 @@ function git(...args: string[]): string {
  * sorts these the way it expects to. The package version alone identifies which
  * deploy shipped (CI's `bump-version` job in `ci.yml` bumps the patch version on
  * every push to develop, and a release carries it to main unchanged) but not
- * which commit produced it, so the commit is
- * appended whenever one is available.
+ * which commit produced it, so the commit is appended whenever one is
+ * available.
  *
  * `-dirty` is not decoration. A release name is a claim that these errors came
  * from that commit, and a build made over uncommitted edits is a different

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Appends entries to packages/shared/src/changelog-entries.json — the data
-// behind the "what's new" popover (issue #94) — for the user-facing commits in
-// the deploy that triggered this run.
+// behind the "what's new" popover (issue #94) — for the user-facing commits
+// since the previous version bump.
 //
 // Run by CI's `bump-version` job (.github/workflows/ci.yml) on every push to
 // develop, right after the version bump, so the entries carry the *new*
@@ -12,23 +12,23 @@
 // here, because not every deploy is something worth telling a user about —
 // only `feat` and `fix` are.
 //
-// **Every commit on the merged branch is offered, not just its tip** (issue
-// #113). A branch here normally ends on a review fix-up — a `refactor`, a
-// comment correction — sitting on top of the `feat` that was its point, and
-// reading one subject dropped the entry for the whole branch. A branch that
-// carries two user-facing commits therefore gets two entries at the same
-// version; the popover renders them as separate rows, in branch order.
+// **Every commit is offered, not just a branch's tip** (issue #113). A branch
+// here normally ends on a review fix-up — a `refactor`, a comment correction —
+// sitting on top of the `feat` that was its point, and reading one subject
+// dropped the entry for the whole branch. Two user-facing commits in one run
+// therefore get two entries at the same version; the popover renders them as
+// separate rows, in the order they were committed.
 //
 // Inputs, both required, passed as env vars rather than argv so the caller
 // doesn't have to worry about shell-quoting commit subjects that might contain
 // spaces or quotes of their own:
-//   COMMIT_SUBJECTS  the deploy's commit subjects, one per line, oldest first,
+//   COMMIT_SUBJECTS  the run's commit subjects, one per line, oldest first,
 //                    conventional-commit style
 //   NEXT_VERSION     the version apps/web/package.json was just bumped to
 //
 // Exits 0 and leaves the file untouched when no subject is feat/fix — this is
 // the common case (most deploys are not) and not an error. Same for an empty
-// COMMIT_SUBJECTS, which is a merge that added no commits.
+// COMMIT_SUBJECTS, which is a range with no commits but merges.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";

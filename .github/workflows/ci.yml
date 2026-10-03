@@ -257,6 +257,13 @@ jobs:
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     permissions:
       contents: write
+    # The commit's author and subject prefix, written by the last step and
+    # searched for by the changelog step to find the previous bump. One copy,
+    # because a commit that stopped matching the search would make every run
+    # read the whole of history.
+    env:
+      BOT_NAME: github-actions[bot]
+      BUMP_SUBJECT: "chore(web): bump version to "
     steps:
       # Full history, unlike every other checkout here: the changelog step below
       # walks back to the previous bump commit, and checkout's default shallow
@@ -267,14 +274,36 @@ jobs:
       #
       # `ref` checks out the branch's live tip rather than the commit that
       # triggered this run, so a bump another run pushed since then is already
-      # in history and its commits are not recorded a second time.
+      # in history and its commits are not recorded a second time. The tip can
+      # also hold a later merge whose own run has not passed yet; that run
+      # cancels this one on arrival, so the window is the length of a push.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
 
+      # The previous bump is the bot's commit with the subject the last step
+      # writes. Both filters, which git ANDs, as fixed strings: a person's
+      # commit message that quoted the subject would otherwise pass for a bump
+      # and hide every commit before it, and only the bot authors as the bot.
+      #
+      # When the live tip already *is* a bump — a re-run after this job pushed
+      # one, which `gh run rerun --failed` makes routine — there is nothing
+      # new, and the job stops rather than bump a version with no change.
+      - name: Find the previous bump
+        id: last
+        run: |
+          set -euo pipefail
+          LAST_BUMP=$(git log -1 --format=%H --fixed-strings --author="$BOT_NAME" --grep="$BUMP_SUBJECT" HEAD)
+          echo "sha=$LAST_BUMP" >> "$GITHUB_OUTPUT"
+          if [ "$LAST_BUMP" = "$(git rev-parse HEAD)" ]; then
+            echo "HEAD is already a version bump; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bump apps/web patch version
         id: bump
+        if: steps.last.outputs.skip != 'true'
         run: |
           set -euo pipefail
           NEXT=$(node -e "
@@ -306,17 +335,13 @@ jobs:
       # reachable from an earlier bump, even one cut before it, so each is
       # read exactly once. With no bump in history at all, `HEAD^1..HEAD` is
       # the triggering merge's branch, or the commit itself for a direct push.
-      #
-      # The previous bump is the bot's commit whose subject the step below
-      # writes. Both filters, which git ANDs: a commit message anywhere that
-      # quotes that subject at a line start would otherwise pass for a bump
-      # and hide every commit before it.
       - name: Record changelog entries
+        if: steps.last.outputs.skip != 'true'
         env:
+          LAST_BUMP: ${{ steps.last.outputs.sha }}
           NEXT_VERSION: ${{ steps.bump.outputs.next }}
         run: |
           set -euo pipefail
-          LAST_BUMP=$(git log -1 --format=%H --author='^github-actions\[bot\]' --grep='^chore(web): bump version to ' HEAD)
           RANGE="${LAST_BUMP:-HEAD^1}..HEAD"
           echo "Reading $RANGE"
           COMMIT_SUBJECTS=$(git log --reverse --no-merges --format=%s "$RANGE")
@@ -329,12 +354,15 @@ jobs:
       # replaying it on top of a newer develop with a rebase is safe; nothing
       # else in this repo writes to either of them.
       - name: Commit and push
+        if: steps.last.outputs.skip != 'true'
+        env:
+          NEXT_VERSION: ${{ steps.bump.outputs.next }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_NAME@users.noreply.github.com"
           git add apps/web/package.json packages/shared/src/changelog-entries.json
-          git commit -m "chore(web): bump version to ${{ steps.bump.outputs.next }} [skip ci]"
+          git commit -m "$BUMP_SUBJECT$NEXT_VERSION [skip ci]"
 
           for attempt in 1 2 3 4 5; do
             if git push; then

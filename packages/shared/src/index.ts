@@ -3286,10 +3286,10 @@ export interface DashboardLayoutResponse {
  * already use, stripped for display. A `chore`/`refactor`/`docs`/etc. commit
  * still bumps the version (see `releaseName()` in `apps/web/vite.config.ts`)
  * but adds no entry here, because not every deploy is something a user should
- * be told about. The whole branch is scanned rather than its tip, which is
- * routinely a review fix-up on top of the `feat` that was the branch's point
- * (issue #113) — so a deploy can contribute two entries, and they share a
- * version. This file is the one thing standing between "empty" and "has
+ * be told about. Every commit since the previous bump is scanned rather than a
+ * branch's tip, which is routinely a review fix-up on top of the `feat` that
+ * was the branch's point (issue #113) — so a deploy can contribute several
+ * entries, and they share a version. This file is the one thing standing between "empty" and "has
  * content" for a fresh environment — same as `KnowledgeArticle`/`TutorialContent`,
  * nothing needs seeding for the feature to work.
  *
