@@ -15,7 +15,9 @@ on:
   pull_request:
 
 # A superseded push has nothing to tell us. Never cancel on main, where the run
-# is the record of what was deployed.
+# is the record of what was deployed. A cancelled run on develop never reaches
+# `bump-version`, which is why that job reads every commit since the last bump
+# rather than only the merge that triggered it.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -229,7 +231,7 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # Bumps apps/web's package.json patch version on every push to main, so the
+  # Bumps apps/web's package.json patch version on every push to develop, so the
   # sidebar footer (which reads VITE_SENTRY_RELEASE, itself derived from this
   # version — see releaseName() in apps/web/vite.config.ts) actually changes on
   # each deploy. Without this the version was hand-set once at 0.1.0 and never
@@ -237,33 +239,71 @@ jobs:
   # .dockerignore), so there was no commit sha to fall back on either —
   # production showed the same string forever regardless of what shipped.
   #
+  # Develop, not main (issue #410). It ran on main until then, and nothing
+  # brought its commit back, so develop fell one version further behind on
+  # every release and staging's footer never moved between them. A release
+  # (develop → main) now carries the version unchanged and main never bumps:
+  # the release merge is itself the push Railway rebuilds production from.
+  #
   # `[skip ci]` in the commit message is GitHub's own convention: it stops this
   # push from starting another CI run (which would otherwise re-run this job
   # against its own bump commit). Railway is not listening for that convention
-  # — it watches pushes to main directly — so this commit still triggers the
-  # real rebuild that is the point of the job.
+  # — it watches pushes to develop directly — so this commit still triggers the
+  # staging rebuild that is the point of the job.
   bump-version:
     name: Bump web version
     runs-on: ubuntu-latest
     needs: [check, e2e]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     permissions:
       contents: write
+    # The commit's author and subject prefix, written by the last step and
+    # searched for by the changelog step to find the previous bump. One copy,
+    # because a commit that stopped matching the search would make every run
+    # read the whole of history.
+    env:
+      BOT_NAME: github-actions[bot]
+      BUMP_SUBJECT: "chore(web): bump version to "
     steps:
       # Full history, unlike every other checkout here: the changelog step below
-      # walks the merged branch (`HEAD^2 --not HEAD^1`), and checkout's default
-      # shallow clone has neither parent. HEAD^2 then fails to resolve, the
-      # fallback reads HEAD's own "Merge pull request #N from ..." subject, and
-      # since that is never feat/fix *no merge ever recorded an entry* — the
-      # changelog was empty for that reason, not the tip-commit one (issue #113;
-      # measured in run 33297190858, which logged "Not a feat/fix commit" for a
-      # branch that carried one).
+      # walks back to the previous bump commit, and checkout's default shallow
+      # clone holds only the tip. A shallow walk is the failure issue #113
+      # measured (run 33297190858): the range failed to resolve, the fallback
+      # read the merge commit's own "Merge pull request #N" subject, and *no
+      # merge ever recorded an entry*.
+      #
+      # `ref` checks out the branch's live tip rather than the commit that
+      # triggered this run, so a bump another run pushed since then is already
+      # in history and its commits are not recorded a second time. The tip can
+      # also hold a later merge whose own run has not passed yet; that run
+      # cancels this one on arrival, so the window is the length of a push.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.ref }}
           fetch-depth: 0
+
+      # The previous bump is the bot's commit with the subject the last step
+      # writes. Both filters, which git ANDs, as fixed strings: a person's
+      # commit message that quoted the subject would otherwise pass for a bump
+      # and hide every commit before it, and only the bot authors as the bot.
+      #
+      # When the live tip already *is* a bump — a re-run after this job pushed
+      # one, which `gh run rerun --failed` makes routine — there is nothing
+      # new, and the job stops rather than bump a version with no change.
+      - name: Find the previous bump
+        id: last
+        run: |
+          set -euo pipefail
+          LAST_BUMP=$(git log -1 --format=%H --fixed-strings --author="$BOT_NAME" --grep="$BUMP_SUBJECT" HEAD)
+          echo "sha=$LAST_BUMP" >> "$GITHUB_OUTPUT"
+          if [ "$LAST_BUMP" = "$(git rev-parse HEAD)" ]; then
+            echo "HEAD is already a version bump; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Bump apps/web patch version
         id: bump
+        if: steps.last.outputs.skip != 'true'
         run: |
           set -euo pipefail
           NEXT=$(node -e "
@@ -278,44 +318,59 @@ jobs:
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
 
       # The "what's new" changelog (issue #94): one entry per feat/fix commit,
-      # generated rather than admin-authored. `HEAD^2 --not HEAD^1` is every
-      # commit the merged branch added, oldest first — not just its tip, which
-      # is routinely a `refactor`/`docs` review fix-up sitting on top of the
-      # `feat` that is the actual point of the branch (issue #113). The
-      # fallback covers a direct push to main and a squash merge, neither of
-      # which has a second parent; an empty result records nothing.
+      # generated rather than admin-authored. The range is every commit since
+      # the previous bump, oldest first, not only the triggering merge's
+      # branch (`HEAD^2 --not HEAD^1`, which is what this read until #410).
+      # `cancel-in-progress` is true on develop, so when two PRs merge close
+      # together the first run is cancelled before it gets here, and a range
+      # of one merge would drop the first PR's entries for good. Stopping
+      # cancellation on develop would not close that: a concurrency group keeps
+      # one *pending* run and cancels the one it replaces whatever
+      # `cancel-in-progress` says, so a third merge still loses the second.
+      #
+      # Every commit, not just a branch's tip, which is routinely a
+      # `refactor`/`docs` review fix-up sitting on top of the `feat` that is
+      # the actual point of the branch (issue #113). `--no-merges` drops the
+      # "Merge pull request" subjects; a branch's own commits are not
+      # reachable from an earlier bump, even one cut before it, so each is
+      # read exactly once. With no bump in history at all, `HEAD^1..HEAD` is
+      # the triggering merge's branch, or the commit itself for a direct push.
       - name: Record changelog entries
+        if: steps.last.outputs.skip != 'true'
+        env:
+          LAST_BUMP: ${{ steps.last.outputs.sha }}
+          NEXT_VERSION: ${{ steps.bump.outputs.next }}
+        run: |
+          set -euo pipefail
+          RANGE="${LAST_BUMP:-HEAD^1}..HEAD"
+          echo "Reading $RANGE"
+          COMMIT_SUBJECTS=$(git log --reverse --no-merges --format=%s "$RANGE")
+          COMMIT_SUBJECTS="$COMMIT_SUBJECTS" node scripts/ci/record-changelog-entry.mjs
+
+      # A merge can land on develop between the checkout above and this push,
+      # and a bare `git push` is then rejected outright (observed on main in
+      # run 33602886760, from PR #126's merge landing 20s before PR #135's).
+      # The commit this job makes only ever touches these two files, so
+      # replaying it on top of a newer develop with a rebase is safe; nothing
+      # else in this repo writes to either of them.
+      - name: Commit and push
+        if: steps.last.outputs.skip != 'true'
         env:
           NEXT_VERSION: ${{ steps.bump.outputs.next }}
         run: |
           set -euo pipefail
-          COMMIT_SUBJECTS=$(git log --reverse --format=%s HEAD^2 --not HEAD^1 2>/dev/null || git log -1 --format=%s HEAD)
-          COMMIT_SUBJECTS="$COMMIT_SUBJECTS" node scripts/ci/record-changelog-entry.mjs
-
-      # Two merges landing within the same few minutes each trigger their own
-      # run of this job, both starting from a checkout pinned to their own
-      # trigger commit. Whichever reaches this step second finds `main` has
-      # already moved — the other job's bump commit is already there — and a
-      # bare `git push` is rejected outright (observed in run 33602886760,
-      # from PR #126's merge landing 20s before PR #135's). The commit this
-      # job makes only ever touches these two files, so replaying it on top
-      # of a newer `main` with a rebase is safe; nothing else in this repo
-      # writes to either of them.
-      - name: Commit and push
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "$BOT_NAME"
+          git config user.email "$BOT_NAME@users.noreply.github.com"
           git add apps/web/package.json packages/shared/src/changelog-entries.json
-          git commit -m "chore(web): bump version to ${{ steps.bump.outputs.next }} [skip ci]"
+          git commit -m "$BUMP_SUBJECT$NEXT_VERSION [skip ci]"
 
           for attempt in 1 2 3 4 5; do
             if git push; then
               exit 0
             fi
-            echo "Push rejected (attempt $attempt/5) — fetching and rebasing onto the new main."
-            git fetch origin main
-            git rebase origin/main
+            echo "Push rejected (attempt $attempt/5) — fetching and rebasing onto the new develop."
+            git fetch origin develop
+            git rebase origin/develop
           done
 
           echo "::error::Failed to push the version bump after 5 attempts."

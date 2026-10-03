@@ -13,7 +13,7 @@ import {
 } from "@/lib/changelog-queries";
 
 // Newest version first. A version can carry more than one entry — CI records
-// one per feat/fix commit on the merged branch (issue #113) — and `sort` is
+// one per feat/fix commit since the previous bump (#113, #410) — and `sort` is
 // stable, so those keep the order they were recorded in, oldest commit first.
 const SORTED_ENTRIES = [...CHANGELOG_ENTRIES].sort((a, b) =>
   compareVersions(b.version, a.version),
