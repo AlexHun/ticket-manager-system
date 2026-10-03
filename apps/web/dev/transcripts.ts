@@ -25,6 +25,11 @@
 //     reads as complete when it is not.
 //   - Sessions from any other machine. These transcripts are local.
 //
+// Every turn count, per-turn rate and share of turns above was measured before
+// #413, when a "turn" was a transcript record rather than an API response and a
+// response's usage was counted once per record, so they want re-measuring on
+// the corrected figures — a separate decision from the fix itself.
+//
 // Out of `./usage.ts` since #297, which had grown to hold both the scan and the
 // join. The split is the one `./issues.ts` already drew for the other source:
 // this module knows the filesystem and the transcript format and nothing about
@@ -104,6 +109,7 @@ interface TranscriptRecord {
   sessionId?: string;
   gitBranch?: string;
   message?: {
+    id?: string;
     usage?: { output_tokens?: number; cache_read_input_tokens?: number };
   };
 }
@@ -117,6 +123,20 @@ interface BranchAccumulator extends Omit<Spend, "sessions"> {
  * Sum usage per branch. One pass over every transcript; the files are
  * append-only JSONL and a partially-written last line is normal, so an
  * unparseable line is skipped rather than fatal.
+ *
+ * **One API response is one turn, however many records it was written as**
+ * (#413). Claude Code writes a response as one record per content block — the
+ * text, each `tool_use` — and every one of them carries the response's
+ * `message.id` and a copy of its `usage`. Measured 2026-10-03 over 167
+ * transcripts: 27,311 records with usage were 14,181 responses, none of the
+ * 8,894 multi-record responses differed between their records in
+ * `output_tokens` (nor, re-measured the same day over 8,903 of them, in
+ * `cache_read_input_tokens`), and summing every record inflated output 2.32x
+ * overall and 1.00x-3.89x per issue. So the first record
+ * of a response counts and the rest are skipped. A record with no
+ * `message.id` has nothing to collapse on and counts once per record, as all of
+ * them did before — a format change that drops the id then over-counts rather
+ * than reading as zero spend.
  */
 function spendByBranch(dir: string): {
   byBranch: Map<string, BranchAccumulator>;
@@ -125,6 +145,7 @@ function spendByBranch(dir: string): {
 } {
   const byBranch = new Map<string, BranchAccumulator>();
   const unattributed: UnattributedWork = { turns: 0, out: 0 };
+  const seen = new Set<string>();
   const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
   for (const file of files) {
     for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
@@ -137,6 +158,11 @@ function spendByBranch(dir: string): {
       }
       const usage = rec.message?.usage;
       if (!usage) continue;
+      const id = rec.message?.id;
+      if (id) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
       const branch = rec.gitBranch;
       if (!branch || branch === "main") {
         // Totalled here rather than counted, and deliberately not given a
