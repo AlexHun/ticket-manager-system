@@ -55,37 +55,25 @@ const noListing = (
   warning,
 });
 
-/** One transcript record, in the shape Claude Code writes. */
+/**
+ * One transcript record, in the shape Claude Code writes.
+ *
+ * `id` is the `message.id` Claude Code stamps on every record of one API
+ * response — one record per content block (#413). Left out, the record carries
+ * none, which is the fallback the scan counts once per record.
+ */
 const turn = (
   sessionId: string,
   gitBranch: string,
   out: number,
   cacheRead = 0,
+  id?: string,
 ) =>
   JSON.stringify({
     sessionId,
     gitBranch,
     message: {
-      usage: { output_tokens: out, cache_read_input_tokens: cacheRead },
-    },
-  });
-
-/**
- * One record of an API response, carrying the `message.id` Claude Code stamps
- * on every record it writes for that response — one per content block.
- */
-const response = (
-  sessionId: string,
-  gitBranch: string,
-  id: string,
-  out: number,
-  cacheRead = 0,
-) =>
-  JSON.stringify({
-    sessionId,
-    gitBranch,
-    message: {
-      id,
+      ...(id === undefined ? {} : { id }),
       usage: { output_tokens: out, cache_read_input_tokens: cacheRead },
     },
   });
@@ -226,13 +214,16 @@ describe("scanSpend", () => {
   // times — 2.32x the true output across this machine's transcripts.
   it("counts a response split across several records once", () => {
     write("s1.jsonl", [
-      response("s1", "feat/101-a", "msg_1", 100, 1000),
-      response("s1", "feat/101-a", "msg_1", 100, 1000),
-      response("s1", "feat/101-a", "msg_1", 100, 1000),
-      response("s1", "feat/101-a", "msg_2", 40, 2000),
-      response("s1", "main", "msg_3", 30),
-      response("s1", "main", "msg_3", 30),
+      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
+      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
+      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
+      turn("s1", "feat/101-a", 40, 2000, "msg_2"),
+      turn("s1", "main", 30, 0, "msg_3"),
+      turn("s1", "main", 30, 0, "msg_3"),
     ]);
+    // Never seen across two files when measured, but nothing about the format
+    // forbids it, and the id names the response rather than the file.
+    write("s1-resumed.jsonl", [turn("s1", "feat/101-a", 100, 1000, "msg_1")]);
 
     const { byIssue, unattributed } = scanSpend(dir);
 

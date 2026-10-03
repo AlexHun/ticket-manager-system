@@ -17,11 +17,6 @@
 // ~218k at 1343), which makes it a measure of session hygiene rather than of
 // the issue — so it is carried beside the forecast, never inside it.
 //
-// The figures in the two paragraphs above were measured before #413, when a
-// "turn" was a transcript record rather than an API response and a response's
-// usage was counted once per record, so they want re-measuring on the
-// corrected figures — a separate decision from the fix itself.
-//
 // Two things this cannot attribute, both by construction:
 //   - Work done on `main` or with no branch (28% of all turns when this was
 //     written). It belongs to no issue, so it is totalled on its own
@@ -29,6 +24,11 @@
 //     tokens since #253, because a figure that omits a quarter of the work
 //     reads as complete when it is not.
 //   - Sessions from any other machine. These transcripts are local.
+//
+// Every turn count, per-turn rate and share of turns above was measured before
+// #413, when a "turn" was a transcript record rather than an API response and a
+// response's usage was counted once per record, so they want re-measuring on
+// the corrected figures — a separate decision from the fix itself.
 //
 // Out of `./usage.ts` since #297, which had grown to hold both the scan and the
 // join. The split is the one `./issues.ts` already drew for the other source:
@@ -127,10 +127,12 @@ interface BranchAccumulator extends Omit<Spend, "sessions"> {
  * **One API response is one turn, however many records it was written as**
  * (#413). Claude Code writes a response as one record per content block — the
  * text, each `tool_use` — and every one of them carries the response's
- * `message.id` and the *same* `usage`. Measured 2026-10-03 over 167
+ * `message.id` and a copy of its `usage`. Measured 2026-10-03 over 167
  * transcripts: 27,311 records with usage were 14,181 responses, none of the
- * 8,894 repeated ones differed in `output_tokens`, and summing every record
- * inflated output 2.32x overall and 1.00x-3.89x per issue. So the first record
+ * 8,894 multi-record responses differed between their records in
+ * `output_tokens` (nor, re-measured the same day over 8,903 of them, in
+ * `cache_read_input_tokens`), and summing every record inflated output 2.32x
+ * overall and 1.00x-3.89x per issue. So the first record
  * of a response counts and the rest are skipped. A record with no
  * `message.id` has nothing to collapse on and counts once per record, as all of
  * them did before — a format change that drops the id then over-counts rather
