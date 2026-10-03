@@ -568,5 +568,10 @@
     "version": "0.1.157",
     "date": "2026-10-02",
     "title": "Changelog dates keep clear of the list's scrollbar"
+  },
+  {
+    "version": "0.1.159",
+    "date": "2026-10-03",
+    "title": "Count one API response once, not once per content block"
   }
 ]
