@@ -70,6 +70,26 @@ const turn = (
     },
   });
 
+/**
+ * One record of an API response, carrying the `message.id` Claude Code stamps
+ * on every record it writes for that response — one per content block.
+ */
+const response = (
+  sessionId: string,
+  gitBranch: string,
+  id: string,
+  out: number,
+  cacheRead = 0,
+) =>
+  JSON.stringify({
+    sessionId,
+    gitBranch,
+    message: {
+      id,
+      usage: { output_tokens: out, cache_read_input_tokens: cacheRead },
+    },
+  });
+
 let dir: string;
 
 beforeEach(() => {
@@ -198,6 +218,48 @@ describe("scanSpend", () => {
 
     expect(scanSpend(dir).byIssue.size).toBe(0);
     expect(scanSpend(dir).unattributed).toEqual({ turns: 0, out: 0 });
+  });
+
+  // #413: Claude Code writes one API response as one record per content block
+  // (text, each `tool_use`, …), all sharing a `message.id` and carrying the
+  // same `usage`. Summing every record counted a three-block response three
+  // times — 2.32x the true output across this machine's transcripts.
+  it("counts a response split across several records once", () => {
+    write("s1.jsonl", [
+      response("s1", "feat/101-a", "msg_1", 100, 1000),
+      response("s1", "feat/101-a", "msg_1", 100, 1000),
+      response("s1", "feat/101-a", "msg_1", 100, 1000),
+      response("s1", "feat/101-a", "msg_2", 40, 2000),
+      response("s1", "main", "msg_3", 30),
+      response("s1", "main", "msg_3", 30),
+    ]);
+
+    const { byIssue, unattributed } = scanSpend(dir);
+
+    expect(byIssue.get(101)).toEqual({
+      turns: 2,
+      out: 140,
+      cacheRead: 3000,
+      sessions: 1,
+    });
+    expect(unattributed).toEqual({ turns: 1, out: 30 });
+  });
+
+  // The fallback that keeps a format change from reading as zero spend: a
+  // record with no `message.id` has nothing to collapse on, so it counts once
+  // per record, as every record did before #413.
+  it("still counts records with no message id, once per record", () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/101-a", 100),
+      turn("s1", "feat/101-a", 100),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)).toEqual({
+      turns: 2,
+      out: 200,
+      cacheRead: 0,
+      sessions: 1,
+    });
   });
 });
 

@@ -27,6 +27,12 @@ one is a rule worth holding:
 - a truncated final line — the ordinary shape of an append-only JSONL file that
   is still being written, and skipping it must not lose the lines above it.
 
+No line carries a `message.id`, so each counts as one turn on its own. Since
+#413 the scan collapses records sharing an id — Claude Code writes one API
+response as one record per content block — onto one turn; that rule is held by
+`apps/web/dev/usage.test.ts`, not here, so none of the figures above depend on
+it.
+
 `#105` shares `session-b.jsonl` with `#102`, on its own branch. That is the
 mirror of the `main` turn above: two branches in one session must land in two
 rows, the same way one session's `main` turn must land in none.
