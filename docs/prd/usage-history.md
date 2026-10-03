@@ -7,11 +7,14 @@
 The Usage page reads its figures from the local Claude Code transcripts, and
 those transcripts are deleted after 30 days. On 2026-10-03 the oldest of the
 167 on disk dates from 2026-09-02, so every issue worked before that date
-already reports no spend. Each day another day of history goes. The bands are
-also moving, and nothing records it. The p25 / median / p75 of actual output
-tokens were 55k / 90k / 154k when `dev-tools-usage-page.md` was written, and
-are 73k / 131k / 199k today. Each reading replaces the one before, so whether
-the forecasts are getting better or worse can only be answered from memory.
+already reports no spend. Each day another day of history goes. And each
+reading replaces the one before, so nothing can say whether the figures
+moved. #413 showed what that costs: the scan counted every API response once
+per content block (2.32× overall, up to 3.89× for one issue), and that went
+unnoticed because no earlier reading was kept to compare with. With it fixed,
+the p25 / median / p75 of actual output tokens are 33k / 56k / 79k and forecast
+accuracy is 33 of 60 (55%). Whether that is getting better or worse can still
+only be answered from memory.
 
 ## Users
 
@@ -54,6 +57,7 @@ trend. It buys time for this PRD; it doesn't replace it.
 | R8  | The page states the earliest date its history covers, so an issue with no spend before that date reads as "not recorded", not as zero.                                                  | Must     |
 | R9  | With the stored history deleted, the next scan rebuilds it from the transcripts still on disk without error. Only the history of transcripts already pruned is lost.                    | Should   |
 | R10 | With the stored history unreadable, a scan still reports what the transcripts on disk show, plus a warning that names the store as the source that failed.                              | Should   |
+| R11 | A correction to how spend is counted or attributed (as #413 and #253 were) changes the stored history's figures too, including for transcripts no longer on disk.                       | Should   |
 
 ### Non-goals
 
@@ -89,18 +93,15 @@ trend. It buys time for this PRD; it doesn't replace it.
 
 ## Risks
 
-| Risk                                                                                    | Impact                                                                      | Mitigation                                                                       |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| A growing transcript is counted again on every scan                                     | Spend inflates silently; every verdict drifts toward "over"                 | R2, plus a test that scans one transcript twice and appends to it in between     |
-| The rules for attributing spend change (as #253 did for `main`) after history is stored | Stored figures follow old rules and live figures follow new ones; R3 breaks | Open question below. The plan decides what level of detail is kept               |
-| The stopgap makes this look unnecessary                                                 | The PRD stalls and the setting is later reverted                            | Stated in Success metrics. The trend (R6) is something the setting can't provide |
-| Vitest runs the dev modules under Node, where a Bun-only database module doesn't load   | The store can't be unit tested the way `usage.ts` is today                  | Open question below, for the plan                                                |
+| Risk                                                                                              | Impact                                                                      | Mitigation                                                                       |
+| ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| A growing transcript is counted again on every scan                                               | Spend inflates silently; every verdict drifts toward "over"                 | R2, plus a test that scans one transcript twice and appends to it in between     |
+| The rules for counting or attributing spend change (as #413 and #253 did) after history is stored | Stored figures follow old rules and live figures follow new ones; R3 breaks | R11. #413 is the case that already happened once: it halved every figure         |
+| The stopgap makes this look unnecessary                                                           | The PRD stalls and the setting is later reverted                            | Stated in Success metrics. The trend (R6) is something the setting can't provide |
+| Vitest runs the dev modules under Node, where a Bun-only database module doesn't load             | The store can't be unit tested the way `usage.ts` is today                  | Open question below, for the plan                                                |
 
 ## Open questions
 
-- [ ] Does the history keep enough detail to re-attribute spend if the
-      attribution rules change, or only per-issue totals as read at the time?
-      — _affects R1/R3_, needs the plan
 - [ ] How is the store exercised in tests, given vitest runs on Node and both
       real readers run on Bun? — needs the plan
 - [ ] **Assumed:** a "day" for R6 is the developer's local calendar day, not
