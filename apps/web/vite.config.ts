@@ -43,7 +43,8 @@ function git(...args: string[]): string {
  * Format is Sentry's own convention, `project@version`, so their UI groups and
  * sorts these the way it expects to. The package version alone identifies which
  * deploy shipped (CI's `bump-version` job in `ci.yml` bumps the patch version on
- * every push to main) but not which commit produced it, so the commit is
+ * every push to develop, and a release carries it to main unchanged) but not
+ * which commit produced it, so the commit is
  * appended whenever one is available.
  *
  * `-dirty` is not decoration. A release name is a claim that these errors came

@@ -4,7 +4,9 @@
 // the deploy that triggered this run.
 //
 // Run by CI's `bump-version` job (.github/workflows/ci.yml) on every push to
-// main, right after the version bump, so the entries carry the *new* version.
+// develop, right after the version bump, so the entries carry the *new*
+// version. The job passes every commit since the previous bump, which can
+// span more than one merged branch (issue #410).
 // Not every push gets one: a `chore`/`refactor`/`docs`/etc. commit still bumps
 // the version (see `releaseName()` in apps/web/vite.config.ts) but adds nothing
 // here, because not every deploy is something worth telling a user about —

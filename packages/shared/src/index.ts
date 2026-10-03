@@ -3281,8 +3281,8 @@ export interface DashboardLayoutResponse {
  * release or a hand-authored batch.
  *
  * `changelog-entries.json` is written by CI's `bump-version` job (`.github/workflows/ci.yml`)
- * on every push to `main`, one entry per `feat`/`fix` commit on the merged
- * branch — the same conventional-commit prefix this repo's own commits
+ * on every push to `develop`, one entry per `feat`/`fix` commit since the
+ * previous bump — the same conventional-commit prefix this repo's own commits
  * already use, stripped for display. A `chore`/`refactor`/`docs`/etc. commit
  * still bumps the version (see `releaseName()` in `apps/web/vite.config.ts`)
  * but adds no entry here, because not every deploy is something a user should
@@ -3323,7 +3323,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = changelogEntriesData;
 /**
  * Dotted-numeric version compare (`"0.1.9"` < `"0.1.10"`), because these are
  * `major.minor.patch` strings compared numerically per segment, not sorted as
- * plain text — `apps/web`'s version is patch-bumped on every push to `main`
+ * plain text — `apps/web`'s version is patch-bumped on every push to `develop`
  * (see the `bump-version` CI job), so a lexical compare breaks the moment a
  * segment reaches double digits.
  */
