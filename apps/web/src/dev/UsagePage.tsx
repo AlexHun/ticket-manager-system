@@ -150,14 +150,17 @@ export function UsagePage() {
       {/* What the scan could not see, shown rather than swallowed — the same
           bargain the project map makes with its own `warnings`.
 
-          Every warning is drawn, whichever source it names, because the two
+          Every warning is drawn, whichever source it names, because the
           sources fail independently — see `UsageWarning` in `usage-protocol`
-          for why that is a field rather than a turn of phrase. This page reads
-          `message` and never `source`: it has no branch to make, and the
-          wording on screen is what it always was. */}
+          for why that is a field rather than a turn of phrase. What a reader
+          sees is `message` alone: the page has no branch to make on `source`,
+          and the wording on screen is what it always was. The source is only
+          stamped on the element, for the E2E (#420), which has to tell a
+          history warning from the other two without matching on the prose. */}
       {report?.warnings.map((warning) => (
         <p
           key={`${warning.source}:${warning.message}`}
+          data-usage-warning={warning.source}
           className="flex items-start gap-2 rounded-md px-3 py-2 text-sm text-status-warning ring-1 ring-status-warning/30"
         >
           <AlertTriangle

@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import { exec } from "node:child_process";
-import { appendFileSync, existsSync, rmSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -9,6 +15,7 @@ import {
   USAGE_COLUMNS,
   USAGE_TREND_LABEL,
 } from "../../apps/web/src/dev/usage-copy";
+import { USAGE_WARNING_SOURCE } from "../../apps/web/src/dev/usage-protocol";
 import {
   GH_ISSUES_FIXTURE_PATH,
   removeGhIssuesFixture,
@@ -26,6 +33,7 @@ import {
  * from, and the page says from which date its history runs. Slice 2 (#418): a
  * scan reads only what was appended since the last one. Slice 3 (#419): one
  * trend point per day with a scan, today's equal to the panels above it.
+ * Slice 4 (#420): a deleted history is rebuilt, a damaged one is a warning.
  *
  * Driven through the real middleware: the web server's `USAGE_HISTORY_FILE` is
  * `USAGE_HISTORY_PATH` (`playwright.config.ts`), a gitignored file that
@@ -40,10 +48,24 @@ import {
 /** `session-b.jsonl`'s two issues, from `fixtures/transcripts/README.md`. */
 const SESSION_B = { issue102: "3,000", issue105: "90,000" } as const;
 
+/** `session-a.jsonl`'s one issue, from the same README. */
+const SESSION_A = { issue101: "20,000" } as const;
+
 /** The first line of `session-a.jsonl`, the earliest timestamp in either file. */
 const HISTORY_SINCE = "2026-09-02T09:00:00.000Z";
 
+/** The first line of `session-b.jsonl`: where a history rebuilt without
+ *  `session-a.jsonl` starts (#420). */
+const SESSION_B_SINCE = "2026-09-03T10:00:00.000Z";
+
+/** The em dash `NotStarted` draws for a row with no recorded work: the same
+ *  dash as `Unknown`, which means something else (`dev-usage.spec.ts`). */
+const NOT_STARTED = "—";
+
 const OUT = USAGE_COLUMNS.indexOf("out");
+
+/** Every warning the page draws, each stamped with its source (#420). */
+const warnings = (page: Page) => page.locator("[data-usage-warning]");
 
 /**
  * The two panels' figures over the fixtures (README: "What the bands and the
@@ -77,19 +99,19 @@ const REPO_ROOT = path.resolve(
  * shell for the reason `dev-usage-guardrail.spec.ts` gives: `bun` on PATH is a
  * `.cmd` shim on Windows.
  */
-const tokens = async () =>
-  (
-    await promisify(exec)("bun run tokens", {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
-        GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
-        USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
-      },
-      encoding: "utf8",
-    })
-  ).stdout;
+const runTokens = () =>
+  promisify(exec)("bun run tokens", {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
+      GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
+      USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
+    },
+    encoding: "utf8",
+  });
+
+const tokens = async () => (await runTokens()).stdout;
 
 const reading = (page: Page) => page.getByText(/^Gathered at/);
 
@@ -262,6 +284,81 @@ test.describe("dev tools: Usage history", () => {
     await scan.click();
 
     await expect(reading(page)).toContainText("1 transcript,");
+    await expect(since).toHaveAttribute("datetime", HISTORY_SINCE);
+  });
+
+  /**
+   * Slice 4 (#420): the history is a file the developer can delete or damage,
+   * and neither costs the page. Deleted, the next scan rebuilds it from the
+   * transcripts still on disk — so a transcript already gone takes its spend
+   * with it, and the start date moves to what remains.
+   */
+  test("a deleted history is rebuilt from the transcripts on disk, its start date with it", async ({
+    page,
+  }) => {
+    const scan = page.getByRole("button", { name: "Scan" });
+    const since = page.getByText(/^History from/).locator("time");
+
+    await scan.click();
+    await expect(reading(page)).toContainText(TRANSCRIPT_WORKING_DIR);
+    await expect(since).toHaveAttribute("datetime", HISTORY_SINCE);
+    await expect(outFor(page, 101)).toHaveText(SESSION_A.issue101);
+
+    rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-a.jsonl"));
+    rmSync(USAGE_HISTORY_PATH);
+    await scan.click();
+
+    await expect(reading(page)).toContainText("1 transcript,");
+    await expect(since).toHaveAttribute("datetime", SESSION_B_SINCE);
+    await expect(warnings(page)).toHaveCount(0);
+    await expect(outFor(page, 102)).toHaveText(SESSION_B.issue102);
+    await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
+    // `#101` is open in the listing, so it keeps a row — with nothing recorded.
+    await expect(outFor(page, 101)).toHaveText(NOT_STARTED);
+  });
+
+  /**
+   * Damaged, the scan reports the live figures beside one warning whose source
+   * is the history, and leaves the file as it was for the developer to move or
+   * delete. `bun run tokens` words its own sentence for it, naming the file and
+   * the override.
+   */
+  test("an unreadable history costs one warning, not the figures, and is never written over", async ({
+    page,
+  }) => {
+    // It spawns `bun run tokens` part-way through.
+    test.setTimeout(60_000);
+    const scan = page.getByRole("button", { name: "Scan" });
+    const since = page.getByText(/^History from/).locator("time");
+    const junk = "this is not a SQLite database\n".repeat(8);
+    writeFileSync(USAGE_HISTORY_PATH, junk, "utf8");
+
+    await scan.click();
+    await expect(reading(page)).toContainText(TRANSCRIPT_WORKING_DIR);
+    await expect(outFor(page, 101)).toHaveText(SESSION_A.issue101);
+    await expect(outFor(page, 102)).toHaveText(SESSION_B.issue102);
+    await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
+    // One warning, the history's: the transcripts and the listing read fine.
+    await expect(warnings(page)).toHaveCount(1);
+    await expect(warnings(page)).toHaveAttribute(
+      "data-usage-warning",
+      USAGE_WARNING_SOURCE.history,
+    );
+    await expect(warnings(page)).toContainText(USAGE_HISTORY_PATH);
+    await expect(warnings(page)).toContainText(/delete it/);
+    await expect(page.getByText(/^History from/)).toHaveCount(0);
+    expect(readFileSync(USAGE_HISTORY_PATH, "utf8")).toBe(junk);
+
+    const { stdout, stderr } = await runTokens();
+    expect(stdout).toMatch(/^#101\s.*\s20k\s/m);
+    expect(stderr).toContain(USAGE_HISTORY_PATH);
+    expect(stderr).toContain("USAGE_HISTORY_FILE");
+    expect(readFileSync(USAGE_HISTORY_PATH, "utf8")).toBe(junk);
+
+    // Nothing holds it, so the developer can do what the warning says.
+    rmSync(USAGE_HISTORY_PATH);
+    await scan.click();
+    await expect(warnings(page)).toHaveCount(0);
     await expect(since).toHaveAttribute("datetime", HISTORY_SINCE);
   });
 });

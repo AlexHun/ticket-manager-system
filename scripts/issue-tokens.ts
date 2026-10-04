@@ -52,7 +52,10 @@ import {
   resolveTranscriptDir,
 } from "../apps/web/dev/transcripts.ts";
 import { gatherUsage } from "../apps/web/dev/usage.ts";
-import { resolveHistoryFile } from "../apps/web/dev/usage-store.ts";
+import {
+  HISTORY_FILE_ENV,
+  resolveHistoryFile,
+} from "../apps/web/dev/usage-store.ts";
 // Reached directly rather than through `apps/web/dev/usage.ts`, which used to
 // re-export this vocabulary on this file's behalf (#290). The wire and the
 // arithmetic over it have no filesystem in them, so a script under `scripts/`
@@ -106,8 +109,20 @@ const fmt = (n: number) =>
  * costs ("titles, links and forecast bands read as unknown"), and there is no
  * terminal-specific advice to add. Re-wording it here would be a second copy of
  * a sentence with nothing new in it.
+ *
+ * The history adds a sentence of its own to the message it is handed (#420).
+ * That message already names the file, the cause and what to do with it, so
+ * re-wording it would be a second copy with nothing new in it; what only this
+ * command can add is `USAGE_HISTORY_FILE`, which branches the way
+ * `CLAUDE_TRANSCRIPT_DIR` does. Set, it is why this file was read; unset, it is
+ * the way out that keeps the damaged file where it is.
  */
 const diagnostic = (warning: UsageWarning, report: UsageReport) => {
+  if (warning.source === USAGE_WARNING_SOURCE.history) {
+    return process.env[HISTORY_FILE_ENV]?.trim()
+      ? `${warning.message} ${HISTORY_FILE_ENV} names that file.`
+      : `${warning.message} Or point ${HISTORY_FILE_ENV} at another file.`;
+  }
   if (warning.source !== USAGE_WARNING_SOURCE.transcripts) {
     return warning.message;
   }
