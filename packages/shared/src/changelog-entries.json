@@ -593,5 +593,15 @@
     "version": "0.1.163",
     "date": "2026-10-04",
     "title": "Review fixes for the incremental Usage scan"
+  },
+  {
+    "version": "0.1.164",
+    "date": "2026-10-04",
+    "title": "A daily trend of forecast accuracy and quartiles on the Usage page"
+  },
+  {
+    "version": "0.1.164",
+    "date": "2026-10-04",
+    "title": "Review fixes for the Usage trend"
   }
 ]
