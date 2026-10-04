@@ -230,11 +230,12 @@ export interface TrendPoint {
 }
 
 /**
- * Which half of the scan a warning came from.
+ * Which source of the scan a warning came from.
  *
  * The scan reads two sources and they fail independently — the transcript
  * directory can be unreadable while `gh` answers perfectly, and the reverse.
- * Both are warnings beside whatever could be read, so a caller that wants to
+ * (Since #420 there is a third, the history; see the end of this comment.)
+ * Each is a warning beside whatever could be read, so a caller that wants to
  * treat one differently from the other has to be able to tell them apart.
  *
  * Before #289 it could not: `warnings` was a flat `string[]` and the only way
@@ -245,19 +246,28 @@ export interface TrendPoint {
  * calls `gatherUsage` now and branches here, printing its own sentence for
  * `transcripts` and passing `listing`'s message through.
  *
- * Two values and not three: "could not read the directory" and "the directory
+ * Not a value per way to fail: "could not read the directory" and "the directory
  * holds no transcripts" are one source failing in two ways, and nothing on
  * either surface treats them differently — both mean there are no figures and
- * the message says which. A third value would be a distinction with no reader,
- * and #290 is where that was tested rather than assumed: the terminal's two
- * sentences for those two failures became one, because the advice it has to
+ * the message says which. A third value for that would be a distinction with no
+ * reader, and #290 is where that was tested rather than assumed: the terminal's
+ * two sentences for those two failures became one, because the advice it has to
  * give ("run this from the repo root") is the same advice for both.
+ *
+ * **The third value is a third source, not a third way to fail** (#420). The
+ * usage history (`dev/usage-store.ts`) is a different file that fails on its
+ * own — a damaged history beside readable transcripts and a working `gh` — and
+ * its advice is its own: move or delete the file. So it has a reader, and
+ * `bun run tokens` words its own sentence for it as it does for `transcripts`.
  */
 export const USAGE_WARNING_SOURCE = {
   /** The transcript directory — unreadable, or holding no `.jsonl` files. */
   transcripts: "transcripts",
   /** The `gh issue list` the title, link and forecast columns come from. */
   listing: "listing",
+  /** The usage history file, which could not be opened or read (#420). The
+   *  figures are then the transcripts on disk alone. */
+  history: "history",
 } as const;
 
 export type UsageWarningSource =
@@ -352,10 +362,10 @@ export interface UsageReport {
   /**
    * Anything that stopped the scan seeing everything. Shown, not swallowed.
    *
-   * The two sources fail independently, so these **stack** rather than mask one
+   * The sources fail independently, so these **stack** rather than mask one
    * another: an unreadable directory and an unavailable listing are two entries,
-   * not one. Each names its `source`, so a surface branches on that rather than
-   * on the wording of `message` (#289).
+   * not one, and a damaged history is a third (#420). Each names its `source`,
+   * so a surface branches on that rather than on the wording of `message` (#289).
    */
   warnings: UsageWarning[];
 }

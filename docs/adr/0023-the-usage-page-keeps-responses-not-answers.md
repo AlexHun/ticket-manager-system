@@ -118,9 +118,12 @@ without anyone noticing. It also records no trend, and slice 3 needs one.
 - Since #419 `gatherUsage` also takes a clock as a fourth argument, which stamps
   both `gatheredAt` and the day's trend point, so a unit test can move a day.
   `UsageReport` gains `trend`, every stored point oldest first.
-- A store that can't be opened throws for now. Slice 4 of
-  `docs/plans/usage-history.md` turns that into a warning with a source of its
-  own.
+- Since #420 a store that can't be read costs a warning, not the scan. The
+  reading is then the transcripts on disk alone, read whole, beside a warning
+  whose source is `USAGE_WARNING_SOURCE.history`, and the damaged file is left
+  as it is for the developer to move or delete. A deleted store needs nothing:
+  the next scan creates a fresh one from the transcripts still on disk, so only
+  the history of transcripts already pruned is lost (R9, R10).
 - Every E2E run that scans has to point `USAGE_HISTORY_FILE` somewhere
   disposable. `resetTranscriptWorkingCopy` removes it alongside the working
   copy, and the guardrail passes it to the `bun run tokens` it spawns.

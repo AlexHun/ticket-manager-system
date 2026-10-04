@@ -52,7 +52,10 @@ import {
   resolveTranscriptDir,
 } from "../apps/web/dev/transcripts.ts";
 import { gatherUsage } from "../apps/web/dev/usage.ts";
-import { resolveHistoryFile } from "../apps/web/dev/usage-store.ts";
+import {
+  HISTORY_FILE_ENV,
+  resolveHistoryFile,
+} from "../apps/web/dev/usage-store.ts";
 // Reached directly rather than through `apps/web/dev/usage.ts`, which used to
 // re-export this vocabulary on this file's behalf (#290). The wire and the
 // arithmetic over it have no filesystem in them, so a script under `scripts/`
@@ -106,8 +109,28 @@ const fmt = (n: number) =>
  * costs ("titles, links and forecast bands read as unknown"), and there is no
  * terminal-specific advice to add. Re-wording it here would be a second copy of
  * a sentence with nothing new in it.
+ *
+ * The history gets a sentence of its own too (#420), for the transcripts'
+ * reason: the advice is this command's. It names the file, which comes from the
+ * local `historyFile` because the report carries no field for it — the page
+ * reads its path out of the message, and a field only this command read would
+ * be a promise on the wire with one reader. And it names `USAGE_HISTORY_FILE`
+ * either way: set, it is why this file was read; unset, it is the other way
+ * out besides moving the file.
  */
-const diagnostic = (warning: UsageWarning, report: UsageReport) => {
+const diagnostic = (
+  warning: UsageWarning,
+  report: UsageReport,
+  historyFile: string,
+) => {
+  if (warning.source === USAGE_WARNING_SOURCE.history) {
+    const at = `Usage history at ${historyFile} could not be read`;
+    const advice =
+      "these figures are the transcripts on disk alone, and the file is left as it is. Move it aside or delete it to start a new history";
+    return process.env[HISTORY_FILE_ENV]?.trim()
+      ? `${at}, which ${HISTORY_FILE_ENV} names — ${advice}.`
+      : `${at} — ${advice}, or point ${HISTORY_FILE_ENV} at another file.`;
+  }
   if (warning.source !== USAGE_WARNING_SOURCE.transcripts) {
     return warning.message;
   }
@@ -131,7 +154,8 @@ async function main() {
   const meta = await fetchIssueMetadata();
   // The same history file the Usage page reads and writes (#417), so an issue
   // whose transcript is gone keeps its spend here as it does there (R3).
-  const report = await gatherUsage(dir, meta, resolveHistoryFile());
+  const historyFile = resolveHistoryFile();
+  const report = await gatherUsage(dir, meta, historyFile);
 
   // Warned rather than fatal, and both sources are warnings for the same reason:
   // an unreadable transcript directory is the ordinary state of a fresh clone
@@ -146,7 +170,7 @@ async function main() {
   // while `gh` answers perfectly, and the reverse (#289). Nothing here counts
   // them or stops at the first.
   for (const warning of report.warnings) {
-    console.error(`${diagnostic(warning, report)}\n`);
+    console.error(`${diagnostic(warning, report, historyFile)}\n`);
   }
 
   // The same rows, in the same order, that the Usage page renders — because they

@@ -1,5 +1,12 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -897,6 +904,115 @@ describe("gatherUsage with a history", () => {
 
     expect(report.issues[0]?.spend?.out).toBe(4200);
     expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+  });
+});
+
+/**
+ * Slice 4 of `docs/plans/usage-history.md` (#420): the history is a file the
+ * developer can delete or damage, and neither costs the page. Deleted, the next
+ * scan rebuilds it from the transcripts on disk; damaged, the scan reports what
+ * the transcripts show and a warning of the history's own.
+ */
+describe("gatherUsage with a broken history (#420)", () => {
+  let historyDir: string;
+  let history: string;
+  const JUNK = "this is not a SQLite database\n".repeat(8);
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  const stamped = (at: string, branch: string, out: number) =>
+    JSON.stringify({
+      sessionId: "a",
+      gitBranch: branch,
+      timestamp: at,
+      message: { usage: { output_tokens: out } },
+    });
+
+  it("rebuilds a deleted history from the transcripts still on disk, its start date with it", async () => {
+    write("old.jsonl", [
+      stamped("2026-09-02T09:00:00.000Z", "feat/101-a", 1000),
+    ]);
+    write("new.jsonl", [
+      stamped("2026-09-20T09:00:00.000Z", "fix/102-b", 2000),
+    ]);
+    await gatherUsage(dir, known(), history);
+
+    rmSync(join(dir, "old.jsonl"));
+    rmSync(history);
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.warnings).toEqual([]);
+    expect(report.historySince).toBe("2026-09-20T09:00:00.000Z");
+    // Only what is on disk now: the deleted transcript's spend went with the
+    // history that held it.
+    expect(report.issues).toEqual((await gatherUsage(dir, known())).issues);
+    expect(report.issues.map((r) => r.issue)).toEqual([102]);
+  });
+
+  it("reports the live figures and one warning of its own over an unreadable history", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000), turn("a", "main", 500)]);
+    writeFileSync(history, JUNK, "utf8");
+
+    const report = await gatherUsage(dir, known(), history);
+    const live = await gatherUsage(dir, known());
+
+    expect(report.issues).toEqual(live.issues);
+    expect(report.unattributed).toEqual(live.unattributed);
+    expect(report.transcripts).toBe(1);
+    expect(report.historySince).toBeNull();
+    expect(report.trend).toEqual([]);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.history);
+    // It names the file and says what to do with it, because nothing else will.
+    expect(report.warnings[0]?.message).toContain(history);
+    expect(report.warnings[0]?.message).toMatch(/delete/i);
+  });
+
+  it("never writes over an unreadable history, and lets it go once it is deleted", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000)]);
+    writeFileSync(history, JUNK, "utf8");
+
+    await gatherUsage(dir, known(), history);
+    await gatherUsage(dir, known(), history);
+
+    expect(readFileSync(history, "utf8")).toBe(JUNK);
+    // Nothing still holds it, or Windows would refuse this.
+    rmSync(history);
+    const report = await gatherUsage(dir, known(), history);
+    expect(report.warnings).toEqual([]);
+    expect(report.issues[0]?.spend?.out).toBe(12_000);
+  });
+
+  it("stacks beside the other two sources rather than masking them", async () => {
+    writeFileSync(history, JUNK, "utf8");
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, noListing(), history);
+
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+      USAGE_WARNING_SOURCE.listing,
+      USAGE_WARNING_SOURCE.history,
+    ]);
+  });
+
+  it("treats a history it cannot open at all as unreadable too", async () => {
+    // A directory where the file should be: SQLite cannot open it, junk or not.
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000)]);
+    mkdirSync(history);
+
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.issues[0]?.spend?.out).toBe(12_000);
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.history,
+    ]);
   });
 });
 

@@ -227,15 +227,16 @@ function joinIssues(
  * stored point. `now` is the clock that point and `gatheredAt` are stamped
  * with, a parameter so the tests can move a day, which Playwright cannot.
  *
- * **Nothing here throws, except a history that cannot be opened.** A missing
- * directory is the ordinary state of a machine that has never run Claude Code
- * in this project, and of CI; a 500 from the middleware would read as the page
- * being broken rather than as the honest "there is nothing here". A `gh` that
- * cannot answer is smaller still: it costs three columns, not the page. Both
- * are reported as warnings beside whatever could be read, the way the project
- * map surfaces what its scan could not parse. The history store is the
- * exception for now: slice 4 of `docs/plans/usage-history.md` makes it a
- * warning of its own.
+ * **Nothing here throws.** A missing directory is the ordinary state of a
+ * machine that has never run Claude Code in this project, and of CI; a 500 from
+ * the middleware would read as the page being broken rather than as the honest
+ * "there is nothing here". A `gh` that cannot answer is smaller still: it costs
+ * three columns, not the page. Both are reported as warnings beside whatever
+ * could be read, the way the project map surfaces what its scan could not
+ * parse. Since #420 so is a history that cannot be read: the scan reports the
+ * transcripts on disk alone, beside a warning of the history's own, and never
+ * writes over the file. A deleted one needs nothing — the store creates a
+ * fresh file and this scan fills it from what is on disk.
  *
  * **Each warning names its source** (#289). They were bare strings, so the only
  * way to tell an unreadable directory from an unavailable listing was to match
@@ -255,17 +256,53 @@ export async function gatherUsage(
   // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
   const startedAt = Date.now();
   const listing = metadata ?? (await fetchIssueMetadata());
-  // Opened before the read rather than after it (#418): its cursors say where
-  // each transcript's unread bytes begin. Closed before the response, so nothing
-  // holds the file between presses (see the store).
-  const store =
-    historyFile === undefined ? null : await openUsageStore(historyFile);
-  try {
-    return reportFrom(dir, listing, startedAt, store, now);
-  } finally {
-    store?.close();
+  if (historyFile === undefined) {
+    return reportFrom(dir, listing, startedAt, null, now);
   }
+
+  let failure: unknown;
+  try {
+    // Opened before the read rather than after it (#418): its cursors say where
+    // each transcript's unread bytes begin. Closed before the response, so
+    // nothing holds the file between presses (see the store).
+    const store = await openUsageStore(historyFile);
+    try {
+      return reportFrom(dir, listing, startedAt, store, now);
+    } finally {
+      store.close();
+    }
+  } catch (err) {
+    failure = err;
+  }
+
+  // The history failed — on opening, or part-way through a scan, whose writes
+  // its transaction rolled back. The reading is then the transcripts on disk
+  // alone, read whole: the cursors that would have skipped the bytes already
+  // read are in the file that failed. Closed first, so the developer can act on
+  // what the warning says.
+  const report = reportFrom(dir, listing, startedAt, null, now);
+  report.warnings.push({
+    source: USAGE_WARNING_SOURCE.history,
+    message: historyWarning(historyFile, failure),
+  });
+  return report;
 }
+
+/**
+ * What the page says when the history could not be read (#420).
+ *
+ * It says what to do because nothing else will: the scan never writes to a
+ * history it could not read, so a damaged file stays exactly as it was until
+ * the developer moves or deletes it — silently replacing it would throw away
+ * the spend of every transcript Claude Code has already pruned, which is the
+ * one thing the history exists to keep.
+ */
+const historyWarning = (file: string, err: unknown) =>
+  `Could not read the usage history at ${file}: ` +
+  `${err instanceof Error ? err.message : String(err)}. ` +
+  "These figures are the transcripts on disk alone, and the file is left as " +
+  "it is. Move it aside or delete it to start a new history; the next scan " +
+  "rebuilds it from the transcripts still on disk.";
 
 /** `gatherUsage` once the listing is in hand and the history, if any, is open. */
 function reportFrom(
@@ -277,9 +314,12 @@ function reportFrom(
 ): UsageReport {
   const warnings: UsageWarning[] = [];
 
+  // Outside the `try` below, which is about the transcripts: a history that
+  // fails here is the history's warning, raised by `gatherUsage`.
+  const cursors = store?.cursors();
   let read = emptyRead();
   try {
-    read = readTranscripts(dir, store?.cursors());
+    read = readTranscripts(dir, cursors);
     // Inside the `try`, so "there is nothing in it" is only asked of a directory
     // that was actually read. It used to be a `warnings.length === 0` guard
     // below, which said the same thing by counting what this function had pushed

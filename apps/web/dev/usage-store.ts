@@ -338,10 +338,21 @@ async function openSqlite(file: string): Promise<SqlDatabase> {
  * Open the history at `file`, creating it and its directory when they do not
  * exist. The caller closes it before answering.
  *
- * A file that cannot be opened throws, for now: slice 4 of
- * `docs/plans/usage-history.md` turns that into a warning.
+ * A file that cannot be opened throws, and `gatherUsage` turns that into a
+ * warning (#420). Opening a damaged file succeeds and the first statement fails
+ * ("file is not a database"), so the handle is closed before rethrowing: left
+ * to the garbage collector it keeps the file locked on Windows, and the
+ * developer could not delete the very file the warning tells them to delete.
+ * Nothing is written to it on the way — the schema's first `CREATE` is what
+ * fails — so a damaged history is never overwritten.
  */
 export async function openUsageStore(file: string): Promise<UsageStore> {
   mkdirSync(dirname(file), { recursive: true });
-  return usageStoreOver(await openSqlite(file));
+  const db = await openSqlite(file);
+  try {
+    return usageStoreOver(db);
+  } catch (err) {
+    db.close();
+    throw err;
+  }
 }
