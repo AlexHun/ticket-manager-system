@@ -613,5 +613,15 @@
     "version": "0.1.165",
     "date": "2026-10-04",
     "title": "Review fixes for the broken usage history"
+  },
+  {
+    "version": "0.1.166",
+    "date": "2026-10-04",
+    "title": "Every worktree of a clone shares one usage history"
+  },
+  {
+    "version": "0.1.166",
+    "date": "2026-10-04",
+    "title": "Review fixes for the shared usage history"
   }
 ]
