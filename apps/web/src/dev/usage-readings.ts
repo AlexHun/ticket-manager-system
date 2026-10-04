@@ -1,7 +1,8 @@
 /**
  * What the Usage page and `bun run tokens` both compute from the wire's rows:
  * the band a figure lands in, the quartiles, the accuracy tally, the
- * distribution's sample — and `hasRecordedSpend`, the page's central rule,
+ * distribution's sample, a day's trend point built from those three (#419) —
+ * and `hasRecordedSpend`, the page's central rule,
  * which every one of those asks before it reads a figure.
  *
  * Split out of `./usage-protocol` in #297, and by reader: the node half, the
@@ -18,9 +19,11 @@
 import {
   BUCKETS,
   VERDICT,
+  type BandEdges,
   type Bucket,
   type IssueSpend,
   type IssueUsage,
+  type TrendPoint,
   type Verdict,
 } from "./usage-protocol.ts";
 
@@ -214,3 +217,52 @@ export function forecastAccuracy(issues: IssueUsage[]): ForecastAccuracy {
  */
 export const recordedSpend = (issues: IssueUsage[]): number[] =>
   issues.flatMap((row) => (hasRecordedSpend(row) ? [row.spend.out] : []));
+
+/** The band edges `BUCKETS` holds now — what a trend point records (R7). */
+export const bandEdges = (): BandEdges => ({
+  S: BUCKETS.S.max,
+  M: BUCKETS.M.max,
+  L: BUCKETS.L.max,
+});
+
+/**
+ * The local calendar day an instant falls on, `YYYY-MM-DD`.
+ *
+ * Local rather than UTC, which is the PRD's assumption confirmed: a developer
+ * west of Greenwich scanning in the evening is still on today, and a UTC day
+ * would file that scan under tomorrow. `toISOString().slice(0, 10)` is the
+ * one-liner that gets this wrong.
+ */
+export function localDay(at: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+/**
+ * The trend's point for the day `at` falls on (#419, R6): the quartiles of
+ * actual output tokens and the forecast-accuracy tally, beside the band edges
+ * in force.
+ *
+ * **Built from the same three functions the page's panels call** —
+ * `recordedSpend` for the sample, `percentiles` for the quartiles,
+ * `forecastAccuracy` for the score — over the same rows, so today's point and
+ * the distribution and accuracy panels above it cannot disagree. Here rather
+ * than in the node half for the reason the rest of this module is: it is
+ * arithmetic over the wire's rows, and one copy of it is what keeps the claim.
+ */
+export function trendPointFor(issues: IssueUsage[], at: Date): TrendPoint {
+  const spent = recordedSpend(issues);
+  const { p25, p50, p75 } = percentiles(spent);
+  const { scored, onTarget } = forecastAccuracy(issues);
+  return {
+    day: localDay(at),
+    at: at.toISOString(),
+    measured: spent.length,
+    p25,
+    median: p50,
+    p75,
+    scored,
+    onTarget,
+    edges: bandEdges(),
+  };
+}

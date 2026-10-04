@@ -13,7 +13,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * What the Usage page's two charts share: the panel they sit in, their one
- * series config, and the per-bin fill the tooltip reads.
+ * series config, and the per-bin fill the tooltip reads. The panel is also the
+ * shell the two trend charts sit in (`./UsageTrend`, #419), which bring their
+ * own series configs.
  *
  * Out of `UsageCharts.tsx` since #297. That file is the two *readings* — which
  * question each chart asks and how its marks answer it — and this is the shell
@@ -40,12 +42,12 @@ export const issuesConfig = {
 export const withFill = <T,>(bin: T, fill: string) => ({ ...bin, fill });
 
 /**
- * The shell both panels share: a named region, a headline figure, and an empty
+ * The shell every panel shares: a named region, a headline figure, and an empty
  * state that says what is missing instead of drawing an axis around nothing.
  *
  * `role="region"` with `aria-labelledby` for the reason `TableFrame` carries the
  * same pair (#111): a region without an accessible name is not exposed as a
- * landmark at all, and these two panels are what the E2E addresses by name —
+ * landmark at all, and these panels are what the E2E addresses by name —
  * Playwright's full-page screenshots catch Recharts mid-animation, so the spec
  * asserts on roles and text and never on a picture.
  */

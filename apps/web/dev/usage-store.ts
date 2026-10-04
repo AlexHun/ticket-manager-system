@@ -14,6 +14,12 @@
 // read, so the next scan reads only what was appended. A cursor is bookkeeping
 // about the files, not a figure, so the rule above still holds.
 //
+// **And one trend point per local calendar day** (#419): that day's quartiles
+// and accuracy tally, with the band edges in force. The one answer kept, because
+// a day that has passed cannot be asked again — the labels `gh` reported and the
+// bands the code held are gone by the next one. It stores spend and a tally,
+// never a row's verdict. ADR-0023's #419 section draws that line.
+//
 // **Opened per scan, closed before the response.** A handle held across
 // requests would stop a spec, or a developer, from deleting or replacing the
 // file on Windows; opening is milliseconds against even a warm scan's ~60ms, so
@@ -41,6 +47,7 @@ import {
   type TranscriptCursors,
   type TranscriptResponse,
 } from "./transcripts.ts";
+import type { TrendPoint } from "../src/dev/usage-protocol.ts";
 
 /**
  * Environment variable that overrides where the history file lives — the third
@@ -114,6 +121,11 @@ export interface UsageStore {
   responses(): TranscriptResponse[];
   /** The earliest timestamp stored, or null when nothing carrying one is. */
   since(): string | null;
+  /** Write a day's trend point (#419), replacing any point already stored for
+   *  that day — the last scan of a day is the one the trend keeps. */
+  recordPoint(point: TrendPoint): void;
+  /** Every stored trend point, oldest day first. */
+  trend(): TrendPoint[];
   close(): void;
 }
 
@@ -137,7 +149,38 @@ const SCHEMA = [
     lines INTEGER NOT NULL,
     head TEXT NOT NULL
   )`,
+  // #419: one row per local calendar day, keyed on it so a later scan that day
+  // replaces the point. The band edges are columns of their own rather than
+  // read from `BUCKETS` on the way out: they are what was in force that day.
+  `CREATE TABLE IF NOT EXISTS trend_point (
+    day TEXT PRIMARY KEY,
+    at TEXT NOT NULL,
+    measured INTEGER NOT NULL,
+    p25 INTEGER NOT NULL,
+    median INTEGER NOT NULL,
+    p75 INTEGER NOT NULL,
+    scored INTEGER NOT NULL,
+    on_target INTEGER NOT NULL,
+    edge_s INTEGER NOT NULL,
+    edge_m INTEGER NOT NULL,
+    edge_l INTEGER NOT NULL
+  )`,
 ];
+
+/** A `trend_point` row as SQLite hands it back. */
+interface TrendRow {
+  day: string;
+  at: string;
+  measured: number;
+  p25: number;
+  median: number;
+  p75: number;
+  scored: number;
+  on_target: number;
+  edge_s: number;
+  edge_m: number;
+  edge_l: number;
+}
 
 /**
  * The store over an open database. Creates its tables on first use, so a fresh
@@ -208,6 +251,46 @@ export function usageStoreOver(db: SqlDatabase): UsageStore {
       const row = db.prepare("SELECT MIN(at) AS since FROM response").get() as
         { since: string | null } | null | undefined;
       return row?.since ?? null;
+    },
+    recordPoint(p) {
+      db.prepare(
+        `INSERT OR REPLACE INTO trend_point
+           (day, at, measured, p25, median, p75, scored, on_target,
+            edge_s, edge_m, edge_l)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        p.day,
+        p.at,
+        p.measured,
+        p.p25,
+        p.median,
+        p.p75,
+        p.scored,
+        p.onTarget,
+        p.edges.S,
+        p.edges.M,
+        p.edges.L,
+      );
+    },
+    trend() {
+      const rows = db
+        .prepare(
+          `SELECT day, at, measured, p25, median, p75, scored, on_target,
+                  edge_s, edge_m, edge_l
+           FROM trend_point ORDER BY day`,
+        )
+        .all() as TrendRow[];
+      return rows.map((r) => ({
+        day: r.day,
+        at: r.at,
+        measured: r.measured,
+        p25: r.p25,
+        median: r.median,
+        p75: r.p75,
+        scored: r.scored,
+        onTarget: r.on_target,
+        edges: { S: r.edge_s, M: r.edge_m, L: r.edge_l },
+      }));
     },
     close: () => db.close(),
   };

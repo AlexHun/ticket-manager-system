@@ -44,6 +44,17 @@ import { bucketFor, percentiles, recordedSpend } from "./usage-readings";
  */
 export const formatTokens = (n: number): string => n.toLocaleString("en-US");
 
+/**
+ * The accuracy figure as the page prints it: `1/2 on target (50%)`.
+ *
+ * One copy since #419, for the reason `formatTokens` is one: the accuracy
+ * panel's corner and each trend point print it, and today's point is meant to
+ * read *identically* to the panel above it. The caller decides whether there is
+ * anything to score — a `scored` of zero is no figure at all, not 0%.
+ */
+export const accuracyLabel = (onTarget: number, scored: number): string =>
+  `${onTarget}/${scored} on target (${Math.round((onTarget / scored) * 100)}%)`;
+
 /** Which quartile a mark is, as the word the chart prints. */
 export type PercentileKey = "p25" | "median" | "p75";
 

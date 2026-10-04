@@ -8,6 +8,7 @@ import { useUsageScan } from "./dev-api";
 import { SpendTable } from "./SpendTable";
 import { DEFAULT_USAGE_TABLE_VIEW, type UsageTableView } from "./usage-view";
 import { UsageCharts } from "./UsageCharts";
+import { UsageTrend } from "./UsageTrend";
 import { formatTokens } from "./usage-charts";
 import type { UnattributedWork, UsageReport } from "./usage-protocol";
 
@@ -40,6 +41,8 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * otherwise makes you compute by eye: how often a forecast band matched, and
  * whether the bands still fit the work. They read the same rows and are derived
  * in `./usage-charts.ts`; what they refuse to read is the subject of that file.
+ * **Below them, the trend** (#419): how those two readings have moved, one
+ * point per day with a scan, from the usage history — `./UsageTrend`.
  *
  * **A row is not proof that work happened** (#251). Every open issue gets one,
  * so the page answers "what is this forecast to cost?" before the work as well
@@ -170,6 +173,10 @@ export function UsagePage() {
           relieves. Both are gated on the same `report`, so nothing survives
           into the next press. */}
       {report && <UsageCharts issues={report.issues} />}
+
+      {/* How those two readings have moved, one point per day with a scan
+          (#419). After them, since today's point is the panels above. */}
+      {report && <UsageTrend points={report.trend} />}
 
       {report && (
         <SpendTable issues={report.issues} view={view} onViewChange={setView} />

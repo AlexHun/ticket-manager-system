@@ -3,6 +3,7 @@
 **The dev server now keeps what a Usage scan read**: every API response a scan
 finds is stored in a local SQLite file, and every reading is tallied over
 everything stored. **It still keeps no answer**: no row, no total, no report.
+(Since #419 it keeps one kind, a day's trend point: see "The trend" below.)
 This reverses the rule `UsageReport` stated from the first Usage slice (#248)
 until [#417](https://github.com/AlexHun/ticket-manager-system/issues/417): "the
 middleware caches nothing", and "a held copy is the one thing this page must
@@ -58,6 +59,29 @@ rows whose transcript is deleted.
   processes to open the real file. That turned out wrong for the E2E server,
   and the runtime check covers both.
 
+## The trend: the one answer kept (#419)
+
+Slice 3 adds a `trend_point` table beside the responses: one row per local
+calendar day on which a scan was taken, holding that day's quartiles of output
+tokens, its accuracy tally (`onTarget` of `scored`), and the band edges the
+code held. The day's last scan replaces its row. That's a stored answer, and
+it's kept on purpose: a past day can't be asked again. The forecast labels `gh`
+reported and the band edges in force are gone by the next day, and the trend
+exists to show those moving.
+
+What it doesn't change:
+
+- **Spend and a tally, never a verdict.** No row's verdict is stored, so every
+  verdict on the page is still judged against today's bands (R7).
+- **Today's point is the panels.** It's computed by `trendPointFor` in
+  `apps/web/src/dev/usage-readings.ts` with the same `recordedSpend`,
+  `percentiles` and `forecastAccuracy` the distribution and accuracy panels
+  call, over the same rows, so the two can't disagree.
+- **A correction still reaches every figure that is computed per reading.** A
+  past day's point is the one figure that keeps the rules it was taken under.
+  That's correct for a record of what a day said, and it's why the point carries
+  its band edges.
+
 ## Considered options
 
 **Per-issue totals per scan.** Smaller, and enough for a trend. Rejected
@@ -80,6 +104,9 @@ without anyone noticing. It also records no trend, and slice 3 needs one.
   and `bun run tokens` both pass the same resolved file, which keeps them in
   agreement (R3). Unit tests about the join pass none and see only what's on
   disk.
+- Since #419 `gatherUsage` also takes a clock as a fourth argument, which stamps
+  both `gatheredAt` and the day's trend point, so a unit test can move a day.
+  `UsageReport` gains `trend`, every stored point oldest first.
 - A store that can't be opened throws for now. Slice 4 of
   `docs/plans/usage-history.md` turns that into a warning with a source of its
   own.

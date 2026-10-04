@@ -183,6 +183,53 @@ export interface UnattributedWork {
 }
 
 /**
+ * The band edges a forecast is cut against: each closed band's exclusive
+ * `max`, from `BUCKETS`. `XL` has none — it is open-ended.
+ *
+ * A record rather than a re-read of `BUCKETS` because a trend point carries the
+ * edges that were in force on its day (R7): when the bands move, the old points
+ * keep the old edges, and the chart shows the move.
+ */
+export type BandEdges = Record<Exclude<Bucket, "XL">, number>;
+
+/**
+ * One local calendar day's reading of the population, for the Usage page's
+ * trend (#419, R6).
+ *
+ * **The one figure the usage history keeps that is an answer rather than a
+ * response**, and only because a day that has passed cannot be asked again:
+ * the forecast labels `gh` reported and the bands the code held that day are
+ * gone by the next one. What it keeps is spend — the quartiles of output
+ * tokens and the accuracy tally — and never a row's verdict: every verdict on
+ * the page is still judged against today's bands. ADR-0023's #419 section is
+ * where that line is drawn.
+ *
+ * Computed by `trendPointFor` in `./usage-readings` from the same rows, with
+ * the same `recordedSpend`, `percentiles` and `forecastAccuracy`, as the
+ * page's distribution and accuracy panels — so today's point and the panels
+ * above it cannot disagree.
+ */
+export interface TrendPoint {
+  /** The local calendar day, `YYYY-MM-DD`. One point per day: the last scan of
+   *  a day replaces that day's point. */
+  day: string;
+  /** ISO 8601 stamp of the scan that wrote it. */
+  at: string;
+  /** Issues with recorded spend — the quartiles' sample. Zero means there were
+   *  no quartiles to take, and the three below are then not a measurement. */
+  measured: number;
+  p25: number;
+  median: number;
+  p75: number;
+  /** Issues carrying a verdict — the accuracy figure's denominator. Zero means
+   *  nothing could be scored, which is not 0%. */
+  scored: number;
+  onTarget: number;
+  /** The band edges in force when the point was written. */
+  edges: BandEdges;
+}
+
+/**
  * Which half of the scan a warning came from.
  *
  * The scan reads two sources and they fail independently — the transcript
@@ -251,7 +298,9 @@ export interface UsageWarning {
  * read in a local SQLite file, and the figures are tallied over everything
  * stored. Nothing *derived* is kept — not a row, not a total, not a report — so
  * every reading is still computed afresh at `gatheredAt`, by today's counting
- * and attribution rules.
+ * and attribution rules. The one exception is `trend` (#419): a past day's
+ * quartiles and accuracy, which no later reading can recompute — see
+ * `TrendPoint`.
  */
 export interface UsageReport {
   /** ISO 8601, stamped when the read finished. */
@@ -278,6 +327,12 @@ export interface UsageReport {
    * "not recorded", not as zero.
    */
   historySince: string | null;
+  /**
+   * One point per local calendar day on which a scan was taken, oldest first,
+   * today's written by this scan (#419). Empty for a reading taken without a
+   * history, which has nowhere to keep one.
+   */
+  trend: TrendPoint[];
   /**
    * One row per issue worth looking at — every issue with recorded spend, and
    * every issue the listing reports as open, whether or not anybody has started

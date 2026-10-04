@@ -161,3 +161,21 @@ export const USAGE_TABLE_LABEL = "Issue spend";
  * one, and no test addresses it by a whole string.
  */
 export const USAGE_NO_MATCH = "No issue matches these filters.";
+
+/**
+ * The trend's three named regions (#419): its two chart panels and the table of
+ * points beneath them, which is the charts' accessibility-relief path and what
+ * the E2E reads a day's point from.
+ *
+ * Here for the reason `USAGE_TABLE_LABEL` is: both suites address them by
+ * name and neither can import a `.tsx` module. And none of the three may
+ * contain another region's name — Playwright matches an accessible name as a
+ * case-insensitive substring, so a "Forecast accuracy over time" would make
+ * every `{ name: "Forecast accuracy" }` in `dev-usage.spec.ts` match two
+ * regions and fail in strict mode.
+ */
+export const USAGE_TREND_LABEL = {
+  quartiles: "Quartiles over time",
+  accuracy: "Accuracy over time",
+  points: "Trend points",
+} as const;
