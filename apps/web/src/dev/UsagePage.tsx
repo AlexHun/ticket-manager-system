@@ -22,8 +22,8 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * the page opens empty and says so, and the figures on screen are always one
  * named moment's reading rather than "whatever the machine has been doing"
  * (R5). Pressing Scan again re-reads — `UsageReport` in `./usage-protocol` is
- * where the reason nothing on either side of the wire caches the answer is
- * written down.
+ * where the reason no answer is cached on either side of the wire is written
+ * down, and why the responses behind it are (#417).
  *
  * **The rows are `./SpendTable`, which is where everything about an issue
  * lives** (#270) — the column definitions, the two markers that tell a missing
@@ -128,6 +128,12 @@ export function UsagePage() {
         )}
       </p>
 
+      {/* Its own line rather than a clause of the one above, which is the
+          reading's account of itself; this is the history's (#417). */}
+      {report && !scan.isPending && (
+        <HistorySince since={report.historySince} />
+      )}
+
       {/* Inline as well as in the toast: a toast is gone in seconds, and this is
           the copy you are still looking at while you fix the cause. */}
       {problem && (
@@ -179,14 +185,16 @@ export function UsagePage() {
         terminal and this page cannot disagree about what an issue cost or
         whether it came in on target. Titles, links and forecast bands come from{" "}
         <code className="font-mono">gh</code>; without it the figures still land
-        and only those read as unknown. Every open issue is listed, so an issue
-        nobody has started appears with its band and no figures rather than not
-        at all. Work that ran on <code className="font-mono">main</code> or on
-        no branch belongs to no issue and is totalled on its own below the
-        table. Two things are in neither place: work done on any other machine,
-        since these transcripts are local, and a branch whose name carries no
-        issue number, which the join has nothing to attribute and does not call
-        unattributed either.
+        and only those read as unknown. Each scan also stores the responses it
+        read in a history file outside the repository, so an issue keeps its
+        spend after Claude Code deletes the transcript it came from. Every open
+        issue is listed, so an issue nobody has started appears with its band
+        and no figures rather than not at all. Work that ran on{" "}
+        <code className="font-mono">main</code> or on no branch belongs to no
+        issue and is totalled on its own below the table. Two things are in
+        neither place: work done on any other machine, since these transcripts
+        are local, and a branch whose name carries no issue number, which the
+        join has nothing to attribute and does not call unattributed either.
       </p>
     </div>
   );
@@ -291,5 +299,37 @@ function Gathered({ report }: { report: UsageReport }) {
       {report.issues.length} {report.issues.length === 1 ? "issue" : "issues"},
       read in {report.scanMs} ms.
     </>
+  );
+}
+
+/**
+ * From which date the stored history runs (R8).
+ *
+ * History starts when the store was first written, not when the work did:
+ * Claude Code had already deleted every transcript older than 30 days when it
+ * began. So an issue with no spend before this date reads as *not recorded*,
+ * and the page says so rather than letting that read as zero. The date is in
+ * the viewer's locale inside a `<time>` carrying the ISO stamp, as `Gathered`
+ * renders its own.
+ */
+function HistorySince({ since }: { since: string | null }) {
+  return (
+    <p className="px-3 text-xs text-muted-foreground">
+      {since ? (
+        <>
+          History from{" "}
+          <time dateTime={since} className="font-medium text-foreground">
+            {new Date(since).toLocaleDateString()}
+          </time>
+          . Spend from before that date was never stored, so it reads as not
+          recorded rather than as zero.
+        </>
+      ) : (
+        <>
+          No stored history yet: it starts with the first scan that reads a
+          transcript.
+        </>
+      )}
+    </p>
   );
 }

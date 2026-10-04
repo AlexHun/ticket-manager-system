@@ -5,7 +5,9 @@
 // off this machine's Claude Code transcripts, `./issues.ts` reads the listing
 // off `gh` — and this one joins them into the wire's rows (#297). Why the
 // figure is output tokens, and what the scan cannot attribute, is argued at the
-// top of `./transcripts.ts`, beside the code that decides it.
+// top of `./transcripts.ts`, beside the code that decides it. Since #417 the
+// spend is tallied over the usage history (`./usage-store.ts`) rather than over
+// the files alone, so an issue keeps it after its transcript is deleted.
 //
 // This module is the single copy of the join, and since #290 both callers reach
 // it through one door. `gatherUsage` returns the whole reading — the rows, the
@@ -50,7 +52,13 @@ import {
   fetchIssueMetadata,
   type IssueMetadata,
 } from "./issues.ts";
-import { scanSpend, type ScanResult, type Spend } from "./transcripts.ts";
+import {
+  readTranscripts,
+  tallySpend,
+  type Spend,
+  type TranscriptRead,
+} from "./transcripts.ts";
+import { openUsageStore } from "./usage-store.ts";
 
 /**
  * A forecast band read against what was actually spent.
@@ -75,23 +83,19 @@ export function verdictFor(
 }
 
 /**
- * A reading that found nothing, for `gatherUsage` below to start from before it
+ * A read that found nothing, for `gatherUsage` below to start from before it
  * knows whether the directory can be read at all.
  *
- * A function rather than a shared constant because `unattributed` is an object:
- * a single frozen-by-convention literal is one `scan.unattributed.turns++` away
- * from being poisoned for every later caller in the process.
+ * A function rather than a shared constant because `responses` is an array: a
+ * single frozen-by-convention literal is one `push` away from being poisoned
+ * for every later caller in the process.
  *
  * Not exported since #290. `bun run tokens` used to need one too, because it ran
  * its own scan and had to have something to print when the read failed; it calls
  * `gatherUsage` now, so there is one caller and the "found nothing" reading is
  * this module's own business rather than a shape two surfaces agree on.
  */
-const emptyScan = (): ScanResult => ({
-  byIssue: new Map(),
-  unattributed: { turns: 0, out: 0 },
-  transcripts: 0,
-});
+const emptyRead = (): TranscriptRead => ({ responses: [], transcripts: 0 });
 
 /**
  * The rows themselves: every issue worth looking at, joined to what GitHub
@@ -203,13 +207,24 @@ function joinIssues(
  * than a parameter default only because fetching one is asynchronous — see
  * `listIssues` in `./issues.ts` for why it has to be.
  *
- * **Nothing here throws.** A missing directory is the ordinary state of a
- * machine that has never run Claude Code in this project, and of CI; a 500 from
- * the middleware would read as the page being broken rather than as the honest
- * "there is nothing here". A `gh` that cannot answer is smaller still: it costs
- * three columns, not the page. Both are reported as warnings beside whatever
- * could be read, the way the project map surfaces what its scan could not
- * parse.
+ * **The history is optional too, and both real callers pass it** (#417). With
+ * `historyFile`, every response this read found is stored in the SQLite file
+ * it names (`./usage-store.ts`) and the figures are tallied over *everything
+ * stored*, so an issue keeps its spend after its transcript is deleted (R1),
+ * and the page and the terminal still agree because both pass the same file
+ * (R3). Without it, the figures are what is on disk now and `historySince` is
+ * null — which is what the unit tests about the join want, and why they need no
+ * file of their own.
+ *
+ * **Nothing here throws, except a history that cannot be opened.** A missing
+ * directory is the ordinary state of a machine that has never run Claude Code
+ * in this project, and of CI; a 500 from the middleware would read as the page
+ * being broken rather than as the honest "there is nothing here". A `gh` that
+ * cannot answer is smaller still: it costs three columns, not the page. Both
+ * are reported as warnings beside whatever could be read, the way the project
+ * map surfaces what its scan could not parse. The history store is the
+ * exception for now: slice 4 of `docs/plans/usage-history.md` makes it a
+ * warning of its own.
  *
  * **Each warning names its source** (#289). They were bare strings, so the only
  * way to tell an unreadable directory from an unavailable listing was to match
@@ -222,6 +237,7 @@ function joinIssues(
 export async function gatherUsage(
   dir: string,
   metadata?: IssueMetadata,
+  historyFile?: string,
 ): Promise<UsageReport> {
   // Before the listing, not after: `scanMs` answers "how long did pressing
   // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
@@ -229,15 +245,15 @@ export async function gatherUsage(
   const listing = metadata ?? (await fetchIssueMetadata());
   const warnings: UsageWarning[] = [];
 
-  let scan = emptyScan();
+  let read = emptyRead();
   try {
-    scan = scanSpend(dir);
+    read = readTranscripts(dir);
     // Inside the `try`, so "there is nothing in it" is only asked of a directory
     // that was actually read. It used to be a `warnings.length === 0` guard
     // below, which said the same thing by counting what this function had pushed
     // so far — true only while the transcripts were the first source to report,
     // and quietly wrong the moment a second one went in ahead of them.
-    if (scan.transcripts === 0) {
+    if (read.transcripts === 0) {
       warnings.push({
         source: USAGE_WARNING_SOURCE.transcripts,
         message: `No .jsonl transcripts in ${dir}.`,
@@ -260,16 +276,34 @@ export async function gatherUsage(
     });
   }
 
+  // Stored, then read back whole: the tally below runs over every response the
+  // history holds, including those whose transcript is gone. Closed before the
+  // response, so nothing holds the file between presses (see the store).
+  let responses = read.responses;
+  let historySince: string | null = null;
+  if (historyFile !== undefined) {
+    const store = await openUsageStore(historyFile);
+    try {
+      store.record(read.responses);
+      responses = store.responses();
+      historySince = store.since();
+    } finally {
+      store.close();
+    }
+  }
+  const { byIssue, unattributed } = tallySpend(responses);
+
   return {
     gatheredAt: new Date().toISOString(),
     scanMs: Date.now() - startedAt,
     transcriptDir: dir,
-    transcripts: scan.transcripts,
-    issues: joinIssues(scan.byIssue, listing),
+    transcripts: read.transcripts,
+    historySince,
+    issues: joinIssues(byIssue, listing),
     // Beside the rows, never among them (#253): it has no issue number, nothing
     // forecast it, and there is no band for it to land in — which is also why
     // the page draws it as a total rather than a row.
-    unattributed: scan.unattributed,
+    unattributed,
     warnings,
   };
 }

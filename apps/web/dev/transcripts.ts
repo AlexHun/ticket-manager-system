@@ -33,8 +33,14 @@
 // Out of `./usage.ts` since #297, which had grown to hold both the scan and the
 // join. The split is the one `./issues.ts` already drew for the other source:
 // this module knows the filesystem and the transcript format and nothing about
-// forecasts, verdicts or the wire's row; `./usage.ts` knows those and reads
-// this through `scanSpend` alone.
+// forecasts, verdicts or the wire's row; `./usage.ts` knows those.
+//
+// Since #417 it is two halves rather than one sweep: `readTranscripts` turns the
+// files into one `TranscriptResponse` per API response, and `tallySpend`
+// attributes and counts any set of them. `./usage.ts` stores the first in the
+// usage history (`./usage-store.ts`) and runs the second over everything
+// stored, so spend survives a deleted transcript; `scanSpend` is the two run
+// back to back over what is on disk, with no history.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -76,6 +82,16 @@ export interface ScanResult {
 }
 
 /**
+ * The directory name Claude Code keys a project's transcripts on: the project
+ * root with every separator and the drive colon turned into `-`.
+ *
+ * Exported because the transcripts are not the only thing keyed on it: the
+ * usage history (`./usage-store.ts`) names its file after the same slug, so a
+ * project's history and its transcripts can always be matched up by name.
+ */
+export const projectSlug = (cwd: string): string => cwd.replace(/[\\/:]/g, "-");
+
+/**
  * Where the transcripts live, as one resolvable decision.
  *
  * `env` and the cwd/home pair are parameters rather than reads of `process` so
@@ -90,7 +106,7 @@ export function resolveTranscriptDir(
 ): string {
   const override = env[TRANSCRIPT_DIR_ENV]?.trim();
   if (override) return override;
-  return join(home, ".claude", "projects", cwd.replace(/[\\/:]/g, "-"));
+  return join(home, ".claude", "projects", projectSlug(cwd));
 }
 
 /**
@@ -108,21 +124,70 @@ export function resolveTranscriptDir(
 interface TranscriptRecord {
   sessionId?: string;
   gitBranch?: string;
+  uuid?: string;
+  timestamp?: string;
   message?: {
     id?: string;
     usage?: { output_tokens?: number; cache_read_input_tokens?: number };
   };
 }
 
-/** A branch's running total. Distinct sessions are counted, so it holds a set. */
-interface BranchAccumulator extends Omit<Spend, "sessions"> {
-  sessions: Set<string>;
+/**
+ * One API response, as read off a transcript: the unit the scan counts, and
+ * since #417 the unit the usage history stores (`./usage-store.ts`).
+ *
+ * **Raw facts, not conclusions.** It holds the branch rather than the issue the
+ * branch names, and its own tokens rather than a share of anybody's total, so
+ * attributing and counting stay code that runs over these on every read
+ * (`tallySpend`). That is what lets a correction like #413's or #253's reach a
+ * response whose transcript Claude Code has since deleted (R11): the stored row
+ * is re-read under the new rule rather than frozen under the old one.
+ */
+export interface TranscriptResponse {
+  /**
+   * What makes two records the same response, so it is stored and counted once.
+   * The response's `message.id` when it has one — every record of one response
+   * carries it (#413) — then the record's own `uuid`, then the file name and
+   * line number. Prefixed by which of the three it is, so the three namespaces
+   * cannot collide.
+   *
+   * The E2E fixtures carry neither an id nor a uuid, which is why the third
+   * exists: without it, a record with no id would have no identity at all and
+   * could not be told from itself on the next scan.
+   */
+  id: string;
+  /** `sessionId`, or null when the record carries none. */
+  session: string | null;
+  /** `gitBranch`, or null when the record carries none. */
+  branch: string | null;
+  /** The record's ISO 8601 `timestamp`, or null when it carries none. */
+  at: string | null;
+  /** `output_tokens`. */
+  out: number;
+  /** `cache_read_input_tokens`. */
+  cacheRead: number;
 }
 
+/** What one read of a transcript directory found. */
+export interface TranscriptRead {
+  /** Every response, each once — see `readTranscripts`. */
+  responses: TranscriptResponse[];
+  /** `.jsonl` files actually read. Zero is the honest answer for a machine that
+   *  has never run Claude Code in this project. */
+  transcripts: number;
+}
+
+const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
+  rec.message?.id
+    ? `message:${rec.message.id}`
+    : rec.uuid
+      ? `uuid:${rec.uuid}`
+      : `line:${file}:${line}`;
+
 /**
- * Sum usage per branch. One pass over every transcript; the files are
- * append-only JSONL and a partially-written last line is normal, so an
- * unparseable line is skipped rather than fatal.
+ * Every API response in `dir`, each once. One pass over every transcript; the
+ * files are append-only JSONL and a partially-written last line is normal, so
+ * an unparseable line is skipped rather than fatal.
  *
  * **One API response is one turn, however many records it was written as**
  * (#413). Claude Code writes a response as one record per content block — the
@@ -132,62 +197,102 @@ interface BranchAccumulator extends Omit<Spend, "sessions"> {
  * 8,894 multi-record responses differed between their records in
  * `output_tokens` (nor, re-measured the same day over 8,903 of them, in
  * `cache_read_input_tokens`), and summing every record inflated output 2.32x
- * overall and 1.00x-3.89x per issue. So the first record
- * of a response counts and the rest are skipped. A record with no
- * `message.id` has nothing to collapse on and counts once per record, as all of
- * them did before — a format change that drops the id then over-counts rather
- * than reading as zero spend.
+ * overall and 1.00x-3.89x per issue. So the first record of a response is kept
+ * and the rest are skipped. A record with no `message.id` has nothing to
+ * collapse on and is kept once per record, as all of them were before — a
+ * format change that drops the id then over-counts rather than reading as zero
+ * spend.
  */
-function spendByBranch(dir: string): {
-  byBranch: Map<string, BranchAccumulator>;
-  unattributed: UnattributedWork;
-  transcripts: number;
-} {
-  const byBranch = new Map<string, BranchAccumulator>();
-  const unattributed: UnattributedWork = { turns: 0, out: 0 };
+export function readTranscripts(dir: string): TranscriptRead {
+  const responses: TranscriptResponse[] = [];
   const seen = new Set<string>();
   const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
   for (const file of files) {
-    for (const line of readFileSync(join(dir, file), "utf8").split("\n")) {
-      if (!line.trim()) continue;
+    const lines = readFileSync(join(dir, file), "utf8").split("\n");
+    lines.forEach((line, index) => {
+      if (!line.trim()) return;
       let rec: TranscriptRecord;
       try {
         rec = JSON.parse(line) as TranscriptRecord;
       } catch {
-        continue;
+        return;
       }
       const usage = rec.message?.usage;
-      if (!usage) continue;
-      const id = rec.message?.id;
-      if (id) {
-        if (seen.has(id)) continue;
-        seen.add(id);
-      }
-      const branch = rec.gitBranch;
-      if (!branch || branch === "main") {
-        // Totalled here rather than counted, and deliberately not given a
-        // `BranchAccumulator` of its own: `sessions` and `cacheRead` are
-        // questions about an issue, and `main` is not one. See
-        // `UnattributedWork` in `../src/dev/usage-protocol.ts` for why the
-        // shape stops at two.
-        unattributed.turns++;
-        unattributed.out += usage.output_tokens ?? 0;
-        continue;
-      }
-      const acc = byBranch.get(branch) ?? {
-        turns: 0,
-        out: 0,
-        cacheRead: 0,
-        sessions: new Set<string>(),
-      };
-      acc.turns++;
-      acc.out += usage.output_tokens ?? 0;
-      acc.cacheRead += usage.cache_read_input_tokens ?? 0;
-      acc.sessions.add(rec.sessionId ?? "");
-      byBranch.set(branch, acc);
-    }
+      if (!usage) return;
+      // One-based, as an editor numbers the line a developer would go and read.
+      const id = identityOf(rec, file, index + 1);
+      if (seen.has(id)) return;
+      seen.add(id);
+      responses.push({
+        id,
+        session: rec.sessionId ?? null,
+        branch: rec.gitBranch ?? null,
+        at: rec.timestamp ?? null,
+        out: usage.output_tokens ?? 0,
+        cacheRead: usage.cache_read_input_tokens ?? 0,
+      });
+    });
   }
-  return { byBranch, unattributed, transcripts: files.length };
+  return { responses, transcripts: files.length };
+}
+
+/**
+ * The issue a branch names, or null for a branch that names none.
+ *
+ * Branches here are `<type>/<issue>-<slug>`. A branch naming no issue is not
+ * attributable and is dropped — and it is not unattributed either, which means
+ * `main` or no branch at all and is decided before this is asked.
+ */
+export function issueOfBranch(branch: string): number | null {
+  const m = branch.match(/\/(\d+)-/);
+  return m ? Number(m[1]) : null;
+}
+
+/** A branch's running total. Distinct sessions are counted, so it holds a set. */
+interface BranchAccumulator extends Omit<Spend, "sessions"> {
+  sessions: Set<string>;
+}
+
+/**
+ * Attribute and count a set of responses: what each issue's branches spent, and
+ * what ran on `main` or on no branch.
+ *
+ * Every response counts once, as one turn — `readTranscripts` and the history's
+ * identity key have already made each one appear once. `issueOf` is a parameter
+ * for R11's sake: attribution runs over the stored rows on every read, and a
+ * test changes the rule and watches stored figures follow it, including for
+ * rows whose transcript is gone. Both real callers take the default.
+ */
+export function tallySpend(
+  responses: readonly TranscriptResponse[],
+  issueOf: (branch: string) => number | null = issueOfBranch,
+): Omit<ScanResult, "transcripts"> {
+  const byBranch = new Map<string, BranchAccumulator>();
+  const unattributed: UnattributedWork = { turns: 0, out: 0 };
+  for (const r of responses) {
+    if (!r.branch || r.branch === "main") {
+      // Totalled here rather than counted, and deliberately not given a
+      // `BranchAccumulator` of its own: `sessions` and `cacheRead` are
+      // questions about an issue, and `main` is not one. See
+      // `UnattributedWork` in `../src/dev/usage-protocol.ts` for why the
+      // shape stops at two.
+      unattributed.turns++;
+      unattributed.out += r.out;
+      continue;
+    }
+    const acc = byBranch.get(r.branch) ?? {
+      turns: 0,
+      out: 0,
+      cacheRead: 0,
+      sessions: new Set<string>(),
+    };
+    acc.turns++;
+    acc.out += r.out;
+    acc.cacheRead += r.cacheRead;
+    acc.sessions.add(r.session ?? "");
+    byBranch.set(r.branch, acc);
+  }
+  return { byIssue: spendByIssue(byBranch, issueOf), unattributed };
 }
 
 /**
@@ -197,12 +302,12 @@ function spendByBranch(dir: string): {
  */
 function spendByIssue(
   byBranch: Map<string, BranchAccumulator>,
+  issueOf: (branch: string) => number | null,
 ): Map<number, Spend> {
   const byIssue = new Map<number, Spend>();
   for (const [branch, s] of byBranch) {
-    const m = branch.match(/\/(\d+)-/);
-    if (!m) continue;
-    const number = Number(m[1]);
+    const number = issueOf(branch);
+    if (number === null) continue;
     const acc = byIssue.get(number) ?? {
       turns: 0,
       out: 0,
@@ -218,8 +323,9 @@ function spendByIssue(
   return byIssue;
 }
 
-/** Read every transcript in `dir` and attribute its spend to issues. */
+/** Read every transcript in `dir` and attribute its spend to issues: what is on
+ *  disk now, with no history behind it. */
 export function scanSpend(dir: string): ScanResult {
-  const { byBranch, unattributed, transcripts } = spendByBranch(dir);
-  return { byIssue: spendByIssue(byBranch), unattributed, transcripts };
+  const { responses, transcripts } = readTranscripts(dir);
+  return { ...tallySpend(responses), transcripts };
 }

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   TRANSCRIPT_DIR_ENV,
+  readTranscripts,
   resolveTranscriptDir,
   scanSpend,
 } from "./transcripts.ts";
@@ -251,6 +252,55 @@ describe("scanSpend", () => {
       cacheRead: 0,
       sessions: 1,
     });
+  });
+});
+
+// The identity a response is stored under (#417), and so counted once under
+// across every later scan. Its order is the plan's: the response's id, then the
+// record's uuid, then where the record sits.
+describe("readTranscripts", () => {
+  it("identifies a response by its message id, then its uuid, then its file and line", () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/101-a", 1, 0, "msg_1"),
+      JSON.stringify({
+        sessionId: "s1",
+        gitBranch: "feat/101-a",
+        uuid: "u-2",
+        message: { usage: { output_tokens: 2 } },
+      }),
+      turn("s1", "feat/101-a", 3),
+    ]);
+
+    expect(readTranscripts(dir).responses.map((r) => r.id)).toEqual([
+      "message:msg_1",
+      "uuid:u-2",
+      "line:s1.jsonl:3",
+    ]);
+  });
+
+  it("carries what a stored row needs: session, branch, timestamp and both token counts", () => {
+    write("s1.jsonl", [
+      JSON.stringify({
+        sessionId: "s1",
+        gitBranch: "feat/101-a",
+        timestamp: "2026-09-02T09:00:00.000Z",
+        message: {
+          id: "msg_1",
+          usage: { output_tokens: 12, cache_read_input_tokens: 340 },
+        },
+      }),
+    ]);
+
+    expect(readTranscripts(dir).responses).toEqual([
+      {
+        id: "message:msg_1",
+        session: "s1",
+        branch: "feat/101-a",
+        at: "2026-09-02T09:00:00.000Z",
+        out: 12,
+        cacheRead: 340,
+      },
+    ]);
   });
 });
 
@@ -753,5 +803,95 @@ describe("percentiles", () => {
 
   it("reports zeroes for an empty set rather than undefined", () => {
     expect(percentiles([])).toEqual({ p25: 0, p50: 0, p75: 0 });
+  });
+});
+
+// The usage history through the one door both callers use (#417). Every case
+// names its own temporary file: with none, `gatherUsage` keeps no history, and
+// the real one is never a test's to write.
+describe("gatherUsage with a history", () => {
+  let historyDir: string;
+  let history: string;
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  it("keeps an issue's spend after the transcript it was read from is deleted", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000, 300_000)]);
+    write("b.jsonl", [
+      turn("b", "fix/102-b", 3000, 20_000),
+      turn("b", "main", 500),
+    ]);
+    const before = await gatherUsage(dir, known(), history);
+
+    rmSync(join(dir, "b.jsonl"));
+    const after = await gatherUsage(dir, known(), history);
+
+    expect(after.transcripts).toBe(1);
+    expect(after.issues).toEqual(before.issues);
+    expect(after.unattributed).toEqual({ turns: 1, out: 500 });
+  });
+
+  it("changes no figure however often an unchanged directory is scanned", async () => {
+    write("a.jsonl", [
+      turn("a", "feat/101-a", 12_000, 300_000, "msg_1"),
+      turn("a", "feat/101-a", 12_000, 300_000, "msg_1"),
+      turn("a", "feat/101-a", 8000),
+    ]);
+
+    const first = await gatherUsage(dir, known(), history);
+    await gatherUsage(dir, known(), history);
+    const third = await gatherUsage(dir, known(), history);
+
+    expect(third.issues).toEqual(first.issues);
+    expect(third.issues[0]?.spend).toEqual({
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 300_000,
+    });
+  });
+
+  it("names the earliest date the stored history covers, and keeps it after the transcript goes", async () => {
+    const record = (at: string, out: number) =>
+      JSON.stringify({
+        sessionId: "a",
+        gitBranch: "feat/101-a",
+        timestamp: at,
+        message: { usage: { output_tokens: out } },
+      });
+    write("old.jsonl", [record("2026-09-02T09:00:00.000Z", 1)]);
+    write("new.jsonl", [record("2026-09-20T09:00:00.000Z", 2)]);
+    expect((await gatherUsage(dir, known(), history)).historySince).toBe(
+      "2026-09-02T09:00:00.000Z",
+    );
+
+    rmSync(join(dir, "old.jsonl"));
+
+    expect((await gatherUsage(dir, known(), history)).historySince).toBe(
+      "2026-09-02T09:00:00.000Z",
+    );
+  });
+
+  it("reports no history start when it was asked to keep none", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 10)]);
+
+    expect((await gatherUsage(dir, known())).historySince).toBeNull();
+  });
+
+  it("still reports what is stored when the transcript directory is gone", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+    expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
   });
 });

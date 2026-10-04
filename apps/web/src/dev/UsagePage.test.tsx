@@ -97,6 +97,7 @@ function makeReport(over: Partial<UsageReport> = {}): UsageReport {
     scanMs: 42,
     transcriptDir: FIXTURE_DIR,
     transcripts: 2,
+    historySince: "2026-09-02T09:00:00.000Z",
     issues: [
       makeIssue(),
       makeIssue({
@@ -547,6 +548,30 @@ describe("UsagePage", () => {
     );
     expect(gathered).toHaveTextContent(FIXTURE_DIR);
     expect(gathered).toHaveTextContent("2 transcripts");
+  });
+
+  test("states the earliest date the stored history covers", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(scanButton());
+
+    const history = await screen.findByText(/^History from/);
+    expect(history.querySelector("time")).toHaveAttribute(
+      "datetime",
+      "2026-09-02T09:00:00.000Z",
+    );
+  });
+
+  test("says when there is no stored history rather than naming a date", async () => {
+    post.mockResolvedValue({ data: makeReport({ historySince: null }) });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(scanButton());
+
+    expect(await screen.findByText(/^No stored history yet/)).toBeVisible();
+    expect(screen.queryByText(/^History from/)).toBeNull();
   });
 
   test("re-reads on a second press rather than holding the first answer", async () => {

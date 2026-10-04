@@ -31,6 +31,7 @@ import {
 } from "./suites.ts";
 import { gatherUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
+import { resolveHistoryFile } from "./usage-store.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
 import type {
   DevStreamMessage,
@@ -290,16 +291,18 @@ export function devToolsPlugin(): Plugin {
 
       server.middlewares.use(
         DEVTOOLS_API.usage,
-        // `POST`, no `GET`, and nothing held between presses — `UsageReport` in
-        // `../src/dev/usage-protocol.ts` carries the reasoning, beside the
-        // shape it
-        // governs. Note what it costs here: this is the one dev-tools route
-        // that keeps no state at all, which is why there is nothing above this
-        // handler the way `runs` sits above the test runner's.
+        // `POST`, no `GET`, and no handle held between presses — `UsageReport`
+        // in `../src/dev/usage-protocol.ts` carries the reasoning, beside the
+        // shape it governs. What persists is the usage history (#417), a
+        // SQLite file `gatherUsage` opens and closes inside each request, so
+        // there is still nothing above this handler the way `runs` sits above
+        // the test runner's.
         //
-        // The directory is resolved per request rather than at plugin setup, so
-        // `CLAUDE_TRANSCRIPT_DIR` is read from the environment the dev server is
-        // actually running in — which is how Playwright points this at a fixture.
+        // The directory and the history file are resolved per request rather
+        // than at plugin setup, so `CLAUDE_TRANSCRIPT_DIR` and
+        // `USAGE_HISTORY_FILE` are read from the environment the dev server is
+        // actually running in — which is how Playwright points this at a
+        // fixture.
         //
         // **`REPO_ROOT`, not `process.cwd()`, and that is the whole bug this
         // argument exists to prevent.** Claude Code keys its transcript
@@ -316,6 +319,8 @@ export function devToolsPlugin(): Plugin {
             200,
             await gatherUsage(
               resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+              undefined,
+              resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
             ),
           ),
         ),

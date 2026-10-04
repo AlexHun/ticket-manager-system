@@ -2,7 +2,10 @@ import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GH_ISSUES_FIXTURE_PATH } from "./tests/e2e/fixtures/gh-issues";
-import { TRANSCRIPT_WORKING_DIR } from "./tests/e2e/fixtures/transcript-fixture";
+import {
+  TRANSCRIPT_WORKING_DIR,
+  USAGE_HISTORY_PATH,
+} from "./tests/e2e/fixtures/transcript-fixture";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -114,8 +117,10 @@ export default defineConfig({
       // scans, instead of `~/.claude/projects/<slug>` (see
       // `apps/web/dev/transcripts.ts`), and `GH_ISSUES_FILE` points it at a
       // fixture issue listing instead of spawning `gh` (see
-      // `apps/web/dev/issues.ts`).
-      // Both belong here rather than in the spec because the middleware that
+      // `apps/web/dev/issues.ts`), and `USAGE_HISTORY_FILE` points the usage
+      // history (#417) at a gitignored file the specs remove before they scan,
+      // instead of the developer's real `~/.claude-usage-history/<slug>.sqlite`.
+      // All three belong here rather than in the spec because the middleware that
       // reads them runs inside *this* process, not in the browser — which is
       // also the one thing to check first when `dev-usage.spec.ts` fails:
       // `reuseExistingServer` will happily adopt a leftover Vite on 4001 that
@@ -133,6 +138,7 @@ export default defineConfig({
         VITE_API_URL: API_URL,
         CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
+        USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
       },
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,
