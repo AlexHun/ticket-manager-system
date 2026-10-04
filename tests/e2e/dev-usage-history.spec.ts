@@ -58,8 +58,9 @@ const HISTORY_SINCE = "2026-09-02T09:00:00.000Z";
  *  `session-a.jsonl` starts (#420). */
 const SESSION_B_SINCE = "2026-09-03T10:00:00.000Z";
 
-/** The em dash a row with no recorded work shows (`dev-usage.spec.ts`). */
-const UNKNOWN = "—";
+/** The em dash `NotStarted` draws for a row with no recorded work: the same
+ *  dash as `Unknown`, which means something else (`dev-usage.spec.ts`). */
+const NOT_STARTED = "—";
 
 const OUT = USAGE_COLUMNS.indexOf("out");
 
@@ -313,7 +314,7 @@ test.describe("dev tools: Usage history", () => {
     await expect(outFor(page, 102)).toHaveText(SESSION_B.issue102);
     await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
     // `#101` is open in the listing, so it keeps a row — with nothing recorded.
-    await expect(outFor(page, 101)).toHaveText(UNKNOWN);
+    await expect(outFor(page, 101)).toHaveText(NOT_STARTED);
   });
 
   /**
@@ -325,6 +326,8 @@ test.describe("dev tools: Usage history", () => {
   test("an unreadable history costs one warning, not the figures, and is never written over", async ({
     page,
   }) => {
+    // It spawns `bun run tokens` part-way through.
+    test.setTimeout(60_000);
     const scan = page.getByRole("button", { name: "Scan" });
     const since = page.getByText(/^History from/).locator("time");
     const junk = "this is not a SQLite database\n".repeat(8);
@@ -346,7 +349,6 @@ test.describe("dev tools: Usage history", () => {
     await expect(page.getByText(/^History from/)).toHaveCount(0);
     expect(readFileSync(USAGE_HISTORY_PATH, "utf8")).toBe(junk);
 
-    test.setTimeout(60_000);
     const { stdout, stderr } = await runTokens();
     expect(stdout).toMatch(/^#101\s.*\s20k\s/m);
     expect(stderr).toContain(USAGE_HISTORY_PATH);

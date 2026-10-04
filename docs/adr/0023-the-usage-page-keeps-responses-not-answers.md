@@ -120,8 +120,8 @@ without anyone noticing. It also records no trend, and slice 3 needs one.
   `UsageReport` gains `trend`, every stored point oldest first.
 - Since #420 a store that can't be read costs a warning, not the scan. The
   reading is then the transcripts on disk alone, read whole, beside a warning
-  whose source is `USAGE_WARNING_SOURCE.history`, and the damaged file is left
-  as it is for the developer to move or delete. A deleted store needs nothing:
+  whose source is `USAGE_WARNING_SOURCE.history`. Nothing replaces the
+  damaged file; the developer moves or deletes it. A deleted store needs nothing:
   the next scan creates a fresh one from the transcripts still on disk, so only
   the history of transcripts already pruned is lost (R9, R10).
 - Every E2E run that scans has to point `USAGE_HISTORY_FILE` somewhere
