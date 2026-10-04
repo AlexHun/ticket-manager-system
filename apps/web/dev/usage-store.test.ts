@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
   issueOfBranch,
+  projectSlug,
   readTranscripts,
   resolveTranscriptDir,
   tallySpend,
@@ -19,6 +20,7 @@ import {
 } from "./transcripts.ts";
 import {
   HISTORY_FILE_ENV,
+  gitEnv,
   openUsageStore,
   resolveHistoryFile,
   usageStoreOver,
@@ -77,7 +79,7 @@ describe("resolveHistoryFile", () => {
     execFileAsync(
       "git",
       ["-c", "user.name=t", "-c", "user.email=t@t", ...args],
-      { cwd },
+      { cwd, env: gitEnv() },
     );
 
   /** A clone with one linked worktree beside its main one — the shape
@@ -116,6 +118,14 @@ describe("resolveHistoryFile", () => {
 
     expect(await resolveHistoryFile({}, { cwd: inside, home: dir })).toBe(
       await resolveHistoryFile({}, { cwd: main, home: dir }),
+    );
+  });
+
+  it("falls back to the working directory's slug outside any checkout", async () => {
+    // The temporary directory exists and holds no clone, so git starts and
+    // answers "not a git repository" rather than failing to spawn.
+    expect(await resolveHistoryFile({}, { cwd: dir, home: dir })).toBe(
+      join(dir, ".claude-usage-history", `${projectSlug(dir)}.sqlite`),
     );
   });
 
