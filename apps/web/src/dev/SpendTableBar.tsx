@@ -19,8 +19,9 @@ import { withDetail, type UsageTableView } from "./usage-view";
  *
  * **Its reach is the table and nothing else**, which is this slice's
  * whole decision. The two charts, the unattributed total and the
- * gathered-at line all read `report.issues` up on `UsagePage` and never
- * see the narrowed rows, so the accuracy figure goes on describing the scan
+ * gathered-at line all read `report.issues` up on `UsagePage` (the trend
+ * reads `report.trend`, written by the server) and never see the narrowed
+ * rows, so the accuracy figure goes on describing the scan
  * rather than the search box — a filter that moved it would turn a claim about
  * this repository into a claim about what somebody had typed. The
  * project map's bar next door reaches two ways at once (its selects stop

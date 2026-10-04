@@ -19,7 +19,8 @@ import { cn } from "@/lib/utils";
  *
  * Out of `UsageCharts.tsx` since #297. That file is the two *readings* — which
  * question each chart asks and how its marks answer it — and this is the shell
- * both of them are poured into, which neither one decides anything about.
+ * they, and the trend's two charts, are poured into, which none of them
+ * decides anything about.
  */
 
 /** One series, so one config key — and it must equal the `dataKey`, which is

@@ -10,7 +10,7 @@
  */
 
 import { BUCKETS, type BandEdges, type TrendPoint } from "./usage-protocol";
-import { formatTokens } from "./usage-charts";
+import { accuracyPercent, formatTokens } from "./usage-charts";
 
 /** One day on the trend's x-axis. */
 export interface TrendDatum {
@@ -36,7 +36,7 @@ export function trendSeries(points: TrendPoint[]): TrendDatum[] {
       p25: measured ? p.p25 : null,
       median: measured ? p.median : null,
       p75: measured ? p.p75 : null,
-      accuracy: p.scored > 0 ? Math.round((p.onTarget / p.scored) * 100) : null,
+      accuracy: p.scored > 0 ? accuracyPercent(p.onTarget, p.scored) : null,
       edgeS: p.edges.S,
       edgeM: p.edges.M,
       edgeL: p.edges.L,

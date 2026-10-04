@@ -24,8 +24,9 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * the page opens empty and says so, and the figures on screen are always one
  * named moment's reading rather than "whatever the machine has been doing"
  * (R5). Pressing Scan again re-reads — `UsageReport` in `./usage-protocol` is
- * where the reason no answer is cached on either side of the wire is written
- * down, and why the responses behind it are (#417).
+ * where the reason no reading is cached on either side of the wire is written
+ * down, and why the responses behind it are (#417) — and the one daily trend
+ * point that is (#419).
  *
  * **The rows are `./SpendTable`, which is where everything about an issue
  * lives** (#270) — the column definitions, the two markers that tell a missing

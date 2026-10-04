@@ -750,7 +750,8 @@ describe("UsagePage", () => {
    * rather than the table's (#273, #288).
    *
    * The two charts, the unattributed total and the gathered-at line read
-   * `report.issues` up here and never see the rows `SpendTable` was left with,
+   * `report.issues` up here (the trend reads `report.trend`, which the server
+   * wrote) and never see the rows `SpendTable` was left with,
    * so a control on the bar below must not move any of them. The search box's
    * half of that claim is `dev-usage.spec.ts`'s, in a browser. The sort's is
    * here, because re-ranking is the one gesture that changes the table while

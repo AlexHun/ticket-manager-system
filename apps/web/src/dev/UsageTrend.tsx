@@ -24,7 +24,8 @@ import {
 /**
  * How the two readings above move over time (#419, R6, R7): the quartiles of
  * actual output tokens and forecast accuracy, one point per local calendar day
- * on which a scan was taken, the day's last scan standing for it.
+ * on which a scan was taken, the day's last scan standing for it. Every scan
+ * that keeps a history writes one, `bun run tokens` included.
  *
  * The same conventions as `./UsageCharts` — Recharts in a `ChartContainer`, the
  * dashboard's `CHART_ANIMATION` and `CHART_BOX`, and `ChartPanel` for the
@@ -34,7 +35,8 @@ import {
  * band edges are printed.
  *
  * **Every point carries the band edges in force on its day, and the quartile
- * chart draws them** as dashed steps behind the three lines. A band that moves
+ * chart draws the S and M edges** as dashed steps behind the three lines (see
+ * `EDGES` for why not L; the table prints all three). A band that moves
  * moves the step on the day it moved, and the days before it keep the edges
  * they were cut against — which is the question the trend is for: whether the
  * quartiles have walked out of the bands, or the bands have been moved to them.
@@ -49,11 +51,13 @@ const quartileConfig = {
   p75: { label: "p75", color: "var(--viz-ord-4)" },
   edgeS: { label: "S edge", color: "var(--muted-foreground)" },
   edgeM: { label: "M edge", color: "var(--muted-foreground)" },
-  edgeL: { label: "L edge", color: "var(--muted-foreground)" },
 } satisfies ChartConfig;
 
 const QUARTILES = ["p25", "median", "p75"] as const;
-const EDGES = ["edgeS", "edgeM", "edgeL"] as const;
+/** The edges drawn. `L`'s 250k would set the axis and squash every quartile
+ *  under it into the bottom third, where this repository's issues sit; it is
+ *  in the tooltip's config and every row of the table instead. */
+const EDGES = ["edgeS", "edgeM"] as const;
 
 const accuracyConfig = {
   accuracy: { label: "% on target", color: "var(--viz-accent)" },
@@ -76,7 +80,7 @@ function QuartileTrend({ data }: { data: TrendDatum[] }) {
       description="p25, median and p75 of actual output tokens, per day, against the band edges in force that day."
       isEmpty={data.length === 0}
       emptyMessage={NO_TREND}
-      footer="Dashed steps are the band edges each point was stored with. A day that measured nothing leaves a gap rather than a point at zero."
+      footer="Dashed steps are the S and M band edges each point was stored with; the table below lists all three. A day that measured nothing leaves a gap rather than a point at zero."
     >
       <ChartContainer config={quartileConfig} className={CHART_BOX}>
         <LineChart

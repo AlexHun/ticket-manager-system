@@ -291,7 +291,8 @@ export interface UsageWarning {
  * measured 2026-10-04 over 168 transcripts, ~60ms against ~2.2s before, `gh`
  * aside.
  *
- * **What the dev server keeps is the responses it read, never an answer**
+ * **What the dev server keeps is the responses it read, never a reading's
+ * answer** — one daily trend point aside —
  * (#417, ADR-0023). This said "the middleware caches nothing" until the
  * transcripts it reads turned out to be deleted after 30 days, taking every
  * older issue's spend with them. So each scan stores every API response it

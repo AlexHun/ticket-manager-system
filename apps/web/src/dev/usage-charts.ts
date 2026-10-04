@@ -53,7 +53,12 @@ export const formatTokens = (n: number): string => n.toLocaleString("en-US");
  * anything to score — a `scored` of zero is no figure at all, not 0%.
  */
 export const accuracyLabel = (onTarget: number, scored: number): string =>
-  `${onTarget}/${scored} on target (${Math.round((onTarget / scored) * 100)}%)`;
+  `${onTarget}/${scored} on target (${accuracyPercent(onTarget, scored)}%)`;
+
+/** The percentage in `accuracyLabel`, alone — what the trend's accuracy line
+ *  plots, so the line and the label cannot round differently. */
+export const accuracyPercent = (onTarget: number, scored: number): number =>
+  Math.round((onTarget / scored) * 100);
 
 /** Which quartile a mark is, as the word the chart prints. */
 export type PercentileKey = "p25" | "median" | "p75";

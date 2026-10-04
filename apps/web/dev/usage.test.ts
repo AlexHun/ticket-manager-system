@@ -14,7 +14,11 @@ import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
 // module rather than from `./usage.ts`, which forwarded them until #290 — the
 // same import every other reader of this vocabulary already wrote.
 import { BUCKETS, USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
-import { bucketFor, percentiles } from "../src/dev/usage-readings.ts";
+import {
+  bucketFor,
+  percentiles,
+  recordedSpend,
+} from "../src/dev/usage-readings.ts";
 
 /**
  * An issue listing, without asking `gh` for one.
@@ -929,9 +933,8 @@ describe("gatherUsage keeps a daily trend (#419)", () => {
 
     const report = await scanAt(new Date(2026, 9, 4, 10));
 
-    const { p25, p50, p75 } = percentiles(
-      report.issues.flatMap((r) => (r.spend ? [r.spend.out] : [])),
-    );
+    // The panels' own arithmetic over the report's rows.
+    const { p25, p50, p75 } = percentiles(recordedSpend(report.issues));
     expect(report.trend).toEqual([
       {
         day: "2026-10-04",

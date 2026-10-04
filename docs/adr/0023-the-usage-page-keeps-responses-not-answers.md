@@ -82,6 +82,17 @@ What it doesn't change:
   That's correct for a record of what a day said, and it's why the point carries
   its band edges.
 
+Two consequences of writing the point inside `gatherUsage`, the one door:
+
+- **`bun run tokens` writes it too.** It's a scan over the same history, so
+  it's a scan the day's point can come from, and the page and the terminal
+  still can't disagree about it.
+- **A degraded scan still replaces the day's point.** A scan without `gh` has
+  nothing to score, so its point shows a gap where a good scan earlier that day
+  had a figure. That's the "last scan of a day" rule taken literally. If it
+  bites, the fix is a rule about which scans may replace a point, not a
+  different key.
+
 ## Considered options
 
 **Per-issue totals per scan.** Smaller, and enough for a trend. Rejected
