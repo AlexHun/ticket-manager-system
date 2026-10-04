@@ -21,7 +21,7 @@ import {
   writeGhIssuesFixture,
 } from "./fixtures/gh-issues";
 import {
-  copyTranscriptFixture,
+  resetTranscriptWorkingCopy,
   TRANSCRIPT_WORKING_DIR,
 } from "./fixtures/transcript-fixture";
 
@@ -257,7 +257,7 @@ test.describe("dev tools: Usage", () => {
   // no test reads what an earlier one (or an earlier run) left in the copy.
   test.beforeEach(async ({ page }) => {
     writeGhIssuesFixture();
-    copyTranscriptFixture();
+    resetTranscriptWorkingCopy();
     await page.goto(ROUTE.devUsage.path);
   });
 

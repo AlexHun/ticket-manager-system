@@ -10,7 +10,7 @@ import {
   writeGhIssuesFixture,
 } from "./fixtures/gh-issues";
 import {
-  copyTranscriptFixture,
+  resetTranscriptWorkingCopy,
   TRANSCRIPT_WORKING_DIR,
 } from "./fixtures/transcript-fixture";
 
@@ -247,11 +247,11 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
   // Written before each test rather than once: `dev-usage.spec.ts` removes this
   // file on purpose to reach the degraded no-`gh` path, and the suite runs
   // sequentially, so neither spec may assume the other left it there.
-  // The transcript working copy is remade alongside it, for a reason of the
-  // same kind: both surfaces read a copy that another spec is free to change.
+  // The transcript working copy is remade alongside it, so both surfaces read
+  // exactly the checked-in fixtures whatever an earlier test or run left there.
   test.beforeEach(() => {
     writeGhIssuesFixture();
-    copyTranscriptFixture();
+    resetTranscriptWorkingCopy();
   });
 
   // Generated and gitignored, but a stale one is still something to be confused
