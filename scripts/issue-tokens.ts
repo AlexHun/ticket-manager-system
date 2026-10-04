@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 // Forecast vs. actual token spend, per issue.
 //
-// One call does the reading: `gatherUsage(dir, meta)` in `apps/web/dev/usage.ts`
-// returns the rows, the unattributed total, the timing and the warnings, and the
-// dev-tools Usage page is served that same report. So the terminal and the page
+// One call does the reading: `gatherUsage(dir, meta, historyFile)` in
+// `apps/web/dev/usage.ts` returns the rows, the unattributed total, the timing
+// and the warnings, and the dev-tools Usage page is served that same report,
+// tallied over the same usage history. So the terminal and the page
 // cannot disagree about what an issue cost or whether it came in on target —
 // not because two code paths are kept in step, but because there is one. Read
 // its two sources, `apps/web/dev/transcripts.ts` and `apps/web/dev/issues.ts`,
@@ -51,6 +52,7 @@ import {
   resolveTranscriptDir,
 } from "../apps/web/dev/transcripts.ts";
 import { gatherUsage } from "../apps/web/dev/usage.ts";
+import { resolveHistoryFile } from "../apps/web/dev/usage-store.ts";
 // Reached directly rather than through `apps/web/dev/usage.ts`, which used to
 // re-export this vocabulary on this file's behalf (#290). The wire and the
 // arithmetic over it have no filesystem in them, so a script under `scripts/`
@@ -127,7 +129,9 @@ async function main() {
   // omits it, the tests supply fixtures — and it costs no extra call, since
   // `gatherUsage` would have made exactly this one.
   const meta = await fetchIssueMetadata();
-  const report = await gatherUsage(dir, meta);
+  // The same history file the Usage page reads and writes (#417), so an issue
+  // whose transcript is gone keeps its spend here as it does there (R3).
+  const report = await gatherUsage(dir, meta, resolveHistoryFile());
 
   // Warned rather than fatal, and both sources are warnings for the same reason:
   // an unreadable transcript directory is the ordinary state of a fresh clone

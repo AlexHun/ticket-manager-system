@@ -12,6 +12,7 @@ import {
 import {
   resetTranscriptWorkingCopy,
   TRANSCRIPT_WORKING_DIR,
+  USAGE_HISTORY_PATH,
 } from "./fixtures/transcript-fixture";
 
 /**
@@ -28,7 +29,7 @@ import {
  * So this spec captures **both** surfaces whole and compares them to committed
  * snapshots: the Usage page's reading line, its table in both column states and
  * its three panels, and the stdout of `bun run tokens` spawned as a child with
- * the same two environment overrides. A moved figure, a renamed label or a
+ * the same environment overrides. A moved figure, a renamed label or a
  * reordered row fails here whatever caused it.
  *
  * ## Two tests, because the surfaces can move apart
@@ -332,7 +333,7 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
     // shared dev modules on the way in.
     testInfo.setTimeout(60_000);
 
-    // The same two overrides `playwright.config.ts` puts in the web server's
+    // The same three overrides `playwright.config.ts` puts in the web server's
     // environment, spelled the same way. Both surfaces read the same fixtures
     // through the same modules, which is the whole of R8 — so a slice that
     // moved one of them without the other fails one of these two tests and
@@ -356,6 +357,10 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
         ...process.env,
         CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
+        // The third override since #417, and the one this test must never
+        // run without: unset, the fixtures' spend would be stored in the
+        // developer's real usage history.
+        USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
       },
       encoding: "utf8",
     });

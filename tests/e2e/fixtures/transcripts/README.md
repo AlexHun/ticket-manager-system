@@ -35,6 +35,11 @@ response as one record per content block — onto one turn; that rule is held by
 `apps/web/dev/usage.test.ts`, not here, so none of the figures above depend on
 it.
 
+Every complete line carries a `timestamp`, which no figure above reads: it is
+what the usage history's start date is taken from (#417). The earliest is
+**2026-09-02T09:00:00.000Z**, the first line of `session-a.jsonl`, and
+`dev-usage-history.spec.ts` asserts the page names it.
+
 `#105` shares `session-b.jsonl` with `#102`, on its own branch. That is the
 mirror of the `main` turn above: two branches in one session must land in two
 rows, the same way one session's `main` turn must land in none.

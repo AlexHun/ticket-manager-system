@@ -12,6 +12,7 @@ import {
 } from "../src/dev/usage-protocol.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./transcripts.ts";
+import { HISTORY_FILE_ENV } from "./usage-store.ts";
 
 /**
  * The usage route, exercised through the plugin rather than around it.
@@ -143,6 +144,7 @@ beforeEach(() => {
   saved = {
     [TRANSCRIPT_DIR_ENV]: process.env[TRANSCRIPT_DIR_ENV],
     [ISSUES_FILE_ENV]: process.env[ISSUES_FILE_ENV],
+    [HISTORY_FILE_ENV]: process.env[HISTORY_FILE_ENV],
   };
   delete process.env[TRANSCRIPT_DIR_ENV];
 
@@ -150,6 +152,10 @@ beforeEach(() => {
   const listing = join(envDir, "issues.json");
   writeFileSync(listing, JSON.stringify(LISTING), "utf8");
   process.env[ISSUES_FILE_ENV] = listing;
+  // The usage history too (#417), and for a sharper reason than the listing's:
+  // unset, the route stores what it read in this developer's real history file,
+  // and the first test below reads the real transcript directory.
+  process.env[HISTORY_FILE_ENV] = join(envDir, "history.sqlite");
 });
 afterEach(() => {
   for (const [key, value] of Object.entries(saved)) {
@@ -199,6 +205,37 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
         },
       ]);
       expect(report.warnings).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a deleted transcript's spend in the history file the environment names", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "plugin-usage-"));
+    writeFileSync(
+      join(dir, "s.jsonl"),
+      JSON.stringify({
+        sessionId: "s",
+        gitBranch: "feat/101-a",
+        timestamp: "2026-09-02T09:00:00.000Z",
+        message: { usage: { output_tokens: 4200 } },
+      }),
+      "utf8",
+    );
+    process.env[TRANSCRIPT_DIR_ENV] = dir;
+
+    try {
+      await scanUsage();
+      rmSync(join(dir, "s.jsonl"));
+
+      const report = await scanUsage();
+
+      expect(report.transcripts).toBe(0);
+      expect(report.issues[0]).toMatchObject({
+        issue: 101,
+        spend: { out: 4200 },
+      });
+      expect(report.historySince).toBe("2026-09-02T09:00:00.000Z");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

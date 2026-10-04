@@ -231,16 +231,24 @@ export interface UsageWarning {
 }
 
 /**
- * One reading of the local transcripts, taken when the developer pressed Scan.
+ * One reading, taken when the developer pressed Scan.
  *
- * There is no `GET` half and the middleware caches nothing: a held copy is the
- * one thing this page must not serve, since its whole claim is that the figures
- * on screen were gathered at `gatheredAt` from the directory named here. The
- * page holds the last result until the next press; the dev server holds none.
- * That is the opposite of the test runner next door, and deliberately so — a
- * run is a long-lived process worth surviving a reload, a scan is a few seconds
- * of reading that is cheaper to repeat than to invalidate (2-5s over this
- * machine's 136 transcripts, plus ~2s of `gh`).
+ * There is no `GET` half: the figures on screen were gathered at `gatheredAt`,
+ * from the directory named here and the history behind it, and the page holds
+ * that result until the next press. That is the opposite of the test runner
+ * next door, and deliberately so — a run is a long-lived process worth
+ * surviving a reload, a scan is a few seconds of reading that is cheaper to
+ * repeat than to invalidate (2-5s over this machine's 136 transcripts, plus ~2s
+ * of `gh`).
+ *
+ * **What the dev server keeps is the responses it read, never an answer**
+ * (#417, ADR-0023). This said "the middleware caches nothing" until the
+ * transcripts it reads turned out to be deleted after 30 days, taking every
+ * older issue's spend with them. So each scan stores every API response it
+ * read in a local SQLite file, and the figures are tallied over everything
+ * stored. Nothing *derived* is kept — not a row, not a total, not a report — so
+ * every reading is still computed afresh at `gatheredAt`, by today's counting
+ * and attribution rules.
  */
 export interface UsageReport {
   /** ISO 8601, stamped when the read finished. */
@@ -257,6 +265,15 @@ export interface UsageReport {
   transcriptDir: string;
   /** `.jsonl` files read out of it. */
   transcripts: number;
+  /**
+   * The earliest timestamp the stored history covers (ISO 8601), or null when
+   * there is none — nothing stored yet, or a reading taken without a history.
+   *
+   * On screen because history starts when the store was first written, not
+   * when the work did (R8): an issue with no spend before this date reads as
+   * "not recorded", not as zero.
+   */
+  historySince: string | null;
   /**
    * One row per issue worth looking at — every issue with recorded spend, and
    * every issue the listing reports as open, whether or not anybody has started

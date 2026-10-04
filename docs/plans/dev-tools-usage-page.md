@@ -188,7 +188,8 @@ must keep meaning one customer's request.
 - **A production or admin-facing page** — PRD non-goal, considered and declined:
   the transcripts are local to one machine.
 - **History across runs, and per-session drill-down** — PRD non-goals. Nothing is
-  persisted, so there is no trend line to draw.
+  persisted, so there is no trend line to draw. _History was taken up later by
+  `docs/plans/usage-history.md` (#417, ADR-0023)._
 - **`forecast/XL`** — an open question on the PRD, not a slice. The script has
   the bucket; the repository has no such label. Slice 2 renders whatever labels
   exist and does not create any.

@@ -3,8 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * The two-branch transcript fixture both Usage specs (`dev-usage.spec.ts` and
- * `dev-usage-guardrail.spec.ts`) assert against.
+ * The two-branch transcript fixture the Usage specs (`dev-usage.spec.ts`,
+ * `dev-usage-guardrail.spec.ts` and `dev-usage-history.spec.ts`) assert
+ * against.
  *
  * What the files add up to is in `transcripts/README.md`; the specs state those
  * totals as literals rather than recomputing them with the module under test.
@@ -22,8 +23,9 @@ export const TRANSCRIPT_FIXTURE_DIR = path.join(HERE, "transcripts");
  * Usage spec scans.
  *
  * A copy rather than the fixtures themselves because usage history (#416,
- * `docs/plans/usage-history.md`) will need a spec that deletes a transcript
- * between two scans, or appends to one. Done to the checked-in files, either
+ * `docs/plans/usage-history.md`) needs a spec that deletes a transcript
+ * between two scans (`dev-usage-history.spec.ts`), and later one that appends
+ * to one. Done to the checked-in files, either
  * would corrupt them for every later run, and a run that died between the edit
  * and its undo would leave the damage in the working tree.
  *
@@ -42,11 +44,30 @@ export const TRANSCRIPT_FIXTURE_DIR = path.join(HERE, "transcripts");
 export const TRANSCRIPT_WORKING_DIR = path.join(HERE, "transcripts.local");
 
 /**
- * Replaces the working copy with a fresh one of the checked-in fixtures.
+ * The usage history file the dev server and `bun run tokens` write under the
+ * E2E, in place of `~/.claude-usage-history/<slug>.sqlite` (#417).
+ *
+ * Shared the way `TRANSCRIPT_WORKING_DIR` is: `playwright.config.ts` puts it in
+ * the web server's environment as `USAGE_HISTORY_FILE`, and the guardrail
+ * passes it to the `bun run tokens` it spawns. Without the override, a spec's
+ * scan of these fixtures would store their spend in the developer's real
+ * history. Gitignored as `*.sqlite`, and never in use between scans: the store
+ * is opened per scan and closed before the response, so removing it here
+ * cannot meet a Windows file lock.
+ */
+export const USAGE_HISTORY_PATH = path.join(HERE, "usage-history.local.sqlite");
+
+/**
+ * Replaces the working copy with a fresh one of the checked-in fixtures, and
+ * removes the usage history the last reading left behind.
  *
  * Removed first rather than copied over, so a file an earlier test (or an
  * earlier run that died part-way) added, grew or deleted cannot survive into
  * the next scan: what the page reads is always exactly what is checked in.
+ * The history goes with it for the same reason. It holds every response any
+ * earlier scan read, so a transcript an earlier test deleted would otherwise
+ * keep its spend, and a fixture line that has since moved would be counted
+ * twice under two line numbers.
  *
  * Safe only because the suite runs one test at a time (`workers: 1` in
  * `playwright.config.ts`): with a second worker, this could pull the directory
@@ -55,4 +76,5 @@ export const TRANSCRIPT_WORKING_DIR = path.join(HERE, "transcripts.local");
 export function resetTranscriptWorkingCopy(): void {
   rmSync(TRANSCRIPT_WORKING_DIR, { recursive: true, force: true });
   cpSync(TRANSCRIPT_FIXTURE_DIR, TRANSCRIPT_WORKING_DIR, { recursive: true });
+  rmSync(USAGE_HISTORY_PATH, { force: true });
 }

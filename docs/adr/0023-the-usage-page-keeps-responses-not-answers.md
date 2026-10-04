@@ -1,0 +1,90 @@
+# The Usage page keeps responses, not answers
+
+**The dev server now keeps what a Usage scan read**: every API response a scan
+finds is stored in a local SQLite file, and every reading is tallied over
+everything stored. **It still keeps no answer**: no row, no total, no report.
+This reverses the rule `UsageReport` stated from the first Usage slice (#248)
+until [#417](https://github.com/AlexHun/ticket-manager-system/issues/417): "the
+middleware caches nothing", and "a held copy is the one thing this page must
+not serve". It also lifts the first Usage PRD's "History across runs" non-goal
+(`docs/prd/dev-tools-usage-page.md`).
+
+## Why the old rule stopped holding
+
+It assumed the transcripts stay on disk, and they don't. Claude Code deletes
+them after 30 days. On 2026-10-03 the oldest of the 167 on this machine dated
+from 2026-09-02, so every issue worked before then already read as unstarted,
+and another day of history went each day (`docs/prd/usage-history.md`). A page
+that only re-reads the disk reports less spend for the same issue every week.
+Nothing about the work has changed, so that's a wrong answer, and the
+"cached copy" the old rule guarded against would at least have kept the spend.
+
+The old rule's real claim survives: the figures on screen were computed at
+`gatheredAt` by the rules the code holds _now_. That's why the store keeps
+inputs and not outputs.
+
+## What is kept, and what is not
+
+**One row per API response**: its identity (`message.id`, then the record's
+`uuid`, then file name and line number), session, branch, timestamp, output and
+cache-read tokens. That's `TranscriptResponse` in `apps/web/dev/transcripts.ts`,
+stored by `apps/web/dev/usage-store.ts`.
+
+Not kept: the issue a branch names, whether a turn counts as unattributed, any
+per-issue sum. `tallySpend` decides all of those on every read. Two corrections
+have already changed those rules after the fact. #413 found every response
+counted once per content block (2.32x overall), and #253 began totalling work
+on `main`. Per-issue totals stored before either fix would have stayed wrong for
+good once their transcripts were gone. Stored responses are re-read under the
+fixed rule (R11), and `usage-store.test.ts` holds that by changing the rule over
+rows whose transcript is deleted.
+
+## Where it lives, and when it is open
+
+- **`~/.claude-usage-history/<project-slug>.sqlite`**, keyed on the slug the
+  transcript directory uses, with `USAGE_HISTORY_FILE` as the override (the
+  third seam beside `CLAUDE_TRANSCRIPT_DIR` and `GH_ISSUES_FILE`). Outside the
+  repository, so no commit, CI artefact or build can contain it. Outside
+  `~/.claude`, so the cleanup it outlives never touches it.
+- **Opened per scan, closed before the response.** A handle held across
+  requests would stop a spec, or the developer, from deleting the file on
+  Windows. A scan takes seconds, so there's nothing worth keeping a handle for.
+- **Either runtime's SQLite.** The developer's dev server and `bun run tokens`
+  run on Bun, which can't resolve `node:sqlite` (1.3.13, measured). Vitest and
+  the E2E's dev server (`bunx vite`, without `--bun`; see `playwright.config.ts`)
+  run on Node, which can't load `bun:sqlite`. The store talks to a narrow
+  `SqlDatabase` surface that both satisfy, and `openUsageStore` imports
+  whichever one the running process has. The plan had expected only Bun
+  processes to open the real file. That turned out wrong for the E2E server,
+  and the runtime check covers both.
+
+## Considered options
+
+**Per-issue totals per scan.** Smaller, and enough for a trend. Rejected
+because counting and attribution would be frozen at scan time, which is
+exactly what #413 showed can be wrong.
+
+**The application database.** Rejected: `/__dev` reaches neither the API nor
+Postgres (`DevRoutes.tsx`), and R5 requires the page to scan with both down.
+
+**Raising `cleanupPeriodDays` and keeping no store.** It's the stopgap in place
+since 2026-10-03, and it's one setting on one machine that can be reverted
+without anyone noticing. It also records no trend, and slice 3 needs one.
+
+## Consequences
+
+- `UsageReport` gains `historySince`, the earliest stored timestamp, and the
+  page states it beside the reading (R8), so a gap before it reads as "not
+  recorded" rather than zero.
+- `gatherUsage` takes the history file as an optional third argument. The plugin
+  and `bun run tokens` both pass the same resolved file, which keeps them in
+  agreement (R3). Unit tests about the join pass none and see only what's on
+  disk.
+- A store that can't be opened throws for now. Slice 4 of
+  `docs/plans/usage-history.md` turns that into a warning with a source of its
+  own.
+- Every E2E run that scans has to point `USAGE_HISTORY_FILE` somewhere
+  disposable. `resetTranscriptWorkingCopy` removes it alongside the working
+  copy, and the guardrail passes it to the `bun run tokens` it spawns.
+  Otherwise a fixture scan writes fixture spend into the developer's real
+  history.
