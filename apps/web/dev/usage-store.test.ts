@@ -6,11 +6,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import {
   issueOfBranch,
   readTranscripts,
+  resolveTranscriptDir,
   tallySpend,
   type TranscriptResponse,
 } from "./transcripts.ts";
@@ -58,6 +61,8 @@ const { DatabaseSync } = (await import(
 const memoryStore = () =>
   usageStoreOver(new DatabaseSync(":memory:") satisfies SqlDatabase);
 
+const execFileAsync = promisify(execFile);
+
 let dir: string;
 
 beforeEach(() => {
@@ -68,8 +73,56 @@ afterEach(() => {
 });
 
 describe("resolveHistoryFile", () => {
-  it("lives outside the repository and outside ~/.claude, keyed on the transcripts' slug", () => {
-    const file = resolveHistoryFile(
+  const git = (cwd: string, ...args: string[]) =>
+    execFileAsync(
+      "git",
+      ["-c", "user.name=t", "-c", "user.email=t@t", ...args],
+      { cwd },
+    );
+
+  /** A clone with one linked worktree beside its main one — the shape
+   *  `isolation: "worktree"` gives an agent. */
+  async function cloneWithWorktree() {
+    const main = join(dir, "main");
+    const linked = join(dir, "linked");
+    mkdirSync(main);
+    await git(main, "init", "-q");
+    await git(main, "commit", "-q", "--allow-empty", "-m", "root");
+    await git(main, "worktree", "add", "-q", "-b", "side", linked);
+    return { main, linked };
+  }
+
+  it("is one file for every worktree of a clone, keyed on the main worktree's root (#423)", async () => {
+    const { main, linked } = await cloneWithWorktree();
+    const home = join(dir, "home");
+
+    const fromMain = await resolveHistoryFile({}, { cwd: main, home });
+    const fromLinked = await resolveHistoryFile({}, { cwd: linked, home });
+
+    expect(fromLinked).toBe(fromMain);
+    expect(dirname(fromMain)).toBe(join(home, ".claude-usage-history"));
+    // Keyed on the main root, not the linked one — and the transcripts stay
+    // keyed on each worktree's own path, which is where Claude Code writes them.
+    expect(fromMain).toMatch(/-main\.sqlite$/);
+    expect(resolveTranscriptDir({}, { cwd: linked, home })).not.toBe(
+      resolveTranscriptDir({}, { cwd: main, home }),
+    );
+  });
+
+  it("names the same file from a directory inside a worktree", async () => {
+    const { main, linked } = await cloneWithWorktree();
+    const inside = join(linked, "apps");
+    mkdirSync(inside);
+
+    expect(await resolveHistoryFile({}, { cwd: inside, home: dir })).toBe(
+      await resolveHistoryFile({}, { cwd: main, home: dir }),
+    );
+  });
+
+  it("falls back to the working directory's slug when git cannot answer", async () => {
+    // A directory that does not exist: the spawn fails, which stands in for no
+    // git on PATH and for a directory outside any checkout alike.
+    const file = await resolveHistoryFile(
       {},
       { cwd: "C:\\work\\repo", home: "/home/dev" },
     );
@@ -79,9 +132,9 @@ describe("resolveHistoryFile", () => {
     );
   });
 
-  it("honours the override, which is how the E2E and the unit tests keep off the real file", () => {
+  it("honours the override, which is how the E2E and the unit tests keep off the real file", async () => {
     expect(
-      resolveHistoryFile({ [HISTORY_FILE_ENV]: " /tmp/h.sqlite " }, {}),
+      await resolveHistoryFile({ [HISTORY_FILE_ENV]: " /tmp/h.sqlite " }, {}),
     ).toBe("/tmp/h.sqlite");
   });
 });

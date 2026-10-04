@@ -87,8 +87,9 @@ export interface ScanResult {
  * root with every separator and the drive colon turned into `-`.
  *
  * Exported because the transcripts are not the only thing keyed on it: the
- * usage history (`./usage-store.ts`) names its file after the same slug, so a
- * project's history and its transcripts can always be matched up by name.
+ * usage history (`./usage-store.ts`) names its file with it too — but of the
+ * main worktree's root rather than of the working directory, so every worktree
+ * of a clone shares one history while each keeps its own transcripts (#423).
  */
 export const projectSlug = (cwd: string): string => cwd.replace(/[\\/:]/g, "-");
 

@@ -145,8 +145,9 @@ async function main() {
   // `gatherUsage` would have made exactly this one.
   const meta = await fetchIssueMetadata();
   // The same history file the Usage page reads and writes (#417), so an issue
-  // whose transcript is gone keeps its spend here as it does there (R3).
-  const report = await gatherUsage(dir, meta, resolveHistoryFile());
+  // whose transcript is gone keeps its spend here as it does there (R3) — and,
+  // since #423, from every worktree of this clone.
+  const report = await gatherUsage(dir, meta, await resolveHistoryFile());
 
   // Warned rather than fatal, and both sources are warnings for the same reason:
   // an unreadable transcript directory is the ordinary state of a fresh clone
