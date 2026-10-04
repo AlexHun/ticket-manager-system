@@ -2,8 +2,8 @@
 // nothing more.
 //
 // `apps/web` declares no Bun types, and `@types/bun` would be a new dependency
-// for one constructor and three methods (`conventions.md` asks before adding
-// one; #417 took this alternative instead). It is a hand-written mirror of a
+// for a constructor and six methods (#417 asks before adding one, and names
+// this as the alternative). It is a hand-written mirror of a
 // third-party shape, so it carries only what the opener calls — a member added
 // here that Bun does not have would compile and throw at the first scan. Bun's
 // own docs are the reference: https://bun.sh/docs/api/sqlite.

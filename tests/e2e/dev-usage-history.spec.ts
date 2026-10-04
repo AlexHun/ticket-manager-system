@@ -1,9 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
+import { exec } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import { USAGE_COLUMNS } from "../../apps/web/src/dev/usage-copy";
 import {
+  GH_ISSUES_FIXTURE_PATH,
   removeGhIssuesFixture,
   writeGhIssuesFixture,
 } from "./fixtures/gh-issues";
@@ -35,6 +39,31 @@ const SESSION_B = { issue102: "3,000", issue105: "90,000" } as const;
 const HISTORY_SINCE = "2026-09-02T09:00:00.000Z";
 
 const OUT = USAGE_COLUMNS.indexOf("out");
+
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+
+/**
+ * `bun run tokens` against the same three overrides the web server has, so it
+ * reads the same working copy and the same history (R3). Spawned through a
+ * shell for the reason `dev-usage-guardrail.spec.ts` gives: `bun` on PATH is a
+ * `.cmd` shim on Windows.
+ */
+const tokens = async () =>
+  (
+    await promisify(exec)("bun run tokens", {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
+        GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
+        USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
+      },
+      encoding: "utf8",
+    })
+  ).stdout;
 
 const reading = (page: Page) => page.getByText(/^Gathered at/);
 
@@ -81,6 +110,13 @@ test.describe("dev tools: Usage history", () => {
     await expect(reading(page)).toContainText("1 transcript,");
     await expect(outFor(page, 102)).toHaveText(SESSION_B.issue102);
     await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
+
+    // And the terminal, off the same history with the transcript still gone.
+    // Its figures are rounded to thousands: 3,000 and 90,000 print as 3k, 90k.
+    test.setTimeout(60_000);
+    const stdout = await tokens();
+    expect(stdout).toMatch(/^#102\s.*\s3k\s/m);
+    expect(stdout).toMatch(/^#105\s.*\s90k\s/m);
   });
 
   test("names the earliest date the stored history covers, after its transcript is gone", async ({
