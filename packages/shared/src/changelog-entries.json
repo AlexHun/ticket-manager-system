@@ -583,5 +583,15 @@
     "version": "0.1.162",
     "date": "2026-10-04",
     "title": "Review fixes for the usage history"
+  },
+  {
+    "version": "0.1.163",
+    "date": "2026-10-04",
+    "title": "A Usage scan reads only what was appended since the last one"
+  },
+  {
+    "version": "0.1.163",
+    "date": "2026-10-04",
+    "title": "Review fixes for the incremental Usage scan"
   }
 ]
