@@ -239,7 +239,9 @@ export interface UsageWarning {
  * next door, and deliberately so — a run is a long-lived process worth
  * surviving a reload, a scan is a few seconds of reading that is cheaper to
  * repeat than to invalidate (2-5s over this machine's 136 transcripts, plus ~2s
- * of `gh`).
+ * of `gh`). Since #418 only the first scan into a history costs that: a later
+ * one reads only what was appended since, ~60ms over 168 transcripts against
+ * ~2.2s before.
  *
  * **What the dev server keeps is the responses it read, never an answer**
  * (#417, ADR-0023). This said "the middleware caches nothing" until the
@@ -263,7 +265,8 @@ export interface UsageReport {
    * is pointed somewhere else" — and it is what a failing E2E names.
    */
   transcriptDir: string;
-  /** `.jsonl` files read out of it. */
+  /** `.jsonl` files in it — since #418 including those a scan skipped because
+   *  nothing had been appended to them since the last one. */
   transcripts: number;
   /**
    * The earliest timestamp the stored history covers (ISO 8601), or null when

@@ -58,7 +58,7 @@ import {
   type Spend,
   type TranscriptRead,
 } from "./transcripts.ts";
-import { openUsageStore } from "./usage-store.ts";
+import { openUsageStore, type UsageStore } from "./usage-store.ts";
 
 /**
  * A forecast band read against what was actually spent.
@@ -95,7 +95,11 @@ export function verdictFor(
  * `gatherUsage` now, so there is one caller and the "found nothing" reading is
  * this module's own business rather than a shape two surfaces agree on.
  */
-const emptyRead = (): TranscriptRead => ({ responses: [], transcripts: 0 });
+const emptyRead = (): TranscriptRead => ({
+  responses: [],
+  transcripts: 0,
+  cursors: new Map(),
+});
 
 /**
  * The rows themselves: every issue worth looking at, joined to what GitHub
@@ -212,9 +216,11 @@ function joinIssues(
  * it names (`./usage-store.ts`) and the figures are tallied over *everything
  * stored*, so an issue keeps its spend after its transcript is deleted (R1),
  * and the page and the terminal still agree because both pass the same file
- * (R3). Without it, the figures are what is on disk now and `historySince` is
- * null — which is what the unit tests about the join want, and why they need no
- * file of their own.
+ * (R3). Since #418 the store also says how far each transcript was read, so a
+ * scan reads only what was written since the last one and an unchanged
+ * directory is mostly skipped. Without it, every transcript is read whole, the
+ * figures are what is on disk now and `historySince` is null — which is what
+ * the unit tests about the join want, and why they need no file of their own.
  *
  * **Nothing here throws, except a history that cannot be opened.** A missing
  * directory is the ordinary state of a machine that has never run Claude Code
@@ -243,11 +249,30 @@ export async function gatherUsage(
   // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
   const startedAt = Date.now();
   const listing = metadata ?? (await fetchIssueMetadata());
+  // Opened before the read rather than after it (#418): its cursors say where
+  // each transcript's unread bytes begin. Closed before the response, so nothing
+  // holds the file between presses (see the store).
+  const store =
+    historyFile === undefined ? null : await openUsageStore(historyFile);
+  try {
+    return reportFrom(dir, listing, startedAt, store);
+  } finally {
+    store?.close();
+  }
+}
+
+/** `gatherUsage` once the listing is in hand and the history, if any, is open. */
+function reportFrom(
+  dir: string,
+  listing: IssueMetadata,
+  startedAt: number,
+  store: UsageStore | null,
+): UsageReport {
   const warnings: UsageWarning[] = [];
 
   let read = emptyRead();
   try {
-    read = readTranscripts(dir);
+    read = readTranscripts(dir, store?.cursors());
     // Inside the `try`, so "there is nothing in it" is only asked of a directory
     // that was actually read. It used to be a `warnings.length === 0` guard
     // below, which said the same thing by counting what this function had pushed
@@ -277,19 +302,14 @@ export async function gatherUsage(
   }
 
   // Stored, then read back whole: the tally below runs over every response the
-  // history holds, including those whose transcript is gone. Closed before the
-  // response, so nothing holds the file between presses (see the store).
+  // history holds, including those whose transcript is gone and those an
+  // earlier scan read and this one skipped. A read that failed moves no cursor.
   let responses = read.responses;
   let historySince: string | null = null;
-  if (historyFile !== undefined) {
-    const store = await openUsageStore(historyFile);
-    try {
-      store.record(read.responses);
-      responses = store.responses();
-      historySince = store.since();
-    } finally {
-      store.close();
-    }
+  if (store) {
+    store.record(read.responses, read.cursors);
+    responses = store.responses();
+    historySince = store.since();
   }
   const { byIssue, unattributed } = tallySpend(responses);
 

@@ -18,7 +18,8 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * The third dev tool, and the only one that gathers nothing on arrival. The map
  * scans on load because a scan of the source tree is ~110ms and describes
  * something you are looking at anyway; this reads every transcript the machine
- * holds, which on a long-lived project is tens of thousands of JSONL lines. So
+ * holds, which on a long-lived project is tens of thousands of JSONL lines
+ * (the first time, at least: since #418 a later scan reads what was appended). So
  * the page opens empty and says so, and the figures on screen are always one
  * named moment's reading rather than "whatever the machine has been doing"
  * (R5). Pressing Scan again re-reads — `UsageReport` in `./usage-protocol` is
