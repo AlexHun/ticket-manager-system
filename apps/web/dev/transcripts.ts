@@ -263,6 +263,11 @@ const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
  * re-reads, the history's identity key has already stored and absorbs. A file
  * replaced by another of exactly the same length is not noticed until it grows —
  * a cost of skipping by size, which is what makes an unchanged directory cheap.
+ * Two more limits, both accepted because Claude Code only ever appends: `head`
+ * covers the first `HEAD_BYTES`, so a rewrite that keeps them resumes at an
+ * offset that may fall mid-line; and "absorbs the overlap" holds for a record
+ * keyed on its id or uuid, while one keyed on its file and line collides with
+ * whatever the replaced file held on that line and is stored only once.
  *
  * The unterminated tail after the last newline is parsed like any other line but
  * left in front of the cursor: half-written, it fails to parse and is read again

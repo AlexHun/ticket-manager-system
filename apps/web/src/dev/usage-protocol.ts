@@ -238,10 +238,11 @@ export interface UsageWarning {
  * that result until the next press. That is the opposite of the test runner
  * next door, and deliberately so — a run is a long-lived process worth
  * surviving a reload, a scan is a few seconds of reading that is cheaper to
- * repeat than to invalidate (2-5s over this machine's 136 transcripts, plus ~2s
- * of `gh`). Since #418 only the first scan into a history costs that: a later
- * one reads only what was appended since, ~60ms over 168 transcripts against
- * ~2.2s before.
+ * repeat than to invalidate (2-5s over this machine's 136 transcripts when
+ * first measured, plus ~2s of `gh`). Since #418 only the first scan into a
+ * history costs that: a later one reads only what was appended since —
+ * measured 2026-10-04 over 168 transcripts, ~60ms against ~2.2s before, `gh`
+ * aside.
  *
  * **What the dev server keeps is the responses it read, never an answer**
  * (#417, ADR-0023). This said "the middleware caches nothing" until the

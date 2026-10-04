@@ -10,10 +10,14 @@
 // reaches rows whose transcript is gone (R11). Stored totals would freeze the
 // rule they were summed under.
 //
+// **Beside them, one cursor per transcript** (#418): how far each file has been
+// read, so the next scan reads only what was appended. A cursor is bookkeeping
+// about the files, not a figure, so the rule above still holds.
+//
 // **Opened per scan, closed before the response.** A handle held across
 // requests would stop a spec, or a developer, from deleting or replacing the
-// file on Windows; a scan is seconds per press, so opening costs nothing worth
-// keeping a handle for.
+// file on Windows; opening is milliseconds against even a warm scan's ~60ms, so
+// there is nothing worth keeping a handle for.
 //
 // **The runtime split is measured, and the opener absorbs it** (plan,
 // 2026-10-03): Bun 1.3.13 cannot resolve `node:sqlite`, and Node cannot load
@@ -136,7 +140,7 @@ const SCHEMA = [
 ];
 
 /**
- * The store over an open database. Creates the table on first use, so a fresh
+ * The store over an open database. Creates its tables on first use, so a fresh
  * file and a missing one are the same starting point.
  *
  * Exported for the unit tests, which hand it `node:sqlite` directly; the real
@@ -147,14 +151,15 @@ export function usageStoreOver(db: SqlDatabase): UsageStore {
   return {
     cursors() {
       const rows = db
-        .prepare(
-          "SELECT path, read_to AS offset, size, lines, head FROM transcript",
-        )
-        .all() as ({ path: string } & TranscriptCursor)[];
+        .prepare("SELECT path, read_to, size, lines, head FROM transcript")
+        .all() as ({ path: string; read_to: number } & Omit<
+        TranscriptCursor,
+        "offset"
+      >)[];
       return new Map(
-        rows.map(({ path, offset, size, lines, head }) => [
+        rows.map(({ path, read_to, size, lines, head }) => [
           path,
-          { offset, size, lines, head },
+          { offset: read_to, size, lines, head },
         ]),
       );
     },
@@ -164,7 +169,7 @@ export function usageStoreOver(db: SqlDatabase): UsageStore {
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO NOTHING`,
       );
-      const move = db.prepare(
+      const upsertCursor = db.prepare(
         `INSERT OR REPLACE INTO transcript (path, read_to, size, lines, head)
          VALUES (?, ?, ?, ?, ?)`,
       );
@@ -175,8 +180,14 @@ export function usageStoreOver(db: SqlDatabase): UsageStore {
         for (const r of responses) {
           insert.run(r.id, r.session, r.branch, r.at, r.out, r.cacheRead);
         }
-        for (const [path, c] of cursors) {
-          move.run(path, c.offset, c.size, c.lines, c.head);
+        for (const [path, cursor] of cursors) {
+          upsertCursor.run(
+            path,
+            cursor.offset,
+            cursor.size,
+            cursor.lines,
+            cursor.head,
+          );
         }
         db.exec("COMMIT");
       } catch (err) {
