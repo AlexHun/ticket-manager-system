@@ -8,7 +8,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import {
   issueOfBranch,
   readTranscripts,
@@ -41,6 +40,18 @@ const response = (
   cacheRead: 10,
   ...overrides,
 });
+
+/**
+ * `node:sqlite`, imported the way `openUsageStore` imports it: through a
+ * variable. A static import passed on a Windows dev machine (Node 24.11) and
+ * failed on CI (run 37187612546), where Vite's import analysis refused it with
+ * "Cannot bundle built-in module". `node:sqlite` exists only under the `node:`
+ * prefix, and a specifier Vite never sees is one it cannot refuse.
+ */
+const NODE_SQLITE = "node:sqlite";
+const { DatabaseSync } = (await import(
+  /* @vite-ignore */ NODE_SQLITE
+)) as typeof import("node:sqlite");
 
 /** `node:sqlite`'s `DatabaseSync` is the surface as it is, with no adapter. */
 const memoryStore = () =>
