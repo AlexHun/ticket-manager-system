@@ -320,7 +320,7 @@ export function devToolsPlugin(): Plugin {
             await gatherUsage(
               resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
               undefined,
-              resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
+              await resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
             ),
           ),
         ),

@@ -38,9 +38,12 @@
 // ADR-0023 records why the Usage page keeps anything at all, reversing the rule
 // that it cached nothing.
 
+import { execFile } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
+import { REPO_ROOT, childEnv } from "./child-env.ts";
 import {
   projectSlug,
   type TranscriptCursor,
@@ -48,6 +51,8 @@ import {
   type TranscriptResponse,
 } from "./transcripts.ts";
 import type { TrendPoint } from "../src/dev/usage-protocol.ts";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Environment variable that overrides where the history file lives — the third
@@ -59,25 +64,80 @@ import type { TrendPoint } from "../src/dev/usage-protocol.ts";
  */
 export const HISTORY_FILE_ENV = "USAGE_HISTORY_FILE";
 
+/** A ceiling on a `git rev-parse` that normally answers in milliseconds, so a
+ *  hung one cannot hold a scan up. Not a measured figure. */
+const GIT_TIMEOUT_MS = 5_000;
+
+/**
+ * The environment a `git` asked about `cwd` runs in: `childEnv`'s, because
+ * anything spawned from the dev server sanitises first, minus `GIT_DIR` and its
+ * siblings — inherited from a git hook they would make git answer for the
+ * hook's repository rather than for `cwd`'s. Exported so the tests' own `git`
+ * calls build their throwaway clone under the same rule.
+ */
+export function gitEnv(): NodeJS.ProcessEnv {
+  const env = childEnv(REPO_ROOT);
+  for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"]) {
+    delete env[key];
+  }
+  return env;
+}
+
+/**
+ * The main worktree's root for whatever checkout `cwd` is in: the parent of
+ * `git rev-parse --git-common-dir`, which every linked worktree of a clone
+ * shares. `null` when git cannot answer — not installed, older than 2.31 (no
+ * `--path-format`), or `cwd` is outside any checkout or does not exist.
+ *
+ * Asynchronous because a spawn under `dev/` is (frontend.md).
+ */
+async function mainWorktreeRoot(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { cwd, env: gitEnv(), encoding: "utf8", timeout: GIT_TIMEOUT_MS },
+    );
+    const commonDir = stdout.trim();
+    return commonDir ? dirname(commonDir) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Where the history file lives, as one resolvable decision — the same shape as
- * `resolveTranscriptDir`, and keyed on the same project slug.
+ * `resolveTranscriptDir`, with one difference in the key.
  *
  * `~/.claude-usage-history/<slug>.sqlite`: outside the repository, so no
  * commit, CI artefact or build can contain it (R4), and outside `~/.claude`,
  * so Claude Code's own cleanup — the thing this history outlives — never
  * reaches it.
+ *
+ * **The slug is the main worktree's root, not `cwd`'s** (#423). Every worktree
+ * of a clone shares one history, so spend scanned in one shows from all of
+ * them, and a deleted worktree does not take the only reader of its spend with
+ * it. The transcripts stay keyed on `cwd`, because that is where Claude Code
+ * writes them. From the main worktree the two slugs are the same string, so its
+ * file kept its name. Outside a checkout, or when git cannot answer, it falls
+ * back to `cwd`'s slug rather than throwing. Separate clones still have one
+ * history each.
+ *
+ * A file keyed on a linked worktree before #423 is not merged in: the history
+ * shipped (#417) the same day, and no such file existed on the one machine that
+ * had scanned with it, so a merge would be code with nothing to read.
  */
-export function resolveHistoryFile(
+export async function resolveHistoryFile(
   env: Record<string, string | undefined> = process.env,
   {
     cwd = process.cwd(),
     home = homedir(),
   }: { cwd?: string; home?: string } = {},
-): string {
+): Promise<string> {
   const override = env[HISTORY_FILE_ENV]?.trim();
   if (override) return override;
-  return join(home, ".claude-usage-history", `${projectSlug(cwd)}.sqlite`);
+  const root = (await mainWorktreeRoot(cwd)) ?? cwd;
+  return join(home, ".claude-usage-history", `${projectSlug(root)}.sqlite`);
 }
 
 /** A value either SQLite module binds to a `?` placeholder. */

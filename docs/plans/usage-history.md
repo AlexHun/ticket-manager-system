@@ -59,9 +59,12 @@ Shape:
   makes R11 true: a future #413-style fix applies to rows whose transcript is
   gone.
 - The file lives outside the repo and outside `~/.claude`:
-  `~/.claude-usage-history/<project-slug>.sqlite`, using the same slug
-  `resolveTranscriptDir` derives. Being outside the repo means every worktree
-  and clone of this repo shares one history (R4). Being outside `~/.claude`
+  `~/.claude-usage-history/<project-slug>.sqlite`, the slug taken from the
+  main worktree's root (the parent of `git rev-parse --git-common-dir`, or the
+  working directory when git can't answer) rather than from the worktree's own
+  path, which `resolveTranscriptDir` still uses. So every worktree of a clone
+  shares one history (#423); separate clones each keep their own. Being outside
+  the repo means no commit, artefact or build can contain it (R4). Being outside `~/.claude`
   means Claude Code's own cleanup, the thing this feature outlives, never
   touches it. `USAGE_HISTORY_FILE` overrides it, the third seam
   beside `CLAUDE_TRANSCRIPT_DIR` and `GH_ISSUES_FILE`.

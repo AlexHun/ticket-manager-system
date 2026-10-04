@@ -42,8 +42,16 @@ rows whose transcript is deleted.
 
 ## Where it lives, and when it is open
 
-- **`~/.claude-usage-history/<project-slug>.sqlite`**, keyed on the slug the
-  transcript directory uses, with `USAGE_HISTORY_FILE` as the override (the
+- **`~/.claude-usage-history/<project-slug>.sqlite`**, keyed on the slug of the
+  main worktree's root, so every worktree of a clone shares one history (#423).
+  It was keyed on the working directory's slug, as the transcript directory
+  still is, which gave each worktree a history of its own and let a deleted
+  worktree take the only reader of its spend with it. When git can't answer it
+  falls back to the working directory's slug. A file a linked worktree wrote
+  under the old key isn't merged in. The history shipped (#417) the same day
+  as #423, and the one machine that had scanned with it held no history file
+  at all. On another machine, such a file is left where it is and is no
+  longer read. `USAGE_HISTORY_FILE` is the override (the
   third seam beside `CLAUDE_TRANSCRIPT_DIR` and `GH_ISSUES_FILE`). Outside the
   repository, so no commit, CI artefact or build can contain it. Outside
   `~/.claude`, so the cleanup it outlives never touches it.
