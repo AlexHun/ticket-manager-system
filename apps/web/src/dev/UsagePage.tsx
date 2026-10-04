@@ -8,6 +8,7 @@ import { useUsageScan } from "./dev-api";
 import { SpendTable } from "./SpendTable";
 import { DEFAULT_USAGE_TABLE_VIEW, type UsageTableView } from "./usage-view";
 import { UsageCharts } from "./UsageCharts";
+import { UsageTrend } from "./UsageTrend";
 import { formatTokens } from "./usage-charts";
 import type { UnattributedWork, UsageReport } from "./usage-protocol";
 
@@ -23,8 +24,9 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * the page opens empty and says so, and the figures on screen are always one
  * named moment's reading rather than "whatever the machine has been doing"
  * (R5). Pressing Scan again re-reads — `UsageReport` in `./usage-protocol` is
- * where the reason no answer is cached on either side of the wire is written
- * down, and why the responses behind it are (#417).
+ * where the reason no reading is cached on either side of the wire is written
+ * down, and why the responses behind it are (#417) — and the one daily trend
+ * point that is (#419).
  *
  * **The rows are `./SpendTable`, which is where everything about an issue
  * lives** (#270) — the column definitions, the two markers that tell a missing
@@ -40,6 +42,8 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * otherwise makes you compute by eye: how often a forecast band matched, and
  * whether the bands still fit the work. They read the same rows and are derived
  * in `./usage-charts.ts`; what they refuse to read is the subject of that file.
+ * **Below them, the trend** (#419): how those two readings have moved, one
+ * point per day with a scan, from the usage history — `./UsageTrend`.
  *
  * **A row is not proof that work happened** (#251). Every open issue gets one,
  * so the page answers "what is this forecast to cost?" before the work as well
@@ -170,6 +174,10 @@ export function UsagePage() {
           relieves. Both are gated on the same `report`, so nothing survives
           into the next press. */}
       {report && <UsageCharts issues={report.issues} />}
+
+      {/* How those two readings have moved, one point per day with a scan
+          (#419). After them, since today's point is the panels above. */}
+      {report && <UsageTrend points={report.trend} />}
 
       {report && (
         <SpendTable issues={report.issues} view={view} onViewChange={setView} />

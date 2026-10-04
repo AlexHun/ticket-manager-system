@@ -38,11 +38,12 @@ import {
   VERDICT,
   type Bucket,
   type IssueUsage,
+  type TrendPoint,
   type UsageReport,
   type UsageWarning,
   type Verdict,
 } from "../src/dev/usage-protocol.ts";
-import { bucketFor } from "../src/dev/usage-readings.ts";
+import { bucketFor, trendPointFor } from "../src/dev/usage-readings.ts";
 // The order the rows go on the wire in, imported rather than restated (#286).
 // `joinIssues` below is where that is argued, including why this is the
 // browser's module and not a third one both halves read.
@@ -221,6 +222,10 @@ function joinIssues(
  * directory is mostly skipped. Without it, every transcript is read whole, the
  * figures are what is on disk now and `historySince` is null — which is what
  * the unit tests about the join want, and why they need no file of their own.
+ * With it, each scan also writes the trend's point for its local calendar day
+ * (#419) — replacing that day's earlier point — and the report carries every
+ * stored point. `now` is the clock that point and `gatheredAt` are stamped
+ * with, a parameter so the tests can move a day, which Playwright cannot.
  *
  * **Nothing here throws, except a history that cannot be opened.** A missing
  * directory is the ordinary state of a machine that has never run Claude Code
@@ -244,6 +249,7 @@ export async function gatherUsage(
   dir: string,
   metadata?: IssueMetadata,
   historyFile?: string,
+  now: () => Date = () => new Date(),
 ): Promise<UsageReport> {
   // Before the listing, not after: `scanMs` answers "how long did pressing
   // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
@@ -255,7 +261,7 @@ export async function gatherUsage(
   const store =
     historyFile === undefined ? null : await openUsageStore(historyFile);
   try {
-    return reportFrom(dir, listing, startedAt, store);
+    return reportFrom(dir, listing, startedAt, store, now);
   } finally {
     store?.close();
   }
@@ -267,6 +273,7 @@ function reportFrom(
   listing: IssueMetadata,
   startedAt: number,
   store: UsageStore | null,
+  now: () => Date,
 ): UsageReport {
   const warnings: UsageWarning[] = [];
 
@@ -312,14 +319,26 @@ function reportFrom(
     historySince = store.since();
   }
   const { byIssue, unattributed } = tallySpend(responses);
+  const issues = joinIssues(byIssue, listing);
+
+  // Today's trend point, from the very rows the page's panels are drawn from
+  // (#419), so the two cannot disagree. The same instant stamps the reading,
+  // which makes the point's `at` and `gatheredAt` one moment.
+  const at = now();
+  let trend: TrendPoint[] = [];
+  if (store) {
+    store.recordPoint(trendPointFor(issues, at));
+    trend = store.trend();
+  }
 
   return {
-    gatheredAt: new Date().toISOString(),
+    gatheredAt: at.toISOString(),
     scanMs: Date.now() - startedAt,
     transcriptDir: dir,
     transcripts: read.transcripts,
     historySince,
-    issues: joinIssues(byIssue, listing),
+    trend,
+    issues,
     // Beside the rows, never among them (#253): it has no issue number, nothing
     // forecast it, and there is no band for it to land in — which is also why
     // the page draws it as a total rather than a row.

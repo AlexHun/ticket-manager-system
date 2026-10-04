@@ -28,6 +28,7 @@ import {
 } from "./usage-protocol";
 import { forecastAccuracy } from "./usage-readings";
 import {
+  accuracyLabel,
   formatTokens,
   outputDistribution,
   type PercentileMark,
@@ -121,14 +122,7 @@ function AccuracyChart({ issues }: { issues: IssueUsage[] }) {
     <ChartPanel
       title="Forecast accuracy"
       description="Issues carrying a forecast band, by how the actual read against it."
-      stat={
-        scored > 0 && (
-          <span>
-            {onTarget}/{scored} on target (
-            {Math.round((onTarget / scored) * 100)}%)
-          </span>
-        )
-      }
+      stat={scored > 0 && <span>{accuracyLabel(onTarget, scored)}</span>}
       isEmpty={scored === 0}
       emptyMessage="Nothing to score. No issue here carries both a forecast/S|M|L label and recorded spend to read against it."
       footer="Only issues with both halves are counted. A band nobody has started work against is not a forecast that has been tested, and counting it as a miss would walk this figure toward zero as the backlog grows."

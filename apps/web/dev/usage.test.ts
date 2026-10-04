@@ -14,7 +14,11 @@ import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
 // module rather than from `./usage.ts`, which forwarded them until #290 — the
 // same import every other reader of this vocabulary already wrote.
 import { BUCKETS, USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
-import { bucketFor, percentiles } from "../src/dev/usage-readings.ts";
+import {
+  bucketFor,
+  percentiles,
+  recordedSpend,
+} from "../src/dev/usage-readings.ts";
 
 /**
  * An issue listing, without asking `gh` for one.
@@ -893,6 +897,125 @@ describe("gatherUsage with a history", () => {
 
     expect(report.issues[0]?.spend?.out).toBe(4200);
     expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+  });
+});
+
+/**
+ * Slice 3 of `docs/plans/usage-history.md` (#419): the trend. One point per
+ * local calendar day with a scan, the day's last scan replacing its point.
+ * Playwright cannot move a day, so the day boundary and replace-not-append are
+ * held here, with the clock handed in.
+ */
+describe("gatherUsage keeps a daily trend (#419)", () => {
+  let historyDir: string;
+  let history: string;
+  const tz = process.env.TZ;
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+    if (tz === undefined) delete process.env.TZ;
+    else process.env.TZ = tz;
+  });
+
+  const listing = () =>
+    known({ 101: { forecast: "S" }, 102: { forecast: "S" } });
+  const scanAt = (at: Date) => gatherUsage(dir, listing(), history, () => at);
+
+  it("writes today's point from the figures the page's panels show", async () => {
+    write("a.jsonl", [
+      turn("a", "feat/101-a", 20_000),
+      turn("a", "fix/102-b", 90_000),
+    ]);
+
+    const report = await scanAt(new Date(2026, 9, 4, 10));
+
+    // The panels' own arithmetic over the report's rows.
+    const { p25, p50, p75 } = percentiles(recordedSpend(report.issues));
+    expect(report.trend).toEqual([
+      {
+        day: "2026-10-04",
+        at: new Date(2026, 9, 4, 10).toISOString(),
+        measured: 2,
+        p25,
+        median: p50,
+        p75,
+        scored: 2,
+        onTarget: 1,
+        edges: { S: BUCKETS.S.max, M: BUCKETS.M.max, L: BUCKETS.L.max },
+      },
+    ]);
+    expect(report.gatheredAt).toBe(new Date(2026, 9, 4, 10).toISOString());
+  });
+
+  it("leaves one point for a day scanned twice, holding the second scan's figures", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+    await scanAt(new Date(2026, 9, 4, 9));
+
+    write("b.jsonl", [turn("b", "fix/102-b", 90_000)]);
+    const second = await scanAt(new Date(2026, 9, 4, 18));
+
+    expect(second.trend).toHaveLength(1);
+    expect(second.trend[0]).toMatchObject({
+      day: "2026-10-04",
+      at: new Date(2026, 9, 4, 18).toISOString(),
+      measured: 2,
+      scored: 2,
+      onTarget: 1,
+    });
+  });
+
+  it("adds a point on a later day and leaves the earlier ones as they were", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+    const first = await scanAt(new Date(2026, 9, 3, 22));
+
+    write("b.jsonl", [turn("b", "fix/102-b", 90_000)]);
+    const later = await scanAt(new Date(2026, 9, 4, 8));
+
+    expect(later.trend.map((p) => p.day)).toEqual(["2026-10-03", "2026-10-04"]);
+    expect(later.trend[0]).toEqual(first.trend[0]);
+    expect(later.trend[1]).toMatchObject({ measured: 2, onTarget: 1 });
+  });
+
+  // Either side of the date line, two scans an hour apart share a UTC date and
+  // straddle a local midnight, so a UTC day would leave one point where there
+  // must be two. Node re-reads `TZ` when it is assigned.
+  it.each([
+    // UTC-10: 23:30 on the 4th, then 00:30 on the 5th.
+    [
+      "Pacific/Honolulu",
+      "2026-10-05T09:30:00.000Z",
+      "2026-10-05T10:30:00.000Z",
+    ],
+    // UTC+13 in October: the same two local times.
+    [
+      "Pacific/Auckland",
+      "2026-10-04T10:30:00.000Z",
+      "2026-10-04T11:30:00.000Z",
+    ],
+  ])(
+    "splits days at local midnight, not UTC midnight (%s)",
+    async (zone, before, after) => {
+      process.env.TZ = zone;
+      write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+
+      await scanAt(new Date(before));
+      const report = await scanAt(new Date(after));
+
+      expect(report.trend.map((p) => p.day)).toEqual([
+        "2026-10-04",
+        "2026-10-05",
+      ]);
+    },
+  );
+
+  it("keeps no trend when it was asked to keep no history", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+
+    expect((await gatherUsage(dir, listing())).trend).toEqual([]);
   });
 });
 

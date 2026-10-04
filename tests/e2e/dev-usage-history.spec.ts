@@ -5,7 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { ROUTE } from "../../apps/web/src/lib/routes";
-import { USAGE_COLUMNS } from "../../apps/web/src/dev/usage-copy";
+import {
+  USAGE_COLUMNS,
+  USAGE_TREND_LABEL,
+} from "../../apps/web/src/dev/usage-copy";
 import {
   GH_ISSUES_FIXTURE_PATH,
   removeGhIssuesFixture,
@@ -21,7 +24,8 @@ import {
  * Slice 1 of `docs/plans/usage-history.md` (#417): a scan stores what it read,
  * so an issue keeps its spend after Claude Code deletes the transcript it came
  * from, and the page says from which date its history runs. Slice 2 (#418): a
- * scan reads only what was appended since the last one.
+ * scan reads only what was appended since the last one. Slice 3 (#419): one
+ * trend point per day with a scan, today's equal to the panels above it.
  *
  * Driven through the real middleware: the web server's `USAGE_HISTORY_FILE` is
  * `USAGE_HISTORY_PATH` (`playwright.config.ts`), a gitignored file that
@@ -40,6 +44,27 @@ const SESSION_B = { issue102: "3,000", issue105: "90,000" } as const;
 const HISTORY_SINCE = "2026-09-02T09:00:00.000Z";
 
 const OUT = USAGE_COLUMNS.indexOf("out");
+
+/**
+ * The two panels' figures over the fixtures (README: "What the bands and the
+ * listing make of these figures"), and what a trend point's cells must read for
+ * the same scan: accuracy, then p25 / median / p75, then the band edges
+ * `BUCKETS` holds today.
+ */
+const PANELS = {
+  accuracy: "1/2 on target (50%)",
+  quartiles: "p25 3,000 · median 20,000 · p75 90,000",
+  quartileCells: ["3,000", "20,000", "90,000"],
+  edges: "S <60,000 · M <150,000 · L <250,000",
+} as const;
+
+/** After 40,000 more output tokens on `#102` (3,000 → 43,000): the sorted
+ *  totals are 20,000, 43,000, 90,000. `#102` carries no forecast, so the
+ *  accuracy figure does not move. */
+const SECOND_SCAN = {
+  quartiles: "p25 20,000 · median 43,000 · p75 90,000",
+  quartileCells: ["20,000", "43,000", "90,000"],
+} as const;
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -169,6 +194,59 @@ test.describe("dev tools: Usage history", () => {
     const stdout = await tokens();
     expect(stdout).toMatch(/^#102\s.*\s6k\s/m);
     expect(stdout).toMatch(/^#105\s.*\s90k\s/m);
+  });
+
+  /**
+   * Slice 3 (#419): one trend point per local calendar day with a scan. Today's
+   * equals the two panels above it, and a second scan the same day replaces it
+   * rather than adding one. Moving to a later day is `apps/web/dev/usage.test.ts`'s,
+   * with an injected clock — Playwright cannot move a day.
+   */
+  test("the trend holds one point for today, equal to the panels, however often it is scanned", async ({
+    page,
+  }) => {
+    const scan = page.getByRole("button", { name: "Scan" });
+    const points = page
+      .getByRole("region", { name: USAGE_TREND_LABEL.points })
+      .getByRole("row")
+      // The header row has no row header; every point's day is one.
+      .filter({ has: page.getByRole("rowheader") });
+    const accuracy = page.getByRole("region", { name: "Forecast accuracy" });
+    const distribution = page.getByRole("region", {
+      name: "Output distribution",
+    });
+
+    await scan.click();
+    await expect(reading(page)).toContainText(TRANSCRIPT_WORKING_DIR);
+    await expect(points).toHaveCount(1);
+    await expect(accuracy).toContainText(PANELS.accuracy);
+    await expect(distribution).toContainText(PANELS.quartiles);
+    await expect(points.first().getByRole("cell")).toHaveText([
+      PANELS.accuracy,
+      ...PANELS.quartileCells,
+      PANELS.edges,
+    ]);
+
+    // A second scan the same day, after the figures moved: still one point,
+    // now holding the second scan's quartiles. `session-b.jsonl` ends on a
+    // newline, so the appended response is a line of its own.
+    appendFileSync(
+      path.join(TRANSCRIPT_WORKING_DIR, "session-b.jsonl"),
+      `${JSON.stringify({
+        sessionId: "b",
+        gitBranch: "fix/102-b",
+        timestamp: "2026-09-03T11:00:00.000Z",
+        message: { id: "msg_trend_1", usage: { output_tokens: 40_000 } },
+      })}\n`,
+    );
+    await scan.click();
+    await expect(distribution).toContainText(SECOND_SCAN.quartiles);
+    await expect(points).toHaveCount(1);
+    await expect(points.first().getByRole("cell")).toHaveText([
+      PANELS.accuracy,
+      ...SECOND_SCAN.quartileCells,
+      PANELS.edges,
+    ]);
   });
 
   test("names the earliest date the stored history covers, after its transcript is gone", async ({

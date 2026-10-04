@@ -9,6 +9,7 @@ import {
   USAGE_DETAIL_LABEL,
   USAGE_SPINE,
   USAGE_TABLE_LABEL,
+  USAGE_TREND_LABEL,
   type UsageColumn,
 } from "./usage-copy";
 import { USAGE_WARNING_SOURCE } from "./usage-protocol";
@@ -98,6 +99,10 @@ function makeReport(over: Partial<UsageReport> = {}): UsageReport {
     transcriptDir: FIXTURE_DIR,
     transcripts: 2,
     historySince: "2026-09-02T09:00:00.000Z",
+    // Empty by default: the trend's table is a second table on the page, and
+    // the helpers below that index `findAllByRole("row")` mean the spend
+    // table's rows. The trend's own tests give it points.
+    trend: [],
     issues: [
       makeIssue(),
       makeIssue({
@@ -574,6 +579,70 @@ describe("UsagePage", () => {
     expect(screen.queryByText(/^History from/)).toBeNull();
   });
 
+  // #419. Recharts draws nothing in jsdom, so the points are read off the
+  // table beneath the two trend charts — which is the charts' relief path.
+  test("lists each day's point, newest first, with the band edges it was stored with", async () => {
+    const point = {
+      at: "2026-10-04T10:00:00.000Z",
+      measured: 2,
+      p25: 3000,
+      median: 20_000,
+      p75: 20_000,
+      scored: 2,
+      onTarget: 1,
+    };
+    post.mockResolvedValue({
+      data: makeReport({
+        trend: [
+          {
+            ...point,
+            day: "2026-10-03",
+            scored: 0,
+            onTarget: 0,
+            edges: { S: 50_000, M: 120_000, L: 200_000 },
+          },
+          {
+            ...point,
+            day: "2026-10-04",
+            edges: { S: 60_000, M: 150_000, L: 250_000 },
+          },
+        ],
+      }),
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(scanButton());
+
+    const table = await screen.findByRole("region", {
+      name: USAGE_TREND_LABEL.points,
+    });
+    const rows = within(table)
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => row.textContent);
+    expect(rows).toEqual([
+      "2026-10-041/2 on target (50%)3,00020,00020,000S <60,000 · M <150,000 · L <250,000",
+      // Nothing scored that day: an em dash, not 0%. And its own edges.
+      "2026-10-03—3,00020,00020,000S <50,000 · M <120,000 · L <200,000",
+    ]);
+  });
+
+  test("says there is no trend yet rather than drawing empty axes", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(scanButton());
+
+    const quartiles = await panel(USAGE_TREND_LABEL.quartiles);
+    expect(within(quartiles).getByRole("status")).toHaveTextContent(
+      /no trend yet/i,
+    );
+    expect(
+      screen.queryByRole("region", { name: USAGE_TREND_LABEL.points }),
+    ).toBeNull();
+  });
+
   test("re-reads on a second press rather than holding the first answer", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -681,7 +750,8 @@ describe("UsagePage", () => {
    * rather than the table's (#273, #288).
    *
    * The two charts, the unattributed total and the gathered-at line read
-   * `report.issues` up here and never see the rows `SpendTable` was left with,
+   * `report.issues` up here (the trend reads `report.trend`, which the server
+   * wrote) and never see the rows `SpendTable` was left with,
    * so a control on the bar below must not move any of them. The search box's
    * half of that claim is `dev-usage.spec.ts`'s, in a browser. The sort's is
    * here, because re-ranking is the one gesture that changes the table while

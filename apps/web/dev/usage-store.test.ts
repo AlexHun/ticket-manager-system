@@ -21,6 +21,7 @@ import {
   usageStoreOver,
   type SqlDatabase,
 } from "./usage-store.ts";
+import type { TrendPoint } from "../src/dev/usage-protocol.ts";
 
 /**
  * The usage history (#417), under vitest — which runs on Node, so the store is
@@ -142,6 +143,38 @@ describe("the store", () => {
       new Map([["/t/a.jsonl", { offset: 40, size: 40, lines: 3, head: "h1" }]]),
     );
     expect(store.responses()).toHaveLength(1);
+  });
+
+  // #419: one trend point per day, the day's last write winning.
+  it("keeps one trend point per day, replacing that day's point and leaving the others", () => {
+    const store = memoryStore();
+    expect(store.trend()).toEqual([]);
+    const point = (day: string, median: number): TrendPoint => ({
+      day,
+      at: `${day}T10:00:00.000Z`,
+      measured: 3,
+      p25: 1000,
+      median,
+      p75: 9000,
+      scored: 2,
+      onTarget: 1,
+      edges: { S: 60_000, M: 150_000, L: 250_000 },
+    });
+
+    store.recordPoint(point("2026-10-04", 2000));
+    store.recordPoint(point("2026-10-03", 1500));
+    store.recordPoint({
+      ...point("2026-10-04", 5000),
+      edges: { S: 50_000, M: 120_000, L: 200_000 },
+    });
+
+    expect(store.trend()).toEqual([
+      point("2026-10-03", 1500),
+      {
+        ...point("2026-10-04", 5000),
+        edges: { S: 50_000, M: 120_000, L: 200_000 },
+      },
+    ]);
   });
 
   it("leaves nothing open once closed, so the file can be deleted (Windows locks)", async () => {
