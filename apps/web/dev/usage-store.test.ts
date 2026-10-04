@@ -126,6 +126,24 @@ describe("the store", () => {
     expect(store.since()).toBe("2026-09-02T09:00:00.000Z");
   });
 
+  // #418: how far each transcript has been read, so the next scan starts there.
+  it("remembers each transcript's cursor, the latest one winning", () => {
+    const store = memoryStore();
+    expect(store.cursors().size).toBe(0);
+    const cursor = { offset: 10, size: 12, lines: 1, head: "h1" };
+
+    store.record([response()], new Map([["/t/a.jsonl", cursor]]));
+    store.record(
+      [],
+      new Map([["/t/a.jsonl", { ...cursor, offset: 40, size: 40, lines: 3 }]]),
+    );
+
+    expect(store.cursors()).toEqual(
+      new Map([["/t/a.jsonl", { offset: 40, size: 40, lines: 3, head: "h1" }]]),
+    );
+    expect(store.responses()).toHaveLength(1);
+  });
+
   it("leaves nothing open once closed, so the file can be deleted (Windows locks)", async () => {
     const file = join(dir, "nested", "history.sqlite");
     const store = await openUsageStore(file);

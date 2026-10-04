@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { exec } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -20,7 +20,8 @@ import {
 /**
  * Slice 1 of `docs/plans/usage-history.md` (#417): a scan stores what it read,
  * so an issue keeps its spend after Claude Code deletes the transcript it came
- * from, and the page says from which date its history runs.
+ * from, and the page says from which date its history runs. Slice 2 (#418): a
+ * scan reads only what was appended since the last one.
  *
  * Driven through the real middleware: the web server's `USAGE_HISTORY_FILE` is
  * `USAGE_HISTORY_PATH` (`playwright.config.ts`), a gitignored file that
@@ -116,6 +117,57 @@ test.describe("dev tools: Usage history", () => {
     test.setTimeout(60_000);
     const stdout = await tokens();
     expect(stdout).toMatch(/^#102\s.*\s3k\s/m);
+    expect(stdout).toMatch(/^#105\s.*\s90k\s/m);
+  });
+
+  /**
+   * Slice 2 (#418): a scan reads only what was written since the last one. A
+   * transcript that grew between two scans adds exactly its new response — and
+   * nothing for a second content block of a response a previous scan already
+   * stored, which only the store can recognise once the reads are incremental.
+   *
+   * Appended to `session-b.jsonl`, which ends on a newline; `session-a.jsonl`
+   * ends on its deliberately truncated line, which an append would complete.
+   */
+  test("a transcript that grew adds exactly its new response, on the page and in the terminal", async ({
+    page,
+  }) => {
+    const scan = page.getByRole("button", { name: "Scan" });
+    const sessionB = path.join(TRANSCRIPT_WORKING_DIR, "session-b.jsonl");
+    /** One content block of an API response on `#102`'s branch. */
+    const block = (id: string, out: number, minute: number) =>
+      `${JSON.stringify({
+        sessionId: "b",
+        gitBranch: "fix/102-b",
+        timestamp: `2026-09-03T10:${minute}:00.000Z`,
+        message: {
+          id,
+          usage: { output_tokens: out, cache_read_input_tokens: 0 },
+        },
+      })}\n`;
+
+    await scan.click();
+    await expect(reading(page)).toContainText(TRANSCRIPT_WORKING_DIR);
+    await expect(outFor(page, 102)).toHaveText(SESSION_B.issue102);
+
+    appendFileSync(sessionB, block("msg_appended_1", 1000, 10));
+    await scan.click();
+    await expect(outFor(page, 102)).toHaveText("4,000");
+
+    // The same response's second block, then a response of its own.
+    appendFileSync(
+      sessionB,
+      block("msg_appended_1", 1000, 10) + block("msg_appended_2", 2000, 11),
+    );
+    await scan.click();
+    await expect(outFor(page, 102)).toHaveText("6,000");
+    // Nothing else moved: the rest of the file was not read twice.
+    await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
+
+    // R3: the terminal, off the same history, after the same incremental reads.
+    test.setTimeout(60_000);
+    const stdout = await tokens();
+    expect(stdout).toMatch(/^#102\s.*\s6k\s/m);
     expect(stdout).toMatch(/^#105\s.*\s90k\s/m);
   });
 

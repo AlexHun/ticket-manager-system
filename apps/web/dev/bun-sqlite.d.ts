@@ -2,7 +2,7 @@
 // nothing more.
 //
 // `apps/web` declares no Bun types, and `@types/bun` would be a new dependency
-// for a constructor and six methods (#417 asks before adding one, and names
+// for a constructor and seven methods (#417 asks before adding one, and names
 // this as the alternative). It is a hand-written mirror of a
 // third-party shape, so it carries only what the opener calls — a member added
 // here that Bun does not have would compile and throw at the first scan. Bun's
@@ -16,6 +16,9 @@ declare module "bun:sqlite" {
      *  `node:sqlite` the store's adapter has to normalise. */
     get(...params: Array<string | number | null>): unknown;
     all(...params: Array<string | number | null>): unknown[];
+    /** Releases the statement. `Database.close` leaves the file open while any
+     *  statement is unfinalized — see `openSqlite` in `./usage-store.ts`. */
+    finalize(): void;
   }
 
   export class Database {

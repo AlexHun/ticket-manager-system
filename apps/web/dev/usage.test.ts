@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -893,5 +893,177 @@ describe("gatherUsage with a history", () => {
 
     expect(report.issues[0]?.spend?.out).toBe(4200);
     expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+  });
+});
+
+/**
+ * Slice 2 of `docs/plans/usage-history.md` (#418): a scan reads only what was
+ * written since the last one. The store remembers per transcript how far it has
+ * read; what these hold is that the figures come out as a full re-read would
+ * have made them, whatever happened to the file in between.
+ *
+ * Lines are written newline-terminated here, as Claude Code writes them, unlike
+ * `write` above — an unterminated last line is a case of its own below.
+ */
+describe("gatherUsage reads only what is new (#418)", () => {
+  let historyDir: string;
+  let history: string;
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  const lines = (...records: string[]) => records.map((r) => `${r}\n`).join("");
+  const put = (name: string, text: string) =>
+    writeFileSync(join(dir, name), text, "utf8");
+  const append = (name: string, text: string) =>
+    appendFileSync(join(dir, name), text, "utf8");
+  const spendOf = async (issue: number) =>
+    (await gatherUsage(dir, known(), history)).issues.find(
+      (row) => row.issue === issue,
+    )?.spend;
+
+  it("adds exactly an appended response's tokens and one turn", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 1000, 10_000, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    append("a.jsonl", lines(turn("a", "feat/101-a", 250, 4000, "msg_2")));
+
+    expect(await spendOf(101)).toEqual({
+      out: 1250,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 14_000,
+    });
+  });
+
+  // #413's rule across two reads: the second block of a response arrives after
+  // the scan that stored its first, so only the store can recognise it.
+  it("adds nothing for a second content block of a response already stored", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 1000, 10_000, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    append("a.jsonl", lines(turn("a", "feat/101-a", 1000, 10_000, "msg_1")));
+
+    expect(await spendOf(101)).toEqual({
+      out: 1000,
+      turns: 1,
+      sessions: 1,
+      cacheRead: 10_000,
+    });
+  });
+
+  it("counts a half-written last line once, on the scan after it is completed", async () => {
+    const second = turn("a", "feat/101-a", 300, 0, "msg_2");
+    const cut = Math.floor(second.length / 2);
+    put(
+      "a.jsonl",
+      lines(turn("a", "feat/101-a", 1000, 0, "msg_1")) + second.slice(0, cut),
+    );
+    expect((await spendOf(101))?.out).toBe(1000);
+
+    append("a.jsonl", `${second.slice(cut)}\n`);
+
+    expect((await spendOf(101))?.out).toBe(1300);
+    expect((await spendOf(101))?.turns).toBe(2);
+  });
+
+  // The same, for a record with no identity of its own: it is keyed on its file
+  // and line, so the line has to keep its number when it is read again.
+  it("counts a complete but unterminated last line once, even keyed on its line", async () => {
+    put(
+      "a.jsonl",
+      `${turn("a", "feat/101-a", 1000)}\n${turn("a", "feat/101-a", 7)}`,
+    );
+    expect((await spendOf(101))?.out).toBe(1007);
+
+    append("a.jsonl", `\n${turn("a", "feat/101-a", 20)}\n`);
+
+    expect(await spendOf(101)).toMatchObject({ out: 1027, turns: 3 });
+  });
+
+  it("re-reads a transcript replaced by a shorter one, without double counting", async () => {
+    const padded = (id: string, out: number) =>
+      JSON.stringify({
+        sessionId: "a",
+        gitBranch: "feat/101-a",
+        padding: "x".repeat(400),
+        message: { id, usage: { output_tokens: out } },
+      });
+    put("a.jsonl", lines(padded("msg_1", 100), padded("msg_2", 20)));
+    await gatherUsage(dir, known(), history);
+
+    // msg_1 again, and a response the old file never held, in fewer bytes.
+    put(
+      "a.jsonl",
+      lines(
+        turn("a", "feat/101-a", 100, 0, "msg_1"),
+        turn("a", "feat/101-a", 3, 0, "msg_3"),
+      ),
+    );
+
+    expect(await spendOf(101)).toMatchObject({ out: 123, turns: 3 });
+  });
+
+  it("re-reads a transcript replaced by a longer one that does not begin the same way", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 100, 0, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    put(
+      "a.jsonl",
+      lines(
+        turn("b", "feat/101-a", 5, 0, "msg_5"),
+        turn("b", "feat/101-a", 40, 0, "msg_6"),
+        turn("b", "feat/101-a", 100, 0, "msg_1"),
+      ),
+    );
+
+    expect(await spendOf(101)).toMatchObject({ out: 145, turns: 3 });
+  });
+
+  it("agrees with a reading that keeps no history, after any number of appends", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 1, 0, "msg_1")));
+    put("b.jsonl", lines(turn("b", "main", 2)));
+    await gatherUsage(dir, known(), history);
+    append("a.jsonl", lines(turn("a", "fix/102-b", 30, 5, "msg_2")));
+    await gatherUsage(dir, known(), history);
+    append(
+      "b.jsonl",
+      lines(turn("b", "main", 400), turn("b", "feat/101-a", 5000)),
+    );
+    append("a.jsonl", lines(turn("a", "fix/102-b", 30, 5, "msg_2")));
+
+    const incremental = await gatherUsage(dir, known(), history);
+    const full = await gatherUsage(dir, known());
+
+    expect(incremental.issues).toEqual(full.issues);
+    expect(incremental.unattributed).toEqual(full.unattributed);
+  });
+});
+
+describe("readTranscripts with cursors (#418)", () => {
+  it("reads nothing from a file that has not changed since its cursor", () => {
+    writeFileSync(join(dir, "a.jsonl"), `${turn("a", "feat/101-a", 9)}\n`);
+    const first = readTranscripts(dir);
+
+    const second = readTranscripts(dir, first.cursors);
+
+    expect(first.responses).toHaveLength(1);
+    expect(second.responses).toEqual([]);
+    expect(second.transcripts).toBe(1);
+    expect(second.cursors).toEqual(first.cursors);
+  });
+
+  it("holds its place before a line that has no newline yet", () => {
+    const done = `${turn("a", "feat/101-a", 9)}\n`;
+    writeFileSync(join(dir, "a.jsonl"), `${done}{"sessionId":"a","gitBr`);
+
+    const [cursor] = readTranscripts(dir).cursors.values();
+
+    expect(cursor).toMatchObject({ offset: Buffer.byteLength(done), lines: 1 });
   });
 });

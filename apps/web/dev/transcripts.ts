@@ -42,7 +42,8 @@
 // stored, so spend survives a deleted transcript; `scanSpend` is the two run
 // back to back over what is on disk, with no history.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { UnattributedWork } from "../src/dev/usage-protocol.ts";
@@ -168,14 +169,65 @@ export interface TranscriptResponse {
   cacheRead: number;
 }
 
+/**
+ * How far one transcript has been read (#418), so the next scan can start
+ * there rather than at the top of a file that only ever grows.
+ *
+ * `offset` is the byte just past the last newline read: a trailing line with no
+ * newline yet is left in front of it, so a line Claude Code was still writing is
+ * read whole on a later scan rather than skipped for good. `lines` counts the
+ * lines before `offset`, so a record keyed on its line number (`identityOf`)
+ * keeps that number when reading resumes. `size` is the file's length when it
+ * was read, and `head` a hash of its first bytes up to `offset` — between them
+ * they say whether the file is the same one grown, or a different one.
+ */
+export interface TranscriptCursor {
+  offset: number;
+  size: number;
+  lines: number;
+  head: string;
+}
+
+/** Cursors keyed on each transcript's full path. */
+export type TranscriptCursors = Map<string, TranscriptCursor>;
+
 /** What one read of a transcript directory found. */
 export interface TranscriptRead {
   /** Every response, each once — see `readTranscripts`. */
   responses: TranscriptResponse[];
-  /** `.jsonl` files actually read. Zero is the honest answer for a machine that
-   *  has never run Claude Code in this project. */
+  /** `.jsonl` files in the directory, whether or not anything new was read
+   *  from them. Zero is the honest answer for a machine that has never run
+   *  Claude Code in this project. */
   transcripts: number;
+  /** Where every one of those files now stands, for the next read to start
+   *  from. */
+  cursors: TranscriptCursors;
 }
+
+/**
+ * How many leading bytes `head` hashes. Enough that two different sessions
+ * cannot share it — the first record carries the session's id and a
+ * timestamp — and few enough that checking it costs one small read per changed
+ * file.
+ */
+const HEAD_BYTES = 1024;
+
+/** `length` bytes of an open file from `position`, however many reads it takes. */
+function readRange(fd: number, position: number, length: number): Buffer {
+  const buf = Buffer.alloc(length);
+  let done = 0;
+  while (done < length) {
+    const n = readSync(fd, buf, done, length - done, position + done);
+    if (n === 0) break;
+    done += n;
+  }
+  return buf.subarray(0, done);
+}
+
+const headOf = (fd: number, offset: number) =>
+  createHash("sha1")
+    .update(readRange(fd, 0, Math.min(offset, HEAD_BYTES)))
+    .digest("hex");
 
 const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
   rec.message?.id
@@ -202,38 +254,96 @@ const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
  * collapse on and is kept once per record, as all of them were before — a
  * format change that drops the id then over-counts rather than reading as zero
  * spend.
+ *
+ * **With `cursors`, only what was written since** (#418). Claude Code's
+ * transcripts only grow, so a file is read from where the last scan stopped, and
+ * one whose size has not changed is not opened at all. A file shorter than its
+ * cursor, or whose first bytes no longer hash to the cursor's `head`, is a
+ * different file under the same name and is read from the top; whatever that
+ * re-reads, the history's identity key has already stored and absorbs. A file
+ * replaced by another of exactly the same length is not noticed until it grows —
+ * a cost of skipping by size, which is what makes an unchanged directory cheap.
+ * Two more limits, both accepted because Claude Code only ever appends: `head`
+ * covers the first `HEAD_BYTES`, so a rewrite that keeps them resumes at an
+ * offset that may fall mid-line; and "absorbs the overlap" holds for a record
+ * keyed on its id or uuid, while one keyed on its file and line collides with
+ * whatever the replaced file held on that line and is stored only once.
+ *
+ * The unterminated tail after the last newline is parsed like any other line but
+ * left in front of the cursor: half-written, it fails to parse and is read again
+ * once finished; complete, it counts now and is absorbed by its identity when it
+ * is read again. Either way it counts once.
+ *
+ * So the dedup above is per read: a response's second block, appended after a
+ * scan stored its first, is new bytes here and is recognised by the store.
  */
-export function readTranscripts(dir: string): TranscriptRead {
+export function readTranscripts(
+  dir: string,
+  cursors?: ReadonlyMap<string, TranscriptCursor>,
+): TranscriptRead {
   const responses: TranscriptResponse[] = [];
   const seen = new Set<string>();
+  const next: TranscriptCursors = new Map();
   const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
   for (const file of files) {
-    const lines = readFileSync(join(dir, file), "utf8").split("\n");
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-      let rec: TranscriptRecord;
-      try {
-        rec = JSON.parse(line) as TranscriptRecord;
-      } catch {
-        return;
-      }
-      const usage = rec.message?.usage;
-      if (!usage) return;
-      // One-based, as an editor numbers the line a developer would go and read.
-      const id = identityOf(rec, file, index + 1);
-      if (seen.has(id)) return;
-      seen.add(id);
-      responses.push({
-        id,
-        session: rec.sessionId ?? null,
-        branch: rec.gitBranch ?? null,
-        at: rec.timestamp ?? null,
-        out: usage.output_tokens ?? 0,
-        cacheRead: usage.cache_read_input_tokens ?? 0,
+    const path = join(dir, file);
+    const size = statSync(path).size;
+    const prior = cursors?.get(path);
+    if (prior && prior.size === size) {
+      next.set(path, prior);
+      continue;
+    }
+    const fd = openSync(path, "r");
+    try {
+      const resume =
+        prior && size >= prior.offset && headOf(fd, prior.offset) === prior.head
+          ? prior
+          : undefined;
+      const from = resume?.offset ?? 0;
+      const firstLine = resume?.lines ?? 0;
+      const bytes = readRange(fd, from, size - from);
+      // Split on the byte, not on decoded text: `\n` never occurs inside a
+      // UTF-8 sequence, so this is a character boundary as well as a line one.
+      const complete = bytes.lastIndexOf(0x0a) + 1;
+      const lines = bytes.toString("utf8").split("\n");
+      lines.forEach((line, index) => {
+        if (!line.trim()) return;
+        let rec: TranscriptRecord;
+        try {
+          rec = JSON.parse(line) as TranscriptRecord;
+        } catch {
+          return;
+        }
+        const usage = rec.message?.usage;
+        if (!usage) return;
+        // One-based, as an editor numbers the line a developer would go and
+        // read, and counted from the top of the file however far in this read
+        // began.
+        const id = identityOf(rec, file, firstLine + index + 1);
+        if (seen.has(id)) return;
+        seen.add(id);
+        responses.push({
+          id,
+          session: rec.sessionId ?? null,
+          branch: rec.gitBranch ?? null,
+          at: rec.timestamp ?? null,
+          out: usage.output_tokens ?? 0,
+          cacheRead: usage.cache_read_input_tokens ?? 0,
+        });
       });
-    });
+      const offset = from + complete;
+      next.set(path, {
+        offset,
+        size,
+        // Every piece but the tail ended in a newline.
+        lines: firstLine + lines.length - 1,
+        head: headOf(fd, offset),
+      });
+    } finally {
+      closeSync(fd);
+    }
   }
-  return { responses, transcripts: files.length };
+  return { responses, transcripts: files.length, cursors: next };
 }
 
 /**

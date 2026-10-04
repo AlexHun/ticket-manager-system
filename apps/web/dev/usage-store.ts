@@ -10,10 +10,14 @@
 // reaches rows whose transcript is gone (R11). Stored totals would freeze the
 // rule they were summed under.
 //
+// **Beside them, one cursor per transcript** (#418): how far each file has been
+// read, so the next scan reads only what was appended. A cursor is bookkeeping
+// about the files, not a figure, so the rule above still holds.
+//
 // **Opened per scan, closed before the response.** A handle held across
 // requests would stop a spec, or a developer, from deleting or replacing the
-// file on Windows; a scan is seconds per press, so opening costs nothing worth
-// keeping a handle for.
+// file on Windows; opening is milliseconds against even a warm scan's ~60ms, so
+// there is nothing worth keeping a handle for.
 //
 // **The runtime split is measured, and the opener absorbs it** (plan,
 // 2026-10-03): Bun 1.3.13 cannot resolve `node:sqlite`, and Node cannot load
@@ -31,7 +35,12 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { projectSlug, type TranscriptResponse } from "./transcripts.ts";
+import {
+  projectSlug,
+  type TranscriptCursor,
+  type TranscriptCursors,
+  type TranscriptResponse,
+} from "./transcripts.ts";
 
 /**
  * Environment variable that overrides where the history file lives — the third
@@ -88,9 +97,19 @@ export interface SqlDatabase {
 
 /** What a scan does with the history, between opening and closing it. */
 export interface UsageStore {
-  /** Store every response not already stored. A response already there — the
-   *  same identity, read again on a later scan — is left as it was. */
-  record(responses: readonly TranscriptResponse[]): void;
+  /** How far each transcript has been read, for `readTranscripts` to resume
+   *  from (#418). Empty for a fresh file, which reads everything. */
+  cursors(): TranscriptCursors;
+  /**
+   * Store every response not already stored, and where each transcript now
+   * stands, in one transaction — so a cursor never moves past rows that were
+   * not kept. A response already there — the same identity, read again on a
+   * later scan — is left as it was; a cursor replaces the one before it.
+   */
+  record(
+    responses: readonly TranscriptResponse[],
+    cursors?: ReadonlyMap<string, TranscriptCursor>,
+  ): void;
   /** Every stored response, whether or not its transcript is still on disk. */
   responses(): TranscriptResponse[];
   /** The earliest timestamp stored, or null when nothing carrying one is. */
@@ -98,39 +117,77 @@ export interface UsageStore {
   close(): void;
 }
 
-const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS response (
+/** One statement each: `exec` is only relied on for one at a time. A history
+ *  written before #418 has no `transcript` table, gains it here, and reads
+ *  every transcript once more — the identity key absorbs the overlap. */
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS response (
     id TEXT PRIMARY KEY,
     session TEXT,
     branch TEXT,
     at TEXT,
     out INTEGER NOT NULL,
     cache_read INTEGER NOT NULL
-  )
-`;
+  )`,
+  // `read_to` rather than `offset`, which is an SQL keyword.
+  `CREATE TABLE IF NOT EXISTS transcript (
+    path TEXT PRIMARY KEY,
+    read_to INTEGER NOT NULL,
+    size INTEGER NOT NULL,
+    lines INTEGER NOT NULL,
+    head TEXT NOT NULL
+  )`,
+];
 
 /**
- * The store over an open database. Creates the table on first use, so a fresh
+ * The store over an open database. Creates its tables on first use, so a fresh
  * file and a missing one are the same starting point.
  *
  * Exported for the unit tests, which hand it `node:sqlite` directly; the real
  * callers reach it through `openUsageStore`.
  */
 export function usageStoreOver(db: SqlDatabase): UsageStore {
-  db.exec(SCHEMA);
+  for (const statement of SCHEMA) db.exec(statement);
   return {
-    record(responses) {
+    cursors() {
+      const rows = db
+        .prepare("SELECT path, read_to, size, lines, head FROM transcript")
+        .all() as ({ path: string; read_to: number } & Omit<
+        TranscriptCursor,
+        "offset"
+      >)[];
+      return new Map(
+        rows.map(({ path, read_to, size, lines, head }) => [
+          path,
+          { offset: read_to, size, lines, head },
+        ]),
+      );
+    },
+    record(responses, cursors = new Map()) {
       const insert = db.prepare(
         `INSERT INTO response (id, session, branch, at, out, cache_read)
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO NOTHING`,
       );
-      // One transaction: a scan of this machine's transcripts is ~14k rows,
-      // and SQLite commits each statement on its own otherwise.
+      const upsertCursor = db.prepare(
+        `INSERT OR REPLACE INTO transcript (path, read_to, size, lines, head)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      // One transaction: a first scan of this machine's transcripts is ~14k
+      // rows, and SQLite commits each statement on its own otherwise.
       db.exec("BEGIN");
       try {
         for (const r of responses) {
           insert.run(r.id, r.session, r.branch, r.at, r.out, r.cacheRead);
+        }
+        for (const [path, cursor] of cursors) {
+          upsertCursor.run(
+            path,
+            cursor.offset,
+            cursor.size,
+            cursor.lines,
+            cursor.head,
+          );
         }
         db.exec("COMMIT");
       } catch (err) {
@@ -167,7 +224,26 @@ async function openSqlite(file: string): Promise<SqlDatabase> {
     const { Database } = (await import(
       /* @vite-ignore */ BUN_SQLITE
     )) as typeof import("bun:sqlite");
-    return new Database(file);
+    const db = new Database(file);
+    // Bun's `close` defers while any prepared statement is unfinalized, and
+    // the file stays locked on Windows until the garbage collector gets to
+    // them: measured (#418) as EBUSY on deleting the file straight after a
+    // scan, in a Bun process — which is the developer's dev server. So this
+    // keeps what it prepared and finalizes it first. `node:sqlite`'s `close`
+    // needs no help, which is why the E2E (on Node) never saw it.
+    const prepared: ReturnType<typeof db.prepare>[] = [];
+    return {
+      exec: (sql) => db.exec(sql),
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        prepared.push(statement);
+        return statement;
+      },
+      close() {
+        for (const statement of prepared) statement.finalize();
+        db.close();
+      },
+    };
   }
   const { DatabaseSync } = (await import(
     /* @vite-ignore */ NODE_SQLITE
