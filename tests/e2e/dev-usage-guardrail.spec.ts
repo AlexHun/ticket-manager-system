@@ -9,7 +9,10 @@ import {
   removeGhIssuesFixture,
   writeGhIssuesFixture,
 } from "./fixtures/gh-issues";
-import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
+import {
+  copyTranscriptFixture,
+  TRANSCRIPT_WORKING_DIR,
+} from "./fixtures/transcript-fixture";
 
 /**
  * Slice 1 of `docs/plans/usage-page-module-seams.md` (#283): the observer the
@@ -244,7 +247,12 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
   // Written before each test rather than once: `dev-usage.spec.ts` removes this
   // file on purpose to reach the degraded no-`gh` path, and the suite runs
   // sequentially, so neither spec may assume the other left it there.
-  test.beforeEach(() => writeGhIssuesFixture());
+  // The transcript working copy is remade alongside it, for a reason of the
+  // same kind: both surfaces read a copy that another spec is free to change.
+  test.beforeEach(() => {
+    writeGhIssuesFixture();
+    copyTranscriptFixture();
+  });
 
   // Generated and gitignored, but a stale one is still something to be confused
   // by later.
@@ -265,7 +273,7 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
     // `CLAUDE_TRANSCRIPT_DIR`, so the page below is this machine's own spend
     // against GitHub's real titles and every line of the snapshot is wrong for
     // a reason that has nothing to do with the code. Check the port owner.
-    await expect(reading).toContainText(TRANSCRIPT_FIXTURE_DIR);
+    await expect(reading).toContainText(TRANSCRIPT_WORKING_DIR);
 
     const table = spendTable(page);
     await expect(table).toBeVisible();
@@ -346,7 +354,7 @@ test.describe("dev tools: Usage — both surfaces are unchanged", () => {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
-        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_FIXTURE_DIR,
+        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
       },
       encoding: "utf8",

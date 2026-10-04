@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GH_ISSUES_FIXTURE_PATH } from "./tests/e2e/fixtures/gh-issues";
-import { TRANSCRIPT_FIXTURE_DIR } from "./tests/e2e/fixtures/transcript-fixture";
+import { TRANSCRIPT_WORKING_DIR } from "./tests/e2e/fixtures/transcript-fixture";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -109,8 +109,9 @@ export default defineConfig({
       // is ready in ~4s; the same run sharing the dev server's cache while
       // `bun run dev` is up hangs past 420s.
       //
-      // `CLAUDE_TRANSCRIPT_DIR` points the dev-tools Usage page at a fixture
-      // directory instead of `~/.claude/projects/<slug>` (see
+      // `CLAUDE_TRANSCRIPT_DIR` points the dev-tools Usage page at a working
+      // copy of the transcript fixtures, which each Usage spec remakes before it
+      // scans, instead of `~/.claude/projects/<slug>` (see
       // `apps/web/dev/transcripts.ts`), and `GH_ISSUES_FILE` points it at a
       // fixture issue listing instead of spawning `gh` (see
       // `apps/web/dev/issues.ts`).
@@ -125,10 +126,12 @@ export default defineConfig({
       //
       // The listing file is written by the spec rather than checked in: it has
       // to be removable, because a missing one is how the degraded no-`gh`
-      // path is reached through the real middleware.
+      // path is reached through the real middleware. The transcripts are a
+      // copy for the same kind of reason: a spec may delete or append to one,
+      // which must never reach the checked-in fixtures.
       env: {
         VITE_API_URL: API_URL,
-        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_FIXTURE_DIR,
+        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
       },
       url: WEB_URL,
