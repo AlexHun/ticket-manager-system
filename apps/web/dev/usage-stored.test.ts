@@ -38,6 +38,8 @@ vi.mock("./transcripts.ts", async (importOriginal) => {
   };
 });
 
+const NODE_SQLITE = "node:sqlite";
+
 /** A lister that fails the test if anything asks `gh`. */
 const noGh = vi.fn(async (): Promise<string> => {
   throw new Error("the stored reading ran gh");
@@ -214,7 +216,11 @@ describe("readStoredUsage", () => {
   it("says no listing is kept when the history predates one", async () => {
     await scanOnce();
     // As a history written before #432 reads: neither table at all.
-    const { DatabaseSync } = await import("node:sqlite");
+    // Through a variable, as `usage-store.test.ts` explains: a literal
+    // `node:sqlite` passes on Windows and fails CI's Vite import analysis.
+    const { DatabaseSync } = (await import(
+      /* @vite-ignore */ NODE_SQLITE
+    )) as typeof import("node:sqlite");
     const db = new DatabaseSync(history);
     db.exec("DROP TABLE listing");
     db.exec("DROP TABLE stamp");
