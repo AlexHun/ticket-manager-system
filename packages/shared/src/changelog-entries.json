@@ -623,5 +623,15 @@
     "version": "0.1.166",
     "date": "2026-10-04",
     "title": "Review fixes for the shared usage history"
+  },
+  {
+    "version": "0.1.167",
+    "date": "2026-10-06",
+    "title": "Push the usage history to Railway develop"
+  },
+  {
+    "version": "0.1.167",
+    "date": "2026-10-06",
+    "title": "Review fixes for the usage push"
   }
 ]
