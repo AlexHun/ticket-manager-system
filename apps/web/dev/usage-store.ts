@@ -23,9 +23,11 @@
 // **And the issue listing the last scan read** (#432): `gh`'s answer, or why
 // there was none. An input like the rows, not an answer — it is what lets the
 // page open on a reading computed from the store alone, with no `gh` call,
-// that names the same titles and bands the last scan did.
+// that names the same titles and bands the last scan did. Beside it, a stamp
+// of when rows last arrived, by a scan or a push, which is the moment that
+// reading's figures are from.
 //
-// **Opened per scan, closed before the response.** A handle held across
+// **Opened per request, closed before the response.** A handle held across
 // requests would stop a spec, or a developer, from deleting or replacing the
 // file on Windows; opening is milliseconds against even a warm scan's ~60ms, so
 // there is nothing worth keeping a handle for.
@@ -209,6 +211,11 @@ export interface UsageStore {
   /** The listing the last scan kept, or null when none has — a history
    *  written before #432, until its next scan. */
   listing(): StoredListing | null;
+  /** Mark when rows last arrived (#432): a scan's `gatheredAt`, or a push's
+   *  moment. Replaces the last mark. */
+  recordStamp(at: string): void;
+  /** That mark, or null for a history no scan or push has marked since #432. */
+  stamp(): string | null;
   close(): void;
 }
 
@@ -254,6 +261,12 @@ const SCHEMA = [
     issues TEXT,
     warning TEXT
   )`,
+  // #432: one row, when rows last arrived — a scan or a push — so the stored
+  // reading can say which moment's figures it shows.
+  `CREATE TABLE IF NOT EXISTS stamp (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    at TEXT NOT NULL
+  )`,
 ];
 
 /** A `trend_point` row as SQLite hands it back. */
@@ -291,6 +304,17 @@ export function usageStoreOver(
   // a damaged history (#420); five seconds outlasts any scan's writes.
   db.exec("PRAGMA busy_timeout = 5000");
   if (!readOnly) for (const statement of SCHEMA) db.exec(statement);
+  /* Asked before reading a #432 table, because a read-only open created none:
+     a history no scan has touched since #432 lacks them, which reads as
+     "nothing kept". */
+  const hasTable = (name: string) =>
+    Boolean(
+      db
+        .prepare(
+          "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?",
+        )
+        .get(name),
+    );
   return {
     cursors() {
       const rows = db
@@ -403,18 +427,20 @@ export function usageStoreOver(
       ).run(issues, warning);
     },
     listing() {
-      // Asked first because a read-only open created no table: a history no
-      // scan has touched since #432 has none, which is "nothing kept".
-      const table = db
-        .prepare(
-          "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'listing'",
-        )
-        .get();
-      if (!table) return null;
+      if (!hasTable("listing")) return null;
       const row = db
         .prepare("SELECT issues, warning FROM listing WHERE id = 1")
         .get() as StoredListing | null | undefined;
       return row ? { issues: row.issues, warning: row.warning } : null;
+    },
+    recordStamp(at) {
+      db.prepare("INSERT OR REPLACE INTO stamp (id, at) VALUES (1, ?)").run(at);
+    },
+    stamp() {
+      if (!hasTable("stamp")) return null;
+      const row = db.prepare("SELECT at FROM stamp WHERE id = 1").get() as
+        { at: string } | null | undefined;
+      return row?.at ?? null;
     },
     close: () => db.close(),
   };

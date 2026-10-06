@@ -406,12 +406,7 @@ function reportFrom(
   // issue listing is not. The page shows every warning it is given, so the two
   // failures stack rather than masking one another — and since #289 they are
   // told apart by `source` rather than by how each one is worded.
-  if (listing.warning) {
-    warnings.push({
-      source: USAGE_WARNING_SOURCE.listing,
-      message: listing.warning,
-    });
-  }
+  warnings.push(...listingWarnings(listing));
 
   // Stored, then read back whole: the tally below runs over every response the
   // history holds, including those whose transcript is gone and those an
@@ -448,6 +443,8 @@ function reportFrom(
     // history's.
     const point = trendPointFor(issues, at);
     fromHistory(() => store.recordPoint(point));
+    // The moment the stored reading (#432) will say its figures are from.
+    fromHistory(() => store.recordStamp(at.toISOString()));
     trend = fromHistory(() => store.trend());
   }
 
@@ -466,6 +463,13 @@ function reportFrom(
     warnings,
   };
 }
+
+/** The listing's warning, if it carries one, as the report's. Shared by the
+ *  scan and the stored reading. */
+const listingWarnings = (listing: IssueMetadata): UsageWarning[] =>
+  listing.warning
+    ? [{ source: USAGE_WARNING_SOURCE.listing, message: listing.warning }]
+    : [];
 
 /** A listing as the history keeps it: `gh`'s own shape, or the warning that
  *  said why there was none. */
@@ -506,7 +510,9 @@ const neverAskGh: IssueLister = () =>
  * and a correction to the counting rules still reaches them, because nothing
  * derived is stored (ADR-0023). What it cannot know is how many transcripts are
  * on disk, so `transcripts` is null, which is also how the page tells it from
- * a scan.
+ * a scan. `gatheredAt` is the store's stamp — when rows last arrived, by a scan
+ * or a push — since that is the moment the figures describe; `now` stands in
+ * only for a history no scan or push has stamped since #432.
  *
  * **The listing is the one the last scan or push used.** `issuesFile` is
  * `GH_ISSUES_FILE`: set — Railway's develop, where a push rewrites it without a
@@ -539,7 +545,9 @@ export async function readStoredUsage(
       : listingFromKept(store.listing());
     const { byIssue, unattributed } = tallySpend(store.responses());
     return {
-      gatheredAt: now().toISOString(),
+      // When rows last arrived, which is the moment these figures are from;
+      // the opening moment only for a history marked before #432 had stamps.
+      gatheredAt: store.stamp() ?? now().toISOString(),
       scanMs: Date.now() - startedAt,
       transcriptDir: dir,
       transcripts: null,
@@ -547,9 +555,7 @@ export async function readStoredUsage(
       trend: store.trend(),
       issues: joinIssues(byIssue, listing),
       unattributed,
-      warnings: listing.warning
-        ? [{ source: USAGE_WARNING_SOURCE.listing, message: listing.warning }]
-        : [],
+      warnings: listingWarnings(listing),
     };
   } finally {
     store.close();

@@ -327,8 +327,9 @@ export interface UsageWarning {
  * listing it read, which is an input like the rows rather than an answer.
  */
 export interface UsageReport {
-  /** ISO 8601, stamped when the read finished — for a stored reading, when it
-   *  was computed from the history, which holds what it held at that moment. */
+  /** ISO 8601, stamped when the read finished — for a stored reading, the
+   *  history's stamp of when rows last arrived, by a scan or a push, which is
+   *  the moment its figures describe. */
   gatheredAt: string;
   /** How long the read took, so the page can say whether it is cheap. Covers
    *  the whole reading — the `gh` call as well as the filesystem sweep — since

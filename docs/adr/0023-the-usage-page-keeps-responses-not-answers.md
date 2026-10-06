@@ -55,7 +55,7 @@ rows whose transcript is deleted.
   third seam beside `CLAUDE_TRANSCRIPT_DIR` and `GH_ISSUES_FILE`). Outside the
   repository, so no commit, CI artefact or build can contain it. Outside
   `~/.claude`, so the cleanup it outlives never touches it.
-- **Opened per scan, closed before the response.** A handle held across
+- **Opened per request (a scan, a push or the stored reading), closed before the response.** A handle held across
   requests would stop a spec, or the developer, from deleting the file on
   Windows. A scan takes seconds, so there's nothing worth keeping a handle for.
 - **Either runtime's SQLite.** The developer's dev server and `bun run tokens`
@@ -140,6 +140,10 @@ scan with a history keeps it in a one-row `listing` table: `gh`'s JSON in the
 shape `toGhListing` writes, or the warning that said why there was none. When
 `GH_ISSUES_FILE` is set, the `GET` reads that file instead. That's how
 Railway's develop runs, where a push rewrites the file without a scan.
+
+The reading is dated by a one-row `stamp` table: when rows last arrived, by
+a scan (its `gatheredAt`) or a push. That's bookkeeping about the store, like
+a cursor, and it's what the page's "Stored at" names.
 
 The alternatives were the other two answers to "the page forgets":
 

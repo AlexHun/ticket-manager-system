@@ -299,7 +299,7 @@ test.describe("dev tools: Usage history", () => {
     page,
   }) => {
     const accuracy = page.getByRole("region", { name: "Forecast accuracy" });
-    const opened = page.getByText(/^Opened at/);
+    const opened = page.getByText(/^Stored at/);
 
     await page.getByRole("button", { name: "Scan" }).click();
     await expect(reading(page)).toContainText(TRANSCRIPT_WORKING_DIR);

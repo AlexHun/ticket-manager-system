@@ -173,6 +173,8 @@ export async function acceptPush(
     const before = store.count();
     store.record(responses);
     inserted = store.count() - before;
+    // The moment the page's stored reading (#432) will date its figures by.
+    store.recordStamp(new Date().toISOString());
   } finally {
     store.close();
   }

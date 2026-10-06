@@ -829,12 +829,12 @@ describe("UsagePage stored reading", () => {
     get.mockResolvedValue({ data: storedReport() });
     renderPage();
 
-    const opened = await screen.findByText(/^Opened at/);
-    expect(opened.querySelector("time")).toHaveAttribute(
+    const stamped = await screen.findByText(/^Stored at/);
+    expect(stamped.querySelector("time")).toHaveAttribute(
       "datetime",
       "2026-10-06T08:00:00.000Z",
     );
-    expect(opened).toHaveTextContent(/usage history/);
+    expect(stamped).toHaveTextContent(/usage history/);
     // Not a scan's sentence: nothing was read from the directory.
     expect(screen.queryByText(/^Gathered at/)).toBeNull();
     expect(within(await spendTable()).getByText("20,000")).toBeVisible();
@@ -861,7 +861,7 @@ describe("UsagePage stored reading", () => {
       expect(await spendTable()).toHaveTextContent("31,500"),
     );
     expect(await screen.findByText(/^Gathered at/)).toBeVisible();
-    expect(screen.queryByText(/^Opened at/)).toBeNull();
+    expect(screen.queryByText(/^Stored at/)).toBeNull();
   });
 
   // The view is the page's state, so it survives the table remounting under a
@@ -877,6 +877,24 @@ describe("UsagePage stored reading", () => {
 
     await screen.findByText(/^Gathered at/);
     expect(detailToggle()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("keeps the chosen sort across the stored reading and the scan", async () => {
+    get.mockResolvedValue({ data: storedReport() });
+    const user = userEvent.setup();
+    renderPage();
+    await spendTable();
+    // Reverses the column the page opens on, so the smaller spend leads.
+    await user.click(screen.getByRole("button", { name: "Output tokens" }));
+
+    await user.click(scanButton());
+
+    await screen.findByText(/^Gathered at/);
+    expect(
+      within(await spendTable())
+        .getAllByRole("rowheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["#102", "#101"]);
   });
 
   test("opens empty with a warning, not a toast, when the stored reading fails, and Scan still works", async () => {

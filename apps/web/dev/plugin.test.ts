@@ -460,6 +460,7 @@ describe(`POST ${DEVTOOLS_API.usagePush}`, () => {
     process.env[TRANSCRIPT_DIR_ENV] = join(envDir, "no-transcripts");
     process.env[PUSHED_HISTORY_ENV] = "1";
 
+    const pushStarted = Date.now();
     await push(
       JSON.stringify({
         responses: [
@@ -475,8 +476,13 @@ describe(`POST ${DEVTOOLS_API.usagePush}`, () => {
         issues: [{ ...LISTING[0], title: "Pushed title" }],
       }),
     );
+    const pushedBy = Date.now();
     const stored = await openStored();
 
+    // Dated by the push, the moment those rows arrived, not by the open.
+    const dated = Date.parse(stored?.gatheredAt ?? "");
+    expect(dated).toBeGreaterThanOrEqual(pushStarted);
+    expect(dated).toBeLessThanOrEqual(pushedBy);
     expect(stored?.issues).toMatchObject([
       {
         issue: 101,

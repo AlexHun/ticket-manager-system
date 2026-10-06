@@ -73,6 +73,7 @@ export function useSuites() {
 export function useStoredUsage() {
   return useQuery({
     queryKey: devKeys.storedUsage,
+    // Over the app-wide 30s, so a tab brought back into focus asks again.
     staleTime: 0,
     gcTime: 0,
     retry: false,

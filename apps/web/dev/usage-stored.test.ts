@@ -133,8 +133,10 @@ describe("readStoredUsage", () => {
     expect(stored!.trend).toEqual(scan.trend);
     expect(stored!.historySince).toBe(scan.historySince);
     expect(stored!.warnings).toEqual([]);
-    // Stamped when it was opened, and saying it read no transcript.
-    expect(stored!.gatheredAt).toBe("2026-10-06T13:00:00.000Z");
+    // Dated by the scan whose rows these are, not by the moment it was opened
+    // an hour later, and saying it read no transcript.
+    expect(stored!.gatheredAt).toBe(scan.gatheredAt);
+    expect(stored!.gatheredAt).toBe("2026-10-06T12:00:00.000Z");
     expect(stored!.transcripts).toBeNull();
     expect(stored!.transcriptDir).toBe(transcripts);
     expect(noGh).not.toHaveBeenCalled();
@@ -211,13 +213,17 @@ describe("readStoredUsage", () => {
 
   it("says no listing is kept when the history predates one", async () => {
     await scanOnce();
-    // As a history written before #432 reads: no `listing` table at all.
+    // As a history written before #432 reads: neither table at all.
     const { DatabaseSync } = await import("node:sqlite");
     const db = new DatabaseSync(history);
     db.exec("DROP TABLE listing");
+    db.exec("DROP TABLE stamp");
     db.close();
 
     const stored = await open();
+
+    // Nothing dates it, so it says when it was opened.
+    expect(stored!.gatheredAt).toBe("2026-10-06T13:00:00.000Z");
 
     expect(stored!.issues).toMatchObject([
       { issue: 101, title: null, forecast: null, spend: { out: 4200 } },

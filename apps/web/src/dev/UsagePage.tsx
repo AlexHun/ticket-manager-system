@@ -29,8 +29,9 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * (`useStoredUsage`). It still opens empty ("Nothing gathered yet") when there
  * is no history, when the history holds no rows, and when the `GET` fails —
  * that last as a warning, with Scan still usable. The figures on screen are
- * still one named moment's reading (R5): `Stored` says which, and that a Scan
- * would read the transcripts again; `Gathered` says the same of a scan.
+ * still one named moment's reading (R5): "Stored at …" (`Stored`) names when
+ * rows last arrived, by a scan or a push, and that a Scan would read the
+ * transcripts again; "Gathered at …" (`Gathered`) names a scan's moment.
  * `UsageReport` in `./usage-protocol` is where the reason no reading is cached
  * on either side of the wire is written down, and why the responses behind it
  * are (#417) — and the one daily trend point that is (#419).
@@ -374,11 +375,13 @@ function Gathered({
 function Stored({ report }: { report: UsageReport }) {
   return (
     <>
-      Opened at{" "}
+      {/* Date and time, unlike `Gathered`'s time alone: a stored reading
+          can be days old. */}
+      Stored at{" "}
       <time dateTime={report.gatheredAt} className="font-medium">
-        {new Date(report.gatheredAt).toLocaleTimeString()}
+        {new Date(report.gatheredAt).toLocaleString()}
       </time>{" "}
-      from the usage history, as the last scan or push left it —{" "}
+      by the last scan or push, and opened from the usage history —{" "}
       {report.issues.length} {report.issues.length === 1 ? "issue" : "issues"},
       in {report.scanMs} ms. Press Scan to read{" "}
       <code className="font-mono text-xs">{report.transcriptDir}</code> again.
