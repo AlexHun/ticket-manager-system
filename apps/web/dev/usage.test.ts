@@ -1373,6 +1373,7 @@ describe("gatherUsage reads only what is new (#418)", () => {
     );
 
     expect(await spendOf(101)).toMatchObject({ out: 140, turns: 2 });
+    // And a scan after that, with nothing changed, adds nothing again.
     expect(await spendOf(101)).toMatchObject({ out: 140, turns: 2 });
   });
 

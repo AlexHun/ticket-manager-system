@@ -9,9 +9,9 @@
 // session's subagent transcripts at
 // ~/.claude/projects/<slug>/<session>/subagents/*.jsonl, read since #431
 // (1.29M output tokens across 218 files when measured, 2026-10-06). Branches
-// here are named `<type>/<issue>-<slug>`, so the issue number falls out of the branch
-// and the spend of every session that ran on it sums to that issue, even when
-// the issue took several sittings (the median issue took 2).
+// here are named `<type>/<issue>-<slug>`, so the issue number falls out of the
+// branch and the spend of every session that ran on it sums to that issue, even
+// when the issue took several sittings (the median issue took 2).
 //
 // **Forecast in output tokens, not total.** Output is the honest unit: it runs
 // at a near-constant ~745 tokens per turn (r=0.98 across 125 sessions), so it
@@ -257,9 +257,10 @@ const SUBAGENTS_DIR = "subagents";
  * before #431 keep their keys.
  */
 function listTranscripts(dir: string): string[] {
+  const isTranscript = (d: Dirent) => d.isFile() && d.name.endsWith(".jsonl");
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+    if (isTranscript(entry)) {
       files.push(entry.name);
     } else if (entry.isDirectory()) {
       let inner: Dirent[];
@@ -272,7 +273,7 @@ function listTranscripts(dir: string): string[] {
         continue;
       }
       for (const sub of inner) {
-        if (sub.isFile() && sub.name.endsWith(".jsonl")) {
+        if (isTranscript(sub)) {
           files.push(`${entry.name}/${SUBAGENTS_DIR}/${sub.name}`);
         }
       }
@@ -292,9 +293,9 @@ const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
  * Every API response in `dir`, each once — its top-level transcripts and its
  * sessions' subagent transcripts alike (`listTranscripts`, #431), since a
  * subagent's records carry the branch it ran on just as its parent's do and a
- * response id found in both is still one response. One pass over every transcript; the
- * files are append-only JSONL and a partially-written last line is normal, so
- * an unparseable line is skipped rather than fatal.
+ * response id found in both is still one response. One pass over every
+ * transcript; the files are append-only JSONL and a partially-written last line
+ * is normal, so an unparseable line is skipped rather than fatal.
  *
  * **One API response is one turn, however many records it was written as**
  * (#413). Claude Code writes a response as one record per content block — the
@@ -304,8 +305,9 @@ const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
  * 8,894 multi-record responses differed between their records in
  * `output_tokens` (nor, re-measured the same day over 8,903 of them, in
  * `cache_read_input_tokens`), and summing every record inflated output 2.32x
- * overall and 1.00x-3.89x per issue. So a response is kept once, under its first
- * record's session, branch and timestamp, and the rest are folded into it.
+ * overall and 1.00x-3.89x per issue. So a response is kept once, under its
+ * first record's session, branch and timestamp, and the rest are folded into
+ * it.
  *
  * **Folded, taking the largest counts, because subagent records disagree**
  * (#431). Those 167 transcripts were all top-level. In subagent transcripts,

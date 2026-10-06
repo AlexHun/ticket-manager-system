@@ -185,7 +185,8 @@ export interface UsageStore {
    *  from (#418). Empty for a fresh file, which reads everything. */
   cursors(): TranscriptCursors;
   /**
-   * Store every response not already stored, and where each transcript now
+   * Store every response, raising an already-stored one's counts to larger
+   * ones, and where each transcript now
    * stands, in one transaction — so a cursor never moves past rows that were
    * not kept. A response already there — the same identity, read again on a
    * later scan or a later push — keeps its row and takes the larger of the two

@@ -44,10 +44,12 @@ Subagent records changed what the dedupe keeps. A subagent transcript writes a
 response's first record with a partial `output_tokens` and its last with the
 final count; top-level records never differ. So a read keeps the largest count
 per id, and a row already stored takes a larger count when a later scan or push
-brings one, rather than staying as it was. That's still an input: the response's
-own count, not anything derived from it. For a record with no id, the file name in
-its key is the path below the directory (`<session>/subagents/agent-<id>.jsonl`),
-so a top-level row keeps the key it was stored under.
+brings one, rather than staying as it was. That's still an input: the
+response's own count, not anything derived from it.
+
+For a record with no id, the file name in its key is the path below the
+directory (`<session>/subagents/agent-<id>.jsonl`), so a top-level row keeps
+the key it was stored under.
 
 Not kept: the issue a branch names, whether a turn counts as unattributed, any
 per-issue sum. `tallySpend` decides all of those on every read. Two corrections
