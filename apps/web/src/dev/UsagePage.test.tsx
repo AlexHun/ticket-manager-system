@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi, beforeEach } from "vitest";
+import { toast } from "@/components/ui/sonner";
 import { renderRoutes } from "@/test/render";
 import { UsagePage } from "./UsagePage";
 import {
@@ -16,8 +17,9 @@ import { USAGE_WARNING_SOURCE } from "./usage-protocol";
 import type { IssueUsage, UsageReport } from "./usage-protocol";
 
 /**
- * The page's one rule: it reads nothing until asked, and what it shows
- * afterwards is that reading and no other (R5).
+ * The page's one rule: it scans nothing until asked, and what it shows is one
+ * named reading and no other (R5) — since #432 the stored reading it opens on,
+ * then each scan's in its place.
  *
  * Mocked at `axios` rather than at `./dev-api`, which is where
  * `ProjectMapPage.test.tsx` cuts. The difference matters here: "held until the
@@ -44,7 +46,8 @@ import type { IssueUsage, UsageReport } from "./usage-protocol";
  * state, the count, the query staying out of the URL, the reach of the bar
  * stopping at the table, and all three surviving the next press of Scan.
  *
- * What is left is the page: that it reads nothing until asked, what it does
+ * What is left is the page: that it scans nothing until asked, the stored
+ * reading it opens on (#432), what it does
  * with a reading it cannot fully make (the warnings, the two absences), the
  * columns it opens on, the charts, the total that belongs to no row — and the
  * one piece of the filter bar's reach that is the page's rather than the
@@ -52,7 +55,10 @@ import type { IssueUsage, UsageReport } from "./usage-protocol";
  * below them does.
  */
 
-const { post } = vi.hoisted(() => ({ post: vi.fn() }));
+/* `post` is the scan, `get` the stored reading the page opens on (#432). Every
+   test but the stored reading's own opens on `null` — no history — which is the
+   empty page the rest of this file was written against. */
+const { post, get } = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn() }));
 
 vi.mock("axios", async (importOriginal) => {
   const actual = await importOriginal<typeof import("axios")>();
@@ -60,7 +66,10 @@ vi.mock("axios", async (importOriginal) => {
     ...actual,
     // `isAxiosError` is kept real: `extractErrorMessage` calls it on the
     // rejection path below.
-    default: { create: () => ({ post }), isAxiosError: actual.isAxiosError },
+    default: {
+      create: () => ({ post, get }),
+      isAxiosError: actual.isAxiosError,
+    },
   };
 });
 
@@ -176,15 +185,20 @@ const cellsOf = async (n: number) =>
 beforeEach(() => {
   post.mockReset();
   post.mockResolvedValue({ data: makeReport() });
+  get.mockReset();
+  get.mockResolvedValue({ data: null });
 });
 
 describe("UsagePage", () => {
-  test("reads nothing, and says so, until Scan is pressed", () => {
+  test("scans nothing, and says so, when the history holds no reading", async () => {
     renderPage();
 
+    expect(
+      await screen.findByText(/nothing gathered yet/i),
+    ).toBeInTheDocument();
+    expect(get).toHaveBeenCalledTimes(1);
     expect(post).not.toHaveBeenCalled();
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
-    expect(screen.getByText(/nothing gathered yet/i)).toBeInTheDocument();
   });
 
   test("lists issues and their output tokens, biggest spend first", async () => {
@@ -239,8 +253,10 @@ describe("UsagePage", () => {
       name: /Usage page: titles, links, forecast bands and verdicts/,
     });
     expect(link).toHaveAttribute("href", ISSUE_URL);
-    // A new tab: the scan on screen is a named moment's reading, and navigating
-    // away from it loses figures that cost a filesystem sweep to gather.
+    // A new tab: navigating away costs no figures since #432 — the page opens
+    // again on the stored reading — but a scan on screen would come back as the
+    // stored reading rather than as itself, and reading an issue is not a
+    // reason to leave the page.
     expect(link).toHaveAttribute("target", "_blank");
   });
 
@@ -793,6 +809,112 @@ describe("UsagePage", () => {
     expect((await screen.findByText(/^Gathered at/)).textContent).toBe(
       before.gathered,
     );
+  });
+});
+
+/**
+ * #432: the page opens on the stored reading — figures the `GET` computed from
+ * the usage history — and Scan replaces it with a fresh one.
+ */
+describe("UsagePage stored reading", () => {
+  /** What `readStoredUsage` answers: a report that counted no transcript. */
+  const storedReport = (over: Partial<UsageReport> = {}) =>
+    makeReport({
+      transcripts: null,
+      gatheredAt: "2026-10-06T08:00:00.000Z",
+      ...over,
+    });
+
+  test("opens on the stored figures without a scan, and says where they came from", async () => {
+    get.mockResolvedValue({ data: storedReport() });
+    renderPage();
+
+    const stamped = await screen.findByText(/^Stored at/);
+    expect(stamped.querySelector("time")).toHaveAttribute(
+      "datetime",
+      "2026-10-06T08:00:00.000Z",
+    );
+    expect(stamped).toHaveTextContent(/usage history/);
+    // Not a scan's sentence: nothing was read from the directory.
+    expect(screen.queryByText(/^Gathered at/)).toBeNull();
+    expect(within(await spendTable()).getByText("20,000")).toBeVisible();
+    expect(await panel("Forecast accuracy")).toHaveTextContent(
+      /1\/2 on target/,
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  test("replaces the stored reading with a fresh one on Scan", async () => {
+    get.mockResolvedValue({ data: storedReport() });
+    post.mockResolvedValue({
+      data: makeReport({
+        issues: [makeIssue({ spend: { ...SPEND, out: 31_500 } })],
+      }),
+    });
+    const user = userEvent.setup();
+    renderPage();
+    expect(await spendTable()).toHaveTextContent("20,000");
+
+    await user.click(scanButton());
+
+    await waitFor(async () =>
+      expect(await spendTable()).toHaveTextContent("31,500"),
+    );
+    expect(await screen.findByText(/^Gathered at/)).toBeVisible();
+    expect(screen.queryByText(/^Stored at/)).toBeNull();
+  });
+
+  // The view is the page's state, so it survives the table remounting under a
+  // new reading — the stored one giving way to a scan's.
+  test("keeps the detail toggle across the stored reading and the scan", async () => {
+    get.mockResolvedValue({ data: storedReport() });
+    const user = userEvent.setup();
+    renderPage();
+    await spendTable();
+    await user.click(detailToggle());
+
+    await user.click(scanButton());
+
+    await screen.findByText(/^Gathered at/);
+    expect(detailToggle()).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("keeps the chosen sort across the stored reading and the scan", async () => {
+    get.mockResolvedValue({ data: storedReport() });
+    const user = userEvent.setup();
+    renderPage();
+    await spendTable();
+    // Reverses the column the page opens on, so the smaller spend leads.
+    await user.click(screen.getByRole("button", { name: "Output tokens" }));
+
+    await user.click(scanButton());
+
+    await screen.findByText(/^Gathered at/);
+    expect(
+      within(await spendTable())
+        .getAllByRole("rowheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["#102", "#101"]);
+  });
+
+  test("opens empty with a warning, not a toast, when the stored reading fails, and Scan still works", async () => {
+    // The global mock is never cleared, and an earlier test's failed scan
+    // toasts on purpose.
+    vi.mocked(toast.error).mockClear();
+    get.mockRejectedValue(new Error("SQLITE_CORRUPT: file is not a database"));
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(
+      await screen.findByText(/could not open the stored reading/i),
+    ).toHaveTextContent(/SQLITE_CORRUPT/);
+    expect(screen.getByText(/nothing gathered yet/i)).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+
+    await user.click(scanButton());
+
+    expect(await screen.findByText(/^Gathered at/)).toBeVisible();
+    expect(screen.queryByText(/could not open the stored reading/i)).toBeNull();
   });
 });
 

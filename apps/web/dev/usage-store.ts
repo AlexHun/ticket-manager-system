@@ -20,7 +20,14 @@
 // bands the code held are gone by the next one. It stores spend and a tally,
 // never a row's verdict. ADR-0023's #419 section draws that line.
 //
-// **Opened per scan, closed before the response.** A handle held across
+// **And the issue listing the last scan read** (#432): `gh`'s answer, or why
+// there was none. An input like the rows, not an answer — it is what lets the
+// page open on a reading computed from the store alone, with no `gh` call,
+// that names the same titles and bands the last scan did. Beside it, a stamp
+// of when rows last arrived, by a scan or a push, which is the moment that
+// reading's figures are from.
+//
+// **Opened per request, closed before the response.** A handle held across
 // requests would stop a spec, or a developer, from deleting or replacing the
 // file on Windows; opening is milliseconds against even a warm scan's ~60ms, so
 // there is nothing worth keeping a handle for.
@@ -162,6 +169,16 @@ export interface SqlDatabase {
   close(): void;
 }
 
+/**
+ * The issue listing as the last scan read it (#432): `gh`'s JSON in the shape
+ * `toGhListing` in `./issues.ts` writes, or null with the warning that said why
+ * it could not be read. Kept raw, so the store knows nothing of the format.
+ */
+export interface StoredListing {
+  issues: string | null;
+  warning: string | null;
+}
+
 /** What a scan does with the history, between opening and closing it. */
 export interface UsageStore {
   /** How far each transcript has been read, for `readTranscripts` to resume
@@ -189,6 +206,16 @@ export interface UsageStore {
   recordPoint(point: TrendPoint): void;
   /** Every stored trend point, oldest day first. */
   trend(): TrendPoint[];
+  /** Keep the listing this scan read, replacing the last one (#432). */
+  recordListing(listing: StoredListing): void;
+  /** The listing the last scan kept, or null when none has — a history
+   *  written before #432, until its next scan. */
+  listing(): StoredListing | null;
+  /** Mark when rows last arrived (#432): a scan's `gatheredAt`, or a push's
+   *  moment. Replaces the last mark. */
+  recordStamp(at: string): void;
+  /** That mark, or null for a history no scan or push has marked since #432. */
+  stamp(): string | null;
   close(): void;
 }
 
@@ -228,6 +255,18 @@ const SCHEMA = [
     edge_m INTEGER NOT NULL,
     edge_l INTEGER NOT NULL
   )`,
+  // #432: one row, the last scan's listing. `id = 1` so a scan replaces it.
+  `CREATE TABLE IF NOT EXISTS listing (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    issues TEXT,
+    warning TEXT
+  )`,
+  // #432: one row, when rows last arrived — a scan or a push — so the stored
+  // reading can say which moment's figures it shows.
+  `CREATE TABLE IF NOT EXISTS stamp (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    at TEXT NOT NULL
+  )`,
 ];
 
 /** A `trend_point` row as SQLite hands it back. */
@@ -251,13 +290,31 @@ interface TrendRow {
  *
  * Exported for the unit tests, which hand it `node:sqlite` directly; the real
  * callers reach it through `openUsageStore`.
+ *
+ * `readOnly` skips the schema (#432): the stored reading opens the file read
+ * only, so it cannot create a table, and a history missing one answers as
+ * though that table were empty.
  */
-export function usageStoreOver(db: SqlDatabase): UsageStore {
+export function usageStoreOver(
+  db: SqlDatabase,
+  { readOnly = false }: { readOnly?: boolean } = {},
+): UsageStore {
   // The dev server and `bun run tokens` can scan at the same moment. Without a
   // timeout the second fails at once with "database is locked", which reads as
   // a damaged history (#420); five seconds outlasts any scan's writes.
   db.exec("PRAGMA busy_timeout = 5000");
-  for (const statement of SCHEMA) db.exec(statement);
+  if (!readOnly) for (const statement of SCHEMA) db.exec(statement);
+  /* Asked before reading a #432 table, because a read-only open created none:
+     a history no scan has touched since #432 lacks them, which reads as
+     "nothing kept". */
+  const hasTable = (name: string) =>
+    Boolean(
+      db
+        .prepare(
+          "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?",
+        )
+        .get(name),
+    );
   return {
     cursors() {
       const rows = db
@@ -364,6 +421,27 @@ export function usageStoreOver(db: SqlDatabase): UsageStore {
         edges: { S: r.edge_s, M: r.edge_m, L: r.edge_l },
       }));
     },
+    recordListing({ issues, warning }) {
+      db.prepare(
+        "INSERT OR REPLACE INTO listing (id, issues, warning) VALUES (1, ?, ?)",
+      ).run(issues, warning);
+    },
+    listing() {
+      if (!hasTable("listing")) return null;
+      const row = db
+        .prepare("SELECT issues, warning FROM listing WHERE id = 1")
+        .get() as StoredListing | null | undefined;
+      return row ? { issues: row.issues, warning: row.warning } : null;
+    },
+    recordStamp(at) {
+      db.prepare("INSERT OR REPLACE INTO stamp (id, at) VALUES (1, ?)").run(at);
+    },
+    stamp() {
+      if (!hasTable("stamp")) return null;
+      const row = db.prepare("SELECT at FROM stamp WHERE id = 1").get() as
+        { at: string } | null | undefined;
+      return row?.at ?? null;
+    },
     close: () => db.close(),
   };
 }
@@ -374,12 +452,20 @@ const BUN_SQLITE = "bun:sqlite";
 const NODE_SQLITE = "node:sqlite";
 
 /** The SQLite module of whichever runtime this process is. */
-async function openSqlite(file: string): Promise<SqlDatabase> {
+async function openSqlite(
+  file: string,
+  readOnly: boolean,
+): Promise<SqlDatabase> {
   if (process.versions.bun) {
     const { Database } = (await import(
       /* @vite-ignore */ BUN_SQLITE
     )) as typeof import("bun:sqlite");
-    const db = new Database(file);
+    // Options only when read only: measured on Bun 1.3.13, `{ readonly: false }`
+    // throws SQLITE_MISUSE, since an options object drops the default
+    // read-write-create flags.
+    const db = readOnly
+      ? new Database(file, { readonly: true })
+      : new Database(file);
     // Bun's `close` defers while any prepared statement is unfinalized, and
     // the file stays locked on Windows until the garbage collector gets to
     // them: measured (#418) as EBUSY on deleting the file straight after a
@@ -403,7 +489,7 @@ async function openSqlite(file: string): Promise<SqlDatabase> {
   const { DatabaseSync } = (await import(
     /* @vite-ignore */ NODE_SQLITE
   )) as typeof import("node:sqlite");
-  return new DatabaseSync(file);
+  return new DatabaseSync(file, { readOnly });
 }
 
 /**
@@ -417,12 +503,19 @@ async function openSqlite(file: string): Promise<SqlDatabase> {
  * developer could not delete the very file the warning tells them to delete.
  * Nothing is written to it on the way — the schema's first `CREATE` fails
  * before any write — so a damaged history is never overwritten.
+ *
+ * `readOnly` is the stored reading's (#432): SQLite opens the file read only,
+ * so any write throws rather than landing, nothing is created, and a missing
+ * file throws too — the caller checks for one first.
  */
-export async function openUsageStore(file: string): Promise<UsageStore> {
-  mkdirSync(dirname(file), { recursive: true });
-  const db = await openSqlite(file);
+export async function openUsageStore(
+  file: string,
+  { readOnly = false }: { readOnly?: boolean } = {},
+): Promise<UsageStore> {
+  if (!readOnly) mkdirSync(dirname(file), { recursive: true });
+  const db = await openSqlite(file, readOnly);
   try {
-    return usageStoreOver(db);
+    return usageStoreOver(db, { readOnly });
   } catch (err) {
     db.close();
     throw err;

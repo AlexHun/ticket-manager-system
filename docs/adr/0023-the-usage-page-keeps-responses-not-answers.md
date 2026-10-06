@@ -55,7 +55,7 @@ rows whose transcript is deleted.
   third seam beside `CLAUDE_TRANSCRIPT_DIR` and `GH_ISSUES_FILE`). Outside the
   repository, so no commit, CI artefact or build can contain it. Outside
   `~/.claude`, so the cleanup it outlives never touches it.
-- **Opened per scan, closed before the response.** A handle held across
+- **Opened per request (a scan, a push or the stored reading), closed before the response.** A handle held across
   requests would stop a spec, or the developer, from deleting the file on
   Windows. A scan takes seconds, so there's nothing worth keeping a handle for.
 - **Either runtime's SQLite.** The developer's dev server and `bun run tokens`
@@ -118,6 +118,39 @@ both ends. Develop's trend points are its own, one per day a push was followed
 by a scan there. The laptop's points aren't sent, because a past day's point is
 a record of what that machine said that day.
 
+## The page opens on what is stored (#432)
+
+Until #432 the page held its reading only in the Scan mutation, so leaving
+the page, reloading it, or a phone discarding its tab opened it empty again.
+Once develop's figures came from pushes, that meant pressing Scan to see
+figures that were already stored and hadn't changed. So `/__devtools/usage`
+gained a `GET`: `readStoredUsage` in `apps/web/dev/usage.ts` computes the same
+report from the store's rows and trend, opening the file read only. It reads
+no transcript, runs no `gh` and writes nothing. `POST` is still the Scan
+button.
+
+This keeps the rule above. The `GET` stores no answer. It tallies the stored
+rows on every request, under the code's current rules, the same way a scan
+does. Measured on this machine's history (14,352 rows), it takes 32-45ms on
+Bun.
+
+To name the same titles and bands as the last scan, the stored reading needs
+that scan's issue listing, and the listing is an input like the rows. Each
+scan with a history keeps it in a one-row `listing` table: `gh`'s JSON in the
+shape `toGhListing` writes, or the warning that said why there was none. When
+`GH_ISSUES_FILE` is set, the `GET` reads that file instead. That's how
+Railway's develop runs, where a push rewrites the file without a scan.
+
+The reading is dated by a one-row `stamp` table: when rows last arrived, by
+a scan (its `gatheredAt`) or a push. That's bookkeeping about the store, like
+a cursor, and it's what the page's "Stored at" names.
+
+The alternatives were the other two answers to "the page forgets":
+
+- **Keep the last reading in react-query.** Rejected: it doesn't survive a
+  reload or a discarded tab.
+- **Store the last report.** Rejected: it's the one thing this ADR rules out.
+
 ## Considered options
 
 **Per-issue totals per scan.** Smaller, and enough for a trend. Rejected
@@ -149,6 +182,10 @@ without anyone noticing. It also records no trend, and slice 3 needs one.
   damaged file; the developer moves or deletes it. A deleted store needs nothing:
   the next scan creates a fresh one from the transcripts still on disk, so only
   the history of transcripts already pruned is lost (R9, R10).
+- Since #432 `UsageReport.transcripts` is nullable: null marks the stored
+  reading, which counts no transcript. A history no scan has touched since
+  #432 has no `listing` table, and its stored reading names every title and
+  band as unknown, with a warning that says to press Scan.
 - Every E2E run that scans has to point `USAGE_HISTORY_FILE` somewhere
   disposable. `resetTranscriptWorkingCopy` removes it alongside the working
   copy, and the guardrail passes it to the `bun run tokens` it spawns.

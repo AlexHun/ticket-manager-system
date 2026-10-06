@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { extractErrorMessage } from "@/lib/errors";
-import { useUsageScan } from "./dev-api";
+import { useStoredUsage, useUsageScan } from "./dev-api";
 import { SpendTable } from "./SpendTable";
 import { DEFAULT_USAGE_TABLE_VIEW, type UsageTableView } from "./usage-view";
 import { UsageCharts } from "./UsageCharts";
@@ -16,17 +16,25 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * What each issue actually cost, read off this machine's Claude Code
  * transcripts.
  *
- * The third dev tool, and the only one that gathers nothing on arrival. The map
+ * The third dev tool, and the only one that reads no source on arrival. The map
  * scans on load because a scan of the source tree is ~110ms and describes
- * something you are looking at anyway; this reads every transcript the machine
- * holds, which on a long-lived project is tens of thousands of JSONL lines
- * (the first time, at least: since #418 a later scan reads what was appended). So
- * the page opens empty and says so, and the figures on screen are always one
- * named moment's reading rather than "whatever the machine has been doing"
- * (R5). Pressing Scan again re-reads — `UsageReport` in `./usage-protocol` is
- * where the reason no reading is cached on either side of the wire is written
- * down, and why the responses behind it are (#417) — and the one daily trend
- * point that is (#419).
+ * something you are looking at anyway; a scan here reads every transcript the
+ * machine holds, which on a long-lived project is tens of thousands of JSONL
+ * lines (the first time, at least: since #418 a later scan reads what was
+ * appended). So until #432 the page opened empty, and every return to it — a
+ * reload, a phone's discarded tab — meant pressing Scan for figures that had
+ * not changed. **Since #432 it opens on the stored reading**: the `GET` half of
+ * the route, the same report computed from what the usage history already
+ * holds, reading no transcript, running no `gh` and writing nothing
+ * (`useStoredUsage`). It still opens empty ("Nothing gathered yet") when there
+ * is no history, when the history holds no rows, and when the `GET` fails —
+ * that last as a warning, with Scan still usable. The figures on screen are
+ * still one named moment's reading (R5): "Stored at …" (`Stored`) names when
+ * rows last arrived, by a scan or a push, and that a Scan would read the
+ * transcripts again; "Gathered at …" (`Gathered`) names a scan's moment.
+ * `UsageReport` in `./usage-protocol` is where the reason no reading is cached
+ * on either side of the wire is written down, and why the responses behind it
+ * are (#417) — and the one daily trend point that is (#419).
  *
  * **The rows are `./SpendTable`, which is where everything about an issue
  * lives** (#270) — the column definitions, the two markers that tell a missing
@@ -61,9 +69,20 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
 
 const SCAN_FAILED = "The dev middleware could not read the transcripts.";
 
+const STORED_FAILED = "The dev middleware could not open the usage history.";
+
 export function UsagePage() {
   const scan = useUsageScan();
-  const report = scan.data ?? null;
+  const stored = useStoredUsage();
+  /* The latest reading: a scan's once one has answered, the stored reading
+     until then (#432). Null while a scan reads, as it always was — the panels
+     below go with it and come back with the scan's figures, so nothing on
+     screen mixes two moments. */
+  const report = scan.isPending ? null : (scan.data ?? stored.data ?? null);
+  const storedProblem =
+    stored.error && !report && !scan.isPending
+      ? extractErrorMessage(stored.error, STORED_FAILED)
+      : null;
   /* How the table below is being read — its ranking, whether the detail
      columns are shown, and what the four controls on its bar have narrowed it
      to. The shape and the rules over it are `./usage-view` (#287), which is
@@ -100,7 +119,8 @@ export function UsagePage() {
           <p className="max-w-prose text-sm text-muted-foreground">
             What each issue was forecast to cost and what it actually cost, in
             output tokens, read off this machine&rsquo;s Claude Code
-            transcripts. Nothing is read until you press Scan.
+            transcripts. It opens on what the usage history already holds; the
+            transcripts are read again only when you press Scan.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -124,7 +144,15 @@ export function UsagePage() {
         {scan.isPending ? (
           <span className="text-muted-foreground">Reading transcripts…</span>
         ) : report ? (
-          <Gathered report={report} />
+          report.transcripts === null ? (
+            <Stored report={report} />
+          ) : (
+            <Gathered report={report} transcripts={report.transcripts} />
+          )
+        ) : stored.isPending ? (
+          <span className="text-muted-foreground">
+            Opening the stored reading…
+          </span>
         ) : (
           <span className="text-muted-foreground">
             Nothing gathered yet. Press Scan to read this machine&rsquo;s
@@ -144,6 +172,20 @@ export function UsagePage() {
       {problem && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {problem}
+        </p>
+      )}
+
+      {/* The stored reading could not be opened (#432). A warning rather than
+          a toast or an error: the page is as it was before #432 — empty, with
+          Scan the way to a reading — and the cause is worth reading. */}
+      {storedProblem && (
+        <p className="flex items-start gap-2 rounded-md px-3 py-2 text-sm text-status-warning ring-1 ring-status-warning/30">
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0"
+          />
+          Could not open the stored reading ({storedProblem}). Press Scan to
+          read the transcripts instead.
         </p>
       )}
 
@@ -298,7 +340,14 @@ const Quantity = ({ value, unit }: { value: number; unit: string }) => (
  * The timestamp is rendered in the viewer's locale inside a `<time>` carrying
  * the ISO stamp, so the machine-readable value survives the formatting.
  */
-function Gathered({ report }: { report: UsageReport }) {
+function Gathered({
+  report,
+  transcripts,
+}: {
+  report: UsageReport;
+  /** `report.transcripts`, which a scan always carries. */
+  transcripts: number;
+}) {
   return (
     <>
       Gathered at{" "}
@@ -306,10 +355,36 @@ function Gathered({ report }: { report: UsageReport }) {
         {new Date(report.gatheredAt).toLocaleTimeString()}
       </time>{" "}
       from <code className="font-mono text-xs">{report.transcriptDir}</code> —{" "}
-      {report.transcripts}{" "}
-      {report.transcripts === 1 ? "transcript" : "transcripts"},{" "}
+      {transcripts} {transcripts === 1 ? "transcript" : "transcripts"},{" "}
       {report.issues.length} {report.issues.length === 1 ? "issue" : "issues"},
       read in {report.scanMs} ms.
+    </>
+  );
+}
+
+/**
+ * The stored reading's account of itself (#432): what the usage history held
+ * when the page opened, read without touching a transcript.
+ *
+ * Worded apart from `Gathered` rather than as a variant of it. It must not say
+ * "Gathered at" — that sentence names a directory that was read and a count of
+ * what was in it, and this read neither — and it says what Scan would do, since
+ * the figures are the last scan's or push's rather than this machine's
+ * transcripts as they are now.
+ */
+function Stored({ report }: { report: UsageReport }) {
+  return (
+    <>
+      {/* Date and time, unlike `Gathered`'s time alone: a stored reading
+          can be days old. */}
+      Stored at{" "}
+      <time dateTime={report.gatheredAt} className="font-medium">
+        {new Date(report.gatheredAt).toLocaleString()}
+      </time>{" "}
+      by the last scan or push, and opened from the usage history —{" "}
+      {report.issues.length} {report.issues.length === 1 ? "issue" : "issues"},
+      in {report.scanMs} ms. Press Scan to read{" "}
+      <code className="font-mono text-xs">{report.transcriptDir}</code> again.
     </>
   );
 }

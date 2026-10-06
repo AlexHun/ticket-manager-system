@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { ROUTE } from "../../apps/web/src/lib/routes";
+import { DEVTOOLS_API } from "../../apps/web/src/dev/devtools-paths";
 import {
   USAGE_COLUMNS,
   USAGE_TREND_LABEL,
@@ -34,6 +35,7 @@ import {
  * scan reads only what was appended since the last one. Slice 3 (#419): one
  * trend point per day with a scan, today's equal to the panels above it.
  * Slice 4 (#420): a deleted history is rebuilt, a damaged one is a warning.
+ * And #432: the page opens on the stored reading, with no Scan.
  *
  * Driven through the real middleware: the web server's `USAGE_HISTORY_FILE` is
  * `USAGE_HISTORY_PATH` (`playwright.config.ts`), a gitignored file that
@@ -285,6 +287,51 @@ test.describe("dev tools: Usage history", () => {
 
     await expect(reading(page)).toContainText("1 transcript,");
     await expect(since).toHaveAttribute("datetime", HISTORY_SINCE);
+  });
+
+  /**
+   * #432: the page opens on what the history holds. After a scan, a reload and
+   * a navigation away and back both show its figures with no Scan pressed —
+   * and from the history, not a re-read: the transcript deleted in between
+   * would otherwise take `#102` and `#105` with it.
+   */
+  test("opens on the stored reading after a reload or a return, without a scan", async ({
+    page,
+  }) => {
+    const accuracy = page.getByRole("region", { name: "Forecast accuracy" });
+    const opened = page.getByText(/^Stored at/);
+
+    await page.getByRole("button", { name: "Scan" }).click();
+    await expect(reading(page)).toContainText(TRANSCRIPT_WORKING_DIR);
+    await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
+    await expect(accuracy).toContainText(PANELS.accuracy);
+
+    rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-b.jsonl"));
+    const scans: string[] = [];
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        request.url().endsWith(DEVTOOLS_API.usage)
+      )
+        scans.push(request.url());
+    });
+
+    await page.reload();
+    await expect(opened).toBeVisible();
+    await expect(reading(page)).toHaveCount(0);
+    await expect(outFor(page, 101)).toHaveText(SESSION_A.issue101);
+    await expect(outFor(page, 102)).toHaveText(SESSION_B.issue102);
+    await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
+    await expect(accuracy).toContainText(PANELS.accuracy);
+
+    const nav = page.getByRole("navigation", { name: "Dev tools" });
+    await nav.getByRole("link", { name: "Project map" }).click();
+    await expect(opened).toHaveCount(0);
+    await nav.getByRole("link", { name: "Usage" }).click();
+    await expect(opened).toBeVisible();
+    await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
+
+    expect(scans).toEqual([]);
   });
 
   /**

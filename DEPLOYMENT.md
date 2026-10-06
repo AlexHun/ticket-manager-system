@@ -334,7 +334,9 @@ listing, and develop's scans tally those exactly as the laptop's do.
    also be the URL's userinfo (`https://user:pass@…`). Pushing the same rows
    again stores nothing new, so pushing twice is pushing once.
 
-4. **Scan** on the page. A scan there writes the day's trend point (the container's
+4. **Open** the page. Since #432 it shows the pushed figures straight away,
+   computed from the stored history without a scan. **Scan** there only for the
+   trend: a scan writes the day's trend point (the container's
    local day, which is UTC unless `TZ` is set), so the trend has a point for each day a push was followed by a
    scan. With no transcripts and a history holding rows, the page shows no
    "no transcripts" warning there; that is what `USAGE_HISTORY_PUSHED` is for, and

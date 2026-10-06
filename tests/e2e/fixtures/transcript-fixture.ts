@@ -52,7 +52,7 @@ export const TRANSCRIPT_WORKING_DIR = path.join(HERE, "transcripts.local");
  * passes it to the `bun run tokens` it spawns. Without the override, a spec's
  * scan of these fixtures would store their spend in the developer's real
  * history. Gitignored as `*.sqlite`, and never in use between scans: the store
- * is opened per scan and closed before the response, so removing it here
+ * is opened per request and closed before the response, so removing it here
  * cannot meet a Windows file lock.
  */
 export const USAGE_HISTORY_PATH = path.join(HERE, "usage-history.local.sqlite");
