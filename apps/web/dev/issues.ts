@@ -52,9 +52,7 @@ const GH_MAX_BUFFER = 10_000_000;
 
 const execFileAsync = promisify(execFile);
 
-/** Exported for the usage push (`./usage-push.ts`), which writes a listing
- *  this module reads back and so names the band's label the same way. */
-export const FORECAST_PREFIX = "forecast/";
+const FORECAST_PREFIX = "forecast/";
 
 /**
  * The two states `gh issue list --state all` reports.
@@ -112,7 +110,7 @@ export interface IssueMetadata {
 
 /** The fields this reads off the listing; `gh` prints more and they are
  *  ignored. Hand-written because `gh` ships no types for its JSON. */
-interface GhIssue {
+export interface GhIssue {
   number: number;
   title: string;
   state: string;
@@ -228,6 +226,28 @@ function parseListing(raw: string): Map<number, IssueMeta> {
       },
     ]),
   );
+}
+
+/**
+ * A listing back in the shape `gh` prints it — `parseListing`'s inverse, kept
+ * beside it so the format lives in one module. For the usage push (#428,
+ * `./usage-push.ts`), which sends the laptop's listing to a dev server that
+ * writes it where `GH_ISSUES_FILE` points. Of the labels only the one this
+ * module reads goes, the forecast band's; `gh`'s colours and descriptions were
+ * never kept.
+ */
+export function toGhListing(
+  byIssue: ReadonlyMap<number, IssueMeta>,
+): (GhIssue & { state: IssueState })[] {
+  return [...byIssue].map(([number, meta]) => ({
+    number,
+    title: meta.title,
+    state: meta.state,
+    url: meta.url,
+    labels: meta.forecast
+      ? [{ name: `${FORECAST_PREFIX}${meta.forecast}` }]
+      : [],
+  }));
 }
 
 /**

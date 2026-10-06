@@ -19,11 +19,15 @@ import {
 import { openUsageStore } from "./usage-store.ts";
 import {
   MAX_PUSH_BYTES,
+  PUSHED_HISTORY_ENV,
   acceptPush,
   buildPush,
+  historyIsPushed,
+  pushHistoryFile,
   pushRequest,
   receivePush,
 } from "./usage-push.ts";
+import { HISTORY_FILE_ENV } from "./usage-store.ts";
 import { PUSHED_RESPONSE_FIELDS } from "../src/dev/usage-push.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
 import { BASIC_AUTH_ENV } from "./basic-auth.ts";
@@ -33,8 +37,8 @@ import { BASIC_AUTH_ENV } from "./basic-auth.ts";
  * to Railway's `develop` dev server, which has no transcripts of its own.
  *
  * The two machines are two history files here, and the Railway one is read over
- * a transcript directory that does not exist â€” which is what that server's
- * `~/.claude/projects/â€¦` is.
+ * a transcript directory that does not exist — which is what that server's
+ * `~/.claude/projects/…` is.
  */
 
 let work: string;
@@ -127,6 +131,8 @@ async function scanOnRailway() {
     join(work, "no-transcripts-here"),
     await fetchIssueMetadata({ [ISSUES_FILE_ENV]: listingFile }),
     railway,
+    undefined,
+    { pushedHistory: historyIsPushed({ [PUSHED_HISTORY_ENV]: "1" }) },
   );
 }
 
@@ -307,6 +313,20 @@ describe("acceptPush", () => {
     expect(existsSync(railway)).toBe(false);
   });
 
+  it("refuses a push with no history file to keep it in, storing nothing", async () => {
+    await scanOnLaptop();
+
+    const outcome = await acceptPush(
+      await buildPush(laptop, listing()),
+      null,
+      listingFile,
+    );
+
+    expect(outcome.status).toBe(409);
+    expect(JSON.stringify(outcome.body)).toContain(HISTORY_FILE_ENV);
+    expect(existsSync(listingFile)).toBe(false);
+  });
+
   it("stores rows without a listing when none is sent, file or no file", async () => {
     await scanOnLaptop();
 
@@ -323,6 +343,26 @@ describe("acceptPush", () => {
     } finally {
       store.close();
     }
+  });
+});
+
+describe("pushHistoryFile", () => {
+  it("has none for a pushed history until USAGE_HISTORY_FILE names one", async () => {
+    expect(await pushHistoryFile({ [PUSHED_HISTORY_ENV]: "1" }, work)).toBe(
+      null,
+    );
+    expect(
+      await pushHistoryFile(
+        { [PUSHED_HISTORY_ENV]: "1", [HISTORY_FILE_ENV]: railway },
+        work,
+      ),
+    ).toBe(railway);
+  });
+
+  it("is the scan's own file on a server that is not marked", async () => {
+    expect(await pushHistoryFile({ [HISTORY_FILE_ENV]: railway }, work)).toBe(
+      railway,
+    );
   });
 });
 
@@ -388,6 +428,26 @@ describe("pushRequest", () => {
     expect(headers.Authorization).toBe(
       `Basic ${Buffer.from("dev:p@ss:word").toString("base64")}`,
     );
+  });
+
+  it("never pairs the URL's user with the environment's password", () => {
+    const { headers } = pushRequest("https://dev@web.example.app", {
+      [BASIC_AUTH_ENV.username]: "other",
+      [BASIC_AUTH_ENV.password]: "env-password",
+    });
+
+    expect(headers.Authorization).toBe(
+      `Basic ${Buffer.from("dev:").toString("base64")}`,
+    );
+  });
+
+  it("refuses to send a credential over plain http, except to loopback", () => {
+    expect(() => pushRequest("http://dev:pw@web.example.app", {})).toThrow(
+      /https/,
+    );
+    expect(
+      pushRequest("http://dev:pw@localhost:4000", {}).headers.Authorization,
+    ).toBeDefined();
   });
 
   it("sends no credential when there is none, for a local dev server", () => {

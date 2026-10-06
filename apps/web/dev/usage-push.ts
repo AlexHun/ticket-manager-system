@@ -23,20 +23,38 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
-import {
-  FORECAST_PREFIX,
-  ISSUES_FILE_ENV,
-  type IssueMetadata,
-} from "./issues.ts";
+import { ISSUES_FILE_ENV, toGhListing, type IssueMetadata } from "./issues.ts";
 import { BASIC_AUTH_ENV } from "./basic-auth.ts";
-import { openUsageStore } from "./usage-store.ts";
+import {
+  HISTORY_FILE_ENV,
+  openUsageStore,
+  resolveHistoryFile,
+} from "./usage-store.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
 import {
   usagePushSchema,
-  type PushedIssue,
   type UsagePush,
   type UsagePushResult,
 } from "../src/dev/usage-push.ts";
+
+/**
+ * Set by `Dockerfile.dev`: this dev server's history is fed by pushes, because
+ * it has no transcripts of its own (Railway's `develop`). Two things follow,
+ * and neither applies to a developer's machine, where it is unset:
+ *
+ * - a scan does not warn that the transcript directory is missing or empty
+ *   while the history holds rows (`gatherUsage`'s `pushedHistory`) — there it
+ *   is the ordinary state, where on a laptop it is the hint that the scan ran
+ *   from the wrong directory;
+ * - a push is refused while `USAGE_HISTORY_FILE` is unset, since the default
+ *   file is inside the container and the next redeploy would wipe it.
+ */
+export const PUSHED_HISTORY_ENV = "USAGE_HISTORY_PUSHED";
+
+/** Whether `env` marks this server's history as fed by pushes. */
+export const historyIsPushed = (
+  env: Record<string, string | undefined>,
+): boolean => (env[PUSHED_HISTORY_ENV]?.trim() ?? "") !== "";
 
 /**
  * The largest body the dev server reads. A row is ~150 bytes of JSON, so this
@@ -54,10 +72,8 @@ export const MAX_PUSH_BYTES = 64 * 1024 * 1024;
  * dedupe makes that safe and the payload a few MB, and a client that tracked
  * what it had sent would be a second cursor that could drift from the store.
  *
- * The listing is rebuilt from `IssueMetadata` into `gh`'s own shape, so the
- * file the server writes parses through `fetchIssueMetadata` like a real
- * listing. Of the labels, only the one this repo reads — the forecast band —
- * goes; `gh`'s colours and descriptions never leave.
+ * The listing is rebuilt into `gh`'s own shape by `toGhListing`, so the file
+ * the server writes parses through `fetchIssueMetadata` like a real listing.
  */
 export async function buildPush(
   historyFile: string,
@@ -78,21 +94,24 @@ export async function buildPush(
           out,
           cacheRead,
         })),
-      issues: metadata.byIssue
-        ? [...metadata.byIssue].map(([number, meta]): PushedIssue => ({
-            number,
-            title: meta.title,
-            state: meta.state,
-            url: meta.url,
-            labels: meta.forecast
-              ? [{ name: `${FORECAST_PREFIX}${meta.forecast}` }]
-              : [],
-          }))
-        : null,
+      issues: metadata.byIssue ? toGhListing(metadata.byIssue) : null,
     };
   } finally {
     store.close();
   }
+}
+
+/**
+ * The history file a push is stored in: the one a scan on this server reads,
+ * or null when the history is marked as pushed (`PUSHED_HISTORY_ENV`) and
+ * `USAGE_HISTORY_FILE` does not name a file on the volume.
+ */
+export async function pushHistoryFile(
+  env: Record<string, string | undefined>,
+  cwd: string,
+): Promise<string | null> {
+  if (historyIsPushed(env) && !env[HISTORY_FILE_ENV]?.trim()) return null;
+  return resolveHistoryFile(env, { cwd });
 }
 
 /** A push's answer: the counts, or why nothing was stored. */
@@ -105,7 +124,9 @@ export type PushOutcome =
  * `GH_ISSUES_FILE` points.
  *
  * Validated whole before anything is written, so a rejected push leaves the
- * history as it was — no file is even created. A push carrying a listing this
+ * history as it was — no file is even created. A `historyFile` of null is
+ * `pushHistoryFile`'s answer for a pushed history with no volume configured,
+ * and is refused (409) for the same reason. A push carrying a listing this
  * server has nowhere to keep is refused the same way (409) rather than half
  * applied: without `GH_ISSUES_FILE` the page would ask `gh`, which the dev
  * image does not have, and every row would score as unforecast.
@@ -115,7 +136,7 @@ export type PushOutcome =
  */
 export async function acceptPush(
   body: unknown,
-  historyFile: string,
+  historyFile: string | null,
   issuesFile: string | null,
 ): Promise<PushOutcome> {
   const parsed = usagePushSchema.safeParse(body);
@@ -128,6 +149,14 @@ export async function acceptPush(
     };
   }
   const { responses, issues } = parsed.data;
+  if (historyFile === null) {
+    return {
+      status: 409,
+      body: {
+        error: `${HISTORY_FILE_ENV} is not set on a server whose history is fed by pushes, so the rows would land inside the container and the next redeploy would wipe them. Nothing was stored.`,
+      },
+    };
+  }
   if (issues && !issuesFile) {
     return {
       status: 409,
@@ -186,7 +215,7 @@ async function readBody(req: AsyncIterable<Buffer | string>): Promise<string> {
  */
 export async function receivePush(
   req: AsyncIterable<Buffer | string>,
-  historyFile: string,
+  historyFile: string | null,
   issuesFile: string | null,
 ): Promise<PushOutcome> {
   let text: string;
@@ -213,6 +242,10 @@ export async function receivePush(
   return acceptPush(body, historyFile, issuesFile);
 }
 
+/** Hosts a credential may reach over plain `http:`. `URL` keeps an IPv6
+ *  literal's brackets in `hostname`. */
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
 /**
  * Where `bun run tokens --push <url>` posts, and with what credential.
  *
@@ -221,7 +254,10 @@ export async function receivePush(
  * behind Basic Auth (#314), and the credential comes from the URL's userinfo —
  * moved into a header, since `fetch` refuses a URL that carries one — or else
  * from `DEV_BASIC_AUTH_USERNAME`/`_PASSWORD`, the two variables the server is
- * configured with. Neither set is a local dev server, which has no gate.
+ * configured with. Never half from each: a URL naming a user supplies the
+ * password too, empty or not. Neither set is a local dev server, which has no
+ * gate. A credential goes over plain `http:` only to a loopback host, so a
+ * mistyped scheme cannot send the develop password in the clear.
  */
 export function pushRequest(
   target: string,
@@ -239,10 +275,11 @@ export function pushRequest(
     throw new Error(`--push takes an http(s) URL; got "${target}".`);
   }
 
-  const username = url.username
+  const fromUrl = url.username !== "" || url.password !== "";
+  const username = fromUrl
     ? decodeURIComponent(url.username)
     : (env[BASIC_AUTH_ENV.username] ?? "");
-  const password = url.password
+  const password = fromUrl
     ? decodeURIComponent(url.password)
     : (env[BASIC_AUTH_ENV.password] ?? "");
 
@@ -250,6 +287,11 @@ export function pushRequest(
     "Content-Type": "application/json",
   };
   if (username || password) {
+    if (url.protocol === "http:" && !LOOPBACK.has(url.hostname)) {
+      throw new Error(
+        `--push will not send a credential over plain http to ${url.hostname}; use https.`,
+      );
+    }
     headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
   }
   return {

@@ -14,6 +14,7 @@ import {
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./transcripts.ts";
 import { HISTORY_FILE_ENV } from "./usage-store.ts";
+import { PUSHED_HISTORY_ENV } from "./usage-push.ts";
 
 /**
  * The usage route, exercised through the plugin rather than around it.
@@ -146,8 +147,10 @@ beforeEach(() => {
     [TRANSCRIPT_DIR_ENV]: process.env[TRANSCRIPT_DIR_ENV],
     [ISSUES_FILE_ENV]: process.env[ISSUES_FILE_ENV],
     [HISTORY_FILE_ENV]: process.env[HISTORY_FILE_ENV],
+    [PUSHED_HISTORY_ENV]: process.env[PUSHED_HISTORY_ENV],
   };
   delete process.env[TRANSCRIPT_DIR_ENV];
+  delete process.env[PUSHED_HISTORY_ENV];
 
   envDir = mkdtempSync(join(tmpdir(), "plugin-listing-"));
   const listing = join(envDir, "issues.json");
@@ -366,6 +369,8 @@ describe(`POST ${DEVTOOLS_API.usagePush}`, () => {
 
   it("stores the rows in the history the environment names, for the next scan to report", async () => {
     process.env[TRANSCRIPT_DIR_ENV] = join(envDir, "no-transcripts");
+    // As `Dockerfile.dev` marks Railway's develop server.
+    process.env[PUSHED_HISTORY_ENV] = "1";
 
     const outcome = await push(
       JSON.stringify({

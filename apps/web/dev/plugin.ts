@@ -32,7 +32,7 @@ import {
 import { gatherUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
-import { receivePush } from "./usage-push.ts";
+import { historyIsPushed, pushHistoryFile, receivePush } from "./usage-push.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
 import type {
@@ -323,6 +323,8 @@ export function devToolsPlugin(): Plugin {
               resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
               undefined,
               await resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
+              undefined,
+              { pushedHistory: historyIsPushed(process.env) },
             ),
           ),
         ),
@@ -339,7 +341,7 @@ export function devToolsPlugin(): Plugin {
         only("POST", async (req, res) => {
           const { status, body } = await receivePush(
             req,
-            await resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
+            await pushHistoryFile(process.env, REPO_ROOT),
             process.env[ISSUES_FILE_ENV]?.trim() || null,
           );
           sendJson(res, status, body);

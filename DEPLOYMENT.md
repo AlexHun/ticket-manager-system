@@ -315,8 +315,11 @@ listing, and develop's scans tally those exactly as the laptop's do.
 
    The dev image has no `gh`, so there is no `GH_TOKEN`: the listing rides
    along with each push, and the server writes it to `GH_ISSUES_FILE`, which the
-   page reads in place of `gh`. A push carrying a listing is refused (409, nothing
-   stored) while `GH_ISSUES_FILE` is unset.
+   page reads in place of `gh`. Every push is refused (409, nothing stored)
+   while `USAGE_HISTORY_FILE` is unset, and one carrying a listing while
+   `GH_ISSUES_FILE` is. The first check comes from `USAGE_HISTORY_PUSHED=1`,
+   which `Dockerfile.dev` sets and which marks this server's history as fed by
+   pushes; nothing on the dashboard sets it.
 
 3. **Push**, from the repo root on the laptop, after any session whose spend
    should show:
@@ -334,7 +337,8 @@ listing, and develop's scans tally those exactly as the laptop's do.
 4. **Scan** on the page. A scan there writes the day's trend point (the container's
    local day, which is UTC unless `TZ` is set), so the trend has a point for each day a push was followed by a
    scan. With no transcripts and a history holding rows, the page shows no
-   "no transcripts" warning.
+   "no transcripts" warning there; that is what `USAGE_HISTORY_PUSHED` is for, and
+   a laptop, where it is unset, still warns.
 
 The route exists only on the dev server (the plugin is `apply: "serve"`), and
 Basic Auth covers it like every other request.

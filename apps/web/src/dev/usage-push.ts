@@ -19,10 +19,13 @@
  * already reads, never falling back to `gh`.
  *
  * The schemas live here, beside the other Usage contracts, and not in
- * `@ticket/core` where the app's zod schemas go: this one is dev tooling that
- * must never ship, both its readers are reached from the Vite config loader
- * (`dev/`) or `scripts/`, and the core package is the API's and the app's. It is
- * defined once, and both ends parse with it. It imports `zod` and nothing else.
+ * `@ticket/core` where the app's zod schemas go — and that is a constraint, not
+ * a preference. The dev server reaches this module from `vite.config.ts` under
+ * Vite's native config loader, which resolves nothing extensionless along the
+ * import graph, and `@ticket/core`'s index re-exports with extensionless paths
+ * (`./schemas/activity`) — the case `frontend.md` records as a dev server that
+ * will not start. It is still defined once, and both ends parse with it. It imports
+ * `zod` and nothing else.
  */
 
 import { z } from "zod";
@@ -65,7 +68,9 @@ export type PushedResponse = z.infer<typeof pushedResponseSchema>;
 export const pushedIssueSchema = z.strictObject({
   number: z.number().int().positive(),
   title: z.string(),
-  state: z.string(),
+  // `ISSUE_STATE`'s two words. Spelled out because this module imports
+  // nothing but zod; `toGhListing` in `dev/issues.ts` is typed against them.
+  state: z.enum(["OPEN", "CLOSED"]),
   url: z.string(),
   labels: z.array(z.strictObject({ name: z.string() })),
 });

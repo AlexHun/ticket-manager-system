@@ -251,13 +251,14 @@ export async function gatherUsage(
   metadata?: IssueMetadata,
   historyFile?: string,
   now: () => Date = () => new Date(),
+  { pushedHistory = false }: GatherOptions = {},
 ): Promise<UsageReport> {
   // Before the listing, not after: `scanMs` answers "how long did pressing
   // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
   const startedAt = Date.now();
   const listing = metadata ?? (await fetchIssueMetadata());
   if (historyFile === undefined) {
-    return reportFrom(dir, listing, startedAt, null, now);
+    return reportFrom(dir, listing, startedAt, null, now, pushedHistory);
   }
 
   let failure: unknown;
@@ -269,7 +270,7 @@ export async function gatherUsage(
       throw new HistoryFailure(err);
     });
     try {
-      return reportFrom(dir, listing, startedAt, store, now);
+      return reportFrom(dir, listing, startedAt, store, now, pushedHistory);
     } finally {
       fromHistory(() => store.close());
     }
@@ -285,12 +286,23 @@ export async function gatherUsage(
   // then the transcripts on disk alone, read whole: the cursors that would have
   // skipped the bytes already read are in the file that failed. Closed first,
   // so the developer can act on what the warning says.
-  const report = reportFrom(dir, listing, startedAt, null, now);
+  const report = reportFrom(dir, listing, startedAt, null, now, pushedHistory);
   report.warnings.push({
     source: USAGE_WARNING_SOURCE.history,
     message: historyWarning(historyFile, failure),
   });
   return report;
+}
+
+/** How the server calling `gatherUsage` is set up. */
+export interface GatherOptions {
+  /**
+   * The history is fed by pushes (#428, `PUSHED_HISTORY_ENV` in
+   * `./usage-push.ts`): a missing or empty transcript directory beside stored
+   * rows is then no warning. The plugin sets it from the environment;
+   * `bun run tokens` never does.
+   */
+  pushedHistory?: boolean;
 }
 
 /** A store call that failed, told apart from a failure anywhere else in a
@@ -337,6 +349,7 @@ function reportFrom(
   startedAt: number,
   store: UsageStore | null,
   now: () => Date,
+  pushedHistory: boolean,
 ): UsageReport {
   const warnings: UsageWarning[] = [];
 
@@ -347,12 +360,13 @@ function reportFrom(
   let read = emptyRead();
   /* The transcripts' warning, if any, and whether it says only that there are
      none here — a missing directory or an empty one. That kind is dropped below
-     when the history holds rows (#428): it is the ordinary state of Railway's
-     develop server, which is fed by pushes and has no transcripts of its own,
-     and its figures are the history's. A directory that exists and cannot be
-     read is still a warning, history or not. */
+     on a server whose history is fed by pushes, once it holds rows (#428): it
+     is the ordinary state of Railway's develop server, which has no
+     transcripts of its own, and its figures are the history's. Everywhere else
+     it stays, since on a laptop it is the hint that the scan ran from the wrong
+     directory. A directory that exists and cannot be read always warns. */
   let transcriptWarning: UsageWarning | null = null;
-  let noTranscripts = false;
+  let transcriptsAbsent = false;
   try {
     read = readTranscripts(dir, cursors);
     // Inside the `try`, so "there is nothing in it" is only asked of a directory
@@ -361,14 +375,15 @@ function reportFrom(
     // so far — true only while the transcripts were the first source to report,
     // and quietly wrong the moment a second one went in ahead of them.
     if (read.transcripts === 0) {
-      noTranscripts = true;
+      transcriptsAbsent = true;
       transcriptWarning = {
         source: USAGE_WARNING_SOURCE.transcripts,
         message: `No .jsonl transcripts in ${dir}.`,
       };
     }
   } catch (err) {
-    noTranscripts = (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
+    transcriptsAbsent =
+      (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
     transcriptWarning = {
       source: USAGE_WARNING_SOURCE.transcripts,
       message: `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`,
@@ -396,7 +411,12 @@ function reportFrom(
     historySince = fromHistory(() => store.since());
   }
   // First among the warnings, where it has always been.
-  if (transcriptWarning && !(noTranscripts && store && responses.length > 0)) {
+  const pushedAndHeld =
+    pushedHistory &&
+    transcriptsAbsent &&
+    store !== null &&
+    responses.length > 0;
+  if (transcriptWarning && !pushedAndHeld) {
     warnings.unshift(transcriptWarning);
   }
   const { byIssue, unattributed } = tallySpend(responses);
