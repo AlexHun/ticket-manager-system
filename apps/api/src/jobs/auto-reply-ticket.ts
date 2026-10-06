@@ -7,7 +7,7 @@ import {
   TICKET_STATUS,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
+import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
 import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
@@ -21,6 +21,11 @@ import {
 import { REPLY_ORIGIN, SEND_OUTCOME, sendReply } from "../outbound";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
+import {
+  draftReply,
+  readResolveState,
+  type ResolveState,
+} from "./auto-reply-steps";
 import {
   getBoss,
   registerSweep,
@@ -313,6 +318,20 @@ async function release(
   }
 }
 
+/** The preflight gates, asked of the ticket as the resolving transaction reads
+ *  it. */
+function gateOn(state: ResolveState): AutoReplyDecline | null {
+  return gateDecline({
+    category: state.category,
+    hasOutbound: state.messages.some(
+      (m) => m.direction === MESSAGE_DIRECTION.outbound,
+    ),
+    inboundCount: state.messages.filter(
+      (m) => m.direction === MESSAGE_DIRECTION.inbound,
+    ).length,
+  });
+}
+
 /**
  * Answer one ticket, if it is still there to answer and the knowledge base
  * covers it.
@@ -352,12 +371,16 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // and this is the moment its rail is drawing.
   publishPipelineChanged(ticketId);
 
+  // Also the version stamp the resolve below matches on (#429): `category` and
+  // `lastMessageAt`, read here at the claim's heels, are the ticket the model is
+  // about to answer.
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     select: {
       subject: true,
       customerName: true,
       category: true,
+      lastMessageAt: true,
       messages: {
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         // No `messageId`: the parent an outbound reply threads onto is found by
@@ -410,7 +433,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // check 4 exists to close.
   const articles = await autoReplyArticles();
 
-  const result = await autoReply(articles, {
+  const result = await draftReply(articles, {
     subject: ticket.subject,
     // The one inbound message: the `followUp` gate above has already turned back
     // every ticket carrying more than one, so this index is the whole thread
@@ -453,6 +476,23 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // leave a reply on a ticket that had moved on. `sendReply` joins this
   // transaction rather than opening its own, which is what makes the reply and
   // the claim it was written under commit together or not at all.
+  //
+  // **The resolve matches only the version the model answered** (#429). Status
+  // alone cannot see a message that commits between the re-read below and the
+  // resolve, because appending a message does not move a ticket's status. So
+  // the resolve's `where` also carries `lastMessageAt` and `category` as the
+  // read at the claim's heels found them. Every message moves `lastMessageAt`,
+  // in the same commit as the message row: `ingest.ts` for an inbound one,
+  // `sendReply` for an outbound one. `category` is the other fact the gates
+  // read, and an agent re-filing the ticket moves it. A write that commits in
+  // that gap therefore makes the `updateMany` match nothing, because Postgres
+  // re-checks an `UPDATE`'s `where` against a row a concurrent transaction
+  // committed. A write that commits after the `updateMany` waits on its row
+  // lock and lands after the resolve, where an inbound one reopens the ticket
+  // the ordinary way. That closes the window `docs/adr/0020` used to leave
+  // open, with no explicit lock. Not `updatedAt`, which any unrelated write
+  // bumps. Not a dedicated `version` column, which every writer would have to
+  // remember to bump.
   const written = await prisma.$transaction(async (tx) => {
     // The gates again, on what is true *now* rather than what was true before
     // the model was asked.
@@ -471,25 +511,21 @@ async function handle(job: AutoReplyJob): Promise<void> {
     // enough for any of its facts to have moved: an agent can reply in it, and
     // an agent can file the ticket as `Refund` in it. Whichever gate now fires
     // is the reason the ticket is handed back with.
-    const now = await tx.ticket.findUnique({
-      where: { id: ticketId },
-      select: { category: true, messages: { select: { direction: true } } },
-    });
-    const overtaken = now
-      ? gateDecline({
-          category: now.category,
-          hasOutbound: now.messages.some(
-            (m) => m.direction === MESSAGE_DIRECTION.outbound,
-          ),
-          inboundCount: now.messages.filter(
-            (m) => m.direction === MESSAGE_DIRECTION.inbound,
-          ).length,
-        })
-      : null;
+    //
+    // Kept alongside the version compare rather than replaced by it: the
+    // version says *that* something changed, and only the gate says *what* —
+    // which is the reason an agent sees on the ticket.
+    const now = await readResolveState(tx, ticketId);
+    const overtaken = now ? gateOn(now) : null;
     if (overtaken) return overtaken;
 
     const resolved = await tx.ticket.updateMany({
-      where: { id: ticketId, status: TICKET_STATUS.Processing },
+      where: {
+        id: ticketId,
+        status: TICKET_STATUS.Processing,
+        lastMessageAt: ticket.lastMessageAt,
+        category: ticket.category,
+      },
       data: {
         status: TICKET_STATUS.Resolved,
         autoResolvedAt: sentAt,
@@ -505,7 +541,23 @@ async function handle(job: AutoReplyJob): Promise<void> {
         autoReplyDeclinedAt: null,
       },
     });
-    if (resolved.count === 0) return false;
+    if (resolved.count === 0) {
+      // Two reasons to match nothing, and they need opposite answers. Someone
+      // else moved the status — the recovery sweep, a second delivery — and the
+      // ticket is not ours to touch. Or the status is still ours and only the
+      // version moved, and returning here would strand it in `Processing`,
+      // invisible to every agent until the sweep noticed. Re-read to tell them
+      // apart, and in the second case ask the gates what changed.
+      //
+      // `followUp` when no gate fires. That is reachable only by a re-file from
+      // one answerable category to another, and the reply still answered a
+      // ticket that has moved since. `followUp` is the reason that says the
+      // thread moved on while nobody was looking; `category` would claim a
+      // Refund or a missing classification that is not there.
+      const after = await readResolveState(tx, ticketId);
+      if (after?.status !== TICKET_STATUS.Processing) return false;
+      return gateOn(after) ?? AUTO_REPLY_DECLINE.followUp;
+    }
 
     // The origin is the whole of what makes this reply different from an
     // agent's: no author, the automated flag, and the articles it was built
@@ -540,12 +592,13 @@ async function handle(job: AutoReplyJob): Promise<void> {
     return true;
   });
 
-  // Overtaken while the model was thinking. The transaction wrote nothing — the
-  // read above returned before the resolve — so this is an ordinary hand-back,
-  // and the reply is discarded rather than held: it answers a thread that has
-  // moved, which is the whole reason the gate that just fired exists. Logged at
-  // `error` because a drafted reply being thrown away is worth noticing, the
-  // same way `ungrounded` is.
+  // Overtaken while the model was thinking. The transaction wrote nothing —
+  // either the re-read returned before the resolve, or the resolve's version
+  // compare matched no row — so this is an ordinary hand-back, and the reply
+  // is discarded rather than held: it answers a thread that has moved, which is
+  // the whole reason the gate that just fired exists. Logged at `error` because
+  // a drafted reply being thrown away is worth noticing, the same way
+  // `ungrounded` is.
   if (typeof written === "string") {
     console.error(
       `[auto-reply] ticket ${ticketId} changed while it was being answered (${written}); reply discarded`,

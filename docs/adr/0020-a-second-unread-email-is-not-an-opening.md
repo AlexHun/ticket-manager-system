@@ -114,7 +114,21 @@ as `Refund`, and whichever gate now fires is the reason the ticket is handed bac
 with. The drafted reply is discarded, which is the same trade every check in this
 feature makes — it answers a thread that has moved.
 
-What remains is one statement wide: a message committing between that read and
-the update. Closing that needs row locking, and it is not worth it here — the
-outcome is one ticket resolved over a message that arrived in the same instant,
-and the customer's reply to an auto-resolved ticket reopens it.
+That left a gap one statement wide: a message committing between that read and
+the update. It is closed by a version compare, with no row lock
+([#429](https://github.com/AlexHun/ticket-manager-system/issues/429)). The job
+reads `lastMessageAt` and `category` right after the claim, and the resolve's
+`where` matches on both alongside `status: Processing`. Every message moves
+`lastMessageAt` in the same commit as the message row (`ingest.ts` for inbound,
+`sendReply` for outbound), and a re-file moves `category`. Postgres re-checks an
+`UPDATE`'s `where` against a row a concurrent transaction has committed, so a
+write in the gap makes the resolve match nothing. A write after it waits on the
+row lock and lands after the resolve, where an inbound message reopens the
+ticket the ordinary way. When the resolve matches nothing but the ticket is
+still `Processing`, the job re-reads, runs the gate on the fresh state and
+hands the ticket back `Open` with whichever reason fires. If none does, it uses
+`followUp`, because that case is only reachable through a re-file between two
+answerable categories. The in-transaction re-read stays: the version says
+_that_ the ticket changed, and the gate says _what_ changed, which is the reason
+an agent sees. `updatedAt` was rejected because any unrelated write bumps it,
+and a dedicated `version` column because every writer would have to bump it.
