@@ -342,7 +342,8 @@ export interface UsageReport {
    * is pointed somewhere else" — and it is what a failing E2E names.
    */
   transcriptDir: string;
-  /** `.jsonl` files in it — since #418 including those a scan skipped because
+  /** `.jsonl` files in it, its sessions' `subagents/` transcripts included
+   *  since #431 — since #418 including those a scan skipped because
    *  nothing had been appended to them since the last one. Null for a stored
    *  reading (#432), which reads no transcript and so counts none — and which
    *  is how the page tells the two kinds of reading apart. */

@@ -7,8 +7,9 @@
 // <url>` — and Railway stores it in its history file, on a volume
 // (`USAGE_HISTORY_FILE`), where its own scans tally it exactly as the laptop's
 // do. Nothing new is computed on either side: the rows go into the same
-// `response` table with the same per-id dedupe a local scan uses, so pushing
-// twice is pushing once, and "History since" is the same `MIN(at)`.
+// `response` table with the same per-id dedupe a local scan uses (which since
+// #431 raises a stored row's counts to a larger pushed one), so pushing twice
+// is pushing once, and "History since" is the same `MIN(at)`.
 //
 // **Rows, not transcripts, and both ends are held to it.** `buildPush` copies
 // the six fields of a stored response by name rather than spreading the row,

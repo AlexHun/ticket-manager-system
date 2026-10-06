@@ -1356,6 +1356,39 @@ describe("gatherUsage reads only what is new (#418)", () => {
     expect(incremental.issues).toEqual(full.issues);
     expect(incremental.unattributed).toEqual(full.unattributed);
   });
+
+  // #431: a history scanned before subagent transcripts were read gains their
+  // rows on the next scan, once, and keeps the top-level rows it already held.
+  it("adds a subagent transcript's rows to an existing history once", async () => {
+    put("s1.jsonl", lines(turn("s1", "feat/101-a", 100, 0, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
+    put(
+      join("s1", "subagents", "agent-x.jsonl"),
+      lines(
+        turn("s1", "feat/101-a", 100, 0, "msg_1"),
+        turn("s1", "feat/101-a", 40, 0, "msg_2"),
+      ),
+    );
+
+    expect(await spendOf(101)).toMatchObject({ out: 140, turns: 2 });
+    // And a scan after that, with nothing changed, adds nothing again.
+    expect(await spendOf(101)).toMatchObject({ out: 140, turns: 2 });
+  });
+
+  // A subagent still running when a scan stores its response's first block,
+  // with a partial count, finishes the response in a block the next scan reads.
+  it("takes a response's final count from a block appended after the scan that stored its first", async () => {
+    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
+    const agent = join("s1", "subagents", "agent-x.jsonl");
+    put(agent, lines(turn("s1", "feat/101-a", 3, 0, "msg_1")));
+    expect((await spendOf(101))?.out).toBe(3);
+
+    append(agent, lines(turn("s1", "feat/101-a", 120, 0, "msg_1")));
+
+    expect(await spendOf(101)).toMatchObject({ out: 120, turns: 1 });
+  });
 });
 
 describe("readTranscripts with cursors (#418)", () => {
@@ -1378,5 +1411,116 @@ describe("readTranscripts with cursors (#418)", () => {
     const [cursor] = readTranscripts(dir).cursors.values();
 
     expect(cursor).toMatchObject({ offset: Buffer.byteLength(done), lines: 1 });
+  });
+});
+
+// #431: Claude Code writes a subagent's transcript beside its session, at
+// `<session>/subagents/agent-<id>.jsonl`, stamped with the same `gitBranch`.
+describe("readTranscripts over subagent transcripts (#431)", () => {
+  const subagent = (session: string, name: string, lines: string[]) => {
+    const at = join(dir, session, "subagents");
+    mkdirSync(at, { recursive: true });
+    writeFileSync(join(at, name), `${lines.join("\n")}\n`, "utf8");
+  };
+
+  it("attributes a subagent's responses to the issue its branch names", () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 100, 0, "msg_1")]);
+    subagent("s1", "agent-x.jsonl", [
+      turn("s1", "feat/101-a", 40, 400, "msg_2"),
+      turn("s1", "feat/101-a", 2, 0, "msg_3"),
+    ]);
+
+    const scan = scanSpend(dir);
+
+    expect(scan.byIssue.get(101)).toEqual({
+      turns: 3,
+      out: 142,
+      cacheRead: 400,
+      sessions: 1,
+    });
+    expect(scan.transcripts).toBe(2);
+  });
+
+  // Measured 2026-10-07: in subagent transcripts 1,705 of 2,855 multi-record
+  // responses carried a partial `output_tokens` on their first record and the
+  // final count on their last — 177k against 1.41M summed. Top-level records
+  // never differed, which is why #413 could keep the first.
+  it("keeps the largest output count of a response whose records disagree", () => {
+    subagent("s1", "agent-x.jsonl", [
+      turn("s1", "feat/101-a", 3, 400, "msg_1"),
+      turn("s1", "feat/101-a", 120, 400, "msg_1"),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)).toEqual({
+      turns: 1,
+      out: 120,
+      cacheRead: 400,
+      sessions: 1,
+    });
+  });
+
+  it("counts a response that appears in both places once", () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 100, 0, "msg_1")]);
+    subagent("s1", "agent-x.jsonl", [
+      turn("s1", "feat/101-a", 100, 0, "msg_1"),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)).toMatchObject({
+      turns: 1,
+      out: 100,
+    });
+  });
+
+  it("reads no subagent bytes on a second scan with no file changes", () => {
+    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 9, 0, "msg_1")]);
+    const first = readTranscripts(dir);
+
+    const second = readTranscripts(dir, first.cursors);
+
+    expect(first.responses).toHaveLength(1);
+    expect([...first.cursors.keys()]).toEqual([
+      join(dir, "s1", "subagents", "agent-x.jsonl"),
+    ]);
+    expect(second.responses).toEqual([]);
+    expect(second.transcripts).toBe(1);
+    expect(second.cursors).toEqual(first.cursors);
+  });
+
+  it("reads neither .meta.json files nor directories other than subagents/", () => {
+    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 1)]);
+    writeFileSync(
+      join(dir, "s1", "subagents", "agent-x.meta.json"),
+      turn("s1", "feat/102-b", 1000),
+      "utf8",
+    );
+    for (const nested of [
+      join("s1", "tool-results"),
+      join("s1", "subagents", "deeper"),
+    ]) {
+      mkdirSync(join(dir, nested), { recursive: true });
+      writeFileSync(
+        join(dir, nested, "other.jsonl"),
+        turn("s1", "feat/103-c", 1000),
+        "utf8",
+      );
+    }
+
+    const scan = scanSpend(dir);
+
+    expect([...scan.byIssue.keys()]).toEqual([101]);
+    expect(scan.transcripts).toBe(1);
+  });
+
+  // A record with no identity of its own is keyed on its file and line, so a
+  // subagent file must not share a key with a top-level file of the same name.
+  it("keys a subagent record with no id on its path under the directory", () => {
+    write("agent-x.jsonl", [turn("s1", "feat/101-a", 1)]);
+    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 2)]);
+
+    expect(
+      readTranscripts(dir)
+        .responses.map((r) => r.id)
+        .sort(),
+    ).toEqual(["line:agent-x.jsonl:1", "line:s1/subagents/agent-x.jsonl:1"]);
   });
 });

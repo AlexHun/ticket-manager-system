@@ -177,6 +177,20 @@ describe("the store", () => {
     ]);
   });
 
+  // #431: a subagent transcript writes a response's first block with a partial
+  // output count and its last block with the final one, so a scan that stored
+  // the first must take the larger count when a later read brings the last.
+  it("raises a stored response's tokens to a larger count read later, never lowers them", () => {
+    const store = memoryStore();
+
+    store.record([response({ out: 3, cacheRead: 10 })]);
+    store.record([response({ out: 120, cacheRead: 10 })]);
+    store.record([response({ out: 7, cacheRead: 10 })]);
+
+    expect(store.responses()).toEqual([response({ out: 120, cacheRead: 10 })]);
+    expect(store.count()).toBe(1);
+  });
+
   it("names the earliest timestamp it holds, and none while it holds nothing", () => {
     const store = memoryStore();
     expect(store.since()).toBeNull();
