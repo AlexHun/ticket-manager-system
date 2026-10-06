@@ -330,12 +330,65 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
     }
   });
 
-  it("ignores a GET, so the SPA fallback is never shadowed by a stale read", async () => {
+  it("passes on a method it does not serve, so the SPA fallback is never shadowed", async () => {
     const routes = mountPlugin();
 
-    await expect(callRoute(routes, DEVTOOLS_API.usage, "GET")).rejects.toThrow(
+    await expect(callRoute(routes, DEVTOOLS_API.usage, "PUT")).rejects.toThrow(
       /No handler answered/,
     );
+  });
+});
+
+const openStored = async (): Promise<UsageReport | null> => {
+  const { status, body } = await callRoute(
+    mountPlugin(),
+    DEVTOOLS_API.usage,
+    "GET",
+  );
+  expect(status).toBe(200);
+  return body as UsageReport | null;
+};
+
+describe(`GET ${DEVTOOLS_API.usage}`, () => {
+  it("answers null before any scan, the page's empty state", async () => {
+    process.env[TRANSCRIPT_DIR_ENV] = join(envDir, "no-transcripts");
+
+    expect(await openStored()).toBeNull();
+  });
+
+  it("answers the last scan's figures from the history, without a scan", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "plugin-usage-"));
+    writeFileSync(
+      join(dir, "s.jsonl"),
+      JSON.stringify({
+        sessionId: "s",
+        gitBranch: "feat/101-a",
+        message: { usage: { output_tokens: 4200 } },
+      }),
+      "utf8",
+    );
+    process.env[TRANSCRIPT_DIR_ENV] = dir;
+
+    try {
+      const scan = await scanUsage();
+      // Gone from disk: what the GET serves is the history's, not a re-read.
+      rmSync(join(dir, "s.jsonl"));
+
+      const stored = await openStored();
+
+      expect(stored?.issues).toEqual(scan.issues);
+      expect(stored?.trend).toEqual(scan.trend);
+      expect(stored?.transcripts).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("answers null on a pushed server with no volume configured", async () => {
+    process.env[PUSHED_HISTORY_ENV] = "1";
+    delete process.env[HISTORY_FILE_ENV];
+
+    expect(await openStored()).toBeNull();
   });
 });
 
@@ -400,6 +453,40 @@ describe(`POST ${DEVTOOLS_API.usagePush}`, () => {
     });
     expect(report.historySince).toBe("2026-09-02T09:00:00.000Z");
     expect(report.warnings).toEqual([]);
+  });
+
+  // #432: develop's page opens on what was pushed, with no Scan pressed there.
+  it("is what the next page open shows, with no scan in between", async () => {
+    process.env[TRANSCRIPT_DIR_ENV] = join(envDir, "no-transcripts");
+    process.env[PUSHED_HISTORY_ENV] = "1";
+
+    await push(
+      JSON.stringify({
+        responses: [
+          {
+            id: "message:m1",
+            session: "s",
+            branch: "feat/101-a",
+            at: "2026-09-02T09:00:00.000Z",
+            out: 4200,
+            cacheRead: 0,
+          },
+        ],
+        issues: [{ ...LISTING[0], title: "Pushed title" }],
+      }),
+    );
+    const stored = await openStored();
+
+    expect(stored?.issues).toMatchObject([
+      {
+        issue: 101,
+        title: "Pushed title",
+        spend: { out: 4200 },
+        forecast: "M",
+      },
+    ]);
+    expect(stored?.historySince).toBe("2026-09-02T09:00:00.000Z");
+    expect(stored?.warnings).toEqual([]);
   });
 
   it("rejects a body that is not a push", async () => {

@@ -15,7 +15,9 @@
 // dev-tools Vite plugin serialises to the Usage page under `/__dev` (#248) and
 // what `scripts/issue-tokens.ts` formats at the terminal. Neither re-assembles a
 // scan of its own, so "the page and `bun run tokens` cannot disagree" is a
-// property of one function rather than a promise two of them keep.
+// property of one function rather than a promise two of them keep. Since #432
+// the page opens on a second door, `readStoredUsage`: the same tally and join
+// over what the history holds, with no read, no `gh` and no write.
 //
 // The terminal used to import nine pieces of this file and do the assembling
 // itself, which is why this module also carried a ten-symbol block re-exporting
@@ -48,9 +50,15 @@ import { bucketFor, trendPointFor } from "../src/dev/usage-readings.ts";
 // `joinIssues` below is where that is argued, including why this is the
 // browser's module and not a third one both halves read.
 import { DEFAULT_USAGE_SORT, sortIssues } from "../src/dev/usage-sort.ts";
+import { existsSync } from "node:fs";
 import {
   ISSUE_STATE,
+  ISSUES_FILE_ENV,
+  LISTING_COST,
   fetchIssueMetadata,
+  parseListing,
+  toGhListing,
+  type IssueLister,
   type IssueMetadata,
 } from "./issues.ts";
 import {
@@ -59,7 +67,11 @@ import {
   type Spend,
   type TranscriptRead,
 } from "./transcripts.ts";
-import { openUsageStore, type UsageStore } from "./usage-store.ts";
+import {
+  openUsageStore,
+  type StoredListing,
+  type UsageStore,
+} from "./usage-store.ts";
 
 /**
  * A forecast band read against what was actually spent.
@@ -198,7 +210,8 @@ function joinIssues(
  * The composition lives here rather than in the plugin so that R8 — the page
  * and `bun run tokens` never report different figures for the same issue — is a
  * property of one module rather than of two callers agreeing to be careful.
- * Since #290 it is the *only* entry point either of them has: the plugin
+ * Since #290 it is the *only* scan either of them has (the page's opening read
+ * is `readStoredUsage` below, which scans nothing): the plugin
  * resolves the directory and serialises this, and the terminal resolves the
  * directory and formats this. Everything below the two of them — the scan, the
  * join, the ordering and the two ways a source can fail — happens once.
@@ -407,6 +420,9 @@ function reportFrom(
   let historySince: string | null = null;
   if (store) {
     fromHistory(() => store.record(read.responses, read.cursors));
+    // The listing this scan was joined against, so the stored reading the page
+    // opens on (#432) names the same titles and bands without asking `gh`.
+    fromHistory(() => store.recordListing(keptListingOf(listing)));
     responses = fromHistory(() => store.responses());
     historySince = fromHistory(() => store.since());
   }
@@ -449,4 +465,93 @@ function reportFrom(
     unattributed,
     warnings,
   };
+}
+
+/** A listing as the history keeps it: `gh`'s own shape, or the warning that
+ *  said why there was none. */
+const keptListingOf = (listing: IssueMetadata): StoredListing => ({
+  issues: listing.byIssue ? JSON.stringify(toGhListing(listing.byIssue)) : null,
+  warning: listing.warning,
+});
+
+/** What a history no scan has kept a listing in says: one written before
+ *  #432, until its next scan. */
+const NO_KEPT_LISTING =
+  "The usage history keeps no issue listing yet; press Scan to read one — " +
+  LISTING_COST;
+
+/** The kept listing back as `fetchIssueMetadata` would have returned it. */
+function listingFromKept(kept: StoredListing | null): IssueMetadata {
+  if (!kept) return { byIssue: null, warning: NO_KEPT_LISTING };
+  return {
+    byIssue: kept.issues === null ? null : parseListing(kept.issues),
+    warning: kept.warning,
+  };
+}
+
+/** The stored reading's lister: it never asks `gh`, and throws if anything
+ *  makes it — `fetchIssueMetadata` only falls to it with no file named. */
+const neverAskGh: IssueLister = () =>
+  Promise.reject(new Error("the stored reading does not run gh"));
+
+/**
+ * The reading the Usage page opens on (#432): computed from what the usage
+ * history already holds, reading no transcript, running no `gh`, and writing
+ * nothing. `GET /__devtools/usage` serves it; `POST` — the Scan button —
+ * is still `gatherUsage`.
+ *
+ * **Its figures are a scan's, minus the read.** The same stored rows go
+ * through the same `tallySpend` and `joinIssues`, so the rows, the unattributed
+ * total, the trend and the start date are what the last scan or push left —
+ * and a correction to the counting rules still reaches them, because nothing
+ * derived is stored (ADR-0023). What it cannot know is how many transcripts are
+ * on disk, so `transcripts` is null, which is also how the page tells it from
+ * a scan.
+ *
+ * **The listing is the one the last scan or push used.** `issuesFile` is
+ * `GH_ISSUES_FILE`: set — Railway's develop, where a push rewrites it without a
+ * scan — it is read as a scan would read it; unset, the history's own copy is,
+ * which every scan with a history keeps (`recordListing`), warning and all.
+ * `run` is never called; it is a parameter so a test can prove that.
+ *
+ * Null — the page's empty state — when no history is configured
+ * (`historyFile` null), when the file does not exist (nothing is created), and
+ * when it holds no rows. Opened read only, so a write anywhere below throws
+ * rather than landing. A history that cannot be read throws too: the page
+ * shows that as a warning and Scan stays the way to a reading.
+ */
+export async function readStoredUsage(
+  dir: string,
+  historyFile: string | null,
+  issuesFile: string | null,
+  {
+    run = neverAskGh,
+    now = () => new Date(),
+  }: { run?: IssueLister; now?: () => Date } = {},
+): Promise<UsageReport | null> {
+  const startedAt = Date.now();
+  if (historyFile === null || !existsSync(historyFile)) return null;
+  const store = await openUsageStore(historyFile, { readOnly: true });
+  try {
+    if (store.count() === 0) return null;
+    const listing = issuesFile
+      ? await fetchIssueMetadata({ [ISSUES_FILE_ENV]: issuesFile }, run)
+      : listingFromKept(store.listing());
+    const { byIssue, unattributed } = tallySpend(store.responses());
+    return {
+      gatheredAt: now().toISOString(),
+      scanMs: Date.now() - startedAt,
+      transcriptDir: dir,
+      transcripts: null,
+      historySince: store.since(),
+      trend: store.trend(),
+      issues: joinIssues(byIssue, listing),
+      unattributed,
+      warnings: listing.warning
+        ? [{ source: USAGE_WARNING_SOURCE.listing, message: listing.warning }]
+        : [],
+    };
+  } finally {
+    store.close();
+  }
 }

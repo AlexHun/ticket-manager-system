@@ -280,7 +280,12 @@ test.describe("dev tools: Usage", () => {
     await expect(page.getByRole("heading", { name: "Usage" })).toBeVisible();
   });
 
-  test("shows no figures until Scan is pressed", async ({ page }) => {
+  // Empty because `resetTranscriptWorkingCopy` removed the history: since #432
+  // the page opens on a stored reading when there is one
+  // (`dev-usage-history.spec.ts`).
+  test("shows no figures until Scan is pressed, with no history stored", async ({
+    page,
+  }) => {
     await expect(page.getByText(/nothing gathered yet/i)).toBeVisible();
     await expect(spendTable(page)).toHaveCount(0);
   });

@@ -22,8 +22,10 @@ declare module "bun:sqlite" {
   }
 
   export class Database {
-    /** Creates the file when it does not exist, which is Bun's default. */
-    constructor(filename: string);
+    /** Creates the file when it does not exist, which is Bun's default.
+     *  `{ readonly: true }` opens an existing file for reading only (#432);
+     *  `{ readonly: false }` throws SQLITE_MISUSE, so it is typed out. */
+    constructor(filename: string, options?: { readonly: true });
     exec(sql: string): void;
     prepare(sql: string): Statement;
     close(): void;

@@ -29,7 +29,7 @@ import {
   suiteDescriptors,
   type RunHandle,
 } from "./suites.ts";
-import { gatherUsage } from "./usage.ts";
+import { gatherUsage, readStoredUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
 import { historyIsPushed, pushHistoryFile, receivePush } from "./usage-push.ts";
@@ -293,12 +293,13 @@ export function devToolsPlugin(): Plugin {
 
       server.middlewares.use(
         DEVTOOLS_API.usage,
-        // `POST`, no `GET`, and no handle held between presses — `UsageReport`
-        // in `../src/dev/usage-protocol.ts` carries the reasoning, beside the
+        // `POST` is the scan and `GET` the stored reading the page opens on
+        // (#432), and no handle is held between requests — `UsageReport` in
+        // `../src/dev/usage-protocol.ts` carries the reasoning, beside the
         // shape it governs. What persists is the usage history (#417), a
-        // SQLite file `gatherUsage` opens and closes inside each request, so
-        // there is still nothing above this handler the way `runs` sits above
-        // the test runner's.
+        // SQLite file each request opens and closes, so there is still
+        // nothing above these handlers the way `runs` sits above the test
+        // runner's.
         //
         // The directory and the history file are resolved per request rather
         // than at plugin setup, so `CLAUDE_TRANSCRIPT_DIR` and
@@ -325,6 +326,27 @@ export function devToolsPlugin(): Plugin {
               await resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
               undefined,
               { pushedHistory: historyIsPushed(process.env) },
+            ),
+          ),
+        ),
+      );
+
+      server.middlewares.use(
+        DEVTOOLS_API.usage,
+        // The stored reading (#432): the history's rows, trend and listing,
+        // read only. Its history file is `pushHistoryFile`'s, so a develop
+        // server with no volume configured answers null — the page's empty
+        // state — rather than opening a file inside the container. The
+        // listing is `GH_ISSUES_FILE` when set, which a push rewrites without
+        // a scan; otherwise the copy the last scan kept in the history.
+        only("GET", async (_req, res) =>
+          sendJson(
+            res,
+            200,
+            await readStoredUsage(
+              resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+              await pushHistoryFile(process.env, REPO_ROOT),
+              process.env[ISSUES_FILE_ENV]?.trim() || null,
             ),
           ),
         ),

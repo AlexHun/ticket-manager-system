@@ -102,9 +102,10 @@ export async function buildPush(
 }
 
 /**
- * The history file a push is stored in: the one a scan on this server reads,
- * or null when the history is marked as pushed (`PUSHED_HISTORY_ENV`) and
- * `USAGE_HISTORY_FILE` does not name a file on the volume.
+ * The history file a push is stored in, and the stored reading (#432) opens:
+ * the one a scan on this server reads, or null when the history is marked as
+ * pushed (`PUSHED_HISTORY_ENV`) and `USAGE_HISTORY_FILE` does not name a file
+ * on the volume.
  */
 export async function pushHistoryFile(
   env: Record<string, string | undefined>,

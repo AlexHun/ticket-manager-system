@@ -288,18 +288,30 @@ export interface UsageWarning {
 }
 
 /**
- * One reading, taken when the developer pressed Scan.
+ * One reading: a scan, taken when the developer pressed Scan, or the stored
+ * reading the page opens on.
  *
- * There is no `GET` half: the figures on screen were gathered at `gatheredAt`,
- * from the directory named here and the history behind it, and the page holds
- * that result until the next press. That is the opposite of the test runner
- * next door, and deliberately so — a run is a long-lived process worth
- * surviving a reload, a scan is a few seconds of reading that is cheaper to
- * repeat than to invalidate (2-5s over this machine's 136 transcripts when
- * first measured, plus ~2s of `gh`). Since #418 only the first scan into a
- * history costs that: a later one reads only what was appended since —
- * measured 2026-10-04 over 168 transcripts, ~60ms against ~2.2s before, `gh`
- * aside.
+ * **Two halves since #432.** `POST /__devtools/usage` is the scan: it reads the
+ * transcripts and `gh`, stores what it read and the day's trend point, and
+ * answers with this. `GET` is the stored reading: the same report computed
+ * from what the history already holds — its rows, its trend and the listing
+ * the last scan or push used — reading no transcript, running no `gh` and
+ * writing nothing (`readStoredUsage` in `apps/web/dev/usage.ts`), or null when
+ * there is no history or it holds no rows. Until #432 there was no `GET`, and
+ * the page opened empty on every visit; once a laptop's pushes fed Railway's
+ * develop (#428), the figures were already stored, and a phone that discards
+ * background tabs had to press Scan to see figures that had not changed. The
+ * stored reading is computed per request from inputs — nothing derived is
+ * persisted for it, so the rule below stands. Measured 2026-10-06 against this
+ * machine's history on Bun, as the dev server runs: 14,352 rows, 114 issues,
+ * 32-45ms an open over seven runs — the price of tallying every stored row on
+ * every read, and cheap enough to pay on each visit.
+ *
+ * A scan is still a few seconds of reading the first time (2-5s over this
+ * machine's 136 transcripts when first measured, plus ~2s of `gh`). Since #418
+ * only the first scan into a history costs that: a later one reads only what
+ * was appended since — measured 2026-10-04 over 168 transcripts, ~60ms against
+ * ~2.2s before, `gh` aside.
  *
  * **What the dev server keeps is the responses it read, never a reading's
  * answer** — one daily trend point aside —
@@ -309,16 +321,19 @@ export interface UsageWarning {
  * read in a local SQLite file, and the figures are tallied over everything
  * stored. Nothing *derived* is kept — not a row, not a total, not a report — so
  * every reading is still computed afresh at `gatheredAt`, by today's counting
- * and attribution rules. The one exception is `trend` (#419): a past day's
- * quartiles and accuracy, which no later reading can recompute — see
- * `TrendPoint`.
+ * and attribution rules — the stored reading included. The one exception is
+ * `trend` (#419): a past day's quartiles and accuracy, which no later reading
+ * can recompute — see `TrendPoint`. Since #432 each scan also keeps the issue
+ * listing it read, which is an input like the rows rather than an answer.
  */
 export interface UsageReport {
-  /** ISO 8601, stamped when the read finished. */
+  /** ISO 8601, stamped when the read finished — for a stored reading, when it
+   *  was computed from the history, which holds what it held at that moment. */
   gatheredAt: string;
   /** How long the read took, so the page can say whether it is cheap. Covers
    *  the whole reading — the `gh` call as well as the filesystem sweep — since
-   *  what it answers is "how long did pressing Scan take". */
+   *  what it answers is "how long did pressing Scan take". For a stored
+   *  reading, how long opening the page's figures took. */
   scanMs: number;
   /**
    * The directory that was read, absolute. On screen because it is the only
@@ -327,8 +342,10 @@ export interface UsageReport {
    */
   transcriptDir: string;
   /** `.jsonl` files in it — since #418 including those a scan skipped because
-   *  nothing had been appended to them since the last one. */
-  transcripts: number;
+   *  nothing had been appended to them since the last one. Null for a stored
+   *  reading (#432), which reads no transcript and so counts none — and which
+   *  is how the page tells the two kinds of reading apart. */
+  transcripts: number | null;
   /**
    * The earliest timestamp the stored history covers (ISO 8601), or null when
    * there is none — nothing stored yet, or a reading taken without a history.
