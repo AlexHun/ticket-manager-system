@@ -648,5 +648,15 @@
     "version": "0.1.168",
     "date": "2026-10-06",
     "title": "Import node:sqlite through a variable in the stored-reading test"
+  },
+  {
+    "version": "0.1.169",
+    "date": "2026-10-06",
+    "title": "Resolve an auto-reply only on the version the model answered"
+  },
+  {
+    "version": "0.1.169",
+    "date": "2026-10-06",
+    "title": "Review fixes for the auto-reply version compare"
   }
 ]
