@@ -296,6 +296,53 @@ command, and **no** `NODE_ENV=production`. Its `watchPatterns` include
 The API's `TRUSTED_ORIGINS` on develop is the develop web URL plus
 `http://localhost:4000` (for `bun run dev:web:develop`).
 
+**The Usage page's history** (#428). `/__dev/usage` reads Claude Code
+transcripts, and those exist only on the developer's laptop, so a scan on
+develop finds none. Its figures come from pushes instead: the laptop sends the
+`response` rows of its own usage history (id, session, branch, timestamp,
+output and cache-read tokens; never message text or a path) and its issue
+listing, and develop's scans tally those exactly as the laptop's do.
+
+1. **A volume.** _web-ticket-manager → Settings → Volumes_ (develop
+   environment): add one mounted at `/data`. Without it the history lives in the
+   container and every redeploy wipes it.
+2. **Two variables** on `web-ticket-manager` (develop):
+
+   | Variable             | Value                        |
+   | -------------------- | ---------------------------- |
+   | `USAGE_HISTORY_FILE` | `/data/usage-history.sqlite` |
+   | `GH_ISSUES_FILE`     | `/data/gh-issues.json`       |
+
+   The dev image has no `gh`, so there is no `GH_TOKEN`: the listing rides
+   along with each push, and the server writes it to `GH_ISSUES_FILE`, which the
+   page reads in place of `gh`. Every push is refused (409, nothing stored)
+   while `USAGE_HISTORY_FILE` is unset, and one carrying a listing while
+   `GH_ISSUES_FILE` is. The first check comes from `USAGE_HISTORY_PUSHED=1`,
+   which `Dockerfile.dev` sets and which marks this server's history as fed by
+   pushes; nothing on the dashboard sets it.
+
+3. **Push**, from the repo root on the laptop, after any session whose spend
+   should show:
+
+   ```bash
+   DEV_BASIC_AUTH_USERNAME=… DEV_BASIC_AUTH_PASSWORD=… \
+     bun run tokens --push https://web-ticket-manager-develop.up.railway.app
+   ```
+
+   It scans first, as `bun run tokens` always does, then posts every stored row
+   to `/__devtools/usage-push` and prints how many were new. The credential can
+   also be the URL's userinfo (`https://user:pass@…`). Pushing the same rows
+   again stores nothing new, so pushing twice is pushing once.
+
+4. **Scan** on the page. A scan there writes the day's trend point (the container's
+   local day, which is UTC unless `TZ` is set), so the trend has a point for each day a push was followed by a
+   scan. With no transcripts and a history holding rows, the page shows no
+   "no transcripts" warning there; that is what `USAGE_HISTORY_PUSHED` is for, and
+   a laptop, where it is unset, still warns.
+
+The route exists only on the dev server (the plugin is `apply: "serve"`), and
+Basic Auth covers it like every other request.
+
 **What the dev image does not have.** The root `.dockerignore` applies to it
 too, so `tests/`, `scripts/`, `*.md` and `playwright.config.ts` are absent: the
 map does not show them and the E2E suite cannot run there. The image is built

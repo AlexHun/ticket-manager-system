@@ -179,6 +179,9 @@ export interface UsageStore {
   ): void;
   /** Every stored response, whether or not its transcript is still on disk. */
   responses(): TranscriptResponse[];
+  /** How many responses are stored — what a push (#428) compares either side
+   *  of `record` to say how many it added. */
+  count(): number;
   /** The earliest timestamp stored, or null when nothing carrying one is. */
   since(): string | null;
   /** Write a day's trend point (#419), replacing any point already stored for
@@ -310,6 +313,11 @@ export function usageStoreOver(db: SqlDatabase): UsageStore {
         )
         .all()
         .map((row) => ({ ...(row as TranscriptResponse) }));
+    },
+    count() {
+      const row = db.prepare("SELECT COUNT(*) AS n FROM response").get() as
+        { n: number } | null | undefined;
+      return Number(row?.n ?? 0);
     },
     since() {
       const row = db.prepare("SELECT MIN(at) AS since FROM response").get() as

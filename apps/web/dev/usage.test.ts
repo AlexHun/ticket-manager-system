@@ -903,7 +903,81 @@ describe("gatherUsage with a history", () => {
     const report = await gatherUsage(dir, known(), history);
 
     expect(report.issues[0]?.spend?.out).toBe(4200);
+    // Still a warning on a laptop: there it says the scan ran from the wrong
+    // directory, whatever the history holds.
     expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+  });
+});
+
+/**
+ * #428: Railway's develop server has no transcripts and a history fed by
+ * pushes. There, and only there (`pushedHistory`), a missing or empty
+ * transcript directory beside stored rows is the ordinary state, not a warning.
+ */
+describe("gatherUsage over a pushed history (#428)", () => {
+  let historyDir: string;
+  let history: string;
+  const pushed = { pushedHistory: true };
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  it("raises no warning for a missing directory beside a history that holds rows", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, known(), history, undefined, pushed);
+
+    expect(report.warnings).toEqual([]);
+    expect(report.transcripts).toBe(0);
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+  });
+
+  it("raises no warning for an empty directory beside a history that holds rows", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    rmSync(join(dir, "a.jsonl"));
+
+    const report = await gatherUsage(dir, known(), history, undefined, pushed);
+
+    expect(report.warnings).toEqual([]);
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+  });
+
+  it("still warns about a missing directory while the history holds nothing", async () => {
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, known(), history, undefined, pushed);
+
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+    ]);
+  });
+
+  it("still warns about a directory that exists and cannot be read", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    // A file where the directory should be: not ENOENT, so not "none here".
+    const notADir = join(dir, "a.jsonl");
+
+    const report = await gatherUsage(
+      notADir,
+      known(),
+      history,
+      undefined,
+      pushed,
+    );
+
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+    ]);
   });
 });
 

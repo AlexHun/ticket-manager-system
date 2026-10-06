@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { Readable } from "node:stream";
 import type { Connect, ViteDevServer } from "vite";
 import type { ServerResponse } from "node:http";
 import { devToolsPlugin } from "./plugin.ts";
@@ -13,6 +14,7 @@ import {
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./transcripts.ts";
 import { HISTORY_FILE_ENV } from "./usage-store.ts";
+import { PUSHED_HISTORY_ENV } from "./usage-push.ts";
 
 /**
  * The usage route, exercised through the plugin rather than around it.
@@ -145,8 +147,10 @@ beforeEach(() => {
     [TRANSCRIPT_DIR_ENV]: process.env[TRANSCRIPT_DIR_ENV],
     [ISSUES_FILE_ENV]: process.env[ISSUES_FILE_ENV],
     [HISTORY_FILE_ENV]: process.env[HISTORY_FILE_ENV],
+    [PUSHED_HISTORY_ENV]: process.env[PUSHED_HISTORY_ENV],
   };
   delete process.env[TRANSCRIPT_DIR_ENV];
+  delete process.env[PUSHED_HISTORY_ENV];
 
   envDir = mkdtempSync(join(tmpdir(), "plugin-listing-"));
   const listing = join(envDir, "issues.json");
@@ -332,5 +336,88 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
     await expect(callRoute(routes, DEVTOOLS_API.usage, "GET")).rejects.toThrow(
       /No handler answered/,
     );
+  });
+});
+
+describe(`POST ${DEVTOOLS_API.usagePush}`, () => {
+  /** Drive the push route with a real body stream, which `callRoute`'s bare
+   *  request object does not carry. */
+  async function push(body: string) {
+    const [handler] = mountPlugin().get(DEVTOOLS_API.usagePush) ?? [];
+    if (!handler) throw new Error("the push route is not registered");
+    let status = 0;
+    let payload = "";
+    await new Promise<void>((resolve) => {
+      const req = Object.assign(Readable.from([Buffer.from(body)]), {
+        method: "POST",
+        url: DEVTOOLS_API.usagePush,
+      });
+      const res = {
+        writeHead(code: number) {
+          status = code;
+          return this;
+        },
+        end(chunk: string) {
+          payload = chunk;
+          resolve();
+        },
+      } as unknown as ServerResponse;
+      handler(req as never, res, () => resolve());
+    });
+    return { status, body: JSON.parse(payload) as unknown };
+  }
+
+  it("stores the rows in the history the environment names, for the next scan to report", async () => {
+    process.env[TRANSCRIPT_DIR_ENV] = join(envDir, "no-transcripts");
+    // As `Dockerfile.dev` marks Railway's develop server.
+    process.env[PUSHED_HISTORY_ENV] = "1";
+
+    const outcome = await push(
+      JSON.stringify({
+        responses: [
+          {
+            id: "message:m1",
+            session: "s",
+            branch: "feat/101-a",
+            at: "2026-09-02T09:00:00.000Z",
+            out: 4200,
+            cacheRead: 0,
+          },
+        ],
+        issues: LISTING,
+      }),
+    );
+    const report = await scanUsage();
+
+    expect(outcome).toEqual({
+      status: 200,
+      body: { received: 1, inserted: 1, issues: 1 },
+    });
+    expect(report.issues[0]).toMatchObject({
+      issue: 101,
+      spend: { out: 4200 },
+      forecast: "M",
+    });
+    expect(report.historySince).toBe("2026-09-02T09:00:00.000Z");
+    expect(report.warnings).toEqual([]);
+  });
+
+  it("rejects a body that is not a push", async () => {
+    const outcome = await push(JSON.stringify([{ text: "a prompt" }]));
+
+    expect(outcome.status).toBe(400);
+  });
+
+  // A path under the scan's would be answered by the scan handler first:
+  // connect mounts by prefix.
+  it("sits beside the scan's path rather than under it, and ignores a GET", async () => {
+    const routes = mountPlugin();
+
+    expect(DEVTOOLS_API.usagePush.startsWith(`${DEVTOOLS_API.usage}/`)).toBe(
+      false,
+    );
+    await expect(
+      callRoute(routes, DEVTOOLS_API.usagePush, "GET"),
+    ).rejects.toThrow(/No handler answered/);
   });
 });
