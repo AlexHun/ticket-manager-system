@@ -15,7 +15,9 @@ import type { Prisma } from "../db";
  * to answer, and `../ai/auto-reply.test.ts` imports `../ai/auto-reply` to test
  * that very function, so a factory on that specifier would hand one of the two
  * files a stranger's stub depending on load order. Only the job imports this
- * module, so its test has a specifier nothing else loads for real.
+ * module, so its test has a specifier nothing else loads for real. The
+ * in-transaction read sits beside it for the same test and the same reason: one
+ * specifier only the job imports, rather than two.
  *
  * **Functions, never `export { autoReply } from …`**: a re-export's binding is
  * the source module's, and rewiring it rewrites `autoReply` itself (#303).
@@ -30,8 +32,9 @@ export function draftReply(
 }
 
 /**
- * The ticket as the resolving transaction sees it: what the gates read, its
- * status, and the two columns that make up its version (#429).
+ * The ticket as the resolving transaction sees it: what the gates read, and its
+ * status, which tells a ticket someone else released from one whose version
+ * moved (#429).
  *
  * Taken on `tx`, so it reads inside the transaction that resolves. The test
  * wraps this to commit a message through the same `tx` after the read and
@@ -47,7 +50,6 @@ export function readResolveState(
     select: {
       status: true,
       category: true,
-      lastMessageAt: true,
       messages: { select: { direction: true } },
     },
   });

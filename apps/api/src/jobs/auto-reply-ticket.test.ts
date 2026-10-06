@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   MESSAGE_DIRECTION,
@@ -121,6 +121,22 @@ async function agentFilesAsRefund(tx: Tx, ticketId: number): Promise<void> {
   });
 }
 
+/** An agent re-files it as another category the machine may still answer. */
+async function agentFilesAsGeneral(tx: Tx, ticketId: number): Promise<void> {
+  await tx.ticket.update({
+    where: { id: ticketId },
+    data: { category: TICKET_CATEGORY.General },
+  });
+}
+
+/** Something else released the claim — the recovery sweep, say. */
+async function sweepReleasesClaim(tx: Tx, ticketId: number): Promise<void> {
+  await tx.ticket.update({
+    where: { id: ticketId },
+    data: { status: TICKET_STATUS.New },
+  });
+}
+
 function ticketRow(id: number) {
   return prisma.ticket.findUniqueOrThrow({
     where: { id },
@@ -139,6 +155,13 @@ beforeEach(async () => {
   steps.afterRead = null;
   sendEmailStub.failAfterWriting = false;
   await resetDb();
+});
+
+// Back to the real module, so a job test that runs after this file in the same
+// process is not handed this file's canned answer.
+afterEach(() => {
+  steps.reply = null;
+  steps.afterRead = null;
 });
 
 describe("the resolve matches only the version the model answered", () => {
@@ -186,12 +209,7 @@ describe("the resolve matches only the version the model answered", () => {
     // A re-file from one answerable category to another: the gates pass, but
     // the ticket is no longer the one the model answered.
     const id = await claimableTicket();
-    steps.afterRead = async (tx, ticketId) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
-        data: { category: TICKET_CATEGORY.General },
-      });
-    };
+    steps.afterRead = agentFilesAsGeneral;
 
     await AUTO_REPLY_WORKER.handle({ ticketId: id });
 
@@ -205,12 +223,7 @@ describe("the resolve matches only the version the model answered", () => {
     // The other reason the resolve can match nothing, and the one where
     // returning without releasing is still right: the ticket is not ours.
     const id = await claimableTicket();
-    steps.afterRead = async (tx, ticketId) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
-        data: { status: TICKET_STATUS.New },
-      });
-    };
+    steps.afterRead = sweepReleasesClaim;
 
     await AUTO_REPLY_WORKER.handle({ ticketId: id });
 
