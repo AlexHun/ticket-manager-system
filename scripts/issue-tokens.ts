@@ -36,6 +36,15 @@
 //   bun run tokens              # every attributable issue
 //   bun run tokens 226 232      # just these issues
 //   bun run tokens --open       # only issues still open
+//   bun run tokens --push <url> # also send the history to a dev server
+//
+// `--push` (#428) is how Railway's `develop` Usage page gets figures at all: it
+// has no transcripts, so after this scan has brought the local history up to
+// date, every stored response row and the issue listing go to `<url>`'s
+// `DEVTOOLS_API.usagePush`. Rows only — `apps/web/dev/usage-push.ts` builds the
+// payload and says why. The URL may carry the Basic Auth credential
+// (`https://user:pass@host`); otherwise `DEV_BASIC_AUTH_USERNAME` and
+// `DEV_BASIC_AUTH_PASSWORD` are read. DEPLOYMENT.md §7 is the runbook.
 //
 // `gh` supplies titles and forecast labels. Without it (offline, unauthed) the
 // actuals still print, the forecast columns read "-" and the title is blank.
@@ -46,7 +55,13 @@
 // from the accuracy figure — an issue nobody has worked on is neither a
 // measurement of the distribution nor a forecast that has been tested.
 
-import { ISSUE_STATE, fetchIssueMetadata } from "../apps/web/dev/issues.ts";
+import {
+  ISSUE_STATE,
+  fetchIssueMetadata,
+  type IssueMetadata,
+} from "../apps/web/dev/issues.ts";
+import { buildPush, pushRequest } from "../apps/web/dev/usage-push.ts";
+import type { UsagePushResult } from "../apps/web/src/dev/usage-push.ts";
 import {
   TRANSCRIPT_DIR_ENV,
   resolveTranscriptDir,
@@ -132,9 +147,46 @@ const diagnostic = (warning: UsageWarning, report: UsageReport) => {
     : `${at} — run this from the repo root.`;
 };
 
+/**
+ * Send the history to a dev server (#428) and say what it kept. Failures set
+ * the exit code rather than throwing, so the table this run printed stands.
+ */
+async function push(target: string, historyFile: string, meta: IssueMetadata) {
+  try {
+    const { endpoint, headers } = pushRequest(target);
+    const payload = await buildPush(historyFile, meta);
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      console.error(`Push to ${endpoint} failed: ${res.status} ${text}`);
+      process.exitCode = 1;
+      return;
+    }
+    const result = JSON.parse(text) as UsagePushResult;
+    const listing =
+      result.issues === null
+        ? "no issue listing (the server keeps the one it has)"
+        : `${result.issues} issues`;
+    console.log(
+      `pushed ${result.received} responses (${result.inserted} new) and ${listing} to ${new URL(endpoint).origin}.`,
+    );
+  } catch (err) {
+    console.error(
+      `Push failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exitCode = 1;
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const openOnly = argv.includes("--open");
+  const pushAt = argv.indexOf("--push");
+  const pushTarget = pushAt === -1 ? null : (argv[pushAt + 1] ?? "");
   const only = new Set(argv.filter((a) => /^\d+$/.test(a)).map(Number));
 
   const dir = resolveTranscriptDir();
@@ -147,7 +199,8 @@ async function main() {
   // The same history file the Usage page reads and writes (#417), so an issue
   // whose transcript is gone keeps its spend here as it does there (R3) — and,
   // since #423, from every worktree of this clone.
-  const report = await gatherUsage(dir, meta, await resolveHistoryFile());
+  const historyFile = await resolveHistoryFile();
+  const report = await gatherUsage(dir, meta, historyFile);
 
   // Warned rather than fatal, and both sources are warnings for the same reason:
   // an unreadable transcript directory is the ordinary state of a fresh clone
@@ -164,6 +217,10 @@ async function main() {
   for (const warning of report.warnings) {
     console.error(`${diagnostic(warning, report)}\n`);
   }
+
+  // After the scan, which is what brought the history up to date, and before
+  // the table, whose early return below would otherwise skip it.
+  if (pushTarget !== null) await push(pushTarget, historyFile, meta);
 
   // The same rows, in the same order, that the Usage page renders — because they
   // are the same rows, off the same report.

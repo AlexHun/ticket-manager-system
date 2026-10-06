@@ -101,6 +101,23 @@ Two consequences of writing the point inside `gatherUsage`, the one door:
   bites, the fix is a rule about which scans may replace a point, not a
   different key.
 
+## Railway's develop history is fed by pushes (#428)
+
+Railway's `develop` environment serves `/__dev/usage` from the dev server, but
+the transcripts are on the developer's laptop, so a scan there reads none. Its
+store is filled by `bun run tokens --push <url>` instead: the laptop sends its
+stored `response` rows and its issue listing, and the server inserts the rows
+with the same per-id dedupe a local scan uses. The store's file is on a
+Railway volume (`USAGE_HISTORY_FILE`), so it survives a redeploy.
+
+This keeps the rule above rather than bending it. What crosses the network is
+the rows, the six fields this ADR says are kept, and nothing derived from them,
+so develop's figures are still tallied on every read under the code it is
+running. No message text, prompt or path is sent: the wire schema is strict at
+both ends. Develop's trend points are its own, one per day a push was followed
+by a scan there. The laptop's points aren't sent, because a past day's point is
+a record of what that machine said that day.
+
 ## Considered options
 
 **Per-issue totals per scan.** Smaller, and enough for a trend. Rejected

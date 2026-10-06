@@ -345,6 +345,14 @@ function reportFrom(
   // call in this function goes through `fromHistory` for the same reason.
   const cursors = store ? fromHistory(() => store.cursors()) : undefined;
   let read = emptyRead();
+  /* The transcripts' warning, if any, and whether it says only that there are
+     none here — a missing directory or an empty one. That kind is dropped below
+     when the history holds rows (#428): it is the ordinary state of Railway's
+     develop server, which is fed by pushes and has no transcripts of its own,
+     and its figures are the history's. A directory that exists and cannot be
+     read is still a warning, history or not. */
+  let transcriptWarning: UsageWarning | null = null;
+  let noTranscripts = false;
   try {
     read = readTranscripts(dir, cursors);
     // Inside the `try`, so "there is nothing in it" is only asked of a directory
@@ -353,16 +361,18 @@ function reportFrom(
     // so far — true only while the transcripts were the first source to report,
     // and quietly wrong the moment a second one went in ahead of them.
     if (read.transcripts === 0) {
-      warnings.push({
+      noTranscripts = true;
+      transcriptWarning = {
         source: USAGE_WARNING_SOURCE.transcripts,
         message: `No .jsonl transcripts in ${dir}.`,
-      });
+      };
     }
   } catch (err) {
-    warnings.push({
+    noTranscripts = (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
+    transcriptWarning = {
       source: USAGE_WARNING_SOURCE.transcripts,
       message: `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`,
-    });
+    };
   }
   // Second, and separately: the transcripts can be perfectly readable while the
   // issue listing is not. The page shows every warning it is given, so the two
@@ -384,6 +394,10 @@ function reportFrom(
     fromHistory(() => store.record(read.responses, read.cursors));
     responses = fromHistory(() => store.responses());
     historySince = fromHistory(() => store.since());
+  }
+  // First among the warnings, where it has always been.
+  if (transcriptWarning && !(noTranscripts && store && responses.length > 0)) {
+    warnings.unshift(transcriptWarning);
   }
   const { byIssue, unattributed } = tallySpend(responses);
   const issues = joinIssues(byIssue, listing);

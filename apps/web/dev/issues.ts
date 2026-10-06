@@ -52,7 +52,9 @@ const GH_MAX_BUFFER = 10_000_000;
 
 const execFileAsync = promisify(execFile);
 
-const FORECAST_PREFIX = "forecast/";
+/** Exported for the usage push (`./usage-push.ts`), which writes a listing
+ *  this module reads back and so names the band's label the same way. */
+export const FORECAST_PREFIX = "forecast/";
 
 /**
  * The two states `gh issue list --state all` reports.

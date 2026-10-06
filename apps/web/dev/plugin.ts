@@ -32,6 +32,8 @@ import {
 import { gatherUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
+import { receivePush } from "./usage-push.ts";
+import { ISSUES_FILE_ENV } from "./issues.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
 import type {
   DevStreamMessage,
@@ -324,6 +326,24 @@ export function devToolsPlugin(): Plugin {
             ),
           ),
         ),
+      );
+
+      server.middlewares.use(
+        DEVTOOLS_API.usagePush,
+        // The other way into the same history (#428): `bun run tokens --push`
+        // sends a laptop's stored responses and listing here, for Railway's
+        // develop server, which has no transcripts to scan. `./usage-push.ts`
+        // holds the reasoning. Dev-only like every route in this plugin
+        // (`apply: "serve"`), and behind `basic-auth.ts` on Railway like every
+        // request. The two files are resolved per request, as the scan's are.
+        only("POST", async (req, res) => {
+          const { status, body } = await receivePush(
+            req,
+            await resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
+            process.env[ISSUES_FILE_ENV]?.trim() || null,
+          );
+          sendJson(res, status, body);
+        }),
       );
 
       // A dev-server restart (editing this file, or vite.config.ts) must not

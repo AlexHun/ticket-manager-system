@@ -903,7 +903,45 @@ describe("gatherUsage with a history", () => {
     const report = await gatherUsage(dir, known(), history);
 
     expect(report.issues[0]?.spend?.out).toBe(4200);
-    expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+    // Not a warning since #428: no transcripts beside a history that holds rows
+    // is what Railway's develop server always sees, and its figures are these.
+    expect(report.warnings).toEqual([]);
+    expect(report.transcripts).toBe(0);
+  });
+
+  it("raises no warning for an empty directory beside a history that holds rows", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    rmSync(join(dir, "a.jsonl"));
+
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.warnings).toEqual([]);
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+  });
+
+  it("still warns about a missing directory when the history holds nothing", async () => {
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+    ]);
+  });
+
+  it("still warns about a directory that exists and cannot be read, history or not", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    // A file where the directory should be: not ENOENT, so not "none here".
+    const notADir = join(dir, "a.jsonl");
+
+    const report = await gatherUsage(notADir, known(), history);
+
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+    ]);
   });
 });
 
