@@ -5,8 +5,11 @@
 // Answers "we forecast X, we spent Y" for work that happened on a branch. The
 // join is `gitBranch`, which Claude Code stamps on every record it writes to
 // ~/.claude/projects/<slug>/*.jsonl — measured 2026-09-11 as present on 100%
-// of 28,095 turns, so nothing is lost to missing metadata. Branches here are
-// named `<type>/<issue>-<slug>`, so the issue number falls out of the branch
+// of 28,095 turns, so nothing is lost to missing metadata — and to each
+// session's subagent transcripts at
+// ~/.claude/projects/<slug>/<session>/subagents/*.jsonl, read since #431
+// (1.29M output tokens across 218 files when measured, 2026-10-06). Branches
+// here are named `<type>/<issue>-<slug>`, so the issue number falls out of the branch
 // and the spend of every session that ran on it sums to that issue, even when
 // the issue took several sittings (the median issue took 2).
 //
@@ -43,7 +46,14 @@
 // back to back over what is on disk, with no history.
 
 import { createHash } from "node:crypto";
-import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs";
+import {
+  closeSync,
+  openSync,
+  readSync,
+  readdirSync,
+  statSync,
+  type Dirent,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { UnattributedWork } from "../src/dev/usage-protocol.ts";
@@ -76,9 +86,9 @@ export interface ScanResult {
    * and not only to what its callers print.
    */
   unattributed: UnattributedWork;
-  /** `.jsonl` files actually read. Zero is the honest answer for a machine that
-   *  has never run Claude Code in this project, and is not the same thing as
-   *  "nobody spent anything". */
+  /** `.jsonl` files actually read, subagent transcripts included (#431). Zero
+   *  is the honest answer for a machine that has never run Claude Code in this
+   *  project, and is not the same thing as "nobody spent anything". */
   transcripts: number;
 }
 
@@ -196,9 +206,9 @@ export type TranscriptCursors = Map<string, TranscriptCursor>;
 export interface TranscriptRead {
   /** Every response, each once — see `readTranscripts`. */
   responses: TranscriptResponse[];
-  /** `.jsonl` files in the directory, whether or not anything new was read
-   *  from them. Zero is the honest answer for a machine that has never run
-   *  Claude Code in this project. */
+  /** `.jsonl` files in the directory and its sessions' `subagents/` (#431),
+   *  whether or not anything new was read from them. Zero is the honest answer
+   *  for a machine that has never run Claude Code in this project. */
   transcripts: number;
   /** Where every one of those files now stands, for the next read to start
    *  from. */
@@ -230,6 +240,47 @@ const headOf = (fd: number, offset: number) =>
     .update(readRange(fd, 0, Math.min(offset, HEAD_BYTES)))
     .digest("hex");
 
+/** Where Claude Code puts a session's subagent transcripts, under the
+ *  session's own directory (#431). */
+const SUBAGENTS_DIR = "subagents";
+
+/**
+ * Every transcript under `dir`, as a path relative to it written with `/`: the
+ * top-level `<session>.jsonl` files, and each session's
+ * `<session>/subagents/*.jsonl` (#431). Nothing else — not a subagent's
+ * `.meta.json`, and no other directory a session keeps (`tool-results/`), nor
+ * anything nested below `subagents/`.
+ *
+ * Relative rather than bare because a record with no id is keyed on this name
+ * (`identityOf`), and a subagent file may share its base name with another
+ * session's; the top-level names are unchanged, so rows a history stored
+ * before #431 keep their keys.
+ */
+function listTranscripts(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      files.push(entry.name);
+    } else if (entry.isDirectory()) {
+      let inner: Dirent[];
+      try {
+        inner = readdirSync(join(dir, entry.name, SUBAGENTS_DIR), {
+          withFileTypes: true,
+        });
+      } catch {
+        // Most sessions ran no subagent and have no such directory.
+        continue;
+      }
+      for (const sub of inner) {
+        if (sub.isFile() && sub.name.endsWith(".jsonl")) {
+          files.push(`${entry.name}/${SUBAGENTS_DIR}/${sub.name}`);
+        }
+      }
+    }
+  }
+  return files;
+}
+
 const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
   rec.message?.id
     ? `message:${rec.message.id}`
@@ -238,7 +289,10 @@ const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
       : `line:${file}:${line}`;
 
 /**
- * Every API response in `dir`, each once. One pass over every transcript; the
+ * Every API response in `dir`, each once — its top-level transcripts and its
+ * sessions' subagent transcripts alike (`listTranscripts`, #431), since a
+ * subagent's records carry the branch it ran on just as its parent's do and a
+ * response id found in both is still one response. One pass over every transcript; the
  * files are append-only JSONL and a partially-written last line is normal, so
  * an unparseable line is skipped rather than fatal.
  *
@@ -250,8 +304,16 @@ const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
  * 8,894 multi-record responses differed between their records in
  * `output_tokens` (nor, re-measured the same day over 8,903 of them, in
  * `cache_read_input_tokens`), and summing every record inflated output 2.32x
- * overall and 1.00x-3.89x per issue. So the first record of a response is kept
- * and the rest are skipped. A record with no `message.id` has nothing to
+ * overall and 1.00x-3.89x per issue. So a response is kept once, under its first
+ * record's session, branch and timestamp, and the rest are folded into it.
+ *
+ * **Folded, taking the largest counts, because subagent records disagree**
+ * (#431). Those 167 transcripts were all top-level. In subagent transcripts,
+ * measured 2026-10-07, 1,705 of 2,855 multi-record responses carried a partial
+ * `output_tokens` on their first record and the final count on their last —
+ * 177k against 1.41M summed over 3,645 responses — and the last was always the
+ * largest. Top-level records still never differed, so taking the maximum
+ * changes nothing there. A record with no `message.id` has nothing to
  * collapse on and is kept once per record, as all of them were before — a
  * format change that drops the id then over-counts rather than reading as zero
  * spend.
@@ -276,18 +338,19 @@ const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
  * is read again. Either way it counts once.
  *
  * So the dedup above is per read: a response's second block, appended after a
- * scan stored its first, is new bytes here and is recognised by the store.
+ * scan stored its first, is new bytes here and is recognised by the store,
+ * which raises the stored counts if this block's are larger.
  */
 export function readTranscripts(
   dir: string,
   cursors?: ReadonlyMap<string, TranscriptCursor>,
 ): TranscriptRead {
   const responses: TranscriptResponse[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, TranscriptResponse>();
   const next: TranscriptCursors = new Map();
-  const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+  const files = listTranscripts(dir);
   for (const file of files) {
-    const path = join(dir, file);
+    const path = join(dir, ...file.split("/"));
     const size = statSync(path).size;
     const prior = cursors?.get(path);
     if (prior && prior.size === size) {
@@ -321,16 +384,26 @@ export function readTranscripts(
         // read, and counted from the top of the file however far in this read
         // began.
         const id = identityOf(rec, file, firstLine + index + 1);
-        if (seen.has(id)) return;
-        seen.add(id);
-        responses.push({
+        const out = usage.output_tokens ?? 0;
+        const cacheRead = usage.cache_read_input_tokens ?? 0;
+        const kept = seen.get(id);
+        if (kept) {
+          // A later block of a response already kept: only its counts can say
+          // more, and in a subagent transcript the first block's are partial.
+          kept.out = Math.max(kept.out, out);
+          kept.cacheRead = Math.max(kept.cacheRead, cacheRead);
+          return;
+        }
+        const response: TranscriptResponse = {
           id,
           session: rec.sessionId ?? null,
           branch: rec.gitBranch ?? null,
           at: rec.timestamp ?? null,
-          out: usage.output_tokens ?? 0,
-          cacheRead: usage.cache_read_input_tokens ?? 0,
-        });
+          out,
+          cacheRead,
+        };
+        seen.set(id, response);
+        responses.push(response);
       });
       const offset = from + complete;
       next.set(path, {

@@ -31,6 +31,24 @@ inputs and not outputs.
 cache-read tokens. That's `TranscriptResponse` in `apps/web/dev/transcripts.ts`,
 stored by `apps/web/dev/usage-store.ts`.
 
+The responses come from two places under the project's transcript directory:
+the top-level `~/.claude/projects/<slug>/*.jsonl`, and since #431 each
+session's subagent transcripts at
+`~/.claude/projects/<slug>/<session>/subagents/*.jsonl`. A subagent's records
+carry the branch it ran on, so they join issues the same way. Before #431 they
+went unread: 1.29M output tokens across 218 files on 2026-10-06, 1.21M of it
+on issue branches. A history stored before then gains those rows on its next
+scan, through the same per-id dedupe.
+
+Subagent records changed what the dedupe keeps. A subagent transcript writes a
+response's first record with a partial `output_tokens` and its last with the
+final count; top-level records never differ. So a read keeps the largest count
+per id, and a row already stored takes a larger count when a later scan or push
+brings one, rather than staying as it was. That's still an input: the response's
+own count, not anything derived from it. For a record with no id, the file name in
+its key is the path below the directory (`<session>/subagents/agent-<id>.jsonl`),
+so a top-level row keeps the key it was stored under.
+
 Not kept: the issue a branch names, whether a turn counts as unattributed, any
 per-issue sum. `tallySpend` decides all of those on every read. Two corrections
 have already changed those rules after the fact. #413 found every response

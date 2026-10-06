@@ -188,7 +188,10 @@ export interface UsageStore {
    * Store every response not already stored, and where each transcript now
    * stands, in one transaction — so a cursor never moves past rows that were
    * not kept. A response already there — the same identity, read again on a
-   * later scan — is left as it was; a cursor replaces the one before it.
+   * later scan or a later push — keeps its row and takes the larger of the two
+   * token counts (#431): a subagent transcript writes a response's first block
+   * with a partial `output_tokens` and its last with the final one, and a scan
+   * can land between them. A cursor replaces the one before it.
    */
   record(
     responses: readonly TranscriptResponse[],
@@ -334,7 +337,9 @@ export function usageStoreOver(
       const insert = db.prepare(
         `INSERT INTO response (id, session, branch, at, out, cache_read)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO NOTHING`,
+         ON CONFLICT (id) DO UPDATE SET
+           out = MAX(out, excluded.out),
+           cache_read = MAX(cache_read, excluded.cache_read)`,
       );
       const upsertCursor = db.prepare(
         `INSERT OR REPLACE INTO transcript (path, read_to, size, lines, head)
