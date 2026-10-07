@@ -119,6 +119,11 @@ nothing in the tree, real staleness and deliberate history alike.
       the last ticket closes, or exclude any document older than its plan's
       last merged ticket. Querying the tracker is ruled out by R7. — _blocks
       R6_, needs Aleksei
+- [ ] **An open plan cites files that do not exist yet, by design.** Every
+      `new:` module a plan proposes is an unresolved path, so R6 as written
+      fails every plan the day it is written. Found while planning; options
+      are in [the plan's slice 4](../plans/doc-citations.md). — _blocks R6_,
+      needs Aleksei
 - [ ] **Where does the check live, given R7 and R11 pull different ways?**
       Pre-push points at the API suite, while the graph and the comment
       stripper live in `apps/web/dev/`. — _affects R7 and R11_, decide in the
