@@ -683,5 +683,10 @@
     "version": "0.1.175",
     "date": "2026-10-07",
     "title": "Cited symbols in the standards and ADRs fail the push"
+  },
+  {
+    "version": "0.1.176",
+    "date": "2026-10-07",
+    "title": "CLAUDE.md files, skills and agents are citation-checked too"
   }
 ]
