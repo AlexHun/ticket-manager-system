@@ -138,6 +138,7 @@ not read.
 
 **Hardcoded for now:** whatever the repo's own skills and agents need exempted.
 The baseline counted 37 unresolved citations there, and each is fixed or exempted.
+#441 re-measured 39: one fixed, 38 exempted.
 
 **Evidence:** slice 1's planted cases, run over a planted skill and a planted
 excluded skill.

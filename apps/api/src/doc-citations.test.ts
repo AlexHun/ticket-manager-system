@@ -82,8 +82,7 @@ const EXEMPTIONS: Exemption[] = [
   {
     doc: "docs/standards/conventions.md",
     citation: "MEMORY.md",
-    reason:
-      "A subagent's own memory file, kept outside the repo by Claude Code.",
+    reason: `${MEMORY} a subagent's own memory index.`,
   },
   {
     doc: "docs/standards/frontend.md",
@@ -190,13 +189,22 @@ const EXEMPTIONS: Exemption[] = [
     citation: "ticket-assignment.spec.ts",
     reason: "An example of a descriptive spec name, not a file.",
   },
-  ...["test_users.md", "user_role.md", "feedback_testing.md", "MEMORY.md"].map(
-    (citation) => ({
-      doc: ".claude/agents/playwright-e2e-author.md",
-      citation,
-      reason: `${MEMORY} the agent's own memory index and notes, or examples of their names.`,
-    }),
-  ),
+  ...[
+    ["test_users.md", "the note the agent is told holds the test credentials."],
+    ["MEMORY.md", "the agent's memory index."],
+    [
+      "user_role.md",
+      "an example name for a memory note, in the agent's instructions.",
+    ],
+    [
+      "feedback_testing.md",
+      "an example name for a memory note, in the agent's instructions.",
+    ],
+  ].map(([citation, what]) => ({
+    doc: ".claude/agents/playwright-e2e-author.md",
+    citation: citation!,
+    reason: `${MEMORY} ${what}`,
+  })),
 
   // Symbols: every one is history or a library or tool name.
   ...[
@@ -457,7 +465,7 @@ describe(`Cited paths and symbols in the documents agents read exist (${STANDARD
     expect(DOCS.filter((doc) => doc.startsWith(".agents/"))).toEqual([]);
     const kinds = (kind: string) =>
       CITATIONS.filter((c) => c.kind === kind).length;
-    expect(kinds("path")).toBeGreaterThan(400);
+    expect(kinds("path")).toBeGreaterThan(700);
     expect(kinds("symbol")).toBeGreaterThan(1000);
   });
 
