@@ -3,29 +3,31 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   checkCitations,
+  documentsInScope,
   type Exemption,
   isSymbolSource,
   SymbolIndex,
   symbolSources,
   TrackedTree,
   trackedFiles,
+  unknownExclusions,
 } from "./doc-citations";
 
 /**
- * Every path a standards document or ADR cites in backticks names a file git
- * tracks (#439), and every code symbol it cites is still named somewhere in
- * the repo's source, tests or config outside a comment (#440;
- * `docs/plans/doc-citations.md` slices 1 and 2). A rename that leaves a
- * citation behind fails `git push` here, naming the document, the line and
- * the missing path or symbol, so the doc fix lands in the same branch as the
- * rename. The bullet is the pre-push one in `docs/standards/conventions.md`.
+ * Every path a standards document, ADR, `CLAUDE.md`, skill or agent cites in
+ * backticks names a file git tracks (#439), and every code symbol it cites is
+ * still named somewhere in the repo's source, tests or config outside a
+ * comment (#440, #441; `docs/plans/doc-citations.md` slices 1 to 3). A rename
+ * that leaves a citation behind fails `git push` here, naming the document,
+ * the line and the missing path or symbol, so the doc fix lands in the same
+ * branch as the rename. The bullet is the pre-push one in
+ * `docs/standards/conventions.md`.
  *
- * `docs/standards/` and `docs/adr/` only, for now: CLAUDE.md files, skills and
- * agents are the plan's slice 3. The index and the resolvers are
- * `doc-citations.ts`, which states what counts as a path and as a symbol, and
+ * The index, the resolvers and the scope are `doc-citations.ts`, which states
+ * what counts as a path and as a symbol, which documents are read, and
  * records the measurement the symbol rule was chosen on; this file holds the
- * exemptions and shows the check what it must catch and what it must pass, the
- * way `standards-guard.test.ts` does.
+ * excluded skills and the exemptions, and shows the check what it must catch
+ * and what it must pass, the way `standards-guard.test.ts` does.
  *
  * Nothing is mocked, and nothing here touches the database or the network.
  */
@@ -36,12 +38,25 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 /** The standards file whose bullet this check holds. */
 const STANDARD = "docs/standards/conventions.md";
 
-/** The documents in scope. */
-const IN_SCOPE = (file: string) =>
-  (file.startsWith("docs/standards/") || file.startsWith("docs/adr/")) &&
-  file.endsWith(".md");
+/**
+ * Skills under `.claude/skills/` that are not read, each because it describes
+ * a library's API rather than this repo: on 2026-10-08 they held 756 of the
+ * 795 unresolved citations in every skill and agent, nearly all of them the
+ * library's own names. A skill not named here is read, so one added later is
+ * checked until someone names it. A name that is no longer a skill directory
+ * fails the check.
+ */
+const EXCLUDED_SKILLS = [
+  // shadcn/ui's Radix-to-Base-UI migration guide.
+  "migrate-radix-to-base",
+  // shadcn/ui's CLI, registry and component reference.
+  "shadcn",
+  // Better Auth's configuration reference.
+  "better-auth-best-practices",
+];
 
 const GITIGNORED = "Gitignored, so never tracked:";
+const MEMORY = "A Claude Code memory file, kept outside the repo:";
 
 /** The two kinds a symbol exemption may be (`docs/prd/doc-citations.md`, R3). */
 const HISTORY = "History:";
@@ -141,6 +156,47 @@ const EXEMPTIONS: Exemption[] = [
     reason:
       "A test file the ADR names as not existing: the gap its argument is about.",
   },
+
+  // The skills' and agents' paths.
+  ...[
+    [".claude/agents/linkedin-fact-checker.md", "docs/linkedin/profile.md"],
+    [".claude/agents/linkedin-fact-checker.md", "docs/linkedin/BRAND.md"],
+    [".claude/agents/linkedin-fact-checker.md", "profile.md"],
+    [".claude/agents/linkedin-former-colleague.md", "docs/linkedin/profile.md"],
+    [".claude/agents/linkedin-former-colleague.md", "docs/linkedin/VOICE.md"],
+    [".claude/agents/linkedin-former-colleague.md", "profile.md"],
+    [".claude/agents/linkedin-slop-critic.md", "docs/linkedin/VOICE.md"],
+    [".claude/agents/linkedin-slop-critic.md", "docs/linkedin/BRAND.md"],
+    [".claude/agents/linkedin-target-reader.md", "docs/linkedin/BRAND.md"],
+    [".claude/skills/linkedin/POSTS.md", "docs/linkedin/posts/NN-slug.md"],
+    [".claude/skills/linkedin/SKILL.md", "docs/linkedin"],
+    [".claude/skills/linkedin/SKILL.md", "profile.md"],
+    [".claude/skills/linkedin/SKILL.md", "BRAND.md"],
+    [".claude/skills/linkedin/SKILL.md", "VOICE.md"],
+    [".claude/skills/linkedin/SKILL.md", "plan.md"],
+    [".claude/skills/linkedin/SKILL.md", "posts/NN-slug.md"],
+  ].map(([doc, citation]) => ({
+    doc: doc!,
+    citation: citation!,
+    reason: `${GITIGNORED} the LinkedIn skill's working files under \`docs/linkedin/\`, personal and kept out on purpose.`,
+  })),
+  {
+    doc: ".claude/agents/playwright-e2e-author.md",
+    citation: "apps/api/.env.test",
+    reason: `${GITIGNORED} each developer's own E2E environment file.`,
+  },
+  {
+    doc: ".claude/agents/playwright-e2e-author.md",
+    citation: "ticket-assignment.spec.ts",
+    reason: "An example of a descriptive spec name, not a file.",
+  },
+  ...["test_users.md", "user_role.md", "feedback_testing.md", "MEMORY.md"].map(
+    (citation) => ({
+      doc: ".claude/agents/playwright-e2e-author.md",
+      citation,
+      reason: `${MEMORY} the agent's own memory index and notes, or examples of their names.`,
+    }),
+  ),
 
   // Symbols: every one is history or a library or tool name.
   ...[
@@ -345,6 +401,26 @@ const EXEMPTIONS: Exemption[] = [
       "MemoryRouter",
       "React Router's, which the deleted helper mounted.",
     ],
+    [
+      ".claude/agents/playwright-e2e-author.md",
+      "storageState",
+      "Playwright's saved-session option, which this suite does not use yet.",
+    ],
+    [
+      ".claude/agents/security-vulnerability-auditor.md",
+      "httpOnly",
+      "a cookie attribute Better Auth sets by default.",
+    ],
+    [
+      ".claude/agents/security-vulnerability-auditor.md",
+      "$queryRawUnsafe",
+      "the Prisma method the reviewer is told to look for, which this code never calls.",
+    ],
+    [
+      ".claude/skills/write-a-prd/SKILL.md",
+      "AskUserQuestion",
+      "a Claude Code tool.",
+    ],
   ].map(([doc, citation, what]) => ({
     doc: doc!,
     citation: citation!,
@@ -355,25 +431,38 @@ const EXEMPTIONS: Exemption[] = [
 const TRACKED = trackedFiles(REPO_ROOT);
 const TREE = new TrackedTree(TRACKED);
 const SYMBOLS = new SymbolIndex(symbolSources(REPO_ROOT, TRACKED));
-const DOCS = TRACKED.filter(IN_SCOPE);
+const DOCS = documentsInScope(TRACKED, EXCLUDED_SKILLS);
 const CITATIONS = DOCS.flatMap((doc) =>
   TREE.citationsIn(doc, readFileSync(path.join(REPO_ROOT, doc), "utf8")),
 );
 
-describe(`Cited paths and symbols in the standards and ADRs exist (${STANDARD})`, () => {
+describe(`Cited paths and symbols in the documents agents read exist (${STANDARD})`, () => {
   test("the walk reads the documents it means to", () => {
     // An empty walk is a green run that checked nothing: a directory moved,
     // or git listed nothing.
-    expect(DOCS.length).toBeGreaterThanOrEqual(30);
-    expect(DOCS).toContain("docs/standards/testing-api.md");
-    expect(DOCS).toContain("docs/standards/frontend.md");
-    expect(DOCS).toContain(
+    expect(DOCS.length).toBeGreaterThanOrEqual(55);
+    for (const doc of [
+      "docs/standards/testing-api.md",
+      "docs/standards/frontend.md",
       "docs/adr/0014-api-tests-run-against-a-real-postgres-in-process.md",
-    );
+      "CLAUDE.md",
+      "apps/api/CLAUDE.md",
+      "apps/web/CLAUDE.md",
+      ".claude/skills/implement/SKILL.md",
+      ".claude/agents/bulk-reader.md",
+    ]) {
+      expect(DOCS).toContain(doc);
+    }
+    expect(DOCS).not.toContain(".claude/skills/shadcn/SKILL.md");
+    expect(DOCS.filter((doc) => doc.startsWith(".agents/"))).toEqual([]);
     const kinds = (kind: string) =>
       CITATIONS.filter((c) => c.kind === kind).length;
-    expect(kinds("path")).toBeGreaterThan(300);
+    expect(kinds("path")).toBeGreaterThan(400);
     expect(kinds("symbol")).toBeGreaterThan(1000);
+  });
+
+  test("every excluded skill is a skill directory", () => {
+    expect(unknownExclusions(TRACKED, EXCLUDED_SKILLS)).toEqual([]);
   });
 
   test("the symbols resolve against the source, not an empty corpus", () => {
@@ -396,7 +485,7 @@ describe(`Cited paths and symbols in the standards and ADRs exist (${STANDARD})`
     }
   });
 
-  test("every path and symbol a standards document or ADR cites exists", () => {
+  test("every path and symbol a document in scope cites exists", () => {
     const report = checkCitations(CITATIONS, TREE, SYMBOLS, EXEMPTIONS);
     expect(report.stale).toEqual([]);
     expect(report.unusedExemptions).toEqual([]);
@@ -490,6 +579,60 @@ test("an exemption that matches no unresolved citation fails", () => {
     "docs/standards/planted.md exempts `provider.ts`, which no longer fails: remove the exemption",
     "docs/standards/planted.md exempts `gone.ts`, which no longer fails: remove the exemption",
   ]);
+});
+
+/* ── Which documents are read: skills and agents, minus the excluded ─────── */
+
+describe("the documents in scope", () => {
+  const STALE = "Run `scripts/moved.ts` first.\n";
+  const PLANTED_FILES: Record<string, string> = {
+    "CLAUDE.md": "See `package.json`.\n",
+    "apps/api/CLAUDE.md": "See `apps/api/Dockerfile`.\n",
+    "docs/standards/backend.md": "See `provider.ts`.\n",
+    ".claude/agents/planted-agent.md": "See `.husky/pre-push`.\n",
+    ".claude/skills/planted/SKILL.md": STALE,
+    ".claude/skills/planted/REFERENCE.md": "See `package.json`.\n",
+    ".claude/skills/planted/scripts/run.mjs": "// `gone.ts`\n",
+    ".claude/skills/library/SKILL.md": STALE,
+    ".agents/skills/planted/SKILL.md": STALE,
+    "docs/prd/planted.md": STALE,
+    "README.md": STALE,
+  };
+  const files = Object.keys(PLANTED_FILES);
+
+  test("are every CLAUDE.md, the standards, ADRs, skills and agents, less the excluded skills", () => {
+    expect(documentsInScope(files, ["library"])).toEqual([
+      "CLAUDE.md",
+      "apps/api/CLAUDE.md",
+      "docs/standards/backend.md",
+      ".claude/agents/planted-agent.md",
+      ".claude/skills/planted/SKILL.md",
+      ".claude/skills/planted/REFERENCE.md",
+    ]);
+  });
+
+  test("a stale citation in a skill fails, and an excluded skill is not read", () => {
+    const citations = documentsInScope(files, ["library"]).flatMap((doc) =>
+      PLANTED_TREE.citationsIn(doc, PLANTED_FILES[doc]!),
+    );
+    expect(
+      checkCitations(citations, PLANTED_TREE, PLANTED_SYMBOLS, []).stale,
+    ).toEqual([
+      ".claude/skills/planted/SKILL.md:1 cites `scripts/moved.ts`, which no tracked file matches",
+    ]);
+  });
+
+  test("a skill nobody has excluded is read", () => {
+    expect(documentsInScope(files, [])).toContain(
+      ".claude/skills/library/SKILL.md",
+    );
+  });
+
+  test("an exclusion naming no skill directory fails", () => {
+    expect(
+      unknownExclusions(files, ["library", "planted", "renamed", "SKILL.md"]),
+    ).toEqual(["renamed", "SKILL.md"]);
+  });
 });
 
 const resolves = (text: string) => {
