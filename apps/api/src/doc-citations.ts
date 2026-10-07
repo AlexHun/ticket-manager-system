@@ -7,9 +7,10 @@ import { execFileSync } from "node:child_process";
  *
  * **It lives in `apps/api/src`** for the reason `standards-guard.test.ts` does:
  * the API suite is what `.husky/pre-push` runs, and `apps/api/tsconfig.json`
- * includes only `src`. The planned `bun run graph` script reaches it by
- * relative path, the way `bun run tokens` reaches `apps/web/dev/usage.ts`, so
- * the logic stays here, under a test runner, and nothing in it is test-only.
+ * includes only `src`. The plan's later `bun run graph` script
+ * (`docs/plans/doc-citations.md`, slice 6) is to reach it by relative path,
+ * the way `bun run tokens` reaches `apps/web/dev/usage.ts`, so the logic stays
+ * here, under a test runner, and nothing in it is test-only.
  *
  * **Paths resolve against tracked files, never the working directory.** A
  * developer's untracked and gitignored files would otherwise make a citation
@@ -21,7 +22,7 @@ import { execFileSync } from "node:child_process";
  * local index.
  */
 
-/** One backticked citation: where it is, and what it says. */
+/** One backticked citation: where it is, what it says, and the path it names. */
 export interface Citation {
   /** The document, relative to the repository root. */
   doc: string;
@@ -29,6 +30,8 @@ export interface Citation {
   line: number;
   /** The citation as written between the backticks. */
   text: string;
+  /** The path it names, as `TrackedTree.pathOf` normalised it. */
+  path: string;
 }
 
 /** A citation that is deliberately not a tracked file, and why. */
@@ -71,84 +74,114 @@ const FILE_EXTENSIONS = new Set([
   "webp",
 ]);
 
-/**
- * The path a citation names, or `undefined` when it is not a file path.
- *
- * A path is one word — no whitespace, no glob or placeholder characters, not a
- * URL or a route — whose last segment ends in a known extension. A trailing
- * `:42` or `:42-50` line reference and a `#anchor` are dropped, and so are
- * leading `./` and `../` segments, which make a path relative to a document or
- * a module the resolver does not know.
- */
-export function pathOf(text: string): string | undefined {
-  let path = text.trim();
-  if (/[\s*?<>{}[\]()|$'",;=]/.test(path) || path.includes("://")) {
-    return undefined;
-  }
-  path = path.replace(/#.*$/, "").replace(/:\d+(?:-\d+)?$/, "");
-  // A route (`/api/tickets.json`) or a home-relative path is not a repo file.
-  if (path.startsWith("/") || path.startsWith("~")) return undefined;
-  path = path.replace(/^(?:\.\.?\/)+/, "");
+/** No whitespace, glob, placeholder or code characters: one word. */
+const NOT_ONE_WORD = /[\s*?<>{}[\]()|$'",;=]/;
+
+const hasFileExtension = (path: string): boolean => {
   const base = path.slice(path.lastIndexOf("/") + 1);
   const dot = base.lastIndexOf(".");
   // `.env` alone has no name before its dot: a dotfile, not an extension.
-  if (dot <= 0) return undefined;
-  return FILE_EXTENSIONS.has(base.slice(dot + 1)) ? path : undefined;
-}
+  return dot > 0 && FILE_EXTENSIONS.has(base.slice(dot + 1));
+};
 
 /** Inline code spans per line; a span of N backticks closes on N backticks. */
 const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
 
 /**
- * Every backticked citation in a markdown document that names a file path,
- * outside fenced code blocks. A fence holds code, not citations: its imports
- * and examples are read by whoever runs them, not resolved here.
- */
-export function citationsIn(doc: string, markdown: string): Citation[] {
-  const citations: Citation[] = [];
-  let fence: string | undefined;
-  markdown.split(/\r?\n/).forEach((text, index) => {
-    const opener = /^\s*(`{3,}|~{3,})/.exec(text)?.[1];
-    if (fence) {
-      if (opener?.[0] === fence[0] && opener.length >= fence.length) {
-        fence = undefined;
-      }
-      return;
-    }
-    if (opener) {
-      fence = opener;
-      return;
-    }
-    for (const match of text.matchAll(CODE_SPAN)) {
-      const span = match[2]!.trim();
-      if (pathOf(span) !== undefined) {
-        citations.push({ doc, line: index + 1, text: span });
-      }
-    }
-  });
-  return citations;
-}
-
-/**
- * Answers whether a cited path names a tracked file, by one rule for short and
- * full citations alike: the citation must equal a tracked path, or be one's
- * tail starting at a `/`. So `provider.ts` and `ai/provider.ts` both resolve
- * against `apps/api/src/ai/provider.ts`, and `rovider.ts` does not.
+ * The tracked tree, and the one place that decides what a citation names and
+ * whether it is there.
+ *
+ * **Two kinds of citation are paths.**
+ * - A word whose last segment ends in a known extension: `provider.ts`,
+ *   `ai/provider.ts`, `apps/api/src/ai/provider.ts`. It resolves by one rule,
+ *   short or full: it equals a tracked path, or is one's tail starting at a
+ *   `/`. So all three resolve against `apps/api/src/ai/provider.ts`, and
+ *   `rovider.ts` does not. The cost of the short form is that a bare
+ *   `provider.ts` stays green while any `provider.ts` is tracked anywhere; a
+ *   citation that must survive that cites the full path.
+ * - A word with no such extension, **anchored at the root**: its first
+ *   segment is a top-level directory of the tracked tree, so `.husky/pre-push`,
+ *   `apps/api/Dockerfile` and `apps/web/dev/` are paths, while `try/catch`,
+ *   `@ticket/shared` and a module specifier like `../db` are not. It resolves
+ *   exactly: a tracked file, a directory holding one, or a numbered document
+ *   cited by its number (`docs/adr/0014` for `docs/adr/0014-….md`).
  */
 export class TrackedTree {
   private readonly tails = new Set<string>();
+  private readonly exact = new Set<string>();
+  private readonly directories = new Set<string>();
+  private readonly topLevel = new Set<string>();
 
-  constructor(readonly files: readonly string[]) {
+  constructor(files: readonly string[]) {
     for (const file of files) {
+      this.exact.add(file);
       const segments = file.split("/");
+      if (segments.length > 1) this.topLevel.add(segments[0]!);
       for (let at = 0; at < segments.length; at += 1) {
         this.tails.add(segments.slice(at).join("/"));
+        if (at > 0) this.directories.add(segments.slice(0, at).join("/"));
       }
+      // `docs/adr/0014-in-process-postgres.md` answers to `docs/adr/0014`.
+      const numbered = /^(.*\/\d+)-[^/]*$/.exec(file)?.[1];
+      if (numbered) this.exact.add(numbered);
     }
   }
 
+  /**
+   * The path a citation names, or `undefined` when it is not one. A trailing
+   * `:42` or `:42-50` line reference and a `#anchor` are dropped, and so are
+   * leading `./` and `../` segments, which make a path relative to a document
+   * or a module the resolver does not know. A URL, a route (`/api/x.json`) and
+   * a home-relative path (`~/.claude`) are not repo files.
+   */
+  pathOf(text: string): string | undefined {
+    if (NOT_ONE_WORD.test(text) || text.includes("://")) return undefined;
+    const path = text.replace(/#.*$/, "").replace(/:\d+(?:-\d+)?$/, "");
+    if (path.startsWith("/") || path.startsWith("~")) return undefined;
+    const relative = path.replace(/^(?:\.\.?\/)+/, "");
+    if (hasFileExtension(relative)) return relative;
+    const slash = path.indexOf("/");
+    if (slash > 0 && this.topLevel.has(path.slice(0, slash))) {
+      return path.replace(/\/$/, "");
+    }
+    return undefined;
+  }
+
   resolves(path: string): boolean {
-    return this.tails.has(path);
+    return hasFileExtension(path)
+      ? this.tails.has(path)
+      : this.exact.has(path) || this.directories.has(path);
+  }
+
+  /**
+   * Every backticked citation in a markdown document that names a path,
+   * outside fenced code blocks. A fence holds code, not citations: its
+   * imports and examples are read by whoever runs them, not resolved here.
+   */
+  citationsIn(doc: string, markdown: string): Citation[] {
+    const citations: Citation[] = [];
+    let fence: string | undefined;
+    markdown.split(/\r?\n/).forEach((line, index) => {
+      const opener = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+      if (fence) {
+        if (opener?.[0] === fence[0] && opener.length >= fence.length) {
+          fence = undefined;
+        }
+        return;
+      }
+      if (opener) {
+        fence = opener;
+        return;
+      }
+      for (const match of line.matchAll(CODE_SPAN)) {
+        const text = match[2]!.trim();
+        const path = this.pathOf(text);
+        if (path !== undefined) {
+          citations.push({ doc, line: index + 1, text, path });
+        }
+      }
+    });
+    return citations;
   }
 }
 
@@ -186,7 +219,7 @@ export function checkCitations(
   const used = new Set<Exemption>();
   const stale: string[] = [];
   for (const citation of citations) {
-    if (tree.resolves(pathOf(citation.text)!)) continue;
+    if (tree.resolves(citation.path)) continue;
     const exemption = exemptions.find(
       (e) => e.doc === citation.doc && e.citation === citation.text,
     );
