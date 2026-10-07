@@ -43,7 +43,7 @@ const IN_SCOPE = (file: string) =>
 
 const GITIGNORED = "Gitignored, so never tracked:";
 
-/** The two kinds a symbol exemption may be (R3). */
+/** The two kinds a symbol exemption may be (`docs/prd/doc-citations.md`, R3). */
 const HISTORY = "History:";
 const EXTERNAL = "A library or tool name, not this repo's code:";
 
@@ -142,7 +142,7 @@ const EXEMPTIONS: Exemption[] = [
       "A test file the ADR names as not existing: the gap its argument is about.",
   },
 
-  // Symbols: every one is history or a library or tool name (R3).
+  // Symbols: every one is history or a library or tool name.
   ...[
     [
       "docs/adr/0017-assembling-a-prompts-input-is-not-a-module.md",

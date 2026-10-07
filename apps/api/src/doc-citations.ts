@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { stripComments } from "./test/strip-comments";
+import { stripComments } from "./strip-comments";
 
 /**
  * The citation index and the two resolvers behind `doc-citations.test.ts`:
@@ -250,7 +250,7 @@ const CODE_SHAPED = /[a-z0-9][A-Z]|\w_\w|^[$_]/;
  * arguments, a generic, an assignment or a sentence names none: only a bare
  * name is a citation, as a bare path is.
  */
-export function symbolsOf(text: string): string[] {
+function symbolsOf(text: string): string[] {
   if (!IDENTIFIER_CHAIN.test(text)) return [];
   return text
     .replace(/\(\)$/, "")
@@ -285,20 +285,23 @@ export function isSymbolSource(file: string): boolean {
   return !/\.(?:md|mdx|txt|jsonl|lock|png|svg|webp|jpe?g|gif|ico)$/i.test(file);
 }
 
-/** The files whose comments are `//` lines and slash-star blocks. */
-const SLASH_COMMENTED = /\.(?:[cm]?[jt]sx?|json|jsonc|css)$/;
+/** The files `stripComments` reads: JS, TS and JSON. */
+const SLASH_COMMENTED = /\.(?:[cm]?[jt]sx?|json|jsonc)$/;
 
 /**
  * A file's text with its comments blanked, so a word that survives only in a
- * comment is not found. JS, TS, JSON and CSS go through `stripComments`,
- * which knows strings and regex literals; SQL loses `--` to the end of the
- * line, `schema.prisma` loses `//`, and everything else (YAML, TOML, shell,
- * Dockerfiles, the Caddyfile, `.husky/*`, ignore files) loses lines that
- * start with `#`. A `#` after code on the same line is kept, since in a
- * Caddyfile or a YAML string it is as often code as comment.
+ * comment is not found. JS, TS and JSON go through `stripComments`, which
+ * knows strings and regex literals; CSS loses its block comments (it has no
+ * line comments, and a `//` in an unquoted `url()` is not one), SQL loses
+ * `--` to the end of the line, `schema.prisma` loses `//`, and everything
+ * else (YAML, TOML, shell, Dockerfiles, the Caddyfile, `.husky/*`, ignore
+ * files) loses lines that start with `#`. A `#` after code on the same line
+ * is kept, since in a Caddyfile or a YAML string it is as often code as
+ * comment.
  */
-export function codeOutsideComments(file: string, text: string): string {
+function codeOutsideComments(file: string, text: string): string {
   if (SLASH_COMMENTED.test(file)) return stripComments(text);
+  if (file.endsWith(".css")) return text.replace(/\/\*[\s\S]*?\*\//g, "");
   if (file.endsWith(".sql")) return text.replace(/--.*$/gm, "");
   if (file.endsWith(".prisma")) return text.replace(/\/\/.*$/gm, "");
   return text.replace(/^\s*#.*$/gm, "");
@@ -326,7 +329,7 @@ export interface SymbolSource {
  *   history and raw source would have kept passing after any rename, and 14
  *   were library or tool names a comment happened to mention.
  * - **comment-stripped source: 35 misses, every one real.** Each is absent
- *   from the code: the two stale names R9 fixes, history, and library or tool
+ *   from the code: the two stale names `docs/prd/doc-citations.md`'s R9 fixes, history, and library or tool
  *   names the code relies on without spelling (Better Auth's
  *   `requireEmailVerification`, Claude Code's `WebFetch`). The test's
  *   exemptions are that list, minus the two fixes.
@@ -372,7 +375,7 @@ export function symbolSources(
 
 /** What the check found: each line a failing run can be acted on from. */
 export interface CitationReport {
-  /** `doc:line cites name, which …`. */
+  /** `doc:line cites <text or symbol>, which …`. */
   stale: string[];
   /** Exemptions that matched no unresolved citation. */
   unusedExemptions: string[];
