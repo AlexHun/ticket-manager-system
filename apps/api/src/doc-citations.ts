@@ -7,7 +7,8 @@ import { stripComments } from "./strip-comments";
  * The citation index and the two resolvers behind `doc-citations.test.ts`:
  * every backticked path (#439) and code symbol (#440) a document names, with
  * its document and line, checked against the files git tracks and against
- * what their source says outside its comments.
+ * what their source says outside its comments. Which documents are read is
+ * `documentsInScope` (#441).
  *
  * **It lives in `apps/api/src`** for the reason `standards-guard.test.ts` does:
  * the API suite is what `.husky/pre-push` runs, and `apps/api/tsconfig.json`
@@ -218,6 +219,57 @@ export function trackedFiles(root: string): string[] {
   })
     .split("\0")
     .filter(Boolean);
+}
+
+/* ── Which documents are read ─────────────────────────────────────────────── */
+
+/** The skill directory a tracked file sits in, or `undefined`. */
+const skillOf = (file: string): string | undefined =>
+  /^\.claude\/skills\/([^/]+)\//.exec(file)?.[1];
+
+/**
+ * The markdown documents the check reads, out of the tracked files: the
+ * standards, the ADRs, every `CLAUDE.md`, and everything under
+ * `.claude/skills/` and `.claude/agents/` (#441), which are what an agent
+ * reads before it reads the code.
+ *
+ * **Skills are in scope unless excluded by name**, so a skill added later is
+ * checked from its first commit. `excludedSkills` names directories under
+ * `.claude/skills/` whose documents describe a library's API rather than this
+ * repo; every name in it must still be a directory, which `unknownExclusions`
+ * checks. `.agents/` is never read: it holds the vendored copies
+ * `skills-lock.json` pins by hash, which a citation fix would break.
+ */
+export function documentsInScope(
+  files: readonly string[],
+  excludedSkills: readonly string[],
+): string[] {
+  const excluded = new Set(excludedSkills);
+  return files.filter((file) => {
+    if (!file.endsWith(".md") || file.startsWith(".agents/")) return false;
+    const skill = skillOf(file);
+    if (skill !== undefined) return !excluded.has(skill);
+    return (
+      file.startsWith("docs/standards/") ||
+      file.startsWith("docs/adr/") ||
+      file.startsWith(".claude/agents/") ||
+      file === "CLAUDE.md" ||
+      file.endsWith("/CLAUDE.md")
+    );
+  });
+}
+
+/**
+ * The excluded skills that name no tracked directory under `.claude/skills/`:
+ * a skill renamed or removed leaves its exclusion excusing nothing, and a
+ * misspelt one excuses nothing from the start.
+ */
+export function unknownExclusions(
+  files: readonly string[],
+  excludedSkills: readonly string[],
+): string[] {
+  const skills = new Set(files.map(skillOf));
+  return excludedSkills.filter((skill) => !skills.has(skill));
 }
 
 /* ── Symbols ──────────────────────────────────────────────────────────────── */
