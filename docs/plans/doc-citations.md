@@ -88,7 +88,7 @@ The matching rule is chosen from a measurement, not assumed (spike below). The
 leading candidate is a whole word in **comment-stripped** tracked source, tests
 and config. Of the variants considered, it is the only one under which a
 symbol that now survives only in a comment counts as gone.
-`apps/api/src/test/strip-comments.ts` already provides that text.
+`apps/api/src/strip-comments.ts` already provides that text.
 
 - Rename an exported function a standards bullet names, push, and the push
   fails, naming the doc, the line and the symbol.

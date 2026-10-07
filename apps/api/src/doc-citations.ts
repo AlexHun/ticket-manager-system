@@ -1,9 +1,13 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { stripComments } from "./strip-comments";
 
 /**
- * The citation index and the path resolver behind `doc-citations.test.ts`
- * (#439): every backticked path a document names, with its document and line,
- * checked against the files git tracks.
+ * The citation index and the two resolvers behind `doc-citations.test.ts`:
+ * every backticked path (#439) and code symbol (#440) a document names, with
+ * its document and line, checked against the files git tracks and against
+ * what their source says outside its comments.
  *
  * **It lives in `apps/api/src`** for the reason `standards-guard.test.ts` does:
  * the API suite is what `.husky/pre-push` runs, and `apps/api/tsconfig.json`
@@ -22,7 +26,11 @@ import { execFileSync } from "node:child_process";
  * local index.
  */
 
-/** One backticked citation: where it is, what it says, and the path it names. */
+/**
+ * One backticked citation: where it is, what it says, and the path or symbol
+ * it names. One span can name several symbols (`Prisma.TransactionClient`
+ * is checked as `TransactionClient`), each its own citation.
+ */
 export interface Citation {
   /** The document, relative to the repository root. */
   doc: string;
@@ -30,11 +38,15 @@ export interface Citation {
   line: number;
   /** The citation as written between the backticks. */
   text: string;
-  /** The path it names, as `TrackedTree.pathOf` normalised it. */
-  path: string;
+  kind: "path" | "symbol";
+  /** The path as `TrackedTree.pathOf` normalised it, or the symbol. */
+  name: string;
 }
 
-/** A citation that is deliberately not a tracked file, and why. */
+/**
+ * A citation that deliberately names nothing in the tree, and why. `citation`
+ * is the path or symbol it names (`Citation.name`).
+ */
 export interface Exemption {
   doc: string;
   citation: string;
@@ -154,9 +166,10 @@ export class TrackedTree {
   }
 
   /**
-   * Every backticked citation in a markdown document that names a path,
-   * outside fenced code blocks. A fence holds code, not citations: its
-   * imports and examples are read by whoever runs them, not resolved here.
+   * Every backticked citation in a markdown document that names a path or a
+   * symbol (`symbolsOf`), outside fenced code blocks. A fence holds code, not
+   * citations: its imports and examples are read by whoever runs them, not
+   * resolved here.
    */
   citationsIn(doc: string, markdown: string): Citation[] {
     const citations: Citation[] = [];
@@ -175,9 +188,20 @@ export class TrackedTree {
       }
       for (const match of line.matchAll(CODE_SPAN)) {
         const text = match[2]!.trim();
+        const lineNumber = index + 1;
         const path = this.pathOf(text);
         if (path !== undefined) {
-          citations.push({ doc, line: index + 1, text, path });
+          citations.push({
+            doc,
+            line: lineNumber,
+            text,
+            kind: "path",
+            name: path,
+          });
+          continue;
+        }
+        for (const name of symbolsOf(text)) {
+          citations.push({ doc, line: lineNumber, text, kind: "symbol", name });
         }
       }
     });
@@ -196,37 +220,199 @@ export function trackedFiles(root: string): string[] {
     .filter(Boolean);
 }
 
+/* ── Symbols ──────────────────────────────────────────────────────────────── */
+
+/** One identifier, optionally dotted and optionally called: `a.b.c()`. */
+const IDENTIFIER_CHAIN = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:\(\))?$/;
+
+/**
+ * A word shaped like a name in code rather than in prose: camelCase or a
+ * PascalCase compound (`useTheme`, `TableFrame`), an underscore inside it
+ * (`TABLE_FRAME`, `tool_use`), or a leading `$` or `_` (`$transaction`).
+ *
+ * A plain word is not checked, and that is measured rather than cautious:
+ * over the standards and ADRs, checking every identifier in backticks instead
+ * of these added 11 misses, and only one named this code at all: ADR-0019's
+ * `RETRYABLE`, its shorthand for `RETRYABLE_AI_FAILURE`. The other ten were
+ * SQL (`CONCURRENTLY`, `NOTIFY`), mail and HTTP headers (`References`,
+ * `Cookie`), an error code (`P2002`), a shell command (`curl`), a commit type
+ * (`refactor`) and English used as a model's or type's name in an ADR's
+ * argument (`Notification`, `Outcome`, `Stage`). The cost is that a renamed
+ * one-word name (`Prisma`, `Toggle`) is not caught.
+ */
+const CODE_SHAPED = /[a-z0-9][A-Z]|\w_\w|^[$_]/;
+
+/**
+ * The symbols a backticked span names, or none. The span must be one
+ * identifier chain that is not a path; each code-shaped segment is a symbol,
+ * so `ROUTE.users.timingKey` names `timingKey` and
+ * `Prisma.TransactionClient` names `TransactionClient`. A call with
+ * arguments, a generic, an assignment or a sentence names none: only a bare
+ * name is a citation, as a bare path is.
+ */
+function symbolsOf(text: string): string[] {
+  if (!IDENTIFIER_CHAIN.test(text)) return [];
+  return text
+    .replace(/\(\)$/, "")
+    .split(".")
+    .filter((segment) => CODE_SHAPED.test(segment));
+}
+
+const NOT_SOURCE = new Set([
+  "packages/shared/src/changelog-entries.json",
+  "apps/api/src/doc-citations.ts",
+  "apps/api/src/doc-citations.test.ts",
+]);
+
+/**
+ * Which tracked files a symbol may resolve in: the repo's own source, tests
+ * and config. Not prose (a document cannot vouch for itself or for another),
+ * not binaries or data, not the vendored skills under `.agents/` and the
+ * skill and agent documents under `.claude/`, and not
+ * `changelog-entries.json`, which is commit subjects: a past subject naming a
+ * symbol would keep it alive after the code lost it.
+ *
+ * **Nor this check's own two files.** The test's exemption table and planted
+ * cases spell every exempted and every planted stale name as a string, so
+ * read as source they would resolve all of them, and the check would pass
+ * over the very names it exists to catch.
+ */
+export function isSymbolSource(file: string): boolean {
+  if (/^(?:\.agents|\.claude\/skills|\.claude\/agents)\//.test(file)) {
+    return false;
+  }
+  if (NOT_SOURCE.has(file)) return false;
+  return !/\.(?:md|mdx|txt|jsonl|lock|png|svg|webp|jpe?g|gif|ico)$/i.test(file);
+}
+
+/** The files `stripComments` reads: JS, TS and JSON. */
+const SLASH_COMMENTED = /\.(?:[cm]?[jt]sx?|json|jsonc)$/;
+
+/**
+ * A file's text with its comments blanked, so a word that survives only in a
+ * comment is not found. JS, TS and JSON go through `stripComments`, which
+ * knows strings and regex literals; CSS loses its block comments (it has no
+ * line comments, and a `//` in an unquoted `url()` is not one), SQL loses
+ * `--` to the end of the line, `schema.prisma` loses `//`, and everything
+ * else (YAML, TOML, shell, Dockerfiles, the Caddyfile, `.husky/*`, ignore
+ * files) loses lines that start with `#`. A `#` after code on the same line
+ * is kept, since in a Caddyfile or a YAML string it is as often code as
+ * comment.
+ */
+function codeOutsideComments(file: string, text: string): string {
+  if (SLASH_COMMENTED.test(file)) return stripComments(text);
+  if (file.endsWith(".css")) return text.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (file.endsWith(".sql")) return text.replace(/--.*$/gm, "");
+  if (file.endsWith(".prisma")) return text.replace(/\/\/.*$/gm, "");
+  return text.replace(/^\s*#.*$/gm, "");
+}
+
+/** What `SymbolIndex` reads: a tracked file and its text. */
+export interface SymbolSource {
+  file: string;
+  text: string;
+}
+
+/**
+ * Every word the repo's source, tests and config say outside a comment, and
+ * the one place that decides whether a cited symbol is still there.
+ *
+ * **The rule: a symbol resolves when it is a whole word somewhere in
+ * comment-stripped tracked source, tests or config** (`isSymbolSource`,
+ * `codeOutsideComments`). Chosen by measurement (#440, the plan's second
+ * spike), not assumed. On 2026-10-08 the 33 standards and ADRs cited 593
+ * distinct code-shaped symbols, 1,263 times, against 564 source files, and
+ * each candidate rule left:
+ * - **raw source: 18 misses.** Too loose. 17 more symbols resolved only
+ *   because a comment still named them: 3 were names the code had dropped
+ *   (`hasInbound`, `UNSTARTED_RANK`, `mockGet`), which the docs cite as
+ *   history and raw source would have kept passing after any rename, and 14
+ *   were library or tool names a comment happened to mention.
+ * - **comment-stripped source: 35 misses, every one real.** Each is absent
+ *   from the code: the two stale names `docs/prd/doc-citations.md`'s R9 fixes, history, and library or tool
+ *   names the code relies on without spelling (Better Auth's
+ *   `requireEmailVerification`, Claude Code's `WebFetch`). The test's
+ *   exemptions are that list, minus the two fixes.
+ * - **declared names only: 44 misses.** Too strict: the 9 beyond the
+ *   comment-stripped 35 are names this code uses and never declares
+ *   (`tabIndex`, `dangerouslySetInnerHTML`, `TransactionClient`, `pg_tables`,
+ *   environment variables the code reads), each a false failure.
+ *
+ * A word is `[A-Za-z_$][\w$]*`, and a leading `$` is also indexed without it,
+ * so the Caddyfile's `{$API_UPSTREAM}` names `API_UPSTREAM` while
+ * `prisma.$transaction` still names `$transaction`. A string's contents
+ * count: `"hashFiles"` in a config is a use, not a comment.
+ */
+export class SymbolIndex {
+  private readonly words = new Set<string>();
+
+  constructor(sources: Iterable<SymbolSource>) {
+    for (const { file, text } of sources) {
+      for (const word of codeOutsideComments(file, text).match(
+        /[A-Za-z_$][\w$]*/g,
+      ) ?? []) {
+        this.words.add(word);
+        if (word.startsWith("$")) this.words.add(word.replace(/^\$+/, ""));
+      }
+    }
+  }
+
+  resolves(symbol: string): boolean {
+    return this.words.has(symbol);
+  }
+}
+
+/** The tracked files under `root` a symbol may resolve in, read from disk. */
+export function symbolSources(
+  root: string,
+  files: readonly string[],
+): SymbolSource[] {
+  return files.filter(isSymbolSource).map((file) => ({
+    file,
+    text: readFileSync(join(root, file), "utf8"),
+  }));
+}
+
 /** What the check found: each line a failing run can be acted on from. */
 export interface CitationReport {
-  /** `doc:line cites path, which no tracked file matches`. */
+  /** `doc:line cites <text or symbol>, which …`. */
   stale: string[];
   /** Exemptions that matched no unresolved citation. */
   unusedExemptions: string[];
 }
 
 /**
- * Every citation that resolves to no tracked file and is not exempted, and
- * every exemption that excused nothing. An exemption names its document and
- * the citation as written, and covers every line of that document that cites
- * it; one that no longer matches an unresolved citation is reported, so the
- * list cannot rot into a record of things already fixed.
+ * Every citation that resolves to nothing and is not exempted, and every
+ * exemption that excused nothing. A path resolves against the tracked tree, a
+ * symbol against the symbol index. An exemption names its document and the
+ * path or symbol, and covers every line of that document that cites it; one
+ * that no longer matches an unresolved citation is reported, so the list
+ * cannot rot into a record of things already fixed.
  */
 export function checkCitations(
   citations: readonly Citation[],
   tree: TrackedTree,
+  symbols: SymbolIndex,
   exemptions: readonly Exemption[],
 ): CitationReport {
   const used = new Set<Exemption>();
   const stale: string[] = [];
   for (const citation of citations) {
-    if (tree.resolves(citation.path)) continue;
+    const resolves =
+      citation.kind === "path"
+        ? tree.resolves(citation.name)
+        : symbols.resolves(citation.name);
+    if (resolves) continue;
     const exemption = exemptions.find(
-      (e) => e.doc === citation.doc && e.citation === citation.text,
+      (e) => e.doc === citation.doc && e.citation === citation.name,
     );
     if (exemption) used.add(exemption);
     else {
+      const where = `${citation.doc}:${citation.line}`;
       stale.push(
-        `${citation.doc}:${citation.line} cites \`${citation.text}\`, which no tracked file matches`,
+        citation.kind === "path"
+          ? `${where} cites \`${citation.text}\`, which no tracked file matches`
+          : `${where} cites \`${citation.name}\`, which no source, test or config file names outside a comment`,
       );
     }
   }

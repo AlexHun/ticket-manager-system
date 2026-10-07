@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { stripComments } from "./test/strip-comments";
+import { stripComments } from "./strip-comments";
 
 /**
  * The backend, AI, API-testing and repo-config standards a check can decide
@@ -17,7 +17,7 @@ import { stripComments } from "./test/strip-comments";
  * and `retryLimit:` rather than the bare names, and this file does the same for
  * the same reason: three AI modules already explain in a comment why they call
  * `generateText` and not `generateObject`. Matching runs over comment-stripped
- * source (`test/strip-comments.ts`), so an explanation never fails the build,
+ * source (`strip-comments.ts`), so an explanation never fails the build,
  * and each rule is shown a violation it must catch and a comment it must ignore.
  *
  * **The repo-wide config rules live here rather than in the web guard** because
