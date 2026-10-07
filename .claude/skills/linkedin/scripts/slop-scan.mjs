@@ -4,8 +4,9 @@
 import { readFileSync } from 'node:fs';
 
 const raw = readFileSync(process.argv[2] ?? 0, 'utf8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
-// Skip a leading frontmatter block so post files scan only the post text.
-const text = raw.replace(/^---\n[\s\S]*?\n---\n/, '');
+// Skip a leading frontmatter block and any trailing `## ` section (prepared
+// replies, notes) so post files scan only the post text.
+const text = raw.replace(/^---\n[\s\S]*?\n---\n/, '').split(/^## /m)[0];
 const lines = text.split('\n');
 
 const PHRASES = [
@@ -25,6 +26,8 @@ const PHRASES = [
   'here\'s what i learned', 'here\'s why', 'the result?', 'the best part?',
   'plot twist', 'unpopular opinion', 'agree?', 'thoughts?',
   'what do you think?', 'i\'d love to hear',
+  'here\'s how', 'the catch:', 'turns out', 'journey', 'honestly',
+  'the kicker', 'was a revelation', 'completely transformed',
 ];
 const CONTRAST = /\b(it'?s|this is|that'?s)\s+not\s+(just\s+)?(about\s+)?[^.!?\n]{1,60}[.,;—–-]\s*(it'?s|this is|that'?s)\b|\bnot just\b[^.!?\n]{1,60}\bbut\b/i;
 const TRIAD = /\b\w+(?:\s\w+){0,2},\s\w+(?:\s\w+){0,2},\s(?:and|or)\s\w+(?:\s\w+){0,2}/gi;
@@ -66,7 +69,31 @@ if (hashtags > 3) add('-', 'hashtags', `${hashtags} hashtags; keep 0-3`);
 if (paras.length >= 5 && oneLiners / paras.length > 0.6)
   add('-', 'broetry', `${oneLiners} of ${paras.length} paragraphs are single sentences`);
 
-console.log(`words=${words} chars=${chars} paragraphs=${paras.length} dashes=${dashes} emoji=${emojis} hashtags=${hashtags}`);
+// Uniform rhythm: real writing mixes short and long sentences.
+const sentences = paras
+  .filter((p) => !p.startsWith('#') && !p.startsWith('•'))
+  .flatMap((p) => p.split(/(?<=[.!?])\s+/))
+  .map((s) => s.split(/\s+/).filter(Boolean).length)
+  .filter((n) => n > 0);
+const mean = sentences.reduce((a, b) => a + b, 0) / (sentences.length || 1);
+const sd = Math.sqrt(sentences.reduce((a, n) => a + (n - mean) ** 2, 0) / (sentences.length || 1));
+if (sentences.length >= 6 && sd < 4) add('-', 'uniform-rhythm', `sentence length sd ${sd.toFixed(1)} words; vary it`);
+
+// Moral-line closer: a short, general one-sentence paragraph right before the
+// question or hashtags, with no number and no "I". Advisory: check by eye.
+const body = paras.filter((p) => !/^#\w/.test(p));
+const last = body.at(-1) ?? '';
+const beforeClose = last.trim().endsWith('?') ? body.at(-2) ?? '' : last;
+if (
+  !beforeClose.includes('\n') &&
+  (beforeClose.match(/[.!](\s|$)/g) ?? []).length <= 2 &&
+  beforeClose.split(/\s+/).length <= 20 &&
+  !/\d/.test(beforeClose) &&
+  !/\b(I|my|me|I'm|I've)\b/.test(beforeClose)
+)
+  add('-', 'moral-closer', `"${beforeClose.slice(0, 80)}" reads as a lesson line; one per few posts, not every post`);
+
+console.log(`words=${words} chars=${chars} paragraphs=${paras.length} dashes=${dashes} emoji=${emojis} hashtags=${hashtags} sentence-sd=${sd.toFixed(1)}`);
 for (const f of findings) console.log(`L${f.line}\t${f.rule}\t${f.detail}`);
 console.log(findings.length ? `${findings.length} finding(s)` : 'clean');
 process.exit(findings.length ? 1 : 0);
