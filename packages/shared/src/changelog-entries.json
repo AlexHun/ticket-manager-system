@@ -678,5 +678,10 @@
     "version": "0.1.174",
     "date": "2026-10-07",
     "title": "Check extensionless paths too, and address review"
+  },
+  {
+    "version": "0.1.175",
+    "date": "2026-10-07",
+    "title": "Cited symbols in the standards and ADRs fail the push"
   }
 ]
