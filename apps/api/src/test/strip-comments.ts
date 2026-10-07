@@ -4,7 +4,9 @@
  * comment, and a match's line number is still the source's.
  *
  * For `standards-guard.test.ts` (#391), which bans forms rather than words and
- * must let a file explain *why* it avoids one. The same scanner as
+ * must let a file explain *why* it avoids one, and for `doc-citations.ts`
+ * (#440), where a symbol that survives only in a comment counts as gone. The
+ * same scanner as
  * `apps/web/dev/scan.ts`'s `stripComments`, copied rather than imported: that
  * module is the web workspace's project-map scanner, it imports the web's
  * protocol types, and the API's `tsconfig` does not reach outside `src/`. A
