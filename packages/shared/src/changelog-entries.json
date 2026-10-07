@@ -668,5 +668,15 @@
     "version": "0.1.170",
     "date": "2026-10-06",
     "title": "Review fixes for the subagent usage scan"
+  },
+  {
+    "version": "0.1.174",
+    "date": "2026-10-07",
+    "title": "Cited paths in the standards fail the push"
+  },
+  {
+    "version": "0.1.174",
+    "date": "2026-10-07",
+    "title": "Check extensionless paths too, and address review"
   }
 ]
