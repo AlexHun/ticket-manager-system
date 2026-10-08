@@ -688,5 +688,10 @@
     "version": "0.1.176",
     "date": "2026-10-07",
     "title": "CLAUDE.md files, skills and agents are citation-checked too"
+  },
+  {
+    "version": "0.1.177",
+    "date": "2026-10-08",
+    "title": "Open PRDs are citation-checked; shipped ones are frozen"
   }
 ]
