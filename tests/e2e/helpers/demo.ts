@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { ADMIN_SCREEN, type AdminScreen } from "@ticket/shared";
 import { ROUTE } from "../../../apps/web/src/lib/routes";
+import { WELCOME_LABEL } from "../../../apps/web/src/lib/welcome";
 import { freshClientAddress, fromAddress } from "./client-address";
 import { testDb } from "./db";
 
@@ -60,14 +61,25 @@ export function showcaseReads(
 }
 
 /**
- * Click the button and wait to land on the dashboard. From an address of its
- * own, so a spec's starts never add up to the five-an-hour limit (#322) —
- * that is `demo-rate-limit.spec.ts`'s subject, not the caller's.
+ * Click the button and wait to land on the welcome (demo-welcome R1). From an
+ * address of its own, so a spec's starts never add up to the five-an-hour
+ * limit (#322) — that is `demo-rate-limit.spec.ts`'s subject, not the caller's.
  */
-export async function startDemo(page: Page): Promise<void> {
+export async function openDemo(page: Page): Promise<void> {
   await page.context().setExtraHTTPHeaders(fromAddress(freshClientAddress()));
   await page.goto(ROUTE.login.path);
   await page.getByRole("button", DEMO_BUTTON).click();
+  await page.waitForURL(ROUTE.welcome.path);
+}
+
+/**
+ * Start a demo and go on from the welcome to the dashboard, as a visitor who
+ * clicks Start exploring does — where every demo spec but the welcome's own
+ * begins.
+ */
+export async function startDemo(page: Page): Promise<void> {
+  await openDemo(page);
+  await page.getByRole("link", { name: WELCOME_LABEL.startExploring }).click();
   await page.waitForURL(ROUTE.dashboard.path);
 }
 

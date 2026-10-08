@@ -68,7 +68,17 @@ export function LoginPage() {
       </main>
     );
   }
-  if (session) return <Navigate to={ROUTE.dashboard.path} replace />;
+  // A demo being started lands on the welcome, whichever arrives first: this
+  // render with the new session, or `startDemo`'s own navigation. Otherwise a
+  // session reaching the page first would carry the visitor past the welcome.
+  if (session) {
+    return (
+      <Navigate
+        to={startingDemo ? ROUTE.welcome.path : ROUTE.dashboard.path}
+        replace
+      />
+    );
+  }
 
   const onSubmit = async (values: LoginValues) => {
     setServerError(null);
@@ -85,7 +95,9 @@ export function LoginPage() {
   /**
    * One click, no credential: the API mints a fresh demo identity and sets its
    * session cookie (#319). A fresh identity every time, which is what makes
-   * every visitor a first-time user (R12).
+   * every visitor a first-time user (R12). It lands on the welcome rather than
+   * the Dashboard (demo-welcome R1), and this click is the only way there:
+   * nothing redirects to it, so a reload never brings a visitor back (R8).
    *
    * A 403 is demo mode switched off between this page loading and the click.
    * It gets words of its own, because the fallback would describe a form
@@ -110,7 +122,7 @@ export function LoginPage() {
       return;
     }
 
-    navigate(ROUTE.dashboard.path, { replace: true });
+    navigate(ROUTE.welcome.path, { replace: true });
   };
 
   const busy = isSubmitting || startingDemo;

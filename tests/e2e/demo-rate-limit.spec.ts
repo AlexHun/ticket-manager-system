@@ -49,7 +49,7 @@ test("five starts from one address succeed; the sixth shows the message and crea
 
   for (let start = 1; start <= 5; start += 1) {
     const page = await clickDemo(browser, address);
-    await page.waitForURL(ROUTE.dashboard.path);
+    await page.waitForURL(ROUTE.welcome.path);
     await page.context().close();
   }
   expect(await demoCount()).toBe(5);
@@ -89,7 +89,7 @@ test("a spent address leaves a visitor on another network alone", async ({
 
   const other = await clickDemo(browser, freshClientAddress());
   try {
-    await other.waitForURL(ROUTE.dashboard.path);
+    await other.waitForURL(ROUTE.welcome.path);
     expect(await demoCount()).toBe(6);
   } finally {
     await other.context().close();

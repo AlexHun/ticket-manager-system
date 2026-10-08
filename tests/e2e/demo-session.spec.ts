@@ -169,9 +169,7 @@ async function statusOf(
 }
 
 test.describe("Demo session", () => {
-  test("the button lands on the dashboard, signed in as the demo visitor", async ({
-    page,
-  }) => {
+  test("the button signs in as the demo visitor", async ({ page }) => {
     await startDemo(page);
 
     // Scoped to the top bar for the reason auth.spec.ts gives: `/` is the
