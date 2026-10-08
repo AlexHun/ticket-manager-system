@@ -62,7 +62,7 @@ file that a doc cites on purpose gets an exemption that says so.
 
 - `docs/standards/` only. Slice 2 adds ADRs and slice 3 the rest.
 - Paths only. Symbols are slice 2.
-- No rename hint (slice 4).
+- No rename hint (slice 5).
 - The exemptions the baseline already found, each with a reason:
   - placeholders: `src/x.test.ts` in `testing-api.md`;
   - installed-package paths: `dist/utils/get-request-ip.mjs` in `backend.md`;

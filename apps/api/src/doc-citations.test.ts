@@ -1,11 +1,21 @@
-import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   checkCitations,
   documentsInScope,
   type Exemption,
   isSymbolSource,
+  renameHints,
   SymbolIndex,
   symbolSources,
   TrackedTree,
@@ -20,8 +30,9 @@ import {
  * a comment (#440, #441, #442; `docs/plans/doc-citations.md` slices 1 to 4). A
  * PRD whose header says `Status: Shipped` is history and is not read. A rename
  * that leaves a citation behind fails `git push` here, naming the document,
- * the line and the missing path or symbol, so the doc fix lands in the same
- * branch as the rename. The bullet is the pre-push one in
+ * the line and the missing path or symbol, and on a full clone the new name
+ * and the commit that renamed it (#443, slice 5), so the doc fix lands in the
+ * same branch as the rename. The bullet is the pre-push one in
  * `docs/standards/conventions.md`.
  *
  * The index, the resolvers and the scope are `doc-citations.ts`, which states
@@ -31,6 +42,8 @@ import {
  * and what it must pass, the way `standards-guard.test.ts` does.
  *
  * Nothing is mocked, and nothing here touches the database or the network.
+ * The rename hint's cases build a git repository of their own in a temporary
+ * directory, so they do not depend on this repository's history or depth.
  */
 
 /** The repository root, which every document and tracked path is relative to. */
@@ -514,7 +527,13 @@ describe(`Cited paths and symbols in the documents agents read exist (${STANDARD
   });
 
   test("every path and symbol a document in scope cites exists", () => {
-    const report = checkCitations(CITATIONS, TREE, SYMBOLS, EXEMPTIONS);
+    const report = checkCitations(
+      CITATIONS,
+      TREE,
+      SYMBOLS,
+      EXEMPTIONS,
+      renameHints(REPO_ROOT, TREE, SYMBOLS),
+    );
     expect(report.stale).toEqual([]);
     expect(report.unusedExemptions).toEqual([]);
   });
@@ -900,6 +919,179 @@ describe("what counts as a path", () => {
     expect(
       plantedCitations("Run ``a.ts`` and `b.ts`.").map((c) => c.text),
     ).toEqual(["a.ts", "b.ts"]);
+  });
+});
+
+/* ── The failure names the rename, from git history ──────────────────────── */
+
+describe("a stale citation that git history shows was renamed", () => {
+  /**
+   * A repository of its own, so the hint is shown a rename this test made
+   * rather than one this repo happens to have. Git runs with no global or
+   * system config, so a developer's settings cannot change what it records.
+   */
+  const scratch = mkdtempSync(path.join(tmpdir(), "doc-citations-"));
+  const repo = path.join(scratch, "full");
+  const shallow = path.join(scratch, "shallow");
+  const emptyConfig = path.join(scratch, "gitconfig");
+  writeFileSync(emptyConfig, "");
+  const env = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: emptyConfig,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_AUTHOR_NAME: "Planted",
+    GIT_AUTHOR_EMAIL: "planted@example.com",
+    GIT_COMMITTER_NAME: "Planted",
+    GIT_COMMITTER_EMAIL: "planted@example.com",
+  };
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", args, { cwd, env, encoding: "utf8" }).trim();
+  const write = (file: string, text: string) =>
+    writeFileSync(path.join(repo, file), text);
+  // Each git call is a process, ~60ms on Windows, so the hashes are read once
+  // at the end rather than after every commit.
+  const commit = (message: string) => {
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", message);
+  };
+
+  // Built in `beforeAll` rather than in the describe body, so a run filtered
+  // to other tests starts no git, and a git failure fails these tests alone.
+  let movedIn = "";
+  let renamedIn = "";
+  beforeAll(() => {
+    mkdirSync(path.join(repo, "src"), { recursive: true });
+    git(repo, "init", "-q");
+    write(
+      "src/provider.ts",
+      'export const TABLE_FRAME = "frame";\nexport const frame = () => TABLE_FRAME;\n',
+    );
+    write("src/kept.ts", "export const keptName = 1;\n");
+    write("src/index.ts", "export {\n  TABLE_FRAME,\n} from './provider';\n");
+    // Two files that share a name, each renamed to something else.
+    mkdirSync(path.join(repo, "a"));
+    mkdirSync(path.join(repo, "b"));
+    write("a/util.ts", "export const alpha = 'the first util';\n");
+    write("b/util.ts", "export const beta = 'the second util, unlike it';\n");
+    commit("add the provider");
+    git(repo, "mv", "src/provider.ts", "src/llm.ts");
+    git(repo, "mv", "a/util.ts", "a/helpers.ts");
+    git(repo, "mv", "b/util.ts", "b/tools.ts");
+    commit("rename the provider and the utils");
+    write(
+      "src/llm.ts",
+      '// See TABLE_FRAME.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
+    );
+    commit("rename the constant");
+    // The last commit to touch the old name renames it in a comment, and swaps
+    // a line that is the name alone for another lone name: neither is the
+    // rename.
+    write(
+      "src/llm.ts",
+      '// See TableFrame.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
+    );
+    write("src/index.ts", "export {\n  frame,\n} from './llm';\n");
+    commit("fix the comment and the index");
+    [, renamedIn = "", movedIn = ""] = git(repo, "log", "--format=%h").split(
+      "\n",
+    );
+    git(
+      scratch,
+      "clone",
+      "-q",
+      "--depth",
+      "1",
+      pathToFileURL(repo).href,
+      shallow,
+    );
+  });
+
+  afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+  const DOC = "docs/standards/planted.md";
+  const MARKDOWN =
+    "See `provider.ts` and `src/provider.ts`, then `TABLE_FRAME`.\nNever `never-was.ts` or `neverWas`.\nEither `util.ts`, or `a/util.ts`.\n";
+  const staleIn = (root: string) => {
+    const files = trackedFiles(root);
+    const tree = new TrackedTree(files);
+    const symbols = new SymbolIndex(symbolSources(root, files));
+    return checkCitations(
+      tree.citationsIn(DOC, MARKDOWN),
+      tree,
+      symbols,
+      [],
+      renameHints(root, tree, symbols),
+    ).stale;
+  };
+
+  test("fails with the new name and the commit that renamed it, and a citation never renamed fails as before", () => {
+    expect(staleIn(repo)).toEqual([
+      `${DOC}:1 cites \`provider.ts\`, which no tracked file matches; renamed provider.ts → src/llm.ts (${movedIn})`,
+      `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches; renamed src/provider.ts → src/llm.ts (${movedIn})`,
+      `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment; renamed TABLE_FRAME → TableFrame (${renamedIn})`,
+      `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
+      `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+      // Two files named `util.ts` were renamed: no telling which one is meant.
+      `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+      `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches; renamed a/util.ts → a/helpers.ts (${movedIn})`,
+    ]);
+  });
+
+  test("on a shallow clone still fails, naming the document, line and citation, with no hint", () => {
+    expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe("true");
+    expect(staleIn(shallow)).toEqual([
+      `${DOC}:1 cites \`provider.ts\`, which no tracked file matches`,
+      `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches`,
+      `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment`,
+      `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
+      `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+      `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+      `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches`,
+    ]);
+  });
+
+  test("when git cannot run, the lookup answers nothing rather than throwing", () => {
+    // A directory that does not exist: git cannot even start in it, whatever
+    // repository the temporary directory happens to sit inside.
+    const missing = path.join(scratch, "missing");
+    const hint = renameHints(missing, PLANTED_TREE, PLANTED_SYMBOLS);
+    expect(
+      hint({
+        doc: DOC,
+        line: 1,
+        text: "provider.ts",
+        kind: "path",
+        name: "provider.ts",
+      }),
+    ).toBeUndefined();
+  });
+
+  test("a green run performs no history lookup", () => {
+    const citations = plantedCitations("See `provider.ts` and `TableFrame`.\n");
+    const report = checkCitations(
+      citations,
+      PLANTED_TREE,
+      PLANTED_SYMBOLS,
+      [],
+      () => {
+        throw new Error("looked up a citation that resolves");
+      },
+    );
+    expect(report).toEqual({ stale: [], unusedExemptions: [] });
+  });
+
+  test("an exempted citation performs no history lookup either", () => {
+    const citations = plantedCitations("Was one `protocol.ts`.\n");
+    const report = checkCitations(
+      citations,
+      PLANTED_TREE,
+      PLANTED_SYMBOLS,
+      [{ doc: PLANTED_DOC, citation: "protocol.ts", reason: "history" }],
+      () => {
+        throw new Error("looked up an exempted citation");
+      },
+    );
+    expect(report).toEqual({ stale: [], unusedExemptions: [] });
   });
 });
 

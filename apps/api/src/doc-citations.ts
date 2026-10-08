@@ -8,7 +8,8 @@ import { stripComments } from "./strip-comments";
  * every backticked path (#439) and code symbol (#440) a document names, with
  * its document and line, checked against the files git tracks and against
  * what their source says outside its comments. Which documents are read is
- * `documentsInScope` (#441, #442).
+ * `documentsInScope` (#441, #442); what a failure says a stale citation was
+ * renamed to is `renameHints` (#443).
  *
  * **It lives in `apps/api/src`** for the reason `standards-guard.test.ts` does:
  * the API suite is what `.husky/pre-push` runs, and `apps/api/tsconfig.json`
@@ -24,7 +25,7 @@ import { stripComments } from "./strip-comments";
  * an LF CI one index the same citations at the same lines.
  *
  * Nothing here touches the database or the network; `git ls-files` reads the
- * local index.
+ * local index, and `renameHints` the local history.
  */
 
 /**
@@ -336,6 +337,25 @@ function symbolsOf(text: string): string[] {
     .filter((segment) => CODE_SHAPED.test(segment));
 }
 
+/** Prose, data and binaries: a symbol does not resolve in these. */
+const NOT_SOURCE_EXTENSIONS = [
+  "md",
+  "mdx",
+  "txt",
+  "jsonl",
+  "lock",
+  "png",
+  "svg",
+  "webp",
+  "jpg",
+  "jpeg",
+  "gif",
+  "ico",
+] as const;
+
+/** The vendored skills, and the skill and agent documents under `.claude/`. */
+const NOT_SOURCE_DIRECTORIES = [".agents", ".claude/skills", ".claude/agents"];
+
 const NOT_SOURCE = new Set([
   "packages/shared/src/changelog-entries.json",
   "apps/api/src/doc-citations.ts",
@@ -356,11 +376,12 @@ const NOT_SOURCE = new Set([
  * over the very names it exists to catch.
  */
 export function isSymbolSource(file: string): boolean {
-  if (/^(?:\.agents|\.claude\/skills|\.claude\/agents)\//.test(file)) {
+  if (NOT_SOURCE_DIRECTORIES.some((dir) => file.startsWith(`${dir}/`))) {
     return false;
   }
   if (NOT_SOURCE.has(file)) return false;
-  return !/\.(?:md|mdx|txt|jsonl|lock|png|svg|webp|jpe?g|gif|ico)$/i.test(file);
+  const extension = file.slice(file.lastIndexOf(".") + 1).toLowerCase();
+  return !(NOT_SOURCE_EXTENSIONS as readonly string[]).includes(extension);
 }
 
 /** The files `stripComments` reads: JS, TS and JSON. */
@@ -451,9 +472,253 @@ export function symbolSources(
   }));
 }
 
+/* ── Renames: what git history says a stale citation became ─────────────── */
+
+/** A citation's new name, and the commit that gave it. */
+export interface Rename {
+  to: string;
+  sha: string;
+}
+
+/**
+ * The rename behind a stale citation, or `undefined` when history shows none.
+ * `checkCitations` asks it only for a citation that has already failed and is
+ * not exempted, and writes the answer as `OLD → New (<sha>)`.
+ */
+export type RenameHint = (citation: Citation) => Rename | undefined;
+
+/**
+ * Where a symbol's history is read: the `isSymbolSource` files, as a git
+ * pathspec. Without it the last commit to touch a stale name is as often a
+ * document or this check's own tables, which spell it as a string. It is
+ * built from the lists `isSymbolSource` reads, so the two cannot drift apart.
+ */
+const SYMBOL_SOURCE_PATHSPEC = [
+  ".",
+  ...NOT_SOURCE_EXTENSIONS.map((extension) => `:(exclude)*.${extension}`),
+  ...NOT_SOURCE_DIRECTORIES.map((directory) => `:(exclude)${directory}`),
+  ...[...NOT_SOURCE].map((file) => `:(exclude)${file}`),
+];
+
+/**
+ * A diff line that is a comment, which says what a name was, not what it is:
+ * `//`, `/*`, a JSDoc `*` line, and `#` or `--` followed by a space, so a TS
+ * private field (`#client`) and a CLI flag (`--count`) are still code.
+ */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?:\s|\/|$)|#(?:\s|$)|--(?:\s|$))/;
+
+/** A line's tokens: names, numbers, quoted strings and single symbols. */
+const TOKEN = /[A-Za-z_$][\w$]*|\d[\w.]*|"[^"]*"|'[^']*'|`[^`]*`|\S/g;
+
+const IS_NAME = /^[A-Za-z_$]/;
+
+/**
+ * The name `symbol` became in one commit's diff, or `undefined`: a removed
+ * line and an added one that are the same token for token, numbers, strings
+ * and punctuation included, but for `symbol`, each of whose places holds one
+ * other name, and which share at least one name besides it. A real rename
+ * changes every call site the same way, so the most frequent such name wins.
+ * Comment lines are skipped, so a later edit that only rewords a comment is
+ * not the rename.
+ */
+function renameInDiff(diff: string, symbol: string): string | undefined {
+  const removed: string[][] = [];
+  const removedTokens: string[] = [];
+  const added: string[][] = [];
+  for (const line of diff.split(/\r?\n/)) {
+    if (/^(?:---|\+\+\+) /.test(line)) continue;
+    const sign = line[0];
+    if ((sign !== "-" && sign !== "+") || COMMENT_LINE.test(line.slice(1))) {
+      continue;
+    }
+    const tokens: string[] = line.slice(1).match(TOKEN) ?? [];
+    if (sign === "-") removedTokens.push(...tokens);
+    if (sign === "-" && tokens.includes(symbol)) removed.push(tokens);
+    if (sign === "+") added.push(tokens);
+  }
+  const counts = new Map<string, number>();
+  for (const before of removed) {
+    // A line that is the name alone (`emptyScan,` in an export list) matches
+    // any other lone name, so a pair needs one name besides it in common.
+    if (!before.some((token) => token !== symbol && IS_NAME.test(token))) {
+      continue;
+    }
+    for (const after of added) {
+      if (after.length !== before.length) continue;
+      let to: string | undefined;
+      const sameButTheName = before.every((token, at) => {
+        if (token !== symbol) return token === after[at];
+        to ??= after[at];
+        return after[at] === to && to !== symbol && IS_NAME.test(to);
+      });
+      if (sameButTheName && to) counts.set(to, (counts.get(to) ?? 0) + 1);
+    }
+  }
+  // The new name is new: a name a removed line already held existed before
+  // this commit, so it is not what the old one became.
+  const existed = new Set(removedTokens);
+  return [...counts]
+    .filter(([name]) => !existed.has(name))
+    .sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+/**
+ * Whether a renamed file's old path is the one a citation names, by the rule
+ * `TrackedTree.resolves` uses: a path with an extension whole or as a tail
+ * from a `/`, an anchored one exactly. A directory is not followed through
+ * the renames of the files in it, since a directory whose files went to
+ * different places has no one new name.
+ */
+function namesPath(cited: string, from: string): boolean {
+  return (
+    from === cited || (hasFileExtension(cited) && from.endsWith(`/${cited}`))
+  );
+}
+
+/**
+ * The rename lookup for the repository at `root`, against its current `tree`
+ * and `symbols`. Nothing runs until a stale citation asks, so a green check
+ * reads no history, and a name cited on several lines is looked up once.
+ *
+ * - **A path** takes each rename whose old side it names (`git log -M
+ *   --diff-filter=R`, read once for every path) and follows every later
+ *   rename of the new path, so `a → b → c` names `c` and the commit of the
+ *   last hop. When the matches lead to different files, as two renamed files
+ *   that shared a short citation's name do, there is no hint.
+ * - **A symbol** takes the newest commit that changed how often source names
+ *   it (`git log -S`) and whose diff shows what it became (`renameInDiff`),
+ *   followed up to three renames on. Each symbol is its own pickaxe over the
+ *   whole history, ~2s on this repo, paid only on a push that already fails.
+ *   It is a heuristic, measured on 2026-10-08 over seven of the names the
+ *   test exempts as history: four were named right (`TABLE_FRAME`,
+ *   `AutoReplyOutcome`, `renderWithQuery`, `mockGet`), two got no hint, and
+ *   one was named wrong: `hasInbound` became `inboundCount`, which lines the
+ *   same commit rewrote already held, so the hint named `hasOutbound`, a
+ *   field added beside it. A path's hint has no such guess in it.
+ *
+ * **The hint is absent rather than wrong.** On a shallow clone, which is what
+ * CI's API job checks out, history is cut off and nothing is looked up; a
+ * name history points to that no longer resolves gives no hint; and a git
+ * that fails, or a directory that is not a repository, answers nothing. The
+ * citation fails either way. Git runs with `log.showSignature` off, so a
+ * developer's signature lines cannot be read as commits.
+ */
+export function renameHints(
+  root: string,
+  tree: TrackedTree,
+  symbols: SymbolIndex,
+): RenameHint {
+  const git = (...args: string[]): string | undefined => {
+    try {
+      return execFileSync(
+        "git",
+        [
+          "-c",
+          "core.quotePath=false",
+          "-c",
+          "log.showSignature=false",
+          ...args,
+        ],
+        {
+          cwd: root,
+          encoding: "utf8",
+          maxBuffer: 64 * 1024 * 1024,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
+    } catch {
+      return undefined;
+    }
+  };
+
+  let history: boolean | undefined;
+  const hasHistory = () =>
+    (history ??=
+      git("rev-parse", "--is-shallow-repository")?.trim() === "false");
+
+  let renames: ({ from: string } & Rename)[] | undefined;
+  const pathRenames = () => {
+    if (renames) return renames;
+    renames = [];
+    let sha = "";
+    const log = git(
+      "log",
+      "--reverse",
+      "-M",
+      "--diff-filter=R",
+      "--name-status",
+      "--format=commit %h",
+    );
+    for (const line of (log ?? "").split(/\r?\n/)) {
+      const commit = /^commit (\w+)$/.exec(line);
+      if (commit) sha = commit[1]!;
+      const rename = /^R\d*\t([^\t]+)\t([^\t]+)$/.exec(line);
+      if (rename) renames.push({ sha, from: rename[1]!, to: rename[2]! });
+    }
+    return renames;
+  };
+
+  const renamedPath = (cited: string): Rename | undefined => {
+    const all = pathRenames();
+    const ends = all.flatMap((first, at) => {
+      if (!namesPath(cited, first.from)) return [];
+      let end: Rename = { to: first.to, sha: first.sha };
+      for (const later of all.slice(at + 1)) {
+        if (later.from === end.to) end = { to: later.to, sha: later.sha };
+      }
+      return [end];
+    });
+    const latest = ends.at(-1);
+    if (!latest || ends.some((end) => end.to !== latest.to)) return undefined;
+    return tree.resolves(latest.to) ? latest : undefined;
+  };
+
+  const renamedSymbol = (symbol: string, hops = 3): Rename | undefined => {
+    const shas = git(
+      "log",
+      `-S${symbol}`,
+      "--format=%h",
+      "--",
+      ...SYMBOL_SOURCE_PATHSPEC,
+    );
+    for (const sha of (shas ?? "").split(/\r?\n/).filter(Boolean)) {
+      const diff = git(
+        "show",
+        sha,
+        "--format=",
+        "-U0",
+        "--no-color",
+        "--",
+        ...SYMBOL_SOURCE_PATHSPEC,
+      );
+      const to = diff && renameInDiff(diff, symbol);
+      if (!to) continue;
+      if (symbols.resolves(to)) return { to, sha };
+      return hops > 1 ? renamedSymbol(to, hops - 1) : undefined;
+    }
+    return undefined;
+  };
+
+  const answers = new Map<string, Rename | undefined>();
+  return ({ kind, name }) => {
+    if (!hasHistory()) return undefined;
+    const key = `${kind}:${name}`;
+    if (!answers.has(key)) {
+      answers.set(
+        key,
+        kind === "path" ? renamedPath(name) : renamedSymbol(name),
+      );
+    }
+    return answers.get(key);
+  };
+}
+
 /** What the check found: each line a failing run can be acted on from. */
 export interface CitationReport {
-  /** `doc:line cites <text or symbol>, which …`. */
+  /**
+   * `doc:line cites <text or symbol>, which …`, ending `; renamed OLD → New
+   * (<sha>)` when history shows the rename.
+   */
   stale: string[];
   /** Exemptions that matched no unresolved citation. */
   unusedExemptions: string[];
@@ -465,13 +730,15 @@ export interface CitationReport {
  * symbol against the symbol index. An exemption names its document and the
  * path or symbol, and covers every line of that document that cites it; one
  * that no longer matches an unresolved citation is reported, so the list
- * cannot rot into a record of things already fixed.
+ * cannot rot into a record of things already fixed. `hint` (`renameHints`) is
+ * asked only about a citation that fails, so a green run reads no history.
  */
 export function checkCitations(
   citations: readonly Citation[],
   tree: TrackedTree,
   symbols: SymbolIndex,
   exemptions: readonly Exemption[],
+  hint: RenameHint = () => undefined,
 ): CitationReport {
   const used = new Set<Exemption>();
   const stale: string[] = [];
@@ -487,10 +754,16 @@ export function checkCitations(
     if (exemption) used.add(exemption);
     else {
       const where = `${citation.doc}:${citation.line}`;
+      // OLD is the citation's name, so a path reads as normalised
+      // (`provider.ts`, not `./provider.ts:42`); the failure quotes the text.
+      const renamed = hint(citation);
+      const renamedNote = renamed
+        ? `; renamed ${citation.name} → ${renamed.to} (${renamed.sha})`
+        : "";
       stale.push(
         citation.kind === "path"
-          ? `${where} cites \`${citation.text}\`, which no tracked file matches`
-          : `${where} cites \`${citation.name}\`, which no source, test or config file names outside a comment`,
+          ? `${where} cites \`${citation.text}\`, which no tracked file matches${renamedNote}`
+          : `${where} cites \`${citation.name}\`, which no source, test or config file names outside a comment${renamedNote}`,
       );
     }
   }
