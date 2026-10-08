@@ -15,6 +15,9 @@ import {
 } from "../../apps/web/src/lib/how-it-works/architecture";
 import {
   GRAPH_EDGE_ATTRIBUTE,
+  GRAPH_EMPHASIS,
+  GRAPH_EMPHASIS_ATTRIBUTE,
+  GRAPH_GLIDE_MS,
   GRAPH_LANE_ATTRIBUTE,
   GRAPH_NODE_ATTRIBUTE,
   GRAPH_NOTE_ATTRIBUTE,
@@ -31,13 +34,14 @@ import {
   LIFECYCLE_STEPS,
   NO_TICKET_YET,
   lifecycleStep,
+  type LifecycleStepId,
 } from "../../apps/web/src/lib/how-it-works/lifecycle";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**
- * `docs/plans/how-it-works.md`, slices 1 and 2 (#455, #456): the nav item, the
- * Architecture view's runtime boxes on a zoomable canvas, the Ticket lifecycle
- * in its swimlanes, and the panel. Every test runs against an empty ticket
+ * `docs/plans/how-it-works.md`, slices 1 to 3 (#455, #456, #457): the nav
+ * item, the Architecture view's runtime boxes on a zoomable canvas, the Ticket
+ * lifecycle in its swimlanes, walking it step by step, and the panel. Every test runs against an empty ticket
  * table, because the page reads no ticket data (R12).
  */
 
@@ -87,6 +91,47 @@ async function stepPositions(page: Page) {
   }
   return positions;
 }
+
+/**
+ * Every step's box in the drawing's own coordinates, which no view transform
+ * reaches: what has to hold still while the view moves (R9).
+ */
+function stepGeometry(page: Page) {
+  return page
+    .locator(`[${GRAPH_NODE_ATTRIBUTE}]`)
+    .evaluateAll((nodes, attribute) => {
+      return nodes.map((node) => {
+        const { x, y, width, height } = (node as SVGGraphicsElement).getBBox();
+        return [node.getAttribute(attribute), x, y, width, height];
+      });
+    }, GRAPH_NODE_ATTRIBUTE);
+}
+
+/** The step the walk is on is the one pressed and emphasised, and no other. */
+async function expectCurrent(page: Page, id: string) {
+  for (const step of LIFECYCLE_STEPS) {
+    const box = nodeBox(page, step.id);
+    const current = step.id === id;
+    await expect(box, step.id).toHaveAttribute("aria-pressed", String(current));
+    await expect(box, step.id).toHaveAttribute(
+      GRAPH_EMPHASIS_ATTRIBUTE,
+      current ? GRAPH_EMPHASIS.current : GRAPH_EMPHASIS.dimmed,
+    );
+  }
+  const list = page.getByRole("list", {
+    name: HOW_IT_WORKS_LABEL.lifecycleList,
+  });
+  await expect(list.locator('> li[aria-current="step"]')).toHaveText(
+    new RegExp(`^${lifecycleStep(id as LifecycleStepId).title} `),
+  );
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+const isInside = (inner: Box, outer: Box) =>
+  inner.x >= outer.x &&
+  inner.y >= outer.y &&
+  inner.x + inner.width <= outer.x + outer.width &&
+  inner.y + inner.height <= outer.y + outer.height;
 
 test.describe("How it works", () => {
   test.beforeEach(async () => {
@@ -287,6 +332,95 @@ test.describe("How it works", () => {
       name: HOW_IT_WORKS_LABEL.details,
     });
     await expect(panel).toContainText(claim.explanation);
+  });
+
+  test("Next, Previous, the arrow keys and a click walk the lifecycle in the data's order", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.agent);
+    await page.goto(ROUTE.howItWorks.path);
+    await openLifecycle(page);
+    const before = await stepGeometry(page);
+
+    const next = page.getByRole("button", {
+      name: HOW_IT_WORKS_LABEL.nextStep,
+    });
+    const previous = page.getByRole("button", {
+      name: HOW_IT_WORKS_LABEL.previousStep,
+    });
+    const panel = page.getByRole("region", {
+      name: HOW_IT_WORKS_LABEL.details,
+    });
+
+    await expect(previous).toBeDisabled();
+    await next.click();
+    await expectCurrent(page, LIFECYCLE_STEPS[0]!.id);
+    await expect(previous).toBeDisabled();
+
+    // Next N times is the data's Nth step.
+    const n = 4;
+    for (let pressed = 1; pressed < n; pressed++) await next.click();
+    const nth = LIFECYCLE_STEPS[n - 1]!;
+    await expectCurrent(page, nth.id);
+    await expect(panel).toContainText(nth.title);
+    await expect(previous).toBeEnabled();
+
+    // ArrowLeft, with the canvas focused, goes back one.
+    await page
+      .getByRole("group", { name: HOW_IT_WORKS_LABEL.lifecycleCanvas })
+      .focus();
+    await page.keyboard.press("ArrowLeft");
+    const back = LIFECYCLE_STEPS[n - 2]!;
+    await expectCurrent(page, back.id);
+    await expect(panel).toContainText(back.title);
+
+    // Clicking a step jumps there; Close is the last, so Next stops.
+    const close = lifecycleStep(LIFECYCLE_STEP.agentCloses);
+    await page.getByRole("button", { name: close.title, exact: true }).click();
+    await expectCurrent(page, close.id);
+    await expect(panel).toContainText(close.title);
+    await expect(next).toBeDisabled();
+
+    // Only the view moved: every step is where the layout put it (R9).
+    expect(await stepGeometry(page)).toEqual(before);
+  });
+
+  test("under reduced motion, stepping to a step out of frame jumps the view there", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.agent);
+    await page.goto(ROUTE.howItWorks.path);
+    await openLifecycle(page);
+    const before = await stepGeometry(page);
+
+    // Zoom in about the right-hand side, so the first step leaves the frame.
+    const canvas = page.getByRole("group", {
+      name: HOW_IT_WORKS_LABEL.lifecycleCanvas,
+    });
+    const area = (await canvas.boundingBox())!;
+    const viewport = canvas.locator(`[${GRAPH_VIEWPORT_ATTRIBUTE}]`);
+    await page.mouse.move(area.x + area.width * 0.9, area.y + area.height / 2);
+    await page.mouse.wheel(0, -600);
+    const first = nodeBox(page, LIFECYCLE_STEPS[0]!.id);
+    // Polled: one wheel can reach the page as several events.
+    await expect
+      .poll(async () => isInside((await first.boundingBox())!, area))
+      .toBe(false);
+    const zoomed = await viewport.getAttribute("transform");
+
+    await page
+      .getByRole("button", { name: HOW_IT_WORKS_LABEL.nextStep })
+      .click();
+
+    // A jump has landed by the time the press is handled; a glide would still
+    // be on its way, and would end somewhere else.
+    const landed = await viewport.getAttribute("transform");
+    expect(landed).not.toBe(zoomed);
+    await page.waitForTimeout(GRAPH_GLIDE_MS + 200);
+    expect(await viewport.getAttribute("transform")).toBe(landed);
+    expect(isInside((await first.boundingBox())!, area)).toBe(true);
+
+    expect(await stepGeometry(page)).toEqual(before);
   });
 
   test("every lifecycle step keeps its place across tab switches and reloads", async ({

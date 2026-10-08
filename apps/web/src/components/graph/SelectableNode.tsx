@@ -1,7 +1,15 @@
 import type { KeyboardEvent, ReactNode } from "react";
-import { GRAPH_NODE_ATTRIBUTE } from "@/lib/how-it-works/dom";
+import {
+  GRAPH_EMPHASIS,
+  GRAPH_EMPHASIS_ATTRIBUTE,
+  GRAPH_NODE_ATTRIBUTE,
+  type GraphEmphasis,
+} from "@/lib/how-it-works/dom";
 import type { Rect } from "@/lib/how-it-works/layout";
 import { cn } from "@/lib/utils";
+
+/** How far a dimmed part of a drawing fades back. */
+export const DIMMED = "opacity-35";
 
 /**
  * A box on a How it works drawing that can be selected: a button by role,
@@ -15,6 +23,7 @@ export function SelectableNode({
   rect,
   selected,
   onSelect,
+  emphasis,
   children,
 }: {
   /** Written to `GRAPH_NODE_ATTRIBUTE`, for the E2E. */
@@ -24,6 +33,8 @@ export function SelectableNode({
   rect: Rect;
   selected: boolean;
   onSelect: () => void;
+  /** Written to `GRAPH_EMPHASIS_ATTRIBUTE`; a dimmed box fades back. */
+  emphasis?: GraphEmphasis;
   children: ReactNode;
 }) {
   const onKeyDown = (event: KeyboardEvent) => {
@@ -39,10 +50,16 @@ export function SelectableNode({
       tabIndex={0}
       aria-label={label}
       aria-pressed={selected}
-      {...{ [GRAPH_NODE_ATTRIBUTE]: id }}
+      {...{
+        [GRAPH_NODE_ATTRIBUTE]: id,
+        [GRAPH_EMPHASIS_ATTRIBUTE]: emphasis,
+      }}
       onClick={onSelect}
       onKeyDown={onKeyDown}
-      className="group cursor-pointer outline-none"
+      className={cn(
+        "group cursor-pointer outline-none motion-safe:transition-opacity",
+        emphasis === GRAPH_EMPHASIS.dimmed && DIMMED,
+      )}
     >
       <rect
         x={rect.x}

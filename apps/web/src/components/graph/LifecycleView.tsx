@@ -1,23 +1,30 @@
-import { useId, useState } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { TicketStatus } from "@ticket/shared";
 import { StatusBadge } from "@/components/TicketBadges";
 import { statusChartConfig } from "@/components/dashboard/chart-tokens";
+import { Button } from "@/components/ui/button";
 import {
   GRAPH_EDGE_ATTRIBUTE,
+  GRAPH_EMPHASIS,
+  GRAPH_EMPHASIS_ATTRIBUTE,
   GRAPH_LANE_ATTRIBUTE,
   GRAPH_NOTE_ATTRIBUTE,
   GRAPH_STATUS_STRIP_ATTRIBUTE,
   GRAPH_STATUS_TAG_ATTRIBUTE,
   HOW_IT_WORKS_LABEL,
+  type GraphEmphasis,
 } from "@/lib/how-it-works/dom";
 import {
   LIFECYCLE,
   LIFECYCLE_EDGES,
   LIFECYCLE_STEPS,
+  edgesInto,
   lifecycleLane,
   lifecycleStep,
   notesFor,
   statusLabel,
+  stepBeside,
   type LifecycleStep,
   type LifecycleStepId,
 } from "@/lib/how-it-works/lifecycle";
@@ -34,13 +41,18 @@ import { cn } from "@/lib/utils";
 import { ArrowMarker } from "./ArrowMarker";
 import { DetailsPanel } from "./DetailsPanel";
 import { GraphCanvas } from "./GraphCanvas";
-import { SelectableNode } from "./SelectableNode";
+import { DIMMED, SelectableNode } from "./SelectableNode";
 
 /**
  * The Ticket lifecycle tab: the steps from the email that opens a ticket to
  * the agent who closes it, in Customer, Assistant and Agent swimlanes, each
  * tagged with the Status the ticket has there. A panel explains the selected
  * step, and a visually hidden ordered list carries the same content (R11).
+ *
+ * Next and Previous, or the arrow keys on the canvas, walk the steps in the
+ * data's order (R7). The current step and the edges into it stand out and the
+ * rest fades back; the canvas brings the step into frame, and nothing on the
+ * drawing moves but the view (R9).
  *
  * Everything drawn comes from `@/lib/how-it-works/lifecycle`, and every
  * coordinate from `layOutLifecycle` over it.
@@ -64,58 +76,143 @@ function statusTint(status: TicketStatus) {
   return { fill: color, fillOpacity: 0.18, stroke: color };
 }
 
+/**
+ * Where something stands while a step is current: emphasised if `isCurrent`,
+ * dimmed if not. Nothing is either while no step is.
+ */
+function emphasisOf(
+  currentId: LifecycleStepId | null,
+  isCurrent: boolean,
+): GraphEmphasis | undefined {
+  if (currentId === null) return undefined;
+  return isCurrent ? GRAPH_EMPHASIS.current : GRAPH_EMPHASIS.dimmed;
+}
+
 export function LifecycleView() {
+  // The current step: the one selected, by a click or by walking to it.
   const [selectedId, setSelectedId] = useState<LifecycleStepId | null>(null);
   const selected = selectedId ? lifecycleStep(selectedId) : null;
-  const arrowId = `arrow-${useId().replace(/:/g, "")}`;
+  const previousId = stepBeside(selectedId, -1);
+  const nextId = stepBeside(selectedId, 1);
+  const into = new Set(
+    selectedId ? edgesInto(selectedId).map((edge) => edge.id) : [],
+  );
+  // One object per step, from the constant layout, so the canvas sees a new
+  // focus only when the step changes.
+  const focus =
+    LAYOUT.steps.find((placed) => placed.step.id === selectedId) ?? null;
+  const id = useId().replace(/:/g, "");
+  const arrowId = `arrow-${id}`;
+  const currentArrowId = `arrow-current-${id}`;
+
+  const onCanvasKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
+    const target =
+      event.key === "ArrowRight"
+        ? nextId
+        : event.key === "ArrowLeft"
+          ? previousId
+          : undefined;
+    if (target === undefined) return;
+    // The arrows walk the steps here, and do not scroll the page.
+    event.preventDefault();
+    if (target) setSelectedId(target);
+  };
 
   return (
     <div className="flex flex-col gap-4 2xl:flex-row">
-      <div className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background">
-        <GraphCanvas
-          width={LAYOUT.width}
-          height={LAYOUT.height}
-          label={HOW_IT_WORKS_LABEL.lifecycleCanvas}
-        >
-          <ArrowMarker id={arrowId} />
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!previousId}
+            onClick={() => previousId && setSelectedId(previousId)}
+          >
+            <ChevronLeft aria-hidden />
+            {HOW_IT_WORKS_LABEL.previousStep}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!nextId}
+            onClick={() => nextId && setSelectedId(nextId)}
+          >
+            {HOW_IT_WORKS_LABEL.nextStep}
+            <ChevronRight aria-hidden />
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            Or use the left and right arrow keys on the drawing.
+          </p>
+        </div>
 
-          <StatusStrip chips={LAYOUT.strip} />
-          {LAYOUT.lanes.map((placed) => (
-            <Lane key={placed.lane.id} placed={placed} />
-          ))}
-          {LAYOUT.notes.map((placed) => (
-            <Note key={placed.note.id} placed={placed} />
-          ))}
-          {LAYOUT.edges.map(({ edge, path }) => (
-            <path
-              key={edge.id}
-              {...{ [GRAPH_EDGE_ATTRIBUTE]: edge.id }}
-              d={path}
-              fill="none"
-              markerEnd={`url(#${arrowId})`}
-              className="pointer-events-none stroke-muted-foreground"
-              strokeWidth={1.25}
-            />
-          ))}
-          {LAYOUT.steps.map((placed) => (
-            <Step
-              key={placed.step.id}
-              placed={placed}
-              selected={placed.step.id === selectedId}
-              onSelect={() => setSelectedId(placed.step.id)}
-            />
-          ))}
-        </GraphCanvas>
+        <div className="overflow-hidden rounded-lg border bg-background">
+          <GraphCanvas
+            width={LAYOUT.width}
+            height={LAYOUT.height}
+            label={HOW_IT_WORKS_LABEL.lifecycleCanvas}
+            focus={focus}
+            onKeyDown={onCanvasKeyDown}
+          >
+            <ArrowMarker id={arrowId} />
+            <ArrowMarker id={currentArrowId} className="fill-ring" />
+
+            <StatusStrip chips={LAYOUT.strip} />
+            {LAYOUT.lanes.map((placed) => (
+              <Lane key={placed.lane.id} placed={placed} />
+            ))}
+            {LAYOUT.notes.map((placed) => (
+              <Note
+                key={placed.note.id}
+                placed={placed}
+                emphasis={emphasisOf(
+                  selectedId,
+                  placed.note.step === selectedId,
+                )}
+              />
+            ))}
+            {LAYOUT.edges.map(({ edge, path }) => {
+              const emphasis = emphasisOf(selectedId, into.has(edge.id));
+              const current = emphasis === GRAPH_EMPHASIS.current;
+              return (
+                <path
+                  key={edge.id}
+                  {...{
+                    [GRAPH_EDGE_ATTRIBUTE]: edge.id,
+                    [GRAPH_EMPHASIS_ATTRIBUTE]: emphasis,
+                  }}
+                  d={path}
+                  fill="none"
+                  markerEnd={`url(#${current ? currentArrowId : arrowId})`}
+                  className={cn(
+                    "pointer-events-none motion-safe:transition-opacity",
+                    current ? "stroke-ring" : "stroke-muted-foreground",
+                    emphasis === GRAPH_EMPHASIS.dimmed && DIMMED,
+                  )}
+                  strokeWidth={current ? 2 : 1.25}
+                />
+              );
+            })}
+            {LAYOUT.steps.map((placed) => (
+              <Step
+                key={placed.step.id}
+                placed={placed}
+                selected={placed.step.id === selectedId}
+                emphasis={emphasisOf(selectedId, placed.step.id === selectedId)}
+                onSelect={() => setSelectedId(placed.step.id)}
+              />
+            ))}
+          </GraphCanvas>
+        </div>
       </div>
 
       <DetailsPanel
         title={selected?.title ?? null}
-        hint="Select a step to read what happens there. Scroll to zoom, and drag to move around."
+        hint="Select a step to read what happens there, or walk through them with Next. Scroll to zoom, and drag to move around."
       >
         {selected && <StepDetails step={selected} />}
       </DetailsPanel>
 
-      <LifecycleList />
+      <LifecycleList currentId={selectedId} />
     </div>
   );
 }
@@ -185,10 +282,25 @@ function Lane({ placed }: { placed: PlacedLane }) {
   );
 }
 
-function Note({ placed }: { placed: PlacedNote }) {
+function Note({
+  placed,
+  emphasis,
+}: {
+  placed: PlacedNote;
+  emphasis: GraphEmphasis | undefined;
+}) {
   const { note, lines, x, y, width, height, connectorX, connectorY1 } = placed;
   return (
-    <g {...{ [GRAPH_NOTE_ATTRIBUTE]: note.id }} className="pointer-events-none">
+    <g
+      {...{
+        [GRAPH_NOTE_ATTRIBUTE]: note.id,
+        [GRAPH_EMPHASIS_ATTRIBUTE]: emphasis,
+      }}
+      className={cn(
+        "pointer-events-none motion-safe:transition-opacity",
+        emphasis === GRAPH_EMPHASIS.dimmed && DIMMED,
+      )}
+    >
       <line
         x1={connectorX}
         y1={connectorY1}
@@ -225,10 +337,12 @@ function Note({ placed }: { placed: PlacedNote }) {
 function Step({
   placed,
   selected,
+  emphasis,
   onSelect,
 }: {
   placed: PlacedStep;
   selected: boolean;
+  emphasis: GraphEmphasis | undefined;
   onSelect: () => void;
 }) {
   const { step, titleLines, x, y, width, height } = placed;
@@ -242,6 +356,7 @@ function Step({
       label={step.title}
       rect={placed}
       selected={selected}
+      emphasis={emphasis}
       onSelect={onSelect}
     >
       <text className="fill-foreground text-[12px] font-medium">
@@ -336,15 +451,19 @@ function StepDetails({ step }: { step: LifecycleStep }) {
 /**
  * The lifecycle as a screen reader gets it: one item per step, in the data's
  * order, carrying the panel's words, the notes and the steps that can follow.
+ * The current step carries `aria-current`, so the walk is heard here too.
  */
-function LifecycleList() {
+function LifecycleList({ currentId }: { currentId: LifecycleStepId | null }) {
   return (
     <ol aria-label={HOW_IT_WORKS_LABEL.lifecycleList} className="sr-only">
       {LIFECYCLE_STEPS.map((step) => {
         const next = LIFECYCLE_EDGES.filter((edge) => edge.from === step.id);
         const notes = notesFor(step.id);
         return (
-          <li key={step.id}>
+          <li
+            key={step.id}
+            aria-current={step.id === currentId ? "step" : undefined}
+          >
             {step.title} ({lifecycleLane(step.lane).title},{" "}
             {statusLabel(step.status)}): {step.explanation}
             {notes.map((note) => (

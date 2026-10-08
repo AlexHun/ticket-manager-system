@@ -1,6 +1,6 @@
 /**
  * The names How it works puts in the DOM for a test to find: accessible names
- * and the data attributes on the drawing.
+ * and the data attributes on the drawing, plus the one timing a test waits on.
  *
  * Import-free for the reason `./architecture` is: the E2E cannot import a
  * `.tsx` module, so a name it queries by lives here, once, and both the page
@@ -15,7 +15,15 @@ export const HOW_IT_WORKS_LABEL = {
   lifecycleCanvas: "Ticket lifecycle drawing",
   lifecycleList: "Ticket lifecycle, step by step",
   details: "Details",
+  previousStep: "Previous step",
+  nextStep: "Next step",
 } as const;
+
+/**
+ * How long the view takes to glide to a step, in milliseconds. Here rather
+ * than beside the canvas so the E2E can wait one out.
+ */
+export const GRAPH_GLIDE_MS = 500;
 
 /** On the `<g>` the zoom transform is written to. */
 export const GRAPH_VIEWPORT_ATTRIBUTE = "data-graph-viewport";
@@ -31,3 +39,16 @@ export const GRAPH_NOTE_ATTRIBUTE = "data-note-id";
 export const GRAPH_STATUS_STRIP_ATTRIBUTE = "data-status-strip";
 /** On a step's Status tag, holding the Status it shows (empty for none). */
 export const GRAPH_STATUS_TAG_ATTRIBUTE = "data-status-tag";
+/**
+ * While the lifecycle is being walked, on each step, connection and note:
+ * `GRAPH_EMPHASIS.current` for the current step, the edges into it and the
+ * notes on it, `GRAPH_EMPHASIS.dimmed` for the rest. Absent while no step is
+ * current.
+ */
+export const GRAPH_EMPHASIS_ATTRIBUTE = "data-emphasis";
+export const GRAPH_EMPHASIS = {
+  current: "current",
+  dimmed: "dimmed",
+} as const;
+export type GraphEmphasis =
+  (typeof GRAPH_EMPHASIS)[keyof typeof GRAPH_EMPHASIS];
