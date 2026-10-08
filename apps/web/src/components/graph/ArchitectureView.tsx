@@ -21,6 +21,7 @@ import {
   type Rect,
 } from "@/lib/how-it-works/layout";
 import { cn } from "@/lib/utils";
+import { DetailsPanel } from "./DetailsPanel";
 import { GraphCanvas } from "./GraphCanvas";
 
 /**
@@ -96,27 +97,14 @@ export function ArchitectureView() {
         </GraphCanvas>
       </div>
 
-      <section
-        aria-label={HOW_IT_WORKS_LABEL.details}
-        aria-live="polite"
-        className="shrink-0 rounded-lg border bg-card p-4 2xl:w-80"
+      <DetailsPanel
+        title={selected?.title ?? null}
+        hint="Select a box to read what it does. Scroll to zoom, and drag to move around."
       >
-        {selected ? (
-          <>
-            <h2 className="font-heading text-base font-semibold">
-              {selected.title}
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              {selected.explanation}
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Select a box to read what it does. Scroll to zoom, and drag to move
-            around.
-          </p>
-        )}
-      </section>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          {selected?.explanation}
+        </p>
+      </DetailsPanel>
 
       <ArchitectureList />
     </div>
