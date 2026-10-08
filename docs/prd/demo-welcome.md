@@ -24,13 +24,15 @@ Admins and agents are unaffected: they never see the welcome.
 
 ## Success metrics
 
-| Metric                                                            | Today   | Target                |
-| ----------------------------------------------------------------- | ------- | --------------------- |
-| Share of demo sessions that follow at least one suggested step    | n/a     | TBD — needs the owner |
-| _Guardrail:_ share of demo sessions that open at least one ticket | unknown | Does not fall         |
+| Metric                                                            | Today   | Target               |
+| ----------------------------------------------------------------- | ------- | -------------------- |
+| Share of demo sessions that follow at least one suggested step    | n/a     | None — observed only |
+| _Guardrail:_ share of demo sessions that open at least one ticket | unknown | Does not fall        |
 
-The demo usage card already counts the guardrail (demo-session PRD, R14). A
-welcome that sends visitors anywhere but into a ticket would show up there.
+The primary figure has no target on purpose: it is there for the owner to see
+where visitors go, not to pass or fail the page. The demo usage card already
+counts the guardrail (demo-session PRD, R14). A welcome that sends visitors
+anywhere but into a ticket would show up there.
 
 ## Scope
 
@@ -40,7 +42,7 @@ welcome that sends visitors anywhere but into a ticket would show up there.
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | R1  | After "Use demo session", a new demo session lands on a welcome page instead of the Dashboard.                                                                                                                                                                 | Must     |
 | R2  | The welcome page says in plain words what the product does: support email arrives, the assistant classifies it, and either replies from the knowledge base or hands the ticket off to an agent. It uses the terms in `CONTEXT.md`.                             | Must     |
-| R3  | The welcome page introduces the owner: name, role, a short bio and links to their profiles and contact.                                                                                                                                                        | Must     |
+| R3  | The welcome page introduces the owner: name, role, a short bio and links to LinkedIn, GitHub, a CV and email.                                                                                                                                                  | Must     |
 | R4  | The welcome page offers 3 to 5 suggested steps, each one sentence long and each linking to a real screen of the demo (for example a ticket the assistant resolved, the pipeline simulator, a past eval run). Every link opens a screen a demo session can see. | Must     |
 | R5  | The welcome page names the stack in one line and links to the source repository.                                                                                                                                                                               | Must     |
 | R6  | A "Start exploring" control leaves the welcome page for the Dashboard.                                                                                                                                                                                         | Must     |
@@ -89,15 +91,17 @@ welcome that sends visitors anywhere but into a ticket would show up there.
 
 ## Open questions
 
-- [ ] Target for the suggested-step share. Needs the owner.
-- [ ] **Assumed:** the agent drafts the bio and the owner edits it before
-      merge. Confirm with the owner.
-- [ ] Which profile and contact links go in R3 (LinkedIn, GitHub, CV, email)?
-      _Blocks R3_, needs the owner.
-- [ ] Is the source repository public, so R5's link works for a stranger?
-      _Blocks R5_, needs the owner.
-- [ ] Which 3–5 suggested steps? The agent proposes them from the seed during
-      planning, and the owner picks. Blocks R4.
+- [ ] The owner's CV link and contact address for R3. Needs the owner before
+      the slice that builds R3.
+- [x] **Decided:** the suggested-step share has no target; the owner watches it
+      to see where visitors go.
+- [x] **Decided:** the agent drafts the bio and the owner edits it before
+      merge.
+- [x] **Decided:** R3 links to LinkedIn, GitHub, a CV and email.
+- [x] **Decided:** the source repository is public, so R5's link works for a
+      stranger.
+- [x] **Decided:** the agent proposes the 3–5 suggested steps from the seed
+      during planning, and the owner picks (R4).
 - [x] **Decided:** a full page, not a dialog or a Dashboard panel (R1).
 - [x] **Decided:** demo sessions only (R10).
 - [x] **Decided:** the Dashboard Tutorial waits until the visitor reaches the
