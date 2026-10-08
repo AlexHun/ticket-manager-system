@@ -1,5 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { USER_ROLE } from "@ticket/shared";
+import { renderRoutes } from "@/test/render";
+import { ROUTE } from "@/lib/routes";
 import {
   ARCHITECTURE_EDGES,
   ARCHITECTURE_NODE,
@@ -8,7 +11,10 @@ import {
   SHARED_PACKAGES_NOTE,
   architectureNode,
 } from "@/lib/how-it-works/architecture";
-import { HOW_IT_WORKS_LABEL } from "@/lib/how-it-works/dom";
+import {
+  GRAPH_SCREEN_ATTRIBUTE,
+  HOW_IT_WORKS_LABEL,
+} from "@/lib/how-it-works/dom";
 import {
   DRILLABLE_BOXES,
   SUBSYSTEM,
@@ -23,9 +29,20 @@ const ARCHITECTURE_LIST_LABEL = HOW_IT_WORKS_LABEL.architectureList;
 const DETAILS_LABEL = HOW_IT_WORKS_LABEL.details;
 const SUBSYSTEM_CANVAS_LABEL = HOW_IT_WORKS_LABEL.subsystemCanvas;
 
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({
+    data: { user: { role: USER_ROLE.admin, isAnonymous: false } },
+    isPending: false,
+  }),
+}));
+
+/** The panel's screen link is a router `<Link>`, so the view mounts as a route. */
+const mount = () =>
+  renderRoutes([{ path: "/", element: <ArchitectureView /> }]);
+
 describe("ArchitectureView's hidden list", () => {
   function items() {
-    render(<ArchitectureView />);
+    mount();
     const list = screen.getByRole("list", { name: ARCHITECTURE_LIST_LABEL });
     return within(list)
       .getAllByRole("listitem")
@@ -41,6 +58,9 @@ describe("ArchitectureView's hidden list", () => {
     ARCHITECTURE_NODES.forEach((node, index) => {
       expect(rows[index]).toHaveTextContent(node.title);
       expect(rows[index]).toHaveTextContent(node.explanation);
+      expect(rows[index]).toHaveTextContent(
+        `${HOW_IT_WORKS_LABEL.inTheCode}: ${node.code.join(", ")}`,
+      );
     });
     expect(rows.at(-2)).toHaveTextContent(RAILWAY_FRAME.title);
     expect(rows.at(-2)).toHaveTextContent(RAILWAY_FRAME.explanation);
@@ -59,7 +79,7 @@ describe("ArchitectureView's hidden list", () => {
   });
 
   it("is visually hidden", () => {
-    render(<ArchitectureView />);
+    mount();
     expect(
       screen.getByRole("list", { name: ARCHITECTURE_LIST_LABEL }),
     ).toHaveClass("sr-only");
@@ -68,7 +88,7 @@ describe("ArchitectureView's hidden list", () => {
 
 describe("ArchitectureView's panel", () => {
   it("shows the explanation of the box that was selected", () => {
-    render(<ArchitectureView />);
+    mount();
     const panel = screen.getByRole("region", { name: DETAILS_LABEL });
     const postgres = architectureNode(ARCHITECTURE_NODE.postgres);
     expect(panel).not.toHaveTextContent(postgres.explanation);
@@ -87,13 +107,24 @@ describe("ArchitectureView's panel", () => {
       screen.queryByRole("group", { name: SUBSYSTEM_CANVAS_LABEL }),
     ).not.toBeInTheDocument();
   });
+
+  it("lists the selected box's repo paths under In the code", () => {
+    mount();
+    const postgres = architectureNode(ARCHITECTURE_NODE.postgres);
+    fireEvent.click(screen.getByRole("button", { name: postgres.title }));
+    const panel = screen.getByRole("region", { name: DETAILS_LABEL });
+    expect(panel).toHaveTextContent(HOW_IT_WORKS_LABEL.inTheCode);
+    for (const path of postgres.code) {
+      expect(within(panel).getByText(path)).toBeInTheDocument();
+    }
+  });
 });
 
 describe("ArchitectureView's subsystems", () => {
   const api = architectureNode(ARCHITECTURE_NODE.api);
 
   function openApi() {
-    render(<ArchitectureView />);
+    mount();
     fireEvent.click(screen.getByRole("button", { name: api.title }));
     return screen.getByRole("group", { name: SUBSYSTEM_CANVAS_LABEL });
   }
@@ -134,6 +165,25 @@ describe("ArchitectureView's subsystems", () => {
     for (const link of ingestion.links) {
       expect(panel).toHaveTextContent(linkPhrase(link));
     }
+    for (const path of ingestion.code) {
+      expect(within(panel).getByText(path)).toBeInTheDocument();
+    }
+  });
+
+  it("links a subsystem to the app screen it is seen on", () => {
+    const drawing = openApi();
+    const knowledge = subsystem(SUBSYSTEM.knowledgeBase);
+    fireEvent.click(
+      within(drawing).getByRole("button", { name: knowledge.title }),
+    );
+    const panel = screen.getByRole("region", { name: DETAILS_LABEL });
+    const line = panel.querySelector<HTMLElement>(
+      `[${GRAPH_SCREEN_ATTRIBUTE}]`,
+    )!;
+    expect(within(line).getByRole("link")).toHaveAttribute(
+      "href",
+      ROUTE.knowledge.path,
+    );
   });
 
   it.each([
@@ -165,7 +215,7 @@ describe("ArchitectureView's subsystems", () => {
   );
 
   it("Enter on the job workers opens their subsystems", () => {
-    render(<ArchitectureView />);
+    mount();
     const workers = screen.getByRole("button", {
       name: architectureNode(ARCHITECTURE_NODE.jobWorkers).title,
     });
@@ -180,7 +230,7 @@ describe("ArchitectureView's subsystems", () => {
   });
 
   it("are in the hidden list under the box they belong to", () => {
-    render(<ArchitectureView />);
+    mount();
     const list = screen.getByRole("list", { name: ARCHITECTURE_LIST_LABEL });
     const rows = within(list)
       .getAllByRole("listitem")

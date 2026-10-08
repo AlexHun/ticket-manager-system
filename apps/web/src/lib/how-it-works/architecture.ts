@@ -1,3 +1,5 @@
+import type { InTheCode } from "./code";
+
 /**
  * The Architecture view of How it works, as data: the runtime boxes, the
  * connections between them, the Railway frame and the shared-packages note.
@@ -7,9 +9,9 @@
  * cell here, and `layOutArchitecture` in `./layout` turns cells into
  * coordinates with nothing simulated, so a box is where it was on every load.
  *
- * Deliberately import-free, as `@/lib/routes` is: `tests/e2e/how-it-works.spec.ts`
- * imports this module and asserts against the same titles and labels the page
- * draws, rather than retyping them.
+ * Deliberately import-free, as `@/lib/routes` is, apart from a type from
+ * `./code`: `tests/e2e/how-it-works.spec.ts` imports this module and asserts
+ * against the same titles and labels the page draws, rather than retyping them.
  */
 
 export const ARCHITECTURE_NODE = {
@@ -27,7 +29,11 @@ export const ARCHITECTURE_NODE = {
 export type ArchitectureNodeId =
   (typeof ARCHITECTURE_NODE)[keyof typeof ARCHITECTURE_NODE];
 
-export interface ArchitectureNode {
+/**
+ * A runtime box names its code but no screen: each box is many screens or none,
+ * and its subsystems carry the screen they are seen on.
+ */
+export interface ArchitectureNode extends Pick<InTheCode, "code"> {
   readonly id: ArchitectureNodeId;
   readonly title: string;
   /** Plain language, in `CONTEXT.md`'s words. Shown in the side panel. */
@@ -57,6 +63,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "Customer mail",
     explanation:
       "A customer writes to the support address from their own mail app. They never sign in and have no account; their email is what opens a ticket, and a reply to the desk's email joins that ticket's thread.",
+    code: [
+      "apps/api/src/routes/webhooks/inbound-email.ts",
+      "apps/api/src/outbound.ts",
+    ],
     column: 0,
     row: 1,
     rowSpan: 2,
@@ -66,6 +76,11 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "Inbound mail provider",
     explanation:
       "The outside service that receives mail sent to the support address and passes each email on to the API as a webhook, already parsed, with the headers that tie a reply to its thread.",
+    code: [
+      "apps/api/src/routes/webhooks/inbound-email.ts",
+      "apps/api/src/routes/webhooks/postmark.ts",
+      "packages/core/src/schemas/inbound-email.ts",
+    ],
     column: 1,
     row: 1,
   },
@@ -74,6 +89,11 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "API",
     explanation:
       "The server at the centre. Ingestion turns each arriving email into a new ticket or a message on an existing thread; it also serves the browser app, checks who is signed in, and pushes live updates when a ticket changes.",
+    code: [
+      "apps/api/src/index.ts",
+      "apps/api/src/routes",
+      "apps/api/src/middleware/auth.ts",
+    ],
     column: 2,
     row: 1,
     rowSpan: 2,
@@ -83,6 +103,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "Job workers",
     explanation:
       "Work the API hands off so that nobody waits for it: classification, the auto-reply, sending each email in the outbox, eval runs, and housekeeping. Each job is kept in Postgres until it is done, so a restart loses nothing and a job that meets a provider outage is tried again.",
+    code: ["apps/api/src/jobs/index.ts", "apps/api/src/jobs/boss.ts"],
     column: 2,
     row: 2,
     inside: ARCHITECTURE_NODE.api,
@@ -92,6 +113,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "Postgres",
     explanation:
       "The one database. It holds tickets, threads and messages, Activity, knowledge articles and their revisions, the outbox, accounts and sessions, and the queue of jobs waiting for a worker.",
+    code: ["apps/api/prisma/schema.prisma", "apps/api/src/db.ts"],
     column: 3,
     row: 1,
     rowSpan: 2,
@@ -101,6 +123,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "OpenAI",
     explanation:
       "The model behind every piece of machine-written work: classification, the auto-reply, the Polish and Summary an agent asks for, and eval runs. Without a key the desk still works, and every ticket simply stays in New for a person.",
+    code: ["apps/api/src/ai/provider.ts"],
     column: 2,
     row: 3,
   },
@@ -109,6 +132,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "Outbound mail provider",
     explanation:
       "The outside service that carries the desk's email to customers. Every email is in the outbox before it is sent, and with no provider configured an email is recorded as undeliverable rather than lost.",
+    code: ["apps/api/src/mail/transport.ts", "apps/api/src/jobs/send-email.ts"],
     column: 1,
     row: 2,
   },
@@ -117,6 +141,11 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "Browser app",
     explanation:
       "The screens agents and admins work in: the dashboard, the tickets and each thread, and the admin screens for users, knowledge, the outbox, the pipeline and evals. Every ticket it shows and every change it makes goes through the API.",
+    code: [
+      "apps/web/src/App.tsx",
+      "apps/web/src/lib/api.ts",
+      "apps/web/src/pages",
+    ],
     column: 2,
     row: 0,
   },
@@ -125,6 +154,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "Sentry",
     explanation:
       "Where errors go. Both the browser app and the API report what went wrong to it, so a failure is seen even when nobody was looking at the screen it happened on.",
+    code: ["apps/api/src/instrument.ts", "apps/web/src/lib/sentry.ts"],
     column: 3,
     row: 0,
   },

@@ -42,6 +42,7 @@ import { ArrowMarker } from "./ArrowMarker";
 import { DetailsPanel } from "./DetailsPanel";
 import { GraphCanvas } from "./GraphCanvas";
 import { emphasisClass, emphasisOf } from "./emphasis";
+import { CodeLine, InTheCodeDetails } from "./InTheCodeDetails";
 import { SelectableNode } from "./SelectableNode";
 
 /**
@@ -428,6 +429,7 @@ function StepDetails({ step }: { step: LifecycleStep }) {
           {note.text}
         </p>
       ))}
+      <InTheCodeDetails code={step.code} screen={step.screen} />
     </>
   );
 }
@@ -450,6 +452,7 @@ function LifecycleList({ currentId }: { currentId: LifecycleStepId | null }) {
           >
             {step.title} ({lifecycleLane(step.lane).title},{" "}
             {statusLabel(step.status)}): {step.explanation}
+            <CodeLine code={step.code} />
             {notes.map((note) => (
               <p key={note.id}>{note.text}</p>
             ))}

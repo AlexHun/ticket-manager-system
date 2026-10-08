@@ -34,6 +34,7 @@ import {
 import { ArrowMarker } from "./ArrowMarker";
 import { DetailsPanel } from "./DetailsPanel";
 import { GraphCanvas } from "./GraphCanvas";
+import { CodeLine, InTheCodeDetails } from "./InTheCodeDetails";
 import { SelectableNode } from "./SelectableNode";
 import { SubsystemDrawing } from "./SubsystemDrawing";
 
@@ -194,6 +195,9 @@ export function ArchitectureView() {
               <li key={phrase}>{phrase}</li>
             ))}
           </ul>
+        )}
+        {panelPart && (
+          <InTheCodeDetails code={panelPart.code} screen={panelPart.screen} />
         )}
       </DetailsPanel>
 
@@ -366,6 +370,7 @@ function ListEntry({ node }: { node: ArchitectureNode }) {
       {node.title}
       {node.inside ? ` (inside ${titleOf(node.inside)})` : ""}:{" "}
       {node.explanation}
+      <CodeLine code={node.code} />
       {outgoing.length > 0 && (
         <ul>
           {outgoing.map((edge) => (
@@ -382,6 +387,7 @@ function ListEntry({ node }: { node: ArchitectureNode }) {
             {subsystemsOf(node.id).map((subsystem) => (
               <li key={subsystem.id}>
                 {subsystem.title}: {subsystem.explanation}
+                <CodeLine code={subsystem.code} />
                 <ul>
                   {subsystem.links.map((link) => (
                     <li key={link.part}>{linkPhrase(link)}</li>

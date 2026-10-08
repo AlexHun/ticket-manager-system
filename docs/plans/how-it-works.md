@@ -143,9 +143,10 @@ PRD's top risk.
 
 **E2E:** extends the spec. An admin selects Classification and follows the
 link to `/pipeline`. An agent sees the same step without the link. The path
-check is `apps/web/src/lib/how-it-works/paths.test.ts`: every path in both data
-files exists from the repo root, and the test names the node and the path that
-fails.
+check is `apps/web/dev/how-it-works-paths.test.ts` (in `dev/` rather than beside
+the data, since it needs Node types that `tsconfig.app.json` does not carry):
+every path in the data files exists from the repo root, and the test names the
+node and the path that fails.
 
 ## Slice 6 — Small screens and zoom controls
 
