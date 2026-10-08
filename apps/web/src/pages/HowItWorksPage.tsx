@@ -1,7 +1,10 @@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ArchitectureView } from "@/components/graph/ArchitectureView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { HOW_IT_WORKS_LABEL } from "@/lib/how-it-works/dom";
+import {
+  HOW_IT_WORKS_LABEL,
+  LIFECYCLE_COMING_NEXT,
+} from "@/lib/how-it-works/dom";
 
 /**
  * How it works: what the system is built from, and (next) what happens to a
@@ -32,8 +35,7 @@ export function HowItWorksPage() {
         </TabsContent>
         <TabsContent value="lifecycle">
           <p className="text-sm text-muted-foreground">
-            The ticket lifecycle is coming next: every step from the email that
-            opens a ticket to the agent who closes it.
+            {LIFECYCLE_COMING_NEXT}
           </p>
         </TabsContent>
       </Tabs>

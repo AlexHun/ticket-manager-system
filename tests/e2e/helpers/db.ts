@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../../apps/api/src/generated/prisma/client";
-import { OUTBOUND_EMAIL_KIND } from "@ticket/shared";
+import { OUTBOUND_EMAIL_KIND, type NewFeatureKey } from "@ticket/shared";
 import { DATABASE_URL } from "./env";
 
 /** Prisma client pointed at the test DB. `log: []` keeps test output readable. */
@@ -101,7 +101,7 @@ export async function resetDashboardLayout(email: string): Promise<void> {
  */
 export async function resetNewFeatureSeen(
   email: string,
-  featureKey: string,
+  featureKey: NewFeatureKey,
 ): Promise<void> {
   await testDb.newFeatureSeen.deleteMany({
     where: { featureKey, user: { email } },

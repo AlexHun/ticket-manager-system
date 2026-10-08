@@ -15,6 +15,10 @@ export const HOW_IT_WORKS_LABEL = {
   details: "Details",
 } as const;
 
+/** What the Ticket lifecycle tab says until it draws the lifecycle. */
+export const LIFECYCLE_COMING_NEXT =
+  "The ticket lifecycle is coming next: every step from the email that opens a ticket to the agent who closes it.";
+
 /** On the `<g>` the zoom transform is written to. */
 export const GRAPH_VIEWPORT_ATTRIBUTE = "data-graph-viewport";
 /** On each box, holding its node id. */

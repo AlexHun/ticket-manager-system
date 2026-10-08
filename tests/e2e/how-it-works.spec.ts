@@ -11,12 +11,14 @@ import {
   ARCHITECTURE_NODES,
   RAILWAY_FRAME,
   SHARED_PACKAGES_NOTE,
+  architectureNode,
 } from "../../apps/web/src/lib/how-it-works/architecture";
 import {
   GRAPH_EDGE_ATTRIBUTE,
   GRAPH_NODE_ATTRIBUTE,
   GRAPH_VIEWPORT_ATTRIBUTE,
   HOW_IT_WORKS_LABEL,
+  LIFECYCLE_COMING_NEXT,
 } from "../../apps/web/src/lib/how-it-works/dom";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
@@ -128,6 +130,12 @@ test.describe("How it works", () => {
       canvas.getByText(SHARED_PACKAGES_NOTE.title, { exact: true }),
     ).toBeVisible();
 
+    // The other tab, until slice 2 draws it.
+    await page
+      .getByRole("tab", { name: HOW_IT_WORKS_LABEL.lifecycleTab })
+      .click();
+    await expect(page.getByText(LIFECYCLE_COMING_NEXT)).toBeVisible();
+
     expect(ticketReads).toEqual([]);
   });
 
@@ -137,9 +145,7 @@ test.describe("How it works", () => {
     await signIn(page, USER_ROLE.agent);
     await page.goto(ROUTE.howItWorks.path);
 
-    const api = ARCHITECTURE_NODES.find(
-      (node) => node.id === ARCHITECTURE_NODE.api,
-    )!;
+    const api = architectureNode(ARCHITECTURE_NODE.api);
     const panel = page.getByRole("region", {
       name: HOW_IT_WORKS_LABEL.details,
     });

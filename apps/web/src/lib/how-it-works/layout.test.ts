@@ -1,18 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  ARCHITECTURE_EDGES,
+  ARCHITECTURE,
   ARCHITECTURE_NODES,
   RAILWAY_FRAME,
-  SHARED_PACKAGES_NOTE,
 } from "./architecture";
 import { layOutArchitecture, type Rect } from "./layout";
-
-const INPUT = {
-  nodes: ARCHITECTURE_NODES,
-  edges: ARCHITECTURE_EDGES,
-  frame: RAILWAY_FRAME,
-  note: SHARED_PACKAGES_NOTE,
-};
 
 function overlaps(a: Rect, b: Rect): boolean {
   return (
@@ -52,11 +44,11 @@ function strictlyInside(rect: Rect, x: number, y: number): boolean {
 }
 
 describe("layOutArchitecture", () => {
-  const layout = layOutArchitecture(INPUT);
+  const layout = layOutArchitecture(ARCHITECTURE);
   const topLevel = layout.nodes.filter((placed) => !placed.node.inside);
 
   it("is a pure function of the data", () => {
-    expect(layOutArchitecture(INPUT)).toEqual(layout);
+    expect(layOutArchitecture(ARCHITECTURE)).toEqual(layout);
   });
 
   it("places every node once", () => {

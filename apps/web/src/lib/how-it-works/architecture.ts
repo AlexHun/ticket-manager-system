@@ -56,7 +56,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.customerMail,
     title: "Customer mail",
     explanation:
-      "A customer writes to the support address from their own mail app. They never sign in and have no account; their email is what opens a ticket, and every later email on the same subject joins its thread.",
+      "A customer writes to the support address from their own mail app. They never sign in and have no account; their email is what opens a ticket, and a reply to the desk's email joins that ticket's thread.",
     column: 0,
     row: 1,
     rowSpan: 2,
@@ -82,7 +82,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.jobWorkers,
     title: "Job workers",
     explanation:
-      "Work the API hands off so that nobody waits for it: classification, the auto-reply, sending each email in the outbox, and housekeeping. Each job is kept in Postgres until it is done, so a restart or a provider outage loses nothing and the job is retried.",
+      "Work the API hands off so that nobody waits for it: classification, the auto-reply, sending each email in the outbox, eval runs, and housekeeping. Each job is kept in Postgres until it is done, so a restart loses nothing and a job that meets a provider outage is tried again.",
     column: 2,
     row: 2,
     inside: ARCHITECTURE_NODE.api,
@@ -100,7 +100,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.openai,
     title: "OpenAI",
     explanation:
-      "The model behind every piece of machine-written work: classification, the auto-reply, and the Polish and Summary an agent asks for. Without a key the desk still works, and every ticket simply stays in New for a person.",
+      "The model behind every piece of machine-written work: classification, the auto-reply, the Polish and Summary an agent asks for, and eval runs. Without a key the desk still works, and every ticket simply stays in New for a person.",
     column: 2,
     row: 3,
   },
@@ -116,7 +116,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.browserApp,
     title: "Browser app",
     explanation:
-      "The screens agents and admins work in: the dashboard, the tickets and each thread, and the admin screens for users, knowledge, the outbox, the pipeline and evals. It reads and writes through the API and nothing else.",
+      "The screens agents and admins work in: the dashboard, the tickets and each thread, and the admin screens for users, knowledge, the outbox, the pipeline and evals. Every ticket it shows and every change it makes goes through the API.",
     column: 2,
     row: 0,
   },
@@ -130,74 +130,35 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
   },
 ];
 
+/** A connection, its id derived from its two ends so the two cannot drift. */
+function connection(
+  from: ArchitectureNodeId,
+  to: ArchitectureNodeId,
+  label: string,
+): ArchitectureEdge {
+  return { id: `${from}-${to}`, from, to, label };
+}
+
+const N = ARCHITECTURE_NODE;
+
 export const ARCHITECTURE_EDGES: readonly ArchitectureEdge[] = [
-  {
-    id: "customerMail-inboundMail",
-    from: ARCHITECTURE_NODE.customerMail,
-    to: ARCHITECTURE_NODE.inboundMail,
-    label: "email",
-  },
-  {
-    id: "inboundMail-api",
-    from: ARCHITECTURE_NODE.inboundMail,
-    to: ARCHITECTURE_NODE.api,
-    label: "webhook",
-  },
-  {
-    id: "browserApp-api",
-    from: ARCHITECTURE_NODE.browserApp,
-    to: ARCHITECTURE_NODE.api,
-    label: "HTTP",
-  },
-  {
-    id: "api-browserApp",
-    from: ARCHITECTURE_NODE.api,
-    to: ARCHITECTURE_NODE.browserApp,
-    label: "live updates",
-  },
-  {
-    id: "api-postgres",
-    from: ARCHITECTURE_NODE.api,
-    to: ARCHITECTURE_NODE.postgres,
-    label: "SQL",
-  },
-  {
-    id: "jobWorkers-postgres",
-    from: ARCHITECTURE_NODE.jobWorkers,
-    to: ARCHITECTURE_NODE.postgres,
-    label: "job",
-  },
-  {
-    id: "api-openai",
-    from: ARCHITECTURE_NODE.api,
-    to: ARCHITECTURE_NODE.openai,
-    label: "model call",
-  },
-  {
-    id: "jobWorkers-outboundMail",
-    from: ARCHITECTURE_NODE.jobWorkers,
-    to: ARCHITECTURE_NODE.outboundMail,
-    label: "send",
-  },
-  {
-    id: "outboundMail-customerMail",
-    from: ARCHITECTURE_NODE.outboundMail,
-    to: ARCHITECTURE_NODE.customerMail,
-    label: "email",
-  },
-  {
-    id: "browserApp-sentry",
-    from: ARCHITECTURE_NODE.browserApp,
-    to: ARCHITECTURE_NODE.sentry,
-    label: "error reports",
-  },
-  {
-    id: "api-sentry",
-    from: ARCHITECTURE_NODE.api,
-    to: ARCHITECTURE_NODE.sentry,
-    label: "error reports",
-  },
+  connection(N.customerMail, N.inboundMail, "email"),
+  connection(N.inboundMail, N.api, "webhook"),
+  connection(N.browserApp, N.api, "HTTP"),
+  connection(N.api, N.browserApp, "live updates"),
+  connection(N.api, N.postgres, "SQL"),
+  connection(N.jobWorkers, N.postgres, "job"),
+  connection(N.api, N.openai, "model call"),
+  connection(N.jobWorkers, N.outboundMail, "send"),
+  connection(N.outboundMail, N.customerMail, "email"),
+  connection(N.browserApp, N.sentry, "error reports"),
+  connection(N.api, N.sentry, "error reports"),
 ];
+
+/** The node with this id. Every id names one, so this never misses. */
+export function architectureNode(id: ArchitectureNodeId): ArchitectureNode {
+  return ARCHITECTURE_NODES.find((node) => node.id === id)!;
+}
 
 /** The frame drawn around what Railway hosts. */
 export const RAILWAY_FRAME = {
@@ -214,7 +175,17 @@ export const RAILWAY_FRAME = {
 /** A note rather than a box: nothing calls it at runtime. */
 export const SHARED_PACKAGES_NOTE = {
   title: "Shared packages",
+  /** The line drawn under the title; `text` is the panel's and the list's. */
+  caption: "both apps build on them",
   text: "Both the browser app and the API build on the same types, constants and schemas, so the two sides of every request agree on its shape.",
   column: 0,
   row: 3,
+} as const;
+
+/** Everything the Architecture view draws, in the shape the layout takes. */
+export const ARCHITECTURE = {
+  nodes: ARCHITECTURE_NODES,
+  edges: ARCHITECTURE_EDGES,
+  frame: RAILWAY_FRAME,
+  note: SHARED_PACKAGES_NOTE,
 } as const;

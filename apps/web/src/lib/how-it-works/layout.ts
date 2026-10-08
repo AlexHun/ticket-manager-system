@@ -8,7 +8,7 @@ import type {
  * Grid cells in, coordinates out, for the Architecture view.
  *
  * Nothing is simulated: a box's place is its cell times the pitch, so it is the
- * same on every load, every reload and every zoom (R9) Ã¢â‚¬â€ the property
+ * same on every load, every reload and every zoom (R9) — the property
  * `DependencyGraph.tsx` keeps for the same reason. d3 only moves the view over
  * these coordinates; it never moves a box.
  */

@@ -1,9 +1,11 @@
-import { useId, useMemo, useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import {
+  ARCHITECTURE,
   ARCHITECTURE_EDGES,
   ARCHITECTURE_NODES,
   RAILWAY_FRAME,
   SHARED_PACKAGES_NOTE,
+  architectureNode,
   type ArchitectureNode,
   type ArchitectureNodeId,
 } from "@/lib/how-it-works/architecture";
@@ -16,6 +18,7 @@ import {
   layOutArchitecture,
   type PlacedEdge,
   type PlacedNode,
+  type Rect,
 } from "@/lib/how-it-works/layout";
 import { cn } from "@/lib/utils";
 import { GraphCanvas } from "./GraphCanvas";
@@ -33,32 +36,25 @@ import { GraphCanvas } from "./GraphCanvas";
 const LABEL_CHAR_WIDTH = 6.2;
 const LABEL_HEIGHT = 16;
 
-const titleOf = (id: ArchitectureNodeId) =>
-  ARCHITECTURE_NODES.find((node) => node.id === id)!.title;
+const titleOf = (id: ArchitectureNodeId) => architectureNode(id).title;
+
+/** Computed once: the data is a constant, so its layout is too. */
+const LAYOUT = layOutArchitecture(ARCHITECTURE);
 
 export function ArchitectureView() {
-  const layout = useMemo(
-    () =>
-      layOutArchitecture({
-        nodes: ARCHITECTURE_NODES,
-        edges: ARCHITECTURE_EDGES,
-        frame: RAILWAY_FRAME,
-        note: SHARED_PACKAGES_NOTE,
-      }),
-    [],
-  );
   const [selectedId, setSelectedId] = useState<ArchitectureNodeId | null>(null);
-  const selected = selectedId
-    ? ARCHITECTURE_NODES.find((node) => node.id === selectedId)!
-    : null;
+  const selected = selectedId ? architectureNode(selectedId) : null;
   const arrowId = `arrow-${useId().replace(/:/g, "")}`;
 
   return (
+    // The panel moves beside the canvas only at 2xl. Beside it at 1280px,
+    // the drawing would shrink to about two thirds and its labels with it;
+    // below, it keeps the width and the panel is still in view.
     <div className="flex flex-col gap-4 2xl:flex-row">
       <div className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background">
         <GraphCanvas
-          width={layout.width}
-          height={layout.height}
+          width={LAYOUT.width}
+          height={LAYOUT.height}
           label={HOW_IT_WORKS_LABEL.architectureCanvas}
         >
           <defs>
@@ -78,10 +74,10 @@ export function ArchitectureView() {
             </marker>
           </defs>
 
-          <RailwayFrame layout={layout} />
-          <SharedPackagesNote rect={layout.note} />
+          <RailwayFrame rect={LAYOUT.frame} />
+          <SharedPackagesNote rect={LAYOUT.note} />
 
-          {layout.nodes.map((placed) => (
+          {LAYOUT.nodes.map((placed) => (
             <Box
               key={placed.node.id}
               placed={placed}
@@ -90,7 +86,7 @@ export function ArchitectureView() {
             />
           ))}
 
-          {layout.edges.map((placed) => (
+          {LAYOUT.edges.map((placed) => (
             <Connection
               key={placed.edge.id}
               placed={placed}
@@ -226,12 +222,8 @@ function Connection({
   );
 }
 
-function RailwayFrame({
-  layout,
-}: {
-  layout: ReturnType<typeof layOutArchitecture>;
-}) {
-  const { x, y, width, height } = layout.frame;
+function RailwayFrame({ rect }: { rect: Rect }) {
+  const { x, y, width, height } = rect;
   return (
     <g className="pointer-events-none">
       <rect
@@ -244,11 +236,13 @@ function RailwayFrame({
         strokeWidth={1.25}
         strokeDasharray="6 4"
       />
-      {/* Bottom-left, where no connection's label lands. */}
+      {/* Bottom-left, where no connection's label lands. The rule is bronze,
+          the decorative edge; its name is muted, since bronze text reads as
+          urgency (the hue map at the top of `index.css`). */}
       <text
         x={x + 12}
         y={y + height - 10}
-        className="fill-bronze text-[12px] font-medium tracking-wide"
+        className="fill-muted-foreground text-[12px] font-medium tracking-wide"
       >
         {RAILWAY_FRAME.title}
       </text>
@@ -256,11 +250,7 @@ function RailwayFrame({
   );
 }
 
-function SharedPackagesNote({
-  rect,
-}: {
-  rect: { x: number; y: number; width: number; height: number };
-}) {
+function SharedPackagesNote({ rect }: { rect: Rect }) {
   const { x, y, width, height } = rect;
   return (
     <g className="pointer-events-none">
@@ -281,7 +271,7 @@ function SharedPackagesNote({
         {SHARED_PACKAGES_NOTE.title}
       </text>
       <text x={x + 12} y={y + 40} className="fill-muted-foreground text-[10px]">
-        both apps build on them
+        {SHARED_PACKAGES_NOTE.caption}
       </text>
     </g>
   );

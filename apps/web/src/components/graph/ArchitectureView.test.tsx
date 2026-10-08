@@ -6,15 +6,13 @@ import {
   ARCHITECTURE_NODES,
   RAILWAY_FRAME,
   SHARED_PACKAGES_NOTE,
+  architectureNode,
 } from "@/lib/how-it-works/architecture";
 import { HOW_IT_WORKS_LABEL } from "@/lib/how-it-works/dom";
 import { ArchitectureView } from "./ArchitectureView";
 
 const ARCHITECTURE_LIST_LABEL = HOW_IT_WORKS_LABEL.architectureList;
 const DETAILS_LABEL = HOW_IT_WORKS_LABEL.details;
-
-const titleOf = (id: string) =>
-  ARCHITECTURE_NODES.find((node) => node.id === id)!.title;
 
 describe("ArchitectureView's hidden list", () => {
   function items() {
@@ -46,7 +44,7 @@ describe("ArchitectureView's hidden list", () => {
     for (const edge of ARCHITECTURE_EDGES) {
       const index = ARCHITECTURE_NODES.findIndex((n) => n.id === edge.from);
       expect(rows[index]).toHaveTextContent(
-        `${edge.label} to ${titleOf(edge.to)}`,
+        `${edge.label} to ${architectureNode(edge.to).title}`,
       );
     }
   });
@@ -63,9 +61,7 @@ describe("ArchitectureView's panel", () => {
   it("shows the explanation of the box that was selected", () => {
     render(<ArchitectureView />);
     const panel = screen.getByRole("region", { name: DETAILS_LABEL });
-    const api = ARCHITECTURE_NODES.find(
-      (node) => node.id === ARCHITECTURE_NODE.api,
-    )!;
+    const api = architectureNode(ARCHITECTURE_NODE.api);
     expect(panel).not.toHaveTextContent(api.explanation);
 
     // A click alone, not `userEvent`: its mousedown reaches d3-zoom, which
