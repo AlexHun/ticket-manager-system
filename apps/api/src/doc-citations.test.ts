@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import {
   mkdirSync,
@@ -955,47 +955,62 @@ describe("a stale citation that git history shows was renamed", () => {
     git(repo, "commit", "-q", "-m", message);
   };
 
-  mkdirSync(path.join(repo, "src"), { recursive: true });
-  git(repo, "init", "-q");
-  write(
-    "src/provider.ts",
-    'export const TABLE_FRAME = "frame";\nexport const frame = () => TABLE_FRAME;\n',
-  );
-  write("src/kept.ts", "export const keptName = 1;\n");
-  write("src/index.ts", "export {\n  TABLE_FRAME,\n} from './provider';\n");
-  commit("add the provider");
-  git(repo, "mv", "src/provider.ts", "src/llm.ts");
-  commit("rename the provider");
-  write(
-    "src/llm.ts",
-    '// See TABLE_FRAME.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
-  );
-  commit("rename the constant");
-  // The last commit to touch the old name renames it in a comment, and swaps
-  // a line that is the name alone for another lone name: neither is the
-  // rename.
-  write(
-    "src/llm.ts",
-    '// See TableFrame.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
-  );
-  write("src/index.ts", "export {\n  frame,\n} from './llm';\n");
-  commit("fix the comment and the index");
-  const [, renamedIn, movedIn] = git(repo, "log", "--format=%h").split("\n");
-  git(
-    scratch,
-    "clone",
-    "-q",
-    "--depth",
-    "1",
-    pathToFileURL(repo).href,
-    shallow,
-  );
+  // Built in `beforeAll` rather than in the describe body, so a run filtered
+  // to other tests starts no git, and a git failure fails these tests alone.
+  let movedIn = "";
+  let renamedIn = "";
+  beforeAll(() => {
+    mkdirSync(path.join(repo, "src"), { recursive: true });
+    git(repo, "init", "-q");
+    write(
+      "src/provider.ts",
+      'export const TABLE_FRAME = "frame";\nexport const frame = () => TABLE_FRAME;\n',
+    );
+    write("src/kept.ts", "export const keptName = 1;\n");
+    write("src/index.ts", "export {\n  TABLE_FRAME,\n} from './provider';\n");
+    // Two files that share a name, each renamed to something else.
+    mkdirSync(path.join(repo, "a"));
+    mkdirSync(path.join(repo, "b"));
+    write("a/util.ts", "export const alpha = 'the first util';\n");
+    write("b/util.ts", "export const beta = 'the second util, unlike it';\n");
+    commit("add the provider");
+    git(repo, "mv", "src/provider.ts", "src/llm.ts");
+    git(repo, "mv", "a/util.ts", "a/helpers.ts");
+    git(repo, "mv", "b/util.ts", "b/tools.ts");
+    commit("rename the provider and the utils");
+    write(
+      "src/llm.ts",
+      '// See TABLE_FRAME.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
+    );
+    commit("rename the constant");
+    // The last commit to touch the old name renames it in a comment, and swaps
+    // a line that is the name alone for another lone name: neither is the
+    // rename.
+    write(
+      "src/llm.ts",
+      '// See TableFrame.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
+    );
+    write("src/index.ts", "export {\n  frame,\n} from './llm';\n");
+    commit("fix the comment and the index");
+    [, renamedIn = "", movedIn = ""] = git(repo, "log", "--format=%h").split(
+      "\n",
+    );
+    git(
+      scratch,
+      "clone",
+      "-q",
+      "--depth",
+      "1",
+      pathToFileURL(repo).href,
+      shallow,
+    );
+  });
 
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
   const DOC = "docs/standards/planted.md";
   const MARKDOWN =
-    "See `provider.ts` and `src/provider.ts`, then `TABLE_FRAME`.\nNever `never-was.ts` or `neverWas`.\n";
+    "See `provider.ts` and `src/provider.ts`, then `TABLE_FRAME`.\nNever `never-was.ts` or `neverWas`.\nEither `util.ts`, or `a/util.ts`.\n";
   const staleIn = (root: string) => {
     const files = trackedFiles(root);
     const tree = new TrackedTree(files);
@@ -1016,6 +1031,9 @@ describe("a stale citation that git history shows was renamed", () => {
       `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment; renamed TABLE_FRAME → TableFrame (${renamedIn})`,
       `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
       `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+      // Two files named `util.ts` were renamed: no telling which one is meant.
+      `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+      `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches; renamed a/util.ts → a/helpers.ts (${movedIn})`,
     ]);
   });
 
@@ -1027,11 +1045,16 @@ describe("a stale citation that git history shows was renamed", () => {
       `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment`,
       `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
       `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+      `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+      `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches`,
     ]);
   });
 
-  test("outside a git repository, the lookup answers nothing rather than throwing", () => {
-    const hint = renameHints(scratch, PLANTED_TREE, PLANTED_SYMBOLS);
+  test("when git cannot run, the lookup answers nothing rather than throwing", () => {
+    // A directory that does not exist: git cannot even start in it, whatever
+    // repository the temporary directory happens to sit inside.
+    const missing = path.join(scratch, "missing");
+    const hint = renameHints(missing, PLANTED_TREE, PLANTED_SYMBOLS);
     expect(
       hint({
         doc: DOC,

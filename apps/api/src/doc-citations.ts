@@ -337,6 +337,25 @@ function symbolsOf(text: string): string[] {
     .filter((segment) => CODE_SHAPED.test(segment));
 }
 
+/** Prose, data and binaries: a symbol does not resolve in these. */
+const NOT_SOURCE_EXTENSIONS = [
+  "md",
+  "mdx",
+  "txt",
+  "jsonl",
+  "lock",
+  "png",
+  "svg",
+  "webp",
+  "jpg",
+  "jpeg",
+  "gif",
+  "ico",
+] as const;
+
+/** The vendored skills, and the skill and agent documents under `.claude/`. */
+const NOT_SOURCE_DIRECTORIES = [".agents", ".claude/skills", ".claude/agents"];
+
 const NOT_SOURCE = new Set([
   "packages/shared/src/changelog-entries.json",
   "apps/api/src/doc-citations.ts",
@@ -357,11 +376,12 @@ const NOT_SOURCE = new Set([
  * over the very names it exists to catch.
  */
 export function isSymbolSource(file: string): boolean {
-  if (/^(?:\.agents|\.claude\/skills|\.claude\/agents)\//.test(file)) {
+  if (NOT_SOURCE_DIRECTORIES.some((dir) => file.startsWith(`${dir}/`))) {
     return false;
   }
   if (NOT_SOURCE.has(file)) return false;
-  return !/\.(?:md|mdx|txt|jsonl|lock|png|svg|webp|jpe?g|gif|ico)$/i.test(file);
+  const extension = file.slice(file.lastIndexOf(".") + 1).toLowerCase();
+  return !(NOT_SOURCE_EXTENSIONS as readonly string[]).includes(extension);
 }
 
 /** The files `stripComments` reads: JS, TS and JSON. */
@@ -454,43 +474,56 @@ export function symbolSources(
 
 /* ── Renames: what git history says a stale citation became ─────────────── */
 
+/** A citation's new name, and the commit that gave it. */
+export interface Rename {
+  to: string;
+  sha: string;
+}
+
 /**
- * The rename behind a stale citation, as `OLD → New (<sha>)`, or `undefined`
- * when history shows none. `checkCitations` asks it only for a citation that
- * has already failed and is not exempted.
+ * The rename behind a stale citation, or `undefined` when history shows none.
+ * `checkCitations` asks it only for a citation that has already failed and is
+ * not exempted, and writes the answer as `OLD → New (<sha>)`.
  */
-export type RenameHint = (citation: Citation) => string | undefined;
+export type RenameHint = (citation: Citation) => Rename | undefined;
 
 /**
  * Where a symbol's history is read: the `isSymbolSource` files, as a git
  * pathspec. Without it the last commit to touch a stale name is as often a
- * document or this check's own tables, which spell it as a string.
+ * document or this check's own tables, which spell it as a string. It is
+ * built from the lists `isSymbolSource` reads, so the two cannot drift apart.
  */
 const SYMBOL_SOURCE_PATHSPEC = [
   ".",
-  ":(exclude)*.md",
-  ":(exclude)*.mdx",
-  ":(exclude).agents",
-  ":(exclude).claude/skills",
-  ":(exclude).claude/agents",
+  ...NOT_SOURCE_EXTENSIONS.map((extension) => `:(exclude)*.${extension}`),
+  ...NOT_SOURCE_DIRECTORIES.map((directory) => `:(exclude)${directory}`),
   ...[...NOT_SOURCE].map((file) => `:(exclude)${file}`),
 ];
 
-/** A diff line that is a comment, which says what a name was, not what it is. */
-const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*|#|--)/;
+/**
+ * A diff line that is a comment, which says what a name was, not what it is:
+ * `//`, `/*`, a JSDoc `*` line, and `#` or `--` followed by a space, so a TS
+ * private field (`#client`) and a CLI flag (`--count`) are still code.
+ */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?:\s|\/|$)|#(?:\s|$)|--(?:\s|$))/;
 
-const WORD = /[A-Za-z_$][\w$]*/g;
+/** A line's tokens: names, numbers, quoted strings and single symbols. */
+const TOKEN = /[A-Za-z_$][\w$]*|\d[\w.]*|"[^"]*"|'[^']*'|`[^`]*`|\S/g;
+
+const IS_NAME = /^[A-Za-z_$]/;
 
 /**
  * The name `symbol` became in one commit's diff, or `undefined`: a removed
- * line and an added one whose words are the same but for `symbol`, each of
- * whose places holds one other name, and which share at least one word
- * besides it. A real rename changes every call site the same way, so the
- * most frequent such name wins. Comment lines are skipped, so a later edit
- * that only rewords a comment is not the rename.
+ * line and an added one that are the same token for token, numbers, strings
+ * and punctuation included, but for `symbol`, each of whose places holds one
+ * other name, and which share at least one name besides it. A real rename
+ * changes every call site the same way, so the most frequent such name wins.
+ * Comment lines are skipped, so a later edit that only rewords a comment is
+ * not the rename.
  */
 function renameInDiff(diff: string, symbol: string): string | undefined {
   const removed: string[][] = [];
+  const removedTokens: string[] = [];
   const added: string[][] = [];
   for (const line of diff.split(/\r?\n/)) {
     if (/^(?:---|\+\+\+) /.test(line)) continue;
@@ -498,69 +531,77 @@ function renameInDiff(diff: string, symbol: string): string | undefined {
     if ((sign !== "-" && sign !== "+") || COMMENT_LINE.test(line.slice(1))) {
       continue;
     }
-    const words: string[] = line.slice(1).match(WORD) ?? [];
-    if (sign === "-" && words.includes(symbol)) removed.push(words);
-    if (sign === "+") added.push(words);
+    const tokens: string[] = line.slice(1).match(TOKEN) ?? [];
+    if (sign === "-") removedTokens.push(...tokens);
+    if (sign === "-" && tokens.includes(symbol)) removed.push(tokens);
+    if (sign === "+") added.push(tokens);
   }
   const counts = new Map<string, number>();
   for (const before of removed) {
     // A line that is the name alone (`emptyScan,` in an export list) matches
-    // any other lone name, so a pair needs one word besides it in common.
-    if (before.every((word) => word === symbol)) continue;
+    // any other lone name, so a pair needs one name besides it in common.
+    if (!before.some((token) => token !== symbol && IS_NAME.test(token))) {
+      continue;
+    }
     for (const after of added) {
       if (after.length !== before.length) continue;
       let to: string | undefined;
-      const same = before.every((word, at) => {
-        if (word !== symbol) return word === after[at];
+      const sameButTheName = before.every((token, at) => {
+        if (token !== symbol) return token === after[at];
         to ??= after[at];
-        return after[at] === to && to !== symbol;
+        return after[at] === to && to !== symbol && IS_NAME.test(to);
       });
-      if (same && to) counts.set(to, (counts.get(to) ?? 0) + 1);
+      if (sameButTheName && to) counts.set(to, (counts.get(to) ?? 0) + 1);
     }
   }
-  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+  // The new name is new: a name a removed line already held existed before
+  // this commit, so it is not what the old one became.
+  const existed = new Set(removedTokens);
+  return [...counts]
+    .filter(([name]) => !existed.has(name))
+    .sort((a, b) => b[1] - a[1])[0]?.[0];
 }
 
 /**
- * Where a rename of `from` to `to` moved the cited path, or `undefined` when
- * it did not touch it. A path with an extension matches as `TrackedTree`
- * resolves it, whole or, while `tail` holds, as a tail from a `/`, and becomes
- * the new full path; an anchored one matches exactly, or as the directory a
- * renamed file was in.
+ * Whether a renamed file's old path is the one a citation names, by the rule
+ * `TrackedTree.resolves` uses: a path with an extension whole or as a tail
+ * from a `/`, an anchored one exactly. A directory is not followed through
+ * the renames of the files in it, since a directory whose files went to
+ * different places has no one new name.
  */
-function movedPath(
-  cited: string,
-  from: string,
-  to: string,
-  tail = true,
-): string | undefined {
-  if (tail && hasFileExtension(cited)) {
-    return from === cited || from.endsWith(`/${cited}`) ? to : undefined;
-  }
-  if (from === cited) return to;
-  if (!from.startsWith(`${cited}/`)) return undefined;
-  const rest = from.slice(cited.length);
-  return to.endsWith(rest) ? to.slice(0, -rest.length) : undefined;
+function namesPath(cited: string, from: string): boolean {
+  return (
+    from === cited || (hasFileExtension(cited) && from.endsWith(`/${cited}`))
+  );
 }
 
 /**
  * The rename lookup for the repository at `root`, against its current `tree`
  * and `symbols`. Nothing runs until a stale citation asks, so a green check
- * reads no history.
+ * reads no history, and a name cited on several lines is looked up once.
  *
- * - **A path** takes the latest rename whose old side it names (`git log -M
- *   --diff-filter=R`, read once for every path), then follows later renames
- *   of the new name, so `a → b → c` names `c`.
+ * - **A path** takes each rename whose old side it names (`git log -M
+ *   --diff-filter=R`, read once for every path) and follows every later
+ *   rename of the new path, so `a → b → c` names `c` and the commit of the
+ *   last hop. When the matches lead to different files, as two renamed files
+ *   that shared a short citation's name do, there is no hint.
  * - **A symbol** takes the newest commit that changed how often source names
  *   it (`git log -S`) and whose diff shows what it became (`renameInDiff`),
  *   followed up to three renames on. Each symbol is its own pickaxe over the
  *   whole history, ~2s on this repo, paid only on a push that already fails.
+ *   It is a heuristic, measured on 2026-10-08 over seven of the names the
+ *   test exempts as history: four were named right (`TABLE_FRAME`,
+ *   `AutoReplyOutcome`, `renderWithQuery`, `mockGet`), two got no hint, and
+ *   one was named wrong: `hasInbound` became `inboundCount`, which lines the
+ *   same commit rewrote already held, so the hint named `hasOutbound`, a
+ *   field added beside it. A path's hint has no such guess in it.
  *
  * **The hint is absent rather than wrong.** On a shallow clone, which is what
  * CI's API job checks out, history is cut off and nothing is looked up; a
  * name history points to that no longer resolves gives no hint; and a git
  * that fails, or a directory that is not a repository, answers nothing. The
- * citation fails either way.
+ * citation fails either way. Git runs with `log.showSignature` off, so a
+ * developer's signature lines cannot be read as commits.
  */
 export function renameHints(
   root: string,
@@ -569,12 +610,22 @@ export function renameHints(
 ): RenameHint {
   const git = (...args: string[]): string | undefined => {
     try {
-      return execFileSync("git", ["-c", "core.quotePath=false", ...args], {
-        cwd: root,
-        encoding: "utf8",
-        maxBuffer: 64 * 1024 * 1024,
-        stdio: ["ignore", "pipe", "ignore"],
-      });
+      return execFileSync(
+        "git",
+        [
+          "-c",
+          "core.quotePath=false",
+          "-c",
+          "log.showSignature=false",
+          ...args,
+        ],
+        {
+          cwd: root,
+          encoding: "utf8",
+          maxBuffer: 64 * 1024 * 1024,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
     } catch {
       return undefined;
     }
@@ -585,7 +636,7 @@ export function renameHints(
     (history ??=
       git("rev-parse", "--is-shallow-repository")?.trim() === "false");
 
-  let renames: { sha: string; from: string; to: string }[] | undefined;
+  let renames: ({ from: string } & Rename)[] | undefined;
   const pathRenames = () => {
     if (renames) return renames;
     renames = [];
@@ -596,41 +647,33 @@ export function renameHints(
       "-M",
       "--diff-filter=R",
       "--name-status",
-      "--format=%h",
+      "--format=commit %h",
     );
     for (const line of (log ?? "").split(/\r?\n/)) {
+      const commit = /^commit (\w+)$/.exec(line);
+      if (commit) sha = commit[1]!;
       const rename = /^R\d*\t([^\t]+)\t([^\t]+)$/.exec(line);
       if (rename) renames.push({ sha, from: rename[1]!, to: rename[2]! });
-      else if (line.trim()) sha = line.trim();
     }
     return renames;
   };
 
-  const renamedPath = (cited: string) => {
+  const renamedPath = (cited: string): Rename | undefined => {
     const all = pathRenames();
-    let at = all.length - 1;
-    let current: string | undefined;
-    for (; at >= 0 && current === undefined; at -= 1) {
-      current = movedPath(cited, all[at]!.from, all[at]!.to);
-    }
-    if (current === undefined) return undefined;
-    at += 1;
-    let sha = all[at]!.sha;
-    // `current` is a full path now, so a later rename must name it exactly.
-    for (const { from, to, sha: later } of all.slice(at + 1)) {
-      const next = movedPath(current, from, to, false);
-      if (next !== undefined) {
-        current = next;
-        sha = later;
+    const ends = all.flatMap((first, at) => {
+      if (!namesPath(cited, first.from)) return [];
+      let end: Rename = { to: first.to, sha: first.sha };
+      for (const later of all.slice(at + 1)) {
+        if (later.from === end.to) end = { to: later.to, sha: later.sha };
       }
-    }
-    return tree.resolves(current) ? { to: current, sha } : undefined;
+      return [end];
+    });
+    const latest = ends.at(-1);
+    if (!latest || ends.some((end) => end.to !== latest.to)) return undefined;
+    return tree.resolves(latest.to) ? latest : undefined;
   };
 
-  const renamedSymbol = (
-    symbol: string,
-    hops = 3,
-  ): { to: string; sha: string } | undefined => {
+  const renamedSymbol = (symbol: string, hops = 3): Rename | undefined => {
     const shas = git(
       "log",
       `-S${symbol}`,
@@ -656,13 +699,17 @@ export function renameHints(
     return undefined;
   };
 
-  return (citation) => {
+  const answers = new Map<string, Rename | undefined>();
+  return ({ kind, name }) => {
     if (!hasHistory()) return undefined;
-    const found =
-      citation.kind === "path"
-        ? renamedPath(citation.name)
-        : renamedSymbol(citation.name);
-    return found && `${citation.name} → ${found.to} (${found.sha})`;
+    const key = `${kind}:${name}`;
+    if (!answers.has(key)) {
+      answers.set(
+        key,
+        kind === "path" ? renamedPath(name) : renamedSymbol(name),
+      );
+    }
+    return answers.get(key);
   };
 }
 
@@ -707,12 +754,16 @@ export function checkCitations(
     if (exemption) used.add(exemption);
     else {
       const where = `${citation.doc}:${citation.line}`;
+      // OLD is the citation's name, so a path reads as normalised
+      // (`provider.ts`, not `./provider.ts:42`); the failure quotes the text.
       const renamed = hint(citation);
+      const renamedNote = renamed
+        ? `; renamed ${citation.name} → ${renamed.to} (${renamed.sha})`
+        : "";
       stale.push(
-        (citation.kind === "path"
-          ? `${where} cites \`${citation.text}\`, which no tracked file matches`
-          : `${where} cites \`${citation.name}\`, which no source, test or config file names outside a comment`) +
-          (renamed ? `; renamed ${renamed}` : ""),
+        citation.kind === "path"
+          ? `${where} cites \`${citation.text}\`, which no tracked file matches${renamedNote}`
+          : `${where} cites \`${citation.name}\`, which no source, test or config file names outside a comment${renamedNote}`,
       );
     }
   }
