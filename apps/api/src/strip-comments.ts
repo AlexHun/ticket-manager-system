@@ -7,7 +7,7 @@
  * must let a file explain *why* it avoids one, and for `doc-citations.ts`
  * (#440), where a symbol that survives only in a comment counts as gone. It
  * sits in `src/` rather than `src/test/` because `doc-citations.ts` is not
- * test code: the plan's `bun run graph` script is to import it too.
+ * test code: `scripts/graph.ts` (`bun run graph`, #444) imports it too.
  *
  * The same scanner as `apps/web/dev/scan.ts`'s `stripComments`, copied rather
  * than imported: that module is the web workspace's project-map scanner, it

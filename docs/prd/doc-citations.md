@@ -1,6 +1,6 @@
 # PRD: The docs cite code that exists
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-07
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-07
 
 ## Problem
 
@@ -123,7 +123,7 @@ nothing in the tree, real staleness and deliberate history alike.
       2026-10-08 (#442): plans are not checked, only PRDs. A plan's `new:`
       modules are unresolved by design, and checking only the citations that
       once resolved would need git history that CI's shallow checkout does not
-      fetch. The plan's query, `bun run graph` (#444), is to cover plans
+      fetch. The plan's query, `bun run graph` (#444), covers plans
       instead.
 - [ ] **Where does the check live, given R7 and R11 pull different ways?**
       Pre-push points at the API suite, while the graph and the comment
