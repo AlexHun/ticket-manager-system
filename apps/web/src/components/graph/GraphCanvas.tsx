@@ -5,8 +5,9 @@ import {
   type KeyboardEventHandler,
   type ReactNode,
 } from "react";
-import { select } from "d3-selection";
-// Adds `.transition()` to a selection, which the glide to a step runs in.
+import { select, type Selection } from "d3-selection";
+import type { Transition } from "d3-transition";
+// Adds `.transition()` to a selection, which every animated move runs in.
 import "d3-transition";
 import {
   zoom,
@@ -57,6 +58,9 @@ const ZOOM_STEP = 1.5;
 /** A button's zoom animates as the double-click zoom does. */
 const ZOOM_MS = 250;
 
+type CanvasSelection = Selection<SVGSVGElement, unknown, null, undefined>;
+type CanvasTransition = Transition<SVGSVGElement, unknown, null, undefined>;
+
 export function GraphCanvas({
   width,
   height,
@@ -78,7 +82,7 @@ export function GraphCanvas({
    *  box inside it reach this. */
   onKeyDown?: KeyboardEventHandler<SVGSVGElement>;
   /** Called when Reset view is pressed, as the view returns to its start. */
-  onReset?: () => void;
+  onReset: () => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -136,40 +140,39 @@ export function GraphCanvas({
 
     const x = focus.x + focus.width / 2;
     const y = focus.y + focus.height / 2;
-    const target = select(svg);
-    if (reducedMotion) {
-      target.interrupt().call(behaviour.translateTo, x, y);
-    } else {
-      target
-        .transition()
-        .duration(GRAPH_GLIDE_MS)
-        .call(behaviour.translateTo, x, y);
-    }
+    moveView(
+      (target, behaviour) => behaviour.translateTo(target, x, y),
+      GRAPH_GLIDE_MS,
+    );
   }, [focus, width, height, reducedMotion]);
 
-  // The buttons move the view as a gesture would: through the zoom behaviour,
-  // so the next wheel or drag carries on from where they left it.
-  const zoomBy = (factor: number) => {
+  /**
+   * Moves the view through the zoom behaviour, as a gesture would, so the next
+   * wheel or drag carries on from where it left off: animated over `ms`, or at
+   * once under reduced motion. Either way it stops a move still under way.
+   */
+  function moveView(
+    move: (
+      target: CanvasSelection | CanvasTransition,
+      behaviour: ZoomBehavior<SVGSVGElement, unknown>,
+    ) => void,
+    ms: number,
+  ) {
     const svg = svgRef.current;
     const behaviour = behaviourRef.current;
     if (!svg || !behaviour) return;
     const target = select(svg).interrupt();
-    if (reducedMotion) target.call(behaviour.scaleBy, factor);
-    else target.transition().duration(ZOOM_MS).call(behaviour.scaleBy, factor);
-  };
+    move(reducedMotion ? target : target.transition().duration(ms), behaviour);
+  }
+
+  const zoomBy = (factor: number) =>
+    moveView((target, behaviour) => behaviour.scaleBy(target, factor), ZOOM_MS);
   const reset = () => {
-    const svg = svgRef.current;
-    const behaviour = behaviourRef.current;
-    if (svg && behaviour) {
-      const target = select(svg).interrupt();
-      if (reducedMotion) target.call(behaviour.transform, zoomIdentity);
-      else
-        target
-          .transition()
-          .duration(ZOOM_MS)
-          .call(behaviour.transform, zoomIdentity);
-    }
-    onReset?.();
+    moveView(
+      (target, behaviour) => behaviour.transform(target, zoomIdentity),
+      ZOOM_MS,
+    );
+    onReset();
   };
 
   return (

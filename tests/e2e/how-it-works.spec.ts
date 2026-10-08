@@ -194,28 +194,37 @@ async function boxOf(locator: Locator) {
   return box;
 }
 
-/** How far the element sits in from the left and right of the content area,
- *  the `<main>` every page renders into. */
+/**
+ * How far the element sits in from the left and right of the content area:
+ * the page's own scroller, short of any scrollbar it shows.
+ */
 async function insetFromContent(page: Page, locator: Locator) {
-  const main = await boxOf(page.locator("#main-content"));
   const box = await boxOf(locator);
+  const area = await pageScroller(page).evaluate((scroller) => {
+    const left = scroller.getBoundingClientRect().left + scroller.clientLeft;
+    return { left, right: left + scroller.clientWidth };
+  });
   return {
-    left: box.x - main.x,
-    right: main.x + main.width - (box.x + box.width),
+    left: box.x - area.left,
+    right: area.right - (box.x + box.width),
   };
 }
 
+/** The page root: the nearest ancestor of the page's heading that scrolls. */
+const pageScroller = (page: Page) =>
+  page
+    .getByRole("heading", { level: 1 })
+    .locator(
+      "xpath=ancestor::*[contains(concat(' ', @class, ' '), ' overflow-y-auto ')][1]",
+    );
+
 /** Whether the window, or the page's own scroller, can scroll sideways. */
 function sidewaysScroll(page: Page) {
-  return page.getByRole("heading", { level: 1 }).evaluate((heading) => {
-    let scroller = heading.parentElement;
-    while (scroller && getComputedStyle(scroller).overflowY !== "auto") {
-      scroller = scroller.parentElement;
-    }
+  return pageScroller(page).evaluate((scroller) => {
     const root = document.documentElement;
     return {
       window: root.scrollWidth > root.clientWidth,
-      page: scroller ? scroller.scrollWidth > scroller.clientWidth : true,
+      page: scroller.scrollWidth > scroller.clientWidth,
     };
   });
 }
@@ -816,18 +825,29 @@ test.describe("How it works", () => {
             exact: true,
           }),
         };
-        const header = await insetFromContent(page, parts.header);
-        expect(Math.abs(header.left - dashboard.left)).toBeLessThanOrEqual(
-          SLACK,
-        );
+        // What spans the page sits exactly the padding in from both edges
+        // (the canvas one pixel more, inside its frame's border); the tabs
+        // and the zoom buttons sit at least that far in.
+        const padded = {
+          header: { left: dashboard.left },
+          canvas: { left: dashboard.left + 1, right: dashboard.left + 1 },
+          panel: { left: dashboard.left, right: dashboard.left },
+        } as Record<string, { left?: number; right?: number }>;
         for (const [name, part] of Object.entries(parts)) {
           const inset = await insetFromContent(page, part);
-          expect(inset.left, name).toBeGreaterThanOrEqual(
-            dashboard.left - SLACK,
-          );
-          expect(inset.right, name).toBeGreaterThanOrEqual(
-            dashboard.left - SLACK,
-          );
+          for (const side of ["left", "right"] as const) {
+            const exact = padded[name]?.[side];
+            if (exact === undefined) {
+              expect(inset[side], `${name} ${side}`).toBeGreaterThanOrEqual(
+                dashboard.left - SLACK,
+              );
+            } else {
+              expect(
+                Math.abs(inset[side] - exact),
+                `${name} ${side}`,
+              ).toBeLessThanOrEqual(SLACK);
+            }
+          }
           // Wholly inside the window, and not cut off by the frame around it.
           const box = await boxOf(part);
           expect(box.x, name).toBeGreaterThanOrEqual(0);

@@ -108,7 +108,7 @@ describe("ArchitectureView's panel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("Reset view clears the selected box and brings the hint back", () => {
+  it("Reset view clears the selected box and empties the panel", () => {
     mount();
     const postgres = architectureNode(ARCHITECTURE_NODE.postgres);
     fireEvent.click(screen.getByRole("button", { name: postgres.title }));
@@ -117,6 +117,7 @@ describe("ArchitectureView's panel", () => {
     );
     const panel = screen.getByRole("region", { name: DETAILS_LABEL });
     expect(panel).not.toHaveTextContent(postgres.explanation);
+    expect(within(panel).queryByRole("heading")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: postgres.title }),
     ).toHaveAttribute("aria-pressed", "false");
