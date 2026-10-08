@@ -1,6 +1,6 @@
 # PRD: One-click demo session
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-25
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-25
 
 ## Problem
 

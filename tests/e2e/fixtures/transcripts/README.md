@@ -1,9 +1,11 @@
 # Transcript fixture
 
 Two Claude Code transcripts, in the JSONL shape `apps/web/dev/transcripts.ts`
-reads. `tests/e2e/dev-usage.spec.ts` points `CLAUDE_TRANSCRIPT_DIR` here
-(via `playwright.config.ts`) so the Usage page has figures an assertion can be
-written against — a real machine's spend is not something a test can name.
+reads. `tests/e2e/dev-usage.spec.ts` points `CLAUDE_TRANSCRIPT_DIR` at a copy
+of this directory (`transcripts.local`, via `playwright.config.ts`) so the Usage
+page has figures an assertion can be written against — a real machine's spend
+is not something a test can name. The specs remake that copy before they scan,
+and are free to change it; these files are never written to.
 
 What the two files add up to, and why each line is here:
 
@@ -26,6 +28,17 @@ one is a rule worth holding:
   means `main` or no branch at all;
 - a truncated final line — the ordinary shape of an append-only JSONL file that
   is still being written, and skipping it must not lose the lines above it.
+
+No line carries a `message.id`, so each counts as one turn on its own. Since
+#413 the scan collapses records sharing an id — Claude Code writes one API
+response as one record per content block — onto one turn; that rule is held by
+`apps/web/dev/usage.test.ts`, not here, so none of the figures above depend on
+it.
+
+Every complete line carries a `timestamp`, which no figure above reads: it is
+what the usage history's start date is taken from (#417). The earliest is
+**2026-09-02T09:00:00.000Z**, the first line of `session-a.jsonl`, and
+`dev-usage-history.spec.ts` asserts the page names it.
 
 `#105` shares `session-b.jsonl` with `#102`, on its own branch. That is the
 mirror of the `main` turn above: two branches in one session must land in two

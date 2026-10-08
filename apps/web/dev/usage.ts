@@ -5,7 +5,9 @@
 // off this machine's Claude Code transcripts, `./issues.ts` reads the listing
 // off `gh` — and this one joins them into the wire's rows (#297). Why the
 // figure is output tokens, and what the scan cannot attribute, is argued at the
-// top of `./transcripts.ts`, beside the code that decides it.
+// top of `./transcripts.ts`, beside the code that decides it. Since #417 the
+// spend is tallied over the usage history (`./usage-store.ts`) rather than over
+// the files alone, so an issue keeps it after its transcript is deleted.
 //
 // This module is the single copy of the join, and since #290 both callers reach
 // it through one door. `gatherUsage` returns the whole reading — the rows, the
@@ -13,7 +15,9 @@
 // dev-tools Vite plugin serialises to the Usage page under `/__dev` (#248) and
 // what `scripts/issue-tokens.ts` formats at the terminal. Neither re-assembles a
 // scan of its own, so "the page and `bun run tokens` cannot disagree" is a
-// property of one function rather than a promise two of them keep.
+// property of one function rather than a promise two of them keep. Since #432
+// the page opens on a second door, `readStoredUsage`: the same tally and join
+// over what the history holds, with no read, no `gh` and no write.
 //
 // The terminal used to import nine pieces of this file and do the assembling
 // itself, which is why this module also carried a ten-symbol block re-exporting
@@ -36,21 +40,38 @@ import {
   VERDICT,
   type Bucket,
   type IssueUsage,
+  type TrendPoint,
   type UsageReport,
   type UsageWarning,
   type Verdict,
 } from "../src/dev/usage-protocol.ts";
-import { bucketFor } from "../src/dev/usage-readings.ts";
+import { bucketFor, trendPointFor } from "../src/dev/usage-readings.ts";
 // The order the rows go on the wire in, imported rather than restated (#286).
 // `joinIssues` below is where that is argued, including why this is the
 // browser's module and not a third one both halves read.
 import { DEFAULT_USAGE_SORT, sortIssues } from "../src/dev/usage-sort.ts";
+import { existsSync } from "node:fs";
 import {
   ISSUE_STATE,
+  ISSUES_FILE_ENV,
+  LISTING_COST,
   fetchIssueMetadata,
+  parseListing,
+  toGhListing,
+  type IssueLister,
   type IssueMetadata,
 } from "./issues.ts";
-import { scanSpend, type ScanResult, type Spend } from "./transcripts.ts";
+import {
+  readTranscripts,
+  tallySpend,
+  type Spend,
+  type TranscriptRead,
+} from "./transcripts.ts";
+import {
+  openUsageStore,
+  type StoredListing,
+  type UsageStore,
+} from "./usage-store.ts";
 
 /**
  * A forecast band read against what was actually spent.
@@ -75,22 +96,22 @@ export function verdictFor(
 }
 
 /**
- * A reading that found nothing, for `gatherUsage` below to start from before it
+ * A read that found nothing, for `gatherUsage` below to start from before it
  * knows whether the directory can be read at all.
  *
- * A function rather than a shared constant because `unattributed` is an object:
- * a single frozen-by-convention literal is one `scan.unattributed.turns++` away
- * from being poisoned for every later caller in the process.
+ * A function rather than a shared constant because `responses` is an array: a
+ * single frozen-by-convention literal is one `push` away from being poisoned
+ * for every later caller in the process.
  *
  * Not exported since #290. `bun run tokens` used to need one too, because it ran
  * its own scan and had to have something to print when the read failed; it calls
  * `gatherUsage` now, so there is one caller and the "found nothing" reading is
  * this module's own business rather than a shape two surfaces agree on.
  */
-const emptyScan = (): ScanResult => ({
-  byIssue: new Map(),
-  unattributed: { turns: 0, out: 0 },
+const emptyRead = (): TranscriptRead => ({
+  responses: [],
   transcripts: 0,
+  cursors: new Map(),
 });
 
 /**
@@ -189,7 +210,8 @@ function joinIssues(
  * The composition lives here rather than in the plugin so that R8 — the page
  * and `bun run tokens` never report different figures for the same issue — is a
  * property of one module rather than of two callers agreeing to be careful.
- * Since #290 it is the *only* entry point either of them has: the plugin
+ * Since #290 it is the *only* scan either of them has (the page's opening read
+ * is `readStoredUsage` below, which scans nothing): the plugin
  * resolves the directory and serialises this, and the terminal resolves the
  * directory and formats this. Everything below the two of them — the scan, the
  * join, the ordering and the two ways a source can fail — happens once.
@@ -203,13 +225,31 @@ function joinIssues(
  * than a parameter default only because fetching one is asynchronous — see
  * `listIssues` in `./issues.ts` for why it has to be.
  *
- * **Nothing here throws.** A missing directory is the ordinary state of a
+ * **The history is optional too, and both real callers pass it** (#417). With
+ * `historyFile`, every response this read found is stored in the SQLite file
+ * it names (`./usage-store.ts`) and the figures are tallied over *everything
+ * stored*, so an issue keeps its spend after its transcript is deleted (R1),
+ * and the page and the terminal still agree because both pass the same file
+ * (R3). Since #418 the store also says how far each transcript was read, so a
+ * scan reads only what was written since the last one and an unchanged
+ * directory is mostly skipped. Without it, every transcript is read whole, the
+ * figures are what is on disk now and `historySince` is null — which is what
+ * the unit tests about the join want, and why they need no file of their own.
+ * With it, each scan also writes the trend's point for its local calendar day
+ * (#419) — replacing that day's earlier point — and the report carries every
+ * stored point. `now` is the clock that point and `gatheredAt` are stamped
+ * with, a parameter so the tests can move a day, which Playwright cannot.
+ *
+ * **No source that cannot be read makes this throw.** A missing directory is the ordinary state of a
  * machine that has never run Claude Code in this project, and of CI; a 500 from
  * the middleware would read as the page being broken rather than as the honest
  * "there is nothing here". A `gh` that cannot answer is smaller still: it costs
  * three columns, not the page. Both are reported as warnings beside whatever
  * could be read, the way the project map surfaces what its scan could not
- * parse.
+ * parse. Since #420 so is a history that cannot be read: the scan reports the
+ * transcripts on disk alone, beside a warning of the history's own, and never
+ * writes over the file. A deleted one needs nothing — the store creates a
+ * fresh file and this scan fills it from what is on disk.
  *
  * **Each warning names its source** (#289). They were bare strings, so the only
  * way to tell an unreadable directory from an unavailable listing was to match
@@ -222,54 +262,302 @@ function joinIssues(
 export async function gatherUsage(
   dir: string,
   metadata?: IssueMetadata,
+  historyFile?: string,
+  now: () => Date = () => new Date(),
+  { pushedHistory = false }: GatherOptions = {},
 ): Promise<UsageReport> {
   // Before the listing, not after: `scanMs` answers "how long did pressing
   // Scan take", and `gh` is ~2s of that against 2-5s of filesystem.
   const startedAt = Date.now();
   const listing = metadata ?? (await fetchIssueMetadata());
+  if (historyFile === undefined) {
+    return reportFrom(dir, listing, startedAt, null, now, pushedHistory);
+  }
+
+  let failure: unknown;
+  try {
+    // Opened before the read rather than after it (#418): its cursors say where
+    // each transcript's unread bytes begin. Closed before the response, so
+    // nothing holds the file between presses (see the store).
+    const store = await openUsageStore(historyFile).catch((err: unknown) => {
+      throw new HistoryFailure(err);
+    });
+    try {
+      return reportFrom(dir, listing, startedAt, store, now, pushedHistory);
+    } finally {
+      fromHistory(() => store.close());
+    }
+  } catch (err) {
+    // Only the store's own calls are the history's to answer for. Anything
+    // else is a bug in the scan, and reporting it as a damaged history would
+    // send the developer to delete the one file that holds pruned spend.
+    if (!(err instanceof HistoryFailure)) throw err;
+    failure = err.cause;
+  }
+
+  // The history failed — on opening, or part-way through a scan. The reading is
+  // then the transcripts on disk alone, read whole: the cursors that would have
+  // skipped the bytes already read are in the file that failed. Closed first,
+  // so the developer can act on what the warning says.
+  const report = reportFrom(dir, listing, startedAt, null, now, pushedHistory);
+  report.warnings.push({
+    source: USAGE_WARNING_SOURCE.history,
+    message: historyWarning(historyFile, failure),
+  });
+  return report;
+}
+
+/** How the server calling `gatherUsage` is set up. */
+export interface GatherOptions {
+  /**
+   * The history is fed by pushes (#428, `PUSHED_HISTORY_ENV` in
+   * `./usage-push.ts`): a missing or empty transcript directory beside stored
+   * rows is then no warning. The plugin sets it from the environment;
+   * `bun run tokens` never does.
+   */
+  pushedHistory?: boolean;
+}
+
+/** A store call that failed, told apart from a failure anywhere else in a
+ *  scan so that only the first becomes the history's warning. */
+class HistoryFailure extends Error {
+  constructor(cause: unknown) {
+    super("usage history", { cause });
+  }
+}
+
+/** Run one call on the store, marking whatever it throws as the history's. */
+function fromHistory<T>(call: () => T): T {
+  try {
+    return call();
+  } catch (err) {
+    throw new HistoryFailure(err);
+  }
+}
+
+/**
+ * What the page says when the history could not be read (#420).
+ *
+ * It says what to do because nothing else will. Nothing replaces the file — a
+ * damaged history fails on its first statement, before anything is written —
+ * so it stays as it was until the developer moves or deletes it: replacing it
+ * silently would throw away the spend of every transcript Claude Code has
+ * already pruned, which is the one thing the history exists to keep. "Scan
+ * again" comes first because a file another scan still holds (the dev server
+ * and `bun run tokens` at once, past the store's busy timeout) fails the same
+ * way and is not damaged at all.
+ */
+const historyWarning = (file: string, err: unknown) =>
+  `Could not read the usage history at ${file}: ` +
+  `${err instanceof Error ? err.message : String(err)}. ` +
+  "These figures are the transcripts on disk alone, and nothing replaces the " +
+  "file. Scan again in case another scan held it; if it still fails, move it " +
+  "aside or delete it to start a new history, which the next scan rebuilds " +
+  "from the transcripts still on disk.";
+
+/** `gatherUsage` once the listing is in hand and the history, if any, is open. */
+function reportFrom(
+  dir: string,
+  listing: IssueMetadata,
+  startedAt: number,
+  store: UsageStore | null,
+  now: () => Date,
+  pushedHistory: boolean,
+): UsageReport {
   const warnings: UsageWarning[] = [];
 
-  let scan = emptyScan();
+  // Outside the `try` below, which is about the transcripts: a history that
+  // fails here is the history's warning, raised by `gatherUsage`. Every store
+  // call in this function goes through `fromHistory` for the same reason.
+  const cursors = store ? fromHistory(() => store.cursors()) : undefined;
+  let read = emptyRead();
+  /* The transcripts' warning, if any, and whether it says only that there are
+     none here — a missing directory or an empty one. That kind is dropped below
+     on a server whose history is fed by pushes, once it holds rows (#428): it
+     is the ordinary state of Railway's develop server, which has no
+     transcripts of its own, and its figures are the history's. Everywhere else
+     it stays, since on a laptop it is the hint that the scan ran from the wrong
+     directory. A directory that exists and cannot be read always warns. */
+  let transcriptWarning: UsageWarning | null = null;
+  let transcriptsAbsent = false;
   try {
-    scan = scanSpend(dir);
+    read = readTranscripts(dir, cursors);
     // Inside the `try`, so "there is nothing in it" is only asked of a directory
     // that was actually read. It used to be a `warnings.length === 0` guard
     // below, which said the same thing by counting what this function had pushed
     // so far — true only while the transcripts were the first source to report,
     // and quietly wrong the moment a second one went in ahead of them.
-    if (scan.transcripts === 0) {
-      warnings.push({
+    if (read.transcripts === 0) {
+      transcriptsAbsent = true;
+      transcriptWarning = {
         source: USAGE_WARNING_SOURCE.transcripts,
         message: `No .jsonl transcripts in ${dir}.`,
-      });
+      };
     }
   } catch (err) {
-    warnings.push({
+    transcriptsAbsent =
+      (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
+    transcriptWarning = {
       source: USAGE_WARNING_SOURCE.transcripts,
       message: `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`,
-    });
+    };
   }
   // Second, and separately: the transcripts can be perfectly readable while the
   // issue listing is not. The page shows every warning it is given, so the two
   // failures stack rather than masking one another — and since #289 they are
   // told apart by `source` rather than by how each one is worded.
-  if (listing.warning) {
-    warnings.push({
-      source: USAGE_WARNING_SOURCE.listing,
-      message: listing.warning,
-    });
+  warnings.push(...listingWarnings(listing));
+
+  // Stored, then read back whole: the tally below runs over every response the
+  // history holds, including those whose transcript is gone and those an
+  // earlier scan read and this one skipped. A read that failed moves no cursor.
+  let responses = read.responses;
+  let historySince: string | null = null;
+  if (store) {
+    fromHistory(() => store.record(read.responses, read.cursors));
+    // The listing this scan was joined against, so the stored reading the page
+    // opens on (#432) names the same titles and bands without asking `gh`.
+    fromHistory(() => store.recordListing(keptListingOf(listing)));
+    responses = fromHistory(() => store.responses());
+    historySince = fromHistory(() => store.since());
+  }
+  // First among the warnings, where it has always been.
+  const pushedAndHeld =
+    pushedHistory &&
+    transcriptsAbsent &&
+    store !== null &&
+    responses.length > 0;
+  if (transcriptWarning && !pushedAndHeld) {
+    warnings.unshift(transcriptWarning);
+  }
+  const { byIssue, unattributed } = tallySpend(responses);
+  const issues = joinIssues(byIssue, listing);
+
+  // Today's trend point, from the very rows the page's panels are drawn from
+  // (#419), so the two cannot disagree. The same instant stamps the reading,
+  // which makes the point's `at` and `gatheredAt` one moment.
+  const at = now();
+  let trend: TrendPoint[] = [];
+  if (store) {
+    // Computed outside `fromHistory`: a fault in the arithmetic is not the
+    // history's.
+    const point = trendPointFor(issues, at);
+    fromHistory(() => store.recordPoint(point));
+    // The moment the stored reading (#432) will say its figures are from.
+    fromHistory(() => store.recordStamp(at.toISOString()));
+    trend = fromHistory(() => store.trend());
   }
 
   return {
-    gatheredAt: new Date().toISOString(),
+    gatheredAt: at.toISOString(),
     scanMs: Date.now() - startedAt,
     transcriptDir: dir,
-    transcripts: scan.transcripts,
-    issues: joinIssues(scan.byIssue, listing),
+    transcripts: read.transcripts,
+    historySince,
+    trend,
+    issues,
     // Beside the rows, never among them (#253): it has no issue number, nothing
     // forecast it, and there is no band for it to land in — which is also why
     // the page draws it as a total rather than a row.
-    unattributed: scan.unattributed,
+    unattributed,
     warnings,
   };
+}
+
+/** The listing's warning, if it carries one, as the report's. Shared by the
+ *  scan and the stored reading. */
+const listingWarnings = (listing: IssueMetadata): UsageWarning[] =>
+  listing.warning
+    ? [{ source: USAGE_WARNING_SOURCE.listing, message: listing.warning }]
+    : [];
+
+/** A listing as the history keeps it: `gh`'s own shape, or the warning that
+ *  said why there was none. */
+const keptListingOf = (listing: IssueMetadata): StoredListing => ({
+  issues: listing.byIssue ? JSON.stringify(toGhListing(listing.byIssue)) : null,
+  warning: listing.warning,
+});
+
+/** What a history no scan has kept a listing in says: one written before
+ *  #432, until its next scan. */
+const NO_KEPT_LISTING =
+  "The usage history keeps no issue listing yet; press Scan to read one — " +
+  LISTING_COST;
+
+/** The kept listing back as `fetchIssueMetadata` would have returned it. */
+function listingFromKept(kept: StoredListing | null): IssueMetadata {
+  if (!kept) return { byIssue: null, warning: NO_KEPT_LISTING };
+  return {
+    byIssue: kept.issues === null ? null : parseListing(kept.issues),
+    warning: kept.warning,
+  };
+}
+
+/** The stored reading's lister: it never asks `gh`, and throws if anything
+ *  makes it — `fetchIssueMetadata` only falls to it with no file named. */
+const neverAskGh: IssueLister = () =>
+  Promise.reject(new Error("the stored reading does not run gh"));
+
+/**
+ * The reading the Usage page opens on (#432): computed from what the usage
+ * history already holds, reading no transcript, running no `gh`, and writing
+ * nothing. `GET /__devtools/usage` serves it; `POST` — the Scan button —
+ * is still `gatherUsage`.
+ *
+ * **Its figures are a scan's, minus the read.** The same stored rows go
+ * through the same `tallySpend` and `joinIssues`, so the rows, the unattributed
+ * total, the trend and the start date are what the last scan or push left —
+ * and a correction to the counting rules still reaches them, because nothing
+ * derived is stored (ADR-0023). What it cannot know is how many transcripts are
+ * on disk, so `transcripts` is null, which is also how the page tells it from
+ * a scan. `gatheredAt` is the store's stamp — when rows last arrived, by a scan
+ * or a push — since that is the moment the figures describe; `now` stands in
+ * only for a history no scan or push has stamped since #432.
+ *
+ * **The listing is the one the last scan or push used.** `issuesFile` is
+ * `GH_ISSUES_FILE`: set — Railway's develop, where a push rewrites it without a
+ * scan — it is read as a scan would read it; unset, the history's own copy is,
+ * which every scan with a history keeps (`recordListing`), warning and all.
+ * `run` is never called; it is a parameter so a test can prove that.
+ *
+ * Null — the page's empty state — when no history is configured
+ * (`historyFile` null), when the file does not exist (nothing is created), and
+ * when it holds no rows. Opened read only, so a write anywhere below throws
+ * rather than landing. A history that cannot be read throws too: the page
+ * shows that as a warning and Scan stays the way to a reading.
+ */
+export async function readStoredUsage(
+  dir: string,
+  historyFile: string | null,
+  issuesFile: string | null,
+  {
+    run = neverAskGh,
+    now = () => new Date(),
+  }: { run?: IssueLister; now?: () => Date } = {},
+): Promise<UsageReport | null> {
+  const startedAt = Date.now();
+  if (historyFile === null || !existsSync(historyFile)) return null;
+  const store = await openUsageStore(historyFile, { readOnly: true });
+  try {
+    if (store.count() === 0) return null;
+    const listing = issuesFile
+      ? await fetchIssueMetadata({ [ISSUES_FILE_ENV]: issuesFile }, run)
+      : listingFromKept(store.listing());
+    const { byIssue, unattributed } = tallySpend(store.responses());
+    return {
+      // When rows last arrived, which is the moment these figures are from;
+      // the opening moment only for a history marked before #432 had stamps.
+      gatheredAt: store.stamp() ?? now().toISOString(),
+      scanMs: Date.now() - startedAt,
+      transcriptDir: dir,
+      transcripts: null,
+      historySince: store.since(),
+      trend: store.trend(),
+      issues: joinIssues(byIssue, listing),
+      unattributed,
+      warnings: listingWarnings(listing),
+    };
+  } finally {
+    store.close();
+  }
 }

@@ -20,7 +20,10 @@ import {
   removeGhIssuesFixture,
   writeGhIssuesFixture,
 } from "./fixtures/gh-issues";
-import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
+import {
+  resetTranscriptWorkingCopy,
+  TRANSCRIPT_WORKING_DIR,
+} from "./fixtures/transcript-fixture";
 
 /**
  * Slices 1 to 5 of `docs/plans/dev-tools-usage-page.md` (#248, #250, #251,
@@ -32,11 +35,11 @@ import { TRANSCRIPT_FIXTURE_DIR } from "./fixtures/transcript-fixture";
  * override. Neither is something an assertion can name — a machine's spend is
  * its own, and what this repository's issues are titled changes every time
  * somebody files one — so `playwright.config.ts` points
- * `CLAUDE_TRANSCRIPT_DIR` at `fixtures/transcripts`, two files whose totals are
- * written down in that directory's README and restated here as literals, and
- * `GH_ISSUES_FILE` at the listing in `fixtures/gh-issues.ts`. Recomputing
- * either with the code under test would make this spec agree with it about
- * anything, including a wrong answer.
+ * `CLAUDE_TRANSCRIPT_DIR` at a working copy of `fixtures/transcripts`, two
+ * files whose totals are written down in that directory's README and restated
+ * here as literals, and `GH_ISSUES_FILE` at the listing in
+ * `fixtures/gh-issues.ts`. Recomputing either with the code under test would
+ * make this spec agree with it about anything, including a wrong answer.
  *
  * **No sign-in, no database, no API.** `/__dev` sits outside `ProtectedRoute`
  * and outside `AppShell` by construction (`DevRoutes.tsx`), and this page talks
@@ -250,8 +253,11 @@ const SPENT_ASCENDING = ["#102", "#101", "#105", SUNK];
 test.describe("dev tools: Usage", () => {
   // Written before each test rather than once, because one test below removes
   // it on purpose and everything after would otherwise inherit that state.
+  // The transcripts are remade alongside it, from the checked-in fixtures, so
+  // no test reads what an earlier one (or an earlier run) left in the copy.
   test.beforeEach(async ({ page }) => {
     writeGhIssuesFixture();
+    resetTranscriptWorkingCopy();
     await page.goto(ROUTE.devUsage.path);
   });
 
@@ -274,7 +280,12 @@ test.describe("dev tools: Usage", () => {
     await expect(page.getByRole("heading", { name: "Usage" })).toBeVisible();
   });
 
-  test("shows no figures until Scan is pressed", async ({ page }) => {
+  // Empty because `resetTranscriptWorkingCopy` removed the history: since #432
+  // the page opens on a stored reading when there is one
+  // (`dev-usage-history.spec.ts`).
+  test("shows no figures until Scan is pressed, with no history stored", async ({
+    page,
+  }) => {
     await expect(page.getByText(/nothing gathered yet/i)).toBeVisible();
     await expect(spendTable(page)).toHaveCount(0);
   });
@@ -288,7 +299,7 @@ test.describe("dev tools: Usage", () => {
     await expect(gathered).toBeVisible();
     // Before the rows, because this is what a wrong answer usually means: the
     // page read somewhere other than the fixture.
-    await expect(gathered).toContainText(TRANSCRIPT_FIXTURE_DIR);
+    await expect(gathered).toContainText(TRANSCRIPT_WORKING_DIR);
     await expect(gathered).toContainText("2 transcripts");
     // The stamp survives the locale formatting beside it, and is a real date.
     const stamp = await gathered.locator("time").getAttribute("datetime");

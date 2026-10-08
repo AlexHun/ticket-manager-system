@@ -1,6 +1,6 @@
 # PRD: Dev-tools Usage page
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-11
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-11
 
 ## Problem
 
@@ -66,6 +66,9 @@ is what the page cannot see, reported so the totals are never read as complete.
   that is a different feature with a different shape.
 - **History across runs.** The page reports what is on disk now. Nothing is
   persisted, so there is no trend line and no comparison against a past reading.
+  _Lifted by `docs/prd/usage-history.md` (#417, ADR-0023): the transcripts this
+  assumed would stay on disk are deleted after 30 days, so each scan now stores
+  the responses it read._
 - **Per-session drill-down.** A session count per issue is enough to see when
   work was split; which session spent what is not a question this answers.
 - **Spend from other machines or other people.** Out of reach by construction.

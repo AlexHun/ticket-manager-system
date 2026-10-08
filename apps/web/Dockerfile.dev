@@ -52,6 +52,13 @@ RUN cd apps/api \
 # serving `/__dev` to anyone.
 ENV DEV_BASIC_AUTH_REQUIRED=1
 
+# The Usage page's history here is fed by `bun run tokens --push` (#428), since
+# the transcripts are on the developer's laptop. This marks it so: a scan does
+# not warn about the missing transcript directory while the history holds rows,
+# and a push is refused until `USAGE_HISTORY_FILE` names a file on the volume.
+# See `apps/web/dev/usage-push.ts` and DEPLOYMENT.md §7.
+ENV USAGE_HISTORY_PUSHED=1
+
 # **No `NODE_ENV=production`.** This is a dev server on purpose:
 # `import.meta.env.DEV` must be true for the `/__dev` routes to exist at all.
 

@@ -3130,12 +3130,16 @@ export interface TutorialContentsResponse {
  */
 export const NEW_FEATURE_KEY = {
   activityPage: "activityPage",
+  howItWorks: "howItWorks",
 } as const;
 
 export type NewFeatureKey =
   (typeof NEW_FEATURE_KEY)[keyof typeof NEW_FEATURE_KEY];
 
-export const NEW_FEATURE_KEYS = [NEW_FEATURE_KEY.activityPage] as const;
+export const NEW_FEATURE_KEYS = [
+  NEW_FEATURE_KEY.activityPage,
+  NEW_FEATURE_KEY.howItWorks,
+] as const;
 
 /**
  * Whether a "new" badge should (re-)appear, per key. Bumped by hand by a
@@ -3146,6 +3150,7 @@ export const NEW_FEATURE_KEYS = [NEW_FEATURE_KEY.activityPage] as const;
  */
 export const NEW_FEATURE_VERSIONS: Record<NewFeatureKey, number> = {
   [NEW_FEATURE_KEY.activityPage]: 1,
+  [NEW_FEATURE_KEY.howItWorks]: 1,
 };
 
 /** `GET /api/new-features/status`: every key's badge state for the caller, in
@@ -3281,15 +3286,15 @@ export interface DashboardLayoutResponse {
  * release or a hand-authored batch.
  *
  * `changelog-entries.json` is written by CI's `bump-version` job (`.github/workflows/ci.yml`)
- * on every push to `main`, one entry per `feat`/`fix` commit on the merged
- * branch — the same conventional-commit prefix this repo's own commits
+ * on every push to `develop`, one entry per `feat`/`fix` commit since the
+ * previous bump — the same conventional-commit prefix this repo's own commits
  * already use, stripped for display. A `chore`/`refactor`/`docs`/etc. commit
  * still bumps the version (see `releaseName()` in `apps/web/vite.config.ts`)
  * but adds no entry here, because not every deploy is something a user should
- * be told about. The whole branch is scanned rather than its tip, which is
- * routinely a review fix-up on top of the `feat` that was the branch's point
- * (issue #113) — so a deploy can contribute two entries, and they share a
- * version. This file is the one thing standing between "empty" and "has
+ * be told about. Every commit since the previous bump is scanned rather than a
+ * branch's tip, which is routinely a review fix-up on top of the `feat` that
+ * was the branch's point (issue #113) — so a deploy can contribute several
+ * entries, and they share a version. This file is the one thing standing between "empty" and "has
  * content" for a fresh environment — same as `KnowledgeArticle`/`TutorialContent`,
  * nothing needs seeding for the feature to work.
  *
@@ -3323,7 +3328,7 @@ export const CHANGELOG_ENTRIES: ChangelogEntry[] = changelogEntriesData;
 /**
  * Dotted-numeric version compare (`"0.1.9"` < `"0.1.10"`), because these are
  * `major.minor.patch` strings compared numerically per segment, not sorted as
- * plain text — `apps/web`'s version is patch-bumped on every push to `main`
+ * plain text — `apps/web`'s version is patch-bumped on every push to `develop`
  * (see the `bump-version` CI job), so a lexical compare breaks the moment a
  * segment reaches double digits.
  */

@@ -568,5 +568,190 @@
     "version": "0.1.157",
     "date": "2026-10-02",
     "title": "Changelog dates keep clear of the list's scrollbar"
+  },
+  {
+    "version": "0.1.159",
+    "date": "2026-10-03",
+    "title": "Count one API response once, not once per content block"
+  },
+  {
+    "version": "0.1.162",
+    "date": "2026-10-04",
+    "title": "A Usage scan stores what it read, so spend survives a deleted transcript"
+  },
+  {
+    "version": "0.1.162",
+    "date": "2026-10-04",
+    "title": "Review fixes for the usage history"
+  },
+  {
+    "version": "0.1.163",
+    "date": "2026-10-04",
+    "title": "A Usage scan reads only what was appended since the last one"
+  },
+  {
+    "version": "0.1.163",
+    "date": "2026-10-04",
+    "title": "Review fixes for the incremental Usage scan"
+  },
+  {
+    "version": "0.1.164",
+    "date": "2026-10-04",
+    "title": "A daily trend of forecast accuracy and quartiles on the Usage page"
+  },
+  {
+    "version": "0.1.164",
+    "date": "2026-10-04",
+    "title": "Review fixes for the Usage trend"
+  },
+  {
+    "version": "0.1.165",
+    "date": "2026-10-04",
+    "title": "A broken usage history costs a warning, not the page"
+  },
+  {
+    "version": "0.1.165",
+    "date": "2026-10-04",
+    "title": "Review fixes for the broken usage history"
+  },
+  {
+    "version": "0.1.166",
+    "date": "2026-10-04",
+    "title": "Every worktree of a clone shares one usage history"
+  },
+  {
+    "version": "0.1.166",
+    "date": "2026-10-04",
+    "title": "Review fixes for the shared usage history"
+  },
+  {
+    "version": "0.1.167",
+    "date": "2026-10-06",
+    "title": "Push the usage history to Railway develop"
+  },
+  {
+    "version": "0.1.167",
+    "date": "2026-10-06",
+    "title": "Review fixes for the usage push"
+  },
+  {
+    "version": "0.1.168",
+    "date": "2026-10-06",
+    "title": "Open the Usage page on the stored reading"
+  },
+  {
+    "version": "0.1.168",
+    "date": "2026-10-06",
+    "title": "Review fixes for the stored Usage reading"
+  },
+  {
+    "version": "0.1.168",
+    "date": "2026-10-06",
+    "title": "Import node:sqlite through a variable in the stored-reading test"
+  },
+  {
+    "version": "0.1.169",
+    "date": "2026-10-06",
+    "title": "Resolve an auto-reply only on the version the model answered"
+  },
+  {
+    "version": "0.1.169",
+    "date": "2026-10-06",
+    "title": "Review fixes for the auto-reply version compare"
+  },
+  {
+    "version": "0.1.170",
+    "date": "2026-10-06",
+    "title": "Count subagent transcripts in the usage scan"
+  },
+  {
+    "version": "0.1.170",
+    "date": "2026-10-06",
+    "title": "Review fixes for the subagent usage scan"
+  },
+  {
+    "version": "0.1.174",
+    "date": "2026-10-07",
+    "title": "Cited paths in the standards fail the push"
+  },
+  {
+    "version": "0.1.174",
+    "date": "2026-10-07",
+    "title": "Check extensionless paths too, and address review"
+  },
+  {
+    "version": "0.1.175",
+    "date": "2026-10-07",
+    "title": "Cited symbols in the standards and ADRs fail the push"
+  },
+  {
+    "version": "0.1.176",
+    "date": "2026-10-07",
+    "title": "CLAUDE.md files, skills and agents are citation-checked too"
+  },
+  {
+    "version": "0.1.177",
+    "date": "2026-10-08",
+    "title": "Open PRDs are citation-checked; shipped ones are frozen"
+  },
+  {
+    "version": "0.1.178",
+    "date": "2026-10-08",
+    "title": "A stale-citation failure names the rename"
+  },
+  {
+    "version": "0.1.179",
+    "date": "2026-10-08",
+    "title": "Bun run graph lists who cites a file and what a doc cites"
+  },
+  {
+    "version": "0.1.182",
+    "date": "2026-10-08",
+    "title": "How it works — runtime boxes on a zoomable canvas"
+  },
+  {
+    "version": "0.1.182",
+    "date": "2026-10-08",
+    "title": "How it works review fixes"
+  },
+  {
+    "version": "0.1.183",
+    "date": "2026-10-08",
+    "title": "How it works — ticket lifecycle swimlanes"
+  },
+  {
+    "version": "0.1.183",
+    "date": "2026-10-08",
+    "title": "How it works lifecycle review fixes"
+  },
+  {
+    "version": "0.1.184",
+    "date": "2026-10-08",
+    "title": "How it works — step through the lifecycle"
+  },
+  {
+    "version": "0.1.184",
+    "date": "2026-10-08",
+    "title": "How it works stepping review fixes"
+  },
+  {
+    "version": "0.1.185",
+    "date": "2026-10-08",
+    "title": "How it works — drill into subsystems"
+  },
+  {
+    "version": "0.1.185",
+    "date": "2026-10-08",
+    "title": "How it works drill-down review fixes"
+  },
+  {
+    "version": "0.1.186",
+    "date": "2026-10-08",
+    "title": "How it works — into the code"
+  },
+  {
+    "version": "0.1.187",
+    "date": "2026-10-08",
+    "title": "How it works zoom buttons and small screens"
   }
 ]

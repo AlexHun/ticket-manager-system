@@ -7,7 +7,7 @@ import {
   TICKET_STATUS,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import { autoReply, AUTO_REPLY_FAILURE } from "../ai/auto-reply";
+import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
 import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
@@ -22,6 +22,11 @@ import { REPLY_ORIGIN, SEND_OUTCOME, sendReply } from "../outbound";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
 import {
+  draftReply,
+  readResolveState,
+  type ResolveState,
+} from "./auto-reply-steps";
+import {
   getBoss,
   registerSweep,
   registerWorker,
@@ -35,12 +40,12 @@ import {
  * The scheduling half; `ai/auto-reply.ts` is the deciding half, and its header
  * is where the six checks that make this defensible are written down.
  *
- * **The status is the claim.** A ticket moves `New → Processing` before the model
+ * **The status is the claim.** A ticket moves `New â†’ Processing` before the model
  * is called and leaves `Processing` on every exit, and `Processing` is the one
  * status `GET /api/tickets` refuses to return. That is not bookkeeping: it is the
  * concurrency control. Without it an agent scanning the queue can open a ticket
  * a worker is composing a reply for, write their own answer, and the customer
- * receives two — one of them from a machine that thought nobody was there. The
+ * receives two â€” one of them from a machine that thought nobody was there. The
  * ticket disappearing for the seconds this takes is the feature.
  *
  * **The ticket row is the source of truth, not the job.** pg-boss delivers at
@@ -52,8 +57,8 @@ import {
  *
  * **Declining is the expected outcome.** Most support mail is not a knowledge-
  * base question, and a ticket handed back as `Open` is this working correctly.
- * The logs say so: a decline is one info line, and only a discarded reply — one
- * that failed grounding, or carried money or a link from nowhere — is an error.
+ * The logs say so: a decline is one info line, and only a discarded reply â€” one
+ * that failed grounding, or carried money or a link from nowhere â€” is an error.
  */
 
 /** The queue a classified ticket is offered on. */
@@ -74,7 +79,7 @@ const RECOVER_CRON = "*/5 * * * *";
  * notices. Five minutes, checked every five.
  *
  * pg-boss's own `expireInSeconds` re-offers the *job* after two minutes, and
- * that re-delivery cannot claim the ticket — the claim only fires from `New`.
+ * that re-delivery cannot claim the ticket â€” the claim only fires from `New`.
  * This sweep is what puts it back to `New` so the re-delivery has something to
  * take, and what covers the case where the job is gone entirely.
  */
@@ -90,7 +95,7 @@ const RECOVER_BATCH = 50;
  * Two, matching the classifier and for the same reason: the provider account is
  * shared with polishing and summarising, both of which have an agent watching a
  * spinner, and a burst of forwarded mail must not queue in front of them. Two
- * workers rather than a batch of two — a batch shares its fate, so one ticket's
+ * workers rather than a batch of two â€” a batch shares its fate, so one ticket's
  * transient failure would drag its neighbour back through the retry ladder.
  */
 const LOCAL_CONCURRENCY = 2;
@@ -104,7 +109,7 @@ const LOCAL_CONCURRENCY = 2;
 const EXPIRE_IN_SECONDS = 120;
 
 /** A `type` rather than an `interface`, so it satisfies `WorkerSpec`'s payload
- *  constraint — see the note there. */
+ *  constraint â€” see the note there. */
 export type AutoReplyJob = {
   ticketId: number;
 };
@@ -164,7 +169,7 @@ export async function enqueueAutoReply(ticketId: number): Promise<void> {
  * The tickets this queue will still reach a verdict on, as a `where`.
  *
  * Offered (`enqueueAutoReply` stamped it), no verdict yet, and nobody has
- * answered it — unless the reply on the thread is being written by the worker
+ * answered it â€” unless the reply on the thread is being written by the worker
  * that holds the claim right now. An answered ticket is not coming back: the
  * classify handler offers once, and `recoverStuck` re-offers only a ticket
  * stuck in `Processing`. That is also the reopened ticket's shape, since a
@@ -174,7 +179,7 @@ export async function enqueueAutoReply(ticketId: number): Promise<void> {
  * `classifierWillStillAct` is one: `routes/pipeline.ts` counts it for the
  * rail's `autoReplyPending` and asks it of the listed tickets for their
  * outcome, so the two are one answer. It does not see the gap the domain notes
- * record — an offered ticket a person assigned or moved out of `New` without
+ * record â€” an offered ticket a person assigned or moved out of `New` without
  * replying, which the claim then skips.
  */
 export function autoReplyWillStillAct(): Prisma.TicketWhereInput {
@@ -193,7 +198,7 @@ export function autoReplyWillStillAct(): Prisma.TicketWhereInput {
  * Give a ticket an owner, unless it already has one.
  *
  * Every write below the claim is conditional on the state it expects, and this
- * is no exception — the condition is just a different one. The claim required
+ * is no exception â€” the condition is just a different one. The claim required
  * `assignedToId: null`, but nothing stops an agent opening the ticket by id and
  * putting their name on it during the seconds the model is thinking; only the
  * *list* hides `Processing`. So the assignee is filled in rather than set, and a
@@ -202,7 +207,7 @@ export function autoReplyWillStillAct(): Prisma.TicketWhereInput {
  * Separate from `release` and from the resolve transaction on purpose. Folding
  * `assignedToId` into either would make one statement carry two conditions that
  * are not the same condition, and the status write must happen whether or not
- * the assignee one does — a ticket stuck in `Processing` because somebody was
+ * the assignee one does â€” a ticket stuck in `Processing` because somebody was
  * already assigned is invisible to everybody.
  *
  * A null `userId` is not an error: `unassigned` is a target an admin can choose,
@@ -225,13 +230,13 @@ async function assignIfUnowned(
  *
  * `decline` is recorded on the way out to `Open`, which is the only exit that
  * means "a person's turn now". Going back to `New` is a retry in progress and
- * says nothing yet — stamping a reason there would put a verdict on a ticket the
+ * says nothing yet â€” stamping a reason there would put a verdict on a ticket the
  * machine is still thinking about, and the next attempt may well answer it.
  *
  * **`Open` is also the only exit that assigns anybody**, and for the same
  * reason turned the other way round: the claim can only take a ticket whose
  * `assignedToId` is null, so naming an owner on the way back to `New` would put
- * the ticket beyond the reach of the retry that is already scheduled for it —
+ * the ticket beyond the reach of the retry that is already scheduled for it â€”
  * and beyond the recovery sweep, which releases to `New` as well. A provider
  * outage would quietly become a queue of tickets nothing would ever look at
  * again. Ownership is for when the machine is finished, never for when it is
@@ -258,7 +263,7 @@ async function release(
 
   // One publish for both exits, guarded the same way the assignment below is:
   // only the call that actually released it has anything to announce. A release
-  // to `New` matters to the rail as much as one to `Open` — the ticket has gone
+  // to `New` matters to the rail as much as one to `Open` â€” the ticket has gone
   // back to waiting, and a stop on the diagram just emptied.
   if (released.count > 0) publishPipelineChanged(ticketId);
 
@@ -269,22 +274,22 @@ async function release(
     await assignIfUnowned(ticketId, await resolveHandoff());
 
     // One entry for the whole handing-back, not three. The claim and this
-    // release are a matched pair that a person never sees — `Processing` lasts
-    // seconds and the tickets list refuses to return it — so logging both would
+    // release are a matched pair that a person never sees â€” `Processing` lasts
+    // seconds and the tickets list refuses to return it â€” so logging both would
     // bury the only part that carries information under two lines describing a
     // state nobody can observe. The reason is that information: `/pipeline`
     // counts declines in aggregate, and until now the ticket an agent is
     // actually looking at never said which one it hit.
     //
     // Guarded on `decline` as well as on `count`, because a release to `New` is
-    // a retry in progress and has no verdict to record yet — the same reason
+    // a retry in progress and has no verdict to record yet â€” the same reason
     // `autoReplyDecline` is only stamped on this exit.
     //
     // **Before the publish below, and that ordering is the fix for a real
     // defect (#176).** `ticket_updated` invalidates `ticketKeys.activity` on the
     // client, so a detail pane open on this ticket refetches the trail the
     // moment the event lands. Published first, that refetch races an entry that
-    // has not been written yet — and the window is not an instant: this awaits
+    // has not been written yet â€” and the window is not an instant: this awaits
     // `assistantActor()`, an uncached `findFirst` on the user table, before the
     // insert. Two round trips. The pane can cache a trail missing the decline
     // reason and never be told again, because the only event that would have
@@ -302,7 +307,7 @@ async function release(
     }
 
     // Only this exit, and only because of what agents can see. `Processing` is
-    // never published to them, so their lists still show this ticket as `New` —
+    // never published to them, so their lists still show this ticket as `New` â€”
     // the exit to `Open` is the first thing that is genuinely different from
     // what they have cached. A release back to `New` returns it to the state
     // they were already showing, so there is nothing to tell them.
@@ -313,11 +318,25 @@ async function release(
   }
 }
 
+/** The preflight gates, asked of the ticket as the resolving transaction reads
+ *  it. */
+function declineFor(state: ResolveState): AutoReplyDecline | null {
+  return gateDecline({
+    category: state.category,
+    hasOutbound: state.messages.some(
+      (m) => m.direction === MESSAGE_DIRECTION.outbound,
+    ),
+    inboundCount: state.messages.filter(
+      (m) => m.direction === MESSAGE_DIRECTION.inbound,
+    ).length,
+  });
+}
+
 /**
  * Answer one ticket, if it is still there to answer and the knowledge base
  * covers it.
  *
- * Throws to ask for a retry, returns to say the matter is closed — the whole
+ * Throws to ask for a retry, returns to say the matter is closed â€” the whole
  * contract with pg-boss.
  */
 async function handle(job: AutoReplyJob): Promise<void> {
@@ -341,7 +360,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
   });
 
   // Deleted, already answered, taken by an agent, or claimed by another delivery
-  // of this same job. All of them mean there is nothing to do — and between them
+  // of this same job. All of them mean there is nothing to do â€” and between them
   // they are what makes at-least-once delivery harmless here.
   if (claimed.count === 0) return;
 
@@ -352,12 +371,16 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // and this is the moment its rail is drawing.
   publishPipelineChanged(ticketId);
 
+  // Also the version stamp the resolve below matches on (#429): `category` and
+  // `lastMessageAt`, read here at the claim's heels, are the ticket the model is
+  // about to answer.
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     select: {
       subject: true,
       customerName: true,
       category: true,
+      lastMessageAt: true,
       messages: {
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         // No `messageId`: the parent an outbound reply threads onto is found by
@@ -378,16 +401,16 @@ async function handle(job: AutoReplyJob): Promise<void> {
   );
 
   // Gate 1: money. Gate 2: somebody already replied, so this is a conversation
-  // and not a new question — the knowledge base answers openings, not threads.
+  // and not a new question â€” the knowledge base answers openings, not threads.
   // Gate 3: nothing to answer from. Gate 4: the customer wrote again before this
   // job ran, which is gate 2's principle from the other side and the reason
-  // `inbound[0]` below is safe to read — see the argument in the gates module.
+  // `inbound[0]` below is safe to read â€” see the argument in the gates module.
   //
   // The conditions and their order live in
   // `../ai/auto-reply-gates` as a predicate over three values, which is what
   // makes them reachable from the eval harness. Those four reasons are decided
   // here and never by the model, so until the extraction a case set could not
-  // cover them at all — see the header there.
+  // cover them at all â€” see the header there.
   const gated = gateDecline({
     category: ticket.category,
     hasOutbound: answeredAlready,
@@ -404,13 +427,13 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // wanted: the six checks that make this feature defensible became unit-testable
   // without a Prisma mock, and now have tests. The one to preserve: this read
   // stays *here*, after the gates above, so a ticket the machine may not answer
-  // still costs no query — and it stays a single read, because `autoReply`
+  // still costs no query â€” and it stays a single read, because `autoReply`
   // resolves its citations against the exact array it was handed. A second call
   // to `autoReplyArticles()` anywhere in this path would reintroduce the race
   // check 4 exists to close.
   const articles = await autoReplyArticles();
 
-  const result = await autoReply(articles, {
+  const result = await draftReply(articles, {
     subject: ticket.subject,
     // The one inbound message: the `followUp` gate above has already turned back
     // every ticket carrying more than one, so this index is the whole thread
@@ -425,7 +448,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
   if (!result.ok) {
     if (isRetryable(result.reason)) {
       // Back to `New` so the retry has something to claim, and visible again in
-      // the meantime — a provider outage must not hide the queue.
+      // the meantime â€” a provider outage must not hide the queue.
       await release(ticketId, TICKET_STATUS.New);
       throw new Error(`auto-reply failed (${result.reason})`);
     }
@@ -446,21 +469,44 @@ async function handle(job: AutoReplyJob): Promise<void> {
 
   const sentAt = new Date();
 
+  // The version the model answered, as the read at the claim's heels found it.
+  const answeredVersion = {
+    lastMessageAt: ticket.lastMessageAt,
+    category: ticket.category,
+  } satisfies Prisma.TicketWhereInput;
+
   // One transaction, and the resolve goes first so its `where` decides whether
   // the message is written at all. `Processing` is still ours only if nothing
-  // released it while the model was thinking — the recovery sweep, say, or a
+  // released it while the model was thinking â€” the recovery sweep, say, or a
   // second delivery. Writing the message first and finding out afterwards would
   // leave a reply on a ticket that had moved on. `sendReply` joins this
   // transaction rather than opening its own, which is what makes the reply and
   // the claim it was written under commit together or not at all.
+  //
+  // **The resolve matches only the version the model answered** (#429). Status
+  // alone cannot see a message that commits between the re-read below and the
+  // resolve, because appending a message does not move a ticket's status. So
+  // the resolve's `where` also carries `lastMessageAt` and `category` as the
+  // read at the claim's heels found them. Every message moves `lastMessageAt`,
+  // in the same commit as the message row: `ingest.ts` for an inbound one,
+  // `sendReply` for an outbound one. `category` is the other fact the gates
+  // read, and an agent re-filing the ticket moves it. A write that commits in
+  // that gap therefore makes the `updateMany` match nothing, because Postgres
+  // re-checks an `UPDATE`'s `where` against a row a concurrent transaction
+  // committed. A write that commits after the `updateMany` waits on its row
+  // lock and lands after the resolve, where an inbound one reopens the ticket
+  // the ordinary way. That closes the window `docs/adr/0020` used to leave
+  // open, with no explicit lock. Not `updatedAt`, which any unrelated write
+  // bumps. Not a dedicated `version` column, which every writer would have to
+  // remember to bump.
   const written = await prisma.$transaction(async (tx) => {
     // The gates again, on what is true *now* rather than what was true before
     // the model was asked.
     //
     // The claim on `Processing` is not enough on its own, and that is the point
-    // of re-reading here. Appending a message does not move a ticket's status —
+    // of re-reading here. Appending a message does not move a ticket's status â€”
     // `ingest.ts` reopens only what carries `autoResolvedAt`, which a ticket
-    // still being answered does not — so a customer who writes again while the
+    // still being answered does not â€” so a customer who writes again while the
     // model is thinking leaves `Processing` intact, and the `where` below would
     // still match and resolve the thread over an email nobody has read. That is
     // the same failure `followUp` exists to stop (`docs/adr/0020`) with the
@@ -471,25 +517,20 @@ async function handle(job: AutoReplyJob): Promise<void> {
     // enough for any of its facts to have moved: an agent can reply in it, and
     // an agent can file the ticket as `Refund` in it. Whichever gate now fires
     // is the reason the ticket is handed back with.
-    const now = await tx.ticket.findUnique({
-      where: { id: ticketId },
-      select: { category: true, messages: { select: { direction: true } } },
-    });
-    const overtaken = now
-      ? gateDecline({
-          category: now.category,
-          hasOutbound: now.messages.some(
-            (m) => m.direction === MESSAGE_DIRECTION.outbound,
-          ),
-          inboundCount: now.messages.filter(
-            (m) => m.direction === MESSAGE_DIRECTION.inbound,
-          ).length,
-        })
-      : null;
+    //
+    // Kept alongside the version compare rather than replaced by it: the
+    // version says *that* something changed, and only the gate says *what* â€”
+    // which is the reason an agent sees on the ticket.
+    const now = await readResolveState(tx, ticketId);
+    const overtaken = now ? declineFor(now) : null;
     if (overtaken) return overtaken;
 
     const resolved = await tx.ticket.updateMany({
-      where: { id: ticketId, status: TICKET_STATUS.Processing },
+      where: {
+        id: ticketId,
+        status: TICKET_STATUS.Processing,
+        ...answeredVersion,
+      },
       data: {
         status: TICKET_STATUS.Resolved,
         autoResolvedAt: sentAt,
@@ -499,18 +540,34 @@ async function handle(job: AutoReplyJob): Promise<void> {
         //
         // A ticket must never show both verdicts. A retryable failure releases
         // to `New` without stamping one, but the recovery sweep re-enqueues a
-        // ticket that has already been declined once — so a later success has
+        // ticket that has already been declined once â€” so a later success has
         // to clear the earlier reason rather than sit beside it.
         autoReplyDecline: null,
         autoReplyDeclinedAt: null,
       },
     });
-    if (resolved.count === 0) return false;
+    if (resolved.count === 0) {
+      // Two reasons to match nothing, and they need opposite answers. Someone
+      // else moved the status â€” the recovery sweep, a second delivery â€” and the
+      // ticket is not ours to touch. Or the status is still ours and only the
+      // version moved, and returning here would strand it in `Processing`,
+      // invisible to every agent until the sweep noticed. Re-read to tell them
+      // apart, and in the second case ask the gates what changed.
+      //
+      // `followUp` when no gate fires. That is reachable only by a re-file from
+      // one answerable category to another, and the reply still answered a
+      // ticket that has moved since. `followUp` is the reason that says the
+      // thread moved on while nobody was looking; `category` would claim a
+      // Refund or a missing classification that is not there.
+      const after = await readResolveState(tx, ticketId);
+      if (after?.status !== TICKET_STATUS.Processing) return false;
+      return declineFor(after) ?? AUTO_REPLY_DECLINE.followUp;
+    }
 
     // The origin is the whole of what makes this reply different from an
     // agent's: no author, the automated flag, and the articles it was built
     // from. Every one of those ids exists in the corpus the model was handed,
-    // because check 4 in `ai/auto-reply.ts` discarded the reply otherwise — so
+    // because check 4 in `ai/auto-reply.ts` discarded the reply otherwise â€” so
     // the thread can show what this answer was built from rather than asking
     // anyone to trust it.
     const sent = await sendReply(
@@ -528,7 +585,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
 
     // Unreachable today: the `updateMany` above matched a row, so the ticket
     // exists inside this transaction. Thrown rather than returned so it stays
-    // unreachable — returning `false` here would *commit* the resolve, leaving
+    // unreachable â€” returning `false` here would *commit* the resolve, leaving
     // a ticket marked answered, stamped `autoResolvedAt` and cleared of its
     // decline reason, with no answer on it and no event to say so. That is the
     // one outcome this transaction exists to prevent, and it is the kind that
@@ -540,12 +597,13 @@ async function handle(job: AutoReplyJob): Promise<void> {
     return true;
   });
 
-  // Overtaken while the model was thinking. The transaction wrote nothing — the
-  // read above returned before the resolve — so this is an ordinary hand-back,
-  // and the reply is discarded rather than held: it answers a thread that has
-  // moved, which is the whole reason the gate that just fired exists. Logged at
-  // `error` because a drafted reply being thrown away is worth noticing, the
-  // same way `ungrounded` is.
+  // Overtaken while the model was thinking. The transaction wrote nothing â€”
+  // either the re-read returned before the resolve, or the resolve's version
+  // compare matched no row â€” so this is an ordinary hand-back, and the reply
+  // is discarded rather than held: it answers a thread that has moved, which is
+  // the whole reason the gate that just fired exists. Logged at `error` because
+  // a drafted reply being thrown away is worth noticing, the same way
+  // `ungrounded` is.
   if (typeof written === "string") {
     console.error(
       `[auto-reply] ticket ${ticketId} changed while it was being answered (${written}); reply discarded`,
@@ -558,7 +616,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
     // File it under the assistant. Outside the transaction because it is not
     // part of the reply being correct: the ticket is answered and resolved
     // either way, and a deployment that has never been seeded has no assistant
-    // account to name — that must leave the assignee empty, not roll back a
+    // account to name â€” that must leave the assignee empty, not roll back a
     // reply the customer is going to receive.
     //
     // Note what this does *not* touch. The message keeps `authorId: null` and
@@ -570,7 +628,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
     await assignIfUnowned(ticketId, (await assistantUser())?.id ?? null);
 
     // One entry for the resolve and the assignment together: they are one event
-    // — the machine finished this ticket and filed it under itself — and two
+    // â€” the machine finished this ticket and filed it under itself â€” and two
     // lines saying so would only make a short history harder to read. The
     // articles it answered from are already on the message, where the thread
     // shows them beside the words they produced.
@@ -615,7 +673,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
  * `Processing`, so without this the two would wait for each other forever.
  *
  * Back to `New` rather than `Open`, because the work has not been attempted as
- * far as anyone can tell — an expired job is still coming, and this is what gives
+ * far as anyone can tell â€” an expired job is still coming, and this is what gives
  * it something to take.
  */
 async function recoverStuck(): Promise<void> {
@@ -656,7 +714,7 @@ async function recoverStuck(): Promise<void> {
  * agent reading "the assistant could not be reached" knows to answer it
  * themselves; "not covered by the knowledge base" would be a claim nobody made.
  *
- * Note what does *not* arrive here — a decline. `declined` and `ungrounded` are
+ * Note what does *not* arrive here â€” a decline. `declined` and `ungrounded` are
  * this feature working, the six checks refusing to send something they cannot
  * stand behind, and routing them onto the dead-letter queue would turn the
  * safety design into a stream of alerts until someone silenced it.

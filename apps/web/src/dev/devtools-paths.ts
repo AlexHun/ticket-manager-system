@@ -40,7 +40,14 @@ export const DEVTOOLS_API = {
   start: "/__devtools/start",
   cancel: "/__devtools/cancel",
   clear: "/__devtools/clear",
-  /** `POST` gathers a fresh reading of the local transcripts; `UsageReport` in
-   *  `./usage-protocol` is where the absence of a `GET` beside it is argued. */
+  /** `POST` gathers a fresh reading of the local transcripts — the Scan
+   *  button. `GET` answers the stored reading the page opens on, computed from
+   *  the usage history and writing nothing (#432); `UsageReport` in
+   *  `./usage-protocol` argues both halves. */
   usage: "/__devtools/usage",
+  /** `POST` stores a laptop's usage-history rows in this server's history
+   *  (#428) — `./usage-push`. A sibling of `usage` rather than a path under it:
+   *  connect mounts by prefix, so `/__devtools/usage/push` would reach the scan
+   *  handler first. */
+  usagePush: "/__devtools/usage-push",
 } as const;

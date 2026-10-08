@@ -79,9 +79,15 @@ _Avoid_: lock, reserve
 Passing a ticket the assistant could not finish to a person.
 _Avoid_: escalation, fallback, handover
 
+**Ticket lifecycle**:
+The whole path a ticket travels from the email that opened it to closed —
+the unattended part (the pipeline) and every step people take after it.
+_Avoid_: workflow, ticket flow, journey
+
 **Reopen**:
-A customer replying to a ticket that had been resolved, putting it back in
-front of a person.
+A customer replying to a ticket the assistant had resolved, putting it back in
+front of a person. A reply to a ticket a person resolved or closed joins the
+thread and is not a reopen.
 _Avoid_: reactivate, unresolve
 
 ### The unattended path

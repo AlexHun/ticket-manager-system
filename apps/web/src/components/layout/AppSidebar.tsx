@@ -109,7 +109,7 @@ export function AppSidebar() {
                           is unambiguous at the same one-word cost. Text, not a
                           count, so it doesn't collide with the unread slot
                           above (mutually exclusive today: only Tickets has
-                          unread, only Activity has newFeatureKey). */}
+                          unread, and Tickets has no newFeatureKey). */}
                       {isNew && (
                         <SidebarMenuBadge
                           data-testid="new-feature-badge"

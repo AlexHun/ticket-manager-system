@@ -1,6 +1,6 @@
 ## reading
 
-Gathered at <gathered-at> from tests/e2e/fixtures/transcripts — 2 transcripts, 4 issues, read in <scan-ms> ms.
+Gathered at <gathered-at> from tests/e2e/fixtures/transcripts.local — 2 transcripts, 4 issues, read in <scan-ms> ms.
 
 ## table — default columns
 

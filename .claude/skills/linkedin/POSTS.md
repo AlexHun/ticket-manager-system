@@ -19,6 +19,28 @@ appear in the text.
   ("How do you decide when an AI reply should go to a human instead?"), or
   nothing.
 
+## Hooks
+
+Write three openings of different types, then let the target reader pick one.
+Types: **confession** ("I told the model not to… In 7 of 9 runs it did"),
+**number**, **the customer's own words** (a quoted email), **a decision readers
+would argue with** ("…and I deliberately didn't connect it to CI"),
+**before/after**. Rotate types across posts; two posts in a row with the same
+type is a freshness finding.
+
+## Closes
+
+The close varies as much as the hook. Options: a specific question, a plain
+statement of what changed, the honest limit of the result, or nothing. A
+one-line moral ("X is advice, Y is a guarantee") is allowed in at most one
+post in three. `series-scan.mjs` counts them.
+
+## Prepared replies
+
+Every post ships with 2–3 replies to the comments the target reader predicts,
+including the sceptical one. Each reply: two or three sentences, adds one fact
+the post left out, never argues. The author posts them only if they want to.
+
 ## Format
 
 - 120–250 words is the working range; hard limit 3,000 characters.
@@ -68,3 +90,31 @@ Strong (STAR, evidenced):
 
 The strong version's details are illustrative; a real post takes its facts from
 the evidence refs, never from this example.
+
+## Post file
+
+`docs/linkedin/posts/NN-slug.md`. The scripts read the post text between the
+frontmatter and the first `## ` heading, so everything else goes below one.
+
+```markdown
+---
+status: reviewed
+date: Tue 3 Nov
+pillar: 2
+visual: screenshot of one eval run
+evidence:
+  - docs/adr/0021-a-planned-run-is-not-a-run.md
+takeaway: <one sentence>
+reader: <who stops scrolling, and why>
+score: 14
+scores: { hook: 2, tension: 2, specificity: 2, evidence: 2, voice: 1, brand: 2, freshness: 1, close: 2 }
+---
+
+<the post, exactly as pasted into LinkedIn>
+
+## Replies
+
+> <likely comment>
+
+<prepared reply>
+```

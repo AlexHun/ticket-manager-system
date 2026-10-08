@@ -29,8 +29,11 @@ import {
   suiteDescriptors,
   type RunHandle,
 } from "./suites.ts";
-import { gatherUsage } from "./usage.ts";
+import { gatherUsage, readStoredUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
+import { resolveHistoryFile } from "./usage-store.ts";
+import { historyIsPushed, pushHistoryFile, receivePush } from "./usage-push.ts";
+import { ISSUES_FILE_ENV } from "./issues.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
 import type {
   DevStreamMessage,
@@ -290,16 +293,19 @@ export function devToolsPlugin(): Plugin {
 
       server.middlewares.use(
         DEVTOOLS_API.usage,
-        // `POST`, no `GET`, and nothing held between presses — `UsageReport` in
+        // `POST` is the scan and `GET` the stored reading the page opens on
+        // (#432), and no handle is held between requests — `UsageReport` in
         // `../src/dev/usage-protocol.ts` carries the reasoning, beside the
-        // shape it
-        // governs. Note what it costs here: this is the one dev-tools route
-        // that keeps no state at all, which is why there is nothing above this
-        // handler the way `runs` sits above the test runner's.
+        // shape it governs. What persists is the usage history (#417), a
+        // SQLite file each request opens and closes, so there is still
+        // nothing above these handlers the way `runs` sits above the test
+        // runner's.
         //
-        // The directory is resolved per request rather than at plugin setup, so
-        // `CLAUDE_TRANSCRIPT_DIR` is read from the environment the dev server is
-        // actually running in — which is how Playwright points this at a fixture.
+        // The directory and the history file are resolved per request rather
+        // than at plugin setup, so `CLAUDE_TRANSCRIPT_DIR` and
+        // `USAGE_HISTORY_FILE` are read from the environment the dev server is
+        // actually running in — which is how Playwright points this at a
+        // fixture.
         //
         // **`REPO_ROOT`, not `process.cwd()`, and that is the whole bug this
         // argument exists to prevent.** Claude Code keys its transcript
@@ -316,9 +322,52 @@ export function devToolsPlugin(): Plugin {
             200,
             await gatherUsage(
               resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+              undefined,
+              await resolveHistoryFile(process.env, { cwd: REPO_ROOT }),
+              undefined,
+              { pushedHistory: historyIsPushed(process.env) },
             ),
           ),
         ),
+      );
+
+      server.middlewares.use(
+        DEVTOOLS_API.usage,
+        // The stored reading (#432): the history's rows, trend and listing,
+        // read only. Its history file is `pushHistoryFile`'s, so a develop
+        // server with no volume configured answers null — the page's empty
+        // state — rather than opening a file inside the container. The
+        // listing is `GH_ISSUES_FILE` when set, which a push rewrites without
+        // a scan; otherwise the copy the last scan kept in the history.
+        only("GET", async (_req, res) =>
+          sendJson(
+            res,
+            200,
+            await readStoredUsage(
+              resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+              await pushHistoryFile(process.env, REPO_ROOT),
+              process.env[ISSUES_FILE_ENV]?.trim() || null,
+            ),
+          ),
+        ),
+      );
+
+      server.middlewares.use(
+        DEVTOOLS_API.usagePush,
+        // The other way into the same history (#428): `bun run tokens --push`
+        // sends a laptop's stored responses and listing here, for Railway's
+        // develop server, which has no transcripts to scan. `./usage-push.ts`
+        // holds the reasoning. Dev-only like every route in this plugin
+        // (`apply: "serve"`), and behind `basic-auth.ts` on Railway like every
+        // request. The two files are resolved per request, as the scan's are.
+        only("POST", async (req, res) => {
+          const { status, body } = await receivePush(
+            req,
+            await pushHistoryFile(process.env, REPO_ROOT),
+            process.env[ISSUES_FILE_ENV]?.trim() || null,
+          );
+          sendJson(res, status, body);
+        }),
       );
 
       // A dev-server restart (editing this file, or vite.config.ts) must not

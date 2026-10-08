@@ -1,9 +1,17 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   TRANSCRIPT_DIR_ENV,
+  readTranscripts,
   resolveTranscriptDir,
   scanSpend,
 } from "./transcripts.ts";
@@ -13,7 +21,11 @@ import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
 // module rather than from `./usage.ts`, which forwarded them until #290 — the
 // same import every other reader of this vocabulary already wrote.
 import { BUCKETS, USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
-import { bucketFor, percentiles } from "../src/dev/usage-readings.ts";
+import {
+  bucketFor,
+  percentiles,
+  recordedSpend,
+} from "../src/dev/usage-readings.ts";
 
 /**
  * An issue listing, without asking `gh` for one.
@@ -55,17 +67,25 @@ const noListing = (
   warning,
 });
 
-/** One transcript record, in the shape Claude Code writes. */
+/**
+ * One transcript record, in the shape Claude Code writes.
+ *
+ * `id` is the `message.id` Claude Code stamps on every record of one API
+ * response — one record per content block (#413). Left out, the record carries
+ * none, which is the fallback the scan counts once per record.
+ */
 const turn = (
   sessionId: string,
   gitBranch: string,
   out: number,
   cacheRead = 0,
+  id?: string,
 ) =>
   JSON.stringify({
     sessionId,
     gitBranch,
     message: {
+      ...(id === undefined ? {} : { id }),
       usage: { output_tokens: out, cache_read_input_tokens: cacheRead },
     },
   });
@@ -198,6 +218,100 @@ describe("scanSpend", () => {
 
     expect(scanSpend(dir).byIssue.size).toBe(0);
     expect(scanSpend(dir).unattributed).toEqual({ turns: 0, out: 0 });
+  });
+
+  // #413: Claude Code writes one API response as one record per content block
+  // (text, each `tool_use`, …), all sharing a `message.id` and carrying the
+  // same `usage`. Summing every record counted a three-block response three
+  // times — 2.32x the true output across this machine's transcripts.
+  it("counts a response split across several records once", () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
+      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
+      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
+      turn("s1", "feat/101-a", 40, 2000, "msg_2"),
+      turn("s1", "main", 30, 0, "msg_3"),
+      turn("s1", "main", 30, 0, "msg_3"),
+    ]);
+    // Never seen across two files when measured, but nothing about the format
+    // forbids it, and the id names the response rather than the file.
+    write("s1-resumed.jsonl", [turn("s1", "feat/101-a", 100, 1000, "msg_1")]);
+
+    const { byIssue, unattributed } = scanSpend(dir);
+
+    expect(byIssue.get(101)).toEqual({
+      turns: 2,
+      out: 140,
+      cacheRead: 3000,
+      sessions: 1,
+    });
+    expect(unattributed).toEqual({ turns: 1, out: 30 });
+  });
+
+  // The fallback that keeps a format change from reading as zero spend: a
+  // record with no `message.id` has nothing to collapse on, so it counts once
+  // per record, as every record did before #413.
+  it("still counts records with no message id, once per record", () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/101-a", 100),
+      turn("s1", "feat/101-a", 100),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)).toEqual({
+      turns: 2,
+      out: 200,
+      cacheRead: 0,
+      sessions: 1,
+    });
+  });
+});
+
+// The identity a response is stored under (#417), and so counted once under
+// across every later scan. Its order is the plan's: the response's id, then the
+// record's uuid, then where the record sits.
+describe("readTranscripts", () => {
+  it("identifies a response by its message id, then its uuid, then its file and line", () => {
+    write("s1.jsonl", [
+      turn("s1", "feat/101-a", 1, 0, "msg_1"),
+      JSON.stringify({
+        sessionId: "s1",
+        gitBranch: "feat/101-a",
+        uuid: "u-2",
+        message: { usage: { output_tokens: 2 } },
+      }),
+      turn("s1", "feat/101-a", 3),
+    ]);
+
+    expect(readTranscripts(dir).responses.map((r) => r.id)).toEqual([
+      "message:msg_1",
+      "uuid:u-2",
+      "line:s1.jsonl:3",
+    ]);
+  });
+
+  it("carries what a stored row needs: session, branch, timestamp and both token counts", () => {
+    write("s1.jsonl", [
+      JSON.stringify({
+        sessionId: "s1",
+        gitBranch: "feat/101-a",
+        timestamp: "2026-09-02T09:00:00.000Z",
+        message: {
+          id: "msg_1",
+          usage: { output_tokens: 12, cache_read_input_tokens: 340 },
+        },
+      }),
+    ]);
+
+    expect(readTranscripts(dir).responses).toEqual([
+      {
+        id: "message:msg_1",
+        session: "s1",
+        branch: "feat/101-a",
+        at: "2026-09-02T09:00:00.000Z",
+        out: 12,
+        cacheRead: 340,
+      },
+    ]);
   });
 });
 
@@ -700,5 +814,713 @@ describe("percentiles", () => {
 
   it("reports zeroes for an empty set rather than undefined", () => {
     expect(percentiles([])).toEqual({ p25: 0, p50: 0, p75: 0 });
+  });
+});
+
+// The usage history through the one door both callers use (#417). Every case
+// names its own temporary file: with none, `gatherUsage` keeps no history, and
+// the real one is never a test's to write.
+describe("gatherUsage with a history", () => {
+  let historyDir: string;
+  let history: string;
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  it("keeps an issue's spend after the transcript it was read from is deleted", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000, 300_000)]);
+    write("b.jsonl", [
+      turn("b", "fix/102-b", 3000, 20_000),
+      turn("b", "main", 500),
+    ]);
+    const before = await gatherUsage(dir, known(), history);
+
+    rmSync(join(dir, "b.jsonl"));
+    const after = await gatherUsage(dir, known(), history);
+
+    expect(after.transcripts).toBe(1);
+    expect(after.issues).toEqual(before.issues);
+    expect(after.unattributed).toEqual({ turns: 1, out: 500 });
+  });
+
+  it("changes no figure however often an unchanged directory is scanned", async () => {
+    write("a.jsonl", [
+      turn("a", "feat/101-a", 12_000, 300_000, "msg_1"),
+      turn("a", "feat/101-a", 12_000, 300_000, "msg_1"),
+      turn("a", "feat/101-a", 8000),
+    ]);
+
+    const first = await gatherUsage(dir, known(), history);
+    await gatherUsage(dir, known(), history);
+    const third = await gatherUsage(dir, known(), history);
+
+    expect(third.issues).toEqual(first.issues);
+    expect(third.issues[0]?.spend).toEqual({
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 300_000,
+    });
+  });
+
+  it("names the earliest date the stored history covers, and keeps it after the transcript goes", async () => {
+    const record = (at: string, out: number) =>
+      JSON.stringify({
+        sessionId: "a",
+        gitBranch: "feat/101-a",
+        timestamp: at,
+        message: { usage: { output_tokens: out } },
+      });
+    write("old.jsonl", [record("2026-09-02T09:00:00.000Z", 1)]);
+    write("new.jsonl", [record("2026-09-20T09:00:00.000Z", 2)]);
+    expect((await gatherUsage(dir, known(), history)).historySince).toBe(
+      "2026-09-02T09:00:00.000Z",
+    );
+
+    rmSync(join(dir, "old.jsonl"));
+
+    expect((await gatherUsage(dir, known(), history)).historySince).toBe(
+      "2026-09-02T09:00:00.000Z",
+    );
+  });
+
+  it("reports no history start when it was asked to keep none", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 10)]);
+
+    expect((await gatherUsage(dir, known())).historySince).toBeNull();
+  });
+
+  it("still reports what is stored when the transcript directory is gone", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+    // Still a warning on a laptop: there it says the scan ran from the wrong
+    // directory, whatever the history holds.
+    expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.transcripts);
+  });
+});
+
+/**
+ * #428: Railway's develop server has no transcripts and a history fed by
+ * pushes. There, and only there (`pushedHistory`), a missing or empty
+ * transcript directory beside stored rows is the ordinary state, not a warning.
+ */
+describe("gatherUsage over a pushed history (#428)", () => {
+  let historyDir: string;
+  let history: string;
+  const pushed = { pushedHistory: true };
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  it("raises no warning for a missing directory beside a history that holds rows", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, known(), history, undefined, pushed);
+
+    expect(report.warnings).toEqual([]);
+    expect(report.transcripts).toBe(0);
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+  });
+
+  it("raises no warning for an empty directory beside a history that holds rows", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    rmSync(join(dir, "a.jsonl"));
+
+    const report = await gatherUsage(dir, known(), history, undefined, pushed);
+
+    expect(report.warnings).toEqual([]);
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+  });
+
+  it("still warns about a missing directory while the history holds nothing", async () => {
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, known(), history, undefined, pushed);
+
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+    ]);
+  });
+
+  it("still warns about a directory that exists and cannot be read", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 4200)]);
+    await gatherUsage(dir, known(), history);
+    // A file where the directory should be: not ENOENT, so not "none here".
+    const notADir = join(dir, "a.jsonl");
+
+    const report = await gatherUsage(
+      notADir,
+      known(),
+      history,
+      undefined,
+      pushed,
+    );
+
+    expect(report.issues[0]?.spend?.out).toBe(4200);
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+    ]);
+  });
+});
+
+/**
+ * Slice 4 of `docs/plans/usage-history.md` (#420): the history is a file the
+ * developer can delete or damage, and neither costs the page. Deleted, the next
+ * scan rebuilds it from the transcripts on disk; damaged, the scan reports what
+ * the transcripts show and a warning of the history's own.
+ */
+describe("gatherUsage with a broken history (#420)", () => {
+  let historyDir: string;
+  let history: string;
+  const JUNK = "this is not a SQLite database\n".repeat(8);
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  const stamped = (at: string, branch: string, out: number) =>
+    JSON.stringify({
+      sessionId: "a",
+      gitBranch: branch,
+      timestamp: at,
+      message: { usage: { output_tokens: out } },
+    });
+
+  it("rebuilds a deleted history from the transcripts still on disk, its start date with it", async () => {
+    write("old.jsonl", [
+      stamped("2026-09-02T09:00:00.000Z", "feat/101-a", 1000),
+    ]);
+    write("new.jsonl", [
+      stamped("2026-09-20T09:00:00.000Z", "fix/102-b", 2000),
+    ]);
+    await gatherUsage(dir, known(), history);
+
+    rmSync(join(dir, "old.jsonl"));
+    rmSync(history);
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.warnings).toEqual([]);
+    expect(report.historySince).toBe("2026-09-20T09:00:00.000Z");
+    // Only what is on disk now: the deleted transcript's spend went with the
+    // history that held it.
+    expect(report.issues).toEqual((await gatherUsage(dir, known())).issues);
+    expect(report.issues.map((r) => r.issue)).toEqual([102]);
+  });
+
+  it("reports the live figures and one warning of its own over an unreadable history", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000), turn("a", "main", 500)]);
+    writeFileSync(history, JUNK, "utf8");
+
+    const report = await gatherUsage(dir, known(), history);
+    const live = await gatherUsage(dir, known());
+
+    expect(report.issues).toEqual(live.issues);
+    expect(report.unattributed).toEqual(live.unattributed);
+    expect(report.transcripts).toBe(1);
+    expect(report.historySince).toBeNull();
+    expect(report.trend).toEqual([]);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0]?.source).toBe(USAGE_WARNING_SOURCE.history);
+    // It names the file and says what to do with it, because nothing else will.
+    expect(report.warnings[0]?.message).toContain(history);
+    expect(report.warnings[0]?.message).toMatch(/delete/i);
+  });
+
+  it("never writes over an unreadable history, and lets it go once it is deleted", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000)]);
+    writeFileSync(history, JUNK, "utf8");
+
+    await gatherUsage(dir, known(), history);
+    await gatherUsage(dir, known(), history);
+
+    expect(readFileSync(history, "utf8")).toBe(JUNK);
+    // Nothing still holds it, or Windows would refuse this.
+    rmSync(history);
+    const report = await gatherUsage(dir, known(), history);
+    expect(report.warnings).toEqual([]);
+    expect(report.issues[0]?.spend?.out).toBe(12_000);
+  });
+
+  it("stacks beside the other two sources rather than masking them", async () => {
+    writeFileSync(history, JUNK, "utf8");
+    rmSync(dir, { recursive: true, force: true });
+
+    const report = await gatherUsage(dir, noListing(), history);
+
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.transcripts,
+      USAGE_WARNING_SOURCE.listing,
+      USAGE_WARNING_SOURCE.history,
+    ]);
+  });
+
+  it("treats a history it cannot open at all as unreadable too", async () => {
+    // A directory where the file should be: SQLite cannot open it, junk or not.
+    write("a.jsonl", [turn("a", "feat/101-a", 12_000)]);
+    mkdirSync(history);
+
+    const report = await gatherUsage(dir, known(), history);
+
+    expect(report.issues[0]?.spend?.out).toBe(12_000);
+    expect(report.warnings.map((w) => w.source)).toEqual([
+      USAGE_WARNING_SOURCE.history,
+    ]);
+  });
+});
+
+/**
+ * Slice 3 of `docs/plans/usage-history.md` (#419): the trend. One point per
+ * local calendar day with a scan, the day's last scan replacing its point.
+ * Playwright cannot move a day, so the day boundary and replace-not-append are
+ * held here, with the clock handed in.
+ */
+describe("gatherUsage keeps a daily trend (#419)", () => {
+  let historyDir: string;
+  let history: string;
+  const tz = process.env.TZ;
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+    if (tz === undefined) delete process.env.TZ;
+    else process.env.TZ = tz;
+  });
+
+  const listing = () =>
+    known({ 101: { forecast: "S" }, 102: { forecast: "S" } });
+  const scanAt = (at: Date) => gatherUsage(dir, listing(), history, () => at);
+
+  it("writes today's point from the figures the page's panels show", async () => {
+    write("a.jsonl", [
+      turn("a", "feat/101-a", 20_000),
+      turn("a", "fix/102-b", 90_000),
+    ]);
+
+    const report = await scanAt(new Date(2026, 9, 4, 10));
+
+    // The panels' own arithmetic over the report's rows.
+    const { p25, p50, p75 } = percentiles(recordedSpend(report.issues));
+    expect(report.trend).toEqual([
+      {
+        day: "2026-10-04",
+        at: new Date(2026, 9, 4, 10).toISOString(),
+        measured: 2,
+        p25,
+        median: p50,
+        p75,
+        scored: 2,
+        onTarget: 1,
+        edges: { S: BUCKETS.S.max, M: BUCKETS.M.max, L: BUCKETS.L.max },
+      },
+    ]);
+    expect(report.gatheredAt).toBe(new Date(2026, 9, 4, 10).toISOString());
+  });
+
+  it("leaves one point for a day scanned twice, holding the second scan's figures", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+    await scanAt(new Date(2026, 9, 4, 9));
+
+    write("b.jsonl", [turn("b", "fix/102-b", 90_000)]);
+    const second = await scanAt(new Date(2026, 9, 4, 18));
+
+    expect(second.trend).toHaveLength(1);
+    expect(second.trend[0]).toMatchObject({
+      day: "2026-10-04",
+      at: new Date(2026, 9, 4, 18).toISOString(),
+      measured: 2,
+      scored: 2,
+      onTarget: 1,
+    });
+  });
+
+  it("adds a point on a later day and leaves the earlier ones as they were", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+    const first = await scanAt(new Date(2026, 9, 3, 22));
+
+    write("b.jsonl", [turn("b", "fix/102-b", 90_000)]);
+    const later = await scanAt(new Date(2026, 9, 4, 8));
+
+    expect(later.trend.map((p) => p.day)).toEqual(["2026-10-03", "2026-10-04"]);
+    expect(later.trend[0]).toEqual(first.trend[0]);
+    expect(later.trend[1]).toMatchObject({ measured: 2, onTarget: 1 });
+  });
+
+  // Either side of the date line, two scans an hour apart share a UTC date and
+  // straddle a local midnight, so a UTC day would leave one point where there
+  // must be two. Node re-reads `TZ` when it is assigned.
+  it.each([
+    // UTC-10: 23:30 on the 4th, then 00:30 on the 5th.
+    [
+      "Pacific/Honolulu",
+      "2026-10-05T09:30:00.000Z",
+      "2026-10-05T10:30:00.000Z",
+    ],
+    // UTC+13 in October: the same two local times.
+    [
+      "Pacific/Auckland",
+      "2026-10-04T10:30:00.000Z",
+      "2026-10-04T11:30:00.000Z",
+    ],
+  ])(
+    "splits days at local midnight, not UTC midnight (%s)",
+    async (zone, before, after) => {
+      process.env.TZ = zone;
+      write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+
+      await scanAt(new Date(before));
+      const report = await scanAt(new Date(after));
+
+      expect(report.trend.map((p) => p.day)).toEqual([
+        "2026-10-04",
+        "2026-10-05",
+      ]);
+    },
+  );
+
+  it("keeps no trend when it was asked to keep no history", async () => {
+    write("a.jsonl", [turn("a", "feat/101-a", 20_000)]);
+
+    expect((await gatherUsage(dir, listing())).trend).toEqual([]);
+  });
+});
+
+/**
+ * Slice 2 of `docs/plans/usage-history.md` (#418): a scan reads only what was
+ * written since the last one. The store remembers per transcript how far it has
+ * read; what these hold is that the figures come out as a full re-read would
+ * have made them, whatever happened to the file in between.
+ *
+ * Lines are written newline-terminated here, as Claude Code writes them, unlike
+ * `write` above — an unterminated last line is a case of its own below.
+ */
+describe("gatherUsage reads only what is new (#418)", () => {
+  let historyDir: string;
+  let history: string;
+
+  beforeEach(() => {
+    historyDir = mkdtempSync(join(tmpdir(), "usage-history-"));
+    history = join(historyDir, "history.sqlite");
+  });
+  afterEach(() => {
+    rmSync(historyDir, { recursive: true, force: true });
+  });
+
+  const lines = (...records: string[]) => records.map((r) => `${r}\n`).join("");
+  const put = (name: string, text: string) =>
+    writeFileSync(join(dir, name), text, "utf8");
+  const append = (name: string, text: string) =>
+    appendFileSync(join(dir, name), text, "utf8");
+  const spendOf = async (issue: number) =>
+    (await gatherUsage(dir, known(), history)).issues.find(
+      (row) => row.issue === issue,
+    )?.spend;
+
+  it("adds exactly an appended response's tokens and one turn", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 1000, 10_000, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    append("a.jsonl", lines(turn("a", "feat/101-a", 250, 4000, "msg_2")));
+
+    expect(await spendOf(101)).toEqual({
+      out: 1250,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 14_000,
+    });
+  });
+
+  // #413's rule across two reads: the second block of a response arrives after
+  // the scan that stored its first, so only the store can recognise it.
+  it("adds nothing for a second content block of a response already stored", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 1000, 10_000, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    append("a.jsonl", lines(turn("a", "feat/101-a", 1000, 10_000, "msg_1")));
+
+    expect(await spendOf(101)).toEqual({
+      out: 1000,
+      turns: 1,
+      sessions: 1,
+      cacheRead: 10_000,
+    });
+  });
+
+  it("counts a half-written last line once, on the scan after it is completed", async () => {
+    const second = turn("a", "feat/101-a", 300, 0, "msg_2");
+    const cut = Math.floor(second.length / 2);
+    put(
+      "a.jsonl",
+      lines(turn("a", "feat/101-a", 1000, 0, "msg_1")) + second.slice(0, cut),
+    );
+    expect((await spendOf(101))?.out).toBe(1000);
+
+    append("a.jsonl", `${second.slice(cut)}\n`);
+
+    expect((await spendOf(101))?.out).toBe(1300);
+    expect((await spendOf(101))?.turns).toBe(2);
+  });
+
+  // The same, for a record with no identity of its own: it is keyed on its file
+  // and line, so the line has to keep its number when it is read again.
+  it("counts a complete but unterminated last line once, even keyed on its line", async () => {
+    put(
+      "a.jsonl",
+      `${turn("a", "feat/101-a", 1000)}\n${turn("a", "feat/101-a", 7)}`,
+    );
+    expect((await spendOf(101))?.out).toBe(1007);
+
+    append("a.jsonl", `\n${turn("a", "feat/101-a", 20)}\n`);
+
+    expect(await spendOf(101)).toMatchObject({ out: 1027, turns: 3 });
+  });
+
+  it("re-reads a transcript replaced by a shorter one, without double counting", async () => {
+    const padded = (id: string, out: number) =>
+      JSON.stringify({
+        sessionId: "a",
+        gitBranch: "feat/101-a",
+        padding: "x".repeat(400),
+        message: { id, usage: { output_tokens: out } },
+      });
+    put("a.jsonl", lines(padded("msg_1", 100), padded("msg_2", 20)));
+    await gatherUsage(dir, known(), history);
+
+    // msg_1 again, and a response the old file never held, in fewer bytes.
+    put(
+      "a.jsonl",
+      lines(
+        turn("a", "feat/101-a", 100, 0, "msg_1"),
+        turn("a", "feat/101-a", 3, 0, "msg_3"),
+      ),
+    );
+
+    expect(await spendOf(101)).toMatchObject({ out: 123, turns: 3 });
+  });
+
+  it("re-reads a transcript replaced by a longer one that does not begin the same way", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 100, 0, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    put(
+      "a.jsonl",
+      lines(
+        turn("b", "feat/101-a", 5, 0, "msg_5"),
+        turn("b", "feat/101-a", 40, 0, "msg_6"),
+        turn("b", "feat/101-a", 100, 0, "msg_1"),
+      ),
+    );
+
+    expect(await spendOf(101)).toMatchObject({ out: 145, turns: 3 });
+  });
+
+  it("agrees with a reading that keeps no history, after any number of appends", async () => {
+    put("a.jsonl", lines(turn("a", "feat/101-a", 1, 0, "msg_1")));
+    put("b.jsonl", lines(turn("b", "main", 2)));
+    await gatherUsage(dir, known(), history);
+    append("a.jsonl", lines(turn("a", "fix/102-b", 30, 5, "msg_2")));
+    await gatherUsage(dir, known(), history);
+    append(
+      "b.jsonl",
+      lines(turn("b", "main", 400), turn("b", "feat/101-a", 5000)),
+    );
+    append("a.jsonl", lines(turn("a", "fix/102-b", 30, 5, "msg_2")));
+
+    const incremental = await gatherUsage(dir, known(), history);
+    const full = await gatherUsage(dir, known());
+
+    expect(incremental.issues).toEqual(full.issues);
+    expect(incremental.unattributed).toEqual(full.unattributed);
+  });
+
+  // #431: a history scanned before subagent transcripts were read gains their
+  // rows on the next scan, once, and keeps the top-level rows it already held.
+  it("adds a subagent transcript's rows to an existing history once", async () => {
+    put("s1.jsonl", lines(turn("s1", "feat/101-a", 100, 0, "msg_1")));
+    await gatherUsage(dir, known(), history);
+
+    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
+    put(
+      join("s1", "subagents", "agent-x.jsonl"),
+      lines(
+        turn("s1", "feat/101-a", 100, 0, "msg_1"),
+        turn("s1", "feat/101-a", 40, 0, "msg_2"),
+      ),
+    );
+
+    expect(await spendOf(101)).toMatchObject({ out: 140, turns: 2 });
+    // And a scan after that, with nothing changed, adds nothing again.
+    expect(await spendOf(101)).toMatchObject({ out: 140, turns: 2 });
+  });
+
+  // A subagent still running when a scan stores its response's first block,
+  // with a partial count, finishes the response in a block the next scan reads.
+  it("takes a response's final count from a block appended after the scan that stored its first", async () => {
+    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
+    const agent = join("s1", "subagents", "agent-x.jsonl");
+    put(agent, lines(turn("s1", "feat/101-a", 3, 0, "msg_1")));
+    expect((await spendOf(101))?.out).toBe(3);
+
+    append(agent, lines(turn("s1", "feat/101-a", 120, 0, "msg_1")));
+
+    expect(await spendOf(101)).toMatchObject({ out: 120, turns: 1 });
+  });
+});
+
+describe("readTranscripts with cursors (#418)", () => {
+  it("reads nothing from a file that has not changed since its cursor", () => {
+    writeFileSync(join(dir, "a.jsonl"), `${turn("a", "feat/101-a", 9)}\n`);
+    const first = readTranscripts(dir);
+
+    const second = readTranscripts(dir, first.cursors);
+
+    expect(first.responses).toHaveLength(1);
+    expect(second.responses).toEqual([]);
+    expect(second.transcripts).toBe(1);
+    expect(second.cursors).toEqual(first.cursors);
+  });
+
+  it("holds its place before a line that has no newline yet", () => {
+    const done = `${turn("a", "feat/101-a", 9)}\n`;
+    writeFileSync(join(dir, "a.jsonl"), `${done}{"sessionId":"a","gitBr`);
+
+    const [cursor] = readTranscripts(dir).cursors.values();
+
+    expect(cursor).toMatchObject({ offset: Buffer.byteLength(done), lines: 1 });
+  });
+});
+
+// #431: Claude Code writes a subagent's transcript beside its session, at
+// `<session>/subagents/agent-<id>.jsonl`, stamped with the same `gitBranch`.
+describe("readTranscripts over subagent transcripts (#431)", () => {
+  const subagent = (session: string, name: string, lines: string[]) => {
+    const at = join(dir, session, "subagents");
+    mkdirSync(at, { recursive: true });
+    writeFileSync(join(at, name), `${lines.join("\n")}\n`, "utf8");
+  };
+
+  it("attributes a subagent's responses to the issue its branch names", () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 100, 0, "msg_1")]);
+    subagent("s1", "agent-x.jsonl", [
+      turn("s1", "feat/101-a", 40, 400, "msg_2"),
+      turn("s1", "feat/101-a", 2, 0, "msg_3"),
+    ]);
+
+    const scan = scanSpend(dir);
+
+    expect(scan.byIssue.get(101)).toEqual({
+      turns: 3,
+      out: 142,
+      cacheRead: 400,
+      sessions: 1,
+    });
+    expect(scan.transcripts).toBe(2);
+  });
+
+  // Measured 2026-10-07: in subagent transcripts 1,705 of 2,855 multi-record
+  // responses carried a partial `output_tokens` on their first record and the
+  // final count on their last — 177k against 1.41M summed. Top-level records
+  // never differed, which is why #413 could keep the first.
+  it("keeps the largest output count of a response whose records disagree", () => {
+    subagent("s1", "agent-x.jsonl", [
+      turn("s1", "feat/101-a", 3, 400, "msg_1"),
+      turn("s1", "feat/101-a", 120, 400, "msg_1"),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)).toEqual({
+      turns: 1,
+      out: 120,
+      cacheRead: 400,
+      sessions: 1,
+    });
+  });
+
+  it("counts a response that appears in both places once", () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 100, 0, "msg_1")]);
+    subagent("s1", "agent-x.jsonl", [
+      turn("s1", "feat/101-a", 100, 0, "msg_1"),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)).toMatchObject({
+      turns: 1,
+      out: 100,
+    });
+  });
+
+  it("reads no subagent bytes on a second scan with no file changes", () => {
+    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 9, 0, "msg_1")]);
+    const first = readTranscripts(dir);
+
+    const second = readTranscripts(dir, first.cursors);
+
+    expect(first.responses).toHaveLength(1);
+    expect([...first.cursors.keys()]).toEqual([
+      join(dir, "s1", "subagents", "agent-x.jsonl"),
+    ]);
+    expect(second.responses).toEqual([]);
+    expect(second.transcripts).toBe(1);
+    expect(second.cursors).toEqual(first.cursors);
+  });
+
+  it("reads neither .meta.json files nor directories other than subagents/", () => {
+    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 1)]);
+    writeFileSync(
+      join(dir, "s1", "subagents", "agent-x.meta.json"),
+      turn("s1", "feat/102-b", 1000),
+      "utf8",
+    );
+    for (const nested of [
+      join("s1", "tool-results"),
+      join("s1", "subagents", "deeper"),
+    ]) {
+      mkdirSync(join(dir, nested), { recursive: true });
+      writeFileSync(
+        join(dir, nested, "other.jsonl"),
+        turn("s1", "feat/103-c", 1000),
+        "utf8",
+      );
+    }
+
+    const scan = scanSpend(dir);
+
+    expect([...scan.byIssue.keys()]).toEqual([101]);
+    expect(scan.transcripts).toBe(1);
+  });
+
+  // A record with no identity of its own is keyed on its file and line, so a
+  // subagent file must not share a key with a top-level file of the same name.
+  it("keys a subagent record with no id on its path under the directory", () => {
+    write("agent-x.jsonl", [turn("s1", "feat/101-a", 1)]);
+    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 2)]);
+
+    expect(
+      readTranscripts(dir)
+        .responses.map((r) => r.id)
+        .sort(),
+    ).toEqual(["line:agent-x.jsonl:1", "line:s1/subagents/agent-x.jsonl:1"]);
   });
 });

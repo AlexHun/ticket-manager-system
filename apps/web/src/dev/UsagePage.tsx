@@ -4,10 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { extractErrorMessage } from "@/lib/errors";
-import { useUsageScan } from "./dev-api";
+import { useStoredUsage, useUsageScan } from "./dev-api";
 import { SpendTable } from "./SpendTable";
 import { DEFAULT_USAGE_TABLE_VIEW, type UsageTableView } from "./usage-view";
 import { UsageCharts } from "./UsageCharts";
+import { UsageTrend } from "./UsageTrend";
 import { formatTokens } from "./usage-charts";
 import type { UnattributedWork, UsageReport } from "./usage-protocol";
 
@@ -15,15 +16,25 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * What each issue actually cost, read off this machine's Claude Code
  * transcripts.
  *
- * The third dev tool, and the only one that gathers nothing on arrival. The map
+ * The third dev tool, and the only one that reads no source on arrival. The map
  * scans on load because a scan of the source tree is ~110ms and describes
- * something you are looking at anyway; this reads every transcript the machine
- * holds, which on a long-lived project is tens of thousands of JSONL lines. So
- * the page opens empty and says so, and the figures on screen are always one
- * named moment's reading rather than "whatever the machine has been doing"
- * (R5). Pressing Scan again re-reads — `UsageReport` in `./usage-protocol` is
- * where the reason nothing on either side of the wire caches the answer is
- * written down.
+ * something you are looking at anyway; a scan here reads every transcript the
+ * machine holds, which on a long-lived project is tens of thousands of JSONL
+ * lines (the first time, at least: since #418 a later scan reads what was
+ * appended). So until #432 the page opened empty, and every return to it — a
+ * reload, a phone's discarded tab — meant pressing Scan for figures that had
+ * not changed. **Since #432 it opens on the stored reading**: the `GET` half of
+ * the route, the same report computed from what the usage history already
+ * holds, reading no transcript, running no `gh` and writing nothing
+ * (`useStoredUsage`). It still opens empty ("Nothing gathered yet") when there
+ * is no history, when the history holds no rows, and when the `GET` fails —
+ * that last as a warning, with Scan still usable. The figures on screen are
+ * still one named moment's reading (R5): "Stored at …" (`Stored`) names when
+ * rows last arrived, by a scan or a push, and that a Scan would read the
+ * transcripts again; "Gathered at …" (`Gathered`) names a scan's moment.
+ * `UsageReport` in `./usage-protocol` is where the reason no reading is cached
+ * on either side of the wire is written down, and why the responses behind it
+ * are (#417) — and the one daily trend point that is (#419).
  *
  * **The rows are `./SpendTable`, which is where everything about an issue
  * lives** (#270) — the column definitions, the two markers that tell a missing
@@ -39,6 +50,8 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
  * otherwise makes you compute by eye: how often a forecast band matched, and
  * whether the bands still fit the work. They read the same rows and are derived
  * in `./usage-charts.ts`; what they refuse to read is the subject of that file.
+ * **Below them, the trend** (#419): how those two readings have moved, one
+ * point per day with a scan, from the usage history — `./UsageTrend`.
  *
  * **A row is not proof that work happened** (#251). Every open issue gets one,
  * so the page answers "what is this forecast to cost?" before the work as well
@@ -56,9 +69,20 @@ import type { UnattributedWork, UsageReport } from "./usage-protocol";
 
 const SCAN_FAILED = "The dev middleware could not read the transcripts.";
 
+const STORED_FAILED = "The dev middleware could not open the usage history.";
+
 export function UsagePage() {
   const scan = useUsageScan();
-  const report = scan.data ?? null;
+  const stored = useStoredUsage();
+  /* The latest reading: a scan's once one has answered, the stored reading
+     until then (#432). Null while a scan reads, as it always was — the panels
+     below go with it and come back with the scan's figures, so nothing on
+     screen mixes two moments. */
+  const report = scan.isPending ? null : (scan.data ?? stored.data ?? null);
+  const storedProblem =
+    stored.error && !report && !scan.isPending
+      ? extractErrorMessage(stored.error, STORED_FAILED)
+      : null;
   /* How the table below is being read — its ranking, whether the detail
      columns are shown, and what the four controls on its bar have narrowed it
      to. The shape and the rules over it are `./usage-view` (#287), which is
@@ -95,7 +119,8 @@ export function UsagePage() {
           <p className="max-w-prose text-sm text-muted-foreground">
             What each issue was forecast to cost and what it actually cost, in
             output tokens, read off this machine&rsquo;s Claude Code
-            transcripts. Nothing is read until you press Scan.
+            transcripts. It opens on what the usage history already holds; the
+            transcripts are read again only when you press Scan.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -119,7 +144,15 @@ export function UsagePage() {
         {scan.isPending ? (
           <span className="text-muted-foreground">Reading transcripts…</span>
         ) : report ? (
-          <Gathered report={report} />
+          report.transcripts === null ? (
+            <Stored report={report} />
+          ) : (
+            <Gathered report={report} transcripts={report.transcripts} />
+          )
+        ) : stored.isPending ? (
+          <span className="text-muted-foreground">
+            Opening the stored reading…
+          </span>
         ) : (
           <span className="text-muted-foreground">
             Nothing gathered yet. Press Scan to read this machine&rsquo;s
@@ -127,6 +160,12 @@ export function UsagePage() {
           </span>
         )}
       </p>
+
+      {/* Its own line rather than a clause of the one above, which is the
+          reading's account of itself; this is the history's (#417). */}
+      {report && !scan.isPending && (
+        <HistorySince since={report.historySince} />
+      )}
 
       {/* Inline as well as in the toast: a toast is gone in seconds, and this is
           the copy you are still looking at while you fix the cause. */}
@@ -136,17 +175,34 @@ export function UsagePage() {
         </p>
       )}
 
+      {/* The stored reading could not be opened (#432). A warning rather than
+          a toast or an error: the page is as it was before #432 — empty, with
+          Scan the way to a reading — and the cause is worth reading. */}
+      {storedProblem && (
+        <p className="flex items-start gap-2 rounded-md px-3 py-2 text-sm text-status-warning ring-1 ring-status-warning/30">
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0"
+          />
+          Could not open the stored reading ({storedProblem}). Press Scan to
+          read the transcripts instead.
+        </p>
+      )}
+
       {/* What the scan could not see, shown rather than swallowed — the same
           bargain the project map makes with its own `warnings`.
 
-          Every warning is drawn, whichever source it names, because the two
+          Every warning is drawn, whichever source it names, because the
           sources fail independently — see `UsageWarning` in `usage-protocol`
-          for why that is a field rather than a turn of phrase. This page reads
-          `message` and never `source`: it has no branch to make, and the
-          wording on screen is what it always was. */}
+          for why that is a field rather than a turn of phrase. What a reader
+          sees is `message` alone: the page has no branch to make on `source`,
+          and the wording on screen is what it always was. The source is only
+          stamped on the element, for the E2E (#420), which has to tell a
+          history warning from the other two without matching on the prose. */}
       {report?.warnings.map((warning) => (
         <p
           key={`${warning.source}:${warning.message}`}
+          data-usage-warning={warning.source}
           className="flex items-start gap-2 rounded-md px-3 py-2 text-sm text-status-warning ring-1 ring-status-warning/30"
         >
           <AlertTriangle
@@ -164,6 +220,10 @@ export function UsagePage() {
           into the next press. */}
       {report && <UsageCharts issues={report.issues} />}
 
+      {/* How those two readings have moved, one point per day with a scan
+          (#419). After them, since today's point is the panels above. */}
+      {report && <UsageTrend points={report.trend} />}
+
       {report && (
         <SpendTable issues={report.issues} view={view} onViewChange={setView} />
       )}
@@ -179,14 +239,16 @@ export function UsagePage() {
         terminal and this page cannot disagree about what an issue cost or
         whether it came in on target. Titles, links and forecast bands come from{" "}
         <code className="font-mono">gh</code>; without it the figures still land
-        and only those read as unknown. Every open issue is listed, so an issue
-        nobody has started appears with its band and no figures rather than not
-        at all. Work that ran on <code className="font-mono">main</code> or on
-        no branch belongs to no issue and is totalled on its own below the
-        table. Two things are in neither place: work done on any other machine,
-        since these transcripts are local, and a branch whose name carries no
-        issue number, which the join has nothing to attribute and does not call
-        unattributed either.
+        and only those read as unknown. Each scan also stores the responses it
+        read in a history file outside the repository, so an issue keeps its
+        spend after Claude Code deletes the transcript it came from. Every open
+        issue is listed, so an issue nobody has started appears with its band
+        and no figures rather than not at all. Work that ran on{" "}
+        <code className="font-mono">main</code> or on no branch belongs to no
+        issue and is totalled on its own below the table. Two things are in
+        neither place: work done on any other machine, since these transcripts
+        are local, and a branch whose name carries no issue number, which the
+        join has nothing to attribute and does not call unattributed either.
       </p>
     </div>
   );
@@ -278,7 +340,14 @@ const Quantity = ({ value, unit }: { value: number; unit: string }) => (
  * The timestamp is rendered in the viewer's locale inside a `<time>` carrying
  * the ISO stamp, so the machine-readable value survives the formatting.
  */
-function Gathered({ report }: { report: UsageReport }) {
+function Gathered({
+  report,
+  transcripts,
+}: {
+  report: UsageReport;
+  /** `report.transcripts`, which a scan always carries. */
+  transcripts: number;
+}) {
   return (
     <>
       Gathered at{" "}
@@ -286,10 +355,68 @@ function Gathered({ report }: { report: UsageReport }) {
         {new Date(report.gatheredAt).toLocaleTimeString()}
       </time>{" "}
       from <code className="font-mono text-xs">{report.transcriptDir}</code> —{" "}
-      {report.transcripts}{" "}
-      {report.transcripts === 1 ? "transcript" : "transcripts"},{" "}
+      {transcripts} {transcripts === 1 ? "transcript" : "transcripts"},{" "}
       {report.issues.length} {report.issues.length === 1 ? "issue" : "issues"},
       read in {report.scanMs} ms.
     </>
+  );
+}
+
+/**
+ * The stored reading's account of itself (#432): what the usage history held
+ * when the page opened, read without touching a transcript.
+ *
+ * Worded apart from `Gathered` rather than as a variant of it. It must not say
+ * "Gathered at" — that sentence names a directory that was read and a count of
+ * what was in it, and this read neither — and it says what Scan would do, since
+ * the figures are the last scan's or push's rather than this machine's
+ * transcripts as they are now.
+ */
+function Stored({ report }: { report: UsageReport }) {
+  return (
+    <>
+      {/* Date and time, unlike `Gathered`'s time alone: a stored reading
+          can be days old. */}
+      Stored at{" "}
+      <time dateTime={report.gatheredAt} className="font-medium">
+        {new Date(report.gatheredAt).toLocaleString()}
+      </time>{" "}
+      by the last scan or push, and opened from the usage history —{" "}
+      {report.issues.length} {report.issues.length === 1 ? "issue" : "issues"},
+      in {report.scanMs} ms. Press Scan to read{" "}
+      <code className="font-mono text-xs">{report.transcriptDir}</code> again.
+    </>
+  );
+}
+
+/**
+ * From which date the stored history runs (R8).
+ *
+ * History starts when the store was first written, not when the work did:
+ * Claude Code had already deleted every transcript older than 30 days when it
+ * began. So an issue with no spend before this date reads as *not recorded*,
+ * and the page says so rather than letting that read as zero. The date is in
+ * the viewer's locale inside a `<time>` carrying the ISO stamp, as `Gathered`
+ * renders its own.
+ */
+function HistorySince({ since }: { since: string | null }) {
+  return (
+    <p className="px-3 text-xs text-muted-foreground">
+      {since ? (
+        <>
+          History from{" "}
+          <time dateTime={since} className="font-medium text-foreground">
+            {new Date(since).toLocaleDateString()}
+          </time>
+          . Spend from before that date was never stored, so it reads as not
+          recorded rather than as zero.
+        </>
+      ) : (
+        <>
+          No stored history yet: it starts with the first scan that reads a
+          transcript.
+        </>
+      )}
+    </p>
   );
 }

@@ -26,8 +26,9 @@ freshly fetched develop —
 `develop` (the repo's default branch, so `gh pr create` targets it and
 `Closes #<n>` closes the ticket on merge). Nothing merges into `main` except a
 release: one PR from `develop` into `main`, opened only when the user asks for
-it, once CI on `develop`'s tip is green. `main` is what Railway deploys and
-where the version bump runs.
+it, once CI on `develop`'s tip is green. `main` is what Railway deploys to
+production. The version bump runs on `develop`, after every merge, and a
+release carries that version to `main` unchanged.
 
 **Self-check before every commit.** Search for each reference the change leaves
 stale: old symbol names, moved paths, mentions in docs and comments. Re-read

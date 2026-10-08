@@ -110,7 +110,7 @@ export interface IssueMetadata {
 
 /** The fields this reads off the listing; `gh` prints more and they are
  *  ignored. Hand-written because `gh` ships no types for its JSON. */
-interface GhIssue {
+export interface GhIssue {
   number: number;
   title: string;
   state: string;
@@ -206,7 +206,9 @@ function forecastOf(labels: { name: string }[]): Bucket | null {
   return named && named in BUCKETS ? (named as Bucket) : null;
 }
 
-function parseListing(raw: string): Map<number, IssueMeta> {
+/** `gh issue list --json …`'s output, by issue number. Exported for the
+ *  listing the usage history keeps (#432), which is stored in this shape. */
+export function parseListing(raw: string): Map<number, IssueMeta> {
   const issues = JSON.parse(raw) as GhIssue[];
   if (!Array.isArray(issues)) throw new Error("expected a JSON array");
   return new Map(
@@ -229,6 +231,29 @@ function parseListing(raw: string): Map<number, IssueMeta> {
 }
 
 /**
+ * A listing back in the shape `gh` prints it — `parseListing`'s inverse, kept
+ * beside it so the format lives in one module. For the usage push (#428,
+ * `./usage-push.ts`), which sends the laptop's listing to a dev server that
+ * writes it where `GH_ISSUES_FILE` points, and for the copy each scan keeps in
+ * the usage history (#432). Of the labels only the one this
+ * module reads goes, the forecast band's; `gh`'s colours and descriptions were
+ * never kept.
+ */
+export function toGhListing(
+  byIssue: ReadonlyMap<number, IssueMeta>,
+): (GhIssue & { state: IssueState })[] {
+  return [...byIssue].map(([number, meta]) => ({
+    number,
+    title: meta.title,
+    state: meta.state,
+    url: meta.url,
+    labels: meta.forecast
+      ? [{ name: `${FORECAST_PREFIX}${meta.forecast}` }]
+      : [],
+  }));
+}
+
+/**
  * Why the listing could not be read, in a phrase the warning can carry.
  *
  * The timeout case needs its own sentence because Node does not give it one: a
@@ -244,8 +269,9 @@ const reason = (err: unknown) => {
 };
 
 /** What is lost when the listing cannot be read. Appended to every warning so
- *  the sentence on screen says what it costs, not just what happened. */
-const COST = "titles, links and forecast bands read as unknown.";
+ *  the sentence on screen says what it costs, not just what happened — the
+ *  stored reading's own (#432, `./usage.ts`) included. */
+export const LISTING_COST = "titles, links and forecast bands read as unknown.";
 
 /**
  * One reading of the issue listing — from the override file when set, from `gh`
@@ -269,8 +295,8 @@ export async function fetchIssueMetadata(
     return {
       byIssue: null,
       warning: file
-        ? `Could not read the issue listing at ${file} (${ISSUES_FILE_ENV}): ${reason(err)} — ${COST}`
-        : `\`gh\` could not list this repository's issues: ${reason(err)} — ${COST}`,
+        ? `Could not read the issue listing at ${file} (${ISSUES_FILE_ENV}): ${reason(err)} — ${LISTING_COST}`
+        : `\`gh\` could not list this repository's issues: ${reason(err)} — ${LISTING_COST}`,
     };
   }
 }

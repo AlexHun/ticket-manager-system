@@ -2,7 +2,10 @@ import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GH_ISSUES_FIXTURE_PATH } from "./tests/e2e/fixtures/gh-issues";
-import { TRANSCRIPT_FIXTURE_DIR } from "./tests/e2e/fixtures/transcript-fixture";
+import {
+  TRANSCRIPT_WORKING_DIR,
+  USAGE_HISTORY_PATH,
+} from "./tests/e2e/fixtures/transcript-fixture";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -109,12 +112,15 @@ export default defineConfig({
       // is ready in ~4s; the same run sharing the dev server's cache while
       // `bun run dev` is up hangs past 420s.
       //
-      // `CLAUDE_TRANSCRIPT_DIR` points the dev-tools Usage page at a fixture
-      // directory instead of `~/.claude/projects/<slug>` (see
+      // `CLAUDE_TRANSCRIPT_DIR` points the dev-tools Usage page at a working
+      // copy of the transcript fixtures, which each Usage spec remakes before it
+      // scans, instead of `~/.claude/projects/<slug>` (see
       // `apps/web/dev/transcripts.ts`), and `GH_ISSUES_FILE` points it at a
       // fixture issue listing instead of spawning `gh` (see
-      // `apps/web/dev/issues.ts`).
-      // Both belong here rather than in the spec because the middleware that
+      // `apps/web/dev/issues.ts`), and `USAGE_HISTORY_FILE` points the usage
+      // history (#417) at a gitignored file the specs remove before they scan,
+      // instead of the developer's real `~/.claude-usage-history/<slug>.sqlite`.
+      // All three belong here rather than in the spec because the middleware that
       // reads them runs inside *this* process, not in the browser — which is
       // also the one thing to check first when `dev-usage.spec.ts` fails:
       // `reuseExistingServer` will happily adopt a leftover Vite on 4001 that
@@ -125,11 +131,14 @@ export default defineConfig({
       //
       // The listing file is written by the spec rather than checked in: it has
       // to be removable, because a missing one is how the degraded no-`gh`
-      // path is reached through the real middleware.
+      // path is reached through the real middleware. The transcripts are a
+      // copy for the same kind of reason: a spec may delete or append to one,
+      // which must never reach the checked-in fixtures.
       env: {
         VITE_API_URL: API_URL,
-        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_FIXTURE_DIR,
+        CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
+        USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
       },
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,

@@ -183,11 +183,59 @@ export interface UnattributedWork {
 }
 
 /**
- * Which half of the scan a warning came from.
+ * The band edges a forecast is cut against: each closed band's exclusive
+ * `max`, from `BUCKETS`. `XL` has none — it is open-ended.
+ *
+ * A record rather than a re-read of `BUCKETS` because a trend point carries the
+ * edges that were in force on its day (R7): when the bands move, the old points
+ * keep the old edges, and the chart shows the move.
+ */
+export type BandEdges = Record<Exclude<Bucket, "XL">, number>;
+
+/**
+ * One local calendar day's reading of the population, for the Usage page's
+ * trend (#419, R6).
+ *
+ * **The one figure the usage history keeps that is an answer rather than a
+ * response**, and only because a day that has passed cannot be asked again:
+ * the forecast labels `gh` reported and the bands the code held that day are
+ * gone by the next one. What it keeps is spend — the quartiles of output
+ * tokens and the accuracy tally — and never a row's verdict: every verdict on
+ * the page is still judged against today's bands. ADR-0023's #419 section is
+ * where that line is drawn.
+ *
+ * Computed by `trendPointFor` in `./usage-readings` from the same rows, with
+ * the same `recordedSpend`, `percentiles` and `forecastAccuracy`, as the
+ * page's distribution and accuracy panels — so today's point and the panels
+ * above it cannot disagree.
+ */
+export interface TrendPoint {
+  /** The local calendar day, `YYYY-MM-DD`. One point per day: the last scan of
+   *  a day replaces that day's point. */
+  day: string;
+  /** ISO 8601 stamp of the scan that wrote it. */
+  at: string;
+  /** Issues with recorded spend — the quartiles' sample. Zero means there were
+   *  no quartiles to take, and the three below are then not a measurement. */
+  measured: number;
+  p25: number;
+  median: number;
+  p75: number;
+  /** Issues carrying a verdict — the accuracy figure's denominator. Zero means
+   *  nothing could be scored, which is not 0%. */
+  scored: number;
+  onTarget: number;
+  /** The band edges in force when the point was written. */
+  edges: BandEdges;
+}
+
+/**
+ * Which source of the scan a warning came from.
  *
  * The scan reads two sources and they fail independently — the transcript
  * directory can be unreadable while `gh` answers perfectly, and the reverse.
- * Both are warnings beside whatever could be read, so a caller that wants to
+ * (Since #420 there is a third, the history; see the end of this comment.)
+ * Each is a warning beside whatever could be read, so a caller that wants to
  * treat one differently from the other has to be able to tell them apart.
  *
  * Before #289 it could not: `warnings` was a flat `string[]` and the only way
@@ -198,19 +246,28 @@ export interface UnattributedWork {
  * calls `gatherUsage` now and branches here, printing its own sentence for
  * `transcripts` and passing `listing`'s message through.
  *
- * Two values and not three: "could not read the directory" and "the directory
+ * Not a value per way to fail: "could not read the directory" and "the directory
  * holds no transcripts" are one source failing in two ways, and nothing on
  * either surface treats them differently — both mean there are no figures and
- * the message says which. A third value would be a distinction with no reader,
- * and #290 is where that was tested rather than assumed: the terminal's two
- * sentences for those two failures became one, because the advice it has to
+ * the message says which. A third value for that would be a distinction with no
+ * reader, and #290 is where that was tested rather than assumed: the terminal's
+ * two sentences for those two failures became one, because the advice it has to
  * give ("run this from the repo root") is the same advice for both.
+ *
+ * **The third value is a third source, not a third way to fail** (#420). The
+ * usage history (`dev/usage-store.ts`) is a different file that fails on its
+ * own — a damaged history beside readable transcripts and a working `gh` — and
+ * its advice is its own: move or delete the file. So it has a reader, and
+ * `bun run tokens` words its own sentence for it as it does for `transcripts`.
  */
 export const USAGE_WARNING_SOURCE = {
   /** The transcript directory — unreadable, or holding no `.jsonl` files. */
   transcripts: "transcripts",
   /** The `gh issue list` the title, link and forecast columns come from. */
   listing: "listing",
+  /** The usage history file, which could not be opened or read (#420). The
+   *  figures are then the transcripts on disk alone. */
+  history: "history",
 } as const;
 
 export type UsageWarningSource =
@@ -231,23 +288,53 @@ export interface UsageWarning {
 }
 
 /**
- * One reading of the local transcripts, taken when the developer pressed Scan.
+ * One reading: a scan, taken when the developer pressed Scan, or the stored
+ * reading the page opens on.
  *
- * There is no `GET` half and the middleware caches nothing: a held copy is the
- * one thing this page must not serve, since its whole claim is that the figures
- * on screen were gathered at `gatheredAt` from the directory named here. The
- * page holds the last result until the next press; the dev server holds none.
- * That is the opposite of the test runner next door, and deliberately so — a
- * run is a long-lived process worth surviving a reload, a scan is a few seconds
- * of reading that is cheaper to repeat than to invalidate (2-5s over this
- * machine's 136 transcripts, plus ~2s of `gh`).
+ * **Two halves since #432.** `POST /__devtools/usage` is the scan: it reads the
+ * transcripts and `gh`, stores what it read and the day's trend point, and
+ * answers with this. `GET` is the stored reading: the same report computed
+ * from what the history already holds — its rows, its trend and the listing
+ * the last scan or push used — reading no transcript, running no `gh` and
+ * writing nothing (`readStoredUsage` in `apps/web/dev/usage.ts`), or null when
+ * there is no history or it holds no rows. Until #432 there was no `GET`, and
+ * the page opened empty on every visit; once a laptop's pushes fed Railway's
+ * develop (#428), the figures were already stored, and a phone that discards
+ * background tabs had to press Scan to see figures that had not changed. The
+ * stored reading is computed per request from inputs — nothing derived is
+ * persisted for it, so the rule below stands. Measured 2026-10-06 against this
+ * machine's history on Bun, as the dev server runs: 14,352 rows, 114 issues,
+ * 32-45ms an open over seven runs — the price of tallying every stored row on
+ * every read, and cheap enough to pay on each visit.
+ *
+ * A scan is still a few seconds of reading the first time (2-5s over this
+ * machine's 136 transcripts when first measured, plus ~2s of `gh`). Since #418
+ * only the first scan into a history costs that: a later one reads only what
+ * was appended since — measured 2026-10-04 over 168 transcripts, ~60ms against
+ * ~2.2s before, `gh` aside.
+ *
+ * **What the dev server keeps is the responses it read, never a reading's
+ * answer** — one daily trend point aside —
+ * (#417, ADR-0023). This said "the middleware caches nothing" until the
+ * transcripts it reads turned out to be deleted after 30 days, taking every
+ * older issue's spend with them. So each scan stores every API response it
+ * read in a local SQLite file, and the figures are tallied over everything
+ * stored. Nothing *derived* is kept — not a row, not a total, not a report — so
+ * every reading is still computed afresh at `gatheredAt`, by today's counting
+ * and attribution rules — the stored reading included. The one exception is
+ * `trend` (#419): a past day's quartiles and accuracy, which no later reading
+ * can recompute — see `TrendPoint`. Since #432 each scan also keeps the issue
+ * listing it read, which is an input like the rows rather than an answer.
  */
 export interface UsageReport {
-  /** ISO 8601, stamped when the read finished. */
+  /** ISO 8601, stamped when the read finished — for a stored reading, the
+   *  history's stamp of when rows last arrived, by a scan or a push, which is
+   *  the moment its figures describe. */
   gatheredAt: string;
   /** How long the read took, so the page can say whether it is cheap. Covers
    *  the whole reading — the `gh` call as well as the filesystem sweep — since
-   *  what it answers is "how long did pressing Scan take". */
+   *  what it answers is "how long did pressing Scan take". For a stored
+   *  reading, how long opening the page's figures took. */
   scanMs: number;
   /**
    * The directory that was read, absolute. On screen because it is the only
@@ -255,8 +342,27 @@ export interface UsageReport {
    * is pointed somewhere else" — and it is what a failing E2E names.
    */
   transcriptDir: string;
-  /** `.jsonl` files read out of it. */
-  transcripts: number;
+  /** `.jsonl` files in it, its sessions' `subagents/` transcripts included
+   *  since #431 — since #418 including those a scan skipped because
+   *  nothing had been appended to them since the last one. Null for a stored
+   *  reading (#432), which reads no transcript and so counts none — and which
+   *  is how the page tells the two kinds of reading apart. */
+  transcripts: number | null;
+  /**
+   * The earliest timestamp the stored history covers (ISO 8601), or null when
+   * there is none — nothing stored yet, or a reading taken without a history.
+   *
+   * On screen because history starts when the store was first written, not
+   * when the work did (R8): an issue with no spend before this date reads as
+   * "not recorded", not as zero.
+   */
+  historySince: string | null;
+  /**
+   * One point per local calendar day on which a scan was taken, oldest first,
+   * today's written by this scan (#419). Empty for a reading taken without a
+   * history, which has nowhere to keep one.
+   */
+  trend: TrendPoint[];
   /**
    * One row per issue worth looking at — every issue with recorded spend, and
    * every issue the listing reports as open, whether or not anybody has started
@@ -275,10 +381,10 @@ export interface UsageReport {
   /**
    * Anything that stopped the scan seeing everything. Shown, not swallowed.
    *
-   * The two sources fail independently, so these **stack** rather than mask one
+   * The sources fail independently, so these **stack** rather than mask one
    * another: an unreadable directory and an unavailable listing are two entries,
-   * not one. Each names its `source`, so a surface branches on that rather than
-   * on the wording of `message` (#289).
+   * not one, and a damaged history is a third (#420). Each names its `source`,
+   * so a surface branches on that rather than on the wording of `message` (#289).
    */
   warnings: UsageWarning[];
 }
