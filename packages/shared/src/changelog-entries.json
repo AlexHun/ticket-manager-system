@@ -698,5 +698,10 @@
     "version": "0.1.178",
     "date": "2026-10-08",
     "title": "A stale-citation failure names the rename"
+  },
+  {
+    "version": "0.1.179",
+    "date": "2026-10-08",
+    "title": "Bun run graph lists who cites a file and what a doc cites"
   }
 ]
