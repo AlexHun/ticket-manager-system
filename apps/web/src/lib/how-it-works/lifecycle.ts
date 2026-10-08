@@ -21,9 +21,9 @@ import { ROUTE } from "../routes";
  * `layOutLifecycle` in `./lifecycle-layout` turns those into coordinates with
  * nothing simulated, so a step is where it was on every load (R9).
  *
- * Import-free apart from `@ticket/shared`, `./code` and `../routes`, as
- * `./architecture` is: the E2E imports this module and asserts against the
- * same titles the page draws.
+ * Imports only `@ticket/shared`, `./code` and `../routes`, none of which
+ * reaches an `@/` alias or React: the E2E imports this module and asserts
+ * against the same titles the page draws.
  */
 
 export const LIFECYCLE_LANE = {
@@ -181,7 +181,8 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     code: [
       "apps/web/src/pages/TicketReplyComposer.tsx",
       "apps/api/src/routes/tickets.ts",
-      "apps/api/src/ai/polish.ts",
+      "apps/api/src/routes/ai.ts",
+      "apps/api/src/ai/polish-reply.ts",
       "apps/api/src/ai/summarize.ts",
     ],
     screen: ROUTE.tickets.path,

@@ -18,6 +18,10 @@ import type { RoutePath } from "../routes";
 export interface InTheCode {
   /** Repo-root-relative paths, forward slashes, at least one. */
   readonly code: readonly string[];
-  /** The app screen this part can be seen on, from `ROUTE`. */
+  /**
+   * The app screen this part can be seen on, from `ROUTE`. Absent where there
+   * is none to open: the customer's side, the sign-in pages, and a ticket's
+   * thread, whose route needs a ticket the page does not have (R12).
+   */
   readonly screen?: RoutePath;
 }

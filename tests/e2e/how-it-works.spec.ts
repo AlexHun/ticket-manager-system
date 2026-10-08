@@ -1,5 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { NEW_FEATURE_KEY, TICKET_STATUS, USER_ROLE } from "@ticket/shared";
+import {
+  NEW_FEATURE_KEY,
+  TICKET_STATUS,
+  USER_ROLE,
+  type UserRole,
+} from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetNewFeatureSeen, resetTickets, testDb } from "./helpers/db";
 // The titles and labels under test come from the module the page draws them
@@ -589,36 +594,13 @@ test.describe("How it works", () => {
     });
   });
 
-  test("an admin follows Classification's screen link to the Pipeline page, past its repo paths", async ({
-    page,
-  }) => {
-    await signIn(page, USER_ROLE.admin);
-    await page.goto(ROUTE.howItWorks.path);
-    await openLifecycle(page);
-
-    const classification = lifecycleStep(LIFECYCLE_STEP.classification);
-    await page
-      .getByRole("button", { name: classification.title, exact: true })
-      .click();
-    const panel = page.getByRole("region", {
-      name: HOW_IT_WORKS_LABEL.details,
-    });
-    const paths = panel.locator(`[${GRAPH_CODE_ATTRIBUTE}] li`);
-    await expect(paths).toHaveText([...classification.code]);
-
-    const screen = panel.locator(`[${GRAPH_SCREEN_ATTRIBUTE}]`);
-    await expect(screen).toHaveAttribute(
-      GRAPH_SCREEN_ATTRIBUTE,
-      ROUTE.pipeline.path,
-    );
-    await screen.getByRole("link").click();
-    await page.waitForURL(ROUTE.pipeline.path);
-  });
-
-  test("an agent sees Classification's screen named, with no link to a page they cannot open", async ({
-    page,
-  }) => {
-    await signIn(page, USER_ROLE.agent);
+  /**
+   * Signs in as `role`, selects Classification on the lifecycle, checks its
+   * repo paths are listed, and returns the panel's "On screen" line, which
+   * must name the Pipeline page.
+   */
+  async function classificationScreen(page: Page, role: UserRole) {
+    await signIn(page, role);
     await page.goto(ROUTE.howItWorks.path);
     await openLifecycle(page);
 
@@ -637,9 +619,27 @@ test.describe("How it works", () => {
       GRAPH_SCREEN_ATTRIBUTE,
       ROUTE.pipeline.path,
     );
-    await expect(screen.getByRole("link")).toHaveCount(0);
+    // The screen's name follows the prefix, link or not.
+    await expect(screen).toHaveText(
+      new RegExp(`^${HOW_IT_WORKS_LABEL.screen}:\\s*\\S`),
+    );
+    return screen;
+  }
+
+  test("an admin follows Classification's screen link to the Pipeline page, past its repo paths", async ({
+    page,
+  }) => {
+    const screen = await classificationScreen(page, USER_ROLE.admin);
+    await screen.getByRole("link").click();
+    await page.waitForURL(ROUTE.pipeline.path);
   });
 
+  test("an agent sees Classification's screen named, with no link to a page they cannot open", async ({
+    page,
+  }) => {
+    const screen = await classificationScreen(page, USER_ROLE.agent);
+    await expect(screen.getByRole("link")).toHaveCount(0);
+  });
   test("every lifecycle step keeps its place across tab switches and reloads", async ({
     page,
   }) => {

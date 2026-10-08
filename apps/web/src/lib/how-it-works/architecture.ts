@@ -29,7 +29,11 @@ export const ARCHITECTURE_NODE = {
 export type ArchitectureNodeId =
   (typeof ARCHITECTURE_NODE)[keyof typeof ARCHITECTURE_NODE];
 
-export interface ArchitectureNode extends InTheCode {
+/**
+ * A runtime box names its code but no screen: each box is many screens or none,
+ * and its subsystems carry the screen they are seen on.
+ */
+export interface ArchitectureNode extends Pick<InTheCode, "code"> {
   readonly id: ArchitectureNodeId;
   readonly title: string;
   /** Plain language, in `CONTEXT.md`'s words. Shown in the side panel. */
@@ -119,7 +123,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     title: "OpenAI",
     explanation:
       "The model behind every piece of machine-written work: classification, the auto-reply, the Polish and Summary an agent asks for, and eval runs. Without a key the desk still works, and every ticket simply stays in New for a person.",
-    code: ["apps/api/src/ai/provider.ts", "apps/api/src/ai"],
+    code: ["apps/api/src/ai/provider.ts"],
     column: 2,
     row: 3,
   },

@@ -17,9 +17,9 @@ import { ROUTE } from "../routes";
  * `./subsystem-layout` works it out from the order below and from the links,
  * with nothing simulated.
  *
- * Import-free apart from `./architecture`, `./code` and `../routes`, which are
- * import-free themselves, so `tests/e2e/how-it-works.spec.ts` reads the titles
- * it asserts from here.
+ * Imports only `./architecture`, `./code` and `../routes`, and between them
+ * those reach no `@/` alias, no React and no package, so
+ * `tests/e2e/how-it-works.spec.ts` can read the titles it asserts from here.
  */
 
 /** The boxes that open onto their subsystems. */
@@ -509,7 +509,6 @@ export function part(id: PartId): Part {
       label: node.title,
       explanation: node.explanation,
       code: node.code,
-      screen: node.screen,
     };
   }
   return {

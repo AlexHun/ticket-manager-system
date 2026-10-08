@@ -2,6 +2,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TICKET_STATUS, USER_ROLE, type UserRole } from "@ticket/shared";
 import { renderRoutes } from "@/test/render";
+import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { ROUTE } from "@/lib/routes";
 import {
   LIFECYCLE_EDGES,
@@ -12,6 +13,7 @@ import {
   edgesInto,
   lifecycleLane,
   lifecycleStep,
+  type LifecycleStepId,
 } from "@/lib/how-it-works/lifecycle";
 import {
   GRAPH_EDGE_ATTRIBUTE,
@@ -248,40 +250,36 @@ describe("LifecycleView's panel", () => {
     }
   });
 
+  /** Mounts the view, selects a step, and returns its "On screen" line, if any. */
+  function screenLineOf(id: LifecycleStepId) {
+    const { container } = mount();
+    fireEvent.click(
+      screen.getByRole("button", { name: lifecycleStep(id).title }),
+    );
+    return container.querySelector<HTMLElement>(`[${GRAPH_SCREEN_ATTRIBUTE}]`);
+  }
+  const navLabel = (path: string) =>
+    NAV_ITEMS.find((item) => item.to === path)!.label;
+
   it("links an admin from Classification to the Pipeline page", () => {
     session.user = { role: USER_ROLE.admin, isAnonymous: false };
-    const { container, router } = mount();
-    const step = lifecycleStep(LIFECYCLE_STEP.classification);
-    fireEvent.click(screen.getByRole("button", { name: step.title }));
-    const line = container.querySelector(`[${GRAPH_SCREEN_ATTRIBUTE}]`)!;
+    const line = screenLineOf(LIFECYCLE_STEP.classification)!;
     expect(line).toHaveAttribute(GRAPH_SCREEN_ATTRIBUTE, ROUTE.pipeline.path);
-    const link = within(line as HTMLElement).getByRole("link");
-    expect(link).toHaveAttribute("href", ROUTE.pipeline.path);
-    expect(router.state.location.pathname).toBe("/");
+    expect(within(line).getByRole("link")).toHaveAttribute(
+      "href",
+      ROUTE.pipeline.path,
+    );
   });
 
   it("names the Pipeline page to an agent without linking to it", () => {
-    const { container } = mount();
-    const step = lifecycleStep(LIFECYCLE_STEP.classification);
-    fireEvent.click(screen.getByRole("button", { name: step.title }));
-    const line = container.querySelector<HTMLElement>(
-      `[${GRAPH_SCREEN_ATTRIBUTE}]`,
-    )!;
-    expect(line).toHaveTextContent("Pipeline");
+    const line = screenLineOf(LIFECYCLE_STEP.classification)!;
+    expect(line).toHaveTextContent(navLabel(ROUTE.pipeline.path));
     expect(within(line).queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("links a demo session to the showcase Pipeline page", () => {
     session.user = { role: USER_ROLE.agent, isAnonymous: true };
-    const { container } = mount();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: lifecycleStep(LIFECYCLE_STEP.classification).title,
-      }),
-    );
-    const line = container.querySelector<HTMLElement>(
-      `[${GRAPH_SCREEN_ATTRIBUTE}]`,
-    )!;
+    const line = screenLineOf(LIFECYCLE_STEP.classification)!;
     expect(within(line).getByRole("link")).toHaveAttribute(
       "href",
       ROUTE.pipeline.path,
@@ -289,15 +287,7 @@ describe("LifecycleView's panel", () => {
   });
 
   it("links every viewer to the tickets from an agent's step", () => {
-    const { container } = mount();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: lifecycleStep(LIFECYCLE_STEP.agentCloses).title,
-      }),
-    );
-    const line = container.querySelector<HTMLElement>(
-      `[${GRAPH_SCREEN_ATTRIBUTE}]`,
-    )!;
+    const line = screenLineOf(LIFECYCLE_STEP.agentCloses)!;
     expect(within(line).getByRole("link")).toHaveAttribute(
       "href",
       ROUTE.tickets.path,
@@ -305,12 +295,6 @@ describe("LifecycleView's panel", () => {
   });
 
   it("names no screen for a step that has none", () => {
-    const { container } = mount();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: lifecycleStep(LIFECYCLE_STEP.emailSent).title,
-      }),
-    );
-    expect(container.querySelector(`[${GRAPH_SCREEN_ATTRIBUTE}]`)).toBeNull();
+    expect(screenLineOf(LIFECYCLE_STEP.emailSent)).toBeNull();
   });
 });

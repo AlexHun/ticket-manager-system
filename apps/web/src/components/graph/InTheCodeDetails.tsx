@@ -21,11 +21,9 @@ import { viewerOf } from "@/lib/viewer";
 export function InTheCodeDetails({ code, screen }: InTheCode) {
   const { data: session } = useSession();
   const item = screen && NAV_ITEMS.find((candidate) => candidate.to === screen);
+  // `navItemsFor` filters `NAV_ITEMS` itself, so the same object is in it.
   const opens =
-    item !== undefined &&
-    navItemsFor(viewerOf(session?.user)).some(
-      (candidate) => candidate.to === item.to,
-    );
+    item !== undefined && navItemsFor(viewerOf(session?.user)).includes(item);
 
   return (
     <>
@@ -56,7 +54,7 @@ export function InTheCodeDetails({ code, screen }: InTheCode) {
               {item.label}
             </Link>
           ) : (
-            <span>{item.label} (admins only)</span>
+            <span>{item.label}</span>
           )}
         </p>
       )}
