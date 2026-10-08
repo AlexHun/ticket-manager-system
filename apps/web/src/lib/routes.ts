@@ -51,6 +51,7 @@ export const ROUTE = {
   evals: { path: "/evals" },
   activity: { path: "/activity" },
   tutorials: { path: "/tutorials" },
+  howItWorks: { path: "/how-it-works" },
 
   /**
    * The dev tools. They exist only while `vite dev` runs, but their paths

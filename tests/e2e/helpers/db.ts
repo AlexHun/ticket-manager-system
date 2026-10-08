@@ -95,6 +95,20 @@ export async function resetDashboardLayout(email: string): Promise<void> {
 }
 
 /**
+ * Forget that a seeded user followed a "New"-badged nav item, so the badge
+ * shows again. Shared accounts, like the dashboard layout above: an earlier
+ * run that followed the link would otherwise leave the badge gone for good.
+ */
+export async function resetNewFeatureSeen(
+  email: string,
+  featureKey: string,
+): Promise<void> {
+  await testDb.newFeatureSeen.deleteMany({
+    where: { featureKey, user: { email } },
+  });
+}
+
+/**
  * The link out of the newest invitation written to `email`.
  *
  * With no mail provider bound, the outbox *is* the inbox: `jobs/send-email.ts`

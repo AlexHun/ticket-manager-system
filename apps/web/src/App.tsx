@@ -237,6 +237,17 @@ export const router = createBrowserRouter([
                   },
                 ],
               },
+              // Outside the admin gate: every signed-in user, demo visitors
+              // included, may open it, and it reads no ticket data. Lazy, like
+              // every page, and here that is also what keeps d3 — which only
+              // this page uses — out of the entry chunk.
+              {
+                path: ROUTE.howItWorks.path,
+                lazy: () =>
+                  import("@/pages/HowItWorksPage").then((m) => ({
+                    Component: m.HowItWorksPage,
+                  })),
+              },
               // Inside the shell, so an unknown address keeps the sidebar and
               // says so rather than redirecting to the dashboard and
               // pretending the link worked. Route matching scores by

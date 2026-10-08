@@ -3130,12 +3130,16 @@ export interface TutorialContentsResponse {
  */
 export const NEW_FEATURE_KEY = {
   activityPage: "activityPage",
+  howItWorks: "howItWorks",
 } as const;
 
 export type NewFeatureKey =
   (typeof NEW_FEATURE_KEY)[keyof typeof NEW_FEATURE_KEY];
 
-export const NEW_FEATURE_KEYS = [NEW_FEATURE_KEY.activityPage] as const;
+export const NEW_FEATURE_KEYS = [
+  NEW_FEATURE_KEY.activityPage,
+  NEW_FEATURE_KEY.howItWorks,
+] as const;
 
 /**
  * Whether a "new" badge should (re-)appear, per key. Bumped by hand by a
@@ -3146,6 +3150,7 @@ export const NEW_FEATURE_KEYS = [NEW_FEATURE_KEY.activityPage] as const;
  */
 export const NEW_FEATURE_VERSIONS: Record<NewFeatureKey, number> = {
   [NEW_FEATURE_KEY.activityPage]: 1,
+  [NEW_FEATURE_KEY.howItWorks]: 1,
 };
 
 /** `GET /api/new-features/status`: every key's badge state for the caller, in
