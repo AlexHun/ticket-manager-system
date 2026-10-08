@@ -703,5 +703,15 @@
     "version": "0.1.179",
     "date": "2026-10-08",
     "title": "Bun run graph lists who cites a file and what a doc cites"
+  },
+  {
+    "version": "0.1.182",
+    "date": "2026-10-08",
+    "title": "How it works — runtime boxes on a zoomable canvas"
+  },
+  {
+    "version": "0.1.182",
+    "date": "2026-10-08",
+    "title": "How it works review fixes"
   }
 ]
