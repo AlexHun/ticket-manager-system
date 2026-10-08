@@ -86,23 +86,27 @@ function mermaid(
 ): string {
   const lines = ["```mermaid", "flowchart LR", `  target[${label(file)}]`];
   let next = 0;
-  const node = (text: string) => `n${next++}[${label(text)}]`;
+  /** A new node: its id, and its declaration with the label. */
+  const node = (text: string) => {
+    const id = `n${next++}`;
+    return { id, decl: `${id}[${label(text)}]` };
+  };
   for (const [doc, at] of byDoc(citers)) {
     // An edge label past a handful of lines is a wall of numbers; the text
     // output has every line.
     const where =
       at.length <= 5 ? `cites :${at.join(", :")}` : `cites ${at.length} lines`;
-    lines.push(`  ${node(doc)} -. ${label(where)} .-> target`);
+    lines.push(`  ${node(doc).decl} -. ${label(where)} .-> target`);
   }
-  for (const from of importedBy) lines.push(`  ${node(from)} --> target`);
-  for (const to of imports) lines.push(`  target --> ${node(to)}`);
+  for (const from of importedBy) lines.push(`  ${node(from).decl} --> target`);
+  for (const to of imports) lines.push(`  target --> ${node(to).decl}`);
   const missing: string[] = [];
   const named = new Set<string>();
   for (const c of cites) {
     if (named.has(c.name)) continue;
     named.add(c.name);
-    const id = `n${next}`;
-    lines.push(`  target -. cites .-> ${node(c.name)}`);
+    const { id, decl } = node(c.name);
+    lines.push(`  target -. cites .-> ${decl}`);
     if (!c.resolves) missing.push(id);
   }
   lines.push("  style target stroke-width:3px");
@@ -146,7 +150,8 @@ function main() {
 
   // A document's own citations need the symbol index, ~0.5s over the repo's
   // source, so only a markdown target pays for it.
-  const cites = file.endsWith(".md")
+  const isDoc = file.endsWith(".md");
+  const cites = isDoc
     ? resolvedCitationsIn(
         file,
         read(file),
@@ -168,12 +173,12 @@ function main() {
   if (module) {
     section("Imported by", importedBy);
     section("Imports", imports);
-  } else if (!file.endsWith(".md")) {
+  } else if (!isDoc) {
     console.log(
       "\nNot a module in the project map's scan (`apps/web/dev/scan.ts`), so no imports to show.",
     );
   }
-  if (file.endsWith(".md")) {
+  if (isDoc) {
     // Counted the way `section` prints them: once per line and name.
     const missing = new Set(
       cites.filter((c) => !c.resolves).map((c) => `${c.line}:${c.name}`),

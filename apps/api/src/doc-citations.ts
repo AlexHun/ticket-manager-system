@@ -99,6 +99,13 @@ const hasFileExtension = (path: string): boolean => {
   return dot > 0 && FILE_EXTENSIONS.has(base.slice(dot + 1));
 };
 
+/**
+ * The number a numbered document answers to, or `undefined`:
+ * `docs/adr/0014-in-process-postgres.md` answers to `docs/adr/0014`.
+ */
+const numberOf = (file: string): string | undefined =>
+  /^(.*\/\d+)-[^/]*$/.exec(file)?.[1];
+
 /** Inline code spans per line; a span of N backticks closes on N backticks. */
 const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
 
@@ -136,8 +143,7 @@ export class TrackedTree {
         this.tails.add(segments.slice(at).join("/"));
         if (at > 0) this.directories.add(segments.slice(0, at).join("/"));
       }
-      // `docs/adr/0014-in-process-postgres.md` answers to `docs/adr/0014`.
-      const numbered = /^(.*\/\d+)-[^/]*$/.exec(file)?.[1];
+      const numbered = numberOf(file);
       if (numbered) this.exact.add(numbered);
     }
   }
@@ -847,7 +853,7 @@ function citesFile(
   const { kind, name } = citation;
   if (kind === "symbol") return declared.has(name);
   if (hasFileExtension(name)) return namesPath(name, file);
-  return name === file || /^(.*\/\d+)-[^/]*$/.exec(file)?.[1] === name;
+  return name === file || numberOf(file) === name;
 }
 
 /**

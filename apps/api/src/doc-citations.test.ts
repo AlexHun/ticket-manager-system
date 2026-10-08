@@ -1138,14 +1138,17 @@ describe("the query: who cites a file, and what a document cites", () => {
     ]);
   });
 
-  test("a numbered document is cited by its number, and a file nobody names has no citers", () => {
+  test("a numbered document is cited by its number, a short path by its tail, and a file nobody names has no citers", () => {
     expect(
       where(citersOf("docs/adr/0014-in-process-postgres.md", citations)),
     ).toEqual(["docs/standards/backend.md:5 docs/adr/0014"]);
     expect(where(citersOf("docs/standards/backend.md", citations))).toEqual([
       "CLAUDE.md:1 docs/standards/backend.md",
     ]);
-    expect(citersOf("apps/api/src/test/pg.ts", [])).toEqual([]);
+    expect(citersOf("apps/api/src/test/pg.ts", citations)).toEqual([
+      expect.objectContaining({ doc: "docs/adr/0014-in-process-postgres.md" }),
+    ]);
+    expect(citersOf("apps/api/src/index.ts", citations)).toEqual([]);
   });
 
   test("a document's citations each say whether they resolve", () => {
