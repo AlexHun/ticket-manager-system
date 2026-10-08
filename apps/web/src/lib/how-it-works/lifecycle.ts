@@ -81,15 +81,17 @@ export interface LifecycleStep {
 /** What the tag on a step with no Status says. */
 export const NO_TICKET_YET = "No ticket yet";
 
-const S = TICKET_STATUS;
-const L = LIFECYCLE_LANE;
+/** What a step's Status tag reads: its Status, or that there is no ticket. */
+export function statusLabel(status: TicketStatus | null): string {
+  return status ?? NO_TICKET_YET;
+}
 
 /** In the order a ticket meets them, which is also the order a reader does. */
 export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
   {
     id: LIFECYCLE_STEP.emailSent,
     title: "Email sent",
-    lane: L.customer,
+    lane: LIFECYCLE_LANE.customer,
     column: 0,
     status: null,
     explanation:
@@ -98,100 +100,100 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
   {
     id: LIFECYCLE_STEP.ingestion,
     title: "Ingestion",
-    lane: L.assistant,
+    lane: LIFECYCLE_LANE.assistant,
     column: 1,
-    status: S.New,
+    status: TICKET_STATUS.New,
     explanation:
       "The email arrives through the inbound mail provider and becomes a new ticket in New, with the email as the first message of its thread. Nobody owns it yet.",
   },
   {
     id: LIFECYCLE_STEP.classification,
     title: "Classification",
-    lane: L.assistant,
+    lane: LIFECYCLE_LANE.assistant,
     column: 2,
-    status: S.New,
+    status: TICKET_STATUS.New,
     explanation:
-      "A model files the ticket under one of the four categories. Filing it moves nothing: the ticket stays in New, and the auto-reply is offered the ticket if its category is one it may answer.",
+      "A model files the ticket under one of the four categories. Filing it moves nothing: the ticket stays in New. If the auto-reply is switched on, the ticket is then offered to it, whatever its category; a category it may not answer is turned back after the Claim, as a Decline.",
   },
   {
     id: LIFECYCLE_STEP.claim,
     title: "Claim",
-    lane: L.assistant,
+    lane: LIFECYCLE_LANE.assistant,
     column: 3,
-    status: S.Processing,
+    status: TICKET_STATUS.Processing,
     explanation:
       "The auto-reply takes exclusive hold of a ticket that is still New and unassigned, which puts it in Processing for the few seconds a reply is being composed. A ticket in Processing is hidden from the list, so an agent cannot answer it at the same time.",
   },
   {
     id: LIFECYCLE_STEP.autoReplySent,
     title: "Auto-reply sent",
-    lane: L.assistant,
+    lane: LIFECYCLE_LANE.assistant,
     column: 4,
-    status: S.Resolved,
+    status: TICKET_STATUS.Resolved,
     explanation:
       "The knowledge base covers the question, the reply passes every check, and it goes to the customer with nobody reading it first. The ticket is Resolved and filed under the assistant's own account.",
   },
   {
     id: LIFECYCLE_STEP.declineHandoff,
     title: "Decline and Handoff",
-    lane: L.assistant,
+    lane: LIFECYCLE_LANE.assistant,
     row: 1,
     column: 4,
-    status: S.Open,
+    status: TICKET_STATUS.Open,
     explanation:
-      "The auto-reply decides not to answer, and records why. That is a normal outcome, not a failure. The ticket is handed to a person, the one the handoff setting on the Pipeline page names, and is Open.",
+      "The auto-reply decides not to answer, and records why. That is a normal outcome, not a failure. The ticket is Open, and is handed to whoever the handoff setting on the Pipeline page names, if anyone.",
   },
   {
     id: LIFECYCLE_STEP.agentReplies,
     title: "Agent replies",
-    lane: L.agent,
+    lane: LIFECYCLE_LANE.agent,
     column: 5,
-    status: S.Open,
+    status: TICKET_STATUS.Open,
     explanation:
       "An agent reads the thread and answers it. Polish rewrites their draft before they send it, and a Summary of the thread is drawn beside it on request. Replying does not change the Status: the ticket is still Open.",
   },
   {
     id: LIFECYCLE_STEP.agentResolves,
     title: "Agent resolves",
-    lane: L.agent,
+    lane: LIFECYCLE_LANE.agent,
     column: 6,
-    status: S.Resolved,
+    status: TICKET_STATUS.Resolved,
     explanation:
       "Once the customer has what they needed, the agent sets the ticket to Resolved. It stays theirs.",
   },
   {
     id: LIFECYCLE_STEP.customerReplies,
     title: "Customer replies",
-    lane: L.customer,
+    lane: LIFECYCLE_LANE.customer,
     column: 7,
-    status: S.Resolved,
+    status: TICKET_STATUS.Resolved,
     explanation:
       "The customer writes back to a resolved ticket. Their email joins the same thread; what happens to the Status depends on who resolved it.",
   },
   {
     id: LIFECYCLE_STEP.reopen,
     title: "Reopen",
-    lane: L.assistant,
+    lane: LIFECYCLE_LANE.assistant,
     column: 8,
-    status: S.Open,
+    status: TICKET_STATUS.Open,
     explanation:
-      "If the assistant had resolved the ticket, the reply reopens it: the ticket goes back to Open and to the person the handoff setting names, since the assistant is not coming back for it.",
+      "If the assistant had resolved the ticket, the reply reopens it: the ticket goes back to Open, and from the assistant to whoever the handoff setting names, if anyone, since the assistant is not coming back for it.",
   },
   {
     id: LIFECYCLE_STEP.replyJoinsThread,
     title: "Reply joins the thread",
-    lane: L.agent,
+    lane: LIFECYCLE_LANE.agent,
     column: 8,
-    status: S.Resolved,
+    status: TICKET_STATUS.Resolved,
     explanation:
       "If a person had resolved the ticket, the reply joins the thread and nothing else moves: it stays Resolved and stays theirs. They judged it finished, and a thank-you should not reopen it.",
   },
   {
     id: LIFECYCLE_STEP.agentCloses,
     title: "Agent closes",
-    lane: L.agent,
+    lane: LIFECYCLE_LANE.agent,
     column: 9,
-    status: S.Closed,
+    status: TICKET_STATUS.Closed,
     explanation:
       "When the conversation is over, an agent sets the ticket to Closed.",
   },
@@ -216,11 +218,21 @@ export interface LifecycleBranch {
   readonly arms: readonly [LifecycleStepId, LifecycleStepId];
 }
 
-const P = LIFECYCLE_STEP;
+/** After the Claim: the auto-reply answers, or declines and hands off. */
+const AUTO_REPLY_FORK: LifecycleBranch = {
+  from: LIFECYCLE_STEP.claim,
+  arms: [LIFECYCLE_STEP.autoReplySent, LIFECYCLE_STEP.declineHandoff],
+};
+
+/** After a customer's reply: a Reopen, or the reply simply joins the thread. */
+const CUSTOMER_REPLY_FORK: LifecycleBranch = {
+  from: LIFECYCLE_STEP.customerReplies,
+  arms: [LIFECYCLE_STEP.reopen, LIFECYCLE_STEP.replyJoinsThread],
+};
 
 export const LIFECYCLE_BRANCHES: readonly LifecycleBranch[] = [
-  { from: P.claim, arms: [P.autoReplySent, P.declineHandoff] },
-  { from: P.customerReplies, arms: [P.reopen, P.replyJoinsThread] },
+  AUTO_REPLY_FORK,
+  CUSTOMER_REPLY_FORK,
 ];
 
 export interface LifecycleEdge {
@@ -234,18 +246,23 @@ function edge(from: LifecycleStepId, to: LifecycleStepId): LifecycleEdge {
   return { id: `${from}-${to}`, from, to };
 }
 
+/** The edge from a fork's step to each of its arms. */
+function fork({ from, arms }: LifecycleBranch): LifecycleEdge[] {
+  return arms.map((arm) => edge(from, arm));
+}
+
 export const LIFECYCLE_EDGES: readonly LifecycleEdge[] = [
-  edge(P.emailSent, P.ingestion),
-  edge(P.ingestion, P.classification),
-  edge(P.classification, P.claim),
-  ...LIFECYCLE_BRANCHES[0].arms.map((arm) => edge(P.claim, arm)),
-  edge(P.declineHandoff, P.agentReplies),
-  edge(P.agentReplies, P.agentResolves),
-  edge(P.autoReplySent, P.customerReplies),
-  edge(P.agentResolves, P.customerReplies),
-  ...LIFECYCLE_BRANCHES[1].arms.map((arm) => edge(P.customerReplies, arm)),
-  edge(P.reopen, P.agentCloses),
-  edge(P.replyJoinsThread, P.agentCloses),
+  edge(LIFECYCLE_STEP.emailSent, LIFECYCLE_STEP.ingestion),
+  edge(LIFECYCLE_STEP.ingestion, LIFECYCLE_STEP.classification),
+  edge(LIFECYCLE_STEP.classification, LIFECYCLE_STEP.claim),
+  ...fork(AUTO_REPLY_FORK),
+  edge(LIFECYCLE_STEP.declineHandoff, LIFECYCLE_STEP.agentReplies),
+  edge(LIFECYCLE_STEP.agentReplies, LIFECYCLE_STEP.agentResolves),
+  edge(LIFECYCLE_STEP.autoReplySent, LIFECYCLE_STEP.customerReplies),
+  edge(LIFECYCLE_STEP.agentResolves, LIFECYCLE_STEP.customerReplies),
+  ...fork(CUSTOMER_REPLY_FORK),
+  edge(LIFECYCLE_STEP.reopen, LIFECYCLE_STEP.agentCloses),
+  edge(LIFECYCLE_STEP.replyJoinsThread, LIFECYCLE_STEP.agentCloses),
 ];
 
 export const LIFECYCLE_NOTE = {
@@ -273,22 +290,27 @@ export const LIFECYCLE_NOTES: readonly LifecycleNote[] = [
   {
     id: LIFECYCLE_NOTE.noKey,
     text: "With no OpenAI key nothing is classified or answered, and every ticket stays in New for a person.",
-    step: P.classification,
+    step: LIFECYCLE_STEP.classification,
     column: 1,
   },
   {
     id: LIFECYCLE_NOTE.outage,
-    text: "An outage is not a Decline: the ticket goes back to New, unassigned, and the auto-reply tries again. Only when the retries run out is it handed to a person.",
-    step: P.claim,
+    text: "An outage is not a Decline: the ticket goes back to New, unassigned, and the auto-reply tries again. Only when the retries run out is it handed off, as Open.",
+    step: LIFECYCLE_STEP.claim,
     column: 3,
   },
   {
     id: LIFECYCLE_NOTE.anyStatus,
     text: `An agent can move a ticket to ${settable} at any point. Never to Processing, which only the auto-reply holds, and never back to New.`,
-    step: P.agentReplies,
+    step: LIFECYCLE_STEP.agentReplies,
     column: 5,
   },
 ];
+
+/** The notes that qualify this step, in the data's order. */
+export function notesFor(id: LifecycleStepId): LifecycleNote[] {
+  return LIFECYCLE_NOTES.filter((note) => note.step === id);
+}
 
 /** Everything the lifecycle view draws, in the shape the layout takes. */
 export const LIFECYCLE = {

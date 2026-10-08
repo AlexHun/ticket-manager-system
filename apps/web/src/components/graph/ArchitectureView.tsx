@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent } from "react";
+import { useId, useState } from "react";
 import {
   ARCHITECTURE,
   ARCHITECTURE_EDGES,
@@ -11,7 +11,6 @@ import {
 } from "@/lib/how-it-works/architecture";
 import {
   GRAPH_EDGE_ATTRIBUTE,
-  GRAPH_NODE_ATTRIBUTE,
   HOW_IT_WORKS_LABEL,
 } from "@/lib/how-it-works/dom";
 import {
@@ -20,9 +19,10 @@ import {
   type PlacedNode,
   type Rect,
 } from "@/lib/how-it-works/layout";
-import { cn } from "@/lib/utils";
+import { ArrowMarker } from "./ArrowMarker";
 import { DetailsPanel } from "./DetailsPanel";
 import { GraphCanvas } from "./GraphCanvas";
+import { SelectableNode } from "./SelectableNode";
 
 /**
  * The Architecture tab: the runtime boxes on a zoomable canvas, a panel that
@@ -58,22 +58,7 @@ export function ArchitectureView() {
           height={LAYOUT.height}
           label={HOW_IT_WORKS_LABEL.architectureCanvas}
         >
-          <defs>
-            <marker
-              id={arrowId}
-              viewBox="0 0 10 10"
-              refX="10"
-              refY="5"
-              markerWidth="7"
-              markerHeight="7"
-              orient="auto-start-reverse"
-            >
-              <path
-                d="M 0 0 L 10 5 L 0 10 z"
-                className="fill-muted-foreground"
-              />
-            </marker>
-          </defs>
+          <ArrowMarker id={arrowId} />
 
           <RailwayFrame rect={LAYOUT.frame} />
           <SharedPackagesNote rect={LAYOUT.note} />
@@ -126,36 +111,15 @@ function Box({
   const container = ARCHITECTURE_NODES.some(
     (other) => other.inside === node.id,
   );
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onSelect();
-    }
-  };
 
   return (
-    <g
-      role="button"
-      tabIndex={0}
-      aria-label={node.title}
-      aria-pressed={selected}
-      {...{ [GRAPH_NODE_ATTRIBUTE]: node.id }}
-      onClick={onSelect}
-      onKeyDown={onKeyDown}
-      className="group cursor-pointer outline-none"
+    <SelectableNode
+      id={node.id}
+      label={node.title}
+      rect={placed}
+      selected={selected}
+      onSelect={onSelect}
     >
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        rx={8}
-        className={cn(
-          "fill-card stroke-border transition-colors group-hover:stroke-muted-foreground group-focus-visible:stroke-ring",
-          selected && "stroke-ring group-hover:stroke-ring",
-        )}
-        strokeWidth={selected ? 2.5 : 1.5}
-      />
       <text
         x={x + width / 2}
         y={container ? y + 24 : y + height / 2}
@@ -165,7 +129,7 @@ function Box({
       >
         {node.title}
       </text>
-    </g>
+    </SelectableNode>
   );
 }
 

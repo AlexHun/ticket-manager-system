@@ -42,7 +42,7 @@ import { ROUTE } from "../../apps/web/src/lib/routes";
  */
 
 /**
- * What the shell around every page reads â€” the sidebar's unread count and its
+ * What the shell around every page reads — the sidebar's unread count and its
  * saved views. They are not this page's, and it must add none of its own.
  */
 const SHELL_TICKET_READS = ["/api/tickets/unread", "/api/tickets/views"];
@@ -258,7 +258,7 @@ test.describe("How it works", () => {
       await expect(strip).toContainText(status);
     }
 
-    // A fork: one step, an edge to each arm, and the arms one above the other.
+    // A fork: one step, an edge to each arm, and the two arms in one column.
     for (const { from, arms } of LIFECYCLE_BRANCHES) {
       const [a, b] = await Promise.all(
         arms.map((arm) => nodeBox(page, arm).boundingBox()),
