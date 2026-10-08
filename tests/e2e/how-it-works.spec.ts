@@ -37,12 +37,15 @@ import {
   type LifecycleStepId,
 } from "../../apps/web/src/lib/how-it-works/lifecycle";
 import { contains } from "../../apps/web/src/lib/how-it-works/layout";
+import { subsystemLinkId } from "../../apps/web/src/lib/how-it-works/subsystem-layout";
+import { subsystemsOf } from "../../apps/web/src/lib/how-it-works/subsystems";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**
- * `docs/plans/how-it-works.md`, slices 1 to 3 (#455, #456, #457): the nav
- * item, the Architecture view's runtime boxes on a zoomable canvas, the Ticket
- * lifecycle in its swimlanes, walking it step by step, and the panel. Every
+ * `docs/plans/how-it-works.md`, slices 1 to 4 (#455, #456, #457, #458): the
+ * nav item, the Architecture view's runtime boxes on a zoomable canvas and
+ * the subsystems they open onto, the Ticket lifecycle in its swimlanes,
+ * walking it step by step, and the panel. Every
  * test runs against an empty ticket table, because the page reads no ticket
  * data (R12).
  */
@@ -64,6 +67,9 @@ const newBadge = (page: Page) =>
 
 const nodeBox = (page: Page, id: string) =>
   page.locator(`[${GRAPH_NODE_ATTRIBUTE}="${id}"]`);
+
+const subsystemDrawing = (page: Page) =>
+  page.getByRole("group", { name: HOW_IT_WORKS_LABEL.subsystemCanvas });
 
 async function boxPositions(page: Page) {
   const positions: Record<string, unknown> = {};
@@ -95,11 +101,11 @@ async function stepPositions(page: Page) {
 }
 
 /**
- * Every step's box in the drawing's own coordinates — its bounding box, and
+ * Every box or step on the drawing in the drawing's own coordinates — its bounding box, and
  * any transform between it and the view's `<g>` — which the view transform
  * does not reach: what has to hold still while the view moves (R9).
  */
-function stepGeometry(page: Page) {
+function nodeGeometry(page: Page) {
   return page.locator(`[${GRAPH_NODE_ATTRIBUTE}]`).evaluateAll(
     (nodes, [nodeAttribute, viewportAttribute]) => {
       const viewport = document.querySelector<SVGGElement>(
@@ -266,6 +272,113 @@ test.describe("How it works", () => {
     await expect(panel).toContainText(api.explanation);
   });
 
+  test("the API opens onto its subsystems, none of them a file, and Back returns to the boxes where they were", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.agent);
+    await page.goto(ROUTE.howItWorks.path);
+    await expect(nodeBox(page, ARCHITECTURE_NODE.api)).toBeVisible();
+
+    // Zoomed first, so coming back has a view to keep as well as the boxes.
+    const canvas = page.getByRole("group", {
+      name: HOW_IT_WORKS_LABEL.architectureCanvas,
+    });
+    const viewport = canvas.locator(`[${GRAPH_VIEWPORT_ATTRIBUTE}]`);
+    const area = (await canvas.boundingBox())!;
+    await page.mouse.move(area.x + area.width / 2, area.y + area.height / 2);
+    await page.mouse.wheel(0, -200);
+    await expect(viewport).toHaveAttribute("transform", /scale\(/);
+    // Polled until the wheel's events have all landed.
+    let view: string | null = null;
+    await expect
+      .poll(async () => {
+        const settled = view;
+        view = await viewport.getAttribute("transform");
+        return view === settled;
+      })
+      .toBe(true);
+    // The view, and every box in the drawing's own coordinates rather than
+    // the screen's: a selected box's thicker outline moves its screen box.
+    const where = async () => ({
+      view: await viewport.getAttribute("transform"),
+      nodes: await nodeGeometry(page),
+    });
+    const before = await where();
+
+    const api = architectureNode(ARCHITECTURE_NODE.api);
+    await page.getByRole("button", { name: api.title, exact: true }).click();
+
+    const drawing = subsystemDrawing(page);
+    await expect(drawing).toBeVisible();
+    for (const subsystem of subsystemsOf(ARCHITECTURE_NODE.api)) {
+      const node = drawing.locator(
+        `[${GRAPH_NODE_ATTRIBUTE}="${subsystem.id}"]`,
+      );
+      await expect(node).toBeVisible();
+      await expect(node).toHaveText(subsystem.title);
+      // Each one joined to what it talks to in the other boxes.
+      for (const link of subsystem.links) {
+        await expect(
+          drawing.locator(
+            `[${GRAPH_EDGE_ATTRIBUTE}="${subsystemLinkId(subsystem.id, link.part)}"]`,
+          ),
+        ).toBeAttached();
+      }
+    }
+    // No node on the drawing is titled with a path or a file name.
+    for (const title of await drawing
+      .locator(`[${GRAPH_NODE_ATTRIBUTE}]`)
+      .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("aria-label")))) {
+      expect(title).not.toMatch(/[\\/]|\.[a-z]{1,4}$/i);
+    }
+
+    await page
+      .getByRole("button", { name: HOW_IT_WORKS_LABEL.backToRuntime })
+      .click();
+    await expect(drawing).toHaveCount(0);
+    await expect(nodeBox(page, ARCHITECTURE_NODE.api)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(await where()).toEqual(before);
+
+    // Escape does the same.
+    await page.getByRole("button", { name: api.title, exact: true }).click();
+    await expect(drawing).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(drawing).toHaveCount(0);
+    await expect(nodeBox(page, ARCHITECTURE_NODE.api)).toBeFocused();
+    expect(await where()).toEqual(before);
+  });
+
+  test("keyboard only: Tab to the job workers, press Enter, and their subsystems appear", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.agent);
+    await page.goto(ROUTE.howItWorks.path);
+    const workers = nodeBox(page, ARCHITECTURE_NODE.jobWorkers);
+    await expect(workers).toBeVisible();
+
+    // Start on the tab, and Tab forward until the job workers have focus.
+    await page
+      .getByRole("tab", { name: HOW_IT_WORKS_LABEL.architectureTab })
+      .focus();
+    for (let presses = 0; presses < ARCHITECTURE_NODES.length + 2; presses++) {
+      await page.keyboard.press("Tab");
+      if (await workers.evaluate((node) => node === document.activeElement))
+        break;
+    }
+    await expect(workers).toBeFocused();
+    await page.keyboard.press("Enter");
+
+    const drawing = subsystemDrawing(page);
+    for (const subsystem of subsystemsOf(ARCHITECTURE_NODE.jobWorkers)) {
+      await expect(
+        drawing.locator(`[${GRAPH_NODE_ATTRIBUTE}="${subsystem.id}"]`),
+      ).toBeVisible();
+    }
+  });
+
   test("scrolling zooms the view while every box keeps its place across reloads", async ({
     page,
   }) => {
@@ -372,7 +485,7 @@ test.describe("How it works", () => {
     await signIn(page, USER_ROLE.agent);
     await page.goto(ROUTE.howItWorks.path);
     await openLifecycle(page);
-    const before = await stepGeometry(page);
+    const before = await nodeGeometry(page);
 
     const next = page.getByRole("button", {
       name: HOW_IT_WORKS_LABEL.nextStep,
@@ -414,7 +527,7 @@ test.describe("How it works", () => {
     await expect(next).toBeDisabled();
 
     // Only the view moved: every step is where the layout put it (R9).
-    expect(await stepGeometry(page)).toEqual(before);
+    expect(await nodeGeometry(page)).toEqual(before);
   });
 
   test("under reduced motion, stepping to a step out of frame jumps the view there", async ({
@@ -423,7 +536,7 @@ test.describe("How it works", () => {
     await signIn(page, USER_ROLE.agent);
     await page.goto(ROUTE.howItWorks.path);
     await openLifecycle(page);
-    const before = await stepGeometry(page);
+    const before = await nodeGeometry(page);
 
     const { area, viewport, first, zoomed } = await zoomPastFirstStep(page);
 
@@ -441,7 +554,7 @@ test.describe("How it works", () => {
     expect(await viewport.getAttribute("transform")).toBe(landed);
     expect(contains(area, (await first.boundingBox())!)).toBe(true);
 
-    expect(await stepGeometry(page)).toEqual(before);
+    expect(await nodeGeometry(page)).toEqual(before);
   });
 
   test.describe("with motion allowed", () => {
@@ -454,7 +567,7 @@ test.describe("How it works", () => {
       await signIn(page, USER_ROLE.agent);
       await page.goto(ROUTE.howItWorks.path);
       await openLifecycle(page);
-      const before = await stepGeometry(page);
+      const before = await nodeGeometry(page);
       const { area, viewport, first } = await zoomPastFirstStep(page);
 
       await page
@@ -470,7 +583,7 @@ test.describe("How it works", () => {
       // Still on its way when the press had been handled, unlike a jump.
       expect(started).not.toBe(await viewport.getAttribute("transform"));
 
-      expect(await stepGeometry(page)).toEqual(before);
+      expect(await nodeGeometry(page)).toEqual(before);
     });
   });
 

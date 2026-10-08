@@ -12,6 +12,9 @@ export const HOW_IT_WORKS_LABEL = {
   lifecycleTab: "Ticket lifecycle",
   architectureCanvas: "Architecture drawing",
   architectureList: "Architecture, box by box",
+  /** The drawing of one box opened onto its subsystems. */
+  subsystemCanvas: "Subsystems drawing",
+  backToRuntime: "Back to the runtime view",
   lifecycleCanvas: "Ticket lifecycle drawing",
   lifecycleList: "Ticket lifecycle, step by step",
   details: "Details",

@@ -1,4 +1,6 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   ARCHITECTURE,
   ARCHITECTURE_EDGES,
@@ -11,8 +13,21 @@ import {
 } from "@/lib/how-it-works/architecture";
 import {
   GRAPH_EDGE_ATTRIBUTE,
+  GRAPH_NODE_ATTRIBUTE,
   HOW_IT_WORKS_LABEL,
 } from "@/lib/how-it-works/dom";
+import {
+  LINK_DIRECTION,
+  boxOf,
+  isDrillable,
+  linkPhrase,
+  partExplanation,
+  partLabel,
+  partTitle,
+  subsystemsOf,
+  type DrillableBoxId,
+  type PartId,
+} from "@/lib/how-it-works/subsystems";
 import {
   layOutArchitecture,
   type PlacedEdge,
@@ -23,11 +38,16 @@ import { ArrowMarker } from "./ArrowMarker";
 import { DetailsPanel } from "./DetailsPanel";
 import { GraphCanvas } from "./GraphCanvas";
 import { SelectableNode } from "./SelectableNode";
+import { SubsystemDrawing } from "./SubsystemDrawing";
 
 /**
  * The Architecture tab: the runtime boxes on a zoomable canvas, a panel that
  * explains whichever box is selected, and the same content as a visually
  * hidden ordered list for a screen reader (R11).
+ *
+ * Selecting the API, the job workers or the browser app opens it onto its
+ * subsystems (R3). Back, or Escape, returns to the runtime boxes with the same
+ * box selected.
  *
  * Everything drawn comes from `@/lib/how-it-works/architecture`, and every
  * coordinate from `layOutArchitecture` over it — nothing here places a box.
@@ -44,55 +64,162 @@ const LAYOUT = layOutArchitecture(ARCHITECTURE);
 
 export function ArchitectureView() {
   const [selectedId, setSelectedId] = useState<ArchitectureNodeId | null>(null);
-  const selected = selectedId ? architectureNode(selectedId) : null;
+  // The box opened onto its subsystems, and what is selected inside it.
+  const [openBox, setOpenBox] = useState<DrillableBoxId | null>(null);
+  const [partId, setPartId] = useState<PartId | null>(null);
   const arrowId = `arrow-${useId().replace(/:/g, "")}`;
+  const runtimeRef = useRef<HTMLDivElement>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+
+  const select = (id: ArchitectureNodeId) => {
+    setSelectedId(id);
+    if (isDrillable(id)) {
+      setOpenBox(id);
+      setPartId(null);
+    }
+  };
+  const back = () => setOpenBox(null);
+
+  // Focus follows the level: opening a box lands it on Back, and leaving lands
+  // it on the box that was opened, so a keyboard user is never left on a
+  // control that has just disappeared.
+  useEffect(() => {
+    if (openBox) {
+      backRef.current?.focus();
+    } else if (wasOpen.current && selectedId) {
+      runtimeRef.current
+        ?.querySelector<SVGGElement>(
+          `[${GRAPH_NODE_ATTRIBUTE}="${selectedId}"]`,
+        )
+        ?.focus();
+    }
+    wasOpen.current = openBox !== null;
+    // Only a change of level moves focus, so `selectedId` is read, not watched.
+  }, [openBox]);
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && openBox) {
+      event.preventDefault();
+      back();
+    }
+  };
+
+  const panelId: PartId | null = openBox ? (partId ?? openBox) : selectedId;
+  // A part of another box is named with its box, as on the drawing.
+  const panelTitle =
+    panelId === null
+      ? null
+      : openBox && boxOf(panelId) !== openBox
+        ? partLabel(panelId)
+        : partTitle(panelId);
+  const panelLinks =
+    openBox && partId ? linksOf(openBox, partId) : ([] as string[]);
 
   return (
     // The panel moves beside the canvas only at 2xl. Beside it at 1280px,
     // the drawing would shrink to about two thirds and its labels with it;
     // below, it keeps the width and the panel is still in view.
-    <div className="flex flex-col gap-4 2xl:flex-row">
-      <div className="min-w-0 flex-1 overflow-hidden rounded-lg border bg-background">
-        <GraphCanvas
-          width={LAYOUT.width}
-          height={LAYOUT.height}
-          label={HOW_IT_WORKS_LABEL.architectureCanvas}
+    <div className="flex flex-col gap-4 2xl:flex-row" onKeyDown={onKeyDown}>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {openBox && (
+          <div className="flex items-center gap-2">
+            <Button ref={backRef} variant="outline" size="sm" onClick={back}>
+              <ArrowLeft aria-hidden />
+              {HOW_IT_WORKS_LABEL.backToRuntime}
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              Inside {architectureNode(openBox).title}. Escape goes back too.
+            </p>
+          </div>
+        )}
+
+        {/* Hidden rather than unmounted while a box is open, so coming back
+            finds every box, and the view, exactly where they were (R9). */}
+        <div
+          ref={runtimeRef}
+          hidden={openBox !== null}
+          className="overflow-hidden rounded-lg border bg-background"
         >
-          <ArrowMarker id={arrowId} />
+          <GraphCanvas
+            width={LAYOUT.width}
+            height={LAYOUT.height}
+            label={HOW_IT_WORKS_LABEL.architectureCanvas}
+          >
+            <ArrowMarker id={arrowId} />
 
-          <RailwayFrame rect={LAYOUT.frame} />
-          <SharedPackagesNote rect={LAYOUT.note} />
+            <RailwayFrame rect={LAYOUT.frame} />
+            <SharedPackagesNote rect={LAYOUT.note} />
 
-          {LAYOUT.nodes.map((placed) => (
-            <Box
-              key={placed.node.id}
-              placed={placed}
-              selected={placed.node.id === selectedId}
-              onSelect={() => setSelectedId(placed.node.id)}
+            {LAYOUT.nodes.map((placed) => (
+              <Box
+                key={placed.node.id}
+                placed={placed}
+                selected={placed.node.id === selectedId}
+                onSelect={() => select(placed.node.id)}
+              />
+            ))}
+
+            {LAYOUT.edges.map((placed) => (
+              <Connection
+                key={placed.edge.id}
+                placed={placed}
+                arrowId={arrowId}
+              />
+            ))}
+          </GraphCanvas>
+        </div>
+
+        {openBox && (
+          <div className="overflow-hidden rounded-lg border bg-background">
+            <SubsystemDrawing
+              key={openBox}
+              box={openBox}
+              selectedId={partId}
+              onSelect={setPartId}
             />
-          ))}
-
-          {LAYOUT.edges.map((placed) => (
-            <Connection
-              key={placed.edge.id}
-              placed={placed}
-              arrowId={arrowId}
-            />
-          ))}
-        </GraphCanvas>
+          </div>
+        )}
       </div>
 
       <DetailsPanel
-        title={selected?.title ?? null}
-        hint="Select a box to read what it does. Scroll to zoom, and drag to move around."
+        title={panelTitle}
+        hint="Select a box to read what it does; the API, the job workers and the browser app open onto their parts. Scroll to zoom, and drag to move around."
       >
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {selected?.explanation}
-        </p>
+        {panelId && (
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            {partExplanation(panelId)}
+          </p>
+        )}
+        {panelLinks.length > 0 && (
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            {panelLinks.map((phrase) => (
+              <li key={phrase}>{phrase}</li>
+            ))}
+          </ul>
+        )}
       </DetailsPanel>
 
       <ArchitectureList />
     </div>
+  );
+}
+
+/**
+ * What the panel lists for a selection inside an open box: a subsystem's own
+ * links, or, for a part of another box, the subsystems that talk to it.
+ */
+function linksOf(box: DrillableBoxId, id: PartId): string[] {
+  const inside = subsystemsOf(box);
+  const own = inside.find((s) => s.id === id);
+  if (own) return own.links.map(linkPhrase);
+  return inside.flatMap((s) =>
+    s.links
+      .filter((link) => link.part === id)
+      .map(
+        (link) =>
+          `${link.label} ${link.direction === LINK_DIRECTION.out ? "from" : "to"} ${s.title}`,
+      ),
   );
 }
 
@@ -231,7 +358,8 @@ function SharedPackagesNote({ rect }: { rect: Rect }) {
 
 /**
  * The drawing as a screen reader gets it: one item per box, in the data's
- * order, carrying the panel's words and the connections it starts.
+ * order, carrying the panel's words and the connections it starts, and for a
+ * box that opens, its subsystems and what each talks to.
  */
 function ArchitectureList() {
   return (
@@ -267,6 +395,23 @@ function ListEntry({ node }: { node: ArchitectureNode }) {
             </li>
           ))}
         </ul>
+      )}
+      {isDrillable(node.id) && (
+        <>
+          <p>Inside it:</p>
+          <ol>
+            {subsystemsOf(node.id).map((subsystem) => (
+              <li key={subsystem.id}>
+                {subsystem.title}: {subsystem.explanation}
+                <ul>
+                  {subsystem.links.map((link) => (
+                    <li key={link.part}>{linkPhrase(link)}</li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </>
   );
