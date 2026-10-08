@@ -1,9 +1,17 @@
 /**
  * The arrowhead every connection on a How it works drawing ends in. Rendered
  * inside the drawing's `<defs>`; a line points at it with
- * `markerEnd={`url(#${id})`}`.
+ * `markerEnd={`url(#${id})`}`. A marker is drawn in its own colour, not the
+ * line's, so a highlighted line points at a second marker with its own fill.
  */
-export function ArrowMarker({ id }: { id: string }) {
+export function ArrowMarker({
+  id,
+  className = "fill-muted-foreground",
+}: {
+  id: string;
+  /** The arrowhead's fill. */
+  className?: string;
+}) {
   return (
     <defs>
       <marker
@@ -15,7 +23,7 @@ export function ArrowMarker({ id }: { id: string }) {
         markerHeight="7"
         orient="auto-start-reverse"
       >
-        <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
+        <path d="M 0 0 L 10 5 L 0 10 z" className={className} />
       </marker>
     </defs>
   );

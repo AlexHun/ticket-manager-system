@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TICKET_STATUS } from "@ticket/shared";
 import { LIFECYCLE, LIFECYCLE_STEPS } from "./lifecycle";
 import { layOutLifecycle, wrapText } from "./lifecycle-layout";
-import type { Rect } from "./layout";
+import { contains, type Rect } from "./layout";
 
 function overlaps(a: Rect, b: Rect): boolean {
   return (
@@ -10,15 +10,6 @@ function overlaps(a: Rect, b: Rect): boolean {
     b.x < a.x + a.width &&
     a.y < b.y + b.height &&
     b.y < a.y + a.height
-  );
-}
-
-function contains(outer: Rect, inner: Rect): boolean {
-  return (
-    inner.x >= outer.x &&
-    inner.y >= outer.y &&
-    inner.x + inner.width <= outer.x + outer.width &&
-    inner.y + inner.height <= outer.y + outer.height
   );
 }
 
