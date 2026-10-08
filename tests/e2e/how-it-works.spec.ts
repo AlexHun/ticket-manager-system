@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import {
   NEW_FEATURE_KEY,
   TICKET_STATUS,
@@ -49,10 +49,11 @@ import { subsystemsOf } from "../../apps/web/src/lib/how-it-works/subsystems";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**
- * `docs/plans/how-it-works.md`, slices 1 to 5 (#455, #456, #457, #458, #459):
- * the nav item, the Architecture view's runtime boxes on a zoomable canvas and
- * the subsystems they open onto, the Ticket lifecycle in its swimlanes,
- * walking it step by step, and the panel with its way into the code. Every
+ * `docs/plans/how-it-works.md`, slices 1 to 6 (#455, #456, #457, #458, #459,
+ * #460): the nav item, the Architecture view's runtime boxes on a zoomable
+ * canvas and the subsystems they open onto, the Ticket lifecycle in its
+ * swimlanes, walking it step by step, the panel with its way into the code,
+ * and the zoom buttons and the page's layout on a phone. Every
  * test runs against an empty ticket table, because the page reads no ticket
  * data (R12).
  */
@@ -176,6 +177,70 @@ async function zoomPastFirstStep(page: Page) {
     .toBe(false);
   const zoomed = await viewport.getAttribute("transform");
   return { area, viewport, first, zoomed };
+}
+
+const DESKTOP = { width: 1280, height: 800 };
+const PHONE = { width: 375, height: 812 };
+/** Sub-pixel slack for comparing box edges. */
+const SLACK = 2;
+
+const details = (page: Page) =>
+  page.getByRole("region", { name: HOW_IT_WORKS_LABEL.details });
+
+async function boxOf(locator: Locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  if (!box) throw new Error(`${locator} is not laid out`);
+  return box;
+}
+
+/** How far the element sits in from the left and right of the content area,
+ *  the `<main>` every page renders into. */
+async function insetFromContent(page: Page, locator: Locator) {
+  const main = await boxOf(page.locator("#main-content"));
+  const box = await boxOf(locator);
+  return {
+    left: box.x - main.x,
+    right: main.x + main.width - (box.x + box.width),
+  };
+}
+
+/** Whether the window, or the page's own scroller, can scroll sideways. */
+function sidewaysScroll(page: Page) {
+  return page.getByRole("heading", { level: 1 }).evaluate((heading) => {
+    let scroller = heading.parentElement;
+    while (scroller && getComputedStyle(scroller).overflowY !== "auto") {
+      scroller = scroller.parentElement;
+    }
+    const root = document.documentElement;
+    return {
+      window: root.scrollWidth > root.clientWidth,
+      page: scroller ? scroller.scrollWidth > scroller.clientWidth : true,
+    };
+  });
+}
+
+/**
+ * Whether any ancestor that clips its overflow cuts the element off at the
+ * left or right. Only sideways: the page scrolls, so what is below the fold
+ * is not clipped.
+ */
+function clipped(locator: Locator) {
+  return locator.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    for (
+      let ancestor = element.parentElement;
+      ancestor;
+      ancestor = ancestor.parentElement
+    ) {
+      if (getComputedStyle(ancestor).overflowX === "visible") continue;
+      const frame = ancestor.getBoundingClientRect();
+      if (rect.left < frame.left - 1 || rect.right > frame.right + 1) {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 test.describe("How it works", () => {
@@ -640,6 +705,143 @@ test.describe("How it works", () => {
     const screen = await classificationScreen(page, USER_ROLE.agent);
     await expect(screen.getByRole("link")).toHaveCount(0);
   });
+  test.describe("on a phone", () => {
+    test.use({ viewport: PHONE });
+
+    test("the panel sits below the canvas, nothing scrolls sideways, and the zoom buttons work from the keyboard", async ({
+      page,
+    }) => {
+      await signIn(page, USER_ROLE.agent);
+      await page.goto(ROUTE.howItWorks.path);
+
+      for (const [canvasName, open] of [
+        [HOW_IT_WORKS_LABEL.architectureCanvas, async () => {}],
+        [HOW_IT_WORKS_LABEL.lifecycleCanvas, () => openLifecycle(page)],
+      ] as const) {
+        await open();
+        const canvas = await boxOf(
+          page.getByRole("group", { name: canvasName }),
+        );
+        const panel = await boxOf(details(page));
+        expect(panel.y, canvasName).toBeGreaterThanOrEqual(
+          canvas.y + canvas.height,
+        );
+        // The canvas fills the page's width, inside its padding.
+        expect(canvas.width, canvasName).toBeGreaterThan(PHONE.width * 0.75);
+        expect(await sidewaysScroll(page), canvasName).toEqual({
+          window: false,
+          page: false,
+        });
+      }
+
+      // On the lifecycle, now open: walk, zoom by keyboard, then reset.
+      const canvas = page.getByRole("group", {
+        name: HOW_IT_WORKS_LABEL.lifecycleCanvas,
+      });
+      const viewport = canvas.locator(`[${GRAPH_VIEWPORT_ATTRIBUTE}]`);
+      const next = page.getByRole("button", {
+        name: HOW_IT_WORKS_LABEL.nextStep,
+      });
+      for (let n = 0; n < 3; n++) await next.click();
+      await expectCurrent(page, LIFECYCLE_STEPS[2]!.id);
+
+      const zoomIn = page.getByRole("button", {
+        name: HOW_IT_WORKS_LABEL.zoomIn,
+      });
+      await zoomIn.focus();
+      await page.keyboard.press("Enter");
+      await expect(viewport).toHaveAttribute("transform", /scale\(1\.5\)$/);
+      await page.keyboard.press("Enter");
+      await expect(viewport).toHaveAttribute("transform", /scale\(2\.25\)$/);
+      // Tab to zoom out, and Space presses it.
+      await page.keyboard.press("Tab");
+      await expect(
+        page.getByRole("button", { name: HOW_IT_WORKS_LABEL.zoomOut }),
+      ).toBeFocused();
+      await page.keyboard.press("Space");
+      await expect(viewport).toHaveAttribute("transform", /scale\(1\.5\)$/);
+
+      await page.keyboard.press("Tab");
+      await expect(
+        page.getByRole("button", { name: HOW_IT_WORKS_LABEL.resetView }),
+      ).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(viewport).toHaveAttribute(
+        "transform",
+        "translate(0,0) scale(1)",
+      );
+
+      // The whole picture is back, and the walk starts over.
+      await expect(page.locator(`[${GRAPH_EMPHASIS_ATTRIBUTE}]`)).toHaveCount(
+        0,
+      );
+      for (const step of LIFECYCLE_STEPS) {
+        await expect(nodeBox(page, step.id), step.id).toHaveAttribute(
+          "aria-pressed",
+          "false",
+        );
+      }
+      await expect(details(page).getByRole("heading")).toHaveCount(0);
+      await next.click();
+      await expectCurrent(page, LIFECYCLE_STEPS[0]!.id);
+    });
+  });
+
+  for (const viewport of [DESKTOP, PHONE]) {
+    test.describe(`at ${viewport.width}x${viewport.height}`, () => {
+      test.use({ viewport });
+
+      test("the page is inset like the Dashboard, and nothing is clipped", async ({
+        page,
+      }) => {
+        await signIn(page, USER_ROLE.agent);
+        await page.goto(ROUTE.dashboard.path);
+        const dashboard = await insetFromContent(
+          page,
+          page.getByRole("heading", { level: 1 }),
+        );
+        // The Dashboard's padding, which every page shares.
+        expect(dashboard.left).toBeGreaterThan(0);
+
+        await page.goto(ROUTE.howItWorks.path);
+        const parts = {
+          header: page.getByRole("heading", { level: 1, name: "How it works" }),
+          tabs: page.getByRole("tablist"),
+          canvas: page.getByRole("group", {
+            name: HOW_IT_WORKS_LABEL.architectureCanvas,
+          }),
+          panel: details(page),
+          zoom: page.getByRole("group", {
+            name: HOW_IT_WORKS_LABEL.zoomControls,
+            exact: true,
+          }),
+        };
+        const header = await insetFromContent(page, parts.header);
+        expect(Math.abs(header.left - dashboard.left)).toBeLessThanOrEqual(
+          SLACK,
+        );
+        for (const [name, part] of Object.entries(parts)) {
+          const inset = await insetFromContent(page, part);
+          expect(inset.left, name).toBeGreaterThanOrEqual(
+            dashboard.left - SLACK,
+          );
+          expect(inset.right, name).toBeGreaterThanOrEqual(
+            dashboard.left - SLACK,
+          );
+          // Wholly inside the window, and not cut off by the frame around it.
+          const box = await boxOf(part);
+          expect(box.x, name).toBeGreaterThanOrEqual(0);
+          expect(box.x + box.width, name).toBeLessThanOrEqual(viewport.width);
+          expect(await clipped(part), name).toBe(false);
+        }
+        expect(await sidewaysScroll(page)).toEqual({
+          window: false,
+          page: false,
+        });
+      });
+    });
+  }
+
   test("every lifecycle step keeps its place across tab switches and reloads", async ({
     page,
   }) => {

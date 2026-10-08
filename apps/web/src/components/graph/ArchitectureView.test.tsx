@@ -108,6 +108,20 @@ describe("ArchitectureView's panel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("Reset view clears the selected box and brings the hint back", () => {
+    mount();
+    const postgres = architectureNode(ARCHITECTURE_NODE.postgres);
+    fireEvent.click(screen.getByRole("button", { name: postgres.title }));
+    fireEvent.click(
+      screen.getByRole("button", { name: HOW_IT_WORKS_LABEL.resetView }),
+    );
+    const panel = screen.getByRole("region", { name: DETAILS_LABEL });
+    expect(panel).not.toHaveTextContent(postgres.explanation);
+    expect(
+      screen.getByRole("button", { name: postgres.title }),
+    ).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("lists the selected box's repo paths under In the code", () => {
     mount();
     const postgres = architectureNode(ARCHITECTURE_NODE.postgres);
@@ -168,6 +182,24 @@ describe("ArchitectureView's subsystems", () => {
     for (const path of ingestion.code) {
       expect(within(panel).getByText(path)).toBeInTheDocument();
     }
+  });
+
+  it("Reset view inside a box clears the subsystem selected there", () => {
+    const drawing = openApi();
+    const ingestion = subsystem(SUBSYSTEM.ingestion);
+    fireEvent.click(
+      within(drawing).getByRole("button", { name: ingestion.title }),
+    );
+    // The runtime canvas is hidden, so this is the subsystems' own button.
+    fireEvent.click(
+      screen.getByRole("button", { name: HOW_IT_WORKS_LABEL.resetView }),
+    );
+    expect(
+      within(drawing).getByRole("button", { name: ingestion.title }),
+    ).toHaveAttribute("aria-pressed", "false");
+    // Still inside the API, which the panel explains again.
+    const panel = screen.getByRole("region", { name: DETAILS_LABEL });
+    expect(panel).toHaveTextContent(api.explanation);
   });
 
   it("links a subsystem to the app screen it is seen on", () => {

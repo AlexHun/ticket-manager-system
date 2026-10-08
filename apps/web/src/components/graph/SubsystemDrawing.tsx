@@ -42,11 +42,14 @@ export function SubsystemDrawing({
   box,
   selectedId,
   onSelect,
+  onReset,
 }: {
   box: DrillableBoxId;
   /** The subsystem or part selected, if any. */
   selectedId: PartId | null;
   onSelect: (id: PartId) => void;
+  /** Reset view was pressed: the selection inside the box is cleared. */
+  onReset: () => void;
 }) {
   const layout = LAYOUTS[box];
   const id = useId().replace(/:/g, "");
@@ -61,6 +64,7 @@ export function SubsystemDrawing({
       width={layout.width}
       height={layout.height}
       label={HOW_IT_WORKS_LABEL.subsystemCanvas}
+      onReset={onReset}
     >
       <ArrowMarker id={arrowId} />
       <ArrowMarker id={currentArrowId} className="fill-ring" />

@@ -1,6 +1,6 @@
 # PRD: How it works — architecture and ticket lifecycle as graphs
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-08
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-08
 
 ## Problem
 

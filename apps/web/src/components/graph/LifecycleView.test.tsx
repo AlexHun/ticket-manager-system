@@ -22,6 +22,7 @@ import {
   GRAPH_SCREEN_ATTRIBUTE,
   GRAPH_STATUS_STRIP_ATTRIBUTE,
   GRAPH_STATUS_TAG_ATTRIBUTE,
+  GRAPH_VIEWPORT_ATTRIBUTE,
   HOW_IT_WORKS_LABEL,
 } from "@/lib/how-it-works/dom";
 import { LifecycleView } from "./LifecycleView";
@@ -210,6 +211,67 @@ describe("LifecycleView's stepping", () => {
       if (index === 1) expect(row).toHaveAttribute("aria-current", "step");
       else expect(row).not.toHaveAttribute("aria-current");
     });
+  });
+});
+
+describe("LifecycleView's zoom controls", () => {
+  const button = (name: string) => screen.getByRole("button", { name });
+  const viewport = (container: HTMLElement) =>
+    container.querySelector(`[${GRAPH_VIEWPORT_ATTRIBUTE}]`)!;
+
+  it("are the app's icon buttons: ghost, icon-sm", () => {
+    mount();
+    for (const name of [
+      HOW_IT_WORKS_LABEL.zoomIn,
+      HOW_IT_WORKS_LABEL.zoomOut,
+      HOW_IT_WORKS_LABEL.resetView,
+    ]) {
+      expect(button(name), name).toHaveAttribute("data-variant", "ghost");
+      expect(button(name), name).toHaveAttribute("data-size", "icon-sm");
+    }
+  });
+
+  it("zoom in, zoom out, and reset to the identity transform", () => {
+    const { container } = mount();
+    fireEvent.click(button(HOW_IT_WORKS_LABEL.zoomIn));
+    expect(viewport(container).getAttribute("transform")).toMatch(
+      /scale\(1\.5\)$/,
+    );
+    fireEvent.click(button(HOW_IT_WORKS_LABEL.zoomIn));
+    fireEvent.click(button(HOW_IT_WORKS_LABEL.zoomOut));
+    expect(viewport(container).getAttribute("transform")).toMatch(
+      /scale\(1\.5\)$/,
+    );
+    fireEvent.click(button(HOW_IT_WORKS_LABEL.resetView));
+    expect(viewport(container).getAttribute("transform")).toBe(
+      "translate(0,0) scale(1)",
+    );
+  });
+
+  it("reset clears the walk: no step current, nothing dimmed, the hint back, and Next starts over", () => {
+    const { container } = mount();
+    for (let n = 1; n <= 3; n++) {
+      fireEvent.click(
+        screen.getByRole("button", { name: HOW_IT_WORKS_LABEL.nextStep }),
+      );
+    }
+    fireEvent.click(button(HOW_IT_WORKS_LABEL.resetView));
+
+    expect(container.querySelector(`[${GRAPH_EMPHASIS_ATTRIBUTE}]`)).toBeNull();
+    expect(container.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(container.querySelector('[aria-current="step"]')).toBeNull();
+    const panel = screen.getByRole("region", {
+      name: HOW_IT_WORKS_LABEL.details,
+    });
+    expect(within(panel).queryByRole("heading")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: HOW_IT_WORKS_LABEL.previousStep }),
+    ).toBeDisabled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: HOW_IT_WORKS_LABEL.nextStep }),
+    );
+    expect(panel).toHaveTextContent(LIFECYCLE_STEPS[0]!.title);
   });
 });
 
