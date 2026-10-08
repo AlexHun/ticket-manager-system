@@ -9,14 +9,15 @@ import { stripComments } from "./strip-comments";
  * its document and line, checked against the files git tracks and against
  * what their source says outside its comments. Which documents are read is
  * `documentsInScope` (#441, #442); what a failure says a stale citation was
- * renamed to is `renameHints` (#443).
+ * renamed to is `renameHints` (#443); who cites a file and what a document
+ * cites, the query behind `bun run graph`, are `citersOf` and
+ * `resolvedCitationsIn` (#444).
  *
  * **It lives in `apps/api/src`** for the reason `standards-guard.test.ts` does:
  * the API suite is what `.husky/pre-push` runs, and `apps/api/tsconfig.json`
- * includes only `src`. The plan's later `bun run graph` script
- * (`docs/plans/doc-citations.md`, slice 6) is to reach it by relative path,
- * the way `bun run tokens` reaches `apps/web/dev/usage.ts`, so the logic stays
- * here, under a test runner, and nothing in it is test-only.
+ * includes only `src`. `scripts/graph.ts` reaches it by relative path, the way
+ * `bun run tokens` reaches `apps/web/dev/usage.ts`, so the logic stays here,
+ * under a test runner, and nothing in it is test-only.
  *
  * **Paths resolve against tracked files, never the working directory.** A
  * developer's untracked and gitignored files would otherwise make a citation
@@ -98,6 +99,13 @@ const hasFileExtension = (path: string): boolean => {
   return dot > 0 && FILE_EXTENSIONS.has(base.slice(dot + 1));
 };
 
+/**
+ * The number a numbered document answers to, or `undefined`:
+ * `docs/adr/0014-in-process-postgres.md` answers to `docs/adr/0014`.
+ */
+const numberOf = (file: string): string | undefined =>
+  /^(.*\/\d+)-[^/]*$/.exec(file)?.[1];
+
 /** Inline code spans per line; a span of N backticks closes on N backticks. */
 const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
 
@@ -135,8 +143,7 @@ export class TrackedTree {
         this.tails.add(segments.slice(at).join("/"));
         if (at > 0) this.directories.add(segments.slice(0, at).join("/"));
       }
-      // `docs/adr/0014-in-process-postgres.md` answers to `docs/adr/0014`.
-      const numbered = /^(.*\/\d+)-[^/]*$/.exec(file)?.[1];
+      const numbered = numberOf(file);
       if (numbered) this.exact.add(numbered);
     }
   }
@@ -262,8 +269,8 @@ function isShipped(markdown: string): boolean {
  * **Plans under `docs/plans/` are never read**: a plan names the `new:`
  * modules it proposes, so every plan would fail the day it was written, and
  * checking only the citations that once resolved would need the git history
- * CI's shallow checkout does not fetch. The plan's `bun run graph` query
- * (#444) is to cover them instead.
+ * CI's shallow checkout does not fetch. The `bun run graph` query reads them
+ * instead (`documentsQueried`, #444), and reports rather than fails.
  */
 export function documentsInScope(
   files: readonly string[],
@@ -285,6 +292,25 @@ export function documentsInScope(
     );
   });
 }
+
+/**
+ * Skills under `.claude/skills/` that are not read, each because it describes
+ * a library's API rather than this repo: on 2026-10-08 they held 756 of the
+ * 795 unresolved citations in every skill and agent, nearly all of them the
+ * library's own names. A skill not named here is read, so one added later is
+ * checked until someone names it. A name that is no longer a skill directory
+ * fails the check (`unknownExclusions`). It lives here rather than beside the
+ * exemptions in `doc-citations.test.ts` because `bun run graph` reads the same
+ * documents the check does, and a script cannot import a test file.
+ */
+export const EXCLUDED_SKILLS: readonly string[] = [
+  // shadcn/ui's Radix-to-Base-UI migration guide.
+  "migrate-radix-to-base",
+  // shadcn/ui's CLI, registry and component reference.
+  "shadcn",
+  // Better Auth's configuration reference.
+  "better-auth-best-practices",
+];
 
 /**
  * The excluded skills that name no tracked directory under `.claude/skills/`:
@@ -713,6 +739,17 @@ export function renameHints(
   };
 }
 
+/** A path against the tracked tree, a symbol against the symbol index. */
+function resolvesIn(
+  citation: Citation,
+  tree: TrackedTree,
+  symbols: SymbolIndex,
+): boolean {
+  return citation.kind === "path"
+    ? tree.resolves(citation.name)
+    : symbols.resolves(citation.name);
+}
+
 /** What the check found: each line a failing run can be acted on from. */
 export interface CitationReport {
   /**
@@ -743,11 +780,7 @@ export function checkCitations(
   const used = new Set<Exemption>();
   const stale: string[] = [];
   for (const citation of citations) {
-    const resolves =
-      citation.kind === "path"
-        ? tree.resolves(citation.name)
-        : symbols.resolves(citation.name);
-    if (resolves) continue;
+    if (resolvesIn(citation, tree, symbols)) continue;
     const exemption = exemptions.find(
       (e) => e.doc === citation.doc && e.citation === citation.name,
     );
@@ -776,4 +809,89 @@ export function checkCitations(
           `${e.doc} exempts \`${e.citation}\`, which no longer fails: remove the exemption`,
       ),
   };
+}
+
+/* ── The query behind `bun run graph` (#444) ──────────────────────────────── */
+
+/**
+ * The documents `bun run graph` reads: every one the check reads
+ * (`documentsInScope`), and every plan under `docs/plans/`. The check leaves
+ * plans out because a plan names the `new:` modules it proposes and would
+ * fail the day it was written; the query only reports, so a plan's proposed
+ * module reads as unresolved rather than failing anything, and a plan that
+ * names an existing file is one of the documents that speaks about it.
+ * Shipped PRDs stay out: they are history, and history names what has since
+ * been renamed.
+ */
+export function documentsQueried(
+  files: readonly string[],
+  excludedSkills: readonly string[],
+  read: (doc: string) => string,
+): string[] {
+  const inScope = new Set(documentsInScope(files, excludedSkills, read));
+  return files.filter(
+    (file) =>
+      inScope.has(file) ||
+      (file.startsWith("docs/plans/") && file.endsWith(".md")),
+  );
+}
+
+/**
+ * Whether a citation names `file` itself, by the rule `TrackedTree.resolves`
+ * uses: a path with an extension whole or as a tail from a `/`, an anchored
+ * one exactly or as a numbered document's number (`docs/adr/0014`). A
+ * directory that holds the file is not a citation of it: `apps/api/src/`
+ * names every file under it and so governs none of them in particular, and
+ * counting it would bury the bullets about this file under every one that
+ * names its folder. A symbol cites the file when the file declares it.
+ */
+function citesFile(
+  citation: Citation,
+  file: string,
+  declared: ReadonlySet<string>,
+): boolean {
+  const { kind, name } = citation;
+  if (kind === "symbol") return declared.has(name);
+  if (hasFileExtension(name)) return namesPath(name, file);
+  return name === file || numberOf(file) === name;
+}
+
+/**
+ * Every citation that names `file`, in the order given: the documents and
+ * lines that speak about it. `declared` is what the file exports, which the
+ * caller reads off the project map's scan (`ModuleNode.exports` in
+ * `apps/web/dev/scan.ts`) rather than this module parsing source a second
+ * time. A name the file only uses is not enough, since a common one would
+ * make every file that calls it look governed by the bullet about its owner.
+ */
+export function citersOf(
+  file: string,
+  citations: readonly Citation[],
+  declared: readonly string[] = [],
+): Citation[] {
+  const names = new Set(declared);
+  return citations.filter((citation) => citesFile(citation, file, names));
+}
+
+/** A citation and whether the path or symbol it names is still there. */
+export interface ResolvedCitation extends Citation {
+  resolves: boolean;
+}
+
+/**
+ * Every path and symbol `markdown` cites, each with whether it resolves, by
+ * the rules the check applies. No exemption is consulted: the answer is what
+ * the tree says, so a deliberate piece of history reads as unresolved here,
+ * as it does before the check excuses it.
+ */
+export function resolvedCitationsIn(
+  doc: string,
+  markdown: string,
+  tree: TrackedTree,
+  symbols: SymbolIndex,
+): ResolvedCitation[] {
+  return tree.citationsIn(doc, markdown).map((citation) => ({
+    ...citation,
+    resolves: resolvesIn(citation, tree, symbols),
+  }));
 }

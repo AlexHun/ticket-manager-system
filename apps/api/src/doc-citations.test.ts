@@ -11,11 +11,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  type Citation,
   checkCitations,
+  citersOf,
   documentsInScope,
+  documentsQueried,
+  EXCLUDED_SKILLS,
   type Exemption,
   isSymbolSource,
   renameHints,
+  resolvedCitationsIn,
   SymbolIndex,
   symbolSources,
   TrackedTree,
@@ -35,11 +40,13 @@ import {
  * same branch as the rename. The bullet is the pre-push one in
  * `docs/standards/conventions.md`.
  *
- * The index, the resolvers and the scope are `doc-citations.ts`, which states
- * what counts as a path and as a symbol, which documents are read, and
- * records the measurement the symbol rule was chosen on; this file holds the
- * excluded skills and the exemptions, and shows the check what it must catch
- * and what it must pass, the way `standards-guard.test.ts` does.
+ * The index, the resolvers, the scope and the excluded skills are
+ * `doc-citations.ts`, which states what counts as a path and as a symbol,
+ * which documents are read, and records the measurement the symbol rule was
+ * chosen on; this file holds the exemptions, and shows the check what it must
+ * catch and what it must pass, the way `standards-guard.test.ts` does. It also
+ * tests the query `bun run graph` prints (#444, slice 6), over a fixture tree
+ * of its own rather than this repository.
  *
  * Nothing is mocked, and nothing here touches the database or the network.
  * The rename hint's cases build a git repository of their own in a temporary
@@ -51,23 +58,6 @@ const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
 /** The standards file whose bullet this check holds. */
 const STANDARD = "docs/standards/conventions.md";
-
-/**
- * Skills under `.claude/skills/` that are not read, each because it describes
- * a library's API rather than this repo: on 2026-10-08 they held 756 of the
- * 795 unresolved citations in every skill and agent, nearly all of them the
- * library's own names. A skill not named here is read, so one added later is
- * checked until someone names it. A name that is no longer a skill directory
- * fails the check.
- */
-const EXCLUDED_SKILLS = [
-  // shadcn/ui's Radix-to-Base-UI migration guide.
-  "migrate-radix-to-base",
-  // shadcn/ui's CLI, registry and component reference.
-  "shadcn",
-  // Better Auth's configuration reference.
-  "better-auth-best-practices",
-];
 
 const GITIGNORED = "Gitignored, so never tracked:";
 const MEMORY = "A Claude Code memory file, kept outside the repo:";
@@ -272,16 +262,6 @@ const EXEMPTIONS: Exemption[] = [
       "mockGet",
       "the hand-rolled stub shape the shared API stub replaced.",
     ],
-    [
-      "docs/prd/doc-citations.md",
-      "TABLE_FRAME",
-      "one of the two stale names the PRD's problem statement counts, renamed `TableFrame` by R9's fix.",
-    ],
-    [
-      "docs/prd/doc-citations.md",
-      "useTheme",
-      "one of the two stale names the PRD's problem statement counts, dropped from sonner by R9's fix.",
-    ],
   ].map(([doc, citation, why]) => ({
     doc: doc!,
     citation: citation!,
@@ -367,11 +347,6 @@ const EXEMPTIONS: Exemption[] = [
     ],
     [
       "docs/standards/backend.md",
-      "trustedProxies",
-      "a Better Auth option this app does not set.",
-    ],
-    [
-      "docs/prd/doc-citations.md",
       "trustedProxies",
       "a Better Auth option this app does not set.",
     ],
@@ -493,8 +468,8 @@ describe(`Cited paths and symbols in the documents agents read exist (${STANDARD
     expect(DOCS).not.toContain(".claude/skills/shadcn/SKILL.md");
     expect(DOCS.filter((doc) => doc.startsWith(".agents/"))).toEqual([]);
     // An open PRD is read; a shipped one and every plan are not.
-    expect(DOCS).toContain("docs/prd/doc-citations.md");
-    expect(DOCS).not.toContain("docs/prd/demo-session.md");
+    expect(DOCS).toContain("docs/prd/run-projection-and-shared-vocabulary.md");
+    expect(DOCS).not.toContain("docs/prd/doc-citations.md");
     expect(DOCS.filter((doc) => doc.startsWith("docs/plans/"))).toEqual([]);
     const kinds = (kind: string) =>
       CITATIONS.filter((c) => c.kind === kind).length;
@@ -1092,6 +1067,120 @@ describe("a stale citation that git history shows was renamed", () => {
       },
     );
     expect(report).toEqual({ stale: [], unusedExemptions: [] });
+  });
+});
+
+/* ── The query behind `bun run graph` ─────────────────────────────────────── */
+
+describe("the query: who cites a file, and what a document cites", () => {
+  const QUERY_FILES: Record<string, string> = {
+    "CLAUDE.md": "Start at `docs/standards/backend.md`.\n",
+    "docs/standards/backend.md":
+      "# Backend\n\nThe provider is `apps/api/src/ai/provider.ts`.\nMap usage with `toAiUsage`, never `fromAiUsage`.\nSee `docs/adr/0014` and `apps/api/Dockerfile`.\n",
+    "docs/standards/frontend.md":
+      "Short form: `provider.ts:42`. A directory: `apps/api/src/ai/`.\nAnother file: `rovider.ts`.\n",
+    "docs/adr/0014-in-process-postgres.md": "Tests use `src/test/pg.ts`.\n",
+    "docs/plans/next.md":
+      "`new:` `apps/api/src/ai/router.ts` beside `provider.ts`.\n",
+    "docs/prd/shipped.md":
+      "# PRD\n\n**Status:** Shipped\n\nOnce `apps/api/src/ai/provider.ts`.\n",
+    ".claude/skills/library/SKILL.md": "A library's `provider.ts`.\n",
+    "apps/api/src/ai/provider.ts":
+      "export function toAiUsage() {}\nexport const TableFrame = 1;\n",
+    "apps/api/src/test/pg.ts": "export const resetDb = () => {};\n",
+    "apps/api/Dockerfile": "FROM oven/bun\n",
+  };
+  const files = Object.keys(QUERY_FILES);
+  const read = (file: string) => QUERY_FILES[file]!;
+  const tree = new TrackedTree(files);
+  const symbols = new SymbolIndex(
+    files.filter(isSymbolSource).map((file) => ({ file, text: read(file) })),
+  );
+  const citations = documentsQueried(files, ["library"], read).flatMap((doc) =>
+    tree.citationsIn(doc, read(doc)),
+  );
+  const where = (found: readonly Citation[]) =>
+    found.map((c) => `${c.doc}:${c.line} ${c.text}`);
+
+  test("reads what the check reads, plus the plans, and still not an excluded skill or a shipped PRD", () => {
+    expect(documentsQueried(files, ["library"], read)).toEqual([
+      "CLAUDE.md",
+      "docs/standards/backend.md",
+      "docs/standards/frontend.md",
+      "docs/adr/0014-in-process-postgres.md",
+      "docs/plans/next.md",
+    ]);
+  });
+
+  test("a file is cited by every document and line that names it, short or full, and by the symbols it declares", () => {
+    expect(
+      where(
+        citersOf("apps/api/src/ai/provider.ts", citations, [
+          "toAiUsage",
+          "TableFrame",
+        ]),
+      ),
+    ).toEqual([
+      "docs/standards/backend.md:3 apps/api/src/ai/provider.ts",
+      "docs/standards/backend.md:4 toAiUsage",
+      "docs/standards/frontend.md:1 provider.ts:42",
+      "docs/plans/next.md:1 provider.ts",
+    ]);
+  });
+
+  test("a directory that holds the file does not cite it, and neither does a longer name ending in it", () => {
+    // `apps/api/src/ai/` names every file under it, so it governs none of
+    // them in particular; `rovider.ts` is another file.
+    expect(where(citersOf("apps/api/src/ai/provider.ts", citations))).toEqual([
+      "docs/standards/backend.md:3 apps/api/src/ai/provider.ts",
+      "docs/standards/frontend.md:1 provider.ts:42",
+      "docs/plans/next.md:1 provider.ts",
+    ]);
+  });
+
+  test("a numbered document is cited by its number, a short path by its tail, and a file nobody names has no citers", () => {
+    expect(
+      where(citersOf("docs/adr/0014-in-process-postgres.md", citations)),
+    ).toEqual(["docs/standards/backend.md:5 docs/adr/0014"]);
+    expect(where(citersOf("docs/standards/backend.md", citations))).toEqual([
+      "CLAUDE.md:1 docs/standards/backend.md",
+    ]);
+    expect(citersOf("apps/api/src/test/pg.ts", citations)).toEqual([
+      expect.objectContaining({ doc: "docs/adr/0014-in-process-postgres.md" }),
+    ]);
+    expect(citersOf("apps/api/src/index.ts", citations)).toEqual([]);
+  });
+
+  test("a document's citations each say whether they resolve", () => {
+    const doc = "docs/standards/backend.md";
+    expect(
+      resolvedCitationsIn(doc, read(doc), tree, symbols).map(
+        ({ line, kind, name, resolves }) => ({ line, kind, name, resolves }),
+      ),
+    ).toEqual([
+      {
+        line: 3,
+        kind: "path",
+        name: "apps/api/src/ai/provider.ts",
+        resolves: true,
+      },
+      { line: 4, kind: "symbol", name: "toAiUsage", resolves: true },
+      { line: 4, kind: "symbol", name: "fromAiUsage", resolves: false },
+      { line: 5, kind: "path", name: "docs/adr/0014", resolves: true },
+      { line: 5, kind: "path", name: "apps/api/Dockerfile", resolves: true },
+    ]);
+  });
+
+  test("a plan's proposed module reads as unresolved, which is what the check cannot say about a plan", () => {
+    const doc = "docs/plans/next.md";
+    expect(
+      resolvedCitationsIn(doc, read(doc), tree, symbols).map(
+        ({ name, resolves }) => [name, resolves],
+      ),
+    ).toEqual([
+      ["apps/api/src/ai/router.ts", false],
+      ["provider.ts", true],
+    ]);
   });
 });
 
