@@ -669,6 +669,7 @@ describe("the documents in scope", () => {
     ["**Status:** Not Shipped", false],
     ["Status: Shipped", true],
     ["**Status:** shipped", false],
+    ["Status:** Shipped", false],
   ])("a PRD whose header reads %j is shipped: %p", (header, shipped) => {
     const prd = "docs/prd/x.md";
     const markdown = `# PRD: X\n\n${header}\n\n## Problem\n\nSee \`scripts/moved.ts\`.\n`;

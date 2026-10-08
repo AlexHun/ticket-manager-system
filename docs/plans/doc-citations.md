@@ -154,7 +154,8 @@ Both were decided on 2026-10-08, when #442 was cut:
    header.** The PR that closes a PRD's last ticket writes it (a step of the
    `implement` skill), and the check reads it. Every PRD said `Status: Draft`,
    so this slice backfills them: `Shipped` where every ticket cut from the PRD
-   is closed. The tracker is ruled out by R7.
+   is closed. A PRD no ticket was ever cut from has not shipped, and stays as
+   it is. The tracker is ruled out by R7.
 2. **An open plan cites files that do not exist yet, by design. So plans are
    not checked, only PRDs.** Every `new:` module in a plan is an unresolved
    path, this plan's included. The rejected alternative was to check only

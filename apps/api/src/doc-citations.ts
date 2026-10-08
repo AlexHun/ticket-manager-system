@@ -236,7 +236,7 @@ const skillOf = (file: string): string | undefined =>
  */
 function isShipped(markdown: string): boolean {
   const header = markdown.split(/^##\s/m)[0]!;
-  return /^(?:\*\*)?Status:(?:\*\*)?[ \t]*Shipped[ \t]*(?:·|\r?$)/m.test(
+  return /^(?:\*\*Status:\*\*|Status:)[ \t]*Shipped[ \t]*(?:·|\r?$)/m.test(
     header,
   );
 }
