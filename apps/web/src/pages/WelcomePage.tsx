@@ -31,8 +31,7 @@ export function WelcomePage() {
             ticket.
           </li>
           <li>
-            The assistant classifies the ticket, filing it under one of four
-            categories.
+            The assistant classifies the ticket, filing it under a category.
           </li>
           <li>
             When a knowledge article answers the question, the assistant sends
@@ -41,8 +40,7 @@ export function WelcomePage() {
           </li>
         </ol>
         <p className="mt-4 text-sm text-muted-foreground">
-          You are signed in as a demo visitor, an agent with no password. Work
-          tickets as an agent would, and look around the admin screens.
+          You are signed in as a demo visitor: an agent with no password.
         </p>
         <Button asChild className="mt-6">
           <Link to={ROUTE.dashboard.path}>

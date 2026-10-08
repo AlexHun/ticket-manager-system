@@ -1,10 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { TUTORIAL_PAGE_KEY, USER_ROLE } from "@ticket/shared";
+import { USER_ROLE } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import { WELCOME_LABEL } from "../../apps/web/src/lib/welcome";
 import { signIn } from "./helpers/auth";
-import { resetDemoUsers, testDb } from "./helpers/db";
-import { openDemo } from "./helpers/demo";
+import { resetDemoUsers } from "./helpers/db";
+import { startDemoOnWelcome, writeDashboardWalkthrough } from "./helpers/demo";
 
 /**
  * The demo welcome (demo-welcome PRD, slice 1): "Use demo session" lands on a
@@ -12,38 +12,20 @@ import { openDemo } from "./helpers/demo";
  * nothing brings the visitor back but the banner's link, and nobody but a demo
  * session can open it.
  *
- * Every start comes from an address of its own (`openDemo`, through
+ * Every start comes from an address of its own (`startDemoOnWelcome`, through
  * `helpers/client-address.ts`), so the five-an-hour limit never bites here.
  */
 
 /**
  * A Dashboard walkthrough, so R9's "the Dashboard's Tutorial still appears"
- * has something to show. The test database holds no tutorial copy, so this
- * spec writes one and puts back whatever was there, as `demo-session.spec.ts`
- * does.
+ * has something to show (`writeDashboardWalkthrough`, put back afterwards).
  */
 const WALKTHROUGH_TITLE = "Demo welcome walkthrough (E2E)";
-const WALKTHROUGH_STEPS = [
-  { title: "The dashboard", body: "Everything at a glance." },
-];
 
-let savedWalkthrough: Awaited<
-  ReturnType<typeof testDb.tutorialContent.findUnique>
->;
+let restoreWalkthrough: () => Promise<void>;
 
 test.beforeAll(async () => {
-  savedWalkthrough = await testDb.tutorialContent.findUnique({
-    where: { pageKey: TUTORIAL_PAGE_KEY.dashboard },
-  });
-  await testDb.tutorialContent.upsert({
-    where: { pageKey: TUTORIAL_PAGE_KEY.dashboard },
-    create: {
-      pageKey: TUTORIAL_PAGE_KEY.dashboard,
-      title: WALKTHROUGH_TITLE,
-      steps: WALKTHROUGH_STEPS,
-    },
-    update: { title: WALKTHROUGH_TITLE, steps: WALKTHROUGH_STEPS },
-  });
+  restoreWalkthrough = await writeDashboardWalkthrough(WALKTHROUGH_TITLE);
 });
 
 test.beforeEach(async () => {
@@ -52,18 +34,7 @@ test.beforeEach(async () => {
 
 test.afterAll(async () => {
   await resetDemoUsers();
-  if (savedWalkthrough) {
-    const { pageKey, title, steps, updatedById, updatedByName } =
-      savedWalkthrough;
-    await testDb.tutorialContent.update({
-      where: { pageKey },
-      data: { title, steps: steps ?? [], updatedById, updatedByName },
-    });
-  } else {
-    await testDb.tutorialContent.deleteMany({
-      where: { pageKey: TUTORIAL_PAGE_KEY.dashboard },
-    });
-  }
+  await restoreWalkthrough();
 });
 
 function welcomeHeading(page: Page) {
@@ -76,7 +47,7 @@ test.describe("Demo welcome", () => {
     browser,
   }) => {
     // R1, R9: the welcome, with no Tutorial over it.
-    await openDemo(page);
+    await startDemoOnWelcome(page);
     await expect(welcomeHeading(page)).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
@@ -109,26 +80,28 @@ test.describe("Demo welcome", () => {
     const second = await browser.newContext();
     try {
       const other = await second.newPage();
-      await openDemo(other);
+      await startDemoOnWelcome(other);
       await expect(welcomeHeading(other)).toBeVisible();
     } finally {
       await second.close();
     }
   });
 
-  // R10: an admin lands on the Dashboard, never on the welcome, and the
-  // welcome's address is not found for them.
-  test("an admin never lands on the welcome, and its address is not found", async ({
-    page,
-  }) => {
-    await signIn(page, USER_ROLE.admin);
-    await expect(page).toHaveURL(ROUTE.dashboard.path);
+  // R10: an admin or an agent lands on the Dashboard, never on the welcome,
+  // and the welcome's address is not found for them.
+  for (const role of [USER_ROLE.admin, USER_ROLE.agent]) {
+    test(`an ${role} never lands on the welcome, and its address is not found`, async ({
+      page,
+    }) => {
+      await signIn(page, role);
+      await expect(page).toHaveURL(ROUTE.dashboard.path);
 
-    await page.goto(ROUTE.welcome.path);
-    await expect(
-      page.getByRole("heading", { name: "No such page" }),
-    ).toBeVisible();
-    await expect(page).toHaveURL(ROUTE.welcome.path);
-    await expect(welcomeHeading(page)).toHaveCount(0);
-  });
+      await page.goto(ROUTE.welcome.path);
+      await expect(
+        page.getByRole("heading", { name: "No such page" }),
+      ).toBeVisible();
+      await expect(page).toHaveURL(ROUTE.welcome.path);
+      await expect(welcomeHeading(page)).toHaveCount(0);
+    });
+  }
 });

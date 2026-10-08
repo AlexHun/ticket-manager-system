@@ -34,6 +34,7 @@ import {
   lapseSessionCache,
   showcaseReads,
   startDemo,
+  writeDashboardWalkthrough,
 } from "./helpers/demo";
 import { API_URL } from "./helpers/env";
 
@@ -53,10 +54,8 @@ import { API_URL } from "./helpers/env";
 const DEMO_VISITOR = DEMO_VISITOR_NAME;
 
 /**
- * A dashboard walkthrough, so R12 has something to show. The test database has
- * no tutorial copy at all (the seed writes none), which is what keeps every
- * other spec free of pop-ups, so this spec writes one and puts back whatever
- * was there when it finishes.
+ * A dashboard walkthrough, so R12 has something to show
+ * (`writeDashboardWalkthrough`, put back when the spec finishes).
  */
 const WALKTHROUGH_TITLE = "Demo visitor walkthrough (E2E)";
 
@@ -64,26 +63,10 @@ const WALKTHROUGH_TITLE = "Demo visitor walkthrough (E2E)";
 const CUSTOMER_EMAIL = "e2e-demo-customer@example.com";
 
 let ticketId: number;
-let savedWalkthrough: Awaited<
-  ReturnType<typeof testDb.tutorialContent.findUnique>
->;
+let restoreWalkthrough: () => Promise<void>;
 
 test.beforeAll(async () => {
-  savedWalkthrough = await testDb.tutorialContent.findUnique({
-    where: { pageKey: TUTORIAL_PAGE_KEY.dashboard },
-  });
-  await testDb.tutorialContent.upsert({
-    where: { pageKey: TUTORIAL_PAGE_KEY.dashboard },
-    create: {
-      pageKey: TUTORIAL_PAGE_KEY.dashboard,
-      title: WALKTHROUGH_TITLE,
-      steps: [{ title: "The dashboard", body: "Everything at a glance." }],
-    },
-    update: {
-      title: WALKTHROUGH_TITLE,
-      steps: [{ title: "The dashboard", body: "Everything at a glance." }],
-    },
-  });
+  restoreWalkthrough = await writeDashboardWalkthrough(WALKTHROUGH_TITLE);
 });
 
 test.beforeEach(async () => {
@@ -116,18 +99,7 @@ test.afterEach(async () => {
 
 test.afterAll(async () => {
   await resetDemoUsers();
-  if (savedWalkthrough) {
-    const { pageKey, title, steps, updatedById, updatedByName } =
-      savedWalkthrough;
-    await testDb.tutorialContent.update({
-      where: { pageKey },
-      data: { title, steps: steps ?? [], updatedById, updatedByName },
-    });
-  } else {
-    await testDb.tutorialContent.deleteMany({
-      where: { pageKey: TUTORIAL_PAGE_KEY.dashboard },
-    });
-  }
+  await restoreWalkthrough();
 });
 
 /** The walkthrough's dialog, named by its title. */

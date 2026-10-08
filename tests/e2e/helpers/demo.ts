@@ -1,5 +1,9 @@
 import type { Page } from "@playwright/test";
-import { ADMIN_SCREEN, type AdminScreen } from "@ticket/shared";
+import {
+  ADMIN_SCREEN,
+  TUTORIAL_PAGE_KEY,
+  type AdminScreen,
+} from "@ticket/shared";
 import { ROUTE } from "../../../apps/web/src/lib/routes";
 import { WELCOME_LABEL } from "../../../apps/web/src/lib/welcome";
 import { freshClientAddress, fromAddress } from "./client-address";
@@ -65,7 +69,7 @@ export function showcaseReads(
  * address of its own, so a spec's starts never add up to the five-an-hour
  * limit (#322) — that is `demo-rate-limit.spec.ts`'s subject, not the caller's.
  */
-export async function openDemo(page: Page): Promise<void> {
+export async function startDemoOnWelcome(page: Page): Promise<void> {
   await page.context().setExtraHTTPHeaders(fromAddress(freshClientAddress()));
   await page.goto(ROUTE.login.path);
   await page.getByRole("button", DEMO_BUTTON).click();
@@ -78,9 +82,44 @@ export async function openDemo(page: Page): Promise<void> {
  * begins.
  */
 export async function startDemo(page: Page): Promise<void> {
-  await openDemo(page);
+  await startDemoOnWelcome(page);
   await page.getByRole("link", { name: WELCOME_LABEL.startExploring }).click();
   await page.waitForURL(ROUTE.dashboard.path);
+}
+
+/**
+ * Write a one-step Dashboard walkthrough titled `title`, so a demo visitor has
+ * a Tutorial to meet there, and return what puts back whatever was there. The
+ * test database holds no tutorial copy (the seed writes none), which is what
+ * keeps every other spec free of pop-ups. Call it in `beforeAll` and the
+ * returned function in `afterAll`; `workers: 1` keeps two specs from sharing
+ * the row at once.
+ */
+export async function writeDashboardWalkthrough(
+  title: string,
+): Promise<() => Promise<void>> {
+  const pageKey = TUTORIAL_PAGE_KEY.dashboard;
+  const saved = await testDb.tutorialContent.findUnique({
+    where: { pageKey },
+  });
+  const steps = [{ title: "The dashboard", body: "Everything at a glance." }];
+  await testDb.tutorialContent.upsert({
+    where: { pageKey },
+    create: { pageKey, title, steps },
+    update: { title, steps },
+  });
+
+  return async () => {
+    if (saved) {
+      const { title, steps, updatedById, updatedByName } = saved;
+      await testDb.tutorialContent.update({
+        where: { pageKey },
+        data: { title, steps: steps ?? [], updatedById, updatedByName },
+      });
+    } else {
+      await testDb.tutorialContent.deleteMany({ where: { pageKey } });
+    }
+  };
 }
 
 /**

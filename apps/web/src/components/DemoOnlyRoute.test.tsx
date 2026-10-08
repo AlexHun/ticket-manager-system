@@ -68,7 +68,9 @@ describe("DemoOnlyRoute", () => {
     renderWelcome();
 
     expect(screen.queryByText("welcome page")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "No such page" })).toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "No such page" }),
+    ).not.toBeInTheDocument();
   });
 
   test("a signed-out visitor is sent to the login page", () => {
