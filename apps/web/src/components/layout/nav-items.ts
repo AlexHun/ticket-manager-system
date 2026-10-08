@@ -10,6 +10,7 @@ import {
   TicketIcon,
   SendIcon,
   UsersIcon,
+  WaypointsIcon,
   WorkflowIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -103,6 +104,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: "Tutorials",
     icon: GraduationCapIcon,
     screen: ADMIN_SCREEN.tutorials,
+  },
+  // No `screen`: the page explains the system rather than operating it, and
+  // reads no ticket data, so every signed-in user sees it.
+  {
+    to: ROUTE.howItWorks.path,
+    label: "How it works",
+    icon: WaypointsIcon,
+    newFeatureKey: NEW_FEATURE_KEY.howItWorks,
   },
 ] as const;
 

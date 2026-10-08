@@ -1,6 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../../apps/api/src/generated/prisma/client";
-import { OUTBOUND_EMAIL_KIND } from "@ticket/shared";
+import { OUTBOUND_EMAIL_KIND, type NewFeatureKey } from "@ticket/shared";
 import { DATABASE_URL } from "./env";
 
 /** Prisma client pointed at the test DB. `log: []` keeps test output readable. */
@@ -92,6 +92,20 @@ export async function resetE2eEmails(): Promise<number> {
  */
 export async function resetDashboardLayout(email: string): Promise<void> {
   await testDb.dashboardLayout.deleteMany({ where: { user: { email } } });
+}
+
+/**
+ * Forget that a seeded user followed a "New"-badged nav item, so the badge
+ * shows again. Shared accounts, like the dashboard layout above: an earlier
+ * run that followed the link would otherwise leave the badge gone for good.
+ */
+export async function resetNewFeatureSeen(
+  email: string,
+  featureKey: NewFeatureKey,
+): Promise<void> {
+  await testDb.newFeatureSeen.deleteMany({
+    where: { featureKey, user: { email } },
+  });
 }
 
 /**
