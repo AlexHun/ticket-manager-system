@@ -81,7 +81,9 @@ Re-check the PR yourself: `gh pr checks <pr>` all passing and
 
 The chain stops, and reports, when any of these holds:
 
-- every ticket from step 1 is closed: done;
+- every ticket from step 1 is closed: done. The last worker's `implement`
+  marked the PRD `Status: Shipped`; if its header still says otherwise, say so
+  in the report;
 - a ticket is still `ci=red` after three fix rounds;
 - a worker returns `pr=none` or `questions` that are not `none`;
 - the next ticket is blocked by an open issue outside the chain;

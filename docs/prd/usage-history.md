@@ -1,6 +1,6 @@
 # PRD: Usage history
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-03
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-03
 
 ## Problem
 

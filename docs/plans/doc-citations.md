@@ -5,7 +5,7 @@
 ## Layers crossed
 
 ```
-docs   docs/standards · docs/adr · CLAUDE.md ×3 · .claude/skills · .claude/agents · docs/prd · docs/plans
+docs   docs/standards · docs/adr · CLAUDE.md ×3 · .claude/skills · .claude/agents · open docs/prd
   → new: citation index          backticked paths and symbols, each with its doc and line
     → new: resolver              a path against the tracked tree; a symbol against source, tests and config
       → new: exemption table     doc, citation and reason, beside the check
@@ -143,28 +143,31 @@ The baseline counted 37 unresolved citations there, and each is fixed or exempte
 **Evidence:** slice 1's planted cases, run over a planted skill and a planted
 excluded skill.
 
-## Slice 4 — PRDs and plans while open
+## Slice 4 — PRDs while open
 
-**Blocked on a decision:** the PRD's first open question.
 **Covers:** R6
 
-Two questions, the second found while writing this plan:
+Two questions blocked this slice, the second found while writing this plan.
+Both were decided on 2026-10-08, when #442 was cut:
 
-1. **What marks a document as shipped?** Every PRD says `Status: Draft`. The
-   recommendation is a `Status: Shipped` line written when the last ticket
-   closes, plus this slice backfilling the 12 PRDs and 12 plans. The tracker is
-   ruled out by R7.
-2. **An open plan cites files that do not exist yet, by design.** Every `new:`
-   module in a plan is an unresolved path, this plan's included. Checked
-   naively, R6 fails every plan the day it is written. The candidate answer is
-   to check only citations that **resolved when the plan was written** and have
-   stopped resolving since. That needs the plan's commit, and CI's API job
-   checks out shallow (`actions/checkout` with no `fetch-depth`). The
-   alternative is to check PRDs, which name what exists, and leave plans to the
-   query.
+1. **What marks a document as shipped? A `Status: Shipped` line in the PRD's
+   header.** The PR that closes a PRD's last ticket writes it (a step of the
+   `implement` skill), and the check reads it. Every PRD said `Status: Draft`,
+   so this slice backfills them: `Shipped` where every ticket cut from the PRD
+   is closed. The tracker is ruled out by R7.
+2. **An open plan cites files that do not exist yet, by design. So plans are
+   not checked, only PRDs.** Every `new:` module in a plan is an unresolved
+   path, this plan's included. The rejected alternative was to check only
+   citations that **resolved when the plan was written** and have stopped
+   resolving since. That needs the plan's commit, and CI's API job checks out
+   shallow (`actions/checkout` with no `fetch-depth`). PRDs name what exists;
+   plans are left to the query (slice 6).
 
-Neither has an answer this plan can pick. The slice is cut as a ticket either
-way, so the blocking edge is visible.
+- A stale citation in an open PRD fails the push; the same citation in a
+  shipped PRD, or in a plan, does not.
+
+**Evidence:** a planted open PRD, a planted shipped PRD and a planted plan,
+each citing the same stale path; only the open PRD fails.
 
 ## Slice 5 — The failure names the rename
 
@@ -217,7 +220,7 @@ flag nobody has asked for.
 | R3  | 1     | The table starts with slice 1's four path exemptions and grows each slice    |
 | R4  | 1     | Also applies to slice 3's exclusion list                                     |
 | R5  | 2, 3  | ADRs in 2; CLAUDE.md, skills and agents in 3                                 |
-| R6  | 4     | **Blocked** on the two questions in slice 4                                  |
+| R6  | 4     | PRDs only, until `Status: Shipped`; plans are left to slice 6's query        |
 | R7  | 1     | Tracked files, not the working directory, is what makes Windows and CI agree |
 | R8  | 1–3   | Each slice adds its own planted cases                                        |
 | R9  | 2     | `useTheme`, and the `ChartCard` bullet rewritten rather than renamed         |
@@ -226,8 +229,7 @@ flag nobody has asked for.
 | R12 | 6     | `Should`                                                                     |
 | R13 | 6     | `Should`                                                                     |
 
-Every `Must` has a slice; R6's is blocked rather than missing. No slice exists
-without a requirement.
+Every `Must` has a slice. No slice exists without a requirement.
 
 ## Spikes
 

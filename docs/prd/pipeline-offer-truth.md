@@ -1,6 +1,6 @@
 # PRD: The pipeline says only what is coming
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-30
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-30
 
 ## Problem
 

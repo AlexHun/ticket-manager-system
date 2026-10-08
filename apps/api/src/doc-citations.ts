@@ -8,7 +8,7 @@ import { stripComments } from "./strip-comments";
  * every backticked path (#439) and code symbol (#440) a document names, with
  * its document and line, checked against the files git tracks and against
  * what their source says outside its comments. Which documents are read is
- * `documentsInScope` (#441).
+ * `documentsInScope` (#441, #442).
  *
  * **It lives in `apps/api/src`** for the reason `standards-guard.test.ts` does:
  * the API suite is what `.husky/pre-push` runs, and `apps/api/tsconfig.json`
@@ -228,10 +228,25 @@ const skillOf = (file: string): string | undefined =>
   /^\.claude\/skills\/([^/]+)\//.exec(file)?.[1];
 
 /**
+ * Whether a PRD's header says its feature has shipped: a `Status: Shipped`
+ * line, bold or not, above the first `##` heading, with nothing after the word
+ * but the end of the line or a `·` and the next field. Anything else, a missing
+ * line included, is open, so a status written wrongly keeps the PRD checked
+ * rather than freezing it.
+ */
+function isShipped(markdown: string): boolean {
+  const header = markdown.split(/^##\s/m)[0]!;
+  return /^(?:\*\*)?Status:(?:\*\*)?[ \t]*Shipped[ \t]*(?:·|\r?$)/m.test(
+    header,
+  );
+}
+
+/**
  * The markdown documents the check reads, out of the tracked files: the
- * standards, the ADRs, every `CLAUDE.md`, and everything under
- * `.claude/skills/` and `.claude/agents/` (#441), which are what an agent
- * reads before it reads the code.
+ * standards, the ADRs, every `CLAUDE.md`, everything under `.claude/skills/`
+ * and `.claude/agents/` (#441), which are what an agent reads before it reads
+ * the code, and every PRD under `docs/prd/` whose feature is still open
+ * (#442). `read` returns a document's text, and is asked only for PRDs.
  *
  * **Skills are in scope unless excluded by name**, so a skill added later is
  * checked from its first commit. `excludedSkills` names directories under
@@ -239,16 +254,27 @@ const skillOf = (file: string): string | undefined =>
  * repo; every name in it must still be a directory, which `unknownExclusions`
  * checks. `.agents/` is never read: it holds the vendored copies
  * `skills-lock.json` pins by hash, which a citation fix would break.
+ *
+ * **A PRD is read until its header says `Status: Shipped`** (`isShipped`),
+ * which the `implement` skill writes in the PR that closes its last ticket.
+ * After that it is history, and history names what has since been renamed.
+ * **Plans under `docs/plans/` are never read**: a plan names the `new:`
+ * modules it proposes, so every plan would fail the day it was written, and
+ * checking only the citations that once resolved would need the git history
+ * CI's shallow checkout does not fetch. The plan's `bun run graph` query
+ * (#444) is to cover them instead.
  */
 export function documentsInScope(
   files: readonly string[],
   excludedSkills: readonly string[],
+  read: (doc: string) => string,
 ): string[] {
   const excluded = new Set(excludedSkills);
   return files.filter((file) => {
     if (!file.endsWith(".md") || file.startsWith(".agents/")) return false;
     const skill = skillOf(file);
     if (skill !== undefined) return !excluded.has(skill);
+    if (file.startsWith("docs/prd/")) return !isShipped(read(file));
     return (
       file.startsWith("docs/standards/") ||
       file.startsWith("docs/adr/") ||

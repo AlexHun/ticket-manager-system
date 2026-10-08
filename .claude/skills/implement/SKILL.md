@@ -23,10 +23,18 @@ invoke it.
 4. **Build test-first.** Call the Skill tool with `mattpocock-skills:tdd` and
    work at the seams the ticket or its plan names. Run typecheck and the single
    test file as you go; run `bun run typecheck` and both suites once at the end.
-5. **Commit** after the self-check in CLAUDE.md.
-6. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
+5. **Mark the PRD shipped if this is its last ticket.** When the ticket's
+   `## Parent` names `docs/prd/<slug>.md` and
+   `gh issue list --state open --search "<slug> in:body"` returns only this
+   ticket, change that PRD's header to `**Status:** Shipped` in this branch.
+   Then remove every exemption naming the PRD from
+   `apps/api/src/doc-citations.test.ts`: a shipped PRD is no longer read, and
+   the check fails an exemption for a document it does not read. Skip it, and
+   the PRD is citation-checked forever.
+6. **Commit** after the self-check in CLAUDE.md.
+7. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
    `origin/develop`. Fix every finding, or write down why one stands.
-7. **Ship.** Push, open a PR into `develop` whose body says `Closes #<n>`, and take it to
+8. **Ship.** Push, open a PR into `develop` whose body says `Closes #<n>`, and take it to
    green in CI as CLAUDE.md's Workflow describes.
 
 Done when the PR is open, closes the issue, and every CI job is green. Report
