@@ -1,6 +1,6 @@
 # PRD: Usage page — seams the slices keep paying for
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-21
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-21
 
 ## Problem
 

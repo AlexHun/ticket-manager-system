@@ -1,6 +1,6 @@
 # PRD: An eval harness for the unattended path
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-08
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-08
 
 ## Problem
 

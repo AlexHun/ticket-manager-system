@@ -14,10 +14,11 @@ import {
 } from "./doc-citations";
 
 /**
- * Every path a standards document, ADR, `CLAUDE.md`, skill or agent cites in
- * backticks names a file git tracks (#439), and every code symbol it cites is
- * still named somewhere in the repo's source, tests or config outside a
- * comment (#440, #441; `docs/plans/doc-citations.md` slices 1 to 3). A rename
+ * Every path a standards document, ADR, `CLAUDE.md`, skill, agent or open PRD
+ * cites in backticks names a file git tracks (#439), and every code symbol it
+ * cites is still named somewhere in the repo's source, tests or config outside
+ * a comment (#440, #441, #442; `docs/plans/doc-citations.md` slices 1 to 4). A
+ * PRD whose header says `Status: Shipped` is history and is not read. A rename
  * that leaves a citation behind fails `git push` here, naming the document,
  * the line and the missing path or symbol, so the doc fix lands in the same
  * branch as the rename. The bullet is the pre-push one in
@@ -258,6 +259,16 @@ const EXEMPTIONS: Exemption[] = [
       "mockGet",
       "the hand-rolled stub shape the shared API stub replaced.",
     ],
+    [
+      "docs/prd/doc-citations.md",
+      "TABLE_FRAME",
+      "one of the two stale names the PRD's problem statement counts, renamed `TableFrame` by R9's fix.",
+    ],
+    [
+      "docs/prd/doc-citations.md",
+      "useTheme",
+      "one of the two stale names the PRD's problem statement counts, dropped from sonner by R9's fix.",
+    ],
   ].map(([doc, citation, why]) => ({
     doc: doc!,
     citation: citation!,
@@ -343,6 +354,11 @@ const EXEMPTIONS: Exemption[] = [
     ],
     [
       "docs/standards/backend.md",
+      "trustedProxies",
+      "a Better Auth option this app does not set.",
+    ],
+    [
+      "docs/prd/doc-citations.md",
       "trustedProxies",
       "a Better Auth option this app does not set.",
     ],
@@ -439,10 +455,10 @@ const EXEMPTIONS: Exemption[] = [
 const TRACKED = trackedFiles(REPO_ROOT);
 const TREE = new TrackedTree(TRACKED);
 const SYMBOLS = new SymbolIndex(symbolSources(REPO_ROOT, TRACKED));
-const DOCS = documentsInScope(TRACKED, EXCLUDED_SKILLS);
-const CITATIONS = DOCS.flatMap((doc) =>
-  TREE.citationsIn(doc, readFileSync(path.join(REPO_ROOT, doc), "utf8")),
-);
+const readDoc = (doc: string) =>
+  readFileSync(path.join(REPO_ROOT, doc), "utf8");
+const DOCS = documentsInScope(TRACKED, EXCLUDED_SKILLS, readDoc);
+const CITATIONS = DOCS.flatMap((doc) => TREE.citationsIn(doc, readDoc(doc)));
 
 describe(`Cited paths and symbols in the documents agents read exist (${STANDARD})`, () => {
   test("the walk reads the documents it means to", () => {
@@ -463,6 +479,10 @@ describe(`Cited paths and symbols in the documents agents read exist (${STANDARD
     }
     expect(DOCS).not.toContain(".claude/skills/shadcn/SKILL.md");
     expect(DOCS.filter((doc) => doc.startsWith(".agents/"))).toEqual([]);
+    // An open PRD is read; a shipped one and every plan are not.
+    expect(DOCS).toContain("docs/prd/doc-citations.md");
+    expect(DOCS).not.toContain("docs/prd/demo-session.md");
+    expect(DOCS.filter((doc) => doc.startsWith("docs/plans/"))).toEqual([]);
     const kinds = (kind: string) =>
       CITATIONS.filter((c) => c.kind === kind).length;
     expect(kinds("path")).toBeGreaterThan(700);
@@ -589,7 +609,7 @@ test("an exemption that matches no unresolved citation fails", () => {
   ]);
 });
 
-/* ── Which documents are read: skills and agents, minus the excluded ─────── */
+/* ── Which documents are read: skills, agents and open PRDs ──────────────── */
 
 describe("the documents in scope", () => {
   const STALE = "Run `scripts/moved.ts` first.\n";
@@ -603,37 +623,67 @@ describe("the documents in scope", () => {
     ".claude/skills/planted/scripts/run.mjs": "// `gone.ts`\n",
     ".claude/skills/library/SKILL.md": STALE,
     ".agents/skills/planted/SKILL.md": STALE,
-    "docs/prd/planted.md": STALE,
+    "docs/prd/open.md": `# PRD: Open\n\n**Status:** Draft · **Date:** 2026-10-08\n\n${STALE}`,
+    "docs/prd/shipped.md": `# PRD: Shipped\n\n**Status:** Shipped · **Date:** 2026-10-08\n\n${STALE}`,
+    "docs/plans/open.md": `# Plan: Open\n\n**Status:** Draft\n\n${STALE}`,
     "README.md": STALE,
   };
   const files = Object.keys(PLANTED_FILES);
+  const read = (doc: string) => PLANTED_FILES[doc]!;
 
-  test("are every CLAUDE.md, the standards, ADRs, skills and agents, less the excluded skills", () => {
-    expect(documentsInScope(files, ["library"])).toEqual([
+  test("are every CLAUDE.md, the standards, ADRs, open PRDs, skills and agents, less the excluded skills", () => {
+    expect(documentsInScope(files, ["library"], read)).toEqual([
       "CLAUDE.md",
       "apps/api/CLAUDE.md",
       "docs/standards/backend.md",
       ".claude/agents/planted-agent.md",
       ".claude/skills/planted/SKILL.md",
       ".claude/skills/planted/REFERENCE.md",
+      "docs/prd/open.md",
     ]);
   });
 
-  test("a stale citation in a skill fails, and an excluded skill is not read", () => {
-    const citations = documentsInScope(files, ["library"]).flatMap((doc) =>
-      PLANTED_TREE.citationsIn(doc, PLANTED_FILES[doc]!),
+  test("a stale citation in a skill or an open PRD fails; an excluded skill, a shipped PRD and a plan are not read", () => {
+    const citations = documentsInScope(files, ["library"], read).flatMap(
+      (doc) => PLANTED_TREE.citationsIn(doc, read(doc)),
     );
     expect(
       checkCitations(citations, PLANTED_TREE, PLANTED_SYMBOLS, []).stale,
     ).toEqual([
       ".claude/skills/planted/SKILL.md:1 cites `scripts/moved.ts`, which no tracked file matches",
+      "docs/prd/open.md:5 cites `scripts/moved.ts`, which no tracked file matches",
     ]);
   });
 
   test("a skill nobody has excluded is read", () => {
-    expect(documentsInScope(files, [])).toContain(
+    expect(documentsInScope(files, [], read)).toContain(
       ".claude/skills/library/SKILL.md",
     );
+  });
+
+  test.each([
+    ["**Status:** Shipped · **Author:** A · **Date:** 2026-10-08", true],
+    ["**Status:** Shipped", true],
+    ["**Status:** Draft · **Author:** A", false],
+    ["**Status:** Shipped soon", false],
+    ["**Status:** Not Shipped", false],
+    ["Status: Shipped", true],
+    ["**Status:** shipped", false],
+    ["Status:** Shipped", false],
+  ])("a PRD whose header reads %j is shipped: %p", (header, shipped) => {
+    const prd = "docs/prd/x.md";
+    const markdown = `# PRD: X\n\n${header}\n\n## Problem\n\nSee \`scripts/moved.ts\`.\n`;
+    expect(documentsInScope([prd], [], () => markdown)).toEqual(
+      shipped ? [] : [prd],
+    );
+  });
+
+  test("a status below the header does not ship a PRD", () => {
+    const markdown =
+      "# PRD: X\n\n**Status:** Draft\n\n## Problem\n\n**Status:** Shipped\n";
+    expect(documentsInScope(["docs/prd/x.md"], [], () => markdown)).toEqual([
+      "docs/prd/x.md",
+    ]);
   });
 
   test("an exclusion naming no skill directory fails", () => {

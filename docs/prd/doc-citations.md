@@ -60,7 +60,7 @@ nothing in the tree, real staleness and deliberate history alike.
 | R3  | A citation that is deliberately historical or external is exempted by an entry beside the check that names its doc and the reason, never by marking the doc's prose.                                                                                                                             | Must     |
 | R4  | An exemption that no longer matches an unresolved citation fails the check, so the exemption list cannot rot into a list of things already fixed.                                                                                                                                                | Must     |
 | R5  | The check reads every `CLAUDE.md`, `docs/standards/`, `docs/adr/`, and `.claude/skills/` and `.claude/agents/`, except three named library skills: `migrate-radix-to-base`, `shadcn`, `better-auth-best-practices`. A skill or agent added later is in scope until someone names it as excluded. | Must     |
-| R6  | A PRD or plan under `docs/prd/` or `docs/plans/` is checked while its feature is open, and not after it ships.                                                                                                                                                                                   | Must     |
+| R6  | A PRD under `docs/prd/` is checked while its feature is open, and not once its header says `Status: Shipped`. Plans under `docs/plans/` are not checked (decided 2026-10-08, #442).                                                                                                              | Must     |
 | R7  | The check runs on pre-push and in CI, needs no network and no database, and gives the same result on Windows and on the CI runner.                                                                                                                                                               | Must     |
 | R8  | The check proves it caught something real: it is shown a stale path and a stale symbol it must catch, plus an exempted mention it must pass, and it fails if its walk finds no docs.                                                                                                             | Must     |
 | R9  | When it merges, `develop` has no stale citations left unexempted, and the two known ones are fixed in `frontend.md`, not exempted.                                                                                                                                                               | Must     |
@@ -114,16 +114,17 @@ nothing in the tree, real staleness and deliberate history alike.
 
 ## Open questions
 
-- [ ] **What marks a PRD or plan as shipped?** All 12 PRDs say `Status: Draft`,
-      including ones whose features are live. Options: update the status when
-      the last ticket closes, or exclude any document older than its plan's
-      last merged ticket. Querying the tracker is ruled out by R7. — _blocks
-      R6_, needs Aleksei
-- [ ] **An open plan cites files that do not exist yet, by design.** Every
-      `new:` module a plan proposes is an unresolved path, so R6 as written
-      fails every plan the day it is written. Found while planning; options
-      are in [the plan's slice 4](../plans/doc-citations.md). — _blocks R6_,
-      needs Aleksei
+- [x] **What marks a PRD or plan as shipped?** Decided 2026-10-08 (#442): a
+      `Status: Shipped` line in the PRD's header, which the PR closing its last
+      ticket writes (a step of the `implement` skill). The check reads that
+      line. Every PRD said `Status: Draft`, including ones whose features were
+      live, so #442 backfilled them: 11 of the 13 are `Shipped`.
+- [x] **An open plan cites files that do not exist yet, by design.** Decided
+      2026-10-08 (#442): plans are not checked, only PRDs. A plan's `new:`
+      modules are unresolved by design, and checking only the citations that
+      once resolved would need git history that CI's shallow checkout does not
+      fetch. The plan's query, `bun run graph` (#444), is to cover plans
+      instead.
 - [ ] **Where does the check live, given R7 and R11 pull different ways?**
       Pre-push points at the API suite, while the graph and the comment
       stripper live in `apps/web/dev/`. — _affects R7 and R11_, decide in the

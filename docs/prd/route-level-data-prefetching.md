@@ -1,6 +1,6 @@
 # PRD: Route-level data prefetching
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-01
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-01
 
 ## Problem
 

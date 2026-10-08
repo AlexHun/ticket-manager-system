@@ -1,6 +1,6 @@
 # PRD: Usage page — a spend table you can read
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-19
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-19
 
 ## Problem
 

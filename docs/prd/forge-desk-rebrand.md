@@ -1,6 +1,6 @@
 # PRD: The Great Forge Desk rebrand
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-27
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-27
 
 ## Problem
 

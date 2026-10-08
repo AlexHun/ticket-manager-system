@@ -1,6 +1,6 @@
 # PRD: The dev server's node half has nothing to test through
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-21
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-21
 
 ## Problem
 

@@ -1,6 +1,6 @@
 # PRD: Dev-tools Usage page
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-11
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-11
 
 ## Problem
 

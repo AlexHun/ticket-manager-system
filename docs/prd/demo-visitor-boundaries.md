@@ -1,6 +1,6 @@
 # PRD: Demo visitor boundaries, enforced and tested
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-09-30
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-09-30
 
 ## Problem
 
