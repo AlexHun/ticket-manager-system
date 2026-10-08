@@ -143,6 +143,7 @@ export function ArchitectureView() {
             width={LAYOUT.width}
             height={LAYOUT.height}
             label={HOW_IT_WORKS_LABEL.architectureCanvas}
+            onReset={() => setSelectedId(null)}
           >
             <ArrowMarker id={arrowId} />
 
@@ -175,6 +176,7 @@ export function ArchitectureView() {
               box={openBox}
               selectedId={partId}
               onSelect={setPartId}
+              onReset={() => setPartId(null)}
             />
           </div>
         )}
@@ -182,7 +184,7 @@ export function ArchitectureView() {
 
       <DetailsPanel
         title={panelTitle}
-        hint="Select a box to read what it does; the API, the job workers and the browser app open onto their parts. Scroll to zoom, and drag to move around."
+        hint="Select a box to read what it does; the API, the job workers and the browser app open onto their parts. Scroll or use the zoom buttons to zoom, and drag to move around."
       >
         {panelPart && (
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">

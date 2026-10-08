@@ -20,6 +20,11 @@ export const HOW_IT_WORKS_LABEL = {
   details: "Details",
   previousStep: "Previous step",
   nextStep: "Next step",
+  /** The zoom buttons every canvas carries, and the group holding them. */
+  zoomControls: "Zoom",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  resetView: "Reset view",
   /** The heading over the panel's list of repo paths. */
   inTheCode: "In the code",
   /** What the panel's line naming the app screen starts with. */

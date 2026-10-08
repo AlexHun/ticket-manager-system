@@ -143,6 +143,9 @@ export function LifecycleView() {
             label={HOW_IT_WORKS_LABEL.lifecycleCanvas}
             focus={focus}
             onKeyDown={onCanvasKeyDown}
+            // The whole picture back: no step current, nothing dimmed, and
+            // Next starts again from the first step.
+            onReset={() => setSelectedId(null)}
           >
             <ArrowMarker id={arrowId} />
             <ArrowMarker id={currentArrowId} className="fill-ring" />
@@ -195,7 +198,7 @@ export function LifecycleView() {
 
       <DetailsPanel
         title={selected?.title ?? null}
-        hint="Select a step to read what happens there, or walk through them with Next. Scroll to zoom, and drag to move around."
+        hint="Select a step to read what happens there, or walk through them with Next. Scroll or use the zoom buttons to zoom, and drag to move around."
       >
         {selected && <StepDetails step={selected} />}
       </DetailsPanel>
