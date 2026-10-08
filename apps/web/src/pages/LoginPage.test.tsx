@@ -6,6 +6,7 @@ import {
   USER_ROLE,
   type DemoStatusResponse,
 } from "@ticket/shared";
+import { ROUTE } from "@/lib/routes";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { LoginPage } from "./LoginPage";
@@ -34,6 +35,7 @@ function renderLogin() {
   return renderRoutes(
     [
       { path: "/", element: <div>HOME</div> },
+      { path: ROUTE.welcome.path, element: <div>WELCOME</div> },
       { path: "/login", element: <LoginPage /> },
     ],
     { initialEntries: ["/login"] },
@@ -227,17 +229,49 @@ describe("LoginPage — demo session", () => {
     expect(await screen.findByRole("button", DEMO)).toBeEnabled();
   });
 
-  test("one click signs in with no credential and lands on /", async () => {
+  // Demo-welcome R1: the welcome, not the dashboard.
+  test("one click signs in with no credential and lands on the welcome", async () => {
     demoMode(true);
     mockSignInAnonymous.mockResolvedValue({ error: null });
-    renderLogin();
+    const { router } = renderLogin();
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", DEMO));
 
-    expect(await screen.findByText("HOME")).toBeInTheDocument();
+    expect(await screen.findByText("WELCOME")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(ROUTE.welcome.path);
     expect(mockSignInAnonymous).toHaveBeenCalledTimes(1);
     expect(mockSignInEmail).not.toHaveBeenCalled();
+  });
+
+  // The session can reach this page before the click's own navigation does:
+  // the page then renders signed in, and its "signed in ⇒ dashboard" redirect
+  // must not carry the new demo past the welcome.
+  test("lands on the welcome even when the session arrives first", async () => {
+    demoMode(true);
+    let resolve!: (v: { error: null }) => void;
+    // The session is there from the moment the start is sent, so the render
+    // that "Starting demo…" causes already reads it signed in.
+    mockSignInAnonymous.mockImplementation(() => {
+      mockUseSession.mockReturnValue({
+        data: {
+          user: { id: "demo-1", role: USER_ROLE.agent, isAnonymous: true },
+        },
+        isPending: false,
+      });
+      return new Promise((r) => (resolve = r));
+    });
+    const { router } = renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", DEMO));
+
+    expect(await screen.findByText("WELCOME")).toBeInTheDocument();
+    expect(screen.queryByText("HOME")).not.toBeInTheDocument();
+    resolve({ error: null });
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(ROUTE.welcome.path),
+    );
   });
 
   test("disables both ways in while the demo is starting", async () => {

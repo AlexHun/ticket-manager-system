@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { USER_ROLE } from "@ticket/shared";
 import { renderRoutes } from "@/test/render";
 import { ROUTE } from "@/lib/routes";
+import { WELCOME_LABEL } from "@/lib/welcome";
 import { DemoBanner } from "./DemoBanner";
 
 const auth = vi.hoisted(() => ({
@@ -32,6 +33,7 @@ function renderBanner() {
   return renderRoutes([
     { path: "/", element: <DemoBanner /> },
     { path: ROUTE.login.path, element: <h1>Login page</h1> },
+    { path: ROUTE.welcome.path, element: <h1>Welcome page</h1> },
   ]);
 }
 
@@ -62,6 +64,19 @@ describe("DemoBanner", () => {
     expect(
       screen.queryByRole("region", { name: "Demo session" }),
     ).not.toBeInTheDocument();
+  });
+
+  // Demo-welcome R7: the way back to the welcome, from any page.
+  test("links back to the welcome", async () => {
+    const { router } = renderBanner();
+
+    await userEvent.click(
+      screen.getByRole("link", { name: WELCOME_LABEL.bannerLink }),
+    );
+
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(ROUTE.welcome.path),
+    );
   });
 
   test("Exit demo signs out and lands on the login page", async () => {

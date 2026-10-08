@@ -52,6 +52,11 @@ export const ROUTE = {
   activity: { path: "/activity" },
   tutorials: { path: "/tutorials" },
   howItWorks: { path: "/how-it-works" },
+  /**
+   * Where "Use demo session" lands (demo-welcome PRD). A demo session's page
+   * only; nothing redirects here, so the login click is the one way in.
+   */
+  welcome: { path: "/welcome" },
 
   /**
    * The dev tools. They exist only while `vite dev` runs, but their paths
