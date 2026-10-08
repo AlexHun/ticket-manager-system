@@ -743,5 +743,10 @@
     "version": "0.1.185",
     "date": "2026-10-08",
     "title": "How it works drill-down review fixes"
+  },
+  {
+    "version": "0.1.186",
+    "date": "2026-10-08",
+    "title": "How it works — into the code"
   }
 ]
