@@ -17,13 +17,10 @@ import {
   HOW_IT_WORKS_LABEL,
 } from "@/lib/how-it-works/dom";
 import {
-  LINK_DIRECTION,
-  boxOf,
   isDrillable,
   linkPhrase,
-  partExplanation,
-  partLabel,
-  partTitle,
+  linkPhrasesFor,
+  part,
   subsystemsOf,
   type DrillableBoxId,
   type PartId,
@@ -107,14 +104,14 @@ export function ArchitectureView() {
 
   const panelId: PartId | null = openBox ? (partId ?? openBox) : selectedId;
   // A part of another box is named with its box, as on the drawing.
+  const panelPart = panelId === null ? null : part(panelId);
   const panelTitle =
-    panelId === null
+    panelPart === null
       ? null
-      : openBox && boxOf(panelId) !== openBox
-        ? partLabel(panelId)
-        : partTitle(panelId);
-  const panelLinks =
-    openBox && partId ? linksOf(openBox, partId) : ([] as string[]);
+      : openBox && panelPart.box !== openBox
+        ? panelPart.label
+        : panelPart.title;
+  const panelLinks = openBox && partId ? linkPhrasesFor(openBox, partId) : [];
 
   return (
     // The panel moves beside the canvas only at 2xl. Beside it at 1280px,
@@ -186,9 +183,9 @@ export function ArchitectureView() {
         title={panelTitle}
         hint="Select a box to read what it does; the API, the job workers and the browser app open onto their parts. Scroll to zoom, and drag to move around."
       >
-        {panelId && (
+        {panelPart && (
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            {partExplanation(panelId)}
+            {panelPart.explanation}
           </p>
         )}
         {panelLinks.length > 0 && (
@@ -202,24 +199,6 @@ export function ArchitectureView() {
 
       <ArchitectureList />
     </div>
-  );
-}
-
-/**
- * What the panel lists for a selection inside an open box: a subsystem's own
- * links, or, for a part of another box, the subsystems that talk to it.
- */
-function linksOf(box: DrillableBoxId, id: PartId): string[] {
-  const inside = subsystemsOf(box);
-  const own = inside.find((s) => s.id === id);
-  if (own) return own.links.map(linkPhrase);
-  return inside.flatMap((s) =>
-    s.links
-      .filter((link) => link.part === id)
-      .map(
-        (link) =>
-          `${link.label} ${link.direction === LINK_DIRECTION.out ? "from" : "to"} ${s.title}`,
-      ),
   );
 }
 

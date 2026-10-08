@@ -27,14 +27,14 @@ const RUNTIME = layOutArchitecture(ARCHITECTURE);
 
 describe.each(DRILLABLE_BOXES)("layOutSubsystems(%s)", (box) => {
   const subsystems = subsystemsOf(box);
-  const layout = layOutSubsystems(box, subsystems);
+  const layout = layOutSubsystems(subsystems);
   const nodes: Array<[string, Rect]> = [
     ...layout.subsystems.map((p): [string, Rect] => [p.subsystem.id, p]),
     ...layout.parts.map((p): [string, Rect] => [p.id, p]),
   ];
 
   it("is a pure function of the data", () => {
-    expect(layOutSubsystems(box, subsystems)).toEqual(layout);
+    expect(layOutSubsystems(subsystems)).toEqual(layout);
   });
 
   it("places every subsystem once, in the data's order, inside the frame", () => {

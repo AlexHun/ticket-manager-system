@@ -50,7 +50,8 @@ export const SUBSYSTEM = {
   evalJobs: "evalJobs",
   demoResetJob: "demoResetJob",
   housekeepingJobs: "housekeepingJobs",
-  // The browser app's screens.
+  // The browser app's screens. Not How it works itself: it reads nothing from
+  // the API (R12), so it would be the one node with nothing to join it to.
   signInScreen: "signInScreen",
   dashboardScreen: "dashboardScreen",
   ticketsScreen: "ticketsScreen",
@@ -154,7 +155,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Outbox",
     explanation:
-      "Every email the desk sends is written here first, in the same step as the reply it carries, and then handed to a job to send. An admin sees each one's Delivery, or why it was Undeliverable.",
+      "Every email the desk sends, whether a reply, an Invitation or a Reset, is written here first and then handed to a job to send. An admin sees each one's Delivery, or why it was Undeliverable.",
     links: [
       from(N.browserApp, "HTTP"),
       out(N.postgres, "SQL"),
@@ -194,7 +195,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Demo",
     explanation:
-      "Lets a Demo visitor in without an account, for a limited session that can look at every screen and change none of the showcase ones, and caps how much model work a day of demos may spend.",
+      "Lets a Demo visitor in without an account, for a limited session that sees the admin screens apart from Users and the Outbox and can change none of them, and caps how much model work a day of demos may spend.",
     links: [from(N.browserApp, "HTTP"), out(N.postgres, "SQL")],
   },
 
@@ -203,7 +204,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Classify ticket",
     explanation:
-      "Gives a new ticket its Category. The ticket stays in New; a ticket the knowledge base might answer is passed on to the auto-reply. An outage is tried again rather than counted as a Decline.",
+      "Gives a new ticket its Category. The ticket stays in New and is passed on to the auto-reply. An outage is tried again rather than counted as a Decline.",
     links: [
       from(S.ingestion, "job"),
       out(N.openai, "model call"),
@@ -216,7 +217,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Auto-reply",
     explanation:
-      "Claims the ticket, which puts it in Processing, and drafts a reply from the knowledge base. A reply that passes every check goes to the outbox and the ticket is Resolved under the assistant; anything else is a Decline and a Handoff, in Open.",
+      "Claims the ticket, which puts it in Processing, and drafts a reply from the knowledge base. A reply that passes every check goes to the outbox and the ticket is Resolved under the assistant; one that does not is a Decline and a Handoff, in Open. An outage is not a Decline: the ticket goes back to New to be tried again.",
     links: [
       out(N.openai, "model call"),
       out(N.postgres, "SQL"),
@@ -280,7 +281,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Dashboard",
     explanation:
       "The desk at a glance: how many tickets are in each Status, how fast they are answered, and how much the assistant resolved on its own.",
-    links: [out(S.ticketsActivity, "HTTP"), from(S.realtime, "live updates")],
+    links: [
+      out(S.ticketsActivity, "HTTP"),
+      out(S.authUsers, "HTTP"),
+      from(S.realtime, "live updates"),
+    ],
   },
   {
     id: S.ticketsScreen,
@@ -369,39 +374,67 @@ export function subsystem(id: SubsystemId): Subsystem {
   return SUBSYSTEMS.find((candidate) => candidate.id === id)!;
 }
 
-function isSubsystem(id: PartId): id is SubsystemId {
-  return SUBSYSTEMS.some((candidate) => candidate.id === id);
+export interface Part {
+  /** The runtime box it sits in: itself, for a box. */
+  readonly box: ArchitectureNodeId;
+  /** What it is called on its own. */
+  readonly title: string;
+  /**
+   * What it is called beside parts of other boxes: a subsystem names the box
+   * it is in, so the API's Outbox and the app's Outbox screen are told apart.
+   */
+  readonly label: string;
+  /** What it does, for the panel. */
+  readonly explanation: string;
 }
 
-/** The runtime box a part sits in: itself, for a box. */
-export function boxOf(id: PartId): ArchitectureNodeId {
-  return isSubsystem(id) ? subsystem(id).box : id;
+/** A runtime box or a subsystem, asked the same questions either way. */
+export function part(id: PartId): Part {
+  const inside = SUBSYSTEMS.find((candidate) => candidate.id === id);
+  if (!inside) {
+    const node = architectureNode(id as ArchitectureNodeId);
+    return {
+      box: node.id,
+      title: node.title,
+      label: node.title,
+      explanation: node.explanation,
+    };
+  }
+  return {
+    box: inside.box,
+    title: inside.title,
+    label: `${inside.title} (${architectureNode(inside.box).title})`,
+    explanation: inside.explanation,
+  };
 }
 
-/** What a part is called on its own. */
-export function partTitle(id: PartId): string {
-  return isSubsystem(id) ? subsystem(id).title : architectureNode(id).title;
-}
-
-/**
- * What a part is called beside parts of other boxes: a subsystem names the box
- * it is in, so the API's Outbox and the app's Outbox screen are told apart.
- */
-export function partLabel(id: PartId): string {
-  return isSubsystem(id)
-    ? `${subsystem(id).title} (${architectureNode(subsystem(id).box).title})`
-    : architectureNode(id).title;
-}
-
-/** What a part does, for the panel. */
-export function partExplanation(id: PartId): string {
-  return isSubsystem(id)
-    ? subsystem(id).explanation
-    : architectureNode(id).explanation;
+function phrase(
+  label: string,
+  direction: LinkDirection,
+  other: string,
+  reversed = false,
+): string {
+  const outward = (direction === LINK_DIRECTION.out) !== reversed;
+  return `${label} ${outward ? "to" : "from"} ${other}`;
 }
 
 /** A link as a sentence: "SQL to Postgres", "webhook from Inbound mail provider". */
 export function linkPhrase(link: SubsystemLink): string {
-  const preposition = link.direction === LINK_DIRECTION.out ? "to" : "from";
-  return `${link.label} ${preposition} ${partLabel(link.part)}`;
+  return phrase(link.label, link.direction, part(link.part).label);
+}
+
+/**
+ * What the panel lists for a selection inside an open box: a subsystem's own
+ * links, or, for a part of another box, each link from the subsystems that
+ * talk to it, told from its side.
+ */
+export function linkPhrasesFor(box: DrillableBoxId, id: PartId): string[] {
+  const inside = subsystemsOf(box);
+  const own = inside.find((candidate) => candidate.id === id);
+  if (own) return own.links.map(linkPhrase);
+  return inside.flatMap((candidate) =>
+    candidate.links
+      .filter((link) => link.part === id)
+      .map((link) => phrase(link.label, link.direction, candidate.title, true)),
+  );
 }

@@ -3,10 +3,12 @@ import { ARCHITECTURE_NODE, ARCHITECTURE_NODES } from "./architecture";
 import {
   DRILLABLE_BOXES,
   SUBSYSTEMS,
-  boxOf,
   isDrillable,
   linkPhrase,
-  partLabel,
+  linkPhrasesFor,
+  part,
+  subsystem,
+  SUBSYSTEM,
   subsystemsOf,
 } from "./subsystems";
 
@@ -59,22 +61,31 @@ describe("the subsystem data", () => {
   });
 
   it("joins each subsystem only to parts of other boxes, once each", () => {
-    for (const subsystem of SUBSYSTEMS) {
-      const parts = subsystem.links.map((link) => link.part);
-      expect(new Set(parts).size, subsystem.id).toBe(parts.length);
-      for (const part of parts) {
-        expect(boxOf(part), `${subsystem.id} → ${part}`).not.toBe(
-          subsystem.box,
-        );
+    for (const inside of SUBSYSTEMS) {
+      const ids = inside.links.map((link) => link.part);
+      expect(new Set(ids).size, inside.id).toBe(ids.length);
+      for (const id of ids) {
+        expect(part(id).box, `${inside.id} → ${id}`).not.toBe(inside.box);
       }
-      expect(subsystem.links.length, subsystem.id).toBeGreaterThan(0);
+      expect(inside.links.length, inside.id).toBeGreaterThan(0);
     }
   });
 
   it("tells a subsystem from a box of the same name by the box it is in", () => {
-    expect(partLabel(ARCHITECTURE_NODE.postgres)).toBe("Postgres");
-    const outbox = SUBSYSTEMS.find((s) => s.id === "outbox")!;
-    expect(partLabel(outbox.id)).toBe("Outbox (API)");
+    expect(part(ARCHITECTURE_NODE.postgres).label).toBe("Postgres");
+    const outbox = subsystem(SUBSYSTEM.outbox);
+    expect(part(outbox.id).label).toBe("Outbox (API)");
     expect(linkPhrase(outbox.links[0]!)).toBe("HTTP from Browser app");
+  });
+
+  it("tells a part of another box's links from its own side", () => {
+    // Inside the job workers, the API's Outbox hands Send email a job and
+    // takes the Auto-reply's reply.
+    expect(
+      linkPhrasesFor(ARCHITECTURE_NODE.jobWorkers, SUBSYSTEM.outbox),
+    ).toEqual(["reply from Auto-reply", "job to Send email"]);
+    expect(
+      linkPhrasesFor(ARCHITECTURE_NODE.jobWorkers, SUBSYSTEM.sendEmailJob),
+    ).toEqual(subsystem(SUBSYSTEM.sendEmailJob).links.map(linkPhrase));
   });
 });

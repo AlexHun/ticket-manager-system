@@ -13,9 +13,7 @@ import {
 } from "@/lib/how-it-works/subsystem-layout";
 import {
   DRILLABLE_BOXES,
-  boxOf,
-  partLabel,
-  partTitle,
+  part,
   subsystemsOf,
   type DrillableBoxId,
   type PartId,
@@ -37,7 +35,7 @@ import { emphasisClass, emphasisOf } from "./emphasis";
 
 /** Computed once: the data is a constant, so its layouts are too. */
 const LAYOUTS = Object.fromEntries(
-  DRILLABLE_BOXES.map((box) => [box, layOutSubsystems(box, subsystemsOf(box))]),
+  DRILLABLE_BOXES.map((box) => [box, layOutSubsystems(subsystemsOf(box))]),
 ) as Record<DrillableBoxId, SubsystemLayout>;
 
 export function SubsystemDrawing({
@@ -170,7 +168,8 @@ function Part({
   onSelect: () => void;
 }) {
   const { id, x, y, width, height } = placed;
-  const box = boxOf(id);
+  const { box, title, label } = part(id);
+  // A subsystem of another box, rather than a runtime box itself.
   const inAnotherBox = box !== id;
   const joined =
     id === selectedId ||
@@ -181,7 +180,7 @@ function Part({
   return (
     <SelectableNode
       id={id}
-      label={partLabel(id)}
+      label={label}
       rect={placed}
       selected={id === selectedId}
       emphasis={emphasisOf(selectedId !== null, joined)}
@@ -205,7 +204,7 @@ function Part({
         textAnchor="middle"
         className="fill-foreground text-[13px]"
       >
-        {partTitle(id)}
+        {title}
       </text>
     </SelectableNode>
   );

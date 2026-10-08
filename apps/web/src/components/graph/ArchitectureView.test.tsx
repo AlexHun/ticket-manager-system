@@ -13,7 +13,7 @@ import {
   DRILLABLE_BOXES,
   SUBSYSTEM,
   linkPhrase,
-  partLabel,
+  part,
   subsystem,
   subsystemsOf,
 } from "@/lib/how-it-works/subsystems";
@@ -106,7 +106,7 @@ describe("ArchitectureView's subsystems", () => {
       ).toBeInTheDocument();
       for (const link of subsystem.links) {
         expect(
-          within(drawing).getByRole("button", { name: partLabel(link.part) }),
+          within(drawing).getByRole("button", { name: part(link.part).label }),
         ).toBeInTheDocument();
       }
     }

@@ -1,7 +1,6 @@
 import type { Rect } from "./layout";
 import {
   LINK_DIRECTION,
-  type DrillableBoxId,
   type PartId,
   type Subsystem,
   type SubsystemId,
@@ -25,7 +24,7 @@ import {
 
 const SUBSYSTEM_WIDTH = 208;
 const PART_WIDTH = 184;
-export const SUBSYSTEM_NODE_HEIGHT = 48;
+const SUBSYSTEM_NODE_HEIGHT = 48;
 const ROW_GAP = 16;
 /** Wide enough for a link to bend between columns without a sharp turn. */
 const COLUMN_GAP = 152;
@@ -61,7 +60,6 @@ export interface PlacedLink {
 }
 
 export interface SubsystemLayout {
-  box: DrillableBoxId;
   subsystems: PlacedSubsystem[];
   parts: PlacedPart[];
   links: PlacedLink[];
@@ -88,11 +86,8 @@ interface Joined {
   outgoing: number;
 }
 
-/**
- * Lays out `box`, given its subsystems in the data's order (`subsystemsOf`).
- */
+/** Lays out one box's subsystems, given in the data's order (`subsystemsOf`). */
 export function layOutSubsystems(
-  box: DrillableBoxId,
   subsystems: readonly Subsystem[],
 ): SubsystemLayout {
   const top = PAD + FRAME_HEADER;
@@ -190,7 +185,6 @@ export function layOutSubsystems(
   );
 
   return {
-    box,
     subsystems: placed,
     parts,
     links,
