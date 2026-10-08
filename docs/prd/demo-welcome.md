@@ -42,7 +42,7 @@ anywhere but into a ticket would show up there.
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | R1  | After "Use demo session", a new demo session lands on a welcome page instead of the Dashboard.                                                                                                                                                                 | Must     |
 | R2  | The welcome page says in plain words what the product does: support email arrives, the assistant classifies it, and either replies from the knowledge base or hands the ticket off to an agent. It uses the terms in `CONTEXT.md`.                             | Must     |
-| R3  | The welcome page introduces the owner: name, role, a short bio and links to LinkedIn, GitHub, a CV and email.                                                                                                                                                  | Must     |
+| R3  | The welcome page introduces the owner: name, role, a short bio and links to LinkedIn, GitHub and email.                                                                                                                                                        | Must     |
 | R4  | The welcome page offers 3 to 5 suggested steps, each one sentence long and each linking to a real screen of the demo (for example a ticket the assistant resolved, the pipeline simulator, a past eval run). Every link opens a screen a demo session can see. | Must     |
 | R5  | The welcome page names the stack in one line and links to the source repository.                                                                                                                                                                               | Must     |
 | R6  | A "Start exploring" control leaves the welcome page for the Dashboard.                                                                                                                                                                                         | Must     |
@@ -91,13 +91,16 @@ anywhere but into a ticket would show up there.
 
 ## Open questions
 
-- [ ] The owner's CV link and contact address for R3. Needs the owner before
-      the slice that builds R3.
+- [x] **Decided:** no CV file is published or committed. The bio is drafted
+      from the owner's CV, which stays off the repo. R3's facts: Aliaksei
+      Hunich, AI Full-Stack Developer, former frontend team lead;
+      `linkedin.com/in/aliaksei-hunich`, `github.com/AlexHun`,
+      `alex.hunich@gmail.com`. No phone number or home address on the page.
 - [x] **Decided:** the suggested-step share has no target; the owner watches it
       to see where visitors go.
 - [x] **Decided:** the agent drafts the bio and the owner edits it before
       merge.
-- [x] **Decided:** R3 links to LinkedIn, GitHub, a CV and email.
+- [x] **Decided:** R3 links to LinkedIn, GitHub and email.
 - [x] **Decided:** the source repository is public, so R5's link works for a
       stranger.
 - [x] **Decided:** the agent proposes the 3–5 suggested steps from the seed
