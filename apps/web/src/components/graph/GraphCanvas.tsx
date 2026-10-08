@@ -18,7 +18,7 @@ import {
   GRAPH_GLIDE_MS,
   GRAPH_VIEWPORT_ATTRIBUTE,
 } from "@/lib/how-it-works/dom";
-import type { Rect } from "@/lib/how-it-works/layout";
+import { contains, type Rect } from "@/lib/how-it-works/layout";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
 
@@ -103,12 +103,13 @@ export function GraphCanvas({
     // The part of the drawing in view: the viewBox, through the transform.
     const [left, top] = transform.invert([0, 0]);
     const [right, bottom] = transform.invert([width, height]);
-    const inFrame =
-      focus.x >= left &&
-      focus.y >= top &&
-      focus.x + focus.width <= right &&
-      focus.y + focus.height <= bottom;
-    if (inFrame) return;
+    const frame = {
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    };
+    if (contains(frame, focus)) return;
 
     const x = focus.x + focus.width / 2;
     const y = focus.y + focus.height / 2;

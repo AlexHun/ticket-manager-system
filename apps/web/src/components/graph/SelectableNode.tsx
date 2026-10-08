@@ -1,15 +1,12 @@
 import type { KeyboardEvent, ReactNode } from "react";
 import {
-  GRAPH_EMPHASIS,
   GRAPH_EMPHASIS_ATTRIBUTE,
   GRAPH_NODE_ATTRIBUTE,
   type GraphEmphasis,
 } from "@/lib/how-it-works/dom";
 import type { Rect } from "@/lib/how-it-works/layout";
 import { cn } from "@/lib/utils";
-
-/** How far a dimmed part of a drawing fades back. */
-export const DIMMED = "opacity-35";
+import { emphasisClass } from "./emphasis";
 
 /**
  * A box on a How it works drawing that can be selected: a button by role,
@@ -57,8 +54,8 @@ export function SelectableNode({
       onClick={onSelect}
       onKeyDown={onKeyDown}
       className={cn(
-        "group cursor-pointer outline-none motion-safe:transition-opacity",
-        emphasis === GRAPH_EMPHASIS.dimmed && DIMMED,
+        "group cursor-pointer outline-none",
+        emphasisClass(emphasis),
       )}
     >
       <rect

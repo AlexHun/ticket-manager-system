@@ -4,7 +4,7 @@ import {
   ARCHITECTURE_NODES,
   RAILWAY_FRAME,
 } from "./architecture";
-import { layOutArchitecture, type Rect } from "./layout";
+import { contains, layOutArchitecture, type Rect } from "./layout";
 
 function overlaps(a: Rect, b: Rect): boolean {
   return (
@@ -12,15 +12,6 @@ function overlaps(a: Rect, b: Rect): boolean {
     b.x < a.x + a.width &&
     a.y < b.y + b.height &&
     b.y < a.y + a.height
-  );
-}
-
-function contains(outer: Rect, inner: Rect): boolean {
-  return (
-    inner.x >= outer.x &&
-    inner.y >= outer.y &&
-    inner.x + inner.width <= outer.x + outer.width &&
-    inner.y + inner.height <= outer.y + outer.height
   );
 }
 
@@ -116,5 +107,29 @@ describe("layOutArchitecture", () => {
       expect(contains(canvas, placed)).toBe(true);
     expect(contains(canvas, layout.frame)).toBe(true);
     expect(contains(canvas, layout.note)).toBe(true);
+  });
+});
+
+describe("contains", () => {
+  const outer = { x: 0, y: 0, width: 100, height: 50 };
+
+  it("holds a rect inside, edges included", () => {
+    expect(contains(outer, { x: 10, y: 10, width: 20, height: 20 })).toBe(true);
+    expect(contains(outer, outer)).toBe(true);
+  });
+
+  it("refuses a rect that crosses any edge", () => {
+    expect(contains(outer, { x: -1, y: 10, width: 20, height: 20 })).toBe(
+      false,
+    );
+    expect(contains(outer, { x: 10, y: -1, width: 20, height: 20 })).toBe(
+      false,
+    );
+    expect(contains(outer, { x: 90, y: 10, width: 20, height: 20 })).toBe(
+      false,
+    );
+    expect(contains(outer, { x: 10, y: 40, width: 20, height: 20 })).toBe(
+      false,
+    );
   });
 });

@@ -17,8 +17,8 @@ import {
 } from "@/lib/how-it-works/dom";
 import {
   LIFECYCLE,
-  LIFECYCLE_EDGES,
   LIFECYCLE_STEPS,
+  edgesFrom,
   edgesInto,
   lifecycleLane,
   lifecycleStep,
@@ -41,7 +41,8 @@ import { cn } from "@/lib/utils";
 import { ArrowMarker } from "./ArrowMarker";
 import { DetailsPanel } from "./DetailsPanel";
 import { GraphCanvas } from "./GraphCanvas";
-import { DIMMED, SelectableNode } from "./SelectableNode";
+import { emphasisClass, emphasisOf } from "./emphasis";
+import { SelectableNode } from "./SelectableNode";
 
 /**
  * The Ticket lifecycle tab: the steps from the email that opens a ticket to
@@ -76,18 +77,6 @@ function statusTint(status: TicketStatus) {
   return { fill: color, fillOpacity: 0.18, stroke: color };
 }
 
-/**
- * Where something stands while a step is current: emphasised if `isCurrent`,
- * dimmed if not. Nothing is either while no step is.
- */
-function emphasisOf(
-  currentId: LifecycleStepId | null,
-  isCurrent: boolean,
-): GraphEmphasis | undefined {
-  if (currentId === null) return undefined;
-  return isCurrent ? GRAPH_EMPHASIS.current : GRAPH_EMPHASIS.dimmed;
-}
-
 export function LifecycleView() {
   // The current step: the one selected, by a click or by walking to it.
   const [selectedId, setSelectedId] = useState<LifecycleStepId | null>(null);
@@ -105,16 +94,17 @@ export function LifecycleView() {
   const arrowId = `arrow-${id}`;
   const currentArrowId = `arrow-current-${id}`;
 
+  const walking = selectedId !== null;
+  const arrowTargets: Record<string, LifecycleStepId | null> = {
+    ArrowRight: nextId,
+    ArrowLeft: previousId,
+  };
+
   const onCanvasKeyDown = (event: KeyboardEvent<SVGSVGElement>) => {
-    const target =
-      event.key === "ArrowRight"
-        ? nextId
-        : event.key === "ArrowLeft"
-          ? previousId
-          : undefined;
-    if (target === undefined) return;
+    if (!(event.key in arrowTargets)) return;
     // The arrows walk the steps here, and do not scroll the page.
     event.preventDefault();
+    const target = arrowTargets[event.key];
     if (target) setSelectedId(target);
   };
 
@@ -164,14 +154,11 @@ export function LifecycleView() {
               <Note
                 key={placed.note.id}
                 placed={placed}
-                emphasis={emphasisOf(
-                  selectedId,
-                  placed.note.step === selectedId,
-                )}
+                emphasis={emphasisOf(walking, placed.note.step === selectedId)}
               />
             ))}
             {LAYOUT.edges.map(({ edge, path }) => {
-              const emphasis = emphasisOf(selectedId, into.has(edge.id));
+              const emphasis = emphasisOf(walking, into.has(edge.id));
               const current = emphasis === GRAPH_EMPHASIS.current;
               return (
                 <path
@@ -184,9 +171,9 @@ export function LifecycleView() {
                   fill="none"
                   markerEnd={`url(#${current ? currentArrowId : arrowId})`}
                   className={cn(
-                    "pointer-events-none motion-safe:transition-opacity",
+                    "pointer-events-none",
                     current ? "stroke-ring" : "stroke-muted-foreground",
-                    emphasis === GRAPH_EMPHASIS.dimmed && DIMMED,
+                    emphasisClass(emphasis),
                   )}
                   strokeWidth={current ? 2 : 1.25}
                 />
@@ -197,7 +184,7 @@ export function LifecycleView() {
                 key={placed.step.id}
                 placed={placed}
                 selected={placed.step.id === selectedId}
-                emphasis={emphasisOf(selectedId, placed.step.id === selectedId)}
+                emphasis={emphasisOf(walking, placed.step.id === selectedId)}
                 onSelect={() => setSelectedId(placed.step.id)}
               />
             ))}
@@ -296,10 +283,7 @@ function Note({
         [GRAPH_NOTE_ATTRIBUTE]: note.id,
         [GRAPH_EMPHASIS_ATTRIBUTE]: emphasis,
       }}
-      className={cn(
-        "pointer-events-none motion-safe:transition-opacity",
-        emphasis === GRAPH_EMPHASIS.dimmed && DIMMED,
-      )}
+      className={cn("pointer-events-none", emphasisClass(emphasis))}
     >
       <line
         x1={connectorX}
@@ -457,7 +441,7 @@ function LifecycleList({ currentId }: { currentId: LifecycleStepId | null }) {
   return (
     <ol aria-label={HOW_IT_WORKS_LABEL.lifecycleList} className="sr-only">
       {LIFECYCLE_STEPS.map((step) => {
-        const next = LIFECYCLE_EDGES.filter((edge) => edge.from === step.id);
+        const next = edgesFrom(step.id);
         const notes = notesFor(step.id);
         return (
           <li

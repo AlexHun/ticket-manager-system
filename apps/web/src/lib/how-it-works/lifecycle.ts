@@ -270,6 +270,11 @@ export function edgesInto(id: LifecycleStepId): LifecycleEdge[] {
   return LIFECYCLE_EDGES.filter((edge) => edge.to === id);
 }
 
+/** The edges that leave this step: the steps that can follow it. */
+export function edgesFrom(id: LifecycleStepId): LifecycleEdge[] {
+  return LIFECYCLE_EDGES.filter((edge) => edge.from === id);
+}
+
 /**
  * The step one along from `current` in `LIFECYCLE_STEPS`' order, forward (1)
  * or back (-1); null past either end. From no step at all, forward is the
@@ -279,13 +284,11 @@ export function stepBeside(
   current: LifecycleStepId | null,
   direction: 1 | -1,
 ): LifecycleStepId | null {
-  const index =
-    current === null
-      ? direction === 1
-        ? 0
-        : -1
-      : LIFECYCLE_STEPS.findIndex((step) => step.id === current) + direction;
-  return LIFECYCLE_STEPS[index]?.id ?? null;
+  if (current === null) {
+    return direction === 1 ? LIFECYCLE_STEPS[0]!.id : null;
+  }
+  const index = LIFECYCLE_STEPS.findIndex((step) => step.id === current);
+  return LIFECYCLE_STEPS[index + direction]?.id ?? null;
 }
 
 export const LIFECYCLE_NOTE = {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  LIFECYCLE_EDGES,
   LIFECYCLE_STEP,
   LIFECYCLE_STEPS,
+  edgesFrom,
   edgesInto,
   stepBeside,
 } from "./lifecycle";
@@ -37,16 +37,35 @@ describe("stepBeside", () => {
 });
 
 describe("edgesInto", () => {
-  it("is every edge that ends at the step", () => {
-    expect(edgesInto(LIFECYCLE_STEP.customerReplies).map((e) => e.id)).toEqual(
-      LIFECYCLE_EDGES.filter(
-        (e) => e.to === LIFECYCLE_STEP.customerReplies,
-      ).map((e) => e.id),
-    );
-    expect(edgesInto(LIFECYCLE_STEP.customerReplies)).toHaveLength(2);
+  it("is every edge that ends at the step, both at a join", () => {
+    expect(edgesInto(LIFECYCLE_STEP.customerReplies)).toEqual([
+      {
+        id: "autoReplySent-customerReplies",
+        from: LIFECYCLE_STEP.autoReplySent,
+        to: LIFECYCLE_STEP.customerReplies,
+      },
+      {
+        id: "agentResolves-customerReplies",
+        from: LIFECYCLE_STEP.agentResolves,
+        to: LIFECYCLE_STEP.customerReplies,
+      },
+    ]);
   });
 
   it("is empty for the step that starts it all", () => {
     expect(edgesInto(first)).toEqual([]);
+  });
+});
+
+describe("edgesFrom", () => {
+  it("is both arms at a fork", () => {
+    expect(edgesFrom(LIFECYCLE_STEP.claim).map((e) => e.to)).toEqual([
+      LIFECYCLE_STEP.autoReplySent,
+      LIFECYCLE_STEP.declineHandoff,
+    ]);
+  });
+
+  it("is empty for the step that ends it", () => {
+    expect(edgesFrom(last)).toEqual([]);
   });
 });

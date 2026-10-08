@@ -36,13 +36,15 @@ import {
   lifecycleStep,
   type LifecycleStepId,
 } from "../../apps/web/src/lib/how-it-works/lifecycle";
+import { contains } from "../../apps/web/src/lib/how-it-works/layout";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**
  * `docs/plans/how-it-works.md`, slices 1 to 3 (#455, #456, #457): the nav
  * item, the Architecture view's runtime boxes on a zoomable canvas, the Ticket
- * lifecycle in its swimlanes, walking it step by step, and the panel. Every test runs against an empty ticket
- * table, because the page reads no ticket data (R12).
+ * lifecycle in its swimlanes, walking it step by step, and the panel. Every
+ * test runs against an empty ticket table, because the page reads no ticket
+ * data (R12).
  */
 
 /**
@@ -93,22 +95,37 @@ async function stepPositions(page: Page) {
 }
 
 /**
- * Every step's box in the drawing's own coordinates, which no view transform
- * reaches: what has to hold still while the view moves (R9).
+ * Every step's box in the drawing's own coordinates — its bounding box, and
+ * any transform between it and the view's `<g>` — which the view transform
+ * does not reach: what has to hold still while the view moves (R9).
  */
 function stepGeometry(page: Page) {
-  return page
-    .locator(`[${GRAPH_NODE_ATTRIBUTE}]`)
-    .evaluateAll((nodes, attribute) => {
+  return page.locator(`[${GRAPH_NODE_ATTRIBUTE}]`).evaluateAll(
+    (nodes, [nodeAttribute, viewportAttribute]) => {
+      const viewport = document.querySelector<SVGGElement>(
+        `[${viewportAttribute}]`,
+      )!;
       return nodes.map((node) => {
-        const { x, y, width, height } = (node as SVGGraphicsElement).getBBox();
-        return [node.getAttribute(attribute), x, y, width, height];
+        const element = node as SVGGraphicsElement;
+        const { x, y, width, height } = element.getBBox();
+        const { a, b, c, d, e, f } = viewport
+          .getCTM()!
+          .inverse()
+          .multiply(element.getCTM()!);
+        return [
+          node.getAttribute(nodeAttribute),
+          [x, y, width, height],
+          // Rounded past float noise, and `+ 0` turns a -0 into 0.
+          [a, b, c, d, e, f].map((n) => Math.round(n * 1000) / 1000 + 0),
+        ];
       });
-    }, GRAPH_NODE_ATTRIBUTE);
+    },
+    [GRAPH_NODE_ATTRIBUTE, GRAPH_VIEWPORT_ATTRIBUTE] as const,
+  );
 }
 
 /** The step the walk is on is the one pressed and emphasised, and no other. */
-async function expectCurrent(page: Page, id: string) {
+async function expectCurrent(page: Page, id: LifecycleStepId) {
   for (const step of LIFECYCLE_STEPS) {
     const box = nodeBox(page, step.id);
     const current = step.id === id;
@@ -122,16 +139,31 @@ async function expectCurrent(page: Page, id: string) {
     name: HOW_IT_WORKS_LABEL.lifecycleList,
   });
   await expect(list.locator('> li[aria-current="step"]')).toHaveText(
-    new RegExp(`^${lifecycleStep(id as LifecycleStepId).title} `),
+    new RegExp(`^${lifecycleStep(id).title} `),
   );
 }
 
-type Box = { x: number; y: number; width: number; height: number };
-const isInside = (inner: Box, outer: Box) =>
-  inner.x >= outer.x &&
-  inner.y >= outer.y &&
-  inner.x + inner.width <= outer.x + outer.width &&
-  inner.y + inner.height <= outer.y + outer.height;
+/**
+ * Zooms the lifecycle in about its right-hand side until the first step has
+ * left the frame, and returns what a stepping test reads: the canvas's area,
+ * the view's `<g>`, the first step's box and the transform once zoomed.
+ */
+async function zoomPastFirstStep(page: Page) {
+  const canvas = page.getByRole("group", {
+    name: HOW_IT_WORKS_LABEL.lifecycleCanvas,
+  });
+  const area = (await canvas.boundingBox())!;
+  const viewport = canvas.locator(`[${GRAPH_VIEWPORT_ATTRIBUTE}]`);
+  const first = nodeBox(page, LIFECYCLE_STEPS[0]!.id);
+  await page.mouse.move(area.x + area.width * 0.9, area.y + area.height / 2);
+  await page.mouse.wheel(0, -600);
+  // Polled: one wheel can reach the page as several events.
+  await expect
+    .poll(async () => contains(area, (await first.boundingBox())!))
+    .toBe(false);
+  const zoomed = await viewport.getAttribute("transform");
+  return { area, viewport, first, zoomed };
+}
 
 test.describe("How it works", () => {
   test.beforeEach(async () => {
@@ -393,20 +425,7 @@ test.describe("How it works", () => {
     await openLifecycle(page);
     const before = await stepGeometry(page);
 
-    // Zoom in about the right-hand side, so the first step leaves the frame.
-    const canvas = page.getByRole("group", {
-      name: HOW_IT_WORKS_LABEL.lifecycleCanvas,
-    });
-    const area = (await canvas.boundingBox())!;
-    const viewport = canvas.locator(`[${GRAPH_VIEWPORT_ATTRIBUTE}]`);
-    await page.mouse.move(area.x + area.width * 0.9, area.y + area.height / 2);
-    await page.mouse.wheel(0, -600);
-    const first = nodeBox(page, LIFECYCLE_STEPS[0]!.id);
-    // Polled: one wheel can reach the page as several events.
-    await expect
-      .poll(async () => isInside((await first.boundingBox())!, area))
-      .toBe(false);
-    const zoomed = await viewport.getAttribute("transform");
+    const { area, viewport, first, zoomed } = await zoomPastFirstStep(page);
 
     await page
       .getByRole("button", { name: HOW_IT_WORKS_LABEL.nextStep })
@@ -416,11 +435,43 @@ test.describe("How it works", () => {
     // be on its way, and would end somewhere else.
     const landed = await viewport.getAttribute("transform");
     expect(landed).not.toBe(zoomed);
+    // Not synchronisation: a fixed wait longer than any glide, to show that
+    // nothing was still moving.
     await page.waitForTimeout(GRAPH_GLIDE_MS + 200);
     expect(await viewport.getAttribute("transform")).toBe(landed);
-    expect(isInside((await first.boundingBox())!, area)).toBe(true);
+    expect(contains(area, (await first.boundingBox())!)).toBe(true);
 
     expect(await stepGeometry(page)).toEqual(before);
+  });
+
+  test.describe("with motion allowed", () => {
+    // The suite emulates reduced motion everywhere; this is the glide.
+    test.use({ contextOptions: { reducedMotion: "no-preference" } });
+
+    test("stepping to a step out of frame glides the view there", async ({
+      page,
+    }) => {
+      await signIn(page, USER_ROLE.agent);
+      await page.goto(ROUTE.howItWorks.path);
+      await openLifecycle(page);
+      const before = await stepGeometry(page);
+      const { area, viewport, first } = await zoomPastFirstStep(page);
+
+      await page
+        .getByRole("button", { name: HOW_IT_WORKS_LABEL.nextStep })
+        .click();
+      const started = await viewport.getAttribute("transform");
+
+      await expect
+        .poll(async () => contains(area, (await first.boundingBox())!))
+        .toBe(true);
+      // As above: a fixed wait past the glide's end, so the view has settled.
+      await page.waitForTimeout(GRAPH_GLIDE_MS + 200);
+      // Still on its way when the press had been handled, unlike a jump.
+      expect(started).not.toBe(await viewport.getAttribute("transform"));
+
+      expect(await stepGeometry(page)).toEqual(before);
+    });
   });
 
   test("every lifecycle step keeps its place across tab switches and reloads", async ({
