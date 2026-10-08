@@ -693,5 +693,10 @@
     "version": "0.1.177",
     "date": "2026-10-08",
     "title": "Open PRDs are citation-checked; shipped ones are frozen"
+  },
+  {
+    "version": "0.1.178",
+    "date": "2026-10-08",
+    "title": "A stale-citation failure names the rename"
   }
 ]
