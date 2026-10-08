@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { NEW_FEATURE_KEY, USER_ROLE } from "@ticket/shared";
+import { NEW_FEATURE_KEY, TICKET_STATUS, USER_ROLE } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetNewFeatureSeen, resetTickets, testDb } from "./helpers/db";
 // The titles and labels under test come from the module the page draws them
@@ -15,17 +15,30 @@ import {
 } from "../../apps/web/src/lib/how-it-works/architecture";
 import {
   GRAPH_EDGE_ATTRIBUTE,
+  GRAPH_LANE_ATTRIBUTE,
   GRAPH_NODE_ATTRIBUTE,
+  GRAPH_NOTE_ATTRIBUTE,
+  GRAPH_STATUS_STRIP_ATTRIBUTE,
+  GRAPH_STATUS_TAG_ATTRIBUTE,
   GRAPH_VIEWPORT_ATTRIBUTE,
   HOW_IT_WORKS_LABEL,
-  LIFECYCLE_COMING_NEXT,
 } from "../../apps/web/src/lib/how-it-works/dom";
+import {
+  LIFECYCLE_BRANCHES,
+  LIFECYCLE_EDGES,
+  LIFECYCLE_NOTES,
+  LIFECYCLE_STEP,
+  LIFECYCLE_STEPS,
+  NO_TICKET_YET,
+  lifecycleStep,
+} from "../../apps/web/src/lib/how-it-works/lifecycle";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**
- * Slice 1 of `docs/plans/how-it-works.md` (#455): the nav item, the Architecture
- * view's runtime boxes on a zoomable canvas, and the panel. Every test runs
- * against an empty ticket table, because the page reads no ticket data (R12).
+ * `docs/plans/how-it-works.md`, slices 1 and 2 (#455, #456): the nav item, the
+ * Architecture view's runtime boxes on a zoomable canvas, the Ticket lifecycle
+ * in its swimlanes, and the panel. Every test runs against an empty ticket
+ * table, because the page reads no ticket data (R12).
  */
 
 /**
@@ -50,6 +63,27 @@ async function boxPositions(page: Page) {
   const positions: Record<string, unknown> = {};
   for (const node of ARCHITECTURE_NODES) {
     positions[node.id] = await nodeBox(page, node.id).boundingBox();
+  }
+  return positions;
+}
+
+/** Text with its whitespace gone: SVG text drawn in wrapped lines loses its
+ *  spaces at each break, so a drawn label is compared word for word. */
+const squash = (text: string | null) => (text ?? "").replace(/\s+/g, "");
+
+async function openLifecycle(page: Page) {
+  await page
+    .getByRole("tab", { name: HOW_IT_WORKS_LABEL.lifecycleTab })
+    .click();
+  await expect(
+    page.getByRole("group", { name: HOW_IT_WORKS_LABEL.lifecycleCanvas }),
+  ).toBeVisible();
+}
+
+async function stepPositions(page: Page) {
+  const positions: Record<string, unknown> = {};
+  for (const step of LIFECYCLE_STEPS) {
+    positions[step.id] = await nodeBox(page, step.id).boundingBox();
   }
   return positions;
 }
@@ -130,11 +164,9 @@ test.describe("How it works", () => {
       canvas.getByText(SHARED_PACKAGES_NOTE.title, { exact: true }),
     ).toBeVisible();
 
-    // The other tab, until slice 2 draws it.
-    await page
-      .getByRole("tab", { name: HOW_IT_WORKS_LABEL.lifecycleTab })
-      .click();
-    await expect(page.getByText(LIFECYCLE_COMING_NEXT)).toBeVisible();
+    // The other tab reads nothing either.
+    await openLifecycle(page);
+    await expect(nodeBox(page, LIFECYCLE_STEP.agentCloses)).toBeVisible();
 
     expect(ticketReads).toEqual([]);
   });
@@ -189,5 +221,91 @@ test.describe("How it works", () => {
     await page.mouse.move(area.x + 140, area.y + 90, { steps: 5 });
     await page.mouse.up();
     await expect(viewport).not.toHaveAttribute("transform", zoomed!);
+  });
+
+  test("the lifecycle draws every step in its lane, tagged with its Status, with both forks and the three notes", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.agent);
+    await page.goto(ROUTE.howItWorks.path);
+    await openLifecycle(page);
+
+    for (const step of LIFECYCLE_STEPS) {
+      const box = nodeBox(page, step.id);
+      await expect(box).toBeVisible();
+      // A title is drawn wrapped, so compare the words, not the line breaks.
+      expect(squash(await box.textContent())).toContain(squash(step.title));
+      await expect(box.locator(`[${GRAPH_STATUS_TAG_ATTRIBUTE}]`)).toHaveText(
+        step.status ?? NO_TICKET_YET,
+      );
+
+      const band = (await page
+        .locator(`[${GRAPH_LANE_ATTRIBUTE}="${step.lane}"]`)
+        .boundingBox())!;
+      const rect = (await box.boundingBox())!;
+      expect(rect.x, step.id).toBeGreaterThanOrEqual(band.x);
+      expect(rect.y, step.id).toBeGreaterThanOrEqual(band.y);
+      expect(rect.x + rect.width, step.id).toBeLessThanOrEqual(
+        band.x + band.width,
+      );
+      expect(rect.y + rect.height, step.id).toBeLessThanOrEqual(
+        band.y + band.height,
+      );
+    }
+
+    const strip = page.locator(`[${GRAPH_STATUS_STRIP_ATTRIBUTE}]`);
+    for (const status of Object.values(TICKET_STATUS)) {
+      await expect(strip).toContainText(status);
+    }
+
+    // A fork: one step, an edge to each arm, and the two arms in one column.
+    for (const { from, arms } of LIFECYCLE_BRANCHES) {
+      const [a, b] = await Promise.all(
+        arms.map((arm) => nodeBox(page, arm).boundingBox()),
+      );
+      expect(a!.x).toBe(b!.x);
+      for (const arm of arms) {
+        const edge = LIFECYCLE_EDGES.find(
+          (e) => e.from === from && e.to === arm,
+        )!;
+        await expect(
+          page.locator(`[${GRAPH_EDGE_ATTRIBUTE}="${edge.id}"]`),
+        ).toBeAttached();
+      }
+    }
+
+    for (const note of LIFECYCLE_NOTES) {
+      const drawn = page.locator(`[${GRAPH_NOTE_ATTRIBUTE}="${note.id}"]`);
+      await expect(drawn).toBeVisible();
+      expect(squash(await drawn.textContent())).toBe(squash(note.text));
+    }
+
+    // Selecting a step explains it.
+    const claim = lifecycleStep(LIFECYCLE_STEP.claim);
+    await page.getByRole("button", { name: claim.title, exact: true }).click();
+    const panel = page.getByRole("region", {
+      name: HOW_IT_WORKS_LABEL.details,
+    });
+    await expect(panel).toContainText(claim.explanation);
+  });
+
+  test("every lifecycle step keeps its place across tab switches and reloads", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.agent);
+    await page.goto(ROUTE.howItWorks.path);
+    await openLifecycle(page);
+    const before = await stepPositions(page);
+
+    await page
+      .getByRole("tab", { name: HOW_IT_WORKS_LABEL.architectureTab })
+      .click();
+    await expect(nodeBox(page, ARCHITECTURE_NODE.api)).toBeVisible();
+    await openLifecycle(page);
+    expect(await stepPositions(page)).toEqual(before);
+
+    await page.reload();
+    await openLifecycle(page);
+    expect(await stepPositions(page)).toEqual(before);
   });
 });

@@ -12,16 +12,22 @@ export const HOW_IT_WORKS_LABEL = {
   lifecycleTab: "Ticket lifecycle",
   architectureCanvas: "Architecture drawing",
   architectureList: "Architecture, box by box",
+  lifecycleCanvas: "Ticket lifecycle drawing",
+  lifecycleList: "Ticket lifecycle, step by step",
   details: "Details",
 } as const;
 
-/** What the Ticket lifecycle tab says until it draws the lifecycle. */
-export const LIFECYCLE_COMING_NEXT =
-  "The ticket lifecycle is coming next: every step from the email that opens a ticket to the agent who closes it.";
-
 /** On the `<g>` the zoom transform is written to. */
 export const GRAPH_VIEWPORT_ATTRIBUTE = "data-graph-viewport";
-/** On each box, holding its node id. */
+/** On each box or lifecycle step, holding its id. */
 export const GRAPH_NODE_ATTRIBUTE = "data-node-id";
 /** On each connection, holding its edge id. */
 export const GRAPH_EDGE_ATTRIBUTE = "data-edge-id";
+/** On each lifecycle lane's band, holding its lane id. */
+export const GRAPH_LANE_ATTRIBUTE = "data-lane-id";
+/** On each lifecycle note, holding its note id. */
+export const GRAPH_NOTE_ATTRIBUTE = "data-note-id";
+/** On the Status strip along the top of the lifecycle. */
+export const GRAPH_STATUS_STRIP_ATTRIBUTE = "data-status-strip";
+/** On a step's Status tag, holding the Status it shows (empty for none). */
+export const GRAPH_STATUS_TAG_ATTRIBUTE = "data-status-tag";
