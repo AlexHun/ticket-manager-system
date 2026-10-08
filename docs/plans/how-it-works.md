@@ -45,10 +45,12 @@ picked by meaning, from the `:root` map in `index.css`.
 **Retires:** d3-zoom on a React-owned SVG inside a lazy route; the import-free
 data module read by both the page and Playwright; the nav item with no role
 gate.
-**Covers:** R1, R2, R9 (for this view), R11 (the list half), R12
+**Covers:** R1, R2, R9 (for this view), R11 (the list half), R12, R13
 
-- Any signed-in user, including an agent, opens "How it works" from the sidebar
-  and sees the Architecture tab: the runtime boxes, the Railway frame, the
+- Any signed-in user, including an agent, opens "How it works" from the sidebar,
+  where it sits after Tutorials and wears the "New" badge until first followed
+  (a `NEW_FEATURE_KEY` entry with its `NEW_FEATURE_VERSIONS` start, per
+  `frontend.md`), and sees the Architecture tab: the runtime boxes, the Railway frame, the
   shared packages note and the labelled connections from R2, all of which pan
   and zoom. Selecting a box opens the side panel with its explanation.
   Underneath the SVG, a visually hidden ordered list carries the same boxes and
@@ -59,7 +61,8 @@ drill down; the panel shows only the explanation (no code paths, no links); zoom
 is mouse and touch only (no buttons).
 
 **E2E:** `tests/e2e/how-it-works.spec.ts`. With tickets reset to empty, an
-**agent** signs in and follows the nav item. Every runtime box title imported
+**agent** signs in, sees the "New" badge on the nav item, and follows it; after
+a reload the badge is gone. Every runtime box title imported
 from the data module is visible, along with every connection label. Selecting
 "API" puts its explanation in the panel. A scroll-zoom changes the `<g>`
 transform, and the box positions measured after a reload equal those before.
@@ -175,12 +178,12 @@ zooming in restores the `<g>` transform to identity.
 | R10 | 6          | Should                                                            |
 | R11 | 1, 3, 4, 6 | The list ships in slice 1; keyboard arrives with each interaction |
 | R12 | 1          | Slice 1's spec runs against an empty ticket table                 |
+| R13 | 1          | Should; the owner confirmed it                                    |
 
 ## Deferred
 
-- **The "new" dot on the nav item, and its place after Tutorials.** These are
-  PRD open questions assumed yes. If the owner confirms, the dot is a
-  `NEW_FEATURE_KEY` entry added in slice 1, not a slice of its own.
+- **The nav item's place after Tutorials** is still an open question in the PRD,
+  assumed yes. Moving it later is a one-line reorder of `NAV_ITEMS`.
 - **A Tutorial for the page.** This is a PRD non-goal. `frontend.md` mounts one on each
   of the nine main pages, and this page deliberately won't have one: the step
   controls do that job, and a tutorial key would be a Postgres enum migration
