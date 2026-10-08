@@ -20,6 +20,10 @@ export const HOW_IT_WORKS_LABEL = {
   details: "Details",
   previousStep: "Previous step",
   nextStep: "Next step",
+  /** The heading over the panel's list of repo paths. */
+  inTheCode: "In the code",
+  /** What the panel's line naming the app screen starts with. */
+  screen: "On screen",
 } as const;
 
 /**
@@ -40,6 +44,10 @@ export const GRAPH_LANE_ATTRIBUTE = "data-lane-id";
 export const GRAPH_NOTE_ATTRIBUTE = "data-note-id";
 /** On the Status strip along the top of the lifecycle. */
 export const GRAPH_STATUS_STRIP_ATTRIBUTE = "data-status-strip";
+/** On the panel's list of repo paths behind the selection. */
+export const GRAPH_CODE_ATTRIBUTE = "data-code-paths";
+/** On the panel's line naming the selection's app screen, holding its path. */
+export const GRAPH_SCREEN_ATTRIBUTE = "data-screen";
 /** On a step's Status tag, holding the Status it shows (empty for none). */
 export const GRAPH_STATUS_TAG_ATTRIBUTE = "data-status-tag";
 /**

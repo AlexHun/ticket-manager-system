@@ -3,6 +3,8 @@ import {
   architectureNode,
   type ArchitectureNodeId,
 } from "./architecture";
+import type { InTheCode } from "./code";
+import { ROUTE } from "../routes";
 
 /**
  * The second level of the Architecture view: what is inside the API, the job
@@ -15,8 +17,9 @@ import {
  * `./subsystem-layout` works it out from the order below and from the links,
  * with nothing simulated.
  *
- * Import-free apart from `./architecture`, which is import-free itself, so
- * `tests/e2e/how-it-works.spec.ts` reads the titles it asserts from here.
+ * Import-free apart from `./architecture`, `./code` and `../routes`, which are
+ * import-free themselves, so `tests/e2e/how-it-works.spec.ts` reads the titles
+ * it asserts from here.
  */
 
 /** The boxes that open onto their subsystems. */
@@ -83,7 +86,7 @@ export interface SubsystemLink {
   readonly direction: LinkDirection;
 }
 
-export interface Subsystem {
+export interface Subsystem extends InTheCode {
   readonly id: SubsystemId;
   readonly box: DrillableBoxId;
   readonly title: string;
@@ -116,6 +119,10 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Ingestion",
     explanation:
       "Turns each email the inbound mail provider passes on into a new ticket, or into a message on the thread it replies to. A reply to a ticket the assistant had resolved Reopens it; a new ticket is queued for Classification.",
+    code: [
+      "apps/api/src/ingest.ts",
+      "apps/api/src/routes/webhooks/inbound-email.ts",
+    ],
     links: [
       from(N.inboundMail, "webhook"),
       out(N.postgres, "SQL"),
@@ -128,6 +135,13 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Tickets & Activity",
     explanation:
       "Everything an agent does to a ticket: the queue and its filters, the thread, replies, Status and Assignee changes, and the Activity that records each one. It also asks the model for a Polish of a draft reply or a Summary of a long thread.",
+    code: [
+      "apps/api/src/routes/tickets.ts",
+      "apps/api/src/ticket-activity.ts",
+      "apps/api/src/routes/activity.ts",
+      "apps/api/src/routes/ai.ts",
+    ],
+    screen: ROUTE.tickets.path,
     links: [
       from(N.browserApp, "HTTP"),
       out(N.postgres, "SQL"),
@@ -140,6 +154,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Knowledge base",
     explanation:
       "The knowledge articles the auto-reply answers from, each change kept as a Revision. Admins write and archive them; the auto-reply reads only what is published.",
+    code: [
+      "apps/api/src/routes/knowledge.ts",
+      "apps/api/src/ai/knowledge-base.ts",
+    ],
+    screen: ROUTE.knowledge.path,
     links: [from(N.browserApp, "HTTP"), out(N.postgres, "SQL")],
   },
   {
@@ -148,6 +167,12 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Pipeline & Automation",
     explanation:
       "The unattended part of a ticket's life, counted Stage by Stage, and who a Handoff goes to. A Simulated ticket sent from here takes the same path as real mail.",
+    code: [
+      "apps/api/src/routes/pipeline.ts",
+      "apps/api/src/routes/automation.ts",
+      "apps/api/src/automation.ts",
+    ],
+    screen: ROUTE.pipeline.path,
     links: [from(N.browserApp, "HTTP"), out(N.postgres, "SQL")],
   },
   {
@@ -156,6 +181,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Outbox",
     explanation:
       "Every email the desk sends, whether a reply, an Invitation or a Reset, is written here first and then handed to a job to send. An admin sees each one's Delivery, or why it was Undeliverable.",
+    code: ["apps/api/src/outbound.ts", "apps/api/src/routes/outbox.ts"],
+    screen: ROUTE.outbox.path,
     links: [
       from(N.browserApp, "HTTP"),
       out(N.postgres, "SQL"),
@@ -168,6 +195,12 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Auth & Users",
     explanation:
       "Signing in, sessions, Invitations and password Resets, and the accounts admins manage. It also keeps what each person has seen: the tutorials, the New badges and their dashboard's layout.",
+    code: [
+      "apps/api/src/auth.ts",
+      "apps/api/src/routes/users.ts",
+      "apps/api/src/middleware/auth.ts",
+    ],
+    screen: ROUTE.users.path,
     links: [from(N.browserApp, "HTTP"), out(N.postgres, "SQL")],
   },
   {
@@ -176,6 +209,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Realtime",
     explanation:
       "Tells every open browser the moment a ticket changes, whoever or whatever changed it, so a queue or a thread never needs reloading.",
+    code: [
+      "apps/api/src/events/hub.ts",
+      "apps/api/src/routes/events.ts",
+      "apps/web/src/lib/realtime.tsx",
+    ],
     links: [out(N.browserApp, "live updates")],
   },
   {
@@ -184,6 +222,12 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Evals & Schedule",
     explanation:
       "Measures the classifier and the auto-reply against a fixed Corpus of Cases, each Run scored against its Threshold. Runs start by hand, on a Planned run or on the nightly Schedule.",
+    code: [
+      "apps/api/src/routes/evals.ts",
+      "apps/api/src/routes/eval-schedule.ts",
+      "apps/api/src/evals/runner.ts",
+    ],
+    screen: ROUTE.evals.path,
     links: [
       from(N.browserApp, "HTTP"),
       out(N.postgres, "SQL"),
@@ -196,6 +240,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Demo",
     explanation:
       "Lets a Demo visitor in without an account, for a limited session that sees the admin screens apart from Users and the Outbox and can change none of them, and caps how much model work a day of demos may spend.",
+    code: [
+      "apps/api/src/routes/demo.ts",
+      "apps/api/src/demo/admin-view.ts",
+      "apps/api/src/demo/ai-budget.ts",
+    ],
     links: [from(N.browserApp, "HTTP"), out(N.postgres, "SQL")],
   },
 
@@ -205,6 +254,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Classify ticket",
     explanation:
       "Gives a new ticket its Category. The ticket stays in New and is passed on to the auto-reply. An outage is tried again rather than counted as a Decline.",
+    code: [
+      "apps/api/src/jobs/classify-ticket.ts",
+      "apps/api/src/ai/classify.ts",
+    ],
+    screen: ROUTE.pipeline.path,
     links: [
       from(S.ingestion, "job"),
       out(N.openai, "model call"),
@@ -218,6 +272,12 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Auto-reply",
     explanation:
       "Claims the ticket, which puts it in Processing, and drafts a reply from the knowledge base. A reply that passes every check goes to the outbox and the ticket is Resolved under the assistant; one that does not is a Decline and a Handoff, in Open. An outage is not a Decline: the ticket goes back to New to be tried again.",
+    code: [
+      "apps/api/src/jobs/auto-reply-ticket.ts",
+      "apps/api/src/ai/auto-reply.ts",
+      "apps/api/src/ai/auto-reply-gates.ts",
+    ],
+    screen: ROUTE.pipeline.path,
     links: [
       out(N.openai, "model call"),
       out(N.postgres, "SQL"),
@@ -231,6 +291,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Send email",
     explanation:
       "Takes one email from the outbox and hands it to the outbound mail provider, recording the Delivery. A provider outage is tried again; with no provider configured, the email is marked Undeliverable.",
+    code: ["apps/api/src/jobs/send-email.ts", "apps/api/src/mail/transport.ts"],
+    screen: ROUTE.outbox.path,
     links: [
       from(S.outbox, "job"),
       out(N.outboundMail, "send"),
@@ -243,6 +305,12 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Eval runs",
     explanation:
       "Works through a Run's Cases with the model and stores each Verdict: a Run started by hand, a Planned run when its time comes, and the nightly one.",
+    code: [
+      "apps/api/src/jobs/eval-run.ts",
+      "apps/api/src/jobs/eval-planned-run.ts",
+      "apps/api/src/jobs/eval-nightly.ts",
+    ],
+    screen: ROUTE.evals.path,
     links: [
       from(S.evalsSchedule, "job"),
       out(N.openai, "model call"),
@@ -256,6 +324,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Demo reset",
     explanation:
       "The Nightly reset: puts the demo's tickets back as they were, so each day's visitors start from the same desk. It does nothing where demo mode is off.",
+    code: ["apps/api/src/jobs/demo-reset.ts", "apps/api/src/demo/showcase.ts"],
     links: [out(N.postgres, "SQL")],
   },
   {
@@ -264,6 +333,10 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Housekeeping",
     explanation:
       "Regular sweeps that keep the database from growing without end: old outbox rows and old Activity trails are pruned once they are past keeping.",
+    code: [
+      "apps/api/src/jobs/prune-outbox.ts",
+      "apps/api/src/jobs/prune-activity-trails.ts",
+    ],
     links: [out(N.postgres, "SQL")],
   },
 
@@ -273,6 +346,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Sign in",
     explanation:
       "Where an agent or admin signs in, accepts an Invitation or asks for a Reset, and where a Demo visitor starts a demo session.",
+    code: [
+      "apps/web/src/pages/LoginPage.tsx",
+      "apps/web/src/pages/ForgotPasswordPage.tsx",
+      "apps/web/src/pages/ResetPasswordPage.tsx",
+    ],
     links: [out(S.authUsers, "HTTP"), out(S.demo, "HTTP")],
   },
   {
@@ -281,6 +359,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Dashboard",
     explanation:
       "The desk at a glance: how many tickets are in each Status, how fast they are answered, and how much the assistant resolved on its own.",
+    code: [
+      "apps/web/src/pages/DashboardPage.tsx",
+      "apps/web/src/components/dashboard",
+    ],
+    screen: ROUTE.dashboard.path,
     links: [
       out(S.ticketsActivity, "HTTP"),
       out(S.authUsers, "HTTP"),
@@ -293,6 +376,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Tickets",
     explanation:
       "The queue: every ticket, filtered, sorted and saved as views, kept current as tickets arrive and change.",
+    code: [
+      "apps/web/src/pages/TicketsPage.tsx",
+      "apps/web/src/pages/TicketsTable.tsx",
+    ],
+    screen: ROUTE.tickets.path,
     links: [out(S.ticketsActivity, "HTTP"), from(S.realtime, "live updates")],
   },
   {
@@ -301,6 +389,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Ticket thread",
     explanation:
       "One ticket's thread, where an agent replies, asks for a Polish or a Summary, and changes the Status or the Assignee.",
+    code: [
+      "apps/web/src/pages/TicketDetailPage.tsx",
+      "apps/web/src/pages/TicketMessageThread.tsx",
+      "apps/web/src/pages/TicketReplyComposer.tsx",
+    ],
     links: [out(S.ticketsActivity, "HTTP"), from(S.realtime, "live updates")],
   },
   {
@@ -309,6 +402,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Activity",
     explanation:
       "Every change made to every ticket, by whom or by what, across the whole desk.",
+    code: ["apps/web/src/pages/ActivityPage.tsx"],
+    screen: ROUTE.activity.path,
     links: [out(S.ticketsActivity, "HTTP")],
   },
   {
@@ -317,6 +412,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Knowledge",
     explanation:
       "Where admins write, revise and archive the knowledge articles the auto-reply answers from.",
+    code: ["apps/web/src/pages/KnowledgePage.tsx"],
+    screen: ROUTE.knowledge.path,
     links: [out(S.knowledgeBase, "HTTP")],
   },
   {
@@ -325,6 +422,11 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Pipeline",
     explanation:
       "The unattended path drawn as a rail, with how many tickets each Stage holds, where Handoffs go, and a form to send a Simulated ticket through.",
+    code: [
+      "apps/web/src/pages/PipelinePage.tsx",
+      "apps/web/src/pages/PipelineRail.tsx",
+    ],
+    screen: ROUTE.pipeline.path,
     links: [
       out(S.pipelineAutomation, "HTTP"),
       from(S.realtime, "live updates"),
@@ -336,6 +438,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Evals",
     explanation:
       "Each Run's Verdicts against its Threshold, and the Schedule that starts them.",
+    code: ["apps/web/src/pages/EvalsPage.tsx"],
+    screen: ROUTE.evals.path,
     links: [out(S.evalsSchedule, "HTTP"), from(S.realtime, "live updates")],
   },
   {
@@ -344,6 +448,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Outbox",
     explanation:
       "Every email the desk has sent or tried to send, with its Delivery.",
+    code: ["apps/web/src/pages/OutboxPage.tsx"],
+    screen: ROUTE.outbox.path,
     links: [out(S.outbox, "HTTP")],
   },
   {
@@ -352,6 +458,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Users",
     explanation:
       "Where admins invite agents, change roles and remove accounts.",
+    code: ["apps/web/src/pages/UsersPage.tsx"],
+    screen: ROUTE.users.path,
     links: [out(S.authUsers, "HTTP")],
   },
   {
@@ -360,6 +468,8 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     title: "Tutorials",
     explanation:
       "Where admins edit the short walkthrough each main page offers the first time someone opens it.",
+    code: ["apps/web/src/pages/TutorialsPage.tsx"],
+    screen: ROUTE.tutorials.path,
     links: [out(S.authUsers, "HTTP")],
   },
 ];
@@ -374,7 +484,7 @@ export function subsystem(id: SubsystemId): Subsystem {
   return SUBSYSTEMS.find((candidate) => candidate.id === id)!;
 }
 
-export interface Part {
+export interface Part extends InTheCode {
   /** The runtime box it sits in: itself, for a box. */
   readonly box: ArchitectureNodeId;
   /** What it is called on its own. */
@@ -398,6 +508,8 @@ export function part(id: PartId): Part {
       title: node.title,
       label: node.title,
       explanation: node.explanation,
+      code: node.code,
+      screen: node.screen,
     };
   }
   return {
@@ -405,6 +517,8 @@ export function part(id: PartId): Part {
     title: inside.title,
     label: `${inside.title} (${architectureNode(inside.box).title})`,
     explanation: inside.explanation,
+    code: inside.code,
+    screen: inside.screen,
   };
 }
 

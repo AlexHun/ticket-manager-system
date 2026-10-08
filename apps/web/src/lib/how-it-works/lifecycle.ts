@@ -3,6 +3,8 @@ import {
   TICKET_STATUS,
   type TicketStatus,
 } from "@ticket/shared";
+import type { InTheCode } from "./code";
+import { ROUTE } from "../routes";
 
 /**
  * The Ticket lifecycle view of How it works, as data: the three swimlanes, the
@@ -19,8 +21,9 @@ import {
  * `layOutLifecycle` in `./lifecycle-layout` turns those into coordinates with
  * nothing simulated, so a step is where it was on every load (R9).
  *
- * Import-free apart from `@ticket/shared`, as `./architecture` is: the E2E
- * imports this module and asserts against the same titles the page draws.
+ * Import-free apart from `@ticket/shared`, `./code` and `../routes`, as
+ * `./architecture` is: the E2E imports this module and asserts against the
+ * same titles the page draws.
  */
 
 export const LIFECYCLE_LANE = {
@@ -62,7 +65,7 @@ export const LIFECYCLE_STEP = {
 export type LifecycleStepId =
   (typeof LIFECYCLE_STEP)[keyof typeof LIFECYCLE_STEP];
 
-export interface LifecycleStep {
+export interface LifecycleStep extends InTheCode {
   readonly id: LifecycleStepId;
   readonly title: string;
   readonly lane: LifecycleLaneId;
@@ -96,6 +99,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: null,
     explanation:
       "A customer writes to the support address from their own mail app. They never sign in; their email is what opens a ticket.",
+    code: ["apps/api/src/routes/webhooks/inbound-email.ts"],
   },
   {
     id: LIFECYCLE_STEP.ingestion,
@@ -105,6 +109,11 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.New,
     explanation:
       "The email arrives through the inbound mail provider and becomes a new ticket in New, with the email as the first message of its thread. Nobody owns it yet.",
+    code: [
+      "apps/api/src/ingest.ts",
+      "apps/api/src/routes/webhooks/inbound-email.ts",
+    ],
+    screen: ROUTE.pipeline.path,
   },
   {
     id: LIFECYCLE_STEP.classification,
@@ -114,6 +123,11 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.New,
     explanation:
       "A model files the ticket under one of the four categories. Filing it moves nothing: the ticket stays in New. If the auto-reply is switched on, the ticket is then offered to it, whatever its category; a category it may not answer is turned back after the Claim, as a Decline.",
+    code: [
+      "apps/api/src/jobs/classify-ticket.ts",
+      "apps/api/src/ai/classify.ts",
+    ],
+    screen: ROUTE.pipeline.path,
   },
   {
     id: LIFECYCLE_STEP.claim,
@@ -123,6 +137,8 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Processing,
     explanation:
       "The auto-reply takes exclusive hold of a ticket that is still New and unassigned, which puts it in Processing for the few seconds a reply is being composed. A ticket in Processing is hidden from the list, so an agent cannot answer it at the same time.",
+    code: ["apps/api/src/jobs/auto-reply-ticket.ts"],
+    screen: ROUTE.pipeline.path,
   },
   {
     id: LIFECYCLE_STEP.autoReplySent,
@@ -132,6 +148,12 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Resolved,
     explanation:
       "The knowledge base covers the question, the reply passes every check, and it goes to the customer with nobody reading it first. The ticket is Resolved and filed under the assistant's own account.",
+    code: [
+      "apps/api/src/jobs/auto-reply-steps.ts",
+      "apps/api/src/ai/auto-reply-gates.ts",
+      "apps/api/src/outbound.ts",
+    ],
+    screen: ROUTE.pipeline.path,
   },
   {
     id: LIFECYCLE_STEP.declineHandoff,
@@ -142,6 +164,11 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Open,
     explanation:
       "The auto-reply decides not to answer, and records why. That is a normal outcome, not a failure. The ticket is Open, and is handed to whoever the handoff setting on the Pipeline page names, if anyone.",
+    code: [
+      "apps/api/src/jobs/auto-reply-ticket.ts",
+      "apps/api/src/automation.ts",
+    ],
+    screen: ROUTE.pipeline.path,
   },
   {
     id: LIFECYCLE_STEP.agentReplies,
@@ -151,6 +178,13 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Open,
     explanation:
       "An agent reads the thread and answers it. Polish rewrites their draft before they send it, and a Summary of the thread is drawn beside it on request. Replying does not change the Status: the ticket is still Open.",
+    code: [
+      "apps/web/src/pages/TicketReplyComposer.tsx",
+      "apps/api/src/routes/tickets.ts",
+      "apps/api/src/ai/polish.ts",
+      "apps/api/src/ai/summarize.ts",
+    ],
+    screen: ROUTE.tickets.path,
   },
   {
     id: LIFECYCLE_STEP.agentResolves,
@@ -160,6 +194,11 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Resolved,
     explanation:
       "Once the customer has what they needed, the agent sets the ticket to Resolved. It stays theirs.",
+    code: [
+      "apps/web/src/pages/TicketFieldSelects.tsx",
+      "apps/api/src/routes/tickets.ts",
+    ],
+    screen: ROUTE.tickets.path,
   },
   {
     id: LIFECYCLE_STEP.customerReplies,
@@ -169,6 +208,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Resolved,
     explanation:
       "The customer writes back to a resolved ticket. Their email joins the same thread; what happens to the Status depends on who resolved it.",
+    code: ["apps/api/src/ingest.ts"],
   },
   {
     id: LIFECYCLE_STEP.reopen,
@@ -178,6 +218,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Open,
     explanation:
       "If the assistant had resolved the ticket, the reply reopens it: the ticket goes back to Open, and from the assistant to whoever the handoff setting names, if anyone, since the assistant is not coming back for it.",
+    code: ["apps/api/src/ingest.ts", "apps/api/src/automation.ts"],
   },
   {
     id: LIFECYCLE_STEP.replyJoinsThread,
@@ -187,6 +228,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Resolved,
     explanation:
       "If a person had resolved the ticket, the reply joins the thread and nothing else moves: it stays Resolved and stays theirs. They judged it finished, and a thank-you should not reopen it.",
+    code: ["apps/api/src/ingest.ts"],
   },
   {
     id: LIFECYCLE_STEP.agentCloses,
@@ -196,6 +238,11 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     status: TICKET_STATUS.Closed,
     explanation:
       "When the conversation is over, an agent sets the ticket to Closed.",
+    code: [
+      "apps/web/src/pages/TicketFieldSelects.tsx",
+      "apps/api/src/routes/tickets.ts",
+    ],
+    screen: ROUTE.tickets.path,
   },
 ];
 

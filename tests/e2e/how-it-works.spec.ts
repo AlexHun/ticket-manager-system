@@ -14,6 +14,7 @@ import {
   architectureNode,
 } from "../../apps/web/src/lib/how-it-works/architecture";
 import {
+  GRAPH_CODE_ATTRIBUTE,
   GRAPH_EDGE_ATTRIBUTE,
   GRAPH_EMPHASIS,
   GRAPH_EMPHASIS_ATTRIBUTE,
@@ -21,6 +22,7 @@ import {
   GRAPH_LANE_ATTRIBUTE,
   GRAPH_NODE_ATTRIBUTE,
   GRAPH_NOTE_ATTRIBUTE,
+  GRAPH_SCREEN_ATTRIBUTE,
   GRAPH_STATUS_STRIP_ATTRIBUTE,
   GRAPH_STATUS_TAG_ATTRIBUTE,
   GRAPH_VIEWPORT_ATTRIBUTE,
@@ -42,10 +44,10 @@ import { subsystemsOf } from "../../apps/web/src/lib/how-it-works/subsystems";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**
- * `docs/plans/how-it-works.md`, slices 1 to 4 (#455, #456, #457, #458): the
- * nav item, the Architecture view's runtime boxes on a zoomable canvas and
+ * `docs/plans/how-it-works.md`, slices 1 to 5 (#455, #456, #457, #458, #459):
+ * the nav item, the Architecture view's runtime boxes on a zoomable canvas and
  * the subsystems they open onto, the Ticket lifecycle in its swimlanes,
- * walking it step by step, and the panel. Every
+ * walking it step by step, and the panel with its way into the code. Every
  * test runs against an empty ticket table, because the page reads no ticket
  * data (R12).
  */
@@ -585,6 +587,57 @@ test.describe("How it works", () => {
 
       expect(await nodeGeometry(page)).toEqual(before);
     });
+  });
+
+  test("an admin follows Classification's screen link to the Pipeline page, past its repo paths", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.admin);
+    await page.goto(ROUTE.howItWorks.path);
+    await openLifecycle(page);
+
+    const classification = lifecycleStep(LIFECYCLE_STEP.classification);
+    await page
+      .getByRole("button", { name: classification.title, exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: HOW_IT_WORKS_LABEL.details,
+    });
+    const paths = panel.locator(`[${GRAPH_CODE_ATTRIBUTE}] li`);
+    await expect(paths).toHaveText([...classification.code]);
+
+    const screen = panel.locator(`[${GRAPH_SCREEN_ATTRIBUTE}]`);
+    await expect(screen).toHaveAttribute(
+      GRAPH_SCREEN_ATTRIBUTE,
+      ROUTE.pipeline.path,
+    );
+    await screen.getByRole("link").click();
+    await page.waitForURL(ROUTE.pipeline.path);
+  });
+
+  test("an agent sees Classification's screen named, with no link to a page they cannot open", async ({
+    page,
+  }) => {
+    await signIn(page, USER_ROLE.agent);
+    await page.goto(ROUTE.howItWorks.path);
+    await openLifecycle(page);
+
+    const classification = lifecycleStep(LIFECYCLE_STEP.classification);
+    await page
+      .getByRole("button", { name: classification.title, exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: HOW_IT_WORKS_LABEL.details,
+    });
+    await expect(panel.locator(`[${GRAPH_CODE_ATTRIBUTE}] li`)).toHaveText([
+      ...classification.code,
+    ]);
+    const screen = panel.locator(`[${GRAPH_SCREEN_ATTRIBUTE}]`);
+    await expect(screen).toHaveAttribute(
+      GRAPH_SCREEN_ATTRIBUTE,
+      ROUTE.pipeline.path,
+    );
+    await expect(screen.getByRole("link")).toHaveCount(0);
   });
 
   test("every lifecycle step keeps its place across tab switches and reloads", async ({

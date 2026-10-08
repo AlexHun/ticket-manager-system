@@ -1,6 +1,8 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { TICKET_STATUS } from "@ticket/shared";
+import { fireEvent, screen, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TICKET_STATUS, USER_ROLE, type UserRole } from "@ticket/shared";
+import { renderRoutes } from "@/test/render";
+import { ROUTE } from "@/lib/routes";
 import {
   LIFECYCLE_EDGES,
   LIFECYCLE_NOTES,
@@ -15,15 +17,30 @@ import {
   GRAPH_EDGE_ATTRIBUTE,
   GRAPH_EMPHASIS_ATTRIBUTE,
   GRAPH_NODE_ATTRIBUTE,
+  GRAPH_SCREEN_ATTRIBUTE,
   GRAPH_STATUS_STRIP_ATTRIBUTE,
   GRAPH_STATUS_TAG_ATTRIBUTE,
   HOW_IT_WORKS_LABEL,
 } from "@/lib/how-it-works/dom";
 import { LifecycleView } from "./LifecycleView";
 
+const session = vi.hoisted(() => ({
+  user: { role: undefined as UserRole | undefined, isAnonymous: false },
+}));
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: { user: session.user }, isPending: false }),
+}));
+
+beforeEach(() => {
+  session.user = { role: USER_ROLE.agent, isAnonymous: false };
+});
+
+/** The panel's screen link is a router `<Link>`, so the view mounts as a route. */
+const mount = () => renderRoutes([{ path: "/", element: <LifecycleView /> }]);
+
 describe("LifecycleView's drawing", () => {
   it("tags every step with the Status the data gives it", () => {
-    const { container } = render(<LifecycleView />);
+    const { container } = mount();
     for (const step of LIFECYCLE_STEPS) {
       const box = container.querySelector(
         `[${GRAPH_NODE_ATTRIBUTE}="${step.id}"]`,
@@ -37,7 +54,7 @@ describe("LifecycleView's drawing", () => {
   });
 
   it("draws all five Statuses in the strip", () => {
-    const { container } = render(<LifecycleView />);
+    const { container } = mount();
     const strip = container.querySelector(`[${GRAPH_STATUS_STRIP_ATTRIBUTE}]`)!;
     for (const status of Object.values(TICKET_STATUS)) {
       expect(strip).toHaveTextContent(status);
@@ -47,7 +64,7 @@ describe("LifecycleView's drawing", () => {
 
 describe("LifecycleView's hidden list", () => {
   function items() {
-    render(<LifecycleView />);
+    mount();
     const list = screen.getByRole("list", {
       name: HOW_IT_WORKS_LABEL.lifecycleList,
     });
@@ -66,6 +83,9 @@ describe("LifecycleView's hidden list", () => {
       expect(rows[index]).toHaveTextContent(lifecycleLane(step.lane).title);
       expect(rows[index]).toHaveTextContent(step.status ?? NO_TICKET_YET);
       expect(rows[index]).toHaveTextContent(step.explanation);
+      expect(rows[index]).toHaveTextContent(
+        `${HOW_IT_WORKS_LABEL.inTheCode}: ${step.code.join(", ")}`,
+      );
     });
   });
 
@@ -103,14 +123,14 @@ describe("LifecycleView's stepping", () => {
       .getAttribute(GRAPH_EMPHASIS_ATTRIBUTE);
 
   it("starts on no step: Previous is disabled, nothing is dimmed", () => {
-    const { container } = render(<LifecycleView />);
+    const { container } = mount();
     expect(previous()).toBeDisabled();
     expect(next()).toBeEnabled();
     expect(container.querySelector(`[${GRAPH_EMPHASIS_ATTRIBUTE}]`)).toBeNull();
   });
 
   it("Next N times lands on the data's Nth step, its title in the panel", () => {
-    render(<LifecycleView />);
+    mount();
     for (let n = 1; n <= 3; n++) fireEvent.click(next());
     const third = LIFECYCLE_STEPS[2]!;
     expect(panel()).toHaveTextContent(third.title);
@@ -121,7 +141,7 @@ describe("LifecycleView's stepping", () => {
   });
 
   it("highlights the step and the edges into it, and dims the rest", () => {
-    const { container } = render(<LifecycleView />);
+    const { container } = mount();
     // The fifth step, Auto-reply sent, has one edge in, from the Claim.
     for (let n = 1; n <= 5; n++) fireEvent.click(next());
     const current = LIFECYCLE_STEPS[4]!;
@@ -140,7 +160,7 @@ describe("LifecycleView's stepping", () => {
   });
 
   it("disables Previous on the first step and Next on the last", () => {
-    render(<LifecycleView />);
+    mount();
     fireEvent.click(next());
     expect(previous()).toBeDisabled();
     for (let n = 1; n < LIFECYCLE_STEPS.length; n++) {
@@ -153,7 +173,7 @@ describe("LifecycleView's stepping", () => {
   });
 
   it("walks with the arrow keys while the canvas has focus", () => {
-    render(<LifecycleView />);
+    mount();
     expect(canvas()).toHaveAttribute("tabindex", "0");
     fireEvent.keyDown(canvas(), { key: "ArrowRight" });
     fireEvent.keyDown(canvas(), { key: "ArrowRight" });
@@ -166,7 +186,7 @@ describe("LifecycleView's stepping", () => {
   });
 
   it("walks on from a step that was clicked", () => {
-    render(<LifecycleView />);
+    mount();
     const claim = lifecycleStep(LIFECYCLE_STEP.claim);
     fireEvent.click(screen.getByRole("button", { name: claim.title }));
     fireEvent.click(next());
@@ -175,7 +195,7 @@ describe("LifecycleView's stepping", () => {
   });
 
   it("marks the current step in the hidden list with aria-current", () => {
-    render(<LifecycleView />);
+    mount();
     fireEvent.click(next());
     fireEvent.click(next());
     const list = screen.getByRole("list", {
@@ -193,7 +213,7 @@ describe("LifecycleView's stepping", () => {
 
 describe("LifecycleView's panel", () => {
   it("explains the step that was selected, with its Status and its note", () => {
-    render(<LifecycleView />);
+    mount();
     const panel = screen.getByRole("region", {
       name: HOW_IT_WORKS_LABEL.details,
     });
@@ -213,5 +233,84 @@ describe("LifecycleView's panel", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("lists the step's repo paths under In the code", () => {
+    mount();
+    const step = lifecycleStep(LIFECYCLE_STEP.agentReplies);
+    fireEvent.click(screen.getByRole("button", { name: step.title }));
+    const panel = screen.getByRole("region", {
+      name: HOW_IT_WORKS_LABEL.details,
+    });
+    expect(panel).toHaveTextContent(HOW_IT_WORKS_LABEL.inTheCode);
+    for (const path of step.code) {
+      expect(within(panel).getByText(path)).toBeInTheDocument();
+    }
+  });
+
+  it("links an admin from Classification to the Pipeline page", () => {
+    session.user = { role: USER_ROLE.admin, isAnonymous: false };
+    const { container, router } = mount();
+    const step = lifecycleStep(LIFECYCLE_STEP.classification);
+    fireEvent.click(screen.getByRole("button", { name: step.title }));
+    const line = container.querySelector(`[${GRAPH_SCREEN_ATTRIBUTE}]`)!;
+    expect(line).toHaveAttribute(GRAPH_SCREEN_ATTRIBUTE, ROUTE.pipeline.path);
+    const link = within(line as HTMLElement).getByRole("link");
+    expect(link).toHaveAttribute("href", ROUTE.pipeline.path);
+    expect(router.state.location.pathname).toBe("/");
+  });
+
+  it("names the Pipeline page to an agent without linking to it", () => {
+    const { container } = mount();
+    const step = lifecycleStep(LIFECYCLE_STEP.classification);
+    fireEvent.click(screen.getByRole("button", { name: step.title }));
+    const line = container.querySelector<HTMLElement>(
+      `[${GRAPH_SCREEN_ATTRIBUTE}]`,
+    )!;
+    expect(line).toHaveTextContent("Pipeline");
+    expect(within(line).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("links a demo session to the showcase Pipeline page", () => {
+    session.user = { role: USER_ROLE.agent, isAnonymous: true };
+    const { container } = mount();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: lifecycleStep(LIFECYCLE_STEP.classification).title,
+      }),
+    );
+    const line = container.querySelector<HTMLElement>(
+      `[${GRAPH_SCREEN_ATTRIBUTE}]`,
+    )!;
+    expect(within(line).getByRole("link")).toHaveAttribute(
+      "href",
+      ROUTE.pipeline.path,
+    );
+  });
+
+  it("links every viewer to the tickets from an agent's step", () => {
+    const { container } = mount();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: lifecycleStep(LIFECYCLE_STEP.agentCloses).title,
+      }),
+    );
+    const line = container.querySelector<HTMLElement>(
+      `[${GRAPH_SCREEN_ATTRIBUTE}]`,
+    )!;
+    expect(within(line).getByRole("link")).toHaveAttribute(
+      "href",
+      ROUTE.tickets.path,
+    );
+  });
+
+  it("names no screen for a step that has none", () => {
+    const { container } = mount();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: lifecycleStep(LIFECYCLE_STEP.emailSent).title,
+      }),
+    );
+    expect(container.querySelector(`[${GRAPH_SCREEN_ATTRIBUTE}]`)).toBeNull();
   });
 });
