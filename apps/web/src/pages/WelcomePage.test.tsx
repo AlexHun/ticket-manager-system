@@ -6,7 +6,12 @@ import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { LIST_PARAM } from "@/lib/list-param";
 import { ROUTE } from "@/lib/routes";
-import { WELCOME_LABEL } from "@/lib/welcome";
+import {
+  WELCOME_LABEL,
+  WELCOME_OWNER,
+  WELCOME_REPOSITORY,
+  WELCOME_STACK,
+} from "@/lib/welcome";
 import { WELCOME_STEPS } from "@/lib/welcome-steps";
 import { WelcomePage } from "./WelcomePage";
 
@@ -75,6 +80,78 @@ describe("WelcomePage", () => {
     renderWelcome();
     expect(tutorialGet).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("WelcomePage's owner and stack", () => {
+  // R3: name, role, a short bio, and LinkedIn, GitHub and email.
+  test("introduces the owner, with a bio and three ways to reach them", () => {
+    renderWelcome();
+    const owner = screen.getByRole("region", {
+      name: WELCOME_LABEL.ownerHeading,
+    });
+
+    expect(owner).toHaveTextContent(WELCOME_OWNER.name);
+    expect(owner).toHaveTextContent(WELCOME_OWNER.role);
+    expect(WELCOME_OWNER.bio.length).toBeGreaterThan(0);
+    for (const paragraph of WELCOME_OWNER.bio) {
+      expect(within(owner).getByText(paragraph)).toBeInTheDocument();
+    }
+    const links = within(owner).getAllByRole("link");
+    expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual(
+      WELCOME_OWNER.links.map((l) => [l.name, l.href]),
+    );
+  });
+
+  // R5: one line naming the stack, and the public repository.
+  test("names the stack in one line and links to the source", () => {
+    renderWelcome();
+    const stack = screen.getByRole("region", {
+      name: WELCOME_LABEL.stackHeading,
+    });
+
+    expect(WELCOME_STACK.match(/[.!?](\s|$)/g)).toHaveLength(1);
+    expect(WELCOME_STACK).toMatch(/React/);
+    expect(WELCOME_STACK).toMatch(/Postgres/);
+    expect(within(stack).getByText(WELCOME_STACK)).toBeInTheDocument();
+    expect(
+      within(stack).getByRole("link", { name: WELCOME_REPOSITORY.name }),
+    ).toHaveAttribute(
+      "href",
+      "https://github.com/AlexHun/ticket-manager-system",
+    );
+  });
+
+  // The PRD's decision: no phone number and no address on the page.
+  test("shows no phone number and no address", () => {
+    const { container } = renderWelcome();
+    const text = container.textContent ?? "";
+
+    expect(text).not.toMatch(/\+?\d[\d\s()-]{7,}\d/);
+    expect(text).not.toMatch(/Palanga|Lithuania|street|tel:/i);
+    expect(container.querySelector('a[href^="tel:"]')).toBeNull();
+  });
+
+  // R12's reading order: the page's heading, then the sections in the order a
+  // screen reader reads them, each under a heading, Start exploring last.
+  test("reads its sections in order, Start exploring last", () => {
+    renderWelcome();
+
+    expect(
+      screen.getAllByRole("heading").map((h) => [h.tagName, h.textContent]),
+    ).toEqual([
+      ["H1", WELCOME_LABEL.title],
+      ["H2", WELCOME_LABEL.howHeading],
+      ["H2", WELCOME_LABEL.stepsHeading],
+      ["H2", WELCOME_LABEL.ownerHeading],
+      ["H2", WELCOME_LABEL.stackHeading],
+    ]);
+    expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual([
+      ...WELCOME_STEPS.map((s) => s.sentence),
+      ...WELCOME_OWNER.links.map((l) => l.name),
+      WELCOME_REPOSITORY.name,
+      WELCOME_LABEL.startExploring,
+    ]);
   });
 });
 
