@@ -2,7 +2,11 @@ import { test, expect, type Page } from "@playwright/test";
 import { DEMO_USAGE_LABEL, USER_ROLE } from "@ticket/shared";
 import { HOW_IT_WORKS_LABEL } from "../../apps/web/src/lib/how-it-works/dom";
 import { ROUTE } from "../../apps/web/src/lib/routes";
-import { WELCOME_LABEL } from "../../apps/web/src/lib/welcome";
+import {
+  WELCOME_LABEL,
+  WELCOME_OWNER,
+  WELCOME_REPOSITORY,
+} from "../../apps/web/src/lib/welcome";
 import { WELCOME_STEPS } from "../../apps/web/src/lib/welcome-steps";
 import { signIn } from "./helpers/auth";
 import { resetDemoUsers, resetTickets, testDb } from "./helpers/db";
@@ -10,12 +14,13 @@ import { startDemoOnWelcome, writeDashboardWalkthrough } from "./helpers/demo";
 import { runDemoReset } from "./helpers/demo-reset";
 
 /**
- * The demo welcome (demo-welcome PRD, slices 1 and 2, with slice 4 folded
+ * The demo welcome (demo-welcome PRD, slices 1 to 3, with slice 4 folded
  * into 2): "Use demo session" lands on a welcome page, Start exploring goes on
  * to the Dashboard and its Tutorial, nothing brings the visitor back but the
  * banner's link, and nobody but a demo session can open it. Its suggested
  * steps, How it works first, each open a screen, and following them moves the
- * admin's card by one session.
+ * admin's card by one session. The owner's links and the source link carry
+ * their targets, and the page holds at 375 px and from the keyboard.
  *
  * Every start comes from an address of its own (`startDemoOnWelcome`, through
  * `helpers/client-address.ts`), so the five-an-hour limit never bites here.
@@ -26,6 +31,8 @@ import { runDemoReset } from "./helpers/demo-reset";
  * has something to show (`writeDashboardWalkthrough`, put back afterwards).
  */
 const WALKTHROUGH_TITLE = "Demo welcome walkthrough (E2E)";
+
+const PHONE = { width: 375, height: 812 };
 
 let restoreWalkthrough: () => Promise<void>;
 
@@ -174,6 +181,88 @@ test.describe("Demo welcome", () => {
       await adminContext.close();
       await resetTickets();
     }
+  });
+
+  // R3, R5: the owner's three links and the repository carry their targets.
+  test("the owner's links and the source link go where they say", async ({
+    page,
+  }) => {
+    await startDemoOnWelcome(page);
+    const owner = page.getByRole("region", {
+      name: WELCOME_LABEL.ownerHeading,
+    });
+    await expect(owner).toContainText(WELCOME_OWNER.name);
+    await expect(owner).toContainText(WELCOME_OWNER.role);
+
+    const hrefs = await owner
+      .getByRole("link")
+      .evaluateAll((links) => links.map((a) => a.getAttribute("href")));
+    expect(hrefs).toEqual([
+      "https://www.linkedin.com/in/aliaksei-hunich",
+      "https://github.com/AlexHun",
+      "mailto:alex.hunich@gmail.com",
+    ]);
+    await expect(
+      page
+        .getByRole("region", { name: WELCOME_LABEL.stackHeading })
+        .getByRole("link", { name: WELCOME_REPOSITORY.name }),
+    ).toHaveAttribute(
+      "href",
+      "https://github.com/AlexHun/ticket-manager-system",
+    );
+  });
+
+  // R12: at 375 px nothing scrolls sideways, neither the window nor the
+  // page's own scroller.
+  test("reads at 375 px with no horizontal scroll", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await startDemoOnWelcome(page);
+    const heading = welcomeHeading(page);
+    await expect(heading).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: WELCOME_LABEL.startExploring }),
+    ).toBeAttached();
+
+    const overflow = await heading.evaluate((h) => {
+      let scroller: HTMLElement | null = h.parentElement;
+      while (scroller && getComputedStyle(scroller).overflowY !== "auto") {
+        scroller = scroller.parentElement;
+      }
+      const root = document.documentElement;
+      return {
+        window: root.scrollWidth - root.clientWidth,
+        page: scroller ? scroller.scrollWidth - scroller.clientWidth : NaN,
+      };
+    });
+    expect(overflow).toEqual({ window: 0, page: 0 });
+  });
+
+  // R12: from a fresh load, Tab reaches every link on the welcome and then
+  // Start exploring, in the order the page reads.
+  test("Tab reaches every link and Start exploring in reading order", async ({
+    page,
+  }) => {
+    await startDemoOnWelcome(page);
+    // A cold load, so focus starts at the top of the document.
+    await page.goto(ROUTE.welcome.path);
+    await expect(welcomeHeading(page)).toBeVisible();
+
+    const expected = [
+      ...WELCOME_STEPS.map((s) => s.sentence),
+      ...WELCOME_OWNER.links.map((l) => l.name),
+      WELCOME_REPOSITORY.name,
+      WELCOME_LABEL.startExploring,
+    ];
+    const reached: string[] = [];
+    for (let presses = 0; presses < 80; presses++) {
+      await page.keyboard.press("Tab");
+      const name = await page.evaluate(
+        () => document.activeElement?.textContent?.trim() ?? "",
+      );
+      if (reached.length > 0 || name === expected[0]) reached.push(name);
+      if (name === WELCOME_LABEL.startExploring) break;
+    }
+    expect(reached).toEqual(expected);
   });
 
   // R10: an admin or an agent lands on the Dashboard, never on the welcome,

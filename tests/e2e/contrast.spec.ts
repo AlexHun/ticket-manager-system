@@ -2,8 +2,10 @@ import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { MESSAGE_DIRECTION, TICKET_STATUS, USER_ROLE } from "@ticket/shared";
 import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
+import { WELCOME_LABEL } from "../../apps/web/src/lib/welcome";
 import { signIn } from "./helpers/auth";
-import { testDb } from "./helpers/db";
+import { resetDemoUsers, testDb } from "./helpers/db";
+import { startDemoOnWelcome } from "./helpers/demo";
 
 /**
  * WCAG AA text contrast on the screens a visitor and an agent see most (#340,
@@ -26,7 +28,7 @@ import { testDb } from "./helpers/db";
  * only.
  */
 
-type Screen = "login" | "dashboard" | "tickets" | "ticket detail";
+type Screen = "login" | "dashboard" | "tickets" | "ticket detail" | "welcome";
 
 /**
  * A violation the check lets through, matched on a fragment of the element's
@@ -43,6 +45,7 @@ const TOLERATED: Record<Screen, Tolerated[]> = {
   dashboard: [],
   tickets: [],
   "ticket detail": [],
+  welcome: [],
 };
 
 let ticketId: number;
@@ -71,6 +74,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await testDb.ticket.deleteMany({ where: { id: ticketId } });
+  await resetDemoUsers();
 });
 
 async function expectAaContrast(page: Page, screen: Screen): Promise<void> {
@@ -134,5 +138,15 @@ test.describe("WCAG AA contrast", () => {
       page.getByRole("link", { name: CUSTOMER_EMAIL }),
     ).toBeVisible();
     await expectAaContrast(page, "ticket detail");
+  });
+
+  // The one screen here only a demo session sees (demo-welcome PRD, R12),
+  // with the demo banner above it.
+  test("welcome", async ({ page }) => {
+    await startDemoOnWelcome(page);
+    await expect(
+      page.getByRole("link", { name: WELCOME_LABEL.startExploring }),
+    ).toBeVisible();
+    await expectAaContrast(page, "welcome");
   });
 });
