@@ -758,5 +758,10 @@
     "version": "0.1.188",
     "date": "2026-10-08",
     "title": "Demo session lands on a welcome page"
+  },
+  {
+    "version": "0.1.189",
+    "date": "2026-10-09",
+    "title": "Demo welcome suggests where to start, counted on the demo card"
   }
 ]
