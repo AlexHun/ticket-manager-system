@@ -763,5 +763,10 @@
     "version": "0.1.189",
     "date": "2026-10-09",
     "title": "Demo welcome suggests where to start, counted on the demo card"
+  },
+  {
+    "version": "0.1.190",
+    "date": "2026-10-09",
+    "title": "Demo welcome introduces the owner and names the stack"
   }
 ]
