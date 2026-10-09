@@ -5,6 +5,7 @@ import {
   DEFAULT_TICKET_SORT,
   FIRST_PAGE,
 } from "@ticket/shared";
+import { LIST_PARAM } from "./list-param";
 import { ROUTE } from "./routes";
 
 /**
@@ -30,20 +31,9 @@ export function listPathFrom(state: unknown): string {
   return `${ROUTE.tickets.path}${listSearch ?? ""}`;
 }
 
-/**
- * The URL param names are the API's param names, so the list URL *is* the
- * request — there is no second vocabulary to keep in step.
- */
-export const LIST_PARAM = {
-  sort: "sort",
-  order: "order",
-  status: "status",
-  category: "category",
-  assignedTo: "assignedTo",
-  q: "q",
-  page: "page",
-  pageSize: "pageSize",
-} as const;
+// The names live in an import-free leaf (#464); every caller still reads them
+// from here.
+export { LIST_PARAM };
 
 /** Server-side defaults. A param holding one of these is dropped from the URL. */
 const DEFAULTS = {

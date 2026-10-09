@@ -3381,7 +3381,7 @@ export interface DemoStatusResponse {
  *
  * The week runs from 00:00 UTC on Monday, the same clock as the nightly reset.
  * A session counts toward the week it started in, so `sessionsOpenedTicket`
- * is always a share of `sessionsStarted`.
+ * and `sessionsFollowedStep` are always a share of `sessionsStarted`.
  */
 export interface DemoUsageResponse {
   /** ISO timestamp: 00:00 UTC on this week's Monday. */
@@ -3390,10 +3390,15 @@ export interface DemoUsageResponse {
   sessionsStarted: number;
   /** How many of those opened at least one ticket. */
   sessionsOpenedTicket: number;
+  /**
+   * How many of those followed at least one of the welcome's suggested steps
+   * (#464, demo-welcome PRD R11).
+   */
+  sessionsFollowedStep: number;
 }
 
 /**
- * The Users page's demo card: its accessible name and its two figures'
+ * The Users page's demo card: its accessible name and its three figures'
  * labels. Here so the E2E spec reads them rather than retyping them, like
  * `DEMO_READ_ONLY_NOTE`.
  */
@@ -3401,6 +3406,7 @@ export const DEMO_USAGE_LABEL = {
   title: "Demo sessions this week",
   sessionsStarted: "Started",
   sessionsOpenedTicket: "Opened a ticket",
+  sessionsFollowedStep: "Followed a step",
 } as const;
 
 /**

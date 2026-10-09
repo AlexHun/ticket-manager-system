@@ -1,16 +1,21 @@
 import { test, expect, type Page } from "@playwright/test";
-import { USER_ROLE } from "@ticket/shared";
+import { DEMO_USAGE_LABEL, USER_ROLE } from "@ticket/shared";
+import { HOW_IT_WORKS_LABEL } from "../../apps/web/src/lib/how-it-works/dom";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import { WELCOME_LABEL } from "../../apps/web/src/lib/welcome";
+import { WELCOME_STEPS } from "../../apps/web/src/lib/welcome-steps";
 import { signIn } from "./helpers/auth";
-import { resetDemoUsers } from "./helpers/db";
+import { resetDemoUsers, resetTickets, testDb } from "./helpers/db";
 import { startDemoOnWelcome, writeDashboardWalkthrough } from "./helpers/demo";
+import { runDemoReset } from "./helpers/demo-reset";
 
 /**
- * The demo welcome (demo-welcome PRD, slice 1): "Use demo session" lands on a
- * welcome page, Start exploring goes on to the Dashboard and its Tutorial,
- * nothing brings the visitor back but the banner's link, and nobody but a demo
- * session can open it.
+ * The demo welcome (demo-welcome PRD, slices 1 and 2, with slice 4 folded
+ * into 2): "Use demo session" lands on a welcome page, Start exploring goes on
+ * to the Dashboard and its Tutorial, nothing brings the visitor back but the
+ * banner's link, and nobody but a demo session can open it. Its suggested
+ * steps, How it works first, each open a screen, and following them moves the
+ * admin's card by one session.
  *
  * Every start comes from an address of its own (`startDemoOnWelcome`, through
  * `helpers/client-address.ts`), so the five-an-hour limit never bites here.
@@ -39,6 +44,24 @@ test.afterAll(async () => {
 
 function welcomeHeading(page: Page) {
   return page.getByRole("heading", { level: 1, name: WELCOME_LABEL.title });
+}
+
+/** The admin's "Followed a step" figure on the Users page's demo card. */
+async function followedStepFigure(admin: Page): Promise<number> {
+  await admin.goto(ROUTE.users.path);
+  const card = admin.getByRole("region", { name: DEMO_USAGE_LABEL.title });
+  await expect(card).toBeVisible();
+  const text = (await card.textContent()) ?? "";
+  const match = new RegExp(
+    `${DEMO_USAGE_LABEL.sessionsFollowedStep}(\\d+)`,
+  ).exec(text)?.[1];
+  return Number(match ?? Number.NaN);
+}
+
+/** Path and query string of the page's current address. */
+function pathAndQuery(page: Page): string {
+  const url = new URL(page.url());
+  return `${url.pathname}${url.search}`;
 }
 
 test.describe("Demo welcome", () => {
@@ -84,6 +107,70 @@ test.describe("Demo welcome", () => {
       await expect(welcomeHeading(other)).toBeVisible();
     } finally {
       await second.close();
+    }
+  });
+
+  // R4, R11, R13: after a night's reset re-creates the showcase with new ids,
+  // every step still opens a real screen, and the visitor who followed them
+  // all is one session on the admin's card.
+  test("every suggested step opens a screen, and the admin's card counts the session once", async ({
+    page,
+    browser,
+  }) => {
+    await resetTickets();
+    await runDemoReset();
+    // So the card reads 0 before and 1 after, whatever earlier specs left.
+    await testDb.demoSessionTally.deleteMany();
+
+    const adminContext = await browser.newContext();
+    try {
+      const admin = await adminContext.newPage();
+      await signIn(admin, USER_ROLE.admin);
+      expect(await followedStepFigure(admin)).toBe(0);
+
+      await startDemoOnWelcome(page);
+      const steps = page.getByRole("region", {
+        name: WELCOME_LABEL.stepsHeading,
+      });
+      for (const step of WELCOME_STEPS) {
+        await page.goto(ROUTE.welcome.path);
+        const recorded = page.waitForResponse(
+          (res) =>
+            res.url().endsWith("/api/demo/welcome-step") &&
+            res.request().method() === "POST",
+        );
+        await steps.getByRole("link", { name: step.sentence }).click();
+        expect((await recorded).status()).toBe(204);
+
+        const target = new URL(step.to, page.url());
+        await expect
+          .poll(() => pathAndQuery(page))
+          .toBe(`${target.pathname}${target.search}`);
+        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        await expect(
+          page.getByRole("heading", { name: "No such page" }),
+        ).toHaveCount(0);
+      }
+
+      // #466: the How it works step opens the page itself, not merely
+      // something other than the not-found page.
+      await page.goto(ROUTE.welcome.path);
+      await steps
+        .getByRole("link", { name: WELCOME_STEPS[0]!.sentence })
+        .click();
+      await expect(page).toHaveURL(ROUTE.howItWorks.path);
+      await expect(
+        page.getByRole("heading", { level: 1, name: "How it works" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("tab", { name: HOW_IT_WORKS_LABEL.architectureTab }),
+      ).toBeVisible();
+
+      // Six clicks over five steps, one session.
+      await expect.poll(() => followedStepFigure(admin)).toBe(1);
+    } finally {
+      await adminContext.close();
+      await resetTickets();
     }
   });
 

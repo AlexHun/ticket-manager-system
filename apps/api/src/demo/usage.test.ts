@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetDb } from "../test/pg";
+import { prisma, resetDb } from "../test/pg";
 import {
   demoUsageThisWeek,
   markDemoTicketOpened,
+  markDemoWelcomeStepFollowed,
   recordDemoStart,
 } from "./usage";
 
@@ -23,11 +24,58 @@ beforeEach(async () => {
 });
 
 describe("demoUsageThisWeek", () => {
-  test("a week nobody used the demo in reads zero and zero", async () => {
+  test("a week nobody used the demo in reads zero across the board", async () => {
     expect(await demoUsageThisWeek(WEDNESDAY)).toEqual({
       weekStartsAt: MONDAY,
       sessionsStarted: 0,
       sessionsOpenedTicket: 0,
+      sessionsFollowedStep: 0,
+    });
+  });
+
+  test("counts only the sessions that followed a welcome step", async () => {
+    await recordDemoStart("visitor-a", WEDNESDAY);
+    await recordDemoStart("visitor-b", WEDNESDAY);
+    await markDemoWelcomeStepFollowed("visitor-b");
+
+    expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
+      sessionsStarted: 2,
+      sessionsOpenedTicket: 0,
+      sessionsFollowedStep: 1,
+    });
+  });
+
+  // R11 asks how many sessions followed *at least one* step: a second step, or
+  // the same one again, changes nothing.
+  test("a session that follows many steps counts once", async () => {
+    await recordDemoStart("visitor-a", WEDNESDAY);
+    for (let i = 0; i < 3; i += 1)
+      await markDemoWelcomeStepFollowed("visitor-a");
+
+    expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
+      sessionsStarted: 1,
+      sessionsFollowedStep: 1,
+    });
+  });
+
+  // The figure lives on the tally row, which names the identity by a copied
+  // id: the nightly reset deleting the identity leaves it where it was.
+  test("the figure survives the identity being deleted", async () => {
+    await prisma.user.create({
+      data: {
+        id: "visitor-a",
+        name: "Demo visitor",
+        email: "visitor-a@demo.example.com",
+        isAnonymous: true,
+      },
+    });
+    await recordDemoStart("visitor-a", WEDNESDAY);
+    await markDemoWelcomeStepFollowed("visitor-a");
+    await prisma.user.delete({ where: { id: "visitor-a" } });
+
+    expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
+      sessionsStarted: 1,
+      sessionsFollowedStep: 1,
     });
   });
 
@@ -64,6 +112,7 @@ describe("demoUsageThisWeek", () => {
       weekStartsAt: MONDAY,
       sessionsStarted: 1,
       sessionsOpenedTicket: 0,
+      sessionsFollowedStep: 0,
     });
     expect(await demoUsageThisWeek(PREVIOUS_SUNDAY_LAST_SECOND)).toMatchObject({
       sessionsStarted: 1,
@@ -104,6 +153,17 @@ describe("markDemoTicketOpened", () => {
     expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
       sessionsStarted: 0,
       sessionsOpenedTicket: 0,
+    });
+  });
+});
+
+describe("markDemoWelcomeStepFollowed", () => {
+  test("an identity with no tally is a no-op", async () => {
+    await markDemoWelcomeStepFollowed("minted-before-the-tally");
+
+    expect(await demoUsageThisWeek(WEDNESDAY)).toMatchObject({
+      sessionsStarted: 0,
+      sessionsFollowedStep: 0,
     });
   });
 });

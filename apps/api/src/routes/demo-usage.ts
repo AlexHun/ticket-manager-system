@@ -5,7 +5,8 @@ import { requireAdmin } from "../middleware/auth";
 
 /**
  * This week's demo figures for the admin (#327, PRD R14): demo sessions
- * started, and how many of them opened a ticket.
+ * started, how many of them opened a ticket, and (#464) how many followed one
+ * of the welcome's suggested steps.
  *
  * **`requireAdmin`, never `requireAdminView`.** These are figures about the
  * visitors, and a visitor is not shown them; the Users page they sit on is
@@ -23,6 +24,7 @@ demoUsageRouter.get(
       weekStartsAt: usage.weekStartsAt.toISOString(),
       sessionsStarted: usage.sessionsStarted,
       sessionsOpenedTicket: usage.sessionsOpenedTicket,
+      sessionsFollowedStep: usage.sessionsFollowedStep,
     });
   },
 );

@@ -10,8 +10,9 @@ import {
 import { useDemoStatus, useDemoUsage } from "@/lib/demo-queries";
 
 /**
- * Whether anybody uses the demo (#327, PRD R14): this week's demo sessions and
- * how many of them opened a ticket.
+ * Whether anybody uses the demo (#327, PRD R14): this week's demo sessions,
+ * how many of them opened a ticket, and (#464, demo-welcome PRD R11) how many
+ * followed one of the welcome's suggested steps.
  *
  * On the Users page because that page is admin-only for a demo session too —
  * it is absent from the demo's nav and its URL is not found — and the API
@@ -41,6 +42,10 @@ export function DemoUsageCard() {
           <Figure
             label={DEMO_USAGE_LABEL.sessionsOpenedTicket}
             value={usage.sessionsOpenedTicket}
+          />
+          <Figure
+            label={DEMO_USAGE_LABEL.sessionsFollowedStep}
+            value={usage.sessionsFollowedStep}
           />
         </dl>
       </CardContent>

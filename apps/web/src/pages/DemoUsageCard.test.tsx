@@ -14,6 +14,7 @@ const THIS_WEEK: DemoUsageResponse = {
   weekStartsAt: "2026-09-21T00:00:00.000Z",
   sessionsStarted: 12,
   sessionsOpenedTicket: 5,
+  sessionsFollowedStep: 3,
 };
 
 beforeEach(() => {
@@ -24,7 +25,7 @@ const renderCard = () =>
   renderRoutes([{ path: "/", element: <DemoUsageCard /> }]);
 
 describe("DemoUsageCard", () => {
-  test("shows the week's demo sessions and how many opened a ticket", async () => {
+  test("shows the week's demo sessions, and how many opened a ticket or followed a step", async () => {
     statusGet.mockResolvedValue({ data: { enabled: true } });
     usageGet.mockResolvedValue({ data: THIS_WEEK });
 
@@ -35,6 +36,7 @@ describe("DemoUsageCard", () => {
     });
     expect(card).toHaveTextContent("Started12");
     expect(card).toHaveTextContent("Opened a ticket5");
+    expect(card).toHaveTextContent("Followed a step3");
   });
 
   // A deployment that takes real mail never offered a demo, and a card of
