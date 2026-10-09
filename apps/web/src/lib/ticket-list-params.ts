@@ -31,8 +31,8 @@ export function listPathFrom(state: unknown): string {
   return `${ROUTE.tickets.path}${listSearch ?? ""}`;
 }
 
-// The names live in an import-free leaf (#464); every caller still reads them
-// from here.
+// The names live in an import-free leaf (#464), which a module the E2E loads
+// imports directly; the list page and its neighbours read them from here.
 export { LIST_PARAM };
 
 /** Server-side defaults. A param holding one of these is dropped from the URL. */

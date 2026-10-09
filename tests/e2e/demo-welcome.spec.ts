@@ -120,6 +120,8 @@ test.describe("Demo welcome", () => {
     await resetTickets();
     await runDemoReset();
     // So the card reads 0 before and 1 after, whatever earlier specs left.
+    // Safe only because `workers: 1` runs specs one at a time:
+    // `demo-session.spec.ts` reads the same card.
     await testDb.demoSessionTally.deleteMany();
 
     const adminContext = await browser.newContext();

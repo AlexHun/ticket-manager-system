@@ -52,9 +52,9 @@ export function useDemoUsage(enabled: boolean) {
  *
  * Fired and never awaited: the step's own link navigates at once, so a slow
  * write never holds the visitor on the welcome. **No toast on failure**, the
- * one departure from frontend.md's mutation rule: the visitor asked to go
- * somewhere and got there, and a lost tally is the owner's figure, not
- * something the visitor can act on.
+ * one departure from frontend.md's mutation rule, recorded there: the visitor
+ * asked to go somewhere and got there, and a lost tally is the owner's figure,
+ * not something the visitor can act on.
  */
 export function useFollowWelcomeStep() {
   return useMutation({

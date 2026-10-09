@@ -12,7 +12,8 @@ import { ROUTE } from "./routes";
  * a filtered list, built from `ROUTE` and `LIST_PARAM` rather than a retyped
  * path. Every screen here is one a demo session may open, and none asks the
  * visitor to change something they cannot: the pipeline simulator and the
- * eval run button are read-only to a demo, so those steps say *see*, not *run*.
+ * eval run button are read-only to a demo, so those steps ask the visitor to
+ * look, never to run anything.
  *
  * No `@/…` alias and no React, for the reason `routes.ts` gives:
  * `tests/e2e/demo-welcome.spec.ts` imports this list and walks it rather than
@@ -46,7 +47,8 @@ export const WELCOME_STEPS: readonly WelcomeStep[] = [
   },
   {
     key: "pipeline",
-    sentence: "See what the pipeline does to a ticket before anyone opens it.",
+    sentence:
+      "Open the pipeline simulator to see what happens to a ticket before anyone opens it.",
     to: ROUTE.pipeline.path,
   },
   {

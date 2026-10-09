@@ -68,7 +68,9 @@ describe("POST /api/demo/welcome-step", () => {
   beforeEach(async () => {
     await resetDb();
     await seedColleagues("admin", "agent", "demoVisitor");
-    await recordDemoStart("u_demo", new Date(Date.now() - 60 * 60 * 1000));
+    // Now, not an hour back: the week starts at 00:00 UTC on Monday, and a
+    // backdated start would fall in last week during that first hour.
+    await recordDemoStart("u_demo", new Date());
   });
 
   test("marks the demo session as having followed a step", async () => {

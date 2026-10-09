@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { TICKET_STATUS } from "@ticket/shared";
@@ -45,7 +45,7 @@ describe("WelcomePage", () => {
   test("says what the product does, in the desk's own terms", () => {
     renderWelcome();
     const steps = within(
-      screen.getByRole("region", { name: "How a ticket travels" }),
+      screen.getByRole("region", { name: WELCOME_LABEL.howHeading }),
     )
       .getAllByRole("listitem")
       .map((li) => li.textContent);
@@ -147,6 +147,20 @@ describe("WelcomePage's suggested steps", () => {
 
     expect(await screen.findByText("how it works")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(ROUTE.howItWorks.path);
+  });
+
+  // A middle click opens the step in a new tab: `auxclick`, not `click`. A
+  // right click is not a follow.
+  test("a middle click records the step, a right click does not", async () => {
+    stepPost.mockResolvedValue({ data: undefined });
+    renderWelcome();
+    const [link] = stepLinks();
+
+    fireEvent(link!, new MouseEvent("auxclick", { bubbles: true, button: 2 }));
+    fireEvent(link!, new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+
+    await waitFor(() => expect(stepPost).toHaveBeenCalled());
+    expect(stepPost).toHaveBeenCalledTimes(1);
   });
 
   test("Start exploring records nothing", async () => {

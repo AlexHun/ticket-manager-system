@@ -31,7 +31,7 @@ export function WelcomePage() {
       <div className="max-w-prose">
         <section aria-labelledby="welcome-how">
           <h2 id="welcome-how" className="text-lg font-semibold">
-            How a ticket travels
+            {WELCOME_LABEL.howHeading}
           </h2>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
             <li>
@@ -61,6 +61,11 @@ export function WelcomePage() {
                 <Link
                   to={step.to}
                   onClick={() => followStep.mutate()}
+                  // A middle click opens the step in a new tab and fires
+                  // `auxclick` rather than `click`; it is a follow too.
+                  onAuxClick={(event) => {
+                    if (event.button === 1) followStep.mutate();
+                  }}
                   className="text-link underline-offset-4 hover:underline"
                 >
                   {step.sentence}
