@@ -15,7 +15,8 @@ import { seedColleagues } from "../test/fixtures";
 import { resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 
-const { markDemoTicketOpened, recordDemoStart } = await import("../demo/usage");
+const { markDemoTicketOpened, markDemoWelcomeStepFollowed, recordDemoStart } =
+  await import("../demo/usage");
 const { demoUsageRouter } = await import("./demo-usage");
 
 const url = serveRouter("/api/demo/usage", demoUsageRouter);
@@ -30,10 +31,11 @@ beforeEach(async () => {
 refusesAgentAndDemo(url, demoUsageRouter, ["GET /"]);
 
 describe("GET /api/demo/usage", () => {
-  test("answers this week's two figures and the Monday they count from", async () => {
+  test("answers this week's three figures and the Monday they count from", async () => {
     await recordDemoStart("visitor-a", new Date());
     await recordDemoStart("visitor-b", new Date());
     await markDemoTicketOpened("visitor-b");
+    await markDemoWelcomeStepFollowed("visitor-a");
 
     const res = await fetch(url("/"), { headers: asCaller("admin") });
     const body = (await res.json()) as DemoUsageResponse;
@@ -42,6 +44,7 @@ describe("GET /api/demo/usage", () => {
     expect(body).toMatchObject({
       sessionsStarted: 2,
       sessionsOpenedTicket: 1,
+      sessionsFollowedStep: 1,
     });
     const monday = new Date(body.weekStartsAt);
     expect(monday.getUTCDay()).toBe(1);

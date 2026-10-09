@@ -3,12 +3,15 @@ import { DAY_MS, utcDay } from "./utc-day";
 
 /**
  * Whether anybody actually uses the demo (#327, PRD R14): demo sessions started
- * this week, and how many of them opened at least one ticket.
+ * this week, how many of them opened at least one ticket, and (#464,
+ * demo-welcome PRD R11) how many followed at least one of the welcome's
+ * suggested steps.
  *
  * One `demo_session_tally` row per demo identity. `auth.ts` writes it when the
  * anonymous plugin creates the identity, `GET /api/tickets/:id` flags it the
- * first time that identity opens a ticket, and `GET /api/demo/usage` counts
- * them for the admin. The row names the identity by a copied id rather than a
+ * first time that identity opens a ticket, `POST /api/demo/welcome-step` the
+ * first time it follows a step, and `GET /api/demo/usage` counts them for the
+ * admin. The row names the identity by a copied id rather than a
  * relation, so the nightly reset deleting the identity leaves the figures
  * where they were.
  */
@@ -51,17 +54,32 @@ export async function markDemoTicketOpened(userId: string): Promise<void> {
   });
 }
 
-/** Counts, where the tally row's `openedTicket` is one session's flag. */
+/**
+ * A demo session followed one of the welcome's suggested steps. The same
+ * conditional write as `markDemoTicketOpened`: only the first step a session
+ * follows matches, so a second step or the same one again writes nothing.
+ */
+export async function markDemoWelcomeStepFollowed(
+  userId: string,
+): Promise<void> {
+  await prisma.demoSessionTally.updateMany({
+    where: { userId, followedWelcomeStep: false },
+    data: { followedWelcomeStep: true },
+  });
+}
+
+/** Counts, where each of the tally row's two flags is one session's. */
 export type DemoUsage = {
   weekStartsAt: Date;
   sessionsStarted: number;
   sessionsOpenedTicket: number;
+  sessionsFollowedStep: number;
 };
 
 /**
- * The week's two figures. A session counts toward the week it *started* in,
- * wherever its first ticket fell, so the second figure is always a share of
- * the first.
+ * The week's three figures. A session counts toward the week it *started* in,
+ * wherever its first ticket or step fell, so the other two figures are always
+ * a share of the first.
  *
  * Bounded by the next Monday rather than by `now`: a row stamped by Postgres'
  * microsecond `now()` in the millisecond this is asked would sort after a JS
@@ -75,11 +93,20 @@ export async function demoUsageThisWeek(now = new Date()): Promise<DemoUsage> {
       lt: new Date(weekStartsAt.getTime() + 7 * DAY_MS),
     },
   };
-  const [sessionsStarted, sessionsOpenedTicket] = await prisma.$transaction([
-    prisma.demoSessionTally.count({ where: thisWeek }),
-    prisma.demoSessionTally.count({
-      where: { ...thisWeek, openedTicket: true },
-    }),
-  ]);
-  return { weekStartsAt, sessionsStarted, sessionsOpenedTicket };
+  const [sessionsStarted, sessionsOpenedTicket, sessionsFollowedStep] =
+    await prisma.$transaction([
+      prisma.demoSessionTally.count({ where: thisWeek }),
+      prisma.demoSessionTally.count({
+        where: { ...thisWeek, openedTicket: true },
+      }),
+      prisma.demoSessionTally.count({
+        where: { ...thisWeek, followedWelcomeStep: true },
+      }),
+    ]);
+  return {
+    weekStartsAt,
+    sessionsStarted,
+    sessionsOpenedTicket,
+    sessionsFollowedStep,
+  };
 }

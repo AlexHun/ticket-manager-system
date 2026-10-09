@@ -1,10 +1,13 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { TICKET_STATUS } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
+import { LIST_PARAM } from "@/lib/list-param";
 import { ROUTE } from "@/lib/routes";
 import { WELCOME_LABEL } from "@/lib/welcome";
+import { WELCOME_STEPS } from "@/lib/welcome-steps";
 import { WelcomePage } from "./WelcomePage";
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
@@ -12,12 +15,14 @@ vi.mock("@/lib/api", () => import("@/test/api-stub"));
 // Taken over from the stub's default so a request for any page's Tutorial
 // would be counted (R9).
 const tutorialGet = apiStub.get("/api/tutorials/:pageKey");
+const stepPost = apiStub.post("/api/demo/welcome-step");
 
 function renderWelcome() {
   return renderRoutes(
     [
       { path: ROUTE.welcome.path, element: <WelcomePage /> },
       { path: ROUTE.dashboard.path, element: <p>dashboard</p> },
+      { path: ROUTE.howItWorks.path, element: <p>how it works</p> },
     ],
     { initialEntries: [ROUTE.welcome.path] },
   );
@@ -39,7 +44,11 @@ describe("WelcomePage", () => {
   // then an auto-reply from the knowledge base or a handoff to an agent.
   test("says what the product does, in the desk's own terms", () => {
     renderWelcome();
-    const steps = screen.getAllByRole("listitem").map((li) => li.textContent);
+    const steps = within(
+      screen.getByRole("region", { name: WELCOME_LABEL.howHeading }),
+    )
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
 
     expect(steps).toHaveLength(3);
     expect(steps[0]).toMatch(/emails/);
@@ -66,5 +75,102 @@ describe("WelcomePage", () => {
     renderWelcome();
     expect(tutorialGet).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("WelcomePage's suggested steps", () => {
+  function stepLinks() {
+    return within(
+      screen.getByRole("region", { name: WELCOME_LABEL.stepsHeading }),
+    ).getAllByRole("link");
+  }
+
+  // R4: 3 to 5 steps, each one sentence linking to a screen, none to a
+  // ticket by id (the nightly reset re-creates those with new ids).
+  test("offers every step in the list, each a one-sentence link", () => {
+    renderWelcome();
+    const links = stepLinks();
+
+    expect(WELCOME_STEPS.length).toBeGreaterThanOrEqual(3);
+    expect(WELCOME_STEPS.length).toBeLessThanOrEqual(5);
+    expect(links.map((a) => a.textContent)).toEqual(
+      WELCOME_STEPS.map((s) => s.sentence),
+    );
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(
+      WELCOME_STEPS.map((s) => s.to),
+    );
+    for (const step of WELCOME_STEPS) {
+      expect(step.sentence.match(/[.!?](\s|$)/g)).toHaveLength(1);
+      expect(step.to).not.toMatch(/^\/tickets\/\d/);
+    }
+  });
+
+  // R13, and #466's criteria: How it works is the first step, read from the
+  // route record, and its sentence says what the page shows.
+  test("leads with How it works", () => {
+    renderWelcome();
+    const [first] = WELCOME_STEPS;
+
+    expect(first?.to).toBe(ROUTE.howItWorks.path);
+    expect(first?.sentence).toMatch(/how the system fits together/);
+    expect(stepLinks()[0]).toHaveAttribute("href", ROUTE.howItWorks.path);
+  });
+
+  test("the resolved-tickets step opens the list filtered to Resolved", () => {
+    const step = WELCOME_STEPS.find((s) => s.key === "resolved-tickets");
+    const url = new URL(step!.to, "http://welcome.test");
+
+    expect(url.pathname).toBe(ROUTE.tickets.path);
+    expect(url.searchParams.get(LIST_PARAM.status)).toBe(
+      TICKET_STATUS.Resolved,
+    );
+  });
+
+  test("following a step records it and goes there", async () => {
+    stepPost.mockResolvedValue({ data: undefined });
+    const { router } = renderWelcome();
+
+    await userEvent.click(stepLinks()[0]!);
+
+    expect(await screen.findByText("how it works")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(ROUTE.howItWorks.path);
+    expect(stepPost).toHaveBeenCalledTimes(1);
+  });
+
+  // The visitor's navigation never waits on the tally: a write that never
+  // answers still lets the click land.
+  test("navigation does not wait for the record to be saved", async () => {
+    stepPost.mockReturnValue(new Promise(() => {}));
+    const { router } = renderWelcome();
+
+    await userEvent.click(stepLinks()[0]!);
+
+    expect(await screen.findByText("how it works")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(ROUTE.howItWorks.path);
+  });
+
+  // A middle click opens the step in a new tab: `auxclick`, not `click`. A
+  // right click is not a follow.
+  test("a middle click records the step, a right click does not", async () => {
+    stepPost.mockResolvedValue({ data: undefined });
+    renderWelcome();
+    const [link] = stepLinks();
+
+    fireEvent(link!, new MouseEvent("auxclick", { bubbles: true, button: 2 }));
+    fireEvent(link!, new MouseEvent("auxclick", { bubbles: true, button: 1 }));
+
+    await waitFor(() => expect(stepPost).toHaveBeenCalled());
+    expect(stepPost).toHaveBeenCalledTimes(1);
+  });
+
+  test("Start exploring records nothing", async () => {
+    renderWelcome();
+
+    await userEvent.click(
+      screen.getByRole("link", { name: WELCOME_LABEL.startExploring }),
+    );
+
+    expect(await screen.findByText("dashboard")).toBeInTheDocument();
+    expect(stepPost).not.toHaveBeenCalled();
   });
 });
