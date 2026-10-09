@@ -1,6 +1,6 @@
 ---
 name: coding-standards
-description: Routes to this repo's coding standards, architecture invariants and measured gotchas, split by area — backend, frontend, security, AI features, testing, deployment, cross-cutting conventions, and the ticket domain model. Use when implementing or changing any code in this repo, reviewing a diff, branch or PR, answering a question about conventions or how something is done here, or working on tickets, statuses, auth, Prisma, pg-boss, email ingestion, the outbox, AI prompts, the knowledge-base auto-reply, shadcn or Radix UI, Tailwind tokens, react-query, CSP headers, Railway deploys, or any test.
+description: Routes to this repo's coding standards, architecture invariants and measured gotchas, split by area — backend, frontend, UI copy, security, AI features, testing, deployment, cross-cutting conventions, and the ticket domain model. Use when implementing or changing any code in this repo, reviewing a diff, branch or PR, answering a question about conventions or how something is done here, or working on tickets, statuses, auth, Prisma, pg-boss, email ingestion, the outbox, AI prompts, the knowledge-base auto-reply, shadcn or Radix UI, Tailwind tokens, react-query, CSP headers, Railway deploys, any test, or any UI text — labels, buttons, tooltips, error messages, empty states, tutorial steps or outbound email wording.
 ---
 
 # Coding standards
@@ -24,6 +24,7 @@ Done when every matching file has been read and every rule in it either applied 
 | [domain.md](../../../docs/standards/domain.md) | Ticket statuses, assignment, the `/pipeline` page, the automated assistant account, handoff routing, reopen behaviour |
 | [backend.md](../../../docs/standards/backend.md) | `apps/api` — Prisma, Express, CORS, Better Auth config, pg-boss jobs, `ingest.ts`, the outbox, outbound mail |
 | [frontend.md](../../../docs/standards/frontend.md) | `apps/web` — shadcn/Radix controls, Tailwind tokens, forms, axios + react-query, sonner, `AiShine`, `/__dev` tooling |
+| [copy.md](../../../docs/standards/copy.md) | Any word a person reads — labels, buttons, headings, tooltips, placeholders, `aria-label`s, empty states, toasts, dialogs, error messages (API ones included), tutorial steps, the invitation and reset emails |
 | [security.md](../../../docs/standards/security.md) | Email HTML, the polish and summarise prompts, CSP, webhook auth, the classifier, the pipeline simulator, anything a stranger's text reaches |
 | [security-auto-reply.md](../../../docs/standards/security-auto-reply.md) | The knowledge-base auto-reply specifically — its prompt, its corpus and `/knowledge`, the six output checks, `composeReply`, the escape rate on `/evals` |
 | [ai-features.md](../../../docs/standards/ai-features.md) | Polish, summarise, classify, auto-reply, `ai/provider.ts`, model settings, structured output, usage logging, retry policy |
