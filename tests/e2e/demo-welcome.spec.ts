@@ -253,8 +253,13 @@ test.describe("Demo welcome", () => {
       WELCOME_REPOSITORY.name,
       WELCOME_LABEL.startExploring,
     ];
+    // Recording starts at the first step: what comes before it is the shell
+    // (skip link, sidebar, banner, top bar), not the welcome. From there every
+    // stop is recorded, so nothing can slip in between or come out of order.
     const reached: string[] = [];
-    for (let presses = 0; presses < 80; presses++) {
+    // Room for the shell's stops and the page's, with plenty to spare.
+    const MAX_PRESSES = 80;
+    for (let presses = 0; presses < MAX_PRESSES; presses++) {
       await page.keyboard.press("Tab");
       const name = await page.evaluate(
         () => document.activeElement?.textContent?.trim() ?? "",

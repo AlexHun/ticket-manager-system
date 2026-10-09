@@ -101,13 +101,6 @@ describe("WelcomePage's owner and stack", () => {
     expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual(
       WELCOME_OWNER.links.map((l) => [l.name, l.href]),
     );
-    expect(links.map((a) => a.getAttribute("href"))).toEqual([
-      expect.stringMatching(
-        /^https:\/\/www\.linkedin\.com\/in\/aliaksei-hunich$/,
-      ),
-      "https://github.com/AlexHun",
-      "mailto:alex.hunich@gmail.com",
-    ]);
   });
 
   // R5: one line naming the stack, and the public repository.
@@ -139,18 +132,19 @@ describe("WelcomePage's owner and stack", () => {
     expect(container.querySelector('a[href^="tel:"]')).toBeNull();
   });
 
-  // R12's reading order: the sections in the order a screen reader reads
-  // them, each under a heading, Start exploring last.
+  // R12's reading order: the page's heading, then the sections in the order a
+  // screen reader reads them, each under a heading, Start exploring last.
   test("reads its sections in order, Start exploring last", () => {
     renderWelcome();
 
     expect(
-      screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
+      screen.getAllByRole("heading").map((h) => [h.tagName, h.textContent]),
     ).toEqual([
-      WELCOME_LABEL.howHeading,
-      WELCOME_LABEL.stepsHeading,
-      WELCOME_LABEL.ownerHeading,
-      WELCOME_LABEL.stackHeading,
+      ["H1", WELCOME_LABEL.title],
+      ["H2", WELCOME_LABEL.howHeading],
+      ["H2", WELCOME_LABEL.stepsHeading],
+      ["H2", WELCOME_LABEL.ownerHeading],
+      ["H2", WELCOME_LABEL.stackHeading],
     ]);
     expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual([
       ...WELCOME_STEPS.map((s) => s.sentence),

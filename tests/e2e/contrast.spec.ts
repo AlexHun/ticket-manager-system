@@ -9,7 +9,8 @@ import { startDemoOnWelcome } from "./helpers/demo";
 
 /**
  * WCAG AA text contrast on the screens a visitor and an agent see most (#340,
- * the Forge Desk PRD's guardrail metric).
+ * the Forge Desk PRD's guardrail metric), and on the welcome a demo session
+ * lands on (demo-welcome PRD, R12).
  *
  * Measured by axe-core's `color-contrast` rule rather than a helper over
  * computed colours: axe resolves the backdrop a glyph actually sits on —
