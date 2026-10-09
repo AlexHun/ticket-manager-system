@@ -1,6 +1,6 @@
 # PRD: Demo welcome — what this is, who built it, what to try
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-08
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-08
 
 ## Problem
 

@@ -1365,7 +1365,8 @@ model DemoAiSpend {
 }
 
 /// One row per demo session, for the admin's weekly usage figures (#327, PRD
-/// R14): when it started and whether it opened a ticket.
+/// R14): when it started, whether it opened a ticket and (#464, demo-welcome
+/// PRD R11) whether it followed one of the welcome's suggested steps.
 ///
 /// **Keyed by the demo identity's id, and deliberately not related to it.**
 /// The nightly reset (`jobs/demo-reset.ts`) deletes finished demo identities,
@@ -1375,12 +1376,14 @@ model DemoAiSpend {
 /// session, so an identity and a session are the same count.
 ///
 /// Written by `demo/usage.ts` only: created by the `user.create.after` hook in
-/// `auth.ts`, flagged by `GET /api/tickets/:id`. Nothing prunes it; a row is a
-/// few dozen bytes and a visitor is a click.
+/// `auth.ts`, flagged by `GET /api/tickets/:id` and `POST
+/// /api/demo/welcome-step`. Nothing prunes it; a row is a few dozen bytes and a
+/// visitor is a click.
 model DemoSessionTally {
-  userId       String   @id
-  startedAt    DateTime @default(now())
-  openedTicket Boolean  @default(false)
+  userId              String   @id
+  startedAt           DateTime @default(now())
+  openedTicket        Boolean  @default(false)
+  followedWelcomeStep Boolean  @default(false)
 
   @@index([startedAt])
   @@map("demo_session_tally")

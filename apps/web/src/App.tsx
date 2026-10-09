@@ -3,6 +3,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ADMIN_SCREEN } from "@ticket/shared";
 import { AdminScreenRoute, adminScreen } from "@/components/AdminScreenRoute";
 import { AppShell } from "@/components/layout/AppShell";
+import { DemoOnlyRoute } from "@/components/DemoOnlyRoute";
 import { RouteFallback } from "@/components/RouteFallback";
 import { LoginPage } from "@/pages/LoginPage";
 import { ForgotPasswordPage } from "@/pages/ForgotPasswordPage";
@@ -247,6 +248,21 @@ export const router = createBrowserRouter([
                   import("@/pages/HowItWorksPage").then((m) => ({
                     Component: m.HowItWorksPage,
                   })),
+              },
+              // Where "Use demo session" lands (demo-welcome PRD). A demo's
+              // page only: anybody else gets the not-found page (R10). UX
+              // only — the page reads no data, so there is no API to guard.
+              {
+                Component: DemoOnlyRoute,
+                children: [
+                  {
+                    path: ROUTE.welcome.path,
+                    lazy: () =>
+                      import("@/pages/WelcomePage").then((m) => ({
+                        Component: m.WelcomePage,
+                      })),
+                  },
+                ],
               },
               // Inside the shell, so an unknown address keeps the sidebar and
               // says so rather than redirecting to the dashboard and

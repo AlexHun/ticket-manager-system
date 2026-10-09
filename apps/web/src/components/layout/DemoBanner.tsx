@@ -1,12 +1,15 @@
+import { Link } from "react-router-dom";
 import { FlaskConical } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
+import { ROUTE } from "@/lib/routes";
 import { useSignOut } from "@/lib/use-sign-out";
 import { viewerOf } from "@/lib/viewer";
+import { WELCOME_LABEL } from "@/lib/welcome";
 import { Button } from "@/components/ui/button";
 
 /**
  * The strip across the shell during a demo session (#324, PRD R13): what this
- * is, that it does not keep, and the way out.
+ * is, that it does not keep, the way back to the welcome, and the way out.
  *
  * Renders nothing for anybody else, so `AppShell` mounts it unconditionally.
  * A named `region` rather than a `banner`: it sits inside the shell's `<main>`,
@@ -38,6 +41,10 @@ export function DemoBanner() {
           at 00:00 UTC.
         </span>
       </p>
+      {/* The way back to the welcome from any page (demo-welcome R7). */}
+      <Button asChild variant="outline" size="xs">
+        <Link to={ROUTE.welcome.path}>{WELCOME_LABEL.bannerLink}</Link>
+      </Button>
       <Button variant="outline" size="xs" onClick={exitDemo}>
         Exit demo
       </Button>

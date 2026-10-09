@@ -753,5 +753,20 @@
     "version": "0.1.187",
     "date": "2026-10-08",
     "title": "How it works zoom buttons and small screens"
+  },
+  {
+    "version": "0.1.188",
+    "date": "2026-10-08",
+    "title": "Demo session lands on a welcome page"
+  },
+  {
+    "version": "0.1.189",
+    "date": "2026-10-09",
+    "title": "Demo welcome suggests where to start, counted on the demo card"
+  },
+  {
+    "version": "0.1.190",
+    "date": "2026-10-09",
+    "title": "Demo welcome introduces the owner and names the stack"
   }
 ]
