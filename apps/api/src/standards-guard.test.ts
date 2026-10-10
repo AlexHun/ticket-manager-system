@@ -306,6 +306,7 @@ const READ_ONLY_AGENTS = [
   "bulk-reader",
   "boilerplate-scribe",
   "security-reviewer",
+  "copy-reviewer",
 ];
 
 /** `better-auth`'s declared range in a manifest, from whichever block has it. */
@@ -402,7 +403,7 @@ const CONFIG_RULES: ConfigRule[] = [
     ],
   },
   {
-    name: "The read-only agents (bulk-reader, boilerplate-scribe, security-reviewer) declare no memory: — a memory scope silently re-adds Read, Write and Edit",
+    name: "The read-only agents (bulk-reader, boilerplate-scribe, security-reviewer, copy-reviewer) declare no memory: — a memory scope silently re-adds Read, Write and Edit",
     standard: "conventions.md",
     read: () =>
       readRepo(
@@ -430,6 +431,7 @@ const CONFIG_RULES: ConfigRule[] = [
         "a.md": AGENT("bulk-reader", "memory: project\n"),
         "b.md": AGENT("boilerplate-scribe"),
         "c.md": AGENT("security-reviewer"),
+        "e.md": AGENT("copy-reviewer"),
       },
       {
         // An agent renamed away is the rule guarding nothing.
@@ -442,6 +444,7 @@ const CONFIG_RULES: ConfigRule[] = [
       "a.md": `${AGENT("bulk-reader")}memory: project is what not to add.\n`,
       "b.md": AGENT("boilerplate-scribe"),
       "c.md": AGENT("security-reviewer"),
+      "e.md": AGENT("copy-reviewer"),
       "d.md": AGENT("playwright-e2e-author", "memory: project\n"),
     },
   },
