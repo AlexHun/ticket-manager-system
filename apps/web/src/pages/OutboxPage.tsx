@@ -146,14 +146,14 @@ export function OutboxPage() {
               them down with `mailConfigured` instead of adding another copy. */}
             <p className="text-xs text-muted-foreground">
               Invitation and password-reset links work for 24 hours, and their
-              emails are cleared once they expire — resend from{" "}
+              emails are cleared once they expire — resend from the{" "}
               <Link
                 to={ROUTE.users.path}
                 className="underline underline-offset-2"
               >
-                Users
+                Team
               </Link>{" "}
-              if one has gone. Ticket replies are kept for 90 days.
+              screen if one has gone. Ticket replies are kept for 90 days.
             </p>
           </div>
         )}

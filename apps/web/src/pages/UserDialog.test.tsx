@@ -73,7 +73,7 @@ function Harness({ users }: { users: User[] }) {
           setOpen(true);
         }}
       >
-        New user
+        New team member
       </button>
       {users.map((u) => (
         <button
@@ -98,7 +98,7 @@ function renderHarness(users: User[] = [baseUser, otherUser]) {
 
 async function openCreate() {
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "New user" }));
+  await user.click(screen.getByRole("button", { name: "New team member" }));
   await screen.findByRole("dialog");
   return user;
 }
@@ -123,13 +123,13 @@ afterEach(() => {
 });
 
 describe("UserDialog — create mode", () => {
-  test("opens with empty form and 'Create user' heading", async () => {
+  test("opens with empty form and 'Add team member' heading", async () => {
     renderHarness();
     await openCreate();
 
     const dialog = screen.getByRole("dialog");
     expect(
-      within(dialog).getByRole("heading", { name: "Create user" }),
+      within(dialog).getByRole("heading", { name: "Add team member" }),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("");
     expect(within(dialog).getByLabelText("Email")).toHaveValue("");
@@ -155,7 +155,7 @@ describe("UserDialog — create mode", () => {
     await user.type(within(dialog).getByLabelText("Name"), "Nora New");
     await user.type(within(dialog).getByLabelText("Email"), "nora@example.com");
     await user.click(
-      within(dialog).getByRole("button", { name: "Create user" }),
+      within(dialog).getByRole("button", { name: "Add team member" }),
     );
 
     await waitFor(() => {
@@ -180,13 +180,13 @@ describe("UserDialog — create mode", () => {
 });
 
 describe("UserDialog — edit mode", () => {
-  test("opens pre-populated with name and email, 'Edit user' heading", async () => {
+  test("opens pre-populated with name and email, 'Edit team member' heading", async () => {
     renderHarness();
     await openEdit("Aaron Agent");
 
     const dialog = screen.getByRole("dialog");
     expect(
-      within(dialog).getByRole("heading", { name: "Edit user" }),
+      within(dialog).getByRole("heading", { name: "Edit team member" }),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("Aaron Agent");
     expect(within(dialog).getByLabelText("Email")).toHaveValue(
@@ -366,7 +366,7 @@ describe("UserDialog — mode transitions", () => {
     await openCreate();
     const dialog = screen.getByRole("dialog");
     expect(
-      within(dialog).getByRole("heading", { name: "Create user" }),
+      within(dialog).getByRole("heading", { name: "Add team member" }),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toHaveValue("");
     expect(within(dialog).getByLabelText("Email")).toHaveValue("");
@@ -386,7 +386,7 @@ describe("UserDialog — mode transitions", () => {
     await openEdit("Beth Beta");
     const reopened = screen.getByRole("dialog");
     expect(
-      within(reopened).getByRole("heading", { name: "Edit user" }),
+      within(reopened).getByRole("heading", { name: "Edit team member" }),
     ).toBeInTheDocument();
     expect(within(reopened).getByLabelText("Name")).toHaveValue("Beth Beta");
   });

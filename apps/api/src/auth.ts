@@ -422,7 +422,7 @@ export const auth = betterAuth({
    * `image`. Ticket history and replies read the name at display time, so a
    * demo visitor could rename "Demo visitor" to a colleague and every trail
    * they left would read as that colleague's. Nobody changes their own profile
-   * this way, demo or not: a name is changed by an admin on the Users screen
+   * this way, demo or not: a name is changed by an admin on the Team screen
    * (`PATCH /api/users/:id`, through the admin plugin's `/admin/update-user`),
    * which writes a `user_edited` entry. Outside the admin plugin's own
    * `/admin/*` routes, which answer only `adminRoles`, it is the only
@@ -433,7 +433,7 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/update-user") {
         throw new APIError("FORBIDDEN", {
-          message: "Profiles are changed by an admin on the Users screen",
+          message: "Profiles are changed by an admin on the Team screen.",
         });
       }
       if (ctx.path !== "/sign-in/anonymous") return;

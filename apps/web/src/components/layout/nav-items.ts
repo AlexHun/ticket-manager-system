@@ -64,7 +64,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: ROUTE.tickets.path, label: "Tickets", icon: TicketIcon },
   {
     to: ROUTE.users.path,
-    label: "Users",
+    label: "Team",
     icon: UsersIcon,
     screen: ADMIN_SCREEN.users,
   },

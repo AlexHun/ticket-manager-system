@@ -128,7 +128,7 @@ describe("AppSidebar navigation", () => {
     "Activity",
     "Tutorials",
   ];
-  const PRIVATE = ["Users", "Outbox"];
+  const PRIVATE = ["Team", "Outbox"];
 
   function navLinks(): string[] {
     return screen.getAllByRole("link").map((link) => link.textContent ?? "");
@@ -143,7 +143,7 @@ describe("AppSidebar navigation", () => {
   });
 
   // R3: the showcase screens come from `isAnonymous`, and the role is agent.
-  test("a demo session sees the showcase screens and not Users or Outbox", () => {
+  test("a demo session sees the showcase screens and not Team or Outbox", () => {
     session.user = {
       id: "demo-1",
       name: "Demo visitor",

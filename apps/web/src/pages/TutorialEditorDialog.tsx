@@ -144,8 +144,8 @@ export function TutorialEditorDialog({
         <DialogHeader>
           <DialogTitle>{label}</DialogTitle>
           <DialogDescription>
-            Shown once to a user who has not seen this page's tutorial yet, or
-            whose version is out of date. Editing the wording here never
+            Shown once to a team member who has not seen this page's tutorial
+            yet, or whose version is out of date. Editing the wording here never
             re-triggers it — only a developer bumping the page's version does
             that.
           </DialogDescription>

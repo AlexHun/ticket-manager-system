@@ -1,7 +1,7 @@
 /**
  * Unit tests for `./demo-usage` — the admin's weekly demo figures on the wire
  * (#327, PRD R14). The counting itself is `../demo/usage.test.ts`'s; this is
- * the shape the Users page reads.
+ * the shape the Team page reads.
  *
  * The guard is the real `requireAdmin` (#366), so the request asks as the
  * seeded admin.

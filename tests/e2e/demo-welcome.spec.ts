@@ -53,7 +53,7 @@ function welcomeHeading(page: Page) {
   return page.getByRole("heading", { level: 1, name: WELCOME_LABEL.title });
 }
 
-/** The admin's "Followed a step" figure on the Users page's demo card. */
+/** The admin's "Followed a step" figure on the Team page's demo card. */
 async function followedStepFigure(admin: Page): Promise<number> {
   await admin.goto(ROUTE.users.path);
   const card = admin.getByRole("region", { name: DEMO_USAGE_LABEL.title });

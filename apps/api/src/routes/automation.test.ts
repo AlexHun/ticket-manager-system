@@ -230,7 +230,7 @@ describe("PATCH /api/automation/handoff — the pair", () => {
 
     expect(sent.status).toBe(400);
     expect(sent.body.error).toBe(
-      "Only the 'a specific person' target takes a user",
+      "Only the 'a specific person' target takes a team member.",
     );
     expect(await settingsRow()).toBeNull();
   });

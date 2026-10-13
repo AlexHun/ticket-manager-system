@@ -18,9 +18,9 @@ export const DEMO_BUTTON = { name: "Use demo session" };
  * The screens it says `true` for are where `showcaseReads` takes the demo
  * spec's showcase reads from.
  *
- * Users and Outbox are listed too, though a demo sees neither: should the table
+ * Team and Outbox are listed too, though a demo sees neither: should the table
  * ever open one, its reads join the showcase at once, and the spec's literal
- * 403s for them go red beside it. The demo usage figures drawn on Users are
+ * 403s for them go red beside it. The demo usage figures drawn on Team are
  * not here, for `apps/api/src/test/boundary.ts`'s reason: they stay admin
  * only whatever the table says.
  *

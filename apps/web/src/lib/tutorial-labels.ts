@@ -15,7 +15,7 @@ export const TUTORIAL_PAGE_LABEL: Record<TutorialPageKey, string> = {
   [TUTORIAL_PAGE_KEY.ticketDetail]: "Ticket detail",
   [TUTORIAL_PAGE_KEY.pipeline]: "Pipeline",
   [TUTORIAL_PAGE_KEY.knowledge]: "Knowledge base",
-  [TUTORIAL_PAGE_KEY.users]: "Users",
+  [TUTORIAL_PAGE_KEY.users]: "Team",
   [TUTORIAL_PAGE_KEY.activity]: "Activity",
   [TUTORIAL_PAGE_KEY.outbox]: "Outbox",
   [TUTORIAL_PAGE_KEY.evals]: "Evals",

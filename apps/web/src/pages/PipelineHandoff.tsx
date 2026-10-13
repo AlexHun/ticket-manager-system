@@ -22,6 +22,7 @@ import { api } from "@/lib/api";
 import { automationKeys } from "@/lib/automation-queries";
 import { extractErrorMessage } from "@/lib/errors";
 import { useAssigneesQuery } from "@/lib/use-assignees";
+import { TEAM_LOAD_ERROR } from "@/lib/use-users";
 
 /**
  * Where a ticket goes once the assistant is finished with it.
@@ -256,7 +257,7 @@ function HandoffStatus({
   if (rosterError) {
     return (
       <p className="mt-1.5 text-xs text-destructive" role="alert">
-        Couldn't load the list of users.
+        {TEAM_LOAD_ERROR}
       </p>
     );
   }

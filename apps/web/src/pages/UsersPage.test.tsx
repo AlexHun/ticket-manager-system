@@ -1,7 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { USER_ROLE, type User } from "@ticket/shared";
+import {
+  ADMIN_DELETE_REFUSED_MESSAGE,
+  USER_ROLE,
+  type User,
+} from "@ticket/shared";
 import { toast } from "@/components/ui/sonner";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
@@ -86,7 +90,7 @@ function renderUsersPage() {
 
 async function openNewUserDialog() {
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "New user" }));
+  await user.click(screen.getByRole("button", { name: "New team member" }));
   return user;
 }
 
@@ -109,8 +113,8 @@ describe("UsersPage", () => {
     usersGet.mockReturnValue(new Promise(() => {}));
     renderUsersPage();
 
-    expect(screen.getByLabelText("Loading users")).toBeInTheDocument();
-    expect(screen.getByLabelText("Loading users")).toHaveAttribute(
+    expect(screen.getByLabelText("Loading the team")).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading the team")).toHaveAttribute(
       "aria-busy",
       "true",
     );
@@ -128,17 +132,17 @@ describe("UsersPage", () => {
     expect(screen.getByText("agent@example.com")).toBeInTheDocument();
 
     // Skeleton gone
-    expect(screen.queryByLabelText("Loading users")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Loading the team")).not.toBeInTheDocument();
   });
 
   // #111: the mechanism is covered in table-frame.test.tsx; this holds the name
   // this page gives it, which is the half that can drift per call site.
-  test("puts the roster in a keyboard-reachable region named Users", async () => {
+  test("puts the roster in a keyboard-reachable region named Team", async () => {
     usersGet.mockResolvedValue({ data: { users: [adminUser, agentUser] } });
     renderUsersPage();
 
     expect(await screen.findByText("Ada Admin")).toBeInTheDocument();
-    const frame = screen.getByRole("region", { name: "Users" });
+    const frame = screen.getByRole("region", { name: "Team" });
     expect(frame).toHaveAttribute("tabindex", "0");
     expect(frame).toContainElement(screen.getByRole("table"));
   });
@@ -196,16 +200,21 @@ describe("UsersPage", () => {
     usersGet.mockResolvedValue({ data: { users: [] } });
     renderUsersPage();
 
-    expect(await screen.findByText("No users found.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "Nobody on the Team yet. People you add with New team member appear here.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  test("renders an alert when the request fails", async () => {
+  test("renders an alert when the request fails, without the raw error", async () => {
     usersGet.mockRejectedValue(new Error("boom"));
     renderUsersPage();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("boom");
+    expect(alert).toHaveTextContent("Couldn't load the team. Try again.");
+    expect(alert).not.toHaveTextContent("boom");
     // Table must not render
     expect(screen.queryByText("Ada Admin")).not.toBeInTheDocument();
   });
@@ -230,7 +239,7 @@ describe("UsersPage", () => {
     usersGet.mockReturnValue(new Promise(() => {}));
     renderUsersPage();
 
-    const skeleton = screen.getByLabelText("Loading users");
+    const skeleton = screen.getByLabelText("Loading the team");
     for (const header of ["Name", "Email", "Role", "Created", "Actions"]) {
       expect(
         within(skeleton).getByRole("columnheader", { name: header }),
@@ -243,20 +252,22 @@ describe("UsersPage", () => {
     renderUsersPage();
 
     await waitFor(() => {
-      expect(screen.queryByLabelText("Loading users")).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Loading the team"),
+      ).not.toBeInTheDocument();
     });
     expect(screen.getByText("Ada Admin")).toBeInTheDocument();
   });
 });
 
 describe("UsersPage — create user", () => {
-  test("renders the New user button above the table", async () => {
+  test("renders the New team member button above the table", async () => {
     usersGet.mockResolvedValue({ data: { users: [adminUser] } });
     renderUsersPage();
 
     await screen.findByText("Ada Admin");
     expect(
-      screen.getByRole("button", { name: "New user" }),
+      screen.getByRole("button", { name: "New team member" }),
     ).toBeInTheDocument();
   });
 
@@ -268,12 +279,12 @@ describe("UsersPage — create user", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(
-      within(dialog).getByRole("heading", { name: "Create user" }),
+      within(dialog).getByRole("heading", { name: "Add team member" }),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Name")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Email")).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("button", { name: "Create user" }),
+      within(dialog).getByRole("button", { name: "Add team member" }),
     ).toBeInTheDocument();
   });
 
@@ -287,7 +298,7 @@ describe("UsersPage — create user", () => {
     await user.type(within(dialog).getByLabelText("Name"), "Jo");
     await user.type(within(dialog).getByLabelText("Email"), "ok@example.com");
     await user.click(
-      within(dialog).getByRole("button", { name: "Create user" }),
+      within(dialog).getByRole("button", { name: "Add team member" }),
     );
 
     expect(
@@ -306,7 +317,7 @@ describe("UsersPage — create user", () => {
     await user.type(within(dialog).getByLabelText("Name"), "Valid Name");
     await user.type(within(dialog).getByLabelText("Email"), "not-an-email");
     await user.click(
-      within(dialog).getByRole("button", { name: "Create user" }),
+      within(dialog).getByRole("button", { name: "Add team member" }),
     );
 
     expect(
@@ -330,7 +341,7 @@ describe("UsersPage — create user", () => {
     await user.type(within(dialog).getByLabelText("Name"), "Nora New");
     await user.type(within(dialog).getByLabelText("Email"), "nora@example.com");
     await user.click(
-      within(dialog).getByRole("button", { name: "Create user" }),
+      within(dialog).getByRole("button", { name: "Add team member" }),
     );
 
     await waitFor(() => {
@@ -373,7 +384,7 @@ describe("UsersPage — create user", () => {
     await user.type(within(dialog).getByLabelText("Name"), "Dup Name");
     await user.type(within(dialog).getByLabelText("Email"), "dup@example.com");
     await user.click(
-      within(dialog).getByRole("button", { name: "Create user" }),
+      within(dialog).getByRole("button", { name: "Add team member" }),
     );
 
     expect(
@@ -399,7 +410,7 @@ describe("UsersPage — delete user", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("opens a confirmation dialog with the user's name and email", async () => {
+  test("opens a confirmation dialog that says what the delete does", async () => {
     usersGet.mockResolvedValue({ data: { users: [agentUser] } });
     renderUsersPage();
     await screen.findByText("Aaron Agent");
@@ -411,10 +422,13 @@ describe("UsersPage — delete user", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(
-      within(dialog).getByRole("heading", { name: "Delete user" }),
+      within(dialog).getByRole("heading", { name: "Delete team member" }),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText(/Aaron Agent/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/agent@example\.com/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Delete Aaron Agent (agent@example.com)? Their sessions end and they leave the Team list.",
+      ),
+    ).toBeInTheDocument();
   });
 
   test("Cancel closes the dialog without calling DELETE", async () => {
@@ -450,7 +464,7 @@ describe("UsersPage — delete user", () => {
     );
     const dialog = await screen.findByRole("dialog");
     await user.click(
-      within(dialog).getByRole("button", { name: "Delete user" }),
+      within(dialog).getByRole("button", { name: "Delete team member" }),
     );
 
     await waitFor(() => {
@@ -465,6 +479,9 @@ describe("UsersPage — delete user", () => {
       expect(screen.queryByText("Aaron Agent")).not.toBeInTheDocument();
     });
     expect(usersGet).toHaveBeenCalledTimes(2);
+    expect(toast.success).toHaveBeenCalledWith(
+      'Team member "Aaron Agent" deleted',
+    );
   });
 
   test("keeps the dialog open and shows the server error when DELETE fails", async () => {
@@ -473,7 +490,9 @@ describe("UsersPage — delete user", () => {
       isAxiosError: true,
       response: {
         status: 403,
-        data: { error: "Admin users cannot be deleted" },
+        data: {
+          error: ADMIN_DELETE_REFUSED_MESSAGE,
+        },
       },
     });
     userDelete.mockRejectedValue(axiosError);
@@ -487,15 +506,40 @@ describe("UsersPage — delete user", () => {
     );
     const dialog = await screen.findByRole("dialog");
     await user.click(
-      within(dialog).getByRole("button", { name: "Delete user" }),
+      within(dialog).getByRole("button", { name: "Delete team member" }),
     );
 
     expect(
-      await within(dialog).findByText("Admin users cannot be deleted"),
+      await within(dialog).findByText(ADMIN_DELETE_REFUSED_MESSAGE),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     // No refetch on failure
     expect(usersGet).toHaveBeenCalledTimes(1);
+  });
+
+  test("falls back to a Couldn't sentence when the API sends no message", async () => {
+    usersGet.mockResolvedValue({ data: { users: [agentUser] } });
+    // Not an `Error`: `extractErrorMessage` prefers an error's own message, so
+    // only a rejection with none reaches the fallback.
+    userDelete.mockRejectedValue({});
+
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Delete Aaron Agent" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Delete team member" }),
+    );
+
+    expect(
+      await within(dialog).findByText(
+        "Couldn't delete the team member. Try again.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 
@@ -567,7 +611,10 @@ describe("UsersPage — resend invite", () => {
     invitePost.mockRejectedValue(
       Object.assign(new Error("Request failed"), {
         isAxiosError: true,
-        response: { status: 404, data: { error: "User not found" } },
+        response: {
+          status: 404,
+          data: { error: "Couldn't find that team member." },
+        },
       }),
     );
 
@@ -580,7 +627,9 @@ describe("UsersPage — resend invite", () => {
     );
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("User not found");
+      expect(toast.error).toHaveBeenCalledWith(
+        "Couldn't find that team member.",
+      );
     });
     expect(toast.success).not.toHaveBeenCalled();
   });

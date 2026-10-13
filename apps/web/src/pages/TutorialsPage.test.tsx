@@ -117,7 +117,7 @@ describe("TutorialsPage", () => {
     expect(await screen.findByText("Not written yet")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Nothing is shown to users on this page until it is written.",
+        "Nothing is shown to the team on this page until it is written.",
       ),
     ).toBeInTheDocument();
   });

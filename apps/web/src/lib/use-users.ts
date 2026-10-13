@@ -6,6 +6,12 @@ import { api } from "@/lib/api";
 export const USERS_QUERY_KEY = ["users"];
 
 /**
+ * What a screen says when the roster would not load: the Team page, the
+ * assignee picker and the pipeline's handoff control. One sentence, one place.
+ */
+export const TEAM_LOAD_ERROR = "Couldn't load the team. Try again.";
+
+/**
  * The full user table — admins, agents and the automated assistant account.
  *
  * Admin-only (`GET /api/users`), unlike `useAssigneesQuery`: that roster
