@@ -28,21 +28,24 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 "Failed" stays only for an email the mail provider actually refused, which is a different delivery from Undeliverable. A demo session's withheld email is a third state and keeps a label of its own; it is not Undeliverable either.
 
+**"queue" stays for a background job's queue** ("Queued, or being classified now", "the queue of jobs"), so a reviewer does not flag it: that is pg-boss's queue, a thing no glossary term names, and rewording it would trade an accurate word for a vaguer one. The glossary's senses stay banned — the Backlog, the Outbox and a Planned run are never a queue.
+
 - **The people who sign in are the Team.** The admin screen that lists them is **Team**, not Users; a person on it is a **team member**, and the record they sign in with is their **account**. "user" does not appear in UI text. The route path is not copy and does not have to change with the label.
 - **A Customer is never a user, requester or client**, and an Agent is never an operator.
 - **The product is `BRAND_NAME`** ("The Great Forge Desk", `apps/web/src/lib/brand.ts`) wherever a sentence names it; `BRAND_SHORT` only where space is tight. Not "the support desk", not "the system" in a sentence that means the product.
-- **Statuses keep their capital** as proper names of a state: New, Processing, Open, Resolved, Closed. A status word used as an ordinary adjective in running prose is lower case ("3 open tickets") — the capital marks the state, not the word.
+- **Statuses keep their capital** as proper names of a state: New, Processing, Open, Resolved, Closed. A status word used as an ordinary adjective in running prose is lower case ("3 open tickets", meaning 3 in Open) — the capital marks the state, not the word. That adjective never stands for the Backlog: the Backlog is New and Open together, so a count of it is "Backlog" or "the ticket list". "Open tickets" for the Backlog is on the glossary's _Avoid_ list, and it reads as excluding every New ticket.
 - Machine-written work is the **assistant's**. Not "the bot", not "AI" as a noun for the actor; "AI summary" and "AI polish" are feature names and stay.
 
 ## Spelling and mechanics
 
 - **British English.** The UI already is ("Uncategorised", "Summarise", "cancelled", "centre"); the inventory found the dashboard's "Customize" and "Done customizing" and the tutorial editor's "centered". -ise, not -ize; -our, -re, -ll- ("cancelled", "labelled").
-- **Sentence case everywhere** — buttons, headings, tabs, menu items, dialog titles, column headers: "Send reply", "Knowledge base", "Planned runs". Only proper names and the statuses above take capitals.
+- **Sentence case everywhere** — buttons, headings, tabs, menu items, dialog titles, column headers: "Send reply", "Knowledge base", "Planned runs". Only proper names and the statuses above take capitals. **A glossary term in prose is not a proper name**: on the How it works page it is "handoff", "revision" and "the nightly reset", not "Handoff" or "The Nightly reset"; statuses, `BRAND_NAME` and named features ("AI summary", "AI polish") keep theirs. A capital on every glossary word would make the statuses' capital mean nothing.
 - **A button is a verb and its object**: "Save changes", "Archive article", "Send reset link". A bare verb is fine where the object is the whole surface ("Save" in a one-field form, "Next" in a stepper).
 - **A button in progress keeps its verb and ends in a single ellipsis character**: "Saving…", "Sending…" — `…`, not three dots.
 - **A toast reports what happened, in the past tense, without a "successfully"**: "Draft polished", "Schedule paused".
 - **Plurals agree with the number.** Write both forms (`n === 1 ? "ticket" : "tickets"`); never append a bare `s` to a word whose plural is not just `s`, and never print "1 tickets".
-- **Dashes:** an em dash with a space each side ( — ) joins two clauses, as the UI already does; an en dash with no spaces marks a range ("3–7 days", "1–4h").
+- **Dashes:** an em dash with a space each side ( — ) joins two clauses, as the UI already does; an en dash with no spaces marks a range ("3–7 days", "1–4h"), full dates included ("9–12 Oct 2026", "30 Sep–2 Oct 2026"), with each shared part written once — one range mark whatever its ends are, rather than a second rule for dates.
+- **Dates are British order**: "9 Oct 2026", not "Oct 9, 2026" — the spelling is British, and a US-order date beside it reads as a different locale's leftover. Seen in: the Activity date filter (`apps/web/src/pages/ActivityFilters.tsx`), whose US-order range is also joined by a spaced dash.
 - **Numbers** are digits in UI chrome ("Page 2 of 5", "24 hours"); prose may spell a small count out ("five times each") when that reads better.
 
 ## Errors and empty states
@@ -51,7 +54,8 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 - Start with "Couldn't", not "Failed to", "Error:" or "Oops".
 - **A fallback passed to `extractErrorMessage` follows the same shape**, because it is what the reader sees whenever the API sends no message.
-- **An API message that reaches the UI is copy.** Same shape, same vocabulary; "Invalid page size" and the other query-parameter messages a form can never trigger are exempt, since only a hand-edited URL reaches them.
+- **An API or validation message that reaches the UI is copy.** Same shape, same vocabulary, and it **ends in a full stop** ("You cannot approve your own revision.", not "Article not found"), as the "Couldn't load tickets. Try again." shape does — the reader sees it as a sentence beside sentences.
+- **Exempt: a message only a hand-edited URL, a server-populated picker or a broken client can produce.** That is "Invalid page size" and the other query-parameter messages, and the body and path checks behind controls that only offer valid values: "Invalid request", "Invalid assignee", "Invalid status", the dashboard-layout checks (`packages/core/src/schemas/dashboard.ts`) and the checks on an uploaded case file (`packages/core/src/schemas/evals.ts`, "Two cases share an id"). No reader who uses the app as built ever sees one, so rewording them churns tests for nobody; one a person can reach by typing is copy again.
 - No status codes or `err.message` in the sentence a person reads (the Users page error appends one today).
 - **An empty state says what will fill it**, not only that it is empty: "Nothing here yet. Emails appear as the desk writes them." Not jokes ("Inbox zero").
 - **A destructive dialog says what will happen, not "Are you sure?"**: "Delete Ana Silva? Their sessions end and they leave the Team list."
