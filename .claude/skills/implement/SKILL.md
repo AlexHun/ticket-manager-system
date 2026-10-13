@@ -35,7 +35,10 @@ invoke it.
    the PRD is citation-checked forever.
 6. **Commit** after the self-check in CLAUDE.md.
 7. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
-   `origin/develop`. Fix every finding, or write down why one stands.
+   `origin/develop`. Fix every finding, or write down why one stands. A
+   `/chain` worker (`chain-worker-s`, `-m`, `-l`) skips this step: the
+   conductor runs `ticket-reviewer` on the green PR, so the ticket is reviewed
+   once, not twice.
 8. **Ship.** Push, open a PR into `develop` whose body says `Closes #<n>`, and take it to
    green in CI as CLAUDE.md's Workflow describes.
 
