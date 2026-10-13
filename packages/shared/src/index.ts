@@ -3443,3 +3443,11 @@ export const DEMO_START_LIMIT_MESSAGE =
  * reads the same copy the page renders; the API's 403 is the control.
  */
 export const DEMO_READ_ONLY_NOTE = "Read-only in the demo.";
+
+/**
+ * `DELETE /api/users/:id`'s 403 for an admin's account. Shown in the Team
+ * page's delete dialog, and read by the API and E2E suites, so it lives here
+ * rather than as a literal each of them restates.
+ */
+export const ADMIN_DELETE_REFUSED_MESSAGE =
+  "An admin cannot be deleted. Change their role to Agent first.";

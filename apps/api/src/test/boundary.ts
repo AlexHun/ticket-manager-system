@@ -8,7 +8,7 @@
  * - `refusesAgentAndDemo` — an admin-only route (`requireAdmin`) answers 403 to
  *   an agent and to a demo visitor. Every admin write is one, and so is the
  *   demo usage figures' read: drawn on Team, but kept off `screenReads`
- *   because it stays `requireAdmin` whatever the table says about Users.
+ *   because it stays `requireAdmin` whatever the table says about Team.
  * - `screenReads` — a screen's reads, named by their `AdminScreen` (#368).
  *   Whether they are showcase reads (`requireAdminView`: 200 to a demo
  *   visitor, 403 to an agent) or admin only, like a write, is

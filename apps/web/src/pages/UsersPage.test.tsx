@@ -1,7 +1,11 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { USER_ROLE, type User } from "@ticket/shared";
+import {
+  ADMIN_DELETE_REFUSED_MESSAGE,
+  USER_ROLE,
+  type User,
+} from "@ticket/shared";
 import { toast } from "@/components/ui/sonner";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
@@ -487,8 +491,7 @@ describe("UsersPage — delete user", () => {
       response: {
         status: 403,
         data: {
-          error:
-            "An admin cannot be deleted. Change their role to Agent first.",
+          error: ADMIN_DELETE_REFUSED_MESSAGE,
         },
       },
     });
@@ -507,9 +510,7 @@ describe("UsersPage — delete user", () => {
     );
 
     expect(
-      await within(dialog).findByText(
-        "An admin cannot be deleted. Change their role to Agent first.",
-      ),
+      await within(dialog).findByText(ADMIN_DELETE_REFUSED_MESSAGE),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     // No refetch on failure

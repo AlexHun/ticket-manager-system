@@ -15,6 +15,7 @@ import { extractErrorMessage } from "@/lib/errors";
 import { ticketAssigneesKey } from "@/lib/ticket-queries";
 import { useAssigneesQuery } from "@/lib/use-assignees";
 import { useTicketField } from "@/lib/use-ticket-field";
+import { TEAM_LOAD_ERROR } from "@/lib/use-users";
 
 /** The trigger's id, so the detail page's `<dt>` can label it. */
 export const ASSIGNEE_SELECT_ID = "ticket-assignee";
@@ -186,7 +187,7 @@ function AssigneeStatus({
   if (rosterError) {
     return (
       <p className="text-xs text-destructive" role="alert">
-        Couldn't load the team. Try again.
+        {TEAM_LOAD_ERROR}
       </p>
     );
   }

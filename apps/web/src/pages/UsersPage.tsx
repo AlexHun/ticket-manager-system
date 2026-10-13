@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { BRAND_NAME } from "@/lib/brand";
-import { useUsersQuery } from "@/lib/use-users";
+import { TEAM_LOAD_ERROR, useUsersQuery } from "@/lib/use-users";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DemoUsageCard } from "./DemoUsageCard";
 import { UserDialog } from "./UserDialog";
@@ -64,7 +64,7 @@ export function UsersPage() {
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
-            Couldn't load the team. Try again.
+            {TEAM_LOAD_ERROR}
           </p>
         )}
 

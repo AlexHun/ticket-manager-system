@@ -1,4 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
+import { ADMIN_DELETE_REFUSED_MESSAGE } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { API_URL } from "./helpers/env";
 
@@ -142,7 +143,7 @@ test.describe("Users API — admin-delete guard", () => {
     );
     expect(res.status()).toBe(403);
     await expect(res.json()).resolves.toEqual({
-      error: "An admin cannot be deleted. Change their role to Agent first.",
+      error: ADMIN_DELETE_REFUSED_MESSAGE,
     });
   });
 });

@@ -6,6 +6,7 @@ import type { z, ZodType } from "zod";
 import { createUserSchema, updateUserSchema } from "@ticket/core";
 import {
   ADMIN_ACTIVITY_ACTION,
+  ADMIN_DELETE_REFUSED_MESSAGE,
   TICKET_ACTIVITY_ACTION,
   USER_ROLE,
 } from "@ticket/shared";
@@ -410,9 +411,7 @@ usersRouter.delete(
     }
 
     if (target.role === USER_ROLE.admin) {
-      res.status(403).json({
-        error: "An admin cannot be deleted. Change their role to Agent first.",
-      });
+      res.status(403).json({ error: ADMIN_DELETE_REFUSED_MESSAGE });
       return;
     }
 

@@ -86,6 +86,7 @@ import {
   test,
 } from "bun:test";
 import {
+  ADMIN_DELETE_REFUSED_MESSAGE,
   ADMIN_SCREEN,
   DEMO_START_LIMIT_MESSAGE,
   OUTBOUND_EMAIL_KIND,
@@ -980,9 +981,7 @@ describe("DELETE /api/users/:id", () => {
     const sent = await del(`/${OTHER_ADMIN.id}`);
 
     expect(sent.status).toBe(403);
-    expect(sent.body.error).toBe(
-      "An admin cannot be deleted. Change their role to Agent first.",
-    );
+    expect(sent.body.error).toBe(ADMIN_DELETE_REFUSED_MESSAGE);
     expect(await userRow(OTHER_ADMIN.id)).toMatchObject({ deletedAt: null });
     expect(await adminActivityRows()).toEqual([]);
   });
