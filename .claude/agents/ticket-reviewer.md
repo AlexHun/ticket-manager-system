@@ -3,6 +3,7 @@ name: "ticket-reviewer"
 description: "Read-only pre-merge reviewer for /chain. Given one PR number, runs the two-axis code review (Standards and Spec) of the PR's diff against origin/develop and returns a REVIEW line with an approve or changes verdict. Started by the chain skill's conductor once the worker's CI is green; never edits, commits or pushes."
 model: claude-opus-5-5
 effort: medium
+color: orange
 tools: Read, Glob, Grep, PowerShell, Skill, Agent
 disallowedTools: Write, Edit
 ---

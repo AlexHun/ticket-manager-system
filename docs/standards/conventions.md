@@ -30,7 +30,9 @@ The whole-repo reformat is one commit, listed in `.git-blame-ignore-revs`. GitHu
 
 ## Shunting work to a worker model
 
-Two subagents in `.claude/agents/` run on a cheap model and exist to absorb bulk work: **`bulk-reader`** (read-only extraction across many files) and **`boilerplate-scribe`** (scaffolds a file from a template you name). Reach for them by name through the Agent tool.
+Two of the subagents in `.claude/agents/` that run on a cheap model exist to absorb bulk work: **`bulk-reader`** (read-only extraction across many files) and **`boilerplate-scribe`** (scaffolds a file from a template you name). Reach for them by name through the Agent tool.
+
+**`chain-worker-s` also runs on Haiku, and it is the exception to everything below, on purpose** (#474). It implements a whole `forecast/S` ticket under `/chain` — standards, tests, CI diagnosis — which is the reasoning work this section keeps from a cheap model. Two things make it a trial rather than a breach: an S ticket is forecast as one file with no unknowns, and no S worker's PR merges until `ticket-reviewer`, on Opus, approves it, so its mistakes cost a review round, not a commit on `develop`. If the reviewer keeps sending back the same kind of mistake, that is the measurement against it: raise its effort first, then move S tickets to the M worker.
 
 **Two separate savings, and the second is much the larger one.** The price win is real but modest: `claude-haiku-4-5` is $1/$5 per MTok against `claude-opus-5` at $5/$25, so **5x cheaper, input and output alike** — not the order of magnitude the phrase "cheap model" suggests. The win that actually pays is that a subagent's tool output never enters the calling session's context. Measured 2026-09-13 on a `bulk-reader` sweep of `packages/core/src/schemas/`: **29,280 tokens** of work inside the worker, **~750 tokens** of digest returned — a **~39x reduction** into the caller, and those 29k never re-bill on a later turn, because a session re-sends its whole context every turn. Delegating is worth doing for the isolation alone, at the same model tier, with no price saving at all.
 

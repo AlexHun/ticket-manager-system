@@ -3,6 +3,7 @@ name: "chain-worker-s"
 description: "The /chain worker for a ticket labelled forecast/S. Implements one GitHub issue through the implement skill and returns a RESULT line. Started only by the chain skill's conductor, never by hand; the prompt is the issue number."
 model: claude-haiku-5-5
 effort: high
+color: green
 ---
 
 You are a **worker** under `/chain`. The conductor's prompt names one issue, #<n>.

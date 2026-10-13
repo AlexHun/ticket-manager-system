@@ -42,18 +42,20 @@ Take the first ticket whose blockers are all closed. Confirm `git status` is
 clean and `git fetch origin` has run, then read its forecast label with
 `gh issue view <n> --json labels` and start the worker agent it names:
 
-| Label        | Worker           | Model and effort   |
-| ------------ | ---------------- | ------------------ |
-| `forecast/S` | `chain-worker-s` | Haiku 5.5, `high`  |
-| `forecast/M` | `chain-worker-m` | Sonnet 5.5, `high` |
-| `forecast/L` | `chain-worker-l` | Opus 5.5, `medium` |
+| Label        | Worker           |
+| ------------ | ---------------- |
+| `forecast/S` | `chain-worker-s` |
+| `forecast/M` | `chain-worker-m` |
+| `forecast/L` | `chain-worker-l` |
 
 Each worker's own prompt, in `.claude/agents/`, carries the instructions; its
-frontmatter pins the full model ID, because a family alias such as `opus`
+frontmatter is the one place its model and effort are set, and pins the full
+model ID, because a family alias such as `opus`
 resolves to the conductor's own model whenever that is in the same family. Give
 it only `Issue #<n>.` and wait for its completion notice. Pass no `model` or
 `effort` with the call: either would override the frontmatter. A ticket with
-no forecast label, or more than one, waits for the user to pick the worker.
+no forecast label, or more than one, stops the chain (step 5) until the user
+labels it.
 
 Raise `chain-worker-s` to `effort: max` only if `ticket-reviewer` keeps sending
 back the same kind of mistake from S tickets.
@@ -113,6 +115,8 @@ The chain stops, and reports, when any of these holds:
 - a ticket is still `ci=red` after three fix rounds;
 - a ticket's review is still `verdict=changes` after two fix rounds;
 - a worker returns `pr=none` or `questions` that are not `none`;
+- the next ticket has no forecast label, or more than one, so no worker is
+  named — `auto` included;
 - the next ticket is blocked by an open issue outside the chain;
 - a merge fails or the user declines one.
 
