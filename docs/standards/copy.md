@@ -1,6 +1,6 @@
 # Copy standards (UI text and outbound email)
 
-Rules for every word a person reads: labels, buttons, headings, tooltips, placeholders, `aria-label`s, empty states, toasts, dialogs, error messages, tutorial steps and the emails the desk sends. Decided 2026-10-09 against an inventory of the app's UI text; every "seen in" and every quoted example of a defect below comes from it. The six questions that audit left open (sentence endings, the exemption's reach, dates, "open", glossary capitals in prose, queue vocabulary) were settled on 2026-10-13, and each rule below records its reason.
+Rules for every word a person reads: labels, buttons, headings, tooltips, placeholders, `aria-label`s, empty states, toasts, dialogs, error messages, tutorial steps and the emails the desk sends. Decided 2026-10-09 against an inventory of the app's UI text; every "seen in" and every quoted example of a defect below comes from it.
 
 ## Scope
 
@@ -32,9 +32,6 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 - **A Customer is never a user, requester or client**, and an Agent is never an operator.
 - **The product is `BRAND_NAME`** ("The Great Forge Desk", `apps/web/src/lib/brand.ts`) wherever a sentence names it; `BRAND_SHORT` only where space is tight. Not "the support desk", not "the system" in a sentence that means the product.
 - **Statuses keep their capital** as proper names of a state: New, Processing, Open, Resolved, Closed. A status word used as an ordinary adjective in running prose is lower case ("3 open tickets") — the capital marks the state, not the word.
-- **"open" never describes the Backlog.** The Backlog is not a status, so a count of Backlog tickets is never "12 open tickets" and never a bare "12 open". Write "12 tickets in the Backlog" or "the ticket list" instead. The reason: a bare "open" reads as a count of tickets in the Open status, the state the capital keeps distinct.
-- **Glossary terms in running prose are lower case.** In ordinary running prose, the How it works page included, a glossary term is lower case: "handoff", "revision". Statuses, the screen and filter names (Backlog, Team, Undeliverable), `BRAND_NAME` and named features ("AI summary") keep their capitals, because a capital names a thing as a proper name, and a glossary term in a sentence is not one.
-- **"Queue" stays for background-job wording** (pg-boss jobs), never for the ticket list, which is the Backlog. The reason: a job queue is a different thing from the Backlog, so the word is unambiguous there, whereas on a screen it reads as the ticket list and invites the drift the table above records.
 - Machine-written work is the **assistant's**. Not "the bot", not "AI" as a noun for the actor; "AI summary" and "AI polish" are feature names and stay.
 
 ## Spelling and mechanics
@@ -46,7 +43,6 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 - **A toast reports what happened, in the past tense, without a "successfully"**: "Draft polished", "Schedule paused".
 - **Plurals agree with the number.** Write both forms (`n === 1 ? "ticket" : "tickets"`); never append a bare `s` to a word whose plural is not just `s`, and never print "1 tickets".
 - **Dashes:** an em dash with a space each side ( — ) joins two clauses, as the UI already does; an en dash with no spaces marks a range ("3–7 days", "1–4h").
-- **Dates are day, month, year**, with the month abbreviated: "9 Oct 2026", not "Oct 9, 2026". The reason is the spelling above: British order goes with British English. The unspaced en dash that marks a range also joins two full dates: "9–12 Oct 2026", "30 Sep–2 Oct 2026".
 - **Numbers** are digits in UI chrome ("Page 2 of 5", "24 hours"); prose may spell a small count out ("five times each") when that reads better.
 
 ## Errors and empty states
@@ -55,7 +51,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 - Start with "Couldn't", not "Failed to", "Error:" or "Oops".
 - **A fallback passed to `extractErrorMessage` follows the same shape**, because it is what the reader sees whenever the API sends no message.
-- **An API message that reaches the UI is copy.** Same shape, same vocabulary, and a full stop at the end: "You cannot approve your own revision." Today some end in a full stop and some do not; every one takes it, so the reader gets one shape. Two kinds are exempt from this bullet, and their rows get no finding at all. The first is the query-parameter messages a form can never trigger, such as "Invalid page size", since only a hand-edited URL reaches them. The second is the body and path messages that only a server-populated picker or a broken client can produce, such as "Invalid request", "Invalid assignee", "Invalid status", and the dashboard-layout and eval case-file checks, since a person using the screen as built cannot send them and no reader ever sees their wording. Any other body or path message stays copy.
+- **An API message that reaches the UI is copy.** Same shape, same vocabulary; "Invalid page size" and the other query-parameter messages a form can never trigger are exempt, since only a hand-edited URL reaches them.
 - No status codes or `err.message` in the sentence a person reads (the Users page error appends one today).
 - **An empty state says what will fill it**, not only that it is empty: "Nothing here yet. Emails appear as the desk writes them." Not jokes ("Inbox zero").
 - **A destructive dialog says what will happen, not "Are you sure?"**: "Delete Ana Silva? Their sessions end and they leave the Team list."
