@@ -396,7 +396,7 @@ function ActorFilter({
         value === ANY
           ? ANY_ACTOR_LABEL
           : (options.find((option) => option.value === value)?.label ??
-            (isLoading ? "Loading…" : "Unknown user"))
+            (isLoading ? "Loading…" : "Unknown actor"))
       }
       triggerClassName="w-48"
     />

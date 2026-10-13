@@ -142,7 +142,7 @@ test.describe("Users API — admin-delete guard", () => {
     );
     expect(res.status()).toBe(403);
     await expect(res.json()).resolves.toEqual({
-      error: "Admin users cannot be deleted",
+      error: "An admin cannot be deleted. Change their role to Agent first.",
     });
   });
 });

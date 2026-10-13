@@ -33,7 +33,7 @@ _Avoid_: users, staff, members list
 **Demo visitor**:
 A stranger looking around the showcase through a demo session. Signed in as an
 agent with no password, a new identity on every visit, and never offered as
-anyone a ticket could be handed to. Sees the admin screens except Users and
+anyone a ticket could be handed to. Sees the admin screens except Team and
 Outbox, and may look at them but not change them.
 _Avoid_: guest, anonymous user, trial user, demo account
 

@@ -497,7 +497,7 @@ describe("TicketDetailPage assignment", () => {
     renderDetail();
 
     expect(
-      await screen.findByText("Couldn't load the list of users."),
+      await screen.findByText("Couldn't load the team. Try again."),
     ).toBeInTheDocument();
     expect(assigneeControl()).toBeDisabled();
   });

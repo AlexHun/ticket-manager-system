@@ -38,7 +38,7 @@ describe("the subsystem data", () => {
       "Knowledge base",
       "Pipeline & Automation",
       "Outbox",
-      "Auth & Users",
+      "Auth & Team",
       "Realtime",
       "Evals & Schedule",
       "Demo",

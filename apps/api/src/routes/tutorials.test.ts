@@ -244,9 +244,9 @@ describe("GET /api/tutorials", () => {
     ).toMatchObject({ title: "", steps: [] });
   });
 
-  // R3: a demo never sees Users or Outbox, and the editor list would otherwise
+  // R3: a demo never sees Team or Outbox, and the editor list would otherwise
   // name both and show their copy (#320).
-  test("leaves Users and Outbox out for a demo session", async () => {
+  test("leaves Team and Outbox out for a demo session", async () => {
     await seedColleagues("demoVisitor");
 
     const sent = await get<TutorialContentsResponse>(

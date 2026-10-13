@@ -108,7 +108,7 @@ function walkthrough(page: Page) {
 }
 
 /**
- * The two figures on the Users page's demo card, as the admin reads them. The
+ * The two figures on the Team page's demo card, as the admin reads them. The
  * `<dt>` precedes its `<dd>` in the markup, so the card's text runs
  * "Started12Opened a ticket5".
  */
@@ -287,9 +287,9 @@ test.describe("Demo session", () => {
 
   // R3. Read on `/tickets` rather than on the dashboard it lands on: the
   // dashboard's walkthrough is a modal, which hides the sidebar from the
-  // accessibility tree, and a hidden "Users" link would pass the absence
+  // accessibility tree, and a hidden "Team" link would pass the absence
   // check for the wrong reason.
-  test("the navigation shows the showcase screens, and not Users or Outbox", async ({
+  test("the navigation shows the showcase screens, and not Team or Outbox", async ({
     page,
   }) => {
     await startDemo(page);
@@ -310,7 +310,7 @@ test.describe("Demo session", () => {
       page.getByRole("link", { name: "Tickets", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Users", exact: true }),
+      page.getByRole("link", { name: "Team", exact: true }),
     ).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "Outbox", exact: true }),
@@ -318,7 +318,7 @@ test.describe("Demo session", () => {
   });
 
   // R3: not found, rather than a redirect that would say the page exists.
-  test("a typed URL to Users or Outbox shows the not-found page", async ({
+  test("a typed URL to Team or Outbox shows the not-found page", async ({
     page,
   }) => {
     await startDemo(page);
@@ -333,11 +333,11 @@ test.describe("Demo session", () => {
   });
 
   // The API is the control; the two tests above are UX. Every showcase read
-  // opens to the demo's cookie and Users and Outbox do not. The showcase reads
+  // opens to the demo's cookie and Team and Outbox do not. The showcase reads
   // come from `DEMO_SEES_ADMIN_SCREEN` (#369); the refusals stay literal, so a
   // bug in that derivation cannot quiet them. The writes on the showcase
   // screens are the next section's, literal for the same reason.
-  test("the API opens the showcase reads and refuses Users and Outbox", async ({
+  test("the API opens the showcase reads and refuses Team and Outbox", async ({
     page,
   }) => {
     await startDemo(page);

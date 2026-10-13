@@ -33,7 +33,7 @@ export const updateHandoffSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["userId"],
-        message: "Only the 'a specific person' target takes a user",
+        message: "Only the 'a specific person' target takes a team member.",
       });
     }
   });

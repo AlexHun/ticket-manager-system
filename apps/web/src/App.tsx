@@ -151,7 +151,7 @@ export const router = createBrowserRouter([
                 // `requireAdminView`; every write keeps `requireAdmin`.
                 Component: AdminScreenRoute,
                 children: [
-                  // Users lists real colleagues; `requireAdmin` on its router
+                  // Team lists real colleagues; `requireAdmin` on its router
                   // is the control.
                   {
                     path: ROUTE.users.path,

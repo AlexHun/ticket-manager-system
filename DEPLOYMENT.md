@@ -175,12 +175,12 @@ variables afterwards; nothing reads them again.
 one has its role reconciled and its credentials left alone, deliberately, so
 that re-running the seed on a live database cannot reset a real person's
 password. To change the admin password after the fact, use the app: sign in and
-change it, or have another admin do it from the Users screen.
+change it, or have another admin do it from the Team screen.
 
 The seed **skips the demo `agent@example.com` / `password123` account when
 `NODE_ENV=production`** — which the image sets — so this cannot quietly leave a
 published-password account on a deployed database. Real agents are created by the
-admin through the Users screen.
+admin through the Team screen.
 
 It does create the **assistant's account** (`assistant@automation.invalid`,
 `user.automated = true`) in production as well, and that one is safe there

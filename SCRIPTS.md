@@ -105,7 +105,7 @@ It writes three rows:
 - **The demo agent**, `agent@example.com` / `password123` — **skipped when
   `NODE_ENV=production`**, which the API's Dockerfile sets. That is what makes
   seeding a deployed database safe: it cannot leave a published-password account
-  behind. Real agents are created by an admin through the Users screen.
+  behind. Real agents are created by an admin through the Team screen.
 
 Dev and test logins, both seeded by this script:
 

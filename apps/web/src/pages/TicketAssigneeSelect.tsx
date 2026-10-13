@@ -164,7 +164,7 @@ export function TicketAssigneeSelect({
 /**
  * The line under the control: the assignee's email, or whichever failure got in
  * the way. One element, because they are alternatives — showing an email beside
- * "couldn't load users" would suggest the field is fine.
+ * "couldn't load the team" would suggest the field is fine.
  */
 function AssigneeStatus({
   selected,
@@ -186,7 +186,7 @@ function AssigneeStatus({
   if (rosterError) {
     return (
       <p className="text-xs text-destructive" role="alert">
-        Couldn't load the list of users.
+        Couldn't load the team. Try again.
       </p>
     );
   }

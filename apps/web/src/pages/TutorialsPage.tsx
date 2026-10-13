@@ -17,7 +17,7 @@ import { TutorialEditorDialog } from "./TutorialEditorDialog";
  * look (#320).
  *
  * One row per page, fixed at nine and always all nine (seven for a demo
- * session, which never sees Users or Outbox — the API leaves them out): unlike the knowledge
+ * session, which never sees Team or Outbox — the API leaves them out): unlike the knowledge
  * base, nothing here is created or archived, only written. A page with no
  * content yet is not missing from the list, it is a row that says so — the
  * same "steps.length === 0" state `GET /api/tutorials/:pageKey` reads as
@@ -54,7 +54,7 @@ export function TutorialsPage() {
       <div className="max-w-5xl">
         <PageHeader
           title="Tutorials"
-          description="What each page teaches a user the first time they land on it."
+          description="What each page teaches a team member the first time they land on it."
         />
 
         {isPending && <TutorialsSkeleton />}
@@ -125,7 +125,7 @@ function TutorialRow({
             <p className="text-sm text-muted-foreground">{tutorial.title}</p>
           ) : (
             <p className="text-sm text-muted-foreground italic">
-              Nothing is shown to users on this page until it is written.
+              Nothing is shown to the team on this page until it is written.
             </p>
           )}
           {tutorial.updatedAt && (

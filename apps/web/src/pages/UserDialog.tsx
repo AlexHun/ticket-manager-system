@@ -148,14 +148,16 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
       onOpenChange(false);
       toast.success(
         isEdit
-          ? `User "${data.user.name}" updated`
-          : `User "${data.user.name}" created`,
+          ? `Team member "${data.user.name}" updated`
+          : `Team member "${data.user.name}" added`,
       );
     },
     onError: (err) => {
       const message = extractErrorMessage(
         err,
-        isEdit ? "Failed to update user" : "Failed to create user",
+        isEdit
+          ? "Couldn't update the team member. Try again."
+          : "Couldn't add the team member. Try again.",
       );
       setServerError(message);
       toast.error(message);
@@ -173,17 +175,17 @@ export function UserDialog({ user, open, onOpenChange }: UserDialogProps) {
   };
 
   const idPrefix = isEdit ? "edit-user" : "new-user";
-  const title = isEdit ? "Edit user" : "Create user";
+  const title = isEdit ? "Edit team member" : "Add team member";
   const description = isEdit
-    ? "Update this user's details."
+    ? "Update this team member's details."
     : "They will be sent a link to choose their own password.";
   const submitLabel = isEdit
     ? isSubmitting
       ? "Saving…"
       : "Save changes"
     : isSubmitting
-      ? "Creating…"
-      : "Create user";
+      ? "Adding…"
+      : "Add team member";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

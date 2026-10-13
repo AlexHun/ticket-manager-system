@@ -46,8 +46,8 @@ export const TUTORIAL_ANCHORS: Record<
     { id: "new", label: "New article button" },
   ],
   [TUTORIAL_PAGE_KEY.users]: [
-    { id: "list", label: "The user list" },
-    { id: "new", label: "New user button" },
+    { id: "list", label: "The team list" },
+    { id: "new", label: "New team member button" },
   ],
   [TUTORIAL_PAGE_KEY.activity]: [
     { id: "filters", label: "Filters" },

@@ -56,7 +56,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 - **A fallback passed to `extractErrorMessage` follows the same shape**, because it is what the reader sees whenever the API sends no message.
 - **An API or validation message that reaches the UI is copy.** Same shape, same vocabulary, and it **ends in a full stop** ("You cannot approve your own revision.", not "Article not found"), as the "Couldn't load tickets. Try again." shape does — the reader sees it as a sentence beside sentences.
 - **Exempt: a message only a hand-edited URL, a server-populated picker or a broken client can produce.** That is "Invalid page size" and the other query-parameter messages, and the body and path checks behind controls that only offer valid values: "Invalid request", "Invalid assignee", "Invalid status", the dashboard-layout checks (`packages/core/src/schemas/dashboard.ts`) and the checks on an uploaded case file (`packages/core/src/schemas/evals.ts`, "Two cases share an id"). No reader who uses the app as built ever sees one, so rewording them churns tests for nobody; one a person can reach by typing is copy again.
-- No status codes or `err.message` in the sentence a person reads (the Users page error appends one today).
+- No status codes or `err.message` in the sentence a person reads (the Team page's load error appended one until #481).
 - **An empty state says what will fill it**, not only that it is empty: "Nothing here yet. Emails appear as the desk writes them." Not jokes ("Inbox zero").
 - **A destructive dialog says what will happen, not "Are you sure?"**: "Delete Ana Silva? Their sessions end and they leave the Team list."
 

@@ -192,7 +192,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.authUsers,
     box: N.api,
-    title: "Auth & Users",
+    title: "Auth & Team",
     explanation:
       "Signing in, sessions, Invitations and password Resets, and the accounts admins manage. It also keeps what each person has seen: the tutorials, the New badges and their dashboard's layout.",
     code: [
@@ -239,7 +239,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Demo",
     explanation:
-      "Lets a Demo visitor in without an account, for a limited session that sees the admin screens apart from Users and the Outbox and can change none of them, and caps how much model work a day of demos may spend.",
+      "Lets a Demo visitor in without an account, for a limited session that sees the admin screens apart from Team and the Outbox and can change none of them, and caps how much model work a day of demos may spend.",
     code: [
       "apps/api/src/routes/demo.ts",
       "apps/api/src/demo/admin-view.ts",
@@ -455,7 +455,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.usersScreen,
     box: N.browserApp,
-    title: "Users",
+    title: "Team",
     explanation:
       "Where admins invite agents, change roles and remove accounts.",
     code: ["apps/web/src/pages/UsersPage.tsx"],

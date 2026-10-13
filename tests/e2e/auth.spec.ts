@@ -40,14 +40,16 @@ test.describe("Login flow", () => {
     await page.goto("/login");
   });
 
-  test("admin login succeeds — redirects to / and shows Users link", async ({
+  test("admin login succeeds — redirects to / and shows Team link", async ({
     page,
   }) => {
     await fillLoginForm(page, ADMIN.email, ADMIN.password);
 
     await expect(page).toHaveURL("/");
-    // Admin sees the Users nav link
-    await expect(page.getByRole("link", { name: "Users" })).toBeVisible();
+    // Admin sees the Team nav link
+    await expect(
+      page.getByRole("link", { name: "Team", exact: true }),
+    ).toBeVisible();
     // Admin name is displayed in the top bar. Scoped to it because `/` is now
     // the dashboard: agent names also appear there as workload rows and
     // needs-attention assignees, and an unscoped getByText matches substrings,
@@ -57,14 +59,16 @@ test.describe("Login flow", () => {
     await expect(page.locator("header").getByText("Admin")).toBeVisible();
   });
 
-  test("agent login succeeds — redirects to / and does NOT show Users link", async ({
+  test("agent login succeeds — redirects to / and does NOT show Team link", async ({
     page,
   }) => {
     await fillLoginForm(page, AGENT.email, AGENT.password);
 
     await expect(page).toHaveURL("/");
-    // Agent must NOT see the Users nav link
-    await expect(page.getByRole("link", { name: "Users" })).not.toBeVisible();
+    // Agent must NOT see the Team nav link
+    await expect(
+      page.getByRole("link", { name: "Team", exact: true }),
+    ).not.toBeVisible();
     // Agent name is displayed in the top bar — scoped for the same reason as above.
     await expect(page.locator("header").getByText("Agent")).toBeVisible();
   });
@@ -209,10 +213,12 @@ test.describe("Route protection — authenticated admin", () => {
     await signIn(page, "admin");
   });
 
-  test("/users renders the Users heading for admin", async ({ page }) => {
+  test("/users renders the Team heading for admin", async ({ page }) => {
     await page.goto("/users");
     await expect(page).toHaveURL("/users");
-    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Team", exact: true }),
+    ).toBeVisible();
   });
 });
 

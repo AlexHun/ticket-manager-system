@@ -980,7 +980,9 @@ describe("DELETE /api/users/:id", () => {
     const sent = await del(`/${OTHER_ADMIN.id}`);
 
     expect(sent.status).toBe(403);
-    expect(sent.body.error).toBe("Admin users cannot be deleted");
+    expect(sent.body.error).toBe(
+      "An admin cannot be deleted. Change their role to Agent first.",
+    );
     expect(await userRow(OTHER_ADMIN.id)).toMatchObject({ deletedAt: null });
     expect(await adminActivityRows()).toEqual([]);
   });
@@ -1675,9 +1677,9 @@ describe("Demo session lifetime — auth.ts", () => {
  * display time, so a demo visitor could rename "Demo visitor" to a colleague's
  * name and every trail they left would read as that colleague's (R11). Nobody
  * changes their own profile that way: a name is changed by an admin on the
- * Users screen, which writes a `user_edited` entry. So the `before` hook
+ * Team screen, which writes a `user_edited` entry. So the `before` hook
  * refuses the path for every caller, and these assert it for each kind of
- * session. The Users screen itself is `PATCH /api/users/:id` above, whose
+ * session. The Team screen itself is `PATCH /api/users/:id` above, whose
  * tests are unchanged.
  *
  * Through `auth.handler`, as a browser would reach it: a `before` hook's

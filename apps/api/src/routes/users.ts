@@ -362,7 +362,7 @@ usersRouter.post(
     if (rejectAssistant(target, res)) return;
 
     if (!target || target.deletedAt !== null) {
-      res.status(404).json({ error: "User not found" });
+      res.status(404).json({ error: "Couldn't find that team member." });
       return;
     }
 
@@ -405,12 +405,14 @@ usersRouter.delete(
     });
 
     if (!target || target.deletedAt !== null) {
-      res.status(404).json({ error: "User not found" });
+      res.status(404).json({ error: "Couldn't find that team member." });
       return;
     }
 
     if (target.role === USER_ROLE.admin) {
-      res.status(403).json({ error: "Admin users cannot be deleted" });
+      res.status(403).json({
+        error: "An admin cannot be deleted. Change their role to Agent first.",
+      });
       return;
     }
 

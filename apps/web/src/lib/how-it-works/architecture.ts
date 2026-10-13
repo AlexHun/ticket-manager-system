@@ -140,7 +140,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.browserApp,
     title: "Browser app",
     explanation:
-      "The screens agents and admins work in: the dashboard, the tickets and each thread, and the admin screens for users, knowledge, the outbox, the pipeline and evals. Every ticket it shows and every change it makes goes through the API.",
+      "The screens agents and admins work in: the dashboard, the tickets and each thread, and the admin screens for the team, knowledge, the outbox, the pipeline and evals. Every ticket it shows and every change it makes goes through the API.",
     code: [
       "apps/web/src/App.tsx",
       "apps/web/src/lib/api.ts",

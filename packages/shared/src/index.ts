@@ -1659,7 +1659,7 @@ export type AdminScreen = (typeof ADMIN_SCREEN)[keyof typeof ADMIN_SCREEN];
  * the read guard and this table disagree.
  *
  * `true` opens the screen's reads to a demo through `requireAdminView`; every
- * write stays `requireAdmin` either way. Users lists real colleagues and the
+ * write stays `requireAdmin` either way. Team lists real colleagues and the
  * outbox holds live single-use links, so both say `false`.
  */
 export const DEMO_SEES_ADMIN_SCREEN: Record<AdminScreen, boolean> = {
@@ -3377,7 +3377,7 @@ export interface DemoStatusResponse {
 
 /**
  * `GET /api/demo/usage`: this week's demo figures, for an admin only (#327,
- * PRD R14). A demo session is refused them, like the Users page they sit on.
+ * PRD R14). A demo session is refused them, like the Team page they sit on.
  *
  * The week runs from 00:00 UTC on Monday, the same clock as the nightly reset.
  * A session counts toward the week it started in, so `sessionsOpenedTicket`
@@ -3398,7 +3398,7 @@ export interface DemoUsageResponse {
 }
 
 /**
- * The Users page's demo card: its accessible name and its three figures'
+ * The Team page's demo card: its accessible name and its three figures'
  * labels. Here so the E2E spec reads them rather than retyping them, like
  * `DEMO_READ_ONLY_NOTE`.
  */

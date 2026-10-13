@@ -256,7 +256,7 @@ function HandoffStatus({
   if (rosterError) {
     return (
       <p className="mt-1.5 text-xs text-destructive" role="alert">
-        Couldn't load the list of users.
+        Couldn't load the team. Try again.
       </p>
     );
   }

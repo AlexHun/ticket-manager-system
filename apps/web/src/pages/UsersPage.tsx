@@ -1,5 +1,4 @@
 import { useState } from "react";
-import axios from "axios";
 import { TUTORIAL_PAGE_KEY, type User } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import { Tutorial } from "@/components/Tutorial";
@@ -51,11 +50,11 @@ export function UsersPage() {
           it. */}
       <div className="max-w-5xl">
         <PageHeader
-          title="Users"
+          title="Team"
           description={`Everyone who can sign in to ${BRAND_NAME}.`}
         >
           <div data-tutorial-anchor="new" className="contents">
-            <Button onClick={openCreate}>New user</Button>
+            <Button onClick={openCreate}>New team member</Button>
           </div>
         </PageHeader>
 
@@ -65,7 +64,7 @@ export function UsersPage() {
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
-            {formatError(error)}
+            Couldn't load the team. Try again.
           </p>
         )}
 
@@ -88,12 +87,4 @@ export function UsersPage() {
       />
     </div>
   );
-}
-
-function formatError(err: unknown): string {
-  if (axios.isAxiosError(err)) {
-    return `Failed to load users (${err.response?.status ?? err.message})`;
-  }
-  if (err instanceof Error) return err.message;
-  return "Failed to load users";
 }
