@@ -838,5 +838,10 @@
     "version": "0.1.206",
     "date": "2026-10-14",
     "title": "Reword the tutorials, seeded and already deployed (#489)"
+  },
+  {
+    "version": "0.1.207",
+    "date": "2026-10-14",
+    "title": "Name the product in the welcome page's steps (#490)"
   }
 ]
