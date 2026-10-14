@@ -21,7 +21,13 @@ skills can invoke it.
      line, score and CI rounds already sit there;
    - transcripts under `~/.claude/projects/C--Users-GAP-Documents-claude-code-course-project/`:
      `<session-id>.jsonl` per session, and each subagent's under
-     `<session-id>/subagents/agent-<id>.jsonl`;
+     `<session-id>/subagents/agent-<id>.jsonl`. A session can leave only
+     `agent-<id>.meta.json` files and no `.jsonl` at all, its own included
+     (session `6732eb5d`, #522); then the transcript is gone, not stored
+     elsewhere, so read the ticket's `Usage:` comment (`chain` step 3 posts
+     one per merged ticket) and its `Progress:` comments
+     (`gh issue view <n> --comments`), with the in-context record, in its
+     place;
    - `bun run tokens`, for what each ticket cost against its forecast;
    - PR review threads and fix commits (`gh pr view <n> --comments`), and
      `~/.claude/stop-failures.jsonl` for stops.
@@ -30,7 +36,7 @@ skills can invoke it.
    with an exact output shape (tool calls that failed or repeated, files read
    more than once, review findings and their fix commits), and keep only its
    digest. Done when every worker of the session, and every fix round, has a
-   digest or an in-context record.
+   digest, a `Usage:` comment or an in-context record.
 3. **Find the candidates**, one category at a time:
    - **Navigation**: time spent finding a file or fact. Is a dependency hidden,
      would a pointer in a standards file, skill or `CLAUDE.md` have saved it?

@@ -114,6 +114,16 @@ Re-check the PR yourself: `gh pr checks <pr>` all passing and
 - Merge with `gh pr merge <pr> --merge --delete-branch`, the repo's merge-commit
   style. `Closes #<n>` in the PR body closes the ticket, which is what unblocks
   the next one.
+- Post the worker's spend on the issue, from its completion notice: a
+  `Usage:` comment with the worker's name, its `RESULT` line, and the
+  `subagent_tokens`, `tool_uses` and `duration_ms` the notice reports, one
+  line per notice when the ticket took more than one worker or round. Write
+  it to a scratchpad file and pass it with
+  `gh issue comment <n> --body-file <file>`. Done when every merged ticket
+  carries one. This comment is the spend's only record that survives the
+  session: in session `6732eb5d` (`/chain 491-493`) no transcript was written,
+  neither the session's nor any worker's, so `bun run tokens` and `retro` had
+  nothing to read.
 - Score the work, then `git fetch origin` and go back to step 2.
 
 **Score** each ticket out of 100, from the worker's report, the PR body, its
