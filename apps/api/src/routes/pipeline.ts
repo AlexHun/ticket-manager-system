@@ -658,7 +658,7 @@ pipelineRouter.post(
     if (!simulatorEnabled()) {
       res.status(503).json({
         error:
-          "The pipeline simulator is off. Set PIPELINE_SIMULATOR_ENABLED=true to turn it on.",
+          "Couldn't send the email — the simulator is off on this deployment.",
       });
       return;
     }
@@ -672,7 +672,7 @@ pipelineRouter.post(
     const session = sessionOf(res);
     if (overSimulateLimit(session.session.id)) {
       res.status(429).json({
-        error: `Too many simulated emails — ${SIMULATE_LIMIT} a minute. Each one costs a model call.`,
+        error: `Couldn't send the email — the simulator takes ${SIMULATE_LIMIT} a minute, since each one costs a model call. Wait a minute and try again.`,
       });
       return;
     }
@@ -684,7 +684,8 @@ pipelineRouter.post(
       const parentTicketId = await findParentTicketId(inReplyTo);
       if (parentTicketId === null) {
         res.status(400).json({
-          error: "Nothing in the database has that Message-ID.",
+          error:
+            "Couldn't find an email with that Message-ID. Leave it empty to open a new ticket.",
         });
         return;
       }
@@ -700,7 +701,7 @@ pipelineRouter.post(
       if (!parent || !isSimulatedAddress(parent.customerEmail)) {
         res.status(403).json({
           error:
-            "That Message-ID belongs to a real customer's thread. Simulated replies may only thread onto simulated tickets.",
+            "Couldn't reply on that thread — it belongs to a real customer. Simulated replies thread onto simulated tickets only.",
         });
         return;
       }

@@ -59,11 +59,14 @@ import { PipelineSimulator } from "./PipelineSimulator";
  * `requireAdmin` — and the `AdminScreenRoute` wrapper around this is UX.
  */
 
-const RANGES: { value: DashboardRange; label: string }[] = [
-  { value: DASHBOARD_RANGE.d7, label: "7d" },
-  { value: DASHBOARD_RANGE.d30, label: "30d" },
-  { value: DASHBOARD_RANGE.d90, label: "90d" },
-  { value: DASHBOARD_RANGE.m12, label: "12m" },
+/** The visible labels are the API's preset values; `span` spells the unit out
+ *  for the sentence under the heading and the accessible name, as the
+ *  dashboard's filter does, since "the last 7d" is not a phrase anyone says. */
+const RANGES: { value: DashboardRange; label: string; span: string }[] = [
+  { value: DASHBOARD_RANGE.d7, label: "7d", span: "7 days" },
+  { value: DASHBOARD_RANGE.d30, label: "30d", span: "30 days" },
+  { value: DASHBOARD_RANGE.d90, label: "90d", span: "90 days" },
+  { value: DASHBOARD_RANGE.m12, label: "12m", span: "12 months" },
 ];
 
 function useOverview(range: DashboardRange) {
@@ -197,11 +200,11 @@ export function PipelinePage() {
           }}
           aria-label="Time range"
         >
-          {RANGES.map(({ value, label }) => (
+          {RANGES.map(({ value, label, span }) => (
             <ToggleGroupItem
               key={value}
               value={value}
-              aria-label={`Last ${label}`}
+              aria-label={`Last ${span}`}
             >
               {label}
             </ToggleGroupItem>
@@ -211,7 +214,10 @@ export function PipelinePage() {
 
       {overview.error && (
         <p role="alert" className="text-sm text-destructive">
-          {extractErrorMessage(overview.error, "Failed to load the pipeline")}
+          {extractErrorMessage(
+            overview.error,
+            "Couldn't load the pipeline. Try again.",
+          )}
         </p>
       )}
 
@@ -260,7 +266,7 @@ export function PipelinePage() {
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Tickets that arrived in the last{" "}
-                    {RANGES.find((r) => r.value === range)?.label}. Each stop
+                    {RANGES.find((r) => r.value === range)?.span}. Each stop
                     shows how many were still on the line.
                   </p>
                 )}
@@ -577,7 +583,8 @@ function RecentRuns({
 
       {runs.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nothing arrived in this window.
+          Nothing arrived in this window. Each email the desk receives appears
+          here.
         </p>
       ) : (
         <ul className="divide-y">
@@ -594,7 +601,7 @@ function RecentRuns({
                 <span className="min-w-0 flex-1 truncate">{item.subject}</span>
                 <span
                   className={cn(
-                    "shrink-0 text-xs",
+                    "shrink-0 font-mono text-xs",
                     item.outcome === PIPELINE_OUTCOME.resolved
                       ? "text-calm"
                       : item.outcome === PIPELINE_OUTCOME.declined

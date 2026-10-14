@@ -61,6 +61,10 @@ const ASSISTANT = COLLEAGUE.assistant;
 
 const AS_ADMIN = asCaller("admin");
 
+/** What a picker that has gone stale since it was drawn is told. */
+const NOT_A_HANDOFF_TARGET =
+  "Couldn't hand tickets to that person. Pick someone from the list.";
+
 beforeEach(async () => {
   await resetDb();
   await seedColleagues("admin", "otherAdmin", "agent", "other", "assistant");
@@ -259,7 +263,7 @@ describe("PATCH /api/automation/handoff — who may be named", () => {
     });
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Assignee not found");
+    expect(sent.body.error).toBe(NOT_A_HANDOFF_TARGET);
     expect(await settingsRow()).toBeNull();
   });
 
@@ -270,7 +274,7 @@ describe("PATCH /api/automation/handoff — who may be named", () => {
     const sent = await patch({ target: HANDOFF_TARGET.user, userId: GONE.id });
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Assignee not found");
+    expect(sent.body.error).toBe(NOT_A_HANDOFF_TARGET);
     expect(await settingsRow()).toBeNull();
   });
 
@@ -283,7 +287,7 @@ describe("PATCH /api/automation/handoff — who may be named", () => {
     });
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Assignee not found");
+    expect(sent.body.error).toBe(NOT_A_HANDOFF_TARGET);
     expect(await settingsRow()).toBeNull();
   });
 
@@ -298,7 +302,7 @@ describe("PATCH /api/automation/handoff — who may be named", () => {
     });
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Assignee not found");
+    expect(sent.body.error).toBe(NOT_A_HANDOFF_TARGET);
     expect(await settingsRow()).toBeNull();
   });
 });

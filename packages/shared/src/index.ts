@@ -1826,7 +1826,7 @@ export const CLASSIFY_PENDING_LABEL = "Queued, or being classified now";
 export const CLASSIFY_NOT_OFFERED_LABEL: Record<ClassifyNotOffered, string> = {
   [CLASSIFY_NOT_OFFERED.noKey]: "Never offered — no API key on this deployment",
   [CLASSIFY_NOT_OFFERED.filedOrStale]:
-    "Not offered — filed by hand, or too old to reconcile",
+    "Never offered — filed by hand, or over a day old",
 };
 
 /**
