@@ -11,10 +11,12 @@ import {
 } from "@ticket/core";
 import {
   ASSIGNEE_NONE,
+  ASSIGNEE_NOT_FOUND_MESSAGE,
   asAutoReplyDecline,
   BACKLOG_STATUS,
   CATEGORY_NONE,
   STATUS_BACKLOG,
+  TICKET_NOT_FOUND_MESSAGE,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
   TICKET_VIEWS,
@@ -232,7 +234,7 @@ async function updateTicket(
     },
   });
   if (!existing) {
-    res.status(404).json({ error: "Ticket not found" });
+    res.status(404).json({ error: TICKET_NOT_FOUND_MESSAGE });
     return;
   }
 
@@ -474,7 +476,7 @@ ticketsRouter.get(
     });
 
     if (!ticket) {
-      res.status(404).json({ error: "Ticket not found" });
+      res.status(404).json({ error: TICKET_NOT_FOUND_MESSAGE });
       return;
     }
 
@@ -648,7 +650,7 @@ ticketsRouter.post(
     // — an insert allowed to fail on the foreign key would come back through
     // the error pipeline as a 500.
     if (sent.outcome === SEND_OUTCOME.noSuchTicket) {
-      res.status(404).json({ error: "Ticket not found" });
+      res.status(404).json({ error: TICKET_NOT_FOUND_MESSAGE });
       return;
     }
     const { message } = sent;
@@ -711,8 +713,8 @@ ticketsRouter.patch(
     // body is the part that isn't usable.
     //
     // Runs before the existence check inside `updateTicket`, so a request that
-    // is wrong in both ways at once is answered "Assignee not found" rather
-    // than "Ticket not found". Either is true; this one names the part the
+    // is wrong in both ways at once is answered with the assignee's 400 rather
+    // than the ticket's 404. Either is true; this one names the part the
     // client chose, and the ordering only shows up in that one case.
     if (assignedToId !== null) {
       const assignee = await prisma.user.findFirst({
@@ -720,7 +722,7 @@ ticketsRouter.patch(
         select: { id: true },
       });
       if (!assignee) {
-        res.status(400).json({ error: "Assignee not found" });
+        res.status(400).json({ error: ASSIGNEE_NOT_FOUND_MESSAGE });
         return;
       }
     }

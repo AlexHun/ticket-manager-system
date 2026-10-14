@@ -38,9 +38,22 @@ const REPLY_FIELD_ID = "ticket-reply";
 
 const EMPTY_REPLY: CreateTicketMessageValues = { textBody: "" };
 
-const SEND_FAILED = "Failed to send the reply";
+const SEND_FAILED = "Couldn't send the reply. Try again.";
 
-const POLISH_FAILED = "Failed to polish the draft";
+const POLISH_FAILED =
+  "Couldn't polish your draft. Try again, or send it as it is.";
+
+/**
+ * The reply toasts say "added", never "sent", and that is a claim about what
+ * the request backs. A send answers once the message is on the thread and its
+ * email is in the outbox; whether the email then leaves depends on the worker,
+ * the mail provider and the session (a demo's is withheld), none of which has
+ * happened when the toast fires.
+ */
+const REPLY_ADDED = "Reply added to the thread";
+const REPLY_ADDED_AND_RESOLVED = "Reply added and ticket resolved";
+const REPLY_ADDED_NOT_RESOLVED =
+  "Reply added, but couldn't resolve the ticket. Set its status to Resolved.";
 
 /**
  * Put a new message into every cached copy of its ticket.
@@ -77,8 +90,9 @@ function appendMessage(queryClient: QueryClient, created: ThreadMessage): void {
 /**
  * The reply box pinned under the thread.
  *
- * Nothing is emailed yet: the endpoint writes an outbound message carrying the
- * headers a real send would, and a transport drops in behind it later.
+ * The endpoint writes the outbound message to the thread and records its email
+ * in the outbox; delivery happens afterwards, which is why the toasts above say
+ * "added" rather than "sent".
  *
  * Takes only the ticket's id, and still only that now Polish is context-aware:
  * the cache update finds its entry by the id on the message that comes back,
@@ -148,8 +162,8 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     ticketId,
     field: "status",
     toBody: (status) => ({ status }),
-    describe: () => "Reply sent · ticket resolved",
-    errorMessage: "Reply sent, but the ticket could not be resolved",
+    describe: () => REPLY_ADDED_AND_RESOLVED,
+    errorMessage: REPLY_ADDED_NOT_RESOLVED,
   });
 
   // The textarea is uncontrolled, so nothing re-renders as it is typed into —
@@ -242,7 +256,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
         return;
       }
 
-      toast.success("Reply added to the thread");
+      toast.success(REPLY_ADDED);
     },
     onError: (err) => {
       // The intent belonged to the attempt that just failed. Left set, the next
@@ -326,7 +340,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
   const polishHint = polish.isPending
     ? "Rewriting your draft…"
     : draftTooLong
-      ? `A draft is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`
+      ? `Keep the draft to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`
       : trimmedDraft.length === 0
         ? "Write a draft first"
         : "Rewrite this draft as a reply to the customer's message. You can undo it.";

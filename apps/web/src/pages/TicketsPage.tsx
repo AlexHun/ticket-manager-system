@@ -40,7 +40,11 @@ import {
   type TicketFilterState,
 } from "./TicketsFilters";
 import { TicketsPagination } from "./TicketsPagination";
-import { TicketsTable, TicketsTableSkeleton } from "./TicketsTable";
+import {
+  NO_TICKETS_YET,
+  TicketsTable,
+  TicketsTableSkeleton,
+} from "./TicketsTable";
 
 /** Keystrokes settle for this long before the search hits the API. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -312,7 +316,7 @@ export function TicketsPage() {
 
       {error && (
         <p className="text-sm text-destructive" role="alert">
-          {extractErrorMessage(error, "Failed to load tickets")}
+          {extractErrorMessage(error, "Couldn't load tickets. Try again.")}
         </p>
       )}
 
@@ -334,7 +338,7 @@ export function TicketsPage() {
             onSortingChange={handleSortingChange}
             density={density}
             emptyMessage={
-              filtered ? "No tickets match these filters." : "No tickets found."
+              filtered ? "No tickets match these filters." : NO_TICKETS_YET
             }
           />
           {data.total > 0 && (

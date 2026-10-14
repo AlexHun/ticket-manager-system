@@ -653,6 +653,22 @@ export interface CreateTicketMessageResponse {
 }
 
 /**
+ * The 404 the ticket and AI routes answer for a ticket that is not there. It
+ * reaches the reply box, the field selects and the summary panel as a toast or
+ * an alert, so it is copy (`docs/standards/copy.md`), and the E2E spec reads it
+ * from here rather than retyping it.
+ */
+export const TICKET_NOT_FOUND_MESSAGE =
+  "Couldn't find this ticket. It may have been deleted.";
+
+/**
+ * `PATCH /api/tickets/:id/assignee`'s 400 for an id that names nobody who can
+ * hold a ticket — someone removed from the Team since the picker loaded.
+ */
+export const ASSIGNEE_NOT_FOUND_MESSAGE =
+  "Couldn't find that assignee. Pick someone else.";
+
+/**
  * What happened to a ticket. The Postgres enum of the same name mirrors this.
  *
  * Seven and not more: each one is a change an agent reading the ticket has to be

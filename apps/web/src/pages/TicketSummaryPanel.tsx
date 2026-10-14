@@ -23,7 +23,7 @@ function sparkleClass(pending: boolean): string {
   return cn("size-4 text-link", pending && "animate-ai-glow");
 }
 
-const SUMMARY_FAILED = "Failed to summarise this ticket";
+const SUMMARY_FAILED = "Couldn't summarise this ticket. Try again.";
 
 /**
  * How the customer is coming across, at a glance.
@@ -137,10 +137,10 @@ export function TicketSummaryPanel({
           <Hint
             content={
               summarize.isPending
-                ? "Reading the ticket and its conversation…"
+                ? "Reading the ticket and its thread…"
                 : result
                   ? "Read the thread again and write a new summary"
-                  : "Summarise this ticket and its conversation history"
+                  : "Summarise this ticket and its thread"
             }
           >
             <span className="inline-flex">
@@ -198,7 +198,7 @@ export function TicketSummaryPanel({
             leaving a header over nothing. */}
         {!summarize.isPending && !summarize.error && !result && (
           <p className="text-sm text-muted-foreground">
-            Generate a fresh read of this ticket and its conversation history.
+            Generate a fresh read of this ticket and its thread.
           </p>
         )}
 
@@ -304,8 +304,8 @@ function SummaryBody({
           is exactly the failure the server-side prompt is built to make
           unlikely rather than impossible. */}
       <p className="text-xs text-muted-foreground">
-        Written by AI from the messages in this thread. Check anything you act
-        on.
+        Written by the assistant from the messages in this thread. Check
+        anything you act on.
       </p>
     </div>
   );
@@ -419,7 +419,7 @@ function SummarySkeleton() {
           announced at a pause rather than cutting across whatever is being
           read. */}
       <p className="sr-only" role="status" aria-live="polite">
-        Summarising this ticket and its conversation history.
+        Summarising this ticket and its thread.
       </p>
     </div>
   );

@@ -159,7 +159,7 @@ export function TicketDetailPage() {
 
       {error && !isNotFoundError(error) && (
         <p className="text-sm text-destructive" role="alert">
-          {extractErrorMessage(error, "Failed to load ticket")}
+          {extractErrorMessage(error, "Couldn't load this ticket. Try again.")}
         </p>
       )}
 

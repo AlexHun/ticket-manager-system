@@ -77,7 +77,7 @@ export const ticketsQuerySchema = z.object({
     .trim()
     .max(
       TICKET_SEARCH_MAX_LENGTH,
-      `Search is limited to ${TICKET_SEARCH_MAX_LENGTH} characters`,
+      `Keep the search to ${TICKET_SEARCH_MAX_LENGTH} characters or fewer`,
     )
     .optional(),
   // Query params arrive as strings, hence coerce. A non-numeric value becomes
@@ -196,7 +196,7 @@ export const createTicketMessageSchema = z.object({
     .min(1, "Write a reply before sending")
     .max(
       MAX_MESSAGE_BODY_LENGTH,
-      `A reply is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
+      `Keep the reply to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
     ),
   /**
    * The polished draft this reply was sent from, when Polish produced the text
@@ -247,7 +247,7 @@ export const polishReplySchema = z.object({
     .min(1, "Write a draft before polishing")
     .max(
       MAX_MESSAGE_BODY_LENGTH,
-      `A draft is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
+      `Keep the draft to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
     ),
   // Reused from the path-param schema rather than restated, so the two cannot
   // drift on what counts as a ticket id — including the int4 ceiling that keeps

@@ -20,8 +20,8 @@ import { useTicketField } from "@/lib/use-ticket-field";
 export const STATUS_SELECT_ID = "ticket-status";
 export const CATEGORY_SELECT_ID = "ticket-category";
 
-const STATUS_ERROR = "Failed to update the status";
-const CATEGORY_ERROR = "Failed to update the category";
+const STATUS_ERROR = "Couldn't update the status. Try again.";
+const CATEGORY_ERROR = "Couldn't update the category. Try again.";
 
 /**
  * Radix reserves the empty string for "cleared" and rejects it as an item
