@@ -114,16 +114,20 @@ Re-check the PR yourself: `gh pr checks <pr>` all passing and
 - Merge with `gh pr merge <pr> --merge --delete-branch`, the repo's merge-commit
   style. `Closes #<n>` in the PR body closes the ticket, which is what unblocks
   the next one.
-- Post the worker's spend on the issue, from its completion notice: a
-  `Usage:` comment with the worker's name, its `RESULT` line, and the
-  `subagent_tokens`, `tool_uses` and `duration_ms` the notice reports, one
-  line per notice when the ticket took more than one worker or round. Write
-  it to a scratchpad file and pass it with
-  `gh issue comment <n> --body-file <file>`. Done when every merged ticket
-  carries one. This comment is the spend's only record that survives the
-  session: in session `6732eb5d` (`/chain 491-493`) no transcript was written,
-  neither the session's nor any worker's, so `bun run tokens` and `retro` had
-  nothing to read.
+- Post the worker's spend on the issue, from its completion notice's
+  `<usage>`: a `Usage:` comment, one line per notice when the ticket took
+  more than one worker or round:
+
+  ```
+  Usage: <Name> subagent_tokens=<n> tool_uses=<n> duration_ms=<n> RESULT ticket=#<n> pr=#<pr> ci=<ci> questions=<...>
+  ```
+
+  Write it to a scratchpad file and pass it with
+  `gh issue comment <n> --body-file <file>`. Done when this ticket's comment
+  is posted. It is the one record of the spend that survives a session that
+  writes no transcript: session `6732eb5d` (`/chain 491-493`) wrote none,
+  neither its own nor any worker's, so `bun run tokens` and `retro` had
+  nothing to read (#522).
 - Score the work, then `git fetch origin` and go back to step 2.
 
 **Score** each ticket out of 100, from the worker's report, the PR body, its
@@ -153,6 +157,9 @@ The chain stops, and reports, when any of these holds:
 - a worker returns `pr=none` or `questions` that are not `none`;
 - the next ticket is blocked by an open issue outside the chain;
 - a merge fails or the user declines one.
+
+The ticket that stopped the chain gets its `Usage:` comment too, in step 3's
+shape, since a stopped run is the one `retro` most needs to read.
 
 Report a table with one row per ticket — ticket, team member, PR, CI, score,
 merged or why it stopped — and, when stopped early, the one thing the user has

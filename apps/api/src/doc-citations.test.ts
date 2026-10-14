@@ -433,11 +433,6 @@ const EXEMPTIONS: Exemption[] = [
       "AskUserQuestion",
       "a Claude Code tool.",
     ],
-    ...["subagent_tokens", "tool_uses", "duration_ms"].map((field) => [
-      ".claude/skills/chain/SKILL.md",
-      field,
-      "a field of Claude Code's subagent completion notice.",
-    ]),
   ].map(([doc, citation, what]) => ({
     doc: doc!,
     citation: citation!,

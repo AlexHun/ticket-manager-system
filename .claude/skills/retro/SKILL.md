@@ -22,10 +22,10 @@ skills can invoke it.
    - transcripts under `~/.claude/projects/C--Users-GAP-Documents-claude-code-course-project/`:
      `<session-id>.jsonl` per session, and each subagent's under
      `<session-id>/subagents/agent-<id>.jsonl`. A session can leave only
-     `agent-<id>.meta.json` files and no `.jsonl` at all, its own included
-     (session `6732eb5d`, #522); then the transcript is gone, not stored
-     elsewhere, so read the ticket's `Usage:` comment (`chain` step 3 posts
-     one per merged ticket) and its `Progress:` comments
+     `agent-<id>.meta.json` files and no `.jsonl` at all, its own included.
+     In #522 a search of the user profile by session and agent id found no
+     copy anywhere else. When one is missing, read the ticket's `Usage:`
+     comment (`chain` posts one per ticket) and its `Progress:` comments
      (`gh issue view <n> --comments`), with the in-context record, in its
      place;
    - `bun run tokens`, for what each ticket cost against its forecast;
