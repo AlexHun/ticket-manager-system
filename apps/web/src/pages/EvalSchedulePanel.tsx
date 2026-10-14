@@ -171,7 +171,9 @@ export function EvalSchedulePanel() {
       );
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Could not save the schedule"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't save the schedule. Try again."),
+      );
     },
   });
 
@@ -189,7 +191,9 @@ export function EvalSchedulePanel() {
       toast.success("Run planned");
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Could not plan the run"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't plan the run. Try again."),
+      );
     },
   });
 
@@ -202,7 +206,9 @@ export function EvalSchedulePanel() {
       toast.success("Planned run cancelled");
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Could not cancel the planned run"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't cancel the planned run. Try again."),
+      );
     },
   });
 
@@ -225,7 +231,7 @@ export function EvalSchedulePanel() {
   if (error || !data) {
     return (
       <p className="text-sm text-muted-foreground">
-        {extractErrorMessage(error, "Could not load the schedule")}
+        {extractErrorMessage(error, "Couldn't load the schedule. Try again.")}
       </p>
     );
   }
@@ -453,7 +459,9 @@ export function EvalSchedulePanel() {
           </div>
 
           {data.plannedRuns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing planned.</p>
+            <p className="text-sm text-muted-foreground">
+              Nothing planned. A run you plan above appears here until it fires.
+            </p>
           ) : (
             <ul className="flex flex-col gap-2">
               {data.plannedRuns.map((row) => (

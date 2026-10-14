@@ -19,6 +19,7 @@ import {
   type EvalRunRow,
   type EvalRunsResponse,
 } from "@ticket/shared";
+import { toast } from "@/components/ui/sonner";
 import { TUTORIAL_ANCHORS } from "@/lib/tutorial-anchors";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
@@ -672,7 +673,8 @@ describe("how a number reads against its bar", () => {
     render();
 
     await screen.findByText("Estimated cost");
-    expect(screen.getByText(/^1 cases × 5/)).toHaveTextContent(/^1 cases × 5$/);
+    // One case is "1 case", never "1 cases".
+    expect(screen.getByText(/^1 case × 5/)).toHaveTextContent(/^1 case × 5$/);
   });
 
   test("names an escaped payload a defect, not another number below its bar", async () => {
@@ -956,6 +958,33 @@ describe("starting a run", () => {
       await screen.findByText("No AI provider is configured"),
     ).toBeInTheDocument();
     expect(runButton()).toBeDisabled();
+  });
+
+  test("a run that will not start says so and what to do", async () => {
+    const user = userEvent.setup();
+    // A rejection carrying no message of its own, so the fallback is what shows.
+    runsPost.mockRejectedValue("offline");
+
+    render();
+    await screen.findByRole("button", { name: "Run 7" });
+
+    await user.click(runButton());
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Couldn't start the run. Try again.",
+      ),
+    );
+  });
+
+  test("a list that will not load says so and what to do", async () => {
+    runsGet.mockRejectedValue("offline");
+
+    render();
+
+    expect(
+      await screen.findByText("Couldn't load runs. Try again."),
+    ).toBeInTheDocument();
   });
 });
 

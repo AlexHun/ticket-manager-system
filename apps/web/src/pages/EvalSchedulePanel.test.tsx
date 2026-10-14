@@ -9,6 +9,7 @@ import {
   type EvalPlannedRunRow,
   type EvalScheduleResponse,
 } from "@ticket/shared";
+import { toast } from "@/components/ui/sonner";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { EvalSchedulePanel } from "./EvalSchedulePanel";
@@ -333,6 +334,41 @@ test("plans a run at a picked time, against the chosen corpus", async () => {
   expect(at.getHours()).toBe(14);
   expect(at.getMinutes()).toBe(30);
   expect(at.getTime()).toBeGreaterThan(Date.now());
+});
+
+test("an empty list says what will fill it", async () => {
+  renderPanel();
+
+  expect(
+    await screen.findByText(
+      "Nothing planned. A run you plan above appears here until it fires.",
+    ),
+  ).toBeVisible();
+});
+
+test("a schedule that will not load says so and what to do", async () => {
+  // A rejection carrying no message of its own, so the fallback is what shows.
+  scheduleGet.mockRejectedValue("offline");
+  renderPanel();
+
+  expect(
+    await screen.findByText("Couldn't load the schedule. Try again."),
+  ).toBeVisible();
+});
+
+test("a cancel that fails says so and what to do", async () => {
+  const user = userEvent.setup();
+  scheduleGet.mockResolvedValue(response({ plannedRuns: [plannedRun()] }));
+  plannedDelete.mockRejectedValue("offline");
+  renderPanel();
+
+  await user.click(await screen.findByRole("button", { name: /cancel/i }));
+
+  await waitFor(() =>
+    expect(toast.error).toHaveBeenCalledWith(
+      "Couldn't cancel the planned run. Try again.",
+    ),
+  );
 });
 
 test("cannot plan a run on a deployment with no key", async () => {

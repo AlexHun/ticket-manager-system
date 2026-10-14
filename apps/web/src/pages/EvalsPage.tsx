@@ -706,7 +706,7 @@ function RunCard({
                 <Metric
                   label="Estimated cost"
                   value={`$${run.usd.toFixed(4)}`}
-                  detail={`${run.results.length} cases × ${run.repeats}`}
+                  detail={`${run.results.length} ${run.results.length === 1 ? "case" : "cases"} × ${run.repeats}`}
                 />
                 <Metric
                   label="Prompt cache"
@@ -922,7 +922,9 @@ export function EvalsPage() {
       toast.success("Eval run started");
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Could not start the run"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't start the run. Try again."),
+      );
     },
   });
 
@@ -1018,7 +1020,7 @@ export function EvalsPage() {
 
         {error && (
           <p className="text-sm text-muted-foreground">
-            {extractErrorMessage(error, "Could not load runs")}
+            {extractErrorMessage(error, "Couldn't load runs. Try again.")}
           </p>
         )}
 

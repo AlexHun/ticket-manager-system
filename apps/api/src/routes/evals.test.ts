@@ -237,6 +237,9 @@ describe("POST /runs", () => {
     const res = await post();
 
     expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      error: "Couldn't start the run — no AI provider is configured.",
+    });
     expect(await prisma.evalRun.count()).toBe(0);
     expect(enqueued).toEqual([]);
   });
