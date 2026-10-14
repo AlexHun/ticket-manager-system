@@ -29,6 +29,8 @@ const UNASSIGNED = "unassigned";
 
 const UNASSIGNED_LABEL = "Unassigned";
 
+const ASSIGNEE_ERROR = "Couldn't update the assignee. Try again.";
+
 export function TicketAssigneeSelect({
   ticket,
 }: {
@@ -50,7 +52,7 @@ export function TicketAssigneeSelect({
       updated.assignedTo
         ? `Assigned to ${updated.assignedTo.name}`
         : "Ticket unassigned",
-    errorMessage: "Failed to update the assignee",
+    errorMessage: ASSIGNEE_ERROR,
     onError: () => {
       // The likeliest cause is a roster that has moved on — a user removed
       // since this page was drawn. Refetch it so the choice that just failed
@@ -179,7 +181,7 @@ function AssigneeStatus({
   if (mutationError) {
     return (
       <p className="text-xs text-destructive" role="alert">
-        {extractErrorMessage(mutationError, "Failed to update the assignee")}
+        {extractErrorMessage(mutationError, ASSIGNEE_ERROR)}
       </p>
     );
   }

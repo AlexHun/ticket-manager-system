@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
+  ASSIGNEE_NOT_FOUND_MESSAGE,
   CATEGORY_NONE,
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
@@ -7,8 +8,11 @@ import {
   MAX_PAGE_SIZE,
   MAX_TICKET_ID,
   MESSAGE_DIRECTION,
+  NO_TICKETS_YET,
   SORT_ORDER,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
+  TICKET_NOT_FOUND_MESSAGE,
   TICKET_SEARCH_MAX_LENGTH,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
@@ -1260,7 +1264,7 @@ test.describe("Ticket detail API", () => {
 
     const res = await page.request.get(detailEndpoint(MAX_TICKET_ID));
     expect(res.status()).toBe(404);
-    expect((await res.json()).error).toBe("Ticket not found");
+    expect((await res.json()).error).toBe(TICKET_NOT_FOUND_MESSAGE);
   });
 
   test("-> 400 for a malformed id", async ({ page }) => {
@@ -1445,7 +1449,9 @@ test.describe("Ticket assignment API", () => {
     for (const candidate of ["no-such-user", DELETED_USER.id]) {
       const res = await assign(page, id, candidate);
       expect(res.status(), candidate).toBe(400);
-      expect((await res.json()).error, candidate).toBe("Assignee not found");
+      expect((await res.json()).error, candidate).toBe(
+        ASSIGNEE_NOT_FOUND_MESSAGE,
+      );
     }
 
     // …and the ticket is untouched by any of them.
@@ -1468,7 +1474,7 @@ test.describe("Ticket assignment API", () => {
 
     const res = await assign(page, MAX_TICKET_ID, ZOE.id);
     expect(res.status()).toBe(404);
-    expect((await res.json()).error).toBe("Ticket not found");
+    expect((await res.json()).error).toBe(TICKET_NOT_FOUND_MESSAGE);
   });
 
   test("-> 400 for a malformed ticket id", async ({ page }) => {
@@ -1659,7 +1665,7 @@ test.describe("Ticket reply API", () => {
       const res = await reply(page, id, value);
       expect(res.status(), JSON.stringify(value ?? null)).toBe(400);
       expect((await res.json()).error, JSON.stringify(value ?? null)).toBe(
-        "Write a reply before sending",
+        TICKET_INPUT_MESSAGE.replyEmpty,
       );
     }
 
@@ -1674,9 +1680,7 @@ test.describe("Ticket reply API", () => {
     const res = await reply(page, id, "x".repeat(MAX_MESSAGE_BODY_LENGTH + 1));
 
     expect(res.status()).toBe(400);
-    expect((await res.json()).error).toBe(
-      `A reply is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
-    );
+    expect((await res.json()).error).toBe(TICKET_INPUT_MESSAGE.replyTooLong);
     // The cap is on the trimmed value, so one right at it still goes through.
     expect(
       (await reply(page, id, "x".repeat(MAX_MESSAGE_BODY_LENGTH))).status(),
@@ -1701,7 +1705,7 @@ test.describe("Ticket reply API", () => {
     const res = await reply(page, MAX_TICKET_ID, "Into the void.");
 
     expect(res.status()).toBe(404);
-    expect((await res.json()).error).toBe("Ticket not found");
+    expect((await res.json()).error).toBe(TICKET_NOT_FOUND_MESSAGE);
   });
 
   test("-> 400 for a malformed ticket id", async ({ page }) => {
@@ -1752,7 +1756,7 @@ test.describe("Tickets page", () => {
     await signIn(page, "agent");
     await page.goto("/tickets");
 
-    await expect(page.getByText("No tickets found.")).toBeVisible();
+    await expect(page.getByText(NO_TICKETS_YET)).toBeVisible();
     await expect(page.getByRole("table")).toHaveCount(0);
   });
 
@@ -2701,7 +2705,9 @@ test.describe("Ticket detail page", () => {
     await box.fill("Worth not losing.");
     await page.getByRole("button", { name: "Send reply" }).click();
 
-    await expect(page.getByRole("alert")).toContainText("Ticket not found");
+    await expect(page.getByRole("alert")).toContainText(
+      TICKET_NOT_FOUND_MESSAGE,
+    );
     await expect(box).toHaveValue("Worth not losing.");
   });
 
@@ -2720,7 +2726,7 @@ test.describe("Ticket detail page", () => {
     await page.keyboard.press("Control+Enter");
 
     await expect(page.getByRole("alert")).toContainText(
-      "Write a reply before sending",
+      TICKET_INPUT_MESSAGE.replyEmpty,
     );
     await expect(page.getByText("Messages (3)")).toBeVisible();
   });

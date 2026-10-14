@@ -75,7 +75,7 @@ interface TableFrameProps extends Omit<
  * makes a control's presence depend on the viewport — it appears and vanishes
  * as the window resizes — and jsdom reports every scroll dimension as `0`, so
  * nothing here could test it. The empty states pay for this with one tab stop
- * that reads "Tickets, region — No tickets found."; that is a fair answer to
+ * that reads "Tickets, region — No tickets yet. …"; that is a fair answer to
  * "what is in this table", not noise.
  *
  * **The skeletons keep their own "Loading …" names** rather than borrowing the

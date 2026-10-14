@@ -10,6 +10,7 @@ import {
   TUTORIAL_PAGE_KEY,
   type SortOrder,
   type TicketSortField,
+  NO_TICKETS_YET,
 } from "@ticket/shared";
 import { Tutorial } from "@/components/Tutorial";
 import { extractErrorMessage } from "@/lib/errors";
@@ -312,7 +313,7 @@ export function TicketsPage() {
 
       {error && (
         <p className="text-sm text-destructive" role="alert">
-          {extractErrorMessage(error, "Failed to load tickets")}
+          {extractErrorMessage(error, "Couldn't load tickets. Try again.")}
         </p>
       )}
 
@@ -334,7 +335,7 @@ export function TicketsPage() {
             onSortingChange={handleSortingChange}
             density={density}
             emptyMessage={
-              filtered ? "No tickets match these filters." : "No tickets found."
+              filtered ? "No tickets match these filters." : NO_TICKETS_YET
             }
           />
           {data.total > 0 && (

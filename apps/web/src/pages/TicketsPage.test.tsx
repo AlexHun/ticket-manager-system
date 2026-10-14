@@ -13,6 +13,7 @@ import {
   type Ticket,
   type TicketsListResponse,
   type TicketWithAssignee,
+  NO_TICKETS_YET,
 } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes, type TestRouter } from "@/test/render";
@@ -415,7 +416,7 @@ describe("TicketsPage", () => {
     ticketsGet.mockResolvedValue(ticketsResponse([]));
     renderTicketsPage();
 
-    expect(await screen.findByText("No tickets found.")).toBeInTheDocument();
+    expect(await screen.findByText(NO_TICKETS_YET)).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -686,7 +687,7 @@ describe("TicketsPage filtering", () => {
     expect(
       await screen.findByText("No tickets match these filters."),
     ).toBeInTheDocument();
-    expect(screen.queryByText("No tickets found.")).not.toBeInTheDocument();
+    expect(screen.queryByText(NO_TICKETS_YET)).not.toBeInTheDocument();
   });
 
   test("keeps the filter controls usable when nothing matches", async () => {
@@ -790,7 +791,7 @@ describe("TicketsPage pagination", () => {
     ticketsGet.mockResolvedValue(ticketsResponse([], { total: 0 }));
     renderTicketsPage();
 
-    await screen.findByText("No tickets found.");
+    await screen.findByText(NO_TICKETS_YET);
     expect(
       screen.queryByRole("navigation", { name: "Pagination" }),
     ).not.toBeInTheDocument();

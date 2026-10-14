@@ -5,6 +5,7 @@ import {
   DEMO_AI_LIMIT_MESSAGE,
   DEMO_AI_LIMIT_REASON,
   MESSAGE_DIRECTION,
+  TICKET_NOT_FOUND_MESSAGE,
   type DemoAiLimitResponse,
   type PolishReplyResponse,
   type SummarizeTicketResponse,
@@ -136,7 +137,7 @@ const FAILURE_RESPONSE: Record<
 > = {
   [POLISH_FAILURE.provider]: {
     status: 502,
-    error: "Polishing failed — try again, or send your draft as it is.",
+    error: "Couldn't polish your draft — try again, or send it as it is.",
   },
   [POLISH_FAILURE.busy]: {
     status: 503,
@@ -154,7 +155,7 @@ const FAILURE_RESPONSE: Record<
   [POLISH_FAILURE.auth]: {
     status: 503,
     error:
-      "Polishing is unavailable — the server's AI credentials were rejected.",
+      "Polishing is unavailable — the server's AI credentials were rejected. Send your draft as it is.",
   },
   // The server log carries the provider's own sentence, which names the offending
   // model or parameter. The agent gets none of that: they cannot act on it, and
@@ -255,7 +256,7 @@ aiRouter.post(
     });
 
     if (!ticket) {
-      res.status(404).json({ error: "Ticket not found" });
+      res.status(404).json({ error: TICKET_NOT_FOUND_MESSAGE });
       return;
     }
 
@@ -437,7 +438,7 @@ aiRouter.post(
     });
 
     if (!ticket) {
-      res.status(404).json({ error: "Ticket not found" });
+      res.status(404).json({ error: TICKET_NOT_FOUND_MESSAGE });
       return;
     }
 

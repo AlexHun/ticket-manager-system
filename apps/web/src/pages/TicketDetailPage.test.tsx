@@ -2,8 +2,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  ASSIGNEE_NOT_FOUND_MESSAGE,
   MESSAGE_DIRECTION,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
+  TICKET_NOT_FOUND_MESSAGE,
   TICKET_STATUS,
   USER_ROLE,
   type TicketAssignee,
@@ -457,14 +460,16 @@ describe("TicketDetailPage assignment", () => {
       }),
       assignees: AGENTS,
     });
-    assigneePatch.mockRejectedValue(makeAxiosError(400, "Assignee not found"));
+    assigneePatch.mockRejectedValue(
+      makeAxiosError(400, ASSIGNEE_NOT_FOUND_MESSAGE),
+    );
     renderDetail();
     const user = await readyToAssign();
 
     await chooseAssignee(user, "Sam Support");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Assignee not found",
+      ASSIGNEE_NOT_FOUND_MESSAGE,
     );
     // The field still says who the ticket is actually assigned to — showing the
     // rejected choice would claim a change the server refused.
@@ -595,7 +600,7 @@ describe("TicketDetailPage thread", () => {
     renderDetail();
 
     expect(
-      await screen.findByText("No messages on this ticket yet."),
+      await screen.findByText(/^No messages on this ticket yet\./),
     ).toBeInTheDocument();
     expect(screen.getByText("Messages (0)")).toBeInTheDocument();
   });
@@ -702,7 +707,7 @@ describe("TicketDetailPage reply composer", () => {
   test("keeps the draft and explains a rejected reply", async () => {
     mockApi();
     replyPost.mockRejectedValue(
-      makeAxiosError(400, "A reply is limited to 10000 characters"),
+      makeAxiosError(400, TICKET_INPUT_MESSAGE.replyTooLong),
     );
     renderDetail();
     const user = await readyToReply();
@@ -711,7 +716,7 @@ describe("TicketDetailPage reply composer", () => {
     await user.click(sendButton());
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "A reply is limited to 10000 characters",
+      TICKET_INPUT_MESSAGE.replyTooLong,
     );
     // The draft is the only copy of what was typed — clearing it on failure
     // would throw the reply away to report that it wasn't sent.
@@ -733,7 +738,7 @@ describe("TicketDetailPage reply composer", () => {
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Write a reply before sending",
+      TICKET_INPUT_MESSAGE.replyEmpty,
     );
     expect(replyPost).not.toHaveBeenCalled();
   });
@@ -752,7 +757,7 @@ describe("TicketDetailPage reply composer", () => {
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Write a reply before sending",
+      TICKET_INPUT_MESSAGE.replyEmpty,
     );
     expect(replyPost).not.toHaveBeenCalled();
   });
@@ -815,7 +820,7 @@ describe("TicketDetailPage reply composer", () => {
     const user = await readyToReply();
 
     expect(
-      screen.getByText("No messages on this ticket yet."),
+      screen.getByText(/^No messages on this ticket yet\./),
     ).toBeInTheDocument();
 
     await user.type(replyBox(), "Try the reset link again.");
@@ -830,7 +835,7 @@ describe("TicketDetailPage reply composer", () => {
 
 describe("TicketDetailPage errors", () => {
   test("shows a not-found destination, not an alert, on 404", async () => {
-    mockApi({ detailError: makeAxiosError(404, "Ticket not found") });
+    mockApi({ detailError: makeAxiosError(404, TICKET_NOT_FOUND_MESSAGE) });
     renderDetail("/tickets/999");
 
     expect(

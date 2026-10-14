@@ -79,6 +79,8 @@ import {
   MESSAGE_DIRECTION,
   SUMMARY_SENTIMENT,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
+  TICKET_NOT_FOUND_MESSAGE,
   TICKET_STATUS,
   USER_ROLE,
   type MessageDirection,
@@ -382,7 +384,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post(goodBody({ draft: "   " }));
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Write a draft before polishing");
+    expect(sent.body.error).toBe(TICKET_INPUT_MESSAGE.draftEmpty);
     expect(polishReply).not.toHaveBeenCalled();
   });
 
@@ -390,7 +392,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post(goodBody({ draft: "x".repeat(10_001) }));
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("A draft is limited to 10000 characters");
+    expect(sent.body.error).toBe(TICKET_INPUT_MESSAGE.draftTooLong);
   });
 
   test("rejects a request with no ticket to answer", async () => {
@@ -415,7 +417,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post(goodBody({ ticketId: TICKET + 1 }));
 
     expect(sent.status).toBe(404);
-    expect(sent.body.error).toBe("Ticket not found");
+    expect(sent.body.error).toBe(TICKET_NOT_FOUND_MESSAGE);
     expect(polishReply).not.toHaveBeenCalled();
   });
 });
@@ -609,6 +611,20 @@ describe("POST /api/ai/polish-reply — answering", () => {
     }
   });
 
+  test("names the way round a failure that will not clear on its own", async () => {
+    // Quota, auth and config fail identically on every retry, so each one
+    // tells the agent what to do instead of asking again.
+    for (const reason of [
+      POLISH_FAILURE.quota,
+      POLISH_FAILURE.auth,
+      POLISH_FAILURE.config,
+    ]) {
+      polishResult = { ok: false, reason };
+      const sent = await post(goodBody());
+      expect(sent.body.error).toEndWith("Send your draft as it is.");
+    }
+  });
+
   test("does not tell an agent to retry an empty balance", async () => {
     polishResult = { ok: false, reason: POLISH_FAILURE.quota };
 
@@ -729,7 +745,7 @@ describe("POST /api/ai/summarize-ticket — refusing before it costs anything", 
     const sent = await postSummary({ ticketId: TICKET + 1 });
 
     expect(sent.status).toBe(404);
-    expect(sent.body.error).toBe("Ticket not found");
+    expect(sent.body.error).toBe(TICKET_NOT_FOUND_MESSAGE);
     expect(summarizeTicket).not.toHaveBeenCalled();
   });
 });

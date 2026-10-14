@@ -5,6 +5,7 @@ import {
   DEMO_AI_LIMIT_MESSAGE,
   DEMO_AI_LIMIT_REASON,
   MAX_MESSAGE_BODY_LENGTH,
+  TICKET_NOT_FOUND_MESSAGE,
 } from "@ticket/shared";
 import { toast } from "@/components/ui/sonner";
 import { apiStub } from "@/test/api-stub";
@@ -387,13 +388,13 @@ describe("TicketReplyComposer polish — the draft a send is compared against", 
 
 describe("TicketReplyComposer polish — one alert at a time", () => {
   test("a new polish clears the failure the last send left behind", async () => {
-    mockApi({ sendError: makeAxiosError(404, "Ticket not found") });
+    mockApi({ sendError: makeAxiosError(404, TICKET_NOT_FOUND_MESSAGE) });
     const user = renderComposer();
     fillDraft(DRAFT);
 
     await user.click(sendButton());
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Ticket not found",
+      TICKET_NOT_FOUND_MESSAGE,
     );
 
     mockApi();
@@ -424,5 +425,71 @@ describe("TicketReplyComposer polish — one alert at a time", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("Something broke"),
     );
     expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+});
+
+describe("TicketReplyComposer — what the toasts claim", () => {
+  const statusPatch = apiStub.patch("/api/tickets/:id/status");
+
+  /** Every toast the composer raised, success and error alike. */
+  function toasted(): string[] {
+    return [
+      ...vi.mocked(toast.success).mock.calls,
+      ...vi.mocked(toast.error).mock.calls,
+    ].map(([message]) => String(message));
+  }
+
+  beforeEach(() => {
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  // A send answers once the message is on the thread and its email is in the
+  // outbox. Nothing has been delivered yet, so no toast may say "sent".
+  test("a plain send says the reply was added", async () => {
+    mockApi();
+    const user = renderComposer();
+    fillDraft(DRAFT);
+
+    await user.click(sendButton());
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Reply added to the thread"),
+    );
+    expect(toasted().join(" ")).not.toMatch(/\bsent\b/i);
+  });
+
+  test("Send & resolve says the reply was added and the ticket resolved", async () => {
+    mockApi();
+    statusPatch.mockResolvedValue({ data: { ticket: { id: 12 } } });
+    const user = renderComposer();
+    fillDraft(DRAFT);
+
+    await user.click(screen.getByRole("button", { name: "Send & resolve" }));
+
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Reply added and ticket resolved",
+      ),
+    );
+    expect(toasted().join(" ")).not.toMatch(/\bsent\b/i);
+  });
+
+  test("a resolve that fails says what to do about it", async () => {
+    mockApi();
+    // Not an axios error: `extractErrorMessage` prefers any message the failure
+    // carries, so only a rejection with none reaches the composer's own words.
+    statusPatch.mockRejectedValue("offline");
+    const user = renderComposer();
+    fillDraft(DRAFT);
+
+    await user.click(screen.getByRole("button", { name: "Send & resolve" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Reply added, but couldn't resolve the ticket. Set its status to Resolved.",
+      ),
+    );
+    expect(toasted().join(" ")).not.toMatch(/\bsent\b/i);
   });
 });

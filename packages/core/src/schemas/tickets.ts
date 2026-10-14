@@ -15,6 +15,7 @@ import {
   SORT_ORDER,
   STATUS_BACKLOG,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
   TICKET_SEARCH_MAX_LENGTH,
   TICKET_SORT_FIELD,
 } from "@ticket/shared";
@@ -75,10 +76,7 @@ export const ticketsQuerySchema = z.object({
   q: z
     .string()
     .trim()
-    .max(
-      TICKET_SEARCH_MAX_LENGTH,
-      `Search is limited to ${TICKET_SEARCH_MAX_LENGTH} characters`,
-    )
+    .max(TICKET_SEARCH_MAX_LENGTH, TICKET_INPUT_MESSAGE.searchTooLong)
     .optional(),
   // Query params arrive as strings, hence coerce. A non-numeric value becomes
   // NaN and fails `int()`, so it is rejected rather than silently defaulted.
@@ -191,13 +189,10 @@ export type UpdateTicketCategoryValues = z.infer<
  */
 export const createTicketMessageSchema = z.object({
   textBody: z
-    .string({ error: "Write a reply before sending" })
+    .string({ error: TICKET_INPUT_MESSAGE.replyEmpty })
     .trim()
-    .min(1, "Write a reply before sending")
-    .max(
-      MAX_MESSAGE_BODY_LENGTH,
-      `A reply is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
-    ),
+    .min(1, TICKET_INPUT_MESSAGE.replyEmpty)
+    .max(MAX_MESSAGE_BODY_LENGTH, TICKET_INPUT_MESSAGE.replyTooLong),
   /**
    * The polished draft this reply was sent from, when Polish produced the text
    * still in the box — or text since hand-edited from it. Optional and absent
@@ -242,13 +237,10 @@ export type CreateTicketMessageValues = z.infer<
  */
 export const polishReplySchema = z.object({
   draft: z
-    .string({ error: "Write a draft before polishing" })
+    .string({ error: TICKET_INPUT_MESSAGE.draftEmpty })
     .trim()
-    .min(1, "Write a draft before polishing")
-    .max(
-      MAX_MESSAGE_BODY_LENGTH,
-      `A draft is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
-    ),
+    .min(1, TICKET_INPUT_MESSAGE.draftEmpty)
+    .max(MAX_MESSAGE_BODY_LENGTH, TICKET_INPUT_MESSAGE.draftTooLong),
   // Reused from the path-param schema rather than restated, so the two cannot
   // drift on what counts as a ticket id — including the int4 ceiling that keeps
   // an oversized number from reaching Prisma and becoming a 500.
