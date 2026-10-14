@@ -39,7 +39,7 @@ import {
 import { API_URL } from "./helpers/env";
 
 /**
- * "Use demo session" (#319, ADR-0022): one click on `/login`, a fresh identity
+ * "Start demo session" (#319, ADR-0022): one click on `/login`, a fresh identity
  * called "Demo visitor", no password.
  *
  * Runs against the ordinary :3002 server, which `.env.test` puts in demo mode.

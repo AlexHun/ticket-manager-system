@@ -88,6 +88,7 @@ import {
 import {
   ADMIN_DELETE_REFUSED_MESSAGE,
   ADMIN_SCREEN,
+  DEMO_MODE_OFF_MESSAGE,
   DEMO_START_LIMIT_MESSAGE,
   OUTBOUND_EMAIL_KIND,
   TICKET_ACTOR_KIND,
@@ -1244,6 +1245,9 @@ describe("Demo sign-in — auth.ts", () => {
       const res = await startDemo();
 
       expect(res.status).toBe(403);
+      expect(((await res.json()) as { message: string }).message).toBe(
+        DEMO_MODE_OFF_MESSAGE,
+      );
       expect(res.headers.get("set-cookie")).toBeNull();
       expect(await demoRows()).toEqual([]);
     },

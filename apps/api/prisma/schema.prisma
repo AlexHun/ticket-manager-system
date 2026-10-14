@@ -35,7 +35,7 @@ model User {
   /// this" for every ticket instead of going blank on the automated ones.
   automated            Boolean                      @default(false)
   /// This row is a demo visitor: minted by Better Auth's `anonymous` plugin on
-  /// one click of "Use demo session", with no password and no `Account` row.
+  /// one click of "Start demo session", with no password and no `Account` row.
   ///
   /// The plugin owns the name and writes it, which is why it is spelled the
   /// plugin's way rather than this schema's. Written `true` only by
@@ -1372,7 +1372,7 @@ model DemoAiSpend {
 /// The nightly reset (`jobs/demo-reset.ts`) deletes finished demo identities,
 /// and a foreign key would take their tally with them (cascade) or refuse the
 /// delete (restrict). So `userId` is a copy, and the row outlives the user it
-/// names. Each click on "Use demo session" mints a fresh identity with one
+/// names. Each click on "Start demo session" mints a fresh identity with one
 /// session, so an identity and a session are the same count.
 ///
 /// Written by `demo/usage.ts` only: created by the `user.create.after` hook in

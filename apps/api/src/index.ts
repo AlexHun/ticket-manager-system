@@ -132,7 +132,7 @@ app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
 app.use("/api/demo/usage", demoUsageRouter);
 
 // Its GET is public, like health above: the login page asks it before anyone
-// has signed in, to decide whether to offer "Use demo session". One boolean —
+// has signed in, to decide whether to offer "Start demo session". One boolean —
 // see the router. The sign-in it advertises is refused on the same switch in
 // auth.ts. Its one write, the welcome's step mark (#464), is a demo session's
 // only.

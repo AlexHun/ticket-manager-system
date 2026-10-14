@@ -37,8 +37,8 @@ export function DemoBanner() {
       <p className="min-w-0 flex-1">
         <span className="font-medium">You are in a demo.</span>{" "}
         <span className="text-muted-foreground">
-          Other visitors see what you change, and everything resets every night
-          at 00:00 UTC.
+          Other visitors see what you change, and the demo resets every night at
+          00:00 UTC.
         </span>
       </p>
       {/* The way back to the welcome from any page (demo-welcome R7). */}

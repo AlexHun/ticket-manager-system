@@ -4,7 +4,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { loginSchema, type LoginValues } from "@ticket/core";
-import { BRAND_NAME, DEMO_START_LIMIT_MESSAGE } from "@ticket/shared";
+import {
+  BRAND_NAME,
+  DEMO_MODE_OFF_MESSAGE,
+  DEMO_START_LIMIT_MESSAGE,
+} from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
@@ -20,7 +24,7 @@ import { Separator } from "@/components/ui/separator";
  * Better Auth reports the transport failure and the rejected request through
  * the same channel, and they need different words. A network failure arrives
  * with no status at all; a server fault arrives as 5xx. Neither says anything
- * about what was typed, and answering both with "Invalid email or password"
+ * about what was typed, and answering both with "Couldn't sign you in"
  * sends someone off to reset a password that was never the problem — which is
  * exactly what happened here when the API was down and sign-in returned 500.
  *
@@ -38,8 +42,26 @@ function failureMessage(
     typeof status === "number" && (status === 0 || status >= 500);
 
   return unreachable
-    ? `Can't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
+    ? `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
     : (error.message ?? fallback);
+}
+
+/**
+ * A refused email and password, in the copy standard's words rather than
+ * Better Auth's ("Invalid email or password"), which would otherwise reach the
+ * page through `error.message`. Matched on the status or on Better Auth's code,
+ * since some of its paths answer with no status.
+ */
+const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
+
+function signInFailureMessage(error: {
+  status?: number;
+  code?: string;
+  message?: string;
+}): string {
+  return error.status === 401 || error.code === "INVALID_EMAIL_OR_PASSWORD"
+    ? SIGN_IN_REFUSED
+    : failureMessage(error, SIGN_IN_REFUSED);
 }
 
 export function LoginPage() {
@@ -84,7 +106,7 @@ export function LoginPage() {
     const { error } = await signIn.email(values);
 
     if (error) {
-      setServerError(failureMessage(error, "Invalid email or password"));
+      setServerError(signInFailureMessage(error));
       return;
     }
 
@@ -113,10 +135,13 @@ export function LoginPage() {
       setStartingDemo(false);
       setServerError(
         error.status === 403
-          ? "Demo sessions are not available right now."
+          ? DEMO_MODE_OFF_MESSAGE
           : error.status === 429
             ? DEMO_START_LIMIT_MESSAGE
-            : failureMessage(error, "Could not start a demo session."),
+            : failureMessage(
+                error,
+                "Couldn't start a demo session. Try again.",
+              ),
       );
       return;
     }
@@ -221,7 +246,7 @@ export function LoginPage() {
                 onClick={startDemo}
               >
                 {startingDemo && <Loader2 className="size-4 animate-spin" />}
-                {startingDemo ? "Starting demo…" : "Use demo session"}
+                {startingDemo ? "Starting demo session…" : "Start demo session"}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
                 Look around as a demo visitor. No account needed.

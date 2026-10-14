@@ -65,7 +65,7 @@ export function ForgotPasswordPage() {
         <Card className="w-full">
           <CardHeader>
             <CardTitle>
-              {sent ? "Check your email" : "Forgot password"}
+              {sent ? "Check your email" : "Reset your password"}
             </CardTitle>
             <CardDescription>
               {sent

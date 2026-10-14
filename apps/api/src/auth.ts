@@ -6,6 +6,7 @@ import { deleteSessionCookie } from "better-auth/cookies";
 import { admin, anonymous } from "better-auth/plugins";
 import {
   BRAND_NAME,
+  DEMO_MODE_OFF_MESSAGE,
   DEMO_START_LIMIT_MESSAGE,
   USER_ROLE,
 } from "@ticket/shared";
@@ -449,7 +450,7 @@ export const auth = betterAuth({
       }
       if (ctx.path !== "/sign-in/anonymous") return;
       if (!isDemoModeEnabled()) {
-        throw new APIError("FORBIDDEN", { message: "Demo mode is off" });
+        throw new APIError("FORBIDDEN", { message: DEMO_MODE_OFF_MESSAGE });
       }
       const requestOrHeaders = ctx.request ?? ctx.headers;
       const address = requestOrHeaders
@@ -549,7 +550,7 @@ export const auth = betterAuth({
       adminRoles: [USER_ROLE.admin],
     }),
     /**
-     * "Use demo session": one click, a fresh identity, no password (#319,
+     * "Start demo session": one click, a fresh identity, no password (#319,
      * ADR-0022). Refused while demo mode is off by the `before` hook above.
      *
      * - **The role is the admin plugin's `defaultRole`, `agent`, and must

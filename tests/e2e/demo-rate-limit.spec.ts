@@ -3,6 +3,7 @@ import { DEMO_START_LIMIT_MESSAGE } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import { freshClientAddress, fromAddress } from "./helpers/client-address";
 import { resetDemoUsers, testDb } from "./helpers/db";
+import { DEMO_BUTTON } from "./helpers/demo";
 import { API_URL } from "./helpers/env";
 
 /**
@@ -15,8 +16,6 @@ import { API_URL } from "./helpers/env";
  * gives this file an address nobody else has spent, and gives every other demo
  * spec one too (`helpers/client-address.ts`), so the limit never starves them.
  */
-
-const DEMO_BUTTON = { name: "Use demo session" };
 
 test.beforeEach(async () => {
   await resetDemoUsers();

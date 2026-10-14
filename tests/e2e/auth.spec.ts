@@ -104,7 +104,7 @@ test.describe("Login flow", () => {
 
     // Zod messages wired via react-hook-form
     await expect(page.getByText("Enter a valid email")).toBeVisible();
-    await expect(page.getByText("Password is required")).toBeVisible();
+    await expect(page.getByText("Enter your password")).toBeVisible();
     await expect(page).toHaveURL("/login");
   });
 

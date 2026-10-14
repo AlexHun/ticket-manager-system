@@ -41,7 +41,7 @@ export async function resetE2eUsers(): Promise<number> {
 
 /**
  * Hard-delete every demo identity (#319) — the rows `/sign-in/anonymous` mints,
- * one per click of "Use demo session".
+ * one per click of "Start demo session".
  *
  * Matched on `isAnonymous` rather than an address prefix, because the plugin
  * picks the address. The nightly reset deletes only those whose sessions have
