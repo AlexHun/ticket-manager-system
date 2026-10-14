@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { ARCHITECTURE_NODE, ARCHITECTURE_NODES } from "./architecture";
 import {
   DRILLABLE_BOXES,
@@ -34,15 +35,29 @@ describe("the subsystem data", () => {
   it("gives the API the nine subsystems the grilling settled, in order", () => {
     expect(subsystemsOf(ARCHITECTURE_NODE.api).map((s) => s.title)).toEqual([
       "Ingestion",
-      "Tickets & Activity",
+      "Tickets & activity",
       "Knowledge base",
-      "Pipeline & Automation",
+      "Pipeline & automation",
       "Outbox",
       "Auth & Team",
       "Realtime",
-      "Evals & Schedule",
+      "Evals & schedule",
       "Demo",
     ]);
+  });
+
+  it("names each browser-app screen as the sidebar does", () => {
+    const screens = subsystemsOf(ARCHITECTURE_NODE.browserApp).filter(
+      (s) => s.screen,
+    );
+    expect(screens.length).toBeGreaterThan(0);
+    for (const screen of screens) {
+      const item = NAV_ITEMS.find(
+        (candidate) => candidate.to === screen.screen,
+      );
+      expect(item, screen.id).toBeDefined();
+      expect(screen.title, screen.id).toBe(item!.label);
+    }
   });
 
   it("names no single file", () => {
