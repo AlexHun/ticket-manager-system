@@ -17,12 +17,19 @@ invoke it.
    **Blocked by** list: an open blocker means stop and tell the user.
 2. **Branch** `<type>/<n>-<slug>` from a freshly fetched `origin/develop`.
    `bun run tokens` joins transcripts to issues through that branch name, so
-   the number in it makes the ticket measurable.
+   the number in it makes the ticket measurable. When a branch for `#<n>`
+   already exists, locally or on origin, or the issue carries `Progress:`
+   comments, an earlier session stopped mid-ticket: check that branch out,
+   keep its work, and resume at the step its last `Progress:` comment names.
 3. **Load the standards.** Call the Skill tool with `coding-standards` and read
    every row the ticket touches.
 4. **Build test-first.** Call the Skill tool with `mattpocock-skills:tdd` and
    work at the seams the ticket or its plan names. Run typecheck and the single
    test file as you go; run `bun run typecheck` and both suites once at the end.
+   Commit each slice once its test is green, and push the branch after the
+   first commit: a feature branch runs no CI, and a pushed commit survives a
+   session that stops on a usage limit, where staged work survives only on
+   this machine.
 5. **Mark the PRD shipped if this is its last ticket.** When the ticket's
    `## Parent` names `docs/prd/<slug>.md` (`to-tickets` writes it) and
    `gh issue list --state open --search "\"docs/prd/<slug>.md\" in:body"`
@@ -33,9 +40,12 @@ invoke it.
    `apps/api/src/doc-citations.test.ts`: a shipped PRD is no longer read, and
    the check fails an exemption for a document it does not read. Skip it, and
    the PRD is citation-checked forever.
-6. **Commit** after the self-check in CLAUDE.md.
+6. **Commit** after the self-check in CLAUDE.md, push, and leave the
+   checkpoint on the issue:
+   `gh issue comment <n> --body "Progress: built, next is review (step 7)"`.
 7. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
-   `origin/develop`. Fix every finding, or write down why one stands.
+   `origin/develop`. Fix every finding, or write down why one stands. Push, and
+   comment `Progress: reviewed, next is ship (step 8)`.
 8. **Ship.** Push, open a PR into `develop` whose body says `Closes #<n>`, and take it to
    green in CI as CLAUDE.md's Workflow describes.
 
