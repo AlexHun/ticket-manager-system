@@ -853,5 +853,10 @@
     "version": "0.1.211",
     "date": "2026-10-14",
     "title": "Word sign-in, password and demo entry to the copy standard (#492)"
+  },
+  {
+    "version": "0.1.212",
+    "date": "2026-10-14",
+    "title": "Word the activity feed and app chrome to the copy standard (#493)"
   }
 ]
