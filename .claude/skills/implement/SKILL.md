@@ -49,10 +49,23 @@ invoke it.
    checkpoint on the issue:
    `gh issue comment <n> --body "Progress: built, next is review (step 7)"`.
 7. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
-   `origin/develop`. Fix every finding, or write down why one stands. Push, and
-   comment `Progress: reviewed, next is ship (step 8)`.
-8. **Ship.** Open a PR into `develop` whose body says `Closes #<n>`, and take
-   it to green in CI as CLAUDE.md's Workflow describes.
+   `origin/develop`. Its two axes run as background subagents whatever that
+   skill asks, and a background report reaches a subagent only between its
+   own tool calls: a worker that ends its turn to wait never hears back
+   (#523). While the axes are out, run CLAUDE.md's self-check over the whole
+   branch diff and write the PR body to the scratchpad. Then, when this
+   session is itself a subagent, keep the turn open with foreground
+   `Start-Sleep -Seconds 30` calls through PowerShell until both reports are
+   in. Hold every finding until both axes have reported, and
+   state a review's result only from its report. Run an axis still silent
+   after 15 minutes inline instead. Fix every finding, or write down why one
+   stands, and update the PR body with each finding and how it was settled.
+   Push, and comment `Progress: reviewed, next is ship (step 8)`. Done when
+   both axes' results are in hand, every finding is fixed or answered in the
+   PR body, and the fixes are pushed.
+8. **Ship.** Open a PR into `develop` from the body written in step 7, which
+   says `Closes #<n>`, and take it to green in CI as CLAUDE.md's Workflow
+   describes.
 
 Done when the PR is open, closes the issue, and every CI job is green. Report
 it and stop: the next ticket starts in a fresh session.

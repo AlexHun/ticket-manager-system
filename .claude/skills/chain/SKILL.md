@@ -72,6 +72,16 @@ completion notice:
 
 Steps 3 and 4 act on that `RESULT` line.
 
+**A reply without a `RESULT` line is continued once.** Continue the worker
+with:
+
+> Your reply has no `RESULT` line. Finish what `implement` still needs, then
+> end with the same `RESULT` line.
+
+When that reply has none either, the chain stops (step 4): a worker that
+cannot say where its ticket stands twice running wants the user, not a third
+guess at its state (#523).
+
 **To continue a worker**, send it the message with SendMessage, so it keeps
 its context. When this session has no SendMessage, start a fresh, newly named
 worker with the prompt above followed by the message.
@@ -155,11 +165,13 @@ The chain stops, and reports, when any of these holds:
 - a ticket is still `ci=red` after three fix rounds;
 - the usage gate says `pause`, or a ticket stops on an API error a third time;
 - a worker returns `pr=none` or `questions` that are not `none`;
+- a worker's reply still has no `RESULT` line after one continue;
 - the next ticket is blocked by an open issue outside the chain;
 - a merge fails or the user declines one.
 
 The ticket that stopped the chain gets its `Usage:` comment too, in step 3's
-shape, since a stopped run is the one `retro` most needs to read.
+shape, since a stopped run is the one `retro` most needs to read. A notice
+whose reply carried no `RESULT` line ends its row on `RESULT=none`.
 
 Report a table with one row per ticket — ticket, team member, PR, CI, score,
 merged or why it stopped — and, when stopped early, the one thing the user has
