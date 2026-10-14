@@ -14,8 +14,8 @@ Feature work runs in this order, unbroken in one context up to the tickets:
 `/write-a-prd` → `/prd-to-plan` → `/to-tickets`, then one `/implement` per
 ticket — or `/chain` to run them all in sequence, each ticket in a fresh
 subagent, merged before the next starts. `write-a-prd` and `prd-to-plan` are this repo's tuned spec pair and
-fill the slot `/mattpocock-skills:to-spec` holds elsewhere. `to-tickets` and
-`implement` are local copies of the plugin skills, adapted to this repo, and
+fill the slot `/mattpocock-skills:to-spec` holds elsewhere. `to-tickets`,
+`implement` and `retro` are local copies of the plugin skills, adapted to this repo, and
 unlike the plugin versions they can be invoked by the agent; use them rather
 than the `mattpocock-skills:` versions.
 
