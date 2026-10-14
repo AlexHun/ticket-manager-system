@@ -549,7 +549,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
       // key, and unset is a supported state the whole app degrades the same way.
       if (!config.evalConfigured()) {
         res.status(503).json({
-          error: "No AI provider is configured, so an eval cannot run.",
+          error: "Couldn't start the run — no AI provider is configured.",
         });
         return;
       }

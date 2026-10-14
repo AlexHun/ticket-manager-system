@@ -256,6 +256,11 @@ test("refuses a plan for a moment that has passed", async () => {
   });
 
   expect(res.status).toBe(400);
+  // Reachable from the form: the button checks the time when it is pressed,
+  // and a minute can pass between the press and the request landing.
+  expect(await res.json()).toEqual({
+    error: "Couldn't plan the run — pick a time in the future.",
+  });
   expect(await prisma.evalPlannedRun.count()).toBe(0);
   expect(enqueued).toEqual([]);
 });
@@ -270,6 +275,9 @@ test("refuses a plan further ahead than the queue would keep it", async () => {
   });
 
   expect(res.status).toBe(400);
+  expect(await res.json()).toEqual({
+    error: `Couldn't plan the run — pick a time within ${EVAL_PLAN_HORIZON_DAYS} days.`,
+  });
   expect(await prisma.evalPlannedRun.count()).toBe(0);
 });
 
@@ -282,6 +290,9 @@ test("a keyless deployment cannot plan a run", async () => {
   });
 
   expect(res.status).toBe(503);
+  expect(await res.json()).toEqual({
+    error: "Couldn't plan the run — no AI provider is configured.",
+  });
   // Before the row, so nothing accumulates plans that read as coming and can
   // never be answered.
   expect(await prisma.evalPlannedRun.count()).toBe(0);
@@ -450,6 +461,10 @@ test("a second cancel matches nothing", async () => {
 
   expect(first.status).toBe(200);
   expect(second.status).toBe(404);
+  expect(await second.json()).toEqual({
+    error:
+      "Couldn't cancel the planned run — it is no longer planned. Reload to see what became of it.",
+  });
   expect(cancelledJobs).toHaveLength(1);
 });
 
