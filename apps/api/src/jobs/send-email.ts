@@ -2,6 +2,7 @@ import { fromPrisma, type PgBoss } from "pg-boss";
 import { prisma, type Prisma } from "../db";
 import {
   MAIL_OUTCOME,
+  NO_PROVIDER_REASON,
   RETRYABLE_OUTCOME,
   deliver,
   isMailConfigured,
@@ -236,8 +237,7 @@ async function handle({ outboundEmailId }: SendEmailJob): Promise<void> {
       where: { id: row.id, status: "queued" },
       data: {
         status: "undeliverable",
-        lastError:
-          "No mail provider configured (POSTMARK_SERVER_TOKEN is unset)",
+        lastError: NO_PROVIDER_REASON,
       },
     });
     return;

@@ -477,8 +477,9 @@ describe("TicketReplyComposer — what the toasts claim", () => {
 
   test("a resolve that fails says what to do about it", async () => {
     mockApi();
-    // Not an axios error: `extractErrorMessage` prefers any message the failure
-    // carries, so only a rejection with none reaches the composer's own words.
+    // Not an `Error`: `extractErrorMessage` prefers the API's own sentence, or
+    // the message a plain `Error` carries, so only a rejection with neither
+    // reaches the composer's own words.
     statusPatch.mockRejectedValue("offline");
     const user = renderComposer();
     fillDraft(DRAFT);

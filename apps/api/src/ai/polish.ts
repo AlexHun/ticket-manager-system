@@ -267,8 +267,8 @@ function inventedCommitments(polished: string, draft: string): string[] {
  * allows, because the caller genuinely branches on the outcome. A bare throw
  * would reach Express' default handler as a 500 with an HTML body, which
  * `extractErrorMessage` on the client cannot read: the agent would be told
- * "Request failed with status code 500" about a feature that had simply been
- * turned off.
+ * only the composer's generic fallback about a feature that had simply been
+ * turned off, never that it was off.
  *
  * `signal` lets the route abandon the call when the browser hangs up.
  */

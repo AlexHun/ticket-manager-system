@@ -16,16 +16,25 @@ describe("extractErrorMessage", () => {
     expect(extractErrorMessage(err, "fallback")).toBe("Email already in use");
   });
 
-  test("falls back to err.message when axios error has a response but no data.error", () => {
+  // Axios's own message names a status code, which is not copy: the fallback
+  // is the sentence written for the case the API sent none.
+  test("returns the fallback when an axios error has a response but no data.error", () => {
     const err = makeAxiosError({
       response: { status: 500, data: {} },
     });
-    expect(extractErrorMessage(err, "fallback")).toBe("Request failed");
+    expect(extractErrorMessage(err, "fallback")).toBe("fallback");
   });
 
-  test("falls back to err.message when axios error has no response (network failure)", () => {
+  test("returns the fallback when an axios error's body is not JSON", () => {
+    const err = makeAxiosError({
+      response: { status: 502, data: "<html>Bad gateway</html>" },
+    });
+    expect(extractErrorMessage(err, "fallback")).toBe("fallback");
+  });
+
+  test("returns the fallback when an axios error has no response (network failure)", () => {
     const err = makeAxiosError({});
-    expect(extractErrorMessage(err, "fallback")).toBe("Request failed");
+    expect(extractErrorMessage(err, "fallback")).toBe("fallback");
   });
 
   test("returns err.message for a generic Error", () => {
