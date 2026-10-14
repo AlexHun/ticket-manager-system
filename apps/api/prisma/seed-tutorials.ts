@@ -23,9 +23,6 @@ const skipped: string[] = [];
 
 for (const pageKey of TUTORIAL_PAGE_KEYS) {
   const content = TUTORIAL_STARTER_CONTENT[pageKey];
-  if (!content) {
-    throw new Error(`No seed content for tutorial page "${pageKey}"`);
-  }
 
   const existing = await prisma.tutorialContent.findUnique({
     where: { pageKey },

@@ -1,9 +1,13 @@
-import type { TutorialStep } from "@ticket/shared";
+import type { TutorialPageKey, TutorialStep } from "@ticket/shared";
+
+/** One page's tutorial: its title and its steps, as a row stores them. */
+export type TutorialStarterPage = { title: string; steps: TutorialStep[] };
 
 /**
  * The starter walkthrough copy, one entry per `TutorialPageKey`, which
  * `prisma/seed-tutorials.ts` writes into `TutorialContent` on a fresh
- * deployment.
+ * deployment. Keyed by `TutorialPageKey`, so a page added to the key set
+ * without starter copy is a compile error.
  *
  * It lives here rather than in the seed script so a test can read it: the
  * script runs its writes at import, and a deployment seeded before a rewording
@@ -12,8 +16,8 @@ import type { TutorialStep } from "@ticket/shared";
  * `tutorial-wording-migration.test.ts` checks that it lands on exactly this.
  */
 export const TUTORIAL_STARTER_CONTENT: Record<
-  string,
-  { title: string; steps: TutorialStep[] }
+  TutorialPageKey,
+  TutorialStarterPage
 > = {
   dashboard: {
     title: "Reading the dashboard",

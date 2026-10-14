@@ -7,7 +7,10 @@ import {
   type TutorialStep,
 } from "@ticket/shared";
 import { execSql, prisma, Prisma, resetDb } from "./test/pg";
-import { TUTORIAL_STARTER_CONTENT } from "./tutorial-starter-content";
+import {
+  TUTORIAL_STARTER_CONTENT,
+  type TutorialStarterPage,
+} from "./tutorial-starter-content";
 
 /**
  * #489: the tutorials' starter copy was reworded to the copy standard, and a
@@ -78,12 +81,10 @@ const REWORDED: Reworded[] = [
   },
 ];
 
-type Content = { title: string; steps: TutorialStep[] };
+type Content = TutorialStarterPage;
 
 function starter(pageKey: TutorialPageKey): Content {
-  const content = TUTORIAL_STARTER_CONTENT[pageKey];
-  if (!content) throw new Error(`No starter copy for "${pageKey}"`);
-  return structuredClone(content);
+  return structuredClone(TUTORIAL_STARTER_CONTENT[pageKey]);
 }
 
 /** A page's copy as a deployment seeded before #489 holds it. */
