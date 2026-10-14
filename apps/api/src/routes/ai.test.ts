@@ -79,6 +79,7 @@ import {
   MESSAGE_DIRECTION,
   SUMMARY_SENTIMENT,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
   TICKET_NOT_FOUND_MESSAGE,
   TICKET_STATUS,
   USER_ROLE,
@@ -383,7 +384,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post(goodBody({ draft: "   " }));
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Write a draft before polishing");
+    expect(sent.body.error).toBe(TICKET_INPUT_MESSAGE.draftEmpty);
     expect(polishReply).not.toHaveBeenCalled();
   });
 
@@ -391,7 +392,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post(goodBody({ draft: "x".repeat(10_001) }));
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Keep the draft to 10000 characters or fewer");
+    expect(sent.body.error).toBe(TICKET_INPUT_MESSAGE.draftTooLong);
   });
 
   test("rejects a request with no ticket to answer", async () => {

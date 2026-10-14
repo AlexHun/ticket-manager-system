@@ -15,6 +15,7 @@ import {
 import {
   DEMO_AI_LIMIT_MESSAGE,
   MAX_MESSAGE_BODY_LENGTH,
+  TICKET_INPUT_MESSAGE,
   TICKET_STATUS,
   type CreateTicketMessageResponse,
   type PolishReplyResponse,
@@ -41,7 +42,7 @@ const EMPTY_REPLY: CreateTicketMessageValues = { textBody: "" };
 const SEND_FAILED = "Couldn't send the reply. Try again.";
 
 const POLISH_FAILED =
-  "Couldn't polish your draft. Try again, or send it as it is.";
+  "Couldn't polish your draft — try again, or send it as it is.";
 
 /**
  * The reply toasts say "added", never "sent", and that is a claim about what
@@ -340,7 +341,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
   const polishHint = polish.isPending
     ? "Rewriting your draft…"
     : draftTooLong
-      ? `Keep the draft to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`
+      ? TICKET_INPUT_MESSAGE.draftTooLong
       : trimmedDraft.length === 0
         ? "Write a draft first"
         : "Rewrite this draft as a reply to the customer's message. You can undo it.";

@@ -658,8 +658,27 @@ export interface CreateTicketMessageResponse {
  * an alert, so it is copy (`docs/standards/copy.md`), and the E2E spec reads it
  * from here rather than retyping it.
  */
-export const TICKET_NOT_FOUND_MESSAGE =
-  "Couldn't find this ticket. It may have been deleted.";
+export const TICKET_NOT_FOUND_MESSAGE = "Couldn't find this ticket.";
+
+/**
+ * What the ticket schemas in `@ticket/core` answer for a reply, a draft or a
+ * search they refuse. Each reaches an alert, so each is copy, and the API,
+ * web and E2E suites read them from here rather than retyping them.
+ */
+export const TICKET_INPUT_MESSAGE = {
+  replyEmpty: "Write a reply before sending.",
+  replyTooLong: `Keep the reply to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer.`,
+  draftEmpty: "Write a draft before polishing.",
+  draftTooLong: `Keep the draft to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer.`,
+  searchTooLong: `Keep the search to ${TICKET_SEARCH_MAX_LENGTH} characters or fewer.`,
+} as const;
+
+/**
+ * The ticket list's empty state when no filter or view narrows it — which is
+ * the only time it can promise that arriving email will fill it.
+ */
+export const NO_TICKETS_YET =
+  "No tickets yet. They appear here as customer email arrives.";
 
 /**
  * `PATCH /api/tickets/:id/assignee`'s 400 for an id that names nobody who can

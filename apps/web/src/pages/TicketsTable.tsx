@@ -17,6 +17,7 @@ import {
   type Ticket,
   type TicketSortField,
   type TicketWithAssignee,
+  NO_TICKETS_YET,
 } from "@ticket/shared";
 import { Hint } from "@/components/Hint";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
@@ -27,13 +28,6 @@ import { TableFrame } from "@/lib/table-frame";
 import type { TicketListLocationState } from "@/lib/ticket-list-params";
 import { ROW_DENSITY, type RowDensity } from "@/lib/use-row-density";
 import { cn } from "@/lib/utils";
-
-/**
- * The empty list with no filter narrowing it: the table's default and the
- * page's unfiltered empty state, one string so the two cannot drift.
- */
-export const NO_TICKETS_YET =
-  "No tickets yet. They appear here as customer email arrives.";
 
 const SKELETON_ROW_COUNT = 5;
 

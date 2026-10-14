@@ -5,6 +5,8 @@ import {
   ASSIGNEE_NOT_FOUND_MESSAGE,
   MESSAGE_DIRECTION,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
+  TICKET_NOT_FOUND_MESSAGE,
   TICKET_STATUS,
   USER_ROLE,
   type TicketAssignee,
@@ -705,7 +707,7 @@ describe("TicketDetailPage reply composer", () => {
   test("keeps the draft and explains a rejected reply", async () => {
     mockApi();
     replyPost.mockRejectedValue(
-      makeAxiosError(400, "Keep the reply to 10000 characters or fewer"),
+      makeAxiosError(400, TICKET_INPUT_MESSAGE.replyTooLong),
     );
     renderDetail();
     const user = await readyToReply();
@@ -714,7 +716,7 @@ describe("TicketDetailPage reply composer", () => {
     await user.click(sendButton());
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Keep the reply to 10000 characters or fewer",
+      TICKET_INPUT_MESSAGE.replyTooLong,
     );
     // The draft is the only copy of what was typed — clearing it on failure
     // would throw the reply away to report that it wasn't sent.
@@ -736,7 +738,7 @@ describe("TicketDetailPage reply composer", () => {
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Write a reply before sending",
+      TICKET_INPUT_MESSAGE.replyEmpty,
     );
     expect(replyPost).not.toHaveBeenCalled();
   });
@@ -755,7 +757,7 @@ describe("TicketDetailPage reply composer", () => {
     await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Write a reply before sending",
+      TICKET_INPUT_MESSAGE.replyEmpty,
     );
     expect(replyPost).not.toHaveBeenCalled();
   });
@@ -833,7 +835,7 @@ describe("TicketDetailPage reply composer", () => {
 
 describe("TicketDetailPage errors", () => {
   test("shows a not-found destination, not an alert, on 404", async () => {
-    mockApi({ detailError: makeAxiosError(404, "Ticket not found") });
+    mockApi({ detailError: makeAxiosError(404, TICKET_NOT_FOUND_MESSAGE) });
     renderDetail("/tickets/999");
 
     expect(

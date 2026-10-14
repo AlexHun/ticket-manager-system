@@ -13,11 +13,11 @@ import {
   type Ticket,
   type TicketsListResponse,
   type TicketWithAssignee,
+  NO_TICKETS_YET,
 } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes, type TestRouter } from "@/test/render";
 import { TicketsPage } from "./TicketsPage";
-import { NO_TICKETS_YET } from "./TicketsTable";
 
 // --- Mocks ----------------------------------------------------------------
 

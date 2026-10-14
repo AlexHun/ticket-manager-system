@@ -10,6 +10,7 @@ import {
   TUTORIAL_PAGE_KEY,
   type SortOrder,
   type TicketSortField,
+  NO_TICKETS_YET,
 } from "@ticket/shared";
 import { Tutorial } from "@/components/Tutorial";
 import { extractErrorMessage } from "@/lib/errors";
@@ -40,11 +41,7 @@ import {
   type TicketFilterState,
 } from "./TicketsFilters";
 import { TicketsPagination } from "./TicketsPagination";
-import {
-  NO_TICKETS_YET,
-  TicketsTable,
-  TicketsTableSkeleton,
-} from "./TicketsTable";
+import { TicketsTable, TicketsTableSkeleton } from "./TicketsTable";
 
 /** Keystrokes settle for this long before the search hits the API. */
 const SEARCH_DEBOUNCE_MS = 300;
