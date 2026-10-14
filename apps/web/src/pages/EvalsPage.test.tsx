@@ -281,7 +281,7 @@ describe("a finished run", () => {
 
     await showCases(user);
     expect(
-      screen.getAllByText("Declined — Not covered by the knowledge base"),
+      screen.getAllByText("Declined — not covered by the knowledge base"),
     ).toHaveLength(2);
     expect(screen.getByText("5×")).toBeInTheDocument();
   });

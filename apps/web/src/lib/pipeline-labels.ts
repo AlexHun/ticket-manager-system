@@ -80,6 +80,20 @@ export const DECLINE_SHORT: Record<AutoReplyDecline, string> = {
   [AUTO_REPLY_DECLINE.unavailable]: "The assistant was unavailable",
 };
 
+/**
+ * A label as it reads after a dash mid-sentence: "Declined — not covered by
+ * the knowledge base".
+ *
+ * `DECLINE_SHORT` and `DECLINE_LABEL` are written to stand alone, capital
+ * first, and the activity feed and the Evals verdict both run one on after a
+ * dash. A label that opens on an acronym ("AI …") keeps its capitals, or it
+ * would read "aI …".
+ */
+export function midSentence(label: string): string {
+  if (/^[A-Z]{2}/.test(label)) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
+
 /** The six stops, named for the rail. */
 export const STAGE_LABEL: Record<PipelineStage, string> = {
   [PIPELINE_STAGE.received]: "Email received",

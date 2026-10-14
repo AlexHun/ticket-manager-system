@@ -57,7 +57,7 @@ import {
 import { CORPUS_LABEL } from "@/lib/eval-labels";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
-import { DECLINE_SHORT } from "@/lib/pipeline-labels";
+import { DECLINE_SHORT, midSentence } from "@/lib/pipeline-labels";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { EvalSchedulePanel } from "./EvalSchedulePanel";
@@ -168,14 +168,15 @@ function categoryLabel(category: TicketCategory | null): string {
  * `DECLINE_SHORT` rather than a second set of words: the rail already says
  * these ten things, and two files' worth of carefully-argued wording is two
  * files' worth that will eventually disagree — which is the whole reason
- * `pipeline-labels.ts` exists.
+ * `pipeline-labels.ts` exists. The reason follows a dash, so it goes through
+ * `midSentence`, as the activity feed's does.
  */
 function verdict(
   outcome: PipelineOutcome,
   decline: AutoReplyDecline | null,
 ): string {
   const label = OUTCOME_LABEL[outcome];
-  return decline ? `${label} — ${DECLINE_SHORT[decline]}` : label;
+  return decline ? `${label} — ${midSentence(DECLINE_SHORT[decline])}` : label;
 }
 
 /**
