@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { TICKET_INPUT_MESSAGE } from "@ticket/shared";
@@ -23,7 +23,7 @@ import { stripComments } from "./strip-comments";
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const SCHEMAS_DIR = path.join(REPO_ROOT, "packages/core/src/schemas");
 
-/** A `"â€¦"`, `'â€¦'` or template literal, matched left to right so a quote of one
+/** A `"…"`, `'…'` or template literal, matched left to right so a quote of one
  *  kind inside a literal of another stays part of it. */
 const LITERAL =
   /"((?:[^"\\\n]|\\.)*)"|'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`/g;
@@ -48,7 +48,7 @@ const PICKER =
 const LAYOUT =
   "a dashboard-layout check: the layout editor only saves the panels it shows (copy.md)";
 const CASE_FILE =
-  "a check on the auto-reply case file, which the repo ships rather than a person types (copy.md)";
+  "a check on the auto-reply case file, which no screen in the app lets a person write (copy.md)";
 
 /**
  * Messages left without a full stop, by schema file, each with the reason no
