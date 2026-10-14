@@ -46,6 +46,15 @@ export function isMailConfigured(): boolean {
   return POSTMARK_SERVER_TOKEN.length > 0;
 }
 
+/**
+ * What an admin reads on `/outbox` beside a row that could not be sent for
+ * want of a provider. It names neither the vendor nor the variable: the
+ * Outbox's own card says which variable to set, and a row is no place to
+ * repeat it. Stored on the row, so a reword reaches new rows only.
+ */
+export const NO_PROVIDER_REASON =
+  "No mail provider is configured, so this email was not sent.";
+
 /** An addressed email, with everything a provider needs and nothing else. */
 export interface OutgoingEmail {
   toEmail: string;
@@ -133,7 +142,7 @@ export async function deliver(email: OutgoingEmail): Promise<DeliveryResult> {
   if (!isMailConfigured()) {
     return {
       outcome: MAIL_OUTCOME.unavailable,
-      error: "No mail provider configured (POSTMARK_SERVER_TOKEN is unset)",
+      error: NO_PROVIDER_REASON,
     };
   }
 

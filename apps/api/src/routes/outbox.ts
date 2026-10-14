@@ -138,10 +138,13 @@ function isRetryable(status: OutboundEmailStatus): status is RetryableStatus {
  * somebody says what a refusal of it tells the admin.
  */
 const REFUSED_BECAUSE: Record<RefusedStatus, string> = {
-  [OUTBOUND_EMAIL_STATUS.sent]: "That email was already sent",
-  [OUTBOUND_EMAIL_STATUS.queued]: "That email is already queued to send",
-  // The sentence the row itself carries on `/outbox`, so the two cannot drift.
-  [OUTBOUND_EMAIL_STATUS.withheld]: WITHHELD_REASON,
+  [OUTBOUND_EMAIL_STATUS.sent]: "Couldn't retry — that email was already sent.",
+  [OUTBOUND_EMAIL_STATUS.queued]:
+    "Couldn't retry — that email is already queued to send.",
+  // Built from the sentence the row itself carries on `/outbox`, so the two
+  // cannot drift: "Written in a demo session, …" reads on as "that email was
+  // written in a demo session, …".
+  [OUTBOUND_EMAIL_STATUS.withheld]: `Couldn't retry — that email was ${WITHHELD_REASON.charAt(0).toLowerCase()}${WITHHELD_REASON.slice(1)}.`,
 };
 
 /**
@@ -186,8 +189,7 @@ outboxRouter.post(
     // screen already says why in the card at the top.
     if (!isMailConfigured()) {
       res.status(409).json({
-        error:
-          "No mail provider is configured, so there is nothing to retry to",
+        error: "Couldn't retry — no mail provider is configured.",
       });
       return;
     }
@@ -213,7 +215,10 @@ outboxRouter.post(
       });
 
       if (!existing) {
-        res.status(404).json({ error: "No such outbound email" });
+        res.status(404).json({
+          error:
+            "Couldn't retry — that email no longer exists. Reload the Outbox.",
+        });
         return;
       }
 
@@ -222,7 +227,7 @@ outboxRouter.post(
       const status = existing.status as OutboundEmailStatus;
       res.status(409).json({
         error: isRetryable(status)
-          ? "That email changed while this retry ran — try again"
+          ? "Couldn't retry — that email changed while the retry ran. Try again."
           : REFUSED_BECAUSE[status],
       });
       return;

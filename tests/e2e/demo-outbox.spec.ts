@@ -86,7 +86,7 @@ test("a demo's reply reaches the outbox as not sent, and is never queued", async
   const card = admin.locator('[data-slot="card"]', {
     hasText: `Re: ${SUBJECT}`,
   });
-  await expect(card).toContainText("Not sent (demo)");
+  await expect(card).toContainText("Withheld (demo)");
   await expect(card).toContainText("a demo session's email is never sent");
   await expect(card.getByRole("button", { name: "Try again" })).toHaveCount(0);
 
