@@ -1,22 +1,9 @@
-import { AUTO_REPLY_DECLINES } from "@ticket/shared";
-import { DECLINE_LABEL, DECLINE_SHORT, midSentence } from "./pipeline-labels";
+import { AUTO_REPLY_DECLINES, midSentence } from "@ticket/shared";
+import { DECLINE_LABEL, DECLINE_SHORT } from "./pipeline-labels";
 
+// `midSentence`'s own rules are tested beside it, in
+// `packages/shared/src/mid-sentence.test.ts`; these labels live here.
 describe("midSentence", () => {
-  test("lower-cases the first letter of a label that follows a dash", () => {
-    expect(midSentence("Not covered by the knowledge base")).toBe(
-      "not covered by the knowledge base",
-    );
-  });
-
-  test("keeps a label that opens on an acronym intact", () => {
-    expect(midSentence("AI polish was unavailable")).toBe(
-      "AI polish was unavailable",
-    );
-    expect(midSentence("URL not in any article")).toBe(
-      "URL not in any article",
-    );
-  });
-
   // Every decline reason that can follow a dash, in both its forms: a word is
   // lowered, an acronym is kept, and nothing reads "aI …" on the Evals page or
   // in the activity feed.

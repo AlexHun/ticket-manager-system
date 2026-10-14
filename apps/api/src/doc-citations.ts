@@ -218,10 +218,51 @@ export class TrackedTree {
   }
 }
 
+/**
+ * The variables that tie git to one repository, as `git rev-parse
+ * --local-env-vars` lists them (git 2.52). Written out rather than asked for,
+ * because asking is one more git process, ~60ms on Windows, on every run of
+ * the check; a variable a later git adds is missing here until someone adds
+ * it.
+ */
+const GIT_LOCAL_ENV = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_CONFIG",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_COUNT",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_GRAFT_FILE",
+  "GIT_INDEX_FILE",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_PREFIX",
+  "GIT_SHALLOW_FILE",
+  "GIT_COMMON_DIR",
+];
+
+/**
+ * `env` without the variables that name a repository, so a git call asks the
+ * one its `cwd` is in. Git sets `GIT_DIR` for the hooks it runs, and from a
+ * linked worktree `pre-push` reached this check with it set: every call read
+ * the worktree being pushed whatever `cwd` said, and the test's scratch
+ * repositories were built inside it (#531).
+ */
+export function repositoryFreeEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const free = { ...env };
+  for (const name of GIT_LOCAL_ENV) delete free[name];
+  return free;
+}
+
 /** The files git tracks under `root`, as `/`-separated paths relative to it. */
 export function trackedFiles(root: string): string[] {
   return execFileSync("git", ["ls-files", "-z"], {
     cwd: root,
+    env: repositoryFreeEnv(),
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   })
@@ -647,6 +688,7 @@ export function renameHints(
         ],
         {
           cwd: root,
+          env: repositoryFreeEnv(),
           encoding: "utf8",
           maxBuffer: 64 * 1024 * 1024,
           stdio: ["ignore", "pipe", "ignore"],

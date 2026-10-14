@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import {
+  midSentence,
   OUTBOUND_EMAIL_STATUS,
   type OutboundEmailKind,
   type OutboundEmailStatus,
@@ -144,7 +145,7 @@ const REFUSED_BECAUSE: Record<RefusedStatus, string> = {
   // Built from the sentence the row itself carries on `/outbox`, so the two
   // cannot drift: "Written in a demo session, …" reads on as "that email was
   // written in a demo session, …".
-  [OUTBOUND_EMAIL_STATUS.withheld]: `Couldn't retry — that email was ${WITHHELD_REASON.charAt(0).toLowerCase()}${WITHHELD_REASON.slice(1)}.`,
+  [OUTBOUND_EMAIL_STATUS.withheld]: `Couldn't retry — that email was ${midSentence(WITHHELD_REASON)}.`,
 };
 
 /**

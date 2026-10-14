@@ -20,6 +20,7 @@ import {
   type Exemption,
   isSymbolSource,
   renameHints,
+  repositoryFreeEnv,
   resolvedCitationsIn,
   SymbolIndex,
   symbolSources,
@@ -910,8 +911,10 @@ describe("a stale citation that git history shows was renamed", () => {
   const shallow = path.join(scratch, "shallow");
   const emptyConfig = path.join(scratch, "gitconfig");
   writeFileSync(emptyConfig, "");
+  // Free of the repository a hook's environment names, or `git init` and
+  // every commit below would land in it (#531).
   const env = {
-    ...process.env,
+    ...repositoryFreeEnv(),
     GIT_CONFIG_GLOBAL: emptyConfig,
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_AUTHOR_NAME: "Planted",
@@ -1039,6 +1042,34 @@ describe("a stale citation that git history shows was renamed", () => {
         name: "provider.ts",
       }),
     ).toBeUndefined();
+  });
+
+  test("asks the repository at its root even when the environment names another", () => {
+    // Git runs a hook with `GIT_DIR` set; from a linked worktree, `pre-push`
+    // reached this suite with it pointing at the worktree being pushed. Every
+    // git call here inherited it, so `trackedFiles` and `renameHints` read
+    // that repository instead of `root`, and this block's own `git init` and
+    // commits landed in it: the branch gained four planted commits, and the
+    // shared config `core.bare = true` (#531). A child process, because Bun
+    // hands a child the environment it started with, not `process.env` as a
+    // test has since changed it.
+    const other = path.join(scratch, "other");
+    mkdirSync(other);
+    git(other, "init", "-q");
+    const module = path.join(import.meta.dir, "doc-citations.ts");
+    const listed = execFileSync(
+      process.execPath,
+      [
+        "-e",
+        `import { trackedFiles } from ${JSON.stringify(module)};
+         console.log(JSON.stringify(trackedFiles(${JSON.stringify(repo)})));`,
+      ],
+      {
+        env: { ...env, GIT_DIR: path.join(other, ".git") },
+        encoding: "utf8",
+      },
+    );
+    expect(JSON.parse(listed)).toContain("src/llm.ts");
   });
 
   test("a green run performs no history lookup", () => {
