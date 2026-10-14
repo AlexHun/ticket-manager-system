@@ -813,5 +813,15 @@
     "version": "0.1.203",
     "date": "2026-10-14",
     "title": "Name unanswered eval repeats the way the case table does (#486)"
+  },
+  {
+    "version": "0.1.204",
+    "date": "2026-10-14",
+    "title": "Show the Outbox's retry refusals and word its statuses (#487)"
+  },
+  {
+    "version": "0.1.204",
+    "date": "2026-10-14",
+    "title": "Keep the Outbox's no-provider sentence off the avoided words (#487)"
   }
 ]
