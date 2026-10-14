@@ -137,6 +137,9 @@ jobs:
           echo "$FILES"
           bun test --preload ./src/test/preload.ts $FILES
 
+      - name: Shared package tests
+        run: bun run --filter '@ticket/shared' test
+
       - name: Web component tests
         run: bun run --filter '@ticket/web' test
 

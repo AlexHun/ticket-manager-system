@@ -1,11 +1,12 @@
 import {
   asAutoReplyDecline,
+  midSentence,
   TICKET_ACTIVITY_ACTION,
   TICKET_ACTOR_KIND,
   type TicketActivity,
   type TicketActivityAction,
 } from "@ticket/shared";
-import { DECLINE_SHORT, midSentence } from "./pipeline-labels";
+import { DECLINE_SHORT } from "./pipeline-labels";
 
 /**
  * How one recorded change reads in the thread.

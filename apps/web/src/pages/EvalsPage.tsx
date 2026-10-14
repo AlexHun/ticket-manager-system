@@ -7,6 +7,7 @@ import {
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
+  midSentence,
   PIPELINE_OUTCOME,
   TUTORIAL_PAGE_KEY,
   type AutoReplyDecline,
@@ -57,7 +58,7 @@ import {
 import { CORPUS_LABEL } from "@/lib/eval-labels";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
-import { DECLINE_SHORT, midSentence } from "@/lib/pipeline-labels";
+import { DECLINE_SHORT } from "@/lib/pipeline-labels";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
 import { EvalSchedulePanel } from "./EvalSchedulePanel";

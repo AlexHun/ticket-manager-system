@@ -16,7 +16,7 @@
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-stop.ps1",
     "build": "bun --filter '*' build",
     "typecheck": "bun --filter '*' typecheck",
-    "test": "bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
+    "test": "bun run --filter '@ticket/shared' test && bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "tokens": "bun scripts/issue-tokens.ts",
