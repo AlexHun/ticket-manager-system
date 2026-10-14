@@ -848,5 +848,10 @@
     "version": "0.1.210",
     "date": "2026-10-14",
     "title": "Word How it works to the copy standard (#491)"
+  },
+  {
+    "version": "0.1.211",
+    "date": "2026-10-14",
+    "title": "Word sign-in, password and demo entry to the copy standard (#492)"
   }
 ]
