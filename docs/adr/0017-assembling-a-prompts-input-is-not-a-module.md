@@ -137,7 +137,7 @@ reached by the same test — and the answer to "why is this different" is that
 case, because there is no guard, no write and no event left to argue about.
 
 _The glossary has no noun for it._ ADR-0015's fifth signal, applied.
-`CONTEXT.md` names **Ingestion** — "turning an arriving email into either a new
+`GLOSSARY.md` names **Ingestion** — "turning an arriving email into either a new
 ticket or a message on an existing thread" — because that turn is something the
 desk does. There is no term for the turn from a ticket into a prompt's input, and
 none of _Classification_, _Auto-reply_, _Polish_ or _Summary_ is defined in terms

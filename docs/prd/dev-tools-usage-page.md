@@ -51,7 +51,7 @@ is what the page cannot see, reported so the totals are never read as complete.
 | R6  | The page shows forecast accuracy, and the distribution of actual output tokens against its p25 / median / p75, as charts rather than as numbers to be read off a table.   | Must     |
 | R7  | Work that ran on `main` is reported as its own total, in both turns and tokens, and is never counted toward any issue.                                                    | Must     |
 | R8  | The page and `bun run tokens` never report different figures for the same issue.                                                                                          | Must     |
-| R9  | A GitHub work item is called an _issue_ everywhere this feature reads, writes or displays; _ticket_ keeps the meaning `CONTEXT.md` gives it.                              | Must     |
+| R9  | A GitHub work item is called an _issue_ everywhere this feature reads, writes or displays; _ticket_ keeps the meaning `GLOSSARY.md` gives it.                             | Must     |
 | R10 | With `gh` unavailable, the page still reports actuals and says the forecast is unknown, rather than failing.                                                              | Should   |
 | R11 | Every issue cut from now on carries a `forecast/S\|M\|L` label, so the accuracy metric has a base to be computed over.                                                    | Should   |
 
@@ -80,7 +80,7 @@ is what the page cannot see, reported so the totals are never read as complete.
   This feature must not be the one that ends that.
 - The dev-tools backend exists only under `vite dev` (`apply: "serve"`), so
   nothing here may produce a production artefact.
-- `CONTEXT.md` defines **Ticket** as one customer's request and names _issue_ as
+- `GLOSSARY.md` defines **Ticket** as one customer's request and names _issue_ as
   a word to avoid for it. R9 is that constraint pointed the other way, and it
   applies to `scripts/ticket-tokens.mjs` and `SCRIPTS.md`, which use _ticket_ for
   a GitHub issue throughout today.

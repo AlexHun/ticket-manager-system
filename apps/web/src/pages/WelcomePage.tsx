@@ -22,7 +22,7 @@ const LINK_CLASS = "text-link underline-offset-4 hover:underline";
 
 /**
  * Where "Use demo session" lands (demo-welcome PRD, R1): what the product does,
- * in `CONTEXT.md`'s words (R2), where to start (R4, R13), who built it (R3),
+ * in `GLOSSARY.md`'s words (R2), where to start (R4, R13), who built it (R3),
  * what it is built with (R5), and the way on to the Dashboard (R6). Each
  * section is under its own heading, in the order a screen reader reads it and
  * Tab reaches its links, with Start exploring last (R12).

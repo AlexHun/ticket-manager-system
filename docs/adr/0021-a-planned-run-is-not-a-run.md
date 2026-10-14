@@ -18,7 +18,7 @@ in flight), [#236](https://github.com/AlexHun/ticket-manager-system/issues/236)
 (an editable schedule and cancellable one-off runs) and
 [#237](https://github.com/AlexHun/ticket-manager-system/issues/237) (collapsing
 a run, and drawing a stopped one as partial). The vocabulary all three speak is
-added to `CONTEXT.md` in the same change; this file argues the one part of it
+added to `GLOSSARY.md` in the same change; this file argues the one part of it
 that is a decision rather than a word.
 
 ## Reversal: a run in flight cannot be stopped (2026-09-11)
@@ -228,11 +228,11 @@ half that survived._
 
 **Two verbs that are not interchangeable, in code and in copy.** Pause a
 schedule (it keeps its time), cancel a planned run (it never becomes a run).
-`CONTEXT.md` carries both with the object each one takes, because the failure
+`GLOSSARY.md` carries both with the object each one takes, because the failure
 mode here is a confirmation dialog, not a type error. There is no third verb:
 originally "stop a run in flight (it keeps what it measured)", and with the
 reversal there is no act for it to name — a run that has started runs to the
-end. `CONTEXT.md` says so where the third entry used to be, because an absence
+end. `GLOSSARY.md` says so where the third entry used to be, because an absence
 in a glossary is invisible unless it is written down.
 
 **~~`/evals` will show uncoloured numbers that are not missing numbers.~~**
@@ -243,7 +243,7 @@ thing is how the last one of these went wrong
 ([0019](./0019-the-stage-is-not-a-module-and-an-outage-is-not-a-decline.md)'s
 "Provider unreachable" label).
 
-**`CONTEXT.md` gains the eval vocabulary — eight nouns and, after the reversal,
+**`GLOSSARY.md` gains the eval vocabulary — eight nouns and, after the reversal,
 two verbs.** It carried none of it after five slices of `/evals`, and that gap
 is the same signal [0015](./0015-a-ticket-transition-is-not-a-module.md) read as
 an argument _against_ a module and

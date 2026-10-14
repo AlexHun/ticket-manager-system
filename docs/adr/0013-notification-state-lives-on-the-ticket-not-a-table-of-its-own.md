@@ -105,6 +105,6 @@ noted for its own reversal.
 
 **Deferred to the implementation issues, deliberately not settled here:** the
 exact shape of the unread count on the wire (a field on an existing response
-vs. a new endpoint), the toast/badge UI, and whether `CONTEXT.md` gains an
+vs. a new endpoint), the toast/badge UI, and whether `GLOSSARY.md` gains an
 "unread" or "seen" glossary entry once the feature has shipped and the term
 has actually stabilized in the code.

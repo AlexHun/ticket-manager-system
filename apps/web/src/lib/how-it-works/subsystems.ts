@@ -12,7 +12,7 @@ import { ROUTE } from "../routes";
  * those subsystems talks to (R3).
  *
  * A subsystem is a part of the system someone would name, never one file: the
- * lists were settled in the 2026-10-08 grilling. The words follow `CONTEXT.md`.
+ * lists were settled in the 2026-10-08 grilling. The words follow `GLOSSARY.md`.
  * Where each one sits is not said here; `layOutSubsystems` in
  * `./subsystem-layout` works it out from the order below and from the links,
  * with nothing simulated.
@@ -90,7 +90,7 @@ export interface Subsystem extends InTheCode {
   readonly id: SubsystemId;
   readonly box: DrillableBoxId;
   readonly title: string;
-  /** Plain language, in `CONTEXT.md`'s words. Shown in the side panel. */
+  /** Plain language, in `GLOSSARY.md`'s words. Shown in the side panel. */
   readonly explanation: string;
   readonly links: readonly SubsystemLink[];
 }

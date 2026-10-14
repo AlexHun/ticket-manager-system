@@ -2709,7 +2709,7 @@ export const EVAL_RUN_LIMIT = 20;
  * to be attributable: a live-corpus run moves when an admin edits an article,
  * which is a fine thing to ask for on purpose (a planned run may name either
  * corpus) and a terrible thing to receive unasked. So there is no `corpus` here
- * to get wrong — see `CONTEXT.md`'s **Schedule**.
+ * to get wrong — see `GLOSSARY.md`'s **Schedule**.
  *
  * The time is an hour and a minute rather than a cron expression, on both
  * sides. A cron string an admin could type is five fields of which four have

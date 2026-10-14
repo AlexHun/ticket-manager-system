@@ -31,7 +31,7 @@ import type { EvalsConfig } from "./evals";
  * **Two halves of one panel, and they are different things on purpose.** The
  * schedule fires forever, is frozen-corpus only, and is paused rather than
  * deleted. A planned run fires once, may name either corpus, and is cancelled
- * rather than paused. `CONTEXT.md` carries both verbs with the object each one
+ * rather than paused. `GLOSSARY.md` carries both verbs with the object each one
  * takes, because the failure mode here is a confirmation dialog rather than a
  * type error — one verb across the two is how an admin comes to believe that
  * pausing the schedule stops tonight's run. It does not. **Nothing stops a run
