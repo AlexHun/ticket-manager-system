@@ -2,7 +2,7 @@
 
 ## Commands
 
-- `bun run test` (repo root) — every unit suite, `@ticket/shared` then `@ticket/api` then `@ticket/web`, sequentially so a failure is legible rather than interleaved. ~5.5 min on a Windows dev machine. `.husky/pre-push` runs only the `@ticket/api` suite, and CI owns the other two; see [conventions.md](conventions.md) for why.
+- `bun run test` (repo root) — every unit suite, `@ticket/shared` then `@ticket/api` then `@ticket/web`, sequentially so a failure is legible rather than interleaved. ~5.5 min on a Windows dev machine. `.husky/pre-push` runs only the `@ticket/api` suite, and CI owns the other two: the web suite for the reason [conventions.md](conventions.md) gives, and the shared one because no hook has needed it yet.
 - `bun run --filter @ticket/web test` — run web component tests once (CI). Also `test:watch` (headless TUI) and `test:ui` (Vitest UI dashboard, best for authoring).
 - `bun run --filter @ticket/shared test` — run the `@ticket/shared` helpers' tests (`bun test`, no database, well under a second). The package had none before #531, which moved `midSentence` there.
 - `bun run --filter @ticket/api test` — run API unit tests. Runner is **`bun test`**, not Vitest: the API workspace already runs on Bun and carries no test runner, and `mock.module` covers what these need. Provider and session are mocked and the database runs in-process, so no `OPENAI_API_KEY` and still no server to start.

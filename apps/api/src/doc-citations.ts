@@ -220,7 +220,10 @@ export class TrackedTree {
 
 /**
  * The variables that tie git to one repository, as `git rev-parse
- * --local-env-vars` lists them (git 2.52).
+ * --local-env-vars` lists them (git 2.52). Written out rather than asked for,
+ * because asking is one more git process, ~60ms on Windows, on every run of
+ * the check; a variable a later git adds is missing here until someone adds
+ * it.
  */
 const GIT_LOCAL_ENV = [
   "GIT_ALTERNATE_OBJECT_DIRECTORIES",
