@@ -768,5 +768,10 @@
     "version": "0.1.190",
     "date": "2026-10-09",
     "title": "Demo welcome introduces the owner and names the stack"
+  },
+  {
+    "version": "0.1.198",
+    "date": "2026-10-14",
+    "title": "Name the people who sign in the Team (#481)"
   }
 ]
