@@ -85,7 +85,7 @@ name, which is what [#153](https://github.com/AlexHun/ticket-manager-system/issu
 was filed to find out and what `assignIfUnowned` already warns against for a
 single `updateMany`.
 
-There is a fifth signal, from `CONTEXT.md` rather than from the code: **the
+There is a fifth signal, from `GLOSSARY.md` rather than from the code: **the
 thing this module would own has no name in the glossary.** _Claim_, _Handoff_,
 _Reopen_, _Decline_, _Classification_ are all there; "transition" appears only
 inside the definition of _Activity_, as a word describing what an entry

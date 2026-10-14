@@ -43,7 +43,7 @@ cat docs/prd/<slug>.md
 ```
 
 **No PRD? Stop.** Say so and offer `write-a-prd` — planning against an unwritten
-spec invents requirements. Then read `CONTEXT.md`, any ADR in the area, and
+spec invents requirements. Then read `GLOSSARY.md`, any ADR in the area, and
 `docs/standards/` for the layers involved.
 
 ### 2. Map the layers this feature crosses

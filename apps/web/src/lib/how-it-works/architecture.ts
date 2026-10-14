@@ -5,7 +5,7 @@ import type { InTheCode } from "./code";
  * connections between them, the Railway frame and the shared-packages note.
  *
  * Hand-written rather than scanned: the picture is a curated story (the PRD's
- * non-goal), and the words follow `CONTEXT.md`. Where each box sits is a grid
+ * non-goal), and the words follow `GLOSSARY.md`. Where each box sits is a grid
  * cell here, and `layOutArchitecture` in `./layout` turns cells into
  * coordinates with nothing simulated, so a box is where it was on every load.
  *
@@ -36,7 +36,7 @@ export type ArchitectureNodeId =
 export interface ArchitectureNode extends Pick<InTheCode, "code"> {
   readonly id: ArchitectureNodeId;
   readonly title: string;
-  /** Plain language, in `CONTEXT.md`'s words. Shown in the side panel. */
+  /** Plain language, in `GLOSSARY.md`'s words. Shown in the side panel. */
   readonly explanation: string;
   /** Grid cell, top-left. Ignored for a node drawn `inside` another. */
   readonly column: number;

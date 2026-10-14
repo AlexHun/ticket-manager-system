@@ -113,7 +113,7 @@ moved it would turn a claim about the repository into a claim about a search box
 - **The filter bar must pick its reach deliberately.** `frontend.md` records
   this as an obligation, from the project map's bar, whose search reaches all
   four views while its selects reach two. R10 is this page's answer.
-- **`Verdict` already means something else here.** `CONTEXT.md` defines it as
+- **`Verdict` already means something else here.** `GLOSSARY.md` defines it as
   where one eval repeat landed — resolved, declined, abandoned — and lists
   _score_ under "_Avoid_". The Usage page's under / on target / over is exactly
   a score. R3 removes the word from the UI as a side effect; the glossary should

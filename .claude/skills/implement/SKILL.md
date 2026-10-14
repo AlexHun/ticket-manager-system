@@ -11,8 +11,10 @@ invoke it.
 
 ## Steps
 
-1. **Read the ticket.** `gh issue view <n> --comments`. If the body is empty or
-   a literal `@-`, the spec was written up before the issue was filed: grep
+1. **Read the ticket.** `gh issue view <n> --json number,title,body,labels,comments`,
+   and state its title before going further; if the reference is ambiguous,
+   ask. If the body is empty or a literal `@-`, the spec was written up before
+   the issue was filed: grep
    `docs/adr/`, then `docs/plans/` and `docs/prd/`, for `#<n>`. Check its
    **Blocked by** list: an open blocker means stop and tell the user.
 2. **Branch** `<type>/<n>-<slug>` from a freshly fetched `origin/develop`.

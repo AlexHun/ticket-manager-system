@@ -163,7 +163,7 @@ export function judgeCache(
  * The two labels are the sentences this tile already carried. They said the
  * judgement in words before there was a band to say it in colour, so there is
  * nothing to add — a word appended to them would be the same claim twice. Both
- * say "verdict" (CONTEXT.md's other sense: where a repeat landed, which is
+ * say "verdict" (GLOSSARY.md's other sense: where a repeat landed, which is
  * exactly what this counts), because the case table names the same repeats
  * "No verdict reached" and the tile should read as counting them (#486).
  */

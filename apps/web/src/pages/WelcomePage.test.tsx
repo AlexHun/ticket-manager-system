@@ -45,7 +45,7 @@ describe("WelcomePage", () => {
     ).toBeInTheDocument();
   });
 
-  // R2, in CONTEXT.md's words: email arrives, the assistant classifies it,
+  // R2, in GLOSSARY.md's words: email arrives, the assistant classifies it,
   // then an auto-reply from the knowledge base or a handoff to an agent.
   test("says what the product does, in the desk's own terms", () => {
     renderWelcome();

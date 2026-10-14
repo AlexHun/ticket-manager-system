@@ -199,5 +199,5 @@ row in the PRD's metrics table was corrected to match.
   reload, so a restored filter would describe rows that are not there.
 - **Renaming the `Verdict` constant** in `protocol.ts`, both charts and
   `bun run tokens` — PRD non-goal. Slice 1 removes the word from the UI as a
-  side effect; the `CONTEXT.md` line recording that the two senses are unrelated
+  side effect; the `GLOSSARY.md` line recording that the two senses are unrelated
   rides along with slice 1.

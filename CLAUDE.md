@@ -78,4 +78,4 @@ The five canonical roles, label strings unchanged. See `docs/agents/triage-label
 
 ### Domain docs
 
-Single-context — `CONTEXT.md` + `docs/adr/` at the repo root, created lazily by `/domain-modeling`. See `docs/agents/domain.md`.
+Single-context — `GLOSSARY.md` + `docs/adr/` at the repo root, created lazily by `/domain-modeling`. See `docs/agents/domain.md`.

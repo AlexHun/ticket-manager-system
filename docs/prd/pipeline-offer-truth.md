@@ -4,7 +4,7 @@
 
 ## Problem
 
-`CONTEXT.md` defines _pending_ as "a verdict is still coming" and _not offered_
+`GLOSSARY.md` defines _pending_ as "a verdict is still coming" and _not offered_
 as "none ever will be". `/pipeline` exists to tell those two apart, and twice in
 a row it has not: #353 and #355 were both a ticket drawn as `pending` that no
 job would ever touch. Both were fixed by bringing one copy of a rule back in

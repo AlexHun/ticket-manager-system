@@ -19,7 +19,7 @@ Cheap reads first, so the interview isn't naive:
 
 ```bash
 ls docs/prd/                      # prior PRDs — match their voice and slug style
-cat CONTEXT.md 2>/dev/null        # glossary: use its terms, don't invent synonyms
+cat GLOSSARY.md 2>/dev/null        # glossary: use its terms, don't invent synonyms
 ls docs/adr/                      # read any ADR touching this area
 ```
 

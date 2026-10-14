@@ -268,7 +268,7 @@ function Metric({
   /**
    * How this number reads against what it had to clear, from `eval-bands.ts`.
    *
-   * Named for the act rather than for `verdict` above, which is CONTEXT.md's
+   * Named for the act rather than for `verdict` above, which is GLOSSARY.md's
    * word for where a repeat landed — judging is what a threshold does to a
    * rate, and the two are different acts on the same card.
    *

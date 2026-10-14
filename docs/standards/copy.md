@@ -15,7 +15,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 ## Vocabulary
 
-**The glossary in `CONTEXT.md` binds the UI.** A screen names a domain thing by its glossary term, and a word from a term's _Avoid_ list in UI text is a defect, not a style choice. The inventory found the same few drifting again and again:
+**The glossary in `GLOSSARY.md` binds the UI.** A screen names a domain thing by its glossary term, and a word from a term's _Avoid_ list in UI text is a defect, not a style choice. The inventory found the same few drifting again and again:
 
 | Write                         | Not                                | Seen in                                                          |
 | ----------------------------- | ---------------------------------- | ---------------------------------------------------------------- |

@@ -77,7 +77,7 @@ export interface LifecycleStep extends InTheCode {
    * ticket at all: the customer's email has not arrived yet.
    */
   readonly status: TicketStatus | null;
-  /** Plain language, in `CONTEXT.md`'s words. Shown in the side panel. */
+  /** Plain language, in `GLOSSARY.md`'s words. Shown in the side panel. */
   readonly explanation: string;
 }
 

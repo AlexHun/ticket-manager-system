@@ -9,7 +9,7 @@ category, and — where a knowledge article covers it — gets an **auto-reply**
 written and sent with nobody reading it first. Everything else lands in the
 backlog for an **agent**, who gets AI summaries and reply polishing to work with.
 
-- **Vocabulary** — [`CONTEXT.md`](./CONTEXT.md) fixes what every term above means.
+- **Vocabulary** — [`GLOSSARY.md`](./GLOSSARY.md) fixes what every term above means.
 - **Decisions** — [`docs/adr/`](./docs/adr/) records why the design is what it is.
 - **Standards** — [`docs/standards/`](./docs/standards/) is how code here is written.
 

@@ -20,7 +20,7 @@ comments.
 ## 2. Explore the codebase
 
 If you haven't already, explore the code the work touches. Ticket titles and
-descriptions use the glossary in `CONTEXT.md` and respect the ADRs in that
+descriptions use the glossary in `GLOSSARY.md` and respect the ADRs in that
 area. Look for prefactoring that makes the rest easy: "make the change easy,
 then make the easy change."
 
@@ -75,7 +75,9 @@ issue:
 3. Read the edges back with
    `gh issue list --json number,blockedBy --jq '.[] | {number, blockers: (.blockedBy.nodes | map(.number))}'`.
 
-Leave any parent issue as it is.
+If the source was an existing issue, attach each ticket to it as a sub-issue
+(`docs/agents/issue-tracker.md`, Make an issue a sub-issue of a parent), and
+otherwise leave that issue as it is.
 
 Done when every approved ticket exists with both labels and a body that is not
 `@-`, and its blockers read back exactly as the approved list. Report the
