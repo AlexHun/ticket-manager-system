@@ -778,5 +778,15 @@
     "version": "0.1.199",
     "date": "2026-10-14",
     "title": "Word the ticket list and ticket detail to the copy standard (#482)"
+  },
+  {
+    "version": "0.1.200",
+    "date": "2026-10-14",
+    "title": "Word the dashboard to the copy standard (#483)"
+  },
+  {
+    "version": "0.1.200",
+    "date": "2026-10-14",
+    "title": "Word an empty Needs attention for the Mine scope (#483)"
   }
 ]
