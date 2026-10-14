@@ -1,4 +1,4 @@
-import { TICKET_STATUS } from "@ticket/shared";
+import { BRAND_NAME, TICKET_STATUS } from "@ticket/shared";
 import { LIST_PARAM } from "./list-param";
 import { ROUTE } from "./routes";
 
@@ -35,8 +35,7 @@ const resolvedTickets = `${ROUTE.tickets.path}?${new URLSearchParams({
 export const WELCOME_STEPS: readonly WelcomeStep[] = [
   {
     key: "how-it-works",
-    sentence:
-      "See how the system fits together: the services it runs on, and the path a ticket takes from email to reply.",
+    sentence: `See how ${BRAND_NAME} fits together: the services it runs on, and the path a ticket takes from email to reply.`,
     to: ROUTE.howItWorks.path,
   },
   {
@@ -48,7 +47,7 @@ export const WELCOME_STEPS: readonly WelcomeStep[] = [
   {
     key: "pipeline",
     sentence:
-      "Open the pipeline simulator to see what happens to a ticket before anyone opens it.",
+      "Open the pipeline simulator to see what happens to a ticket before a person reads it.",
     to: ROUTE.pipeline.path,
   },
   {
