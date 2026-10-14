@@ -9,7 +9,7 @@
 //   1  pause    at or over it; the line says when the window resets
 //   2  unknown  no snapshot, an unreadable one, or one too old to trust
 //
-// Usage: node .claude/scripts/usage-gate.mjs [threshold-percent, default 75]
+// Usage: node .claude/scripts/usage-gate.mjs [threshold-percent, default 85]
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ import { join } from "node:path";
 // describe an earlier session, not the current one.
 const MAX_SNAPSHOT_AGE_MS = 10 * 60 * 1000;
 
-const threshold = Number(process.argv[2] ?? 75);
+const threshold = Number(process.argv[2] ?? 85);
 const snapshotPath = join(homedir(), ".claude", "usage-snapshot.json");
 
 const clock = (epochSeconds) =>
