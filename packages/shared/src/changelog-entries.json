@@ -788,5 +788,15 @@
     "version": "0.1.200",
     "date": "2026-10-14",
     "title": "Word an empty Needs attention for the Mine scope (#483)"
+  },
+  {
+    "version": "0.1.201",
+    "date": "2026-10-14",
+    "title": "Word the knowledge base to the copy standard (#484)"
+  },
+  {
+    "version": "0.1.201",
+    "date": "2026-10-14",
+    "title": "Name the article's question one way in its validation (#484)"
   }
 ]
