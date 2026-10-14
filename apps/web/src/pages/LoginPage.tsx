@@ -32,37 +32,24 @@ import { Separator } from "@/components/ui/separator";
  * evidence, not evidence of a transport failure, and defaulting it to
  * "unreachable" would answer a plain rejected credential — which is what
  * Better Auth returns with no status in some paths — by blaming the network.
+ *
+ * Better Auth's own `message` is never shown: it is worded its own way
+ * ("Invalid email or password"), not the copy standard's, so every refusal
+ * the page can name gets the page's sentence and the rest get `fallback`.
  */
-function failureMessage(
-  error: { status?: number; message?: string },
-  fallback: string,
-): string {
+function failureMessage(error: { status?: number }, fallback: string): string {
   const status = error.status;
   const unreachable =
     typeof status === "number" && (status === 0 || status >= 500);
 
   return unreachable
     ? `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
-    : (error.message ?? fallback);
+    : fallback;
 }
 
-/**
- * A refused email and password, in the copy standard's words rather than
- * Better Auth's ("Invalid email or password"), which would otherwise reach the
- * page through `error.message`. Matched on the status or on Better Auth's code,
- * since some of its paths answer with no status.
- */
 const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
-
-function signInFailureMessage(error: {
-  status?: number;
-  code?: string;
-  message?: string;
-}): string {
-  return error.status === 401 || error.code === "INVALID_EMAIL_OR_PASSWORD"
-    ? SIGN_IN_REFUSED
-    : failureMessage(error, SIGN_IN_REFUSED);
-}
+const SIGN_IN_RATE_LIMITED =
+  "Couldn't sign you in — too many attempts. Try again later.";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -106,7 +93,11 @@ export function LoginPage() {
     const { error } = await signIn.email(values);
 
     if (error) {
-      setServerError(signInFailureMessage(error));
+      setServerError(
+        error.status === 429
+          ? SIGN_IN_RATE_LIMITED
+          : failureMessage(error, SIGN_IN_REFUSED),
+      );
       return;
     }
 

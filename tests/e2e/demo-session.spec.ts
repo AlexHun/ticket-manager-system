@@ -539,7 +539,7 @@ test.describe("Demo session", () => {
     await page.goto(ROUTE.tickets.path);
 
     const banner = page.getByRole("region", { name: "Demo session" });
-    await expect(banner).toContainText("resets every night");
+    await expect(banner).toContainText("the demo resets every night");
     await banner.getByRole("button", { name: "Exit demo" }).click();
 
     await page.waitForURL(ROUTE.login.path);

@@ -173,6 +173,23 @@ describe("LoginPage — submit", () => {
     expect(screen.queryByText("HOME")).not.toBeInTheDocument();
   });
 
+  test("says to try later when sign-in is rate limited", async () => {
+    mockSignInEmail.mockResolvedValue({
+      error: {
+        status: 429,
+        message: "Too many requests. Please try again later.",
+      },
+    });
+    renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't sign you in — too many attempts. Try again later.",
+    );
+  });
+
   test("falls back to a generic message when the error has no message", async () => {
     mockSignInEmail.mockResolvedValue({ error: {} });
     renderLogin();
@@ -344,7 +361,12 @@ describe("LoginPage — demo session", () => {
 
   test("says to try again when the start fails for no stated reason", async () => {
     demoMode(true);
-    mockSignInAnonymous.mockResolvedValue({ error: { status: 400 } });
+    mockSignInAnonymous.mockResolvedValue({
+      error: {
+        status: 400,
+        message: "Anonymous users cannot sign in again anonymously",
+      },
+    });
     renderLogin();
     const user = userEvent.setup();
 
