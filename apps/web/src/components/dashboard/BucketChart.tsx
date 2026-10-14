@@ -35,7 +35,7 @@ interface BucketChartProps {
   /** Column heading for the table twin's first column. */
   binColumn: string;
   footer?: ReactNode;
-  emptyMessage?: string;
+  emptyMessage: string;
   className?: string;
 }
 

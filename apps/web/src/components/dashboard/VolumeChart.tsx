@@ -16,6 +16,7 @@ import { StackSegmentV } from "./chart-marks";
 import {
   CHART_ANIMATION,
   CHART_BOX,
+  NO_TICKETS_CREATED,
   STATUS_STACK,
   statusChartConfig,
 } from "./chart-tokens";
@@ -24,6 +25,14 @@ const BUCKET_NOUN: Record<DashboardBucket, string> = {
   [DASHBOARD_BUCKET.day]: "day",
   [DASHBOARD_BUCKET.week]: "week",
   [DASHBOARD_BUCKET.month]: "month",
+};
+
+/** The table twin's first column header: sentence case, unlike the noun the
+ *  subtitle uses mid-sentence. */
+const BUCKET_COLUMN: Record<DashboardBucket, string> = {
+  [DASHBOARD_BUCKET.day]: "Day",
+  [DASHBOARD_BUCKET.week]: "Week",
+  [DASHBOARD_BUCKET.month]: "Month",
 };
 
 /**
@@ -65,9 +74,10 @@ export function VolumeChart({
         bucket === DASHBOARD_BUCKET.week ? " · weeks begin Monday (UTC)" : ""
       }`}
       isEmpty={isEmpty}
+      emptyMessage={NO_TICKETS_CREATED}
       table={
         <DataTable
-          columns={[BUCKET_NOUN[bucket], ...STATUS_STACK]}
+          columns={[BUCKET_COLUMN[bucket], ...STATUS_STACK]}
           rows={data.map((p) => [
             formatBucketFull(p.bucketStart, bucket),
             ...STATUS_STACK.map((s) => p[s]),

@@ -31,7 +31,9 @@ interface ChartCardProps {
   /** True when the series sums to zero: draw the message, not an axis around
    *  nothing. A real case, not an edge one — a fresh scope=mine has no tickets. */
   isEmpty?: boolean;
-  emptyMessage?: string;
+  /** Required: names what would fill the panel ("No tickets created in this
+   *  range."), which only the panel knows. */
+  emptyMessage: string;
   className?: string;
 }
 
@@ -50,7 +52,7 @@ export function ChartCard({
   children,
   table,
   isEmpty = false,
-  emptyMessage = "Nothing in this range.",
+  emptyMessage,
   className,
 }: ChartCardProps) {
   const [showTable, setShowTable] = useState(false);

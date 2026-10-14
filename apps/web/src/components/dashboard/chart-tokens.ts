@@ -120,4 +120,8 @@ export const AGE_LABEL: Record<AgeBucket, string> = {
 
 /** What a null category is called in the UI. The API sends `null`, which is the
  *  real state — this is only the label for it. */
+/** The empty state of every panel that counts tickets created in the range —
+ *  four of them, so one sentence rather than four copies to keep in step. */
+export const NO_TICKETS_CREATED = "No tickets created in this range.";
+
 export const UNCATEGORISED_LABEL = "Uncategorised";

@@ -8,7 +8,11 @@ import {
 } from "@/components/ui/card";
 import { formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { STATUS_STACK, statusChartConfig } from "./chart-tokens";
+import {
+  NO_TICKETS_CREATED,
+  STATUS_STACK,
+  statusChartConfig,
+} from "./chart-tokens";
 
 /**
  * The slice's status mix as a single meter.
@@ -50,9 +54,7 @@ export function StatusMixCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {total === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nothing in this range.
-          </p>
+          <p className="text-sm text-muted-foreground">{NO_TICKETS_CREATED}</p>
         ) : (
           <>
             {/* gap-0.5 is the 2px surface gap: the segments are separated by the

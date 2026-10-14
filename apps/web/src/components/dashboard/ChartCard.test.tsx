@@ -12,7 +12,11 @@ describe("ChartCard", () => {
   test("shows the table twin in a keyboard-operable named region", async () => {
     const user = userEvent.setup();
     render(
-      <ChartCard title="Tickets created" table={<p>table body</p>}>
+      <ChartCard
+        title="Tickets created"
+        table={<p>table body</p>}
+        emptyMessage="No tickets created in this range."
+      >
         <p>chart body</p>
       </ChartCard>,
     );
@@ -27,7 +31,11 @@ describe("ChartCard", () => {
   test("names the region from the card's own title, so two panels don't collide", async () => {
     const user = userEvent.setup();
     render(
-      <ChartCard title="Time to first reply" table={<p>table body</p>}>
+      <ChartCard
+        title="Time to first reply"
+        table={<p>table body</p>}
+        emptyMessage="No tickets created in this range."
+      >
         <p>chart body</p>
       </ChartCard>,
     );

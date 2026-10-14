@@ -16,7 +16,7 @@ export const DASHBOARD_PANEL_LABEL: Record<DashboardPanelId, string> = {
   [DASHBOARD_PANEL_ID.firstResponseChart]: "First response time",
   [DASHBOARD_PANEL_ID.byCategory]: "By category",
   [DASHBOARD_PANEL_ID.workload]: "Workload",
-  [DASHBOARD_PANEL_ID.backlogAge]: "Open backlog age",
+  [DASHBOARD_PANEL_ID.backlogAge]: "Backlog age",
   [DASHBOARD_PANEL_ID.topCustomers]: "Top customers",
   [DASHBOARD_PANEL_ID.assistantEffectiveness]: "Assistant effectiveness",
 };

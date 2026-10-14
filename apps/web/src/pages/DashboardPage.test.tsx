@@ -18,6 +18,7 @@ import {
   type DashboardLayoutResponse,
   type TicketStatsResponse,
 } from "@ticket/shared";
+import { NO_TICKETS_CREATED } from "@/components/dashboard/chart-tokens";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { DashboardPage } from "./DashboardPage";
@@ -223,7 +224,7 @@ describe("DashboardPage", () => {
       "Time to first reply",
       "By category",
       "Workload",
-      "Open backlog age",
+      "Backlog age",
       "Top customers",
       "Assistant effectiveness",
     ]) {
@@ -241,6 +242,89 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("13 unassigned")).toBeInTheDocument();
     expect(screen.getByText("Median first reply")).toBeInTheDocument();
     expect(screen.getByText("27 of 51 resolved or closed")).toBeInTheDocument();
+  });
+
+  /**
+   * The tile's link and pill have always counted New and Open together; the
+   * figure counted Open alone under an "Open" label. Read off the accessible
+   * value, which carries the true number and the pill's word.
+   */
+  test("counts the whole Backlog in the Backlog tile", async () => {
+    const base = stats();
+    statsGet.mockResolvedValue({
+      data: stats({
+        summary: {
+          ...base.summary,
+          byStatus: { ...base.summary.byStatus, [TICKET_STATUS.New]: 4 },
+        },
+      }),
+    });
+    renderDashboard();
+    expect(await screen.findByText("28, Backlog high")).toBeInTheDocument();
+    expect(screen.getByText("Backlog")).toBeInTheDocument();
+  });
+
+  test("links the uncategorised count once every ticket is answered", async () => {
+    const base = stats();
+    statsGet.mockResolvedValue({
+      data: stats({
+        firstResponse: { ...base.firstResponse, responded: 51, awaiting: 0 },
+      }),
+    });
+    renderDashboard();
+    expect(
+      await screen.findByRole("link", { name: "5 uncategorised" }),
+    ).toBeInTheDocument();
+  });
+
+  test("words a single answered ticket in the singular", async () => {
+    const base = stats();
+    statsGet.mockResolvedValue({
+      data: stats({
+        firstResponse: {
+          ...base.firstResponse,
+          responded: 1,
+          awaiting: 0,
+          buckets: {
+            [LATENCY_BUCKET.under1h]: 1,
+            [LATENCY_BUCKET.h1to4]: 0,
+            [LATENCY_BUCKET.h4to24]: 0,
+            [LATENCY_BUCKET.over24h]: 0,
+          },
+        },
+      }),
+    });
+    renderDashboard();
+    expect(
+      await screen.findByText("The only ticket in this range was answered."),
+    ).toBeInTheDocument();
+  });
+
+  /** Under Mine the list holds only the reader's tickets, so an empty one must
+   * not claim the whole Backlog is empty. */
+  test("words an empty Needs attention for the Mine scope", async () => {
+    statsGet.mockResolvedValue({
+      data: stats({ scope: DASHBOARD_SCOPE.mine, needsAttention: [] }),
+    });
+    renderDashboard();
+    expect(
+      await screen.findByText(/^None of your tickets are in the Backlog\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^The Backlog is empty/)).not.toBeInTheDocument();
+  });
+
+  test("heads the volume table's first column in sentence case", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    const volume = (await screen.findByText("Tickets created")).closest(
+      '[data-slot="card"]',
+    ) as HTMLElement;
+    await user.click(
+      within(volume).getByRole("button", { name: "Show data table" }),
+    );
+    expect(
+      within(volume).getByRole("columnheader", { name: "Day" }),
+    ).toBeInTheDocument();
   });
 
   /**
@@ -331,8 +415,8 @@ describe("DashboardPage", () => {
 
     // Queried by label, not role: these are Radix ToggleGroupItems, whose role
     // is "radio" rather than "button", and whose accessible name is the
-    // aria-label ("Last 7d") rather than the visible "7d".
-    await user.click(screen.getByLabelText("Last 7d"));
+    // aria-label ("Last 7 days") rather than the visible "7d".
+    await user.click(screen.getByLabelText("Last 7 days"));
 
     await waitFor(() =>
       expect(statsGet).toHaveBeenCalledWith(
@@ -411,8 +495,13 @@ describe("DashboardPage", () => {
     renderDashboard();
     expect(await screen.findByText("Needs attention")).toBeInTheDocument();
     expect(
-      screen.getByText("Nothing waiting. Inbox zero."),
+      screen.getByText(
+        "The Backlog is empty. New and Open tickets appear here, longest silence first.",
+      ),
     ).toBeInTheDocument();
+    // Volume, status mix, by category and top customers: each names what
+    // would fill it rather than only saying it is empty.
+    expect(screen.getAllByText(NO_TICKETS_CREATED)).toHaveLength(4);
     expect(
       screen.getByText("No tickets were classified in this range."),
     ).toBeInTheDocument();
@@ -444,7 +533,7 @@ describe("DashboardPage customize mode", () => {
       screen.queryByRole("button", { name: "Move Ticket volume later" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Customize" }));
+    await user.click(screen.getByRole("button", { name: "Customise" }));
 
     expect(
       screen.getByRole("button", { name: "Move Ticket volume later" }),
@@ -460,7 +549,7 @@ describe("DashboardPage customize mode", () => {
     const user = userEvent.setup();
     renderDashboard();
     await screen.findByText("Tickets created");
-    await user.click(screen.getByRole("button", { name: "Customize" }));
+    await user.click(screen.getByRole("button", { name: "Customise" }));
 
     // First panel in the default layout; Status mix starts narrow and Top
     // customers starts wide.
@@ -490,7 +579,7 @@ describe("DashboardPage customize mode", () => {
     const user = userEvent.setup();
     renderDashboard();
     await screen.findByText("Tickets created");
-    await user.click(screen.getByRole("button", { name: "Customize" }));
+    await user.click(screen.getByRole("button", { name: "Customise" }));
 
     await user.click(
       screen.getByRole("button", { name: "Move Ticket volume later" }),
@@ -511,7 +600,7 @@ describe("DashboardPage customize mode", () => {
     const user = userEvent.setup();
     renderDashboard();
     await screen.findByText("Tickets created");
-    await user.click(screen.getByRole("button", { name: "Customize" }));
+    await user.click(screen.getByRole("button", { name: "Customise" }));
 
     expect(
       screen.queryByRole("button", { name: "Reset to default" }),

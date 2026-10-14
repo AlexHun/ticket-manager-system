@@ -26,7 +26,7 @@ const CONTENT: Record<string, { title: string; steps: TutorialStep[] }> = {
       },
       {
         title: "The stat row",
-        body: "Four numbers at a glance: open backlog, created, settled, and median first reply — each links to the tickets behind it.",
+        body: "Four numbers at a glance: the Backlog, created, settled, and median first reply — each links to the tickets behind it.",
         anchor: "kpis",
       },
       {
