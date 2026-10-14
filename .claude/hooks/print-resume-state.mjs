@@ -6,16 +6,19 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const run = (cmd, args, cwd) => {
+// A failure returns null unless the caller maps its stderr: `gh pr view` says
+// why there, which tells a branch with no PR apart from gh being offline or
+// signed out.
+const run = (cmd, args, cwd, onError = () => null) => {
   try {
     return execFileSync(cmd, args, {
       cwd,
       encoding: "utf8",
       timeout: 8000,
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
     }).trimEnd();
-  } catch {
-    return null;
+  } catch (error) {
+    return onError(String(error.stderr ?? ""));
   }
 };
 
@@ -36,18 +39,24 @@ const pr = run(
     "view",
     "--json",
     "number,state,title,url,statusCheckRollup",
+    // A check run carries name/conclusion/status, with conclusion "" while it
+    // is pending; a commit status carries context/state.
     "--jq",
-    '"#\\(.number) \\(.state) \\(.title) \\(.url)\\n" + ([.statusCheckRollup[] | "  \\(.name): \\(.conclusion // .status)"] | join("\\n"))',
+    '"#\\(.number) \\(.state) \\(.title) \\(.url)\\n" + ([.statusCheckRollup[] | "  \\(.name // .context): \\(if (.conclusion // "") != "" then .conclusion else (.state // .status) end)"] | join("\\n"))',
   ],
   cwd,
+  (stderr) =>
+    /no pull requests found/i.test(stderr)
+      ? "none for this branch"
+      : `unavailable (gh failed: ${stderr.trim().split("\n")[0] || "timed out"})`,
 );
 
 process.stdout.write(
   [
     `Session ${input.source ?? "resumed"}: state read from the repo, not from memory.`,
     `Branch: ${branch ?? "unknown"}`,
-    `Uncommitted: ${status ? `\n${status}` : "none"}`,
-    `PR: ${pr ?? "none for this branch"}`,
+    `Uncommitted: ${status === null ? "unknown" : status ? `\n${status}` : "none"}`,
+    `PR: ${pr}`,
     "Tell the user where things stand before the next action.",
   ].join("\n") + "\n",
 );
