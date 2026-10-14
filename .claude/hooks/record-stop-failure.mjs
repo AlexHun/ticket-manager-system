@@ -8,9 +8,11 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+// trimEnd, not trim: porcelain's first column is significant, and " M" (an
+// unstaged change) must not read as "M" (a staged one).
 const git = (args, cwd) => {
   try {
-    return execFileSync("git", args, { cwd, encoding: "utf8", timeout: 3000 }).trim();
+    return execFileSync("git", args, { cwd, encoding: "utf8", timeout: 3000 }).trimEnd();
   } catch {
     return null;
   }

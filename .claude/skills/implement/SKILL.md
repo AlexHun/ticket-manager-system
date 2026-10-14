@@ -20,16 +20,19 @@ invoke it.
    the number in it makes the ticket measurable. When a branch for `#<n>`
    already exists, locally or on origin, or the issue carries `Progress:`
    comments, an earlier session stopped mid-ticket: check that branch out,
-   keep its work, and resume at the step its last `Progress:` comment names.
+   carrying any uncommitted files it left in the working tree, and resume at
+   the step its last `Progress:` comment names, or at step 3 when there is
+   none. Read what is already there against the ticket before adding to it.
 3. **Load the standards.** Call the Skill tool with `coding-standards` and read
    every row the ticket touches.
 4. **Build test-first.** Call the Skill tool with `mattpocock-skills:tdd` and
    work at the seams the ticket or its plan names. Run typecheck and the single
    test file as you go; run `bun run typecheck` and both suites once at the end.
-   Commit each slice once its test is green, and push the branch after the
-   first commit: a feature branch runs no CI, and a pushed commit survives a
-   session that stops on a usage limit, where staged work survives only on
-   this machine.
+   Commit each slice once its test is green, after the self-check in
+   CLAUDE.md, and push it: a feature branch runs no CI, and a pushed commit
+   survives a session that stops on a usage limit, where staged work survives
+   only on this machine. After the first push, comment
+   `Progress: building, next is the next slice (step 4)`.
 5. **Mark the PRD shipped if this is its last ticket.** When the ticket's
    `## Parent` names `docs/prd/<slug>.md` (`to-tickets` writes it) and
    `gh issue list --state open --search "\"docs/prd/<slug>.md\" in:body"`
@@ -46,8 +49,8 @@ invoke it.
 7. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
    `origin/develop`. Fix every finding, or write down why one stands. Push, and
    comment `Progress: reviewed, next is ship (step 8)`.
-8. **Ship.** Push, open a PR into `develop` whose body says `Closes #<n>`, and take it to
-   green in CI as CLAUDE.md's Workflow describes.
+8. **Ship.** Open a PR into `develop` whose body says `Closes #<n>`, and take
+   it to green in CI as CLAUDE.md's Workflow describes.
 
 Done when the PR is open, closes the issue, and every CI job is green. Report
 it and stop: the next ticket starts in a fresh session.

@@ -11,8 +11,8 @@ context, gates the merge, and moves on. It never implements anything itself,
 so it stays small across the whole chain while each ticket still gets its own
 context, as CLAUDE.md's one-ticket-per-session rule asks.
 
-The workers are the user's team, and each has a name. The conductor is
-**Anvil**. Every worker gets a forge word no worker has carried earlier in
+The workers are the user's team, and each has a name. The user is Alex; the
+conductor is **Anvil**. Every worker gets a forge word no worker has carried earlier in
 this session (Ember, Flint, Spark, Quench, Tongs, Bellows, Rivet, Temper,
 Ingot, Crucible, then any other), and the conductor uses that name whenever it
 speaks of the worker. A worker that resumes another's ticket gets a new name;
@@ -60,8 +60,8 @@ completion notice:
 
 > You are <Name>, on the team. Invoke the `implement` skill for issue #<n>
 > and follow it to the end. You are a subagent: a background command will
-> never wake you, so run
-> `gh pr checks <pr> --watch` in the foreground with the maximum timeout, and
+> never wake you, so run `gh pr checks <pr> --watch` in the foreground with
+> the maximum timeout, and
 > run it again until it exits. "no checks reported" right after a push means
 > the run has not registered yet, and a superseded run ends `cancelled`; both
 > are a re-watch, not a failure. Report only once every CI job is green: a red
@@ -72,10 +72,12 @@ completion notice:
 
 Steps 3 and 4 act on that `RESULT` line.
 
+**To continue a worker**, send it the message with SendMessage, so it keeps
+its context. When this session has no SendMessage, start a fresh, newly named
+worker with the prompt above followed by the message.
+
 **Red CI is fixed, not skipped.** When the worker still returns `ci=red`,
-continue that same worker with SendMessage, so it keeps its diagnosis so far
-(without SendMessage, a fresh, newly named worker gets the same message with
-the step-2 prompt):
+continue it, so it keeps its diagnosis so far:
 
 > CI on #<pr> is still red. Find why, fix it, push, and watch until green. End
 > with the same `RESULT` line.
@@ -86,18 +88,18 @@ focused attempts wants the user's judgement, not a fourth.
 
 **A worker stopped by an API error is resumed.** Its completion notice says
 `failed` and names the error; a usage limit stops this session too, so the
-resume runs on the user's next message. Rebuild the ticket's state from the
-repo, not from the notice: `git status`, the branch, `gh pr list --head
-<branch>`, the issue's `Progress:` comments, and the last line of
-`~/.claude/stop-failures.jsonl`, which the `StopFailure` hook writes. Tell the
-user where the ticket stands, then continue the same worker with SendMessage.
-When this session has no SendMessage, start a fresh, newly named worker with
-the step-2 prompt plus:
+resume runs on the user's next message. Rebuild the ticket's state as
+CLAUDE.md's resume rule says, adding the issue's `Progress:` comments and the
+last line of `~/.claude/stop-failures.jsonl` whose `cwd` is this repo (the
+`StopFailure` hook writes one per stop, for every project). Tell the user
+where the ticket stands. The tree is dirty with the stopped worker's files,
+which are the work: skip the clean-tree check, run the usage gate, and on
+`go` or `unknown` continue the worker with:
 
 > <Earlier name> stopped on an API error partway through this ticket. Its
-> work is on `<branch>`: <commits, staged files, PR>. Keep that work: check
-> it against the ticket, finish what is missing, and continue `implement`
-> from the step it reached.
+> work is on `<branch>`: <commits, uncommitted files, PR>. Keep that work:
+> check it against the ticket, finish what is missing, and continue
+> `implement` from the step it reached.
 
 Allow two resumes per ticket. A third stop stops the chain (step 4).
 

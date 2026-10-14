@@ -18,32 +18,47 @@ import { join } from "node:path";
 // describe an earlier session, not the current one.
 const MAX_SNAPSHOT_AGE_MS = 10 * 60 * 1000;
 
-const threshold = Number(process.argv[2] ?? 85);
 const snapshotPath = join(homedir(), ".claude", "usage-snapshot.json");
 
-const clock = (epochSeconds) =>
+const formatResetTime = (epochSeconds) =>
   new Date(epochSeconds * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 function verdict() {
+  const threshold = Number(process.argv[2] ?? 85);
+  if (!(threshold > 0 && threshold <= 100)) {
+    return [2, `unknown: "${process.argv[2]}" is not a threshold between 1 and 100`];
+  }
   let snapshot;
   try {
     snapshot = JSON.parse(readFileSync(snapshotPath, "utf8"));
   } catch {
     return [2, "unknown: no usage snapshot; the terminal status line writes one"];
   }
-  const ageMinutes = Math.round((Date.now() - snapshot.at) / 60000);
-  if (!(Date.now() - snapshot.at <= MAX_SNAPSHOT_AGE_MS)) {
-    return [2, `unknown: the usage snapshot is ${ageMinutes} min old`];
+  const ageMs = Date.now() - snapshot.at;
+  if (!(ageMs >= 0 && ageMs <= MAX_SNAPSHOT_AGE_MS)) {
+    const age = !Number.isFinite(ageMs)
+      ? "undated"
+      : ageMs < 0
+        ? "dated in the future"
+        : `${Math.round(ageMs / 60000)} min old`;
+    return [2, `unknown: the usage snapshot is ${age}`];
   }
   const window = snapshot.rate_limits?.five_hour;
   if (typeof window?.used_percentage !== "number") {
     return [2, "unknown: the snapshot has no five-hour window"];
   }
-  const used = Math.round(window.used_percentage);
-  const resets = typeof window.resets_at === "number" ? `, resets ${clock(window.resets_at)}` : "";
+  // A snapshot taken before the window rolled over still holds the old
+  // window's percentage; the new one starts near empty.
+  if (typeof window.resets_at === "number" && window.resets_at * 1000 <= Date.now()) {
+    return [0, `go: the five-hour window reset at ${formatResetTime(window.resets_at)}`];
+  }
+  const used = window.used_percentage;
+  const resets =
+    typeof window.resets_at === "number" ? `, resets ${formatResetTime(window.resets_at)}` : "";
   const sevenDay = snapshot.rate_limits?.seven_day?.used_percentage;
   const week = typeof sevenDay === "number" ? `, 7d ${Math.round(sevenDay)}%` : "";
-  const line = `5h ${used}%${resets}${week} (snapshot ${ageMinutes} min old)`;
+  // Floored, so a go never shows the threshold itself: 84.6% reads 84%.
+  const line = `5h ${Math.floor(used)}%${resets}${week} (snapshot ${Math.round(ageMs / 60000)} min old)`;
   return used >= threshold ? [1, `pause: ${line}`] : [0, `go: ${line}`];
 }
 
