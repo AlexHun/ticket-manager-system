@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { TICKET_STATUS } from "@ticket/shared";
+import { BRAND_NAME, TICKET_STATUS } from "@ticket/shared";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { LIST_PARAM } from "@/lib/list-param";
@@ -189,8 +189,17 @@ describe("WelcomePage's suggested steps", () => {
     const [first] = WELCOME_STEPS;
 
     expect(first?.to).toBe(ROUTE.howItWorks.path);
-    expect(first?.sentence).toMatch(/how the system fits together/);
+    expect(first?.sentence).toContain(`See how ${BRAND_NAME} fits together`);
     expect(stepLinks()[0]).toHaveAttribute("href", ROUTE.howItWorks.path);
+  });
+
+  // #490: the pipeline step no longer reads "Open … before anyone opens it".
+  test("the pipeline step says what happens before a person reads a ticket", () => {
+    const step = WELCOME_STEPS.find((s) => s.key === "pipeline");
+
+    expect(step?.sentence).toBe(
+      "Open the pipeline simulator to see what happens to a ticket before a person reads it.",
+    );
   });
 
   test("the resolved-tickets step opens the list filtered to Resolved", () => {
