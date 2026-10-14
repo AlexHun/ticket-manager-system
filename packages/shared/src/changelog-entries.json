@@ -803,5 +803,15 @@
     "version": "0.1.202",
     "date": "2026-10-14",
     "title": "Word the pipeline to the copy standard (#485)"
+  },
+  {
+    "version": "0.1.203",
+    "date": "2026-10-14",
+    "title": "Word the evals screen to the copy standard (#486)"
+  },
+  {
+    "version": "0.1.203",
+    "date": "2026-10-14",
+    "title": "Name unanswered eval repeats the way the case table does (#486)"
   }
 ]
