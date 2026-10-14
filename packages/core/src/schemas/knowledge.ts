@@ -28,21 +28,21 @@ export const knowledgeArticleSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Give the article a title")
+    .min(1, "Give the article a title.")
     .max(
       KB_TITLE_MAX_LENGTH,
-      `Title must be ${KB_TITLE_MAX_LENGTH} characters or fewer`,
+      `Keep the question to ${KB_TITLE_MAX_LENGTH} characters or fewer.`,
     ),
   category: z.enum(TICKET_CATEGORY, {
-    error: "Pick a category",
+    error: "Choose a category.",
   }),
   body: z
     .string()
     .trim()
-    .min(1, "An article with no answer in it cannot ground a reply")
+    .min(1, "An article with no answer in it cannot ground a reply.")
     .max(
       KB_BODY_MAX_LENGTH,
-      `The answer must be ${KB_BODY_MAX_LENGTH} characters or fewer`,
+      `Keep the answer to ${KB_BODY_MAX_LENGTH} characters or fewer.`,
     ),
   /**
    * Empty means "no note", and stays a `string` here rather than being
@@ -59,7 +59,7 @@ export const knowledgeArticleSchema = z.object({
     .trim()
     .max(
       KB_INTERNAL_NOTE_MAX_LENGTH,
-      `The internal note must be ${KB_INTERNAL_NOTE_MAX_LENGTH} characters or fewer`,
+      `Keep the internal note to ${KB_INTERNAL_NOTE_MAX_LENGTH} characters or fewer.`,
     ),
   /**
    * Whether the unattended auto-reply may answer from this.

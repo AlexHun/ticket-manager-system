@@ -95,6 +95,7 @@ export function KnowledgePage() {
     (a) => a.autoReply && !a.archived,
   ).length;
   const archived = (articles ?? []).filter((a) => a.archived).length;
+  const live = (articles?.length ?? 0) - archived;
 
   const openCreate = () => {
     setEditing(null);
@@ -113,7 +114,7 @@ export function KnowledgePage() {
       <div className="max-w-5xl">
         <PageHeader
           title="Knowledge base"
-          description="What the support desk knows, and which of it a machine may answer from unattended."
+          description="What the desk knows, and which of it the assistant may answer from unattended."
         >
           {archived > 0 && (
             <Toggle
@@ -143,8 +144,8 @@ export function KnowledgePage() {
             className="mb-4 text-sm text-muted-foreground"
           >
             <span className="font-medium text-foreground">{answerable}</span> of{" "}
-            {articles.length - archived} live articles are available to the
-            auto-reply. The rest are for agents to answer from.
+            {live} live {live === 1 ? "article is" : "articles are"} available
+            to the auto-reply. The rest are for agents to answer from.
           </p>
         )}
 
@@ -152,7 +153,10 @@ export function KnowledgePage() {
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
-            {extractErrorMessage(error, "Failed to load the knowledge base")}
+            {extractErrorMessage(
+              error,
+              "Couldn't load the knowledge base. Try again.",
+            )}
           </p>
         )}
 
@@ -303,7 +307,7 @@ function ArticleRow({
                   schema. The column never reaches a prompt; this line is so
                   the person reading it knows that without having to ask. */}
               <span className="font-medium text-foreground/80">
-                Internal —{" "}
+                Internal note —{" "}
               </span>
               {article.internalNote}
             </p>
@@ -313,13 +317,13 @@ function ArticleRow({
         <div className="flex shrink-0 items-center gap-1">
           <Button variant="ghost" size="sm" onClick={onHistory}>
             <History aria-hidden="true" />
-            History
+            Revisions
           </Button>
           {!article.archived && (
             <Hint
               content={
                 pending
-                  ? "Resolve the pending revision before editing again"
+                  ? "Approve or reject the pending revision before editing again"
                   : ""
               }
             >

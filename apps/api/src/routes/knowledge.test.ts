@@ -370,6 +370,20 @@ describe("POST /api/knowledge-articles/:id/revisions/:revisionId/approve", () =>
     );
 
     expect(sent.status).toBe(404);
+    expect(sent.body.error).toBe("Couldn't find that revision.");
+  });
+});
+
+/* ── GET /:id/revisions ─────────────────────────────────────────────────── */
+
+describe("GET /api/knowledge-articles/:id/revisions", () => {
+  test("404s an article id that does not exist, in a sentence", async () => {
+    const res = await fetch(url("/KB-999/revisions"), { headers: SUBMITTER });
+
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Couldn't find that article.",
+    );
   });
 });
 

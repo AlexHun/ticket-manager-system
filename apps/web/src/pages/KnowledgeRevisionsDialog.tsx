@@ -111,7 +111,7 @@ export function KnowledgeRevisionsDialog({
     <Dialog open={article !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>History of {article?.id}</DialogTitle>
+          <DialogTitle>Revisions of {article?.id}</DialogTitle>
           <DialogDescription>
             Every change to this article, newest first.
           </DialogDescription>
@@ -127,7 +127,10 @@ export function KnowledgeRevisionsDialog({
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
-            {extractErrorMessage(error, "Failed to load the history")}
+            {extractErrorMessage(
+              error,
+              "Couldn't load the revisions. Try again.",
+            )}
           </p>
         )}
 
@@ -212,7 +215,9 @@ function PendingRevisionCard({
       toast.success(`${data.article.id} updated — the revision is now live`);
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Failed to approve the revision"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't approve the revision. Try again."),
+      );
     },
   });
 
@@ -228,7 +233,9 @@ function PendingRevisionCard({
       toast.success("Revision rejected");
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Failed to reject the revision"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't reject the revision. Try again."),
+      );
     },
   });
 
