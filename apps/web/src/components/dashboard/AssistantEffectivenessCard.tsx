@@ -56,7 +56,7 @@ export function AssistantEffectivenessCard({
             saying it twice is noise. */}
         {classified > 0 && (
           <CardDescription>
-            {`${classified} ticket${classified === 1 ? "" : "s"} classified in this range`}
+            {`${classified} ${classified === 1 ? "ticket" : "tickets"} classified in this range`}
           </CardDescription>
         )}
       </CardHeader>

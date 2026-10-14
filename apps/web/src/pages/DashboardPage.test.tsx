@@ -18,6 +18,7 @@ import {
   type DashboardLayoutResponse,
   type TicketStatsResponse,
 } from "@ticket/shared";
+import { NO_TICKETS_CREATED } from "@/components/dashboard/chart-tokens";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { DashboardPage } from "./DashboardPage";
@@ -299,6 +300,19 @@ describe("DashboardPage", () => {
     ).toBeInTheDocument();
   });
 
+  /** Under Mine the list holds only the reader's tickets, so an empty one must
+   * not claim the whole Backlog is empty. */
+  test("words an empty Needs attention for the Mine scope", async () => {
+    statsGet.mockResolvedValue({
+      data: stats({ scope: DASHBOARD_SCOPE.mine, needsAttention: [] }),
+    });
+    renderDashboard();
+    expect(
+      await screen.findByText(/^None of your tickets are in the Backlog\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^The Backlog is empty/)).not.toBeInTheDocument();
+  });
+
   test("heads the volume table's first column in sentence case", async () => {
     const user = userEvent.setup();
     renderDashboard();
@@ -487,9 +501,7 @@ describe("DashboardPage", () => {
     ).toBeInTheDocument();
     // Volume, status mix, by category and top customers: each names what
     // would fill it rather than only saying it is empty.
-    expect(
-      screen.getAllByText("No tickets created in this range."),
-    ).toHaveLength(4);
+    expect(screen.getAllByText(NO_TICKETS_CREATED)).toHaveLength(4);
     expect(
       screen.getByText("No tickets were classified in this range."),
     ).toBeInTheDocument();

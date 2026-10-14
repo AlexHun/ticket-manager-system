@@ -27,9 +27,13 @@ import { ticketDetailPath } from "@/lib/routes";
  */
 export function NeedsAttentionCard({
   tickets,
+  mine,
   className,
 }: {
   tickets: NeedsAttentionTicket[];
+  /** Scope is Mine: the list holds only the reader's own tickets, so an empty
+   *  one says nothing about the rest of the Backlog. */
+  mine: boolean;
   className?: string;
 }) {
   return (
@@ -43,8 +47,9 @@ export function NeedsAttentionCard({
       <CardContent>
         {tickets.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            The Backlog is empty. New and Open tickets appear here, longest
-            silence first.
+            {mine
+              ? "None of your tickets are in the Backlog. New and Open tickets assigned to you appear here, longest silence first."
+              : "The Backlog is empty. New and Open tickets appear here, longest silence first."}
           </p>
         ) : (
           <table className="w-full text-sm">

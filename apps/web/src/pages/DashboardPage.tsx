@@ -34,6 +34,7 @@ import {
   categoryRows,
   workloadRows,
 } from "@/components/dashboard/mini-rows";
+import { NO_TICKETS_CREATED } from "@/components/dashboard/chart-tokens";
 import { DASHBOARD_GRID } from "@/components/dashboard/grid";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -320,7 +321,12 @@ function renderDashboardPanel(
         />
       );
     case "needsAttention":
-      return <NeedsAttentionCard tickets={data.needsAttention} />;
+      return (
+        <NeedsAttentionCard
+          tickets={data.needsAttention}
+          mine={data.scope === DASHBOARD_SCOPE.mine}
+        />
+      );
     case "firstResponseChart":
       return <FirstResponseChart stats={data.firstResponse} />;
     case "byCategory":
@@ -329,7 +335,7 @@ function renderDashboardPanel(
           title="By category"
           subtitle="Including tickets nobody has filed yet"
           rows={categoryRows(data.categories)}
-          emptyMessage="No tickets created in this range."
+          emptyMessage={NO_TICKETS_CREATED}
         />
       );
     case "workload":

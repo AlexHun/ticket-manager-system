@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import {
   ASSIGNEE_NONE,
-  BACKLOG_STATUS,
   CATEGORY_NONE,
   STATUS_BACKLOG,
   TICKET_STATUS,
@@ -12,7 +11,12 @@ import {
 import { formatHours, formatPercent } from "@/lib/format";
 import { ROUTE } from "@/lib/routes";
 import { StatTile } from "./StatTile";
-import { firstReplyVerdict, openVerdict, settledVerdict } from "./kpi-status";
+import {
+  backlogCount,
+  backlogVerdict,
+  firstReplyVerdict,
+  settledVerdict,
+} from "./kpi-status";
 
 interface KpiRowProps {
   summary: TicketStatsSummary;
@@ -30,19 +34,15 @@ interface KpiRowProps {
  */
 export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
   // The Backlog, New and Open together — the same set the "unassigned" link
-  // and the pill (`openVerdict`) count. Labelled "Open" and counting Open
-  // alone, the tile's figure disagreed with its own link whenever anything sat
-  // in New.
-  const backlog = BACKLOG_STATUS.reduce(
-    (sum, status) => sum + summary.byStatus[status],
-    0,
-  );
+  // and the pill count. Labelled "Open" and counting Open alone, the tile's
+  // figure disagreed with its own link whenever anything sat in New.
+  const backlog = backlogCount(summary);
   const uncategorised = categories.find((c) => c.category === null)?.count ?? 0;
 
   // Thresholds live in `kpi-status.ts`, not here — this component's job is to
   // lay four tiles out, and burying the definition of "bad" in JSX is how it
   // stops getting re-tuned.
-  const openState = openVerdict(summary);
+  const backlogState = backlogVerdict(summary);
   const settledState = settledVerdict(summary);
   const replyState = firstReplyVerdict(firstResponse);
 
@@ -51,8 +51,8 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
       <StatTile
         label="Backlog"
         value={backlog}
-        status={openState?.status}
-        statusLabel={openState?.label}
+        status={backlogState?.status}
+        statusLabel={backlogState?.label}
         sub={
           summary.openUnassigned > 0 ? (
             // Links to the list already filtered the same way, so the count is a

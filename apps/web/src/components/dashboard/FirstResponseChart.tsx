@@ -54,7 +54,7 @@ export function FirstResponseChart({
       }))}
       footer={
         stats.awaiting > 0
-          ? `${stats.awaiting} ticket${stats.awaiting === 1 ? "" : "s"} never answered — not counted above`
+          ? `${stats.awaiting} ${stats.awaiting === 1 ? "ticket" : "tickets"} never answered — not counted above`
           : stats.responded === 1
             ? "The only ticket in this range was answered."
             : `All ${stats.responded} tickets in this range were answered.`

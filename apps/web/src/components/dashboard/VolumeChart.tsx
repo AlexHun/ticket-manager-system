@@ -16,6 +16,7 @@ import { StackSegmentV } from "./chart-marks";
 import {
   CHART_ANIMATION,
   CHART_BOX,
+  NO_TICKETS_CREATED,
   STATUS_STACK,
   statusChartConfig,
 } from "./chart-tokens";
@@ -73,7 +74,7 @@ export function VolumeChart({
         bucket === DASHBOARD_BUCKET.week ? " · weeks begin Monday (UTC)" : ""
       }`}
       isEmpty={isEmpty}
-      emptyMessage="No tickets created in this range."
+      emptyMessage={NO_TICKETS_CREATED}
       table={
         <DataTable
           columns={[BUCKET_COLUMN[bucket], ...STATUS_STACK]}

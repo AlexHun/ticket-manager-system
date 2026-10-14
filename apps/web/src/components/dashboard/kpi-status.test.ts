@@ -8,7 +8,7 @@ import {
 import {
   KPI_THRESHOLD,
   firstReplyVerdict,
-  openVerdict,
+  backlogVerdict,
   settledVerdict,
 } from "./kpi-status";
 import { KPI_STATUS } from "./StatusPill";
@@ -56,14 +56,14 @@ function firstResponse(
 
 // --- Backlog --------------------------------------------------------------
 
-describe("openVerdict", () => {
+describe("backlogVerdict", () => {
   test("is silent when the queue is healthy", () => {
-    expect(openVerdict(summary())).toBeNull();
+    expect(backlogVerdict(summary())).toBeNull();
   });
 
   test("is silent when nothing is open, even with no tickets at all", () => {
     expect(
-      openVerdict(
+      backlogVerdict(
         summary({
           total: 0,
           byStatus: {
@@ -82,7 +82,7 @@ describe("openVerdict", () => {
   test("warns on open share at the threshold", () => {
     const open = KPI_THRESHOLD.warnOpenShare * 100;
     expect(
-      openVerdict(
+      backlogVerdict(
         summary({
           byStatus: {
             [TICKET_STATUS.New]: 0,
@@ -100,7 +100,7 @@ describe("openVerdict", () => {
   test("escalates to critical at the higher share", () => {
     const open = KPI_THRESHOLD.criticalOpenShare * 100;
     expect(
-      openVerdict(
+      backlogVerdict(
         summary({
           byStatus: {
             [TICKET_STATUS.New]: 0,
@@ -128,14 +128,14 @@ describe("openVerdict", () => {
       [TICKET_STATUS.Resolved]: 5,
       [TICKET_STATUS.Closed]: 0,
     };
-    expect(openVerdict(summary({ total: 30, byStatus }))?.status).toBe(
+    expect(backlogVerdict(summary({ total: 30, byStatus }))?.status).toBe(
       KPI_STATUS.critical,
     );
-    expect(openVerdict(summary({ total: 500, byStatus }))).toBeNull();
+    expect(backlogVerdict(summary({ total: 500, byStatus }))).toBeNull();
   });
 
   test("a single unassigned ticket warns even when the share is fine", () => {
-    expect(openVerdict(summary({ openUnassigned: 1 }))).toEqual({
+    expect(backlogVerdict(summary({ openUnassigned: 1 }))).toEqual({
       status: KPI_STATUS.warning,
       label: "Needs triage",
     });
@@ -143,8 +143,9 @@ describe("openVerdict", () => {
 
   test("enough unassigned tickets are critical on their own", () => {
     expect(
-      openVerdict(summary({ openUnassigned: KPI_THRESHOLD.criticalUnassigned }))
-        ?.status,
+      backlogVerdict(
+        summary({ openUnassigned: KPI_THRESHOLD.criticalUnassigned }),
+      )?.status,
     ).toBe(KPI_STATUS.critical);
   });
 });
