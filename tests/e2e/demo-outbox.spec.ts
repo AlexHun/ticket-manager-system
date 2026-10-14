@@ -13,7 +13,7 @@ import { startDemo } from "./helpers/demo";
  * A demo visitor's email is never delivered (#325, PRD R10).
  *
  * A demo replies through the real composer, and an admin then finds the reply
- * on `/outbox` reading as not sent — recorded, so the admin can see what a
+ * on `/outbox` reading as withheld — recorded, so the admin can see what a
  * visitor wrote, and settled from birth, so nothing will send it. No E2E server
  * binds a mail provider, so the half that holds with one bound is the API's
  * (`jobs/send-email.test.ts`, `routes/outbox.test.ts`).
@@ -55,7 +55,7 @@ test.afterEach(async () => {
   await resetDemoUsers();
 });
 
-test("a demo's reply reaches the outbox as not sent, and is never queued", async ({
+test("a demo's reply reaches the outbox as withheld, and is never queued", async ({
   page,
   browser,
 }) => {

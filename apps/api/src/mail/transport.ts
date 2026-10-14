@@ -53,7 +53,7 @@ export function isMailConfigured(): boolean {
  * repeat it. Stored on the row, so a reword reaches new rows only.
  */
 export const NO_PROVIDER_REASON =
-  "No mail provider is configured, so this email was not sent.";
+  "No mail provider is configured, so there was nowhere to send this email.";
 
 /** An addressed email, with everything a provider needs and nothing else. */
 export interface OutgoingEmail {
