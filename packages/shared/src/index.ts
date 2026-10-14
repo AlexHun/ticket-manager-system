@@ -3486,3 +3486,20 @@ export const DEMO_READ_ONLY_NOTE = "Read-only in the demo.";
  */
 export const ADMIN_DELETE_REFUSED_MESSAGE =
   "An admin cannot be deleted. Change their role to Agent first.";
+
+/**
+ * The product's name, in its two lengths.
+ *
+ * `BRAND_NAME` is what the lockup reads, what every sentence says and what
+ * every email the desk sends signs off as; `BRAND_SHORT` is for where space is
+ * tight, which today is only the browser tab. `apps/web/index.html` carries the
+ * short form as a literal, because the static shell is read before any module
+ * runs, and `tests/e2e/brand.spec.ts` holds the two together.
+ *
+ * Here rather than in the web app (#488): the API names the product too — the
+ * invitation and reset emails in `auth.ts`, the auto-reply's sign off — and it
+ * cannot import from `apps/web`. One literal, which both apps and the E2E suite
+ * read.
+ */
+export const BRAND_NAME = "The Great Forge Desk";
+export const BRAND_SHORT = "Forge Desk";

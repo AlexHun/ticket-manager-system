@@ -1,5 +1,9 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+// The names under test come from `@ticket/shared`, the module the app reads
+// them from, rather than being restated here.
 import {
+  BRAND_NAME,
+  BRAND_SHORT,
   MESSAGE_DIRECTION,
   TICKET_STATUS,
   TUTORIAL_PAGE_KEY,
@@ -7,10 +11,6 @@ import {
 } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { testDb } from "./helpers/db";
-// The names under test, from the module the app reads them from — the same
-// reach into the web app's source `route-timing.spec.ts` makes. `brand.ts` is
-// import-free for exactly this.
-import { BRAND_NAME, BRAND_SHORT } from "../../apps/web/src/lib/brand";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**

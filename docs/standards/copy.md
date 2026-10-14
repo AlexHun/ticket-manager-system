@@ -32,7 +32,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 - **The people who sign in are the Team.** The admin screen that lists them is **Team**, not Users; a person on it is a **team member**, and the record they sign in with is their **account**. "user" does not appear in UI text. The route path is not copy and does not have to change with the label.
 - **A Customer is never a user, requester or client**, and an Agent is never an operator.
-- **The product is `BRAND_NAME`** ("The Great Forge Desk", `apps/web/src/lib/brand.ts`) wherever a sentence names it; `BRAND_SHORT` only where space is tight. Not "the support desk", not "the system" in a sentence that means the product.
+- **The product is `BRAND_NAME`** ("The Great Forge Desk", in `@ticket/shared`) wherever a sentence names it; `BRAND_SHORT` only where space is tight. Not "the support desk", not "the system" in a sentence that means the product.
 - **Statuses keep their capital** as proper names of a state: New, Processing, Open, Resolved, Closed. A status word used as an ordinary adjective in running prose is lower case ("3 open tickets", meaning 3 in Open) — the capital marks the state, not the word. That adjective never stands for the Backlog: the Backlog is New and Open together, so a count of it is "Backlog" or "the ticket list". "Open tickets" for the Backlog is on the glossary's _Avoid_ list, and it reads as excluding every New ticket.
 - Machine-written work is the **assistant's**. Not "the bot", not "AI" as a noun for the actor; "AI summary" and "AI polish" are feature names and stay.
 
@@ -64,8 +64,8 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 The invitation and reset emails (`apps/api/src/auth.ts`) are the only copy that reaches someone outside the app.
 
-- They name the product and sign off as it — "The Great Forge Desk", not "the support desk" and "The Support Team". `BRAND_NAME` lives in `apps/web` and the API cannot import it, so the change that rewrites the emails gives both apps the name from one place rather than restating the literal — and keeps `apps/web/src/lib/brand.ts` import-free, since `tests/e2e/brand.spec.ts` reaches into it.
-- Subject lines say what the email is for, in sentence case: "Your Great Forge Desk account is ready", "Reset your Great Forge Desk password".
+- They name the product and sign off as it — "The Great Forge Desk", not "the support desk" and "The Support Team" — and so does the auto-reply's sign off (`composeReply` in `apps/api/src/ai/auto-reply.ts`). **`BRAND_NAME` and `BRAND_SHORT` live in `@ticket/shared`** since #488, the one module the web app, the API and the E2E suite can all import, so nobody restates the literal; the web app's own brand module, which the API could not reach, is gone.
+- Subject lines say what the email is for, in sentence case: "Your Great Forge Desk account is ready", "Reset your Great Forge Desk password". Where the name stands before a noun it drops its article, derived from `BRAND_NAME` in `auth.ts` rather than retyped.
 
 ## Changing copy safely
 

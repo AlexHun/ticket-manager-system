@@ -435,6 +435,16 @@ function expectInviteLink(textBody: string | undefined) {
   );
 }
 
+/**
+ * Both auth emails name the product and sign off as it (`copy.md`, Outbound
+ * email): no "support desk" in the body and no "The Support Team" at the foot.
+ */
+function expectSignedByTheProduct(textBody: string | undefined) {
+  expect(textBody).toContain("The Great Forge Desk");
+  expect(textBody?.endsWith("Best regards,\nThe Great Forge Desk")).toBe(true);
+  expect(textBody).not.toMatch(/support desk|support team/i);
+}
+
 /* ── POST /api/users ─────────────────────────────────────────────────────── */
 
 describe("POST /api/users — the account", () => {
@@ -541,11 +551,12 @@ describe("POST /api/users — the invitation (ADR-0009)", () => {
       kind: OUTBOUND_EMAIL_KIND.invitation,
       toEmail: "nadia@example.com",
       toName: "Nadia New",
-      subject: "You have been given a support desk account",
+      subject: "Your Great Forge Desk account is ready",
       // Auth mail carries no thread message; only a reply does.
       messageId: null,
     });
     expectInviteLink(invitation?.textBody);
+    expectSignedByTheProduct(invitation?.textBody);
   });
 
   /**
@@ -812,7 +823,7 @@ describe("POST /api/users/:id/invite — user_invited, resend", () => {
       kind: OUTBOUND_EMAIL_KIND.invitation,
       toEmail: AGENT.email,
       toName: AGENT.name,
-      subject: "You have been given a support desk account",
+      subject: "Your Great Forge Desk account is ready",
     });
     expectInviteLink(invitation?.textBody);
   });
@@ -831,8 +842,9 @@ describe("POST /api/users/:id/invite — user_invited, resend", () => {
     expect(mail).toMatchObject({
       kind: OUTBOUND_EMAIL_KIND.passwordReset,
       toEmail: AGENT.email,
-      subject: "Reset your support desk password",
+      subject: "Reset your Great Forge Desk password",
     });
+    expectSignedByTheProduct(mail?.textBody);
   });
 
   // The assistant has no credential row and is not getting one; this link is

@@ -4,7 +4,11 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware, getIp } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { admin, anonymous } from "better-auth/plugins";
-import { DEMO_START_LIMIT_MESSAGE, USER_ROLE } from "@ticket/shared";
+import {
+  BRAND_NAME,
+  DEMO_START_LIMIT_MESSAGE,
+  USER_ROLE,
+} from "@ticket/shared";
 // A leaf module rather than a constant declared here, and the note on it says
 // why: this file cannot be loaded by a unit test, so anything else that needs
 // the number cannot reach it through this file.
@@ -42,6 +46,13 @@ export const trustedOrigins = parsedOrigins;
  * this same list before honouring it, so a bad value here fails closed.
  */
 export const appOrigin = parsedOrigins[0] as string;
+
+/**
+ * `BRAND_NAME` without its article, for where the name stands before a noun:
+ * "Your Great Forge Desk account", not "Your The Great Forge Desk account".
+ * Derived rather than restated, so the emails cannot drift from the name.
+ */
+const BRAND_ATTRIBUTIVE = BRAND_NAME.replace(/^The /, "");
 
 if (
   !process.env.BETTER_AUTH_SECRET ||
@@ -251,32 +262,32 @@ export const auth = betterAuth({
           toEmail: user.email,
           toName: user.name,
           subject: invited
-            ? "You have been given a support desk account"
-            : "Reset your support desk password",
+            ? `Your ${BRAND_ATTRIBUTIVE} account is ready`
+            : `Reset your ${BRAND_ATTRIBUTIVE} password`,
           textBody: invited
             ? [
                 `Hello ${user.name},`,
                 "",
-                "An account has been created for you on the support desk. Choose a password to finish setting it up:",
+                `An account has been created for you on ${BRAND_NAME}. Choose a password to finish setting it up:`,
                 "",
                 url,
                 "",
                 "The link is good for 24 hours. If it has expired, ask an admin to send you another.",
                 "",
                 "Best regards,",
-                "The Support Team",
+                BRAND_NAME,
               ].join("\n")
             : [
                 `Hello ${user.name},`,
                 "",
-                "Someone asked to reset the password on your support desk account. Choose a new one here:",
+                `Someone asked to reset the password on your ${BRAND_ATTRIBUTIVE} account. Choose a new one here:`,
                 "",
                 url,
                 "",
                 "The link is good for 24 hours. If this was not you, no action is needed — your current password still works.",
                 "",
                 "Best regards,",
-                "The Support Team",
+                BRAND_NAME,
               ].join("\n"),
         });
       })().catch((err) => {

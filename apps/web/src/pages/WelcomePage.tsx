@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME } from "@ticket/shared";
 import { useFollowWelcomeStep } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
 import {

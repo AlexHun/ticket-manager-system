@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { TUTORIAL_PAGE_KEY, type User } from "@ticket/shared";
+import { BRAND_NAME, TUTORIAL_PAGE_KEY, type User } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { BRAND_NAME } from "@/lib/brand";
 import { TEAM_LOAD_ERROR, useUsersQuery } from "@/lib/use-users";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DemoUsageCard } from "./DemoUsageCard";

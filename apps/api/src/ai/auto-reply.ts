@@ -2,6 +2,7 @@ import { NoObjectGeneratedError, Output, generateText } from "ai";
 import { z } from "zod";
 import {
   AUTO_REPLY_DECLINE,
+  BRAND_NAME,
   MAX_MESSAGE_BODY_LENGTH,
   type AutoReplyDecline,
 } from "@ticket/shared";
@@ -168,10 +169,12 @@ const REPLY_LIMIT = MAX_MESSAGE_BODY_LENGTH;
  * worse than a lie, because `unbackedReferences` runs over the assembled reply
  * and would discard every single one of these for citing a link no article
  * contains. If a future sign off needs contact details, they belong in an
- * article first.
+ * article first. It signs as the product, `BRAND_NAME`, as the invitation and
+ * reset emails do (#488); the name carries no money word, link or address, so
+ * checks 5 and 6 pass it as they passed "The Support Team".
  */
 const GREETING_FALLBACK = "Hello,";
-const SIGN_OFF = "Best regards,\nThe Support Team";
+const SIGN_OFF = `Best regards,\n${BRAND_NAME}`;
 
 /**
  * What may be used as a first name.

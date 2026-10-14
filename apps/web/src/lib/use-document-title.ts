@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BRAND_SHORT } from "@/lib/brand";
+import { BRAND_SHORT } from "@ticket/shared";
 
 /**
  * What every title ends in, so a tab is identifiable as this app at a glance.
