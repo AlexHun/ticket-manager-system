@@ -868,5 +868,10 @@
     "version": "0.1.216",
     "date": "2026-10-14",
     "title": "Lower-case the decline reason in an Evals verdict (#520)"
+  },
+  {
+    "version": "0.1.217",
+    "date": "2026-10-14",
+    "title": "Keep doc-citations' git calls off a hook's repository (#531)"
   }
 ]
