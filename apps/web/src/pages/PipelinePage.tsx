@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, CircleSlash, RotateCcw } from "lucide-react";
 import type { AutoReplyCase } from "@ticket/core";
 import {
-  DASHBOARD_RANGE,
   DEFAULT_DASHBOARD_RANGE,
   PIPELINE_OUTCOME,
   TUTORIAL_PAGE_KEY,
@@ -23,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
+import { DASHBOARD_RANGE_OPTIONS } from "@/lib/dashboard-ranges";
 import { extractErrorMessage } from "@/lib/errors";
 import { DECLINE_LABEL } from "@/lib/pipeline-labels";
 import {
@@ -58,16 +58,6 @@ import { PipelineSimulator } from "./PipelineSimulator";
  * `apps/api/src/routes/pipeline.ts` are the control — the simulator is
  * `requireAdmin` — and the `AdminScreenRoute` wrapper around this is UX.
  */
-
-/** The visible labels are the API's preset values; `span` spells the unit out
- *  for the sentence under the heading and the accessible name, as the
- *  dashboard's filter does, since "the last 7d" is not a phrase anyone says. */
-const RANGES: { value: DashboardRange; label: string; span: string }[] = [
-  { value: DASHBOARD_RANGE.d7, label: "7d", span: "7 days" },
-  { value: DASHBOARD_RANGE.d30, label: "30d", span: "30 days" },
-  { value: DASHBOARD_RANGE.d90, label: "90d", span: "90 days" },
-  { value: DASHBOARD_RANGE.m12, label: "12m", span: "12 months" },
-];
 
 function useOverview(range: DashboardRange) {
   return useQuery({
@@ -200,7 +190,7 @@ export function PipelinePage() {
           }}
           aria-label="Time range"
         >
-          {RANGES.map(({ value, label, span }) => (
+          {DASHBOARD_RANGE_OPTIONS.map(({ value, label, span }) => (
             <ToggleGroupItem
               key={value}
               value={value}
@@ -266,8 +256,11 @@ export function PipelinePage() {
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Tickets that arrived in the last{" "}
-                    {RANGES.find((r) => r.value === range)?.span}. Each stop
-                    shows how many were still on the line.
+                    {
+                      DASHBOARD_RANGE_OPTIONS.find((r) => r.value === range)
+                        ?.span
+                    }
+                    . Each stop shows how many were still on the line.
                   </p>
                 )}
               </div>
