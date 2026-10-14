@@ -293,3 +293,17 @@ export async function resetDb(): Promise<void> {
   calls.clear();
   await db.exec(RESET_SQL);
 }
+
+/**
+ * Run a batch of SQL statements, for a test that replays one migration's
+ * `migration.sql` against rows it seeded itself.
+ *
+ * Every migration has already run once by the time a test file loads, against
+ * an empty database, so a *data* migration's effect is otherwise unobservable:
+ * the rows it rewrites did not exist yet. Prisma's raw queries are prepared
+ * statements and refuse a file of several, which is why this goes to PGLite
+ * directly. `tutorial-wording-migration.test.ts` is the worked example.
+ */
+export async function execSql(sql: string): Promise<void> {
+  await db.exec(sql);
+}
