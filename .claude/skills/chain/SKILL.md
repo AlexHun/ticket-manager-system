@@ -72,6 +72,17 @@ completion notice:
 
 Steps 3 and 4 act on that `RESULT` line.
 
+**A reply without a `RESULT` line is continued once.** Continue the worker
+with:
+
+> Your reply has no `RESULT` line. Finish what `implement` still needs, then
+> end with exactly one line:
+> `RESULT ticket=#<n> pr=#<pr|none> ci=<green|red|none> questions=<none|one-line summary>`
+
+When that reply has none either, the chain stops (step 4): a worker that
+cannot say where its ticket stands twice running wants the user, not a third
+guess at its state (#523).
+
 **To continue a worker**, send it the message with SendMessage, so it keeps
 its context. When this session has no SendMessage, start a fresh, newly named
 worker with the prompt above followed by the message.
@@ -155,6 +166,7 @@ The chain stops, and reports, when any of these holds:
 - a ticket is still `ci=red` after three fix rounds;
 - the usage gate says `pause`, or a ticket stops on an API error a third time;
 - a worker returns `pr=none` or `questions` that are not `none`;
+- a worker's reply still has no `RESULT` line after one continue;
 - the next ticket is blocked by an open issue outside the chain;
 - a merge fails or the user declines one.
 
