@@ -68,7 +68,7 @@ export function formatBucketLabel(
   const monthLabel = MONTHS[month - 1] ?? "";
   return bucket === DASHBOARD_BUCKET.month
     ? `${monthLabel} ${String(year).slice(2)}`
-    : `${monthLabel} ${day}`;
+    : `${day} ${monthLabel}`;
 }
 
 /** The same date spelled out, for a tooltip where there is room for the year. */
@@ -80,8 +80,31 @@ export function formatBucketFull(
   if (!year || !month || !day) return bucketStart;
   const monthLabel = MONTHS[month - 1] ?? "";
   if (bucket === DASHBOARD_BUCKET.month) return `${monthLabel} ${year}`;
-  const date = `${monthLabel} ${day}, ${year}`;
+  const date = `${day} ${monthLabel} ${year}`;
   return bucket === DASHBOARD_BUCKET.week ? `Week of ${date}` : date;
+}
+
+/**
+ * A calendar date, or a range of them, as the copy standard writes one:
+ * British order ("9 Oct 2026"), an unspaced en dash between the ends, and each
+ * part the ends share written once — "9–12 Oct 2026", "30 Sep–2 Oct 2026",
+ * "30 Dec 2025–2 Jan 2026". A range that ends the day it starts is one date.
+ *
+ * Reads the local calendar fields: the dates come from a day picker, which
+ * builds them at local midnight.
+ */
+export function formatDateRange(from: Date, to?: Date): string {
+  const d1 = from.getDate();
+  const m1 = MONTHS[from.getMonth()] ?? "";
+  const y1 = from.getFullYear();
+  if (!to) return `${d1} ${m1} ${y1}`;
+  const d2 = to.getDate();
+  const m2 = MONTHS[to.getMonth()] ?? "";
+  const y2 = to.getFullYear();
+  if (y1 !== y2) return `${d1} ${m1} ${y1}–${d2} ${m2} ${y2}`;
+  if (m1 !== m2) return `${d1} ${m1}–${d2} ${m2} ${y2}`;
+  if (d1 !== d2) return `${d1}–${d2} ${m2} ${y2}`;
+  return `${d1} ${m1} ${y1}`;
 }
 
 /**

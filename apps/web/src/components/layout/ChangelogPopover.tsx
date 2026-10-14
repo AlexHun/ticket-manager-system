@@ -65,7 +65,9 @@ export function ChangelogPopover() {
       >
         <div className="mb-1 text-sm font-medium">What's new</div>
         {SORTED_ENTRIES.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing new yet.</p>
+          <p className="text-sm text-muted-foreground">
+            Nothing new yet. New features and fixes appear here as they ship.
+          </p>
         ) : (
           // `pr-2` keeps each entry's date clear of the scrollbar, which an
           // overlay scrollbar would otherwise draw over (#401).
