@@ -438,6 +438,8 @@ function expectInviteLink(textBody: string | undefined) {
 /**
  * Both auth emails name the product and sign off as it (`copy.md`, Outbound
  * email): no "support desk" in the body and no "The Support Team" at the foot.
+ * The name is written out rather than read from `BRAND_NAME` on purpose: this
+ * pins what the recipient reads, which an import would follow anywhere.
  */
 function expectSignedByTheProduct(textBody: string | undefined) {
   expect(textBody).toContain("The Great Forge Desk");
@@ -826,6 +828,7 @@ describe("POST /api/users/:id/invite — user_invited, resend", () => {
       subject: "Your Great Forge Desk account is ready",
     });
     expectInviteLink(invitation?.textBody);
+    expectSignedByTheProduct(invitation?.textBody);
   });
 
   /**

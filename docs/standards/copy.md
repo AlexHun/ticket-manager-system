@@ -4,7 +4,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 ## Scope
 
-**In scope:** every screen of the app, toasts, API error messages that reach the UI (through `extractErrorMessage` or a zod message from `@ticket/core`), tutorial steps, the How it works page, the welcome page, and the invitation and reset emails.
+**In scope:** every screen of the app, toasts, API error messages that reach the UI (through `extractErrorMessage` or a zod message from `@ticket/core`), tutorial steps, the How it works page, the welcome page, the invitation and reset emails, and the auto-reply's sign-off.
 
 **Out of scope, on purpose:**
 
@@ -62,7 +62,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 ## Outbound email
 
-The invitation and reset emails (`apps/api/src/auth.ts`) are the only copy that reaches someone outside the app.
+The invitation and reset emails (`apps/api/src/auth.ts`) and the auto-reply's sign-off are the only copy that reaches someone outside the app.
 
 - They name the product and sign off as it — "The Great Forge Desk", not "the support desk" and "The Support Team" — and so does the auto-reply's sign off (`composeReply` in `apps/api/src/ai/auto-reply.ts`). **`BRAND_NAME` and `BRAND_SHORT` live in `@ticket/shared`** since #488, the one module the web app, the API and the E2E suite can all import, so nobody restates the literal; the web app's own brand module, which the API could not reach, is gone.
 - Subject lines say what the email is for, in sentence case: "Your Great Forge Desk account is ready", "Reset your Great Forge Desk password". Where the name stands before a noun it drops its article, derived from `BRAND_NAME` in `auth.ts` rather than retyped.

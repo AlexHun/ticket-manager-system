@@ -3490,8 +3490,9 @@ export const ADMIN_DELETE_REFUSED_MESSAGE =
 /**
  * The product's name, in its two lengths.
  *
- * `BRAND_NAME` is what the lockup reads, what every sentence says and what
- * every email the desk sends signs off as; `BRAND_SHORT` is for where space is
+ * `BRAND_NAME` is what the lockup reads, what every sentence says and what the
+ * invitation, reset and auto-reply emails sign off as (an agent's own reply
+ * signs with the agent's name); `BRAND_SHORT` is for where space is
  * tight, which today is only the browser tab. `apps/web/index.html` carries the
  * short form as a literal, because the static shell is read before any module
  * runs, and `tests/e2e/brand.spec.ts` holds the two together.
