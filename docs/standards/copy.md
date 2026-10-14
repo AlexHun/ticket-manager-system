@@ -45,7 +45,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 - **A toast reports what happened, in the past tense, without a "successfully"**: "Draft polished", "Schedule paused".
 - **Plurals agree with the number.** Write both forms (`n === 1 ? "ticket" : "tickets"`); never append a bare `s` to a word whose plural is not just `s`, and never print "1 tickets".
 - **Dashes:** an em dash with a space each side ( — ) joins two clauses, as the UI already does; an en dash with no spaces marks a range ("3–7 days", "1–4h"), full dates included ("9–12 Oct 2026", "30 Sep–2 Oct 2026"), with each shared part written once — one range mark whatever its ends are, rather than a second rule for dates.
-- **Dates are British order**: "9 Oct 2026", not "Oct 9, 2026" — the spelling is British, and a US-order date beside it reads as a different locale's leftover. Seen in: the Activity date filter (`apps/web/src/pages/ActivityFilters.tsx`), whose US-order range is also joined by a spaced dash.
+- **Dates are British order**: "9 Oct 2026", not "Oct 9, 2026" — the spelling is British, and a US-order date beside it reads as a different locale's leftover. Seen in: the Activity date filter (`apps/web/src/pages/ActivityFilters.tsx`), whose US-order range was also joined by a spaced dash until #493; it goes through `formatDateRange` now, and the dashboard chart's axis and tooltip through `formatBucketLabel` and `formatBucketFull`, all in `apps/web/src/lib/format.ts`.
 - **Numbers** are digits in UI chrome ("Page 2 of 5", "24 hours"); prose may spell a small count out ("five times each") when that reads better.
 
 ## Errors and empty states

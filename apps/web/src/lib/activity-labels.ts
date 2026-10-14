@@ -73,10 +73,12 @@ export const ACTIVITY_PHRASING: Record<
   // said which one it hit. Narrowed on the way in like every other stored
   // decline reason: `toValue` is a free-text column, so a reason written by an
   // older build or since renamed reads as no reason rather than as a raw key.
+  // `DECLINE_SHORT` is written to stand alone as a label, capital first;
+  // here it follows a dash mid-sentence, so its first letter drops to lower case.
   [TICKET_ACTIVITY_ACTION.auto_declined]: (entry) => {
     const decline = asAutoReplyDecline(entry.toValue);
-    return decline
-      ? `left this for a human — ${DECLINE_SHORT[decline]}`
-      : "left this for a human";
+    if (!decline) return "left this for a person";
+    const reason = DECLINE_SHORT[decline];
+    return `left this for a person — ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`;
   },
 };

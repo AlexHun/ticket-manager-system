@@ -37,10 +37,10 @@ export function AppErrorBoundary({ children }: { children: ReactNode }) {
         <div className="flex min-h-svh items-center justify-center p-6">
           <Card className="w-full max-w-md">
             <CardHeader>
-              <CardTitle>Something broke</CardTitle>
+              <CardTitle>Couldn't show this page</CardTitle>
               <CardDescription>
-                This page hit an error it could not recover from. The details
-                have been recorded.
+                The details have been recorded. Try again, or go back to the
+                dashboard.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex gap-2">

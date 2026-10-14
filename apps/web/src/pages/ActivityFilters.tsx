@@ -3,7 +3,6 @@ import {
   addDays,
   addMonths,
   endOfMonth,
-  format,
   startOfMonth,
   startOfToday,
 } from "date-fns";
@@ -20,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ACTIVITY_ENTITY_LABEL } from "@/lib/activity-feed-labels";
+import { formatDateRange } from "@/lib/format";
 import { useSession } from "@/lib/auth-client";
 import { useIsMobile } from "@/lib/use-mobile";
 import { useUsersQuery } from "@/lib/use-users";
@@ -80,13 +80,11 @@ function toValue(date: Date | undefined): string {
 }
 
 /** The trigger's label: the start alone while a range is still mid-pick,
- *  collapsed to one date for a same-day range, both ends otherwise. */
+ *  otherwise the range as `formatDateRange` writes it — one date for a
+ *  same-day range, shared parts written once. */
 function rangeLabel(from: Date | undefined, to: Date | undefined): string {
   if (!from) return "Any date";
-  if (!to || formatLocalDate(from) === formatLocalDate(to)) {
-    return format(from, "MMM d, yyyy");
-  }
-  return `${format(from, "MMM d, yyyy")} – ${format(to, "MMM d, yyyy")}`;
+  return formatDateRange(from, to);
 }
 
 interface DatePreset {

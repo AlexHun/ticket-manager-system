@@ -144,7 +144,10 @@ export function ActivityPage() {
 
       {error && (
         <p className="text-sm text-destructive" role="alert">
-          {extractErrorMessage(error, "Failed to load the activity feed")}
+          {extractErrorMessage(
+            error,
+            "Couldn't load the activity feed. Try again.",
+          )}
         </p>
       )}
 
@@ -165,7 +168,7 @@ export function ActivityPage() {
               <p className="text-sm text-muted-foreground">
                 {filtered
                   ? "No activity matches these filters."
-                  : "Nothing recorded yet."}
+                  : "Nothing recorded yet. Changes appear here as people and the assistant make them."}
               </p>
             </TableFrame>
           ) : (

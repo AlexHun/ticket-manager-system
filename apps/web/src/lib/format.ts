@@ -68,7 +68,7 @@ export function formatBucketLabel(
   const monthLabel = MONTHS[month - 1] ?? "";
   return bucket === DASHBOARD_BUCKET.month
     ? `${monthLabel} ${String(year).slice(2)}`
-    : `${monthLabel} ${day}`;
+    : `${day} ${monthLabel}`;
 }
 
 /** The same date spelled out, for a tooltip where there is room for the year. */
@@ -80,8 +80,47 @@ export function formatBucketFull(
   if (!year || !month || !day) return bucketStart;
   const monthLabel = MONTHS[month - 1] ?? "";
   if (bucket === DASHBOARD_BUCKET.month) return `${monthLabel} ${year}`;
-  const date = `${monthLabel} ${day}, ${year}`;
+  const date = dayMonthYear(day, monthLabel, year);
   return bucket === DASHBOARD_BUCKET.week ? `Week of ${date}` : date;
+}
+
+/**
+ * A calendar date, or a range of them, as the copy standard writes one:
+ * British order ("9 Oct 2026"), an unspaced en dash between the ends, and each
+ * part the ends share written once — "9–12 Oct 2026", "30 Sep–2 Oct 2026",
+ * "30 Dec 2025–2 Jan 2026". A range that ends the day it starts is one date.
+ *
+ * Reads the local calendar fields: the dates come from a day picker, which
+ * builds them at local midnight.
+ */
+export function formatDateRange(from: Date, to?: Date): string {
+  const start = calendarParts(from);
+  const end = to ? calendarParts(to) : start;
+  const full = (p: CalendarParts) => dayMonthYear(p.day, p.month, p.year);
+  if (start.year !== end.year) return `${full(start)}–${full(end)}`;
+  if (start.month !== end.month)
+    return `${start.day} ${start.month}–${full(end)}`;
+  if (start.day !== end.day) return `${start.day}–${full(end)}`;
+  return full(start);
+}
+
+interface CalendarParts {
+  day: number;
+  month: string;
+  year: number;
+}
+
+function calendarParts(date: Date): CalendarParts {
+  return {
+    day: date.getDate(),
+    month: MONTHS[date.getMonth()] ?? "",
+    year: date.getFullYear(),
+  };
+}
+
+/** The one place the British day-month-year order is written. */
+function dayMonthYear(day: number, month: string, year: number): string {
+  return `${day} ${month} ${year}`;
 }
 
 /**
