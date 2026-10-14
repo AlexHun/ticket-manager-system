@@ -285,7 +285,7 @@ describe("TutorialsPage — editing", () => {
     );
 
     expect(
-      await within(dialog).findByText("Give the tutorial a title"),
+      await within(dialog).findByText("Give the tutorial a title."),
     ).toBeInTheDocument();
     expect(tutorialPut).not.toHaveBeenCalled();
   });
@@ -337,7 +337,7 @@ describe("TutorialsPage — editing", () => {
     tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     const axiosError = Object.assign(new Error("Request failed"), {
       isAxiosError: true,
-      response: { status: 400, data: { error: "Give the tutorial a title" } },
+      response: { status: 400, data: { error: "Give the tutorial a title." } },
     });
     tutorialPut.mockRejectedValue(axiosError);
 
@@ -351,7 +351,7 @@ describe("TutorialsPage — editing", () => {
     );
 
     expect(
-      await within(dialog).findByText("Give the tutorial a title"),
+      await within(dialog).findByText("Give the tutorial a title."),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(tutorialsGet).toHaveBeenCalledTimes(1);

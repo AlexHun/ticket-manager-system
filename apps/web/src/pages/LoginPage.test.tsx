@@ -118,7 +118,7 @@ describe("LoginPage — validation", () => {
     await user.type(emailInput, "not-an-email");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByText("Enter a valid email")).toBeInTheDocument();
+    expect(await screen.findByText("Enter a valid email.")).toBeInTheDocument();
     expect(mockSignInEmail).not.toHaveBeenCalled();
   });
 
@@ -129,7 +129,7 @@ describe("LoginPage — validation", () => {
     await user.clear(screen.getByLabelText("Password"));
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByText("Enter your password")).toBeInTheDocument();
+    expect(await screen.findByText("Enter your password.")).toBeInTheDocument();
     expect(mockSignInEmail).not.toHaveBeenCalled();
   });
 });

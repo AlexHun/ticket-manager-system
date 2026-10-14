@@ -24,7 +24,7 @@ import { USER_ROLE } from "@ticket/shared";
  * one place, rather than an agreement this app and Better Auth happen to reach
  * separately at each of three doors.
  */
-const email = z.email("Enter a valid email").toLowerCase();
+const email = z.email("Enter a valid email.").toLowerCase();
 
 /**
  * Making a colleague an account.
@@ -42,7 +42,7 @@ const email = z.email("Enter a valid email").toLowerCase();
  * `apps/api/src/auth.ts`.
  */
 export const createUserSchema = z.object({
-  name: z.string().trim().min(3, "Name must be at least 3 characters"),
+  name: z.string().trim().min(3, "Name must be at least 3 characters."),
   email,
 });
 
@@ -69,9 +69,9 @@ export type CreateUserValues = z.infer<typeof createUserSchema>;
  * place that knows who is asking.
  */
 export const updateUserSchema = z.object({
-  name: z.string().trim().min(3, "Name must be at least 3 characters"),
+  name: z.string().trim().min(3, "Name must be at least 3 characters."),
   email,
-  role: z.enum(USER_ROLE, { error: "Choose a role" }),
+  role: z.enum(USER_ROLE, { error: "Choose a role." }),
 });
 
 export type UpdateUserValues = z.infer<typeof updateUserSchema>;

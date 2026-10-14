@@ -13,7 +13,7 @@ import { HANDOFF_TARGET, HANDOFF_TARGETS } from "@ticket/shared";
  */
 export const updateHandoffSchema = z
   .object({
-    target: z.enum(HANDOFF_TARGETS, { error: "Choose who picks these up" }),
+    target: z.enum(HANDOFF_TARGETS, { error: "Choose who picks these up." }),
     /**
      * Null on every target but `user`. Not `.optional()`: a missing key and an
      * explicit null are the same intent here, and requiring the key means the
@@ -26,7 +26,7 @@ export const updateHandoffSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["userId"],
-        message: "Choose a person",
+        message: "Choose a person.",
       });
     }
     if (value.target !== HANDOFF_TARGET.user && value.userId !== null) {

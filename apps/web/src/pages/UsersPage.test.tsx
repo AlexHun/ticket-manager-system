@@ -302,7 +302,7 @@ describe("UsersPage — create user", () => {
     );
 
     expect(
-      await within(dialog).findByText("Name must be at least 3 characters"),
+      await within(dialog).findByText("Name must be at least 3 characters."),
     ).toBeInTheDocument();
     expect(usersPost).not.toHaveBeenCalled();
   });
@@ -321,7 +321,7 @@ describe("UsersPage — create user", () => {
     );
 
     expect(
-      await within(dialog).findByText("Enter a valid email"),
+      await within(dialog).findByText("Enter a valid email."),
     ).toBeInTheDocument();
     expect(usersPost).not.toHaveBeenCalled();
   });
