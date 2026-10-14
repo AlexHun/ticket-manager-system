@@ -28,7 +28,7 @@ export const knowledgeArticleSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Give the article a title.")
+    .min(1, "Write the question.")
     .max(
       KB_TITLE_MAX_LENGTH,
       `Keep the question to ${KB_TITLE_MAX_LENGTH} characters or fewer.`,
@@ -39,7 +39,7 @@ export const knowledgeArticleSchema = z.object({
   body: z
     .string()
     .trim()
-    .min(1, "An article with no answer in it cannot ground a reply.")
+    .min(1, "Write the answer.")
     .max(
       KB_BODY_MAX_LENGTH,
       `Keep the answer to ${KB_BODY_MAX_LENGTH} characters or fewer.`,

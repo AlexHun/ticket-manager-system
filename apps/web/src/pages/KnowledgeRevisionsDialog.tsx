@@ -29,7 +29,7 @@ import { extractErrorMessage } from "@/lib/errors";
 import { knowledgeKeys } from "@/lib/knowledge-queries";
 
 /**
- * One article's history, and — when there is one — the pending revision
+ * One article's revisions, and — when there is one — the pending revision
  * awaiting a second admin.
  *
  * This is the feature the whole table exists for. The knowledge base used to be
