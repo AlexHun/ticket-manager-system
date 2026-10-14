@@ -858,5 +858,10 @@
     "version": "0.1.212",
     "date": "2026-10-14",
     "title": "Word the activity feed and app chrome to the copy standard (#493)"
+  },
+  {
+    "version": "0.1.215",
+    "date": "2026-10-14",
+    "title": "End validation messages in a full stop (#518)"
   }
 ]
