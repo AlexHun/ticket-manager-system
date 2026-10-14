@@ -76,8 +76,7 @@ Steps 3 and 4 act on that `RESULT` line.
 with:
 
 > Your reply has no `RESULT` line. Finish what `implement` still needs, then
-> end with exactly one line:
-> `RESULT ticket=#<n> pr=#<pr|none> ci=<green|red|none> questions=<none|one-line summary>`
+> end with the same `RESULT` line.
 
 When that reply has none either, the chain stops (step 4): a worker that
 cannot say where its ticket stands twice running wants the user, not a third
@@ -171,7 +170,8 @@ The chain stops, and reports, when any of these holds:
 - a merge fails or the user declines one.
 
 The ticket that stopped the chain gets its `Usage:` comment too, in step 3's
-shape, since a stopped run is the one `retro` most needs to read.
+shape, since a stopped run is the one `retro` most needs to read. A notice
+whose reply carried no `RESULT` line ends its row on `RESULT=none`.
 
 Report a table with one row per ticket — ticket, team member, PR, CI, score,
 merged or why it stopped — and, when stopped early, the one thing the user has
