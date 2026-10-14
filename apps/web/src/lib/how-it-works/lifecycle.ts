@@ -108,7 +108,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     column: 1,
     status: TICKET_STATUS.New,
     explanation:
-      "The email arrives through the inbound mail provider and becomes a new ticket in New, with the email as the first message of its thread. Nobody owns it yet.",
+      "The email arrives through the inbound mail provider and becomes a new ticket in New, with the email as the first message of its thread. It belongs to nobody yet.",
     code: [
       "apps/api/src/ingest.ts",
       "apps/api/src/routes/webhooks/inbound-email.ts",
@@ -122,7 +122,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     column: 2,
     status: TICKET_STATUS.New,
     explanation:
-      "A model files the ticket under one of the four categories. Filing it moves nothing: the ticket stays in New. If the auto-reply is switched on, the ticket is then offered to it, whatever its category; a category it may not answer is turned back after the Claim, as a Decline.",
+      "A model files the ticket under one of the four categories. Filing it moves nothing: the ticket stays in New. If the auto-reply is switched on, the ticket is then offered to it, whatever its category; a category it may not answer is turned back after the claim, as a decline.",
     code: [
       "apps/api/src/jobs/classify-ticket.ts",
       "apps/api/src/ai/classify.ts",
@@ -157,7 +157,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
   },
   {
     id: LIFECYCLE_STEP.declineHandoff,
-    title: "Decline and Handoff",
+    title: "Decline and handoff",
     lane: LIFECYCLE_LANE.assistant,
     row: 1,
     column: 4,
@@ -177,7 +177,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     column: 5,
     status: TICKET_STATUS.Open,
     explanation:
-      "An agent reads the thread and answers it. Polish rewrites their draft before they send it, and a Summary of the thread is drawn beside it on request. Replying does not change the Status: the ticket is still Open.",
+      "An agent reads the thread and answers it. Polish rewrites their draft before they send it, and a summary of the thread is drawn beside it on request. Replying does not change the status: the ticket is still Open.",
     code: [
       "apps/web/src/pages/TicketReplyComposer.tsx",
       "apps/api/src/routes/tickets.ts",
@@ -208,7 +208,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     column: 7,
     status: TICKET_STATUS.Resolved,
     explanation:
-      "The customer writes back to a resolved ticket. Their email joins the same thread; what happens to the Status depends on who resolved it.",
+      "The customer writes back to a resolved ticket. Their email joins the same thread; what happens to the status depends on who resolved it.",
     code: ["apps/api/src/ingest.ts"],
   },
   {
@@ -238,7 +238,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
     column: 9,
     status: TICKET_STATUS.Closed,
     explanation:
-      "When the conversation is over, an agent sets the ticket to Closed.",
+      "When the thread is finished, an agent sets the ticket to Closed.",
     code: [
       "apps/web/src/pages/TicketFieldSelects.tsx",
       "apps/api/src/routes/tickets.ts",
@@ -369,7 +369,7 @@ export const LIFECYCLE_NOTES: readonly LifecycleNote[] = [
   },
   {
     id: LIFECYCLE_NOTE.outage,
-    text: "An outage is not a Decline: the ticket goes back to New, unassigned, and the auto-reply tries again. Only when the retries run out is it handed off, as Open.",
+    text: "An outage is not a decline: the ticket goes back to New, unassigned, and the auto-reply tries again. Only when the retries run out is it handed off, as Open.",
     step: LIFECYCLE_STEP.claim,
     column: 3,
   },

@@ -34,13 +34,13 @@ describe("the subsystem data", () => {
   it("gives the API the nine subsystems the grilling settled, in order", () => {
     expect(subsystemsOf(ARCHITECTURE_NODE.api).map((s) => s.title)).toEqual([
       "Ingestion",
-      "Tickets & Activity",
+      "Tickets & activity",
       "Knowledge base",
-      "Pipeline & Automation",
+      "Pipeline & automation",
       "Outbox",
       "Auth & Team",
       "Realtime",
-      "Evals & Schedule",
+      "Evals & schedule",
       "Demo",
     ]);
   });

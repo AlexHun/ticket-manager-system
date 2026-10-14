@@ -112,7 +112,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.postgres,
     title: "Postgres",
     explanation:
-      "The one database. It holds tickets, threads and messages, Activity, knowledge articles and their revisions, the outbox, accounts and sessions, and the queue of jobs waiting for a worker.",
+      "The one database. It holds tickets, threads and messages, activity, knowledge articles and their revisions, the outbox, accounts and sessions, and the queue of jobs waiting for a worker.",
     code: ["apps/api/prisma/schema.prisma", "apps/api/src/db.ts"],
     column: 3,
     row: 1,
@@ -122,7 +122,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.openai,
     title: "OpenAI",
     explanation:
-      "The model behind every piece of machine-written work: classification, the auto-reply, the Polish and Summary an agent asks for, and eval runs. Without a key the desk still works, and every ticket simply stays in New for a person.",
+      "The model behind every piece of machine-written work: classification, the auto-reply, the polish and summary an agent asks for, and eval runs. Without a key the desk still works, and every ticket simply stays in New for a person.",
     code: ["apps/api/src/ai/provider.ts"],
     column: 2,
     row: 3,
@@ -131,7 +131,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.outboundMail,
     title: "Outbound mail provider",
     explanation:
-      "The outside service that carries the desk's email to customers. Every email is in the outbox before it is sent, and with no provider configured an email is recorded as undeliverable rather than lost.",
+      "The outside service that carries the desk's email to customers. Every email is in the outbox before it is sent, and with no provider configured an email is recorded as Undeliverable rather than lost.",
     code: ["apps/api/src/mail/transport.ts", "apps/api/src/jobs/send-email.ts"],
     column: 1,
     row: 2,
@@ -140,7 +140,7 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     id: ARCHITECTURE_NODE.browserApp,
     title: "Browser app",
     explanation:
-      "The screens agents and admins work in: the dashboard, the tickets and each thread, and the admin screens for the team, knowledge, the outbox, the pipeline and evals. Every ticket it shows and every change it makes goes through the API.",
+      "The screens agents and admins work in: the dashboard, the tickets and each thread, and the admin screens Team, Knowledge base, Outbox, Pipeline and Evals. Every ticket it shows and every change it makes goes through the API.",
     code: [
       "apps/web/src/App.tsx",
       "apps/web/src/lib/api.ts",
