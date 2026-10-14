@@ -160,11 +160,12 @@ export function judgeCache(
  * Null on a run that attempted nothing: zero unanswered out of zero asked is
  * not a clean night.
  *
- * The two labels are the sentences this tile already carried, moved rather than
- * rewritten. They said the judgement in words before there was a band to say it
- * in colour, so there is nothing to add — a word appended to them would be the
- * same claim twice. ("Verdict" in the good one is CONTEXT.md's other sense:
- * where a repeat landed, which is exactly what this counts.)
+ * The two labels are the sentences this tile already carried. They said the
+ * judgement in words before there was a band to say it in colour, so there is
+ * nothing to add — a word appended to them would be the same claim twice. Both
+ * say "verdict" (CONTEXT.md's other sense: where a repeat landed, which is
+ * exactly what this counts), because the case table names the same repeats
+ * "No verdict reached" and the tile should read as counting them (#486).
  */
 export function judgeAbandoned(
   run: Pick<EvalRunRow, "abandoned" | "attempts">,
@@ -172,5 +173,8 @@ export function judgeAbandoned(
   if (run.attempts === 0) return null;
   return run.abandoned === 0
     ? { band: EVAL_BAND.good, label: "every repeat reached a verdict" }
-    : { band: EVAL_BAND.marginal, label: "repeats where nothing was decided" };
+    : {
+        band: EVAL_BAND.marginal,
+        label: "repeats where no verdict was reached",
+      };
 }

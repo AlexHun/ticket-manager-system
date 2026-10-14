@@ -662,8 +662,10 @@ describe("how a number reads against its bar", () => {
 
     render();
 
+    // In the Reached column's words ("No verdict reached"), so the tile and
+    // the rows read as counting the same thing.
     expect(
-      await screen.findByText("repeats where nothing was decided"),
+      await screen.findByText("repeats where no verdict was reached"),
     ).toBeInTheDocument();
   });
 
