@@ -84,10 +84,11 @@ export const DECLINE_SHORT: Record<AutoReplyDecline, string> = {
  * A label as it reads after a dash mid-sentence: "Declined — not covered by
  * the knowledge base".
  *
- * `DECLINE_SHORT` and `DECLINE_LABEL` are written to stand alone, capital
- * first, and the activity feed and the Evals verdict both run one on after a
- * dash. A label that opens on an acronym ("AI …") keeps its capitals, or it
- * would read "aI …".
+ * `DECLINE_SHORT` is written to stand alone, capital first, and the activity
+ * feed and the Evals verdict both run it on after a dash. A label that opens
+ * on an acronym of two or more capitals ("AI …") keeps them, or it would read
+ * "aI …". A one-letter word that must stay capital ("I …") is not detected and
+ * would be lowered; no label opens on one.
  */
 export function midSentence(label: string): string {
   if (/^[A-Z]{2}/.test(label)) return label;
