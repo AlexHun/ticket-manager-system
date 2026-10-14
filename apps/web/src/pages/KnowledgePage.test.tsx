@@ -68,8 +68,8 @@ describe("KnowledgePage — a demo session", () => {
     expect(screen.getByText(DEMO_READ_ONLY_NOTE)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New article" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Archive" })).toBeDisabled();
-    // History is a read, and stays open to them.
-    expect(screen.getByRole("button", { name: "History" })).toBeEnabled();
+    // Revisions is a read, and stays open to them.
+    expect(screen.getByRole("button", { name: "Revisions" })).toBeEnabled();
   });
 
   test("opens an article to read, with its fields and Save changes disabled", async () => {
@@ -114,6 +114,37 @@ describe("KnowledgePage — an admin", () => {
     expect(
       within(dialog).getByRole("button", { name: "Save changes" }),
     ).toBeEnabled();
+  });
+});
+
+// #484: the count agrees with its number.
+describe("KnowledgePage — the auto-reply count", () => {
+  // The answerable count sits in a span of its own, so the sentence is read
+  // whole from the paragraph rather than from its own text nodes.
+  const sentence = (pattern: RegExp) => (_: string, element: Element | null) =>
+    element?.tagName === "P" && pattern.test(element.textContent ?? "");
+
+  test("reads one live article in the singular", async () => {
+    renderKnowledgePage();
+
+    expect(
+      await screen.findByText(
+        sentence(/^1 of 1 live article is available to the auto-reply\./),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  test("reads two live articles in the plural", async () => {
+    articlesGet.mockResolvedValue({
+      data: { articles: [LIVE, { ...LIVE, id: "KB-002", autoReply: false }] },
+    });
+    renderKnowledgePage();
+
+    expect(
+      await screen.findByText(
+        sentence(/^1 of 2 live articles are available to the auto-reply\./),
+      ),
+    ).toBeInTheDocument();
   });
 });
 
