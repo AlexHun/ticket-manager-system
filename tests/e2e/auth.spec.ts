@@ -103,8 +103,8 @@ test.describe("Login flow", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     // Zod messages wired via react-hook-form
-    await expect(page.getByText("Enter a valid email")).toBeVisible();
-    await expect(page.getByText("Enter your password")).toBeVisible();
+    await expect(page.getByText("Enter a valid email.")).toBeVisible();
+    await expect(page.getByText("Enter your password.")).toBeVisible();
     await expect(page).toHaveURL("/login");
   });
 
@@ -117,7 +117,7 @@ test.describe("Login flow", () => {
     await page.getByLabel("Password").fill("anypassword");
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    await expect(page.getByText("Enter a valid email")).toBeVisible();
+    await expect(page.getByText("Enter a valid email.")).toBeVisible();
     await expect(page).toHaveURL("/login");
   });
 

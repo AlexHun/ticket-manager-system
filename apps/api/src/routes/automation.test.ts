@@ -220,7 +220,7 @@ describe("PATCH /api/automation/handoff — the pair", () => {
     const sent = await patch({ target: HANDOFF_TARGET.user, userId: null });
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Choose a person");
+    expect(sent.body.error).toBe("Choose a person.");
     expect(await settingsRow()).toBeNull();
   });
 
@@ -243,7 +243,7 @@ describe("PATCH /api/automation/handoff — the pair", () => {
     const sent = await patch({ target: "everyone", userId: null });
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Choose who picks these up");
+    expect(sent.body.error).toBe("Choose who picks these up.");
     expect(await settingsRow()).toBeNull();
   });
 

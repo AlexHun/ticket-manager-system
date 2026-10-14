@@ -1,15 +1,15 @@
 import { z } from "zod";
 
 export const loginSchema = z.object({
-  email: z.email("Enter a valid email"),
-  password: z.string().min(1, "Enter your password"),
+  email: z.email("Enter a valid email."),
+  password: z.string().min(1, "Enter your password."),
 });
 
 export type LoginValues = z.infer<typeof loginSchema>;
 
 /** Asking for a link, from the public "forgot password" form. */
 export const forgotPasswordSchema = z.object({
-  email: z.email("Enter a valid email"),
+  email: z.email("Enter a valid email."),
 });
 
 export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
@@ -25,11 +25,11 @@ export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
  */
 export const resetPasswordSchema = z
   .object({
-    password: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string().min(1, "Confirm your password"),
+    password: z.string().min(8, "Password must be at least 8 characters."),
+    confirmPassword: z.string().min(1, "Confirm your password."),
   })
   .refine((v) => v.password === v.confirmPassword, {
-    message: "Passwords do not match",
+    message: "Passwords do not match.",
     path: ["confirmPassword"],
   });
 
