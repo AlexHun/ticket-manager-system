@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { BRAND_NAME } from "../../apps/web/src/lib/brand";
+import { BRAND_NAME } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME } from "@ticket/shared";
 import { ROUTE } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
