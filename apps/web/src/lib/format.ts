@@ -80,7 +80,7 @@ export function formatBucketFull(
   if (!year || !month || !day) return bucketStart;
   const monthLabel = MONTHS[month - 1] ?? "";
   if (bucket === DASHBOARD_BUCKET.month) return `${monthLabel} ${year}`;
-  const date = `${day} ${monthLabel} ${year}`;
+  const date = dayMonthYear(day, monthLabel, year);
   return bucket === DASHBOARD_BUCKET.week ? `Week of ${date}` : date;
 }
 
@@ -94,17 +94,33 @@ export function formatBucketFull(
  * builds them at local midnight.
  */
 export function formatDateRange(from: Date, to?: Date): string {
-  const d1 = from.getDate();
-  const m1 = MONTHS[from.getMonth()] ?? "";
-  const y1 = from.getFullYear();
-  if (!to) return `${d1} ${m1} ${y1}`;
-  const d2 = to.getDate();
-  const m2 = MONTHS[to.getMonth()] ?? "";
-  const y2 = to.getFullYear();
-  if (y1 !== y2) return `${d1} ${m1} ${y1}–${d2} ${m2} ${y2}`;
-  if (m1 !== m2) return `${d1} ${m1}–${d2} ${m2} ${y2}`;
-  if (d1 !== d2) return `${d1}–${d2} ${m2} ${y2}`;
-  return `${d1} ${m1} ${y1}`;
+  const start = calendarParts(from);
+  const end = to ? calendarParts(to) : start;
+  const full = (p: CalendarParts) => dayMonthYear(p.day, p.month, p.year);
+  if (start.year !== end.year) return `${full(start)}–${full(end)}`;
+  if (start.month !== end.month)
+    return `${start.day} ${start.month}–${full(end)}`;
+  if (start.day !== end.day) return `${start.day}–${full(end)}`;
+  return full(start);
+}
+
+interface CalendarParts {
+  day: number;
+  month: string;
+  year: number;
+}
+
+function calendarParts(date: Date): CalendarParts {
+  return {
+    day: date.getDate(),
+    month: MONTHS[date.getMonth()] ?? "",
+    year: date.getFullYear(),
+  };
+}
+
+/** The one place the British day-month-year order is written. */
+function dayMonthYear(day: number, month: string, year: number): string {
+  return `${day} ${month} ${year}`;
 }
 
 /**

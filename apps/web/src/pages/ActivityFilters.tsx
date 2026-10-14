@@ -80,7 +80,8 @@ function toValue(date: Date | undefined): string {
 }
 
 /** The trigger's label: the start alone while a range is still mid-pick,
- *  collapsed to one date for a same-day range, both ends otherwise. */
+ *  otherwise the range as `formatDateRange` writes it — one date for a
+ *  same-day range, shared parts written once. */
 function rangeLabel(from: Date | undefined, to: Date | undefined): string {
   if (!from) return "Any date";
   return formatDateRange(from, to);
