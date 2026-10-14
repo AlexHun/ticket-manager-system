@@ -5,7 +5,7 @@ import {
   type TicketActivity,
   type TicketActivityAction,
 } from "@ticket/shared";
-import { DECLINE_SHORT } from "./pipeline-labels";
+import { DECLINE_SHORT, midSentence } from "./pipeline-labels";
 
 /**
  * How one recorded change reads in the thread.
@@ -74,11 +74,10 @@ export const ACTIVITY_PHRASING: Record<
   // decline reason: `toValue` is a free-text column, so a reason written by an
   // older build or since renamed reads as no reason rather than as a raw key.
   // `DECLINE_SHORT` is written to stand alone as a label, capital first;
-  // here it follows a dash mid-sentence, so its first letter drops to lower case.
+  // here it follows a dash mid-sentence, so it goes through `midSentence`.
   [TICKET_ACTIVITY_ACTION.auto_declined]: (entry) => {
     const decline = asAutoReplyDecline(entry.toValue);
     if (!decline) return "left this for a person";
-    const reason = DECLINE_SHORT[decline];
-    return `left this for a person — ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`;
+    return `left this for a person — ${midSentence(DECLINE_SHORT[decline])}`;
   },
 };
