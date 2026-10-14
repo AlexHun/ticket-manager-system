@@ -85,7 +85,7 @@ const AGE_ORDER = [
 ] as const;
 
 /**
- * Open backlog by age.
+ * The Backlog by age.
  *
  * Ordinal, not categorical — the buckets have a direction — so the rows keep the
  * one-hue ramp the chart used, darkening with age. Bucket order is fixed and

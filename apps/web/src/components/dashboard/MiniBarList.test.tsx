@@ -17,6 +17,9 @@ function render(ui: ReactElement) {
   return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
+/** Every panel names what would fill it, so the component has no default. */
+const EMPTY = "No tickets created in this range.";
+
 const rows = [
   { label: "Technical", value: 10 },
   { label: "General", value: 5 },
@@ -36,7 +39,9 @@ function barWidths(): string[] {
 
 describe("MiniBarList", () => {
   test("renders a row per datum with its label and value", () => {
-    render(<MiniBarList title="By category" rows={rows} />);
+    render(
+      <MiniBarList title="By category" rows={rows} emptyMessage={EMPTY} />,
+    );
     const items = screen.getAllByRole("listitem");
     expect(items).toHaveLength(3);
     expect(within(items[0]).getByText("Technical")).toBeInTheDocument();
@@ -48,14 +53,18 @@ describe("MiniBarList", () => {
    * no axis and no tooltip — it is the relief channel, not a nicety.
    */
   test("labels every value directly", () => {
-    render(<MiniBarList title="By category" rows={rows} />);
+    render(
+      <MiniBarList title="By category" rows={rows} emptyMessage={EMPTY} />,
+    );
     for (const row of rows) {
       expect(screen.getByText(String(row.value))).toBeInTheDocument();
     }
   });
 
   test("scales bars against the largest row, not the total", () => {
-    render(<MiniBarList title="By category" rows={rows} />);
+    render(
+      <MiniBarList title="By category" rows={rows} emptyMessage={EMPTY} />,
+    );
     // 10 is the max, so it is full width and 5 is half — a total-based scale
     // would have made these 67% and 33%.
     expect(barWidths()).toEqual(["100%", "50%", "0%"]);
@@ -74,13 +83,19 @@ describe("MiniBarList", () => {
   });
 
   test("shows the empty message when there are no rows at all", () => {
-    render(<MiniBarList title="Workload" rows={[]} />);
-    expect(screen.getByText("Nothing in this range.")).toBeInTheDocument();
+    render(<MiniBarList title="Workload" rows={[]} emptyMessage={EMPTY} />);
+    expect(screen.getByText(EMPTY)).toBeInTheDocument();
   });
 
   /** A single non-zero row must not divide by zero or blow past 100%. */
   test("handles a lone row without dividing by zero", () => {
-    render(<MiniBarList title="Solo" rows={[{ label: "Only", value: 3 }]} />);
+    render(
+      <MiniBarList
+        title="Solo"
+        rows={[{ label: "Only", value: 3 }]}
+        emptyMessage={EMPTY}
+      />,
+    );
     expect(barWidths()).toEqual(["100%"]);
   });
 
@@ -89,6 +104,7 @@ describe("MiniBarList", () => {
       <MiniBarList
         title="Workload"
         rows={[{ label: "Ann", value: 5, note: "2 open" }]}
+        emptyMessage={EMPTY}
       />,
     );
     expect(screen.getByText("2 open")).toBeInTheDocument();
@@ -99,6 +115,7 @@ describe("MiniBarList", () => {
       <MiniBarList
         title="Age"
         rows={[{ label: "> 7d", value: 1, fill: "var(--viz-ord-4)" }]}
+        emptyMessage={EMPTY}
       />,
     );
     const bar = screen
@@ -113,6 +130,7 @@ describe("MiniBarList", () => {
         title="By category"
         subtitle="Including unfiled"
         rows={rows}
+        emptyMessage={EMPTY}
       />,
     );
     expect(screen.getByText("By category")).toBeInTheDocument();

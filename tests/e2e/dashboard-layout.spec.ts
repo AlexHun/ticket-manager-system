@@ -40,7 +40,7 @@ function label(panelId: DashboardPanelId): string {
 }
 
 async function enterCustomizeMode(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Customize" }).click();
+  await page.getByRole("button", { name: "Customise" }).click();
   await expect(
     page.getByRole("button", { name: `Drag to reorder ${label(FIRST_PANEL)}` }),
   ).toBeVisible();
@@ -173,7 +173,7 @@ test.afterAll(async () => {
 });
 
 test.describe("Dashboard panel customization", () => {
-  test("renders the default order and widths, with no customize controls until Customize is clicked", async ({
+  test("renders the default order and widths, with no customize controls until Customise is clicked", async ({
     page,
   }) => {
     await signIn(page, "agent");
@@ -532,7 +532,7 @@ test.describe("Dashboard prefetching", () => {
     // The loader and the page agreed on the range, not just on the endpoint:
     // 7d is not the default (90d), so a loader that ignored the query string
     // would have primed the wrong entry and the page would have fetched again.
-    await expect(page.getByLabel("Last 7d")).toBeChecked();
+    await expect(page.getByLabel("Last 7 days")).toBeChecked();
     expect(await skeletonWasSeen(page)).toBe(false);
   });
 
@@ -550,7 +550,7 @@ test.describe("Dashboard prefetching", () => {
       await route.continue();
     });
 
-    await page.getByLabel("Last 7d").click();
+    await page.getByLabel("Last 7 days").click();
     await expect(page).toHaveURL("/?range=7d");
     await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
 

@@ -26,6 +26,14 @@ const BUCKET_NOUN: Record<DashboardBucket, string> = {
   [DASHBOARD_BUCKET.month]: "month",
 };
 
+/** The table twin's first column header: sentence case, unlike the noun the
+ *  subtitle uses mid-sentence. */
+const BUCKET_COLUMN: Record<DashboardBucket, string> = {
+  [DASHBOARD_BUCKET.day]: "Day",
+  [DASHBOARD_BUCKET.week]: "Week",
+  [DASHBOARD_BUCKET.month]: "Month",
+};
+
 /**
  * Tickets created per bucket, stacked by the status they are in *now*.
  *
@@ -65,9 +73,10 @@ export function VolumeChart({
         bucket === DASHBOARD_BUCKET.week ? " · weeks begin Monday (UTC)" : ""
       }`}
       isEmpty={isEmpty}
+      emptyMessage="No tickets created in this range."
       table={
         <DataTable
-          columns={[BUCKET_NOUN[bucket], ...STATUS_STACK]}
+          columns={[BUCKET_COLUMN[bucket], ...STATUS_STACK]}
           rows={data.map((p) => [
             formatBucketFull(p.bucketStart, bucket),
             ...STATUS_STACK.map((s) => p[s]),

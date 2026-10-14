@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import {
   ASSIGNEE_NONE,
+  BACKLOG_STATUS,
   CATEGORY_NONE,
   STATUS_BACKLOG,
   TICKET_STATUS,
@@ -24,12 +25,19 @@ interface KpiRowProps {
  * and on a support dashboard the urgent number changes by the day.
  *
  * Each tile carries a second line that turns the count into something to do:
- * how many of the open ones nobody owns, how many are still unfiled, how many
- * have never been answered.
+ * how many in the Backlog nobody owns, how many are still uncategorised, how
+ * many have never been answered.
  */
 export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
-  const open = summary.byStatus[TICKET_STATUS.Open];
-  const untriaged = categories.find((c) => c.category === null)?.count ?? 0;
+  // The Backlog, New and Open together — the same set the "unassigned" link
+  // and the pill (`openVerdict`) count. Labelled "Open" and counting Open
+  // alone, the tile's figure disagreed with its own link whenever anything sat
+  // in New.
+  const backlog = BACKLOG_STATUS.reduce(
+    (sum, status) => sum + summary.byStatus[status],
+    0,
+  );
+  const uncategorised = categories.find((c) => c.category === null)?.count ?? 0;
 
   // Thresholds live in `kpi-status.ts`, not here — this component's job is to
   // lay four tiles out, and burying the definition of "bad" in JSX is how it
@@ -41,8 +49,8 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 *:animate-panel-in">
       <StatTile
-        label="Open"
-        value={open}
+        label="Backlog"
+        value={backlog}
         status={openState?.status}
         statusLabel={openState?.label}
         sub={
@@ -97,12 +105,12 @@ export function KpiRow({ summary, firstResponse, categories }: KpiRowProps) {
         sub={
           firstResponse.awaiting > 0 ? (
             `${firstResponse.awaiting} still awaiting a first reply`
-          ) : untriaged > 0 ? (
+          ) : uncategorised > 0 ? (
             <Link
               to={`${ROUTE.tickets.path}?category=${CATEGORY_NONE}`}
               className="text-foreground underline underline-offset-2"
             >
-              {untriaged} untriaged
+              {uncategorised} uncategorised
             </Link>
           ) : (
             "every ticket answered"

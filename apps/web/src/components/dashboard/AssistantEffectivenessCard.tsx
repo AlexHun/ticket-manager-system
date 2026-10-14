@@ -24,7 +24,8 @@ function pct(rate: number | null): string {
  *
  * `avgEditDistance` is `null` until the slice has at least one sent-and-polished
  * pair — see the field comment on `AssistantEffectivenessResponse` in
- * `@ticket/shared`. The footer says so rather than the panel silently
+ * `@ticket/shared`. It is tracked; it is only empty when no polished draft was
+ * sent in the range, and the footer says that rather than the panel silently
  * rendering nothing where a number is expected.
  */
 export function AssistantEffectivenessCard({
@@ -51,11 +52,13 @@ export function AssistantEffectivenessCard({
     <Card className={className}>
       <CardHeader>
         <CardTitle>Assistant effectiveness</CardTitle>
-        <CardDescription>
-          {classified === 0
-            ? "Nothing classified in this range"
-            : `${classified} ticket${classified === 1 ? "" : "s"} classified in this range`}
-        </CardDescription>
+        {/* No subtitle when nothing was classified: the body says so, and
+            saying it twice is noise. */}
+        {classified > 0 && (
+          <CardDescription>
+            {`${classified} ticket${classified === 1 ? "" : "s"} classified in this range`}
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {classified === 0 ? (
@@ -105,14 +108,18 @@ export function AssistantEffectivenessCard({
 
             <p className="text-xs text-muted-foreground">
               {avgEditDistance === null
-                ? "Draft-vs-sent edit distance isn't tracked yet."
-                : `Average draft-vs-sent edit distance: ${Math.round(avgEditDistance)} characters`}
+                ? "No polished draft was sent in this range, so there's no edit distance yet."
+                : editDistanceLine(Math.round(avgEditDistance))}
             </p>
           </>
         )}
       </CardContent>
     </Card>
   );
+}
+
+function editDistanceLine(characters: number): string {
+  return `Average draft-vs-sent edit distance: ${characters} ${characters === 1 ? "character" : "characters"}`;
 }
 
 function Metric({

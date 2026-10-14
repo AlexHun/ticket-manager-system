@@ -54,7 +54,7 @@ function firstResponse(
   };
 }
 
-// --- Open backlog ---------------------------------------------------------
+// --- Backlog --------------------------------------------------------------
 
 describe("openVerdict", () => {
   test("is silent when the queue is healthy", () => {

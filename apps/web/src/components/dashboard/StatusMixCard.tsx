@@ -51,7 +51,7 @@ export function StatusMixCard({
       <CardContent className="flex flex-col gap-3">
         {total === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nothing in this range.
+            No tickets created in this range.
           </p>
         ) : (
           <>

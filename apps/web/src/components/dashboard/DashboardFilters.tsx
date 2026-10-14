@@ -6,13 +6,14 @@ import {
 } from "@ticket/shared";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-/** Shortest first, so the group reads as a scale. The labels are the API's own
- *  preset values — there is nothing to translate. */
-const RANGES: { value: DashboardRange; label: string }[] = [
-  { value: DASHBOARD_RANGE.d7, label: "7d" },
-  { value: DASHBOARD_RANGE.d30, label: "30d" },
-  { value: DASHBOARD_RANGE.d90, label: "90d" },
-  { value: DASHBOARD_RANGE.m12, label: "12m" },
+/** Shortest first, so the group reads as a scale. The visible labels are the
+ *  API's own preset values; the accessible names spell the unit out, since
+ *  "Last 7d" is not a phrase anyone says. */
+const RANGES: { value: DashboardRange; label: string; name: string }[] = [
+  { value: DASHBOARD_RANGE.d7, label: "7d", name: "Last 7 days" },
+  { value: DASHBOARD_RANGE.d30, label: "30d", name: "Last 30 days" },
+  { value: DASHBOARD_RANGE.d90, label: "90d", name: "Last 90 days" },
+  { value: DASHBOARD_RANGE.m12, label: "12m", name: "Last 12 months" },
 ];
 
 const SCOPES: { value: DashboardScope; label: string }[] = [
@@ -59,12 +60,8 @@ export function DashboardFilters({
         }}
         aria-label="Time range"
       >
-        {RANGES.map(({ value, label }) => (
-          <ToggleGroupItem
-            key={value}
-            value={value}
-            aria-label={`Last ${label}`}
-          >
+        {RANGES.map(({ value, label, name }) => (
+          <ToggleGroupItem key={value} value={value} aria-label={name}>
             {label}
           </ToggleGroupItem>
         ))}

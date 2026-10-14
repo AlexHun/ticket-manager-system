@@ -37,7 +37,7 @@ export interface KpiVerdict {
 }
 
 /**
- * Open backlog.
+ * The Backlog (New and Open).
  *
  * Judged as a *share* of the slice, not a raw count: 25 open out of 30 is a
  * problem and 25 out of 500 is a Tuesday, and a fixed count would call both the

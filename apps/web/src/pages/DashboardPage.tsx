@@ -178,7 +178,7 @@ export function DashboardPage() {
             onClick={() => setCustomizing((v) => !v)}
           >
             <LayoutGrid aria-hidden="true" />
-            {customizing ? "Done customizing" : "Customize"}
+            {customizing ? "Done customising" : "Customise"}
           </Button>
         </div>
       </PageHeader>
@@ -187,7 +187,10 @@ export function DashboardPage() {
 
       {error && (
         <p className="text-sm text-destructive" role="alert">
-          {extractErrorMessage(error, "Failed to load dashboard")}
+          {extractErrorMessage(
+            error,
+            "Couldn't load the dashboard. Try again.",
+          )}
         </p>
       )}
 
@@ -326,6 +329,7 @@ function renderDashboardPanel(
           title="By category"
           subtitle="Including tickets nobody has filed yet"
           rows={categoryRows(data.categories)}
+          emptyMessage="No tickets created in this range."
         />
       );
     case "workload":
@@ -334,7 +338,7 @@ function renderDashboardPanel(
           title={
             data.scope === DASHBOARD_SCOPE.mine ? "Your workload" : "Workload"
           }
-          subtitle="By who the ticket is assigned to"
+          subtitle="By assignee"
           rows={workloadRows(data.workload, data.unassigned)}
           emptyMessage="Nothing assigned in this range."
         />
@@ -342,10 +346,10 @@ function renderDashboardPanel(
     case "backlogAge":
       return (
         <MiniBarList
-          title="Open backlog age"
-          subtitle="How long still-open tickets have waited"
+          title="Backlog age"
+          subtitle="How long each New or Open ticket has waited"
           rows={backlogAgeRows(data.backlogAge)}
-          emptyMessage="Nothing open in this range."
+          emptyMessage="No tickets in the Backlog were created in this range."
         />
       );
     case "topCustomers":

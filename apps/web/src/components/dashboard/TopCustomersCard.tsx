@@ -41,12 +41,12 @@ export function TopCustomersCard({
     <Card className={className}>
       <CardHeader>
         <CardTitle>Top customers</CardTitle>
-        <CardDescription>By tickets opened in this range</CardDescription>
+        <CardDescription>By tickets created in this range</CardDescription>
       </CardHeader>
       <CardContent>
         {customers.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Nothing in this range.
+            No tickets created in this range.
           </p>
         ) : (
           <table className="w-full text-sm">

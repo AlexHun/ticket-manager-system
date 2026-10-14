@@ -12,7 +12,8 @@ import { formatSince } from "@/lib/format";
 import { ticketDetailPath } from "@/lib/routes";
 
 /**
- * The open tickets that have gone quietest, oldest silence first.
+ * The Backlog tickets (New and Open) that have gone quietest, oldest silence
+ * first.
  *
  * This is the one panel that is a worklist rather than a measurement: every row
  * is a link into the ticket, so the dashboard can be acted on instead of only
@@ -36,13 +37,14 @@ export function NeedsAttentionCard({
       <CardHeader>
         <CardTitle>Needs attention</CardTitle>
         <CardDescription>
-          Open tickets with the longest silence · any date
+          Backlog tickets with the longest silence · any date
         </CardDescription>
       </CardHeader>
       <CardContent>
         {tickets.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Nothing waiting. Inbox zero.
+            The Backlog is empty. New and Open tickets appear here, longest
+            silence first.
           </p>
         ) : (
           <table className="w-full text-sm">
