@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { ROUTE } from "@/lib/routes";
-import { ARCHITECTURE_NODES } from "./architecture";
+import { ARCHITECTURE_NODE, ARCHITECTURE_NODES } from "./architecture";
 import { LIFECYCLE_STEP, LIFECYCLE_STEPS, lifecycleStep } from "./lifecycle";
-import { SUBSYSTEMS } from "./subsystems";
+import { SUBSYSTEMS, subsystemsOf } from "./subsystems";
 
 /**
  * The app screens How it works links to (R4). The panel names a screen after
@@ -22,6 +22,19 @@ describe("How it works' screens", () => {
       .filter(({ screen }) => screen !== undefined && !linked.has(screen))
       .map(({ id, screen }) => `${id}: ${screen}`);
     expect(strays).toEqual([]);
+  });
+
+  it("are titled, inside the browser app, as the sidebar labels them", () => {
+    const screens = subsystemsOf(ARCHITECTURE_NODE.browserApp).filter(
+      (s) => s.screen,
+    );
+    expect(screens.length).toBeGreaterThan(0);
+    for (const screen of screens) {
+      const item = NAV_ITEMS.find(
+        (candidate) => candidate.to === screen.screen,
+      );
+      expect(screen.title, screen.id).toBe(item?.label);
+    }
   });
 
   it("send Classification to the Pipeline page", () => {
