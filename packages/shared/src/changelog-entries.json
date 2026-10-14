@@ -833,5 +833,10 @@
     "version": "0.1.205",
     "date": "2026-10-14",
     "title": "Address review on the outbound brand change (#488)"
+  },
+  {
+    "version": "0.1.206",
+    "date": "2026-10-14",
+    "title": "Reword the tutorials, seeded and already deployed (#489)"
   }
 ]
