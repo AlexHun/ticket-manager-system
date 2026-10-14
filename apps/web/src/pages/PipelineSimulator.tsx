@@ -125,7 +125,10 @@ export function PipelineSimulator({
       onSent(data.ticketId, scenario);
     },
     onError: (err) => {
-      const message = extractErrorMessage(err, "Could not send the email");
+      const message = extractErrorMessage(
+        err,
+        "Couldn't send the email. Try again.",
+      );
       setServerError(message);
       toast.error(message);
     },
@@ -304,7 +307,7 @@ export function PipelineSimulator({
                 onClick={() => setValue("inReplyTo", lastSend.messageId)}
               >
                 Reply to ticket #{lastSend.ticketId} — threads onto it, and
-                reopens it if the machine had resolved it
+                reopens it if the assistant had resolved it
               </button>
             )}
           </div>

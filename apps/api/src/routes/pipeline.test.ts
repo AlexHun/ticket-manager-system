@@ -25,6 +25,9 @@
  *     somebody believes that path writes; and which unstamped rows the
  *     classifier will still act on, which is a query (#361).
  *
+ * `POST /simulate` is reached only for its refusals (#485), which answer before
+ * ingestion runs and are copy a person reads in the simulator panel.
+ *
  * `GET /` is not reached over a socket, and that is a limitation worth naming
  * rather than working around: it reads queue depth through `getBoss()`, which
  * throws with no queue started, and the seam that would answer it — `./boss` —
@@ -37,7 +40,7 @@
  * `tests/e2e/pipeline-offer.spec.ts`, against a server whose queue is running.
  */
 
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   ADMIN_SCREEN,
   AUTO_REPLY_DECLINE,
@@ -701,5 +704,73 @@ describe("GET /api/pipeline/runs/:id", () => {
   test("a ticket that does not exist is a 404, not an empty run", async () => {
     const res = await fetch(url("/runs/4242"), { headers: ADMIN });
     expect(res.status).toBe(404);
+  });
+});
+
+/* ── What the simulator says when it refuses (#485) ──────────────────────── */
+
+describe("POST /simulate — its refusals read as copy", () => {
+  /** An email the schema accepts, so each test changes only what it is about. */
+  const EMAIL = {
+    localPart: "marta",
+    senderName: "Marta",
+    subject: "Where is my order?",
+    textBody: "It has not arrived.",
+    htmlBody: "",
+    inReplyTo: "",
+  };
+
+  async function simulate(body: Record<string, string>) {
+    const res = await fetch(url("/simulate"), {
+      method: "POST",
+      headers: { ...ADMIN, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: res.status,
+      error: ((await res.json()) as { error: string }).error,
+    };
+  }
+
+  const previous = process.env.PIPELINE_SIMULATOR_ENABLED;
+  beforeEach(() => {
+    process.env.PIPELINE_SIMULATOR_ENABLED = "true";
+  });
+  afterEach(() => {
+    if (previous === undefined) delete process.env.PIPELINE_SIMULATOR_ENABLED;
+    else process.env.PIPELINE_SIMULATOR_ENABLED = previous;
+  });
+
+  test("switched off, it says so without naming the variable", async () => {
+    process.env.PIPELINE_SIMULATOR_ENABLED = "false";
+    expect(await simulate(EMAIL)).toEqual({
+      status: 503,
+      error:
+        "Couldn't send the email — the simulator is off on this deployment.",
+    });
+  });
+
+  test("an email with no body says what to give it", async () => {
+    expect(await simulate({ ...EMAIL, textBody: " " })).toEqual({
+      status: 400,
+      error: "Give the email a body — text, HTML or both.",
+    });
+  });
+
+  test("an over-long Message-ID says the limit", async () => {
+    expect(await simulate({ ...EMAIL, inReplyTo: "x".repeat(201) })).toEqual({
+      status: 400,
+      error: "Keep the Message-ID to 200 characters or fewer.",
+    });
+  });
+
+  test("a Message-ID nothing carries says what to do instead", async () => {
+    expect(
+      await simulate({ ...EMAIL, inReplyTo: "<nobody@example.test>" }),
+    ).toEqual({
+      status: 400,
+      error:
+        "Couldn't find an email with that Message-ID. Leave it empty to open a new ticket.",
+    });
   });
 });

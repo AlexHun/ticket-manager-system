@@ -7,6 +7,9 @@ const SUBJECT_MAX_LENGTH = 200;
 /** A display name is a display name. Long enough to be silly, short enough to store. */
 const SENDER_NAME_MAX_LENGTH = 120;
 
+/** The check on `inReplyTo` is on length alone; the route finds the email. */
+const MESSAGE_ID_MAX_LENGTH = 200;
+
 /**
  * What may go on the left of the `@`.
  *
@@ -41,10 +44,10 @@ const simulateEmailFields = z.object({
   localPart: z
     .string()
     .trim()
-    .min(1, "Give the sender an address")
+    .min(1, "Give the sender an address.")
     .regex(
       LOCAL_PART,
-      "Letters, digits, dots, plus, underscore and hyphen only",
+      "Use letters, digits, dots, plus, underscore and hyphen only.",
     ),
   /**
    * Free-form on purpose, and the only field here that is.
@@ -59,18 +62,18 @@ const simulateEmailFields = z.object({
   senderName: z
     .string()
     .trim()
-    .min(1, "Give the sender a name")
+    .min(1, "Give the sender a name.")
     .max(
       SENDER_NAME_MAX_LENGTH,
-      `Keep the name to ${SENDER_NAME_MAX_LENGTH} characters or fewer`,
+      `Keep the name to ${SENDER_NAME_MAX_LENGTH} characters or fewer.`,
     ),
   subject: z
     .string()
     .trim()
-    .min(1, "Give the email a subject")
+    .min(1, "Give the email a subject.")
     .max(
       SUBJECT_MAX_LENGTH,
-      `Keep the subject to ${SUBJECT_MAX_LENGTH} characters or fewer`,
+      `Keep the subject to ${SUBJECT_MAX_LENGTH} characters or fewer.`,
     ),
   /**
    * Empty is allowed, and is how the `noText` branch is demonstrated: an
@@ -81,7 +84,7 @@ const simulateEmailFields = z.object({
     .string()
     .max(
       MAX_MESSAGE_BODY_LENGTH,
-      `Keep the body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
+      `Keep the body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer.`,
     ),
   /**
    * Stored, never rendered, never sent to a model — see the "never render
@@ -92,7 +95,7 @@ const simulateEmailFields = z.object({
     .string()
     .max(
       MAX_MESSAGE_BODY_LENGTH,
-      `Keep the HTML body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer`,
+      `Keep the HTML body to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer.`,
     ),
   /**
    * The `Message-ID` this is a reply to, for the threading scenario. Empty
@@ -102,7 +105,13 @@ const simulateEmailFields = z.object({
    * is on the simulated domain — so a simulation can thread onto a ticket you
    * simulated and can never forge a customer message onto a real one.
    */
-  inReplyTo: z.string().trim().max(200, "That is not a Message-ID"),
+  inReplyTo: z
+    .string()
+    .trim()
+    .max(
+      MESSAGE_ID_MAX_LENGTH,
+      `Keep the Message-ID to ${MESSAGE_ID_MAX_LENGTH} characters or fewer.`,
+    ),
 });
 
 /**
@@ -117,7 +126,7 @@ const simulateEmailFields = z.object({
 export const simulateEmailSchema = simulateEmailFields.refine(
   (v) => v.textBody.trim().length > 0 || v.htmlBody.trim().length > 0,
   {
-    error: "An email with no body at all is not something a customer can send",
+    error: "Give the email a body — text, HTML or both.",
     path: ["textBody"],
   },
 );

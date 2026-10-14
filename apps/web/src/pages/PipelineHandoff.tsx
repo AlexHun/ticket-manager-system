@@ -106,7 +106,9 @@ export function PipelineHandoff() {
       );
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, "Failed to save the handoff"));
+      toast.error(
+        extractErrorMessage(error, "Couldn't save the handoff. Try again."),
+      );
     },
   });
 
@@ -124,13 +126,16 @@ export function PipelineHandoff() {
         Who ends up with it
       </h2>
       <p className="mt-1 text-xs text-muted-foreground">
-        Every ticket leaving the rail gets an owner, so the ones the assistant
-        dealt with stop looking like the ones nobody has opened.
+        Every ticket leaving the rail gets an assignee, so the ones the
+        assistant dealt with stop looking like the ones nobody has opened.
       </p>
 
       {settings.error && (
         <p role="alert" className="mt-4 text-sm text-destructive">
-          {extractErrorMessage(settings.error, "Failed to load the settings")}
+          {extractErrorMessage(
+            settings.error,
+            "Couldn't load the handoff settings. Try again.",
+          )}
         </p>
       )}
 
@@ -204,7 +209,7 @@ export function PipelineHandoff() {
                         An admin
                       </SelectItem>
                       <SelectItem value={HANDOFF_TARGET.unassigned}>
-                        Nobody — leave it in the queue
+                        Nobody — leave it in the backlog
                       </SelectItem>
                     </SelectGroup>
                     {(roster ?? []).length > 0 && (
@@ -272,8 +277,8 @@ function HandoffStatus({
       <p>
         {settings.resolvedTo
           ? `Right now that's ${settings.resolvedTo.name}.`
-          : "Right now nobody — these tickets go back to the queue unowned."}
-        {stale && " The person you picked is no longer on the roster."}
+          : "Right now nobody — these tickets go back to the backlog unassigned."}
+        {stale && " The person you picked is no longer on the Team."}
       </p>
       {settings.updatedByName && (
         <p>

@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   DEMO_READ_ONLY_NOTE,
@@ -73,5 +74,76 @@ describe("PipelineHandoff", () => {
     });
     expect(picker).toBeEnabled();
     expect(screen.queryByText(DEMO_READ_ONLY_NOTE)).not.toBeInTheDocument();
+  });
+});
+
+// #485: the card names the Backlog, the Team and an assignee as the glossary does.
+describe("PipelineHandoff copy", () => {
+  test("says every ticket leaving the rail gets an assignee", async () => {
+    renderHandoff();
+
+    expect(
+      await screen.findByText(/Every ticket leaving the rail gets an assignee/),
+    ).toBeInTheDocument();
+  });
+
+  test("offers leaving a handed-back ticket in the backlog", async () => {
+    const user = userEvent.setup();
+    renderHandoff();
+
+    await user.click(
+      await screen.findByRole("combobox", { name: "Handed back to a person" }),
+    );
+
+    expect(
+      screen.getByRole("option", { name: "Nobody — leave it in the backlog" }),
+    ).toBeInTheDocument();
+  });
+
+  test("an unassigned target says the tickets go back to the backlog", async () => {
+    settingsGet.mockResolvedValue({
+      data: {
+        settings: {
+          ...SETTINGS,
+          target: HANDOFF_TARGET.unassigned,
+          resolvedTo: null,
+        },
+      },
+    });
+    renderHandoff();
+
+    expect(
+      await screen.findByText(
+        "Right now nobody — these tickets go back to the backlog unassigned.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  test("a person who has left is no longer on the Team", async () => {
+    settingsGet.mockResolvedValue({
+      data: {
+        settings: {
+          ...SETTINGS,
+          target: HANDOFF_TARGET.user,
+          user: { id: "gone-1", name: "Gone Agent", email: "gone@example.com" },
+        },
+      },
+    });
+    renderHandoff();
+
+    expect(
+      await screen.findByText(
+        /The person you picked is no longer on the Team\./,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  test("a failed load says what failed and what to do", async () => {
+    settingsGet.mockRejectedValue({});
+    renderHandoff();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load the handoff settings. Try again.",
+    );
   });
 });
