@@ -49,7 +49,7 @@ describe("DemoBanner", () => {
 
     const banner = screen.getByRole("region", { name: "Demo session" });
     expect(banner).toHaveTextContent(/demo/i);
-    expect(banner).toHaveTextContent(/resets every night/i);
+    expect(banner).toHaveTextContent(/the demo resets every night/i);
   });
 
   // R13 is a demo's banner. A colleague — an agent or an admin — never sees it.

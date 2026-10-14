@@ -15,7 +15,7 @@ import { runDemoReset } from "./helpers/demo-reset";
 
 /**
  * The demo welcome (demo-welcome PRD, slices 1 to 3, with slice 4 folded
- * into 2): "Use demo session" lands on a welcome page, Start exploring goes on
+ * into 2): "Start demo session" lands on a welcome page, Start exploring goes on
  * to the Dashboard and its Tutorial, nothing brings the visitor back but the
  * banner's link, and nobody but a demo session can open it. Its suggested
  * steps, How it works first, each open a screen, and following them moves the

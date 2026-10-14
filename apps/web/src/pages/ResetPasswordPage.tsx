@@ -95,10 +95,10 @@ export function ResetPasswordPage() {
             </CardTitle>
             <CardDescription>
               {unusable
-                ? "Reset links are good for 24 hours and can only be used once. Ask an admin to send you a new one, or request one yourself."
+                ? `${inviting ? "Invitation" : "Reset"} links are good for 24 hours and can only be used once. Ask an admin to send you a new one, or request one yourself.`
                 : inviting
-                  ? "Your account is ready. Pick a password and you are in."
-                  : "Pick a new password for your account."}
+                  ? "Your account is ready. Choose a password and you are in."
+                  : "Choose a new password for your account."}
             </CardDescription>
           </CardHeader>
           <CardContent>

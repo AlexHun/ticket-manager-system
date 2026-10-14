@@ -3456,7 +3456,7 @@ export const DEMO_AI_LIMIT_REASON = "demo-ai-limit";
 
 /** What the panel shows in place of the result. One copy, for both apps. */
 export const DEMO_AI_LIMIT_MESSAGE =
-  "Demo AI limit reached, resets at 00:00 UTC";
+  "Demo AI limit reached — resets at 00:00 UTC.";
 
 /** The body of `POST /api/ai/*`'s 429 once the demo budget is spent. */
 export interface DemoAiLimitResponse {
@@ -3465,12 +3465,20 @@ export interface DemoAiLimitResponse {
 }
 
 /**
- * Why "Use demo session" started nothing: this address has started its
+ * Why "Start demo session" started nothing: this address has started its
  * `DEMO_SESSIONS_PER_IP_PER_HOUR` already (#322, PRD R9). The API's 429 carries
  * it and the login page shows it. One copy, for both apps.
  */
 export const DEMO_START_LIMIT_MESSAGE =
-  "Too many demo sessions from your network, try again later";
+  "Couldn't start a demo session — too many have started from your network. Try again later.";
+
+/**
+ * Why "Start demo session" started nothing: demo mode is off, switched off
+ * between the login page loading and the click (#319). The API's 403 carries
+ * it and the login page shows it. One copy, for both apps.
+ */
+export const DEMO_MODE_OFF_MESSAGE =
+  "Couldn't start a demo session — demo mode is off.";
 
 /**
  * The note beside every save or run control a demo session sees disabled

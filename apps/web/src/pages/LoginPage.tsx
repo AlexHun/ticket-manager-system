@@ -4,7 +4,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { loginSchema, type LoginValues } from "@ticket/core";
-import { BRAND_NAME, DEMO_START_LIMIT_MESSAGE } from "@ticket/shared";
+import {
+  BRAND_NAME,
+  DEMO_MODE_OFF_MESSAGE,
+  DEMO_START_LIMIT_MESSAGE,
+} from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
@@ -20,7 +24,7 @@ import { Separator } from "@/components/ui/separator";
  * Better Auth reports the transport failure and the rejected request through
  * the same channel, and they need different words. A network failure arrives
  * with no status at all; a server fault arrives as 5xx. Neither says anything
- * about what was typed, and answering both with "Invalid email or password"
+ * about what was typed, and answering both with "Couldn't sign you in"
  * sends someone off to reset a password that was never the problem — which is
  * exactly what happened here when the API was down and sign-in returned 500.
  *
@@ -28,19 +32,24 @@ import { Separator } from "@/components/ui/separator";
  * evidence, not evidence of a transport failure, and defaulting it to
  * "unreachable" would answer a plain rejected credential — which is what
  * Better Auth returns with no status in some paths — by blaming the network.
+ *
+ * Better Auth's own `message` is never shown: it is worded its own way
+ * ("Invalid email or password"), not the copy standard's, so every refusal
+ * the page can name gets the page's sentence and the rest get `fallback`.
  */
-function failureMessage(
-  error: { status?: number; message?: string },
-  fallback: string,
-): string {
+function failureMessage(error: { status?: number }, fallback: string): string {
   const status = error.status;
   const unreachable =
     typeof status === "number" && (status === 0 || status >= 500);
 
   return unreachable
-    ? `Can't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
-    : (error.message ?? fallback);
+    ? `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
+    : fallback;
 }
+
+const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
+const SIGN_IN_RATE_LIMITED =
+  "Couldn't sign you in — too many attempts. Try again later.";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -84,7 +93,11 @@ export function LoginPage() {
     const { error } = await signIn.email(values);
 
     if (error) {
-      setServerError(failureMessage(error, "Invalid email or password"));
+      setServerError(
+        error.status === 429
+          ? SIGN_IN_RATE_LIMITED
+          : failureMessage(error, SIGN_IN_REFUSED),
+      );
       return;
     }
 
@@ -113,10 +126,13 @@ export function LoginPage() {
       setStartingDemo(false);
       setServerError(
         error.status === 403
-          ? "Demo sessions are not available right now."
+          ? DEMO_MODE_OFF_MESSAGE
           : error.status === 429
             ? DEMO_START_LIMIT_MESSAGE
-            : failureMessage(error, "Could not start a demo session."),
+            : failureMessage(
+                error,
+                "Couldn't start a demo session. Try again.",
+              ),
       );
       return;
     }
@@ -221,7 +237,7 @@ export function LoginPage() {
                 onClick={startDemo}
               >
                 {startingDemo && <Loader2 className="size-4 animate-spin" />}
-                {startingDemo ? "Starting demo…" : "Use demo session"}
+                {startingDemo ? "Starting demo session…" : "Start demo session"}
               </Button>
               <p className="text-center text-xs text-muted-foreground">
                 Look around as a demo visitor. No account needed.

@@ -10,7 +10,7 @@ import { freshClientAddress, fromAddress } from "./client-address";
 import { testDb } from "./db";
 
 /** The one control that starts a demo session on `/login`. */
-export const DEMO_BUTTON = { name: "Use demo session" };
+export const DEMO_BUTTON = { name: "Start demo session" };
 
 /**
  * The `GET`s each admin screen sends to draw itself (#369), beside
