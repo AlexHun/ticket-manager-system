@@ -19,7 +19,7 @@
 // first is out of reach of any pattern here.
 import { readFileSync } from "node:fs";
 
-const { tool_name, tool_input } = JSON.parse(readFileSync(0, "utf8").replace(/^﻿/, ""));
+const { tool_name, tool_input } = JSON.parse(readFileSync(0, "utf8").replace(/^\uFEFF/, ""));
 
 const isEnvFile = (path) => {
   const name = (path.replaceAll("\\", "/").split("/").pop() ?? "").toLowerCase();

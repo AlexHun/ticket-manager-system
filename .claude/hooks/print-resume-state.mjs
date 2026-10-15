@@ -24,7 +24,7 @@ const run = (cmd, args, cwd, onError = () => null) => {
 
 let input = {};
 try {
-  input = JSON.parse(readFileSync(0, "utf8").replace(/^﻿/, ""));
+  input = JSON.parse(readFileSync(0, "utf8").replace(/^\uFEFF/, ""));
 } catch {
   // Print the state even when the input is unreadable.
 }
