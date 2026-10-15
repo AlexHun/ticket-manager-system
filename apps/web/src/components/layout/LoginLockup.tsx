@@ -78,7 +78,7 @@ function StillForge({ className }: { className?: string }) {
  *
  * No mark and no illustration: the word is the whole picture. The letters are
  * drawn rather than read, so they are `aria-hidden` and the heading takes its
- * name from the one visually hidden line — "The Great Forge Desk".
+ * name from the one visually hidden line, which reads `BRAND_NAME`.
  */
 export function LoginLockup() {
   const reduced = useReducedMotion();

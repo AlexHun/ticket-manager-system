@@ -472,7 +472,7 @@ describe("autoReply — composing the reply", () => {
         "Hi Marta,\n\n" +
         "Buffering is almost always the quality setting in the player.\n\n" +
         "Write back if that does not sort it out.\n\n" +
-        "Best regards,\nThe Great Forge Desk",
+        `Best regards,\n${BRAND_NAME}`,
       articleIds: ["KB-001"],
     });
   });
@@ -581,7 +581,7 @@ describe("autoReply — composing the reply", () => {
         "Buffering is almost always the quality setting.\n\n" +
         "1. Open the player settings\n2. Set quality to Auto\n3. Restart the app\n\n" +
         "Write back if it persists.\n\n" +
-        "Best regards,\nThe Great Forge Desk",
+        `Best regards,\n${BRAND_NAME}`,
     );
   });
 
@@ -649,7 +649,7 @@ describe("autoReply — the bookends it was told not to write", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.reply).toBe(
-      "Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\nThe Great Forge Desk",
+      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
     );
   });
 
@@ -666,7 +666,7 @@ describe("autoReply — the bookends it was told not to write", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) continue;
       expect(result.reply).toBe(
-        "Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\nThe Great Forge Desk",
+        `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
       );
     }
   });
@@ -705,7 +705,7 @@ describe("autoReply — the bookends it was told not to write", () => {
     if (!result.ok) return;
     // One sign off, and it is ours.
     expect(result.reply).toBe(
-      "Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\nThe Great Forge Desk",
+      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
     );
   });
 
@@ -804,7 +804,7 @@ describe("autoReply — the bookends it was told not to write", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.reply).toBe(
-      "Hi Marta,\n\nSet the quality to Auto and we can take a closer look.\n\nBest regards,\nThe Great Forge Desk",
+      `Hi Marta,\n\nSet the quality to Auto and we can take a closer look.\n\nBest regards,\n${BRAND_NAME}`,
     );
   });
 
@@ -1048,9 +1048,7 @@ describe("autoReply — check 6: no link or address it cannot point at", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.reply.startsWith("Hi Marta,")).toBe(true);
-    expect(result.reply.endsWith("Best regards,\nThe Great Forge Desk")).toBe(
-      true,
-    );
+    expect(result.reply.endsWith(`Best regards,\n${BRAND_NAME}`)).toBe(true);
   });
 });
 
