@@ -94,6 +94,16 @@ jobs:
       - name: Typecheck all workspaces
         run: bun run typecheck
 
+      # Type-aware ESLint over the three backend workspaces, two rules only:
+      # `no-floating-promises` and `no-misused-promises` (#534). A missing
+      # `await` on a Prisma call, an outbox write or a pg-boss send compiles
+      # cleanly and drops its error, and typecheck cannot see it. Here and in
+      # no hook: it is the slow kind of check, and the pre-commit hook is the
+      # fast gate (docs/standards/conventions.md has the measured cost). After
+      # the Prisma client is generated, because the rules read its types.
+      - name: Lint the backend
+        run: bun run lint
+
       # The provider and the session are mocked; the database is real but runs
       # in process (PGLite, ADR-0014), so this still needs no OPENAI_API_KEY and
       # no Postgres server.

@@ -42,7 +42,7 @@ import type { EvalScheduleTime } from "../evals/schedule";
 /* ── The world behind the router ─────────────────────────────────────────── */
 
 let applied: EvalScheduleTime[] = [];
-mock.module("../evals/schedule-queue", () => ({
+await mock.module("../evals/schedule-queue", () => ({
   applyEvalSchedule: async (schedule: EvalScheduleTime) => {
     applied.push(schedule);
   },
@@ -54,7 +54,7 @@ const plannedRunModule = {
 
 let enqueued: { plannedRunId: number; runAt: Date }[] = [];
 let cancelledJobs: string[] = [];
-mock.module("../jobs/eval-planned-run", () => ({
+await mock.module("../jobs/eval-planned-run", () => ({
   ...plannedRunModule,
   enqueuePlannedRun: async (plannedRunId: number, runAt: Date) => {
     enqueued.push({ plannedRunId, runAt });

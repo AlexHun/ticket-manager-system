@@ -49,7 +49,7 @@ let trailAtPublish: Promise<{ action: string }[]>[] = [];
 // a wrapper that calls through it — is spreading and calling itself. The real
 // function has to be held by value.
 const events = { ...(await import("../events/ticket-events")) };
-mock.module("../events/ticket-events", () => ({
+await mock.module("../events/ticket-events", () => ({
   ...events,
   publishTicketUpdated: (ticketId: number, fields: TicketEventField[]) => {
     // `.then` rather than a bare call: this has to run now, not when the test
@@ -64,7 +64,7 @@ mock.module("../events/ticket-events", () => ({
 }));
 
 const classify = { ...(await import("../ai/classify")) };
-mock.module("../ai/classify", () => ({
+await mock.module("../ai/classify", () => ({
   ...classify,
   // The one path that reaches the classifier's activity write. Nothing here is
   // about the model, so it answers immediately and always the same way.

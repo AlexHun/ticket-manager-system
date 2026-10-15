@@ -55,7 +55,7 @@ const generateText = mock((options: GenerateTextOptions) => respond(options));
 // `generateText`. The real error classes are passed straight through — the
 // module's `classify` calls `RetryError.isInstance` / `APICallError.isInstance`
 // on them, and a stubbed class would make every one of those tests a tautology.
-mock.module("ai", () => ({ ...ai, generateText }));
+await mock.module("ai", () => ({ ...ai, generateText }));
 
 const { POLISH_FAILURE, isPolishConfigured, polishDraft } =
   await import("./polish");

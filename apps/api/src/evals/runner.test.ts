@@ -87,7 +87,7 @@ let lastCall: { articles: KbArticle[]; context: unknown } | undefined;
 // imports whenever this one loads first (#303) — see the seam's header. This
 // replaces the seam's one export outright and never delegates to it, so there
 // is nothing to spread and nothing to snapshot.
-mock.module("./reply-to-case", () => ({
+await mock.module("./reply-to-case", () => ({
   replyToCase: async (articles: KbArticle[], context: unknown) => {
     lastCall = { articles, context };
     const answer = script[Math.min(calls, script.length - 1)]!;
@@ -116,7 +116,7 @@ let classifyUsd = 0;
 
 const classifyActual = await import("./classify-case");
 
-mock.module("./classify-case", () => ({
+await mock.module("./classify-case", () => ({
   ...classifyActual,
   classifyCase: async (evalCase: AutoReplyCase) => {
     if (!classifyActual.isClassifiable(evalCase)) {

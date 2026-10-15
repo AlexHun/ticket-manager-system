@@ -139,7 +139,8 @@ every command with what it writes and where it may be run.
 | ------------------------------------- | ----------------------------------------- |
 | `bun run dev`                         | both apps in watch mode                   |
 | `bun run build`                       | build every workspace                     |
-| `bun run typecheck`                   | typecheck every workspace                 |
+| `bun run typecheck`                   | typecheck the four code workspaces        |
+| `bun run lint`                        | type-aware lint of the backend workspaces |
 | `bun run --filter '@ticket/api' test` | API unit tests (`bun test`)               |
 | `bun run --filter '@ticket/web' test` | web unit tests (Vitest + Testing Library) |
 | `bun run test:e2e`                    | Playwright end-to-end suite               |

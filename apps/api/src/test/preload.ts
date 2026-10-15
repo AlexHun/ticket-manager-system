@@ -76,7 +76,7 @@ process.env.DATABASE_URL =
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
 process.env.OPENAI_BASE_URL = "http://127.0.0.1:1/v1";
 
-mock.module("../db", () => ({ Prisma, prisma }));
+await mock.module("../db", () => ({ Prisma, prisma }));
 
 // Who is asking (#366). Every route test runs the real guards in
 // `../middleware/auth`; this is the one question they ask that a test answers,
@@ -85,4 +85,6 @@ mock.module("../db", () => ({ Prisma, prisma }));
 // used to stub the guards themselves, and while any one of them did, the
 // registry could hand another file that stub instead of the real guards.
 // Same depth caveat as `"../db"`: this resolves from `src/test/`.
-mock.module("../middleware/session", () => ({ lookupSession: testSession }));
+await mock.module("../middleware/session", () => ({
+  lookupSession: testSession,
+}));

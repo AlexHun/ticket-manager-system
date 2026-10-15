@@ -278,7 +278,8 @@ Every deploy after the first is step 1 alone.
 | `bun run dev:web:develop` | web only on :4000, with `/api` proxied to the Railway **develop** API instead of :3001 (`DEV_API_PROXY`, read in `apps/web/vite.config.ts`) — the app pages show develop's database and the `/__dev` tools still work, because they read this machine and never the API. Signing in needs `http://localhost:4000` in develop's `TRUSTED_ORIGINS`, and Chrome or Firefox: the session cookie is `Secure`, which those two send to `localhost` over plain HTTP and Safari does not |
 | `bun run dev:stop`    | kills every dev server on 3001/3002/4000/4001 and proves the ports came back. **Windows/PowerShell only** — it has to outlive the `bun` that launched it |
 | `bun run build`       | builds every workspace that has a `build` script (the web app; the API ships as source) |
-| `bun run typecheck`   | `tsc --noEmit` across all four workspaces                           |
+| `bun run typecheck`   | `tsc --noEmit` across the four workspaces that have a `typecheck` script (`tools/lint` has none) |
+| `bun run lint`        | type-aware ESLint over `apps/api`, `packages/core` and `packages/shared`, two rules only (`no-floating-promises`, `no-misused-promises`). CI runs it, no hook does; ~39s warm on Windows, ~14s on CI. Config and the TypeScript 6 pin it needs live in the `tools/lint` workspace; [conventions.md](docs/standards/conventions.md) has why |
 | `bun run test`        | every unit suite, `@ticket/shared` then `@ticket/api` then `@ticket/web`. ~5.5 min on Windows; `.husky/pre-push` runs only the API suite |
 | `bun run format`      | Prettier `--write` over the repo, minus `.prettierignore`            |
 | `bun run format:check`| Prettier `--check`; CI runs this, and it is the only one of these that touches nothing |

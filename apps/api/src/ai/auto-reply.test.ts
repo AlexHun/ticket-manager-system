@@ -97,7 +97,7 @@ const generateText = mock((options: GenerateTextOptions) => respond(options));
 // calls `NoObjectGeneratedError.isInstance` and the shared `classify` calls
 // `RetryError` / `APICallError`, and a stubbed class would make those tests
 // tautologies.
-mock.module("ai", () => ({ ...ai, generateText }));
+await mock.module("ai", () => ({ ...ai, generateText }));
 
 const { AUTO_REPLY_FAILURE, autoReply } = await import("./auto-reply");
 

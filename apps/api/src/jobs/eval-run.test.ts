@@ -130,7 +130,7 @@ let lastArticles: unknown;
 // exists so this factory owns a specifier no other file loads for real — see
 // its header. It replaces the module's one export outright and never delegates
 // to it, so there is nothing to spread and nothing to snapshot.
-mock.module("../evals/measure-case", () => ({
+await mock.module("../evals/measure-case", () => ({
   measureCase: async (
     articles: unknown,
     evalCase: { id: string },
