@@ -883,5 +883,10 @@
     "version": "0.1.220",
     "date": "2026-10-15",
     "title": "Strip an auto-reply sign off that names the product"
+  },
+  {
+    "version": "0.1.221",
+    "date": "2026-10-15",
+    "title": "Send the error boundary's dashboard button to ROUTE"
   }
 ]
