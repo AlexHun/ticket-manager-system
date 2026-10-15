@@ -45,6 +45,7 @@ import * as ai from "ai";
 import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
 import {
   AUTO_REPLY_DECLINE,
+  BRAND_ATTRIBUTIVE,
   BRAND_NAME,
   DECLINE_OUTCOME,
   MAX_MESSAGE_BODY_LENGTH,
@@ -713,8 +714,12 @@ describe("autoReply — the bookends it was told not to write", () => {
     // that copied it would write. Left alone, the brand line stopped the strip
     // at the last paragraph and the "Best regards," above it went out too:
     // two sign offs (#513).
-    const bareName = BRAND_NAME.replace(/^the\s+/i, "");
-    for (const name of [BRAND_NAME, bareName, `${BRAND_NAME}.`]) {
+    for (const name of [
+      BRAND_NAME,
+      BRAND_ATTRIBUTIVE,
+      `${BRAND_NAME}.`,
+      BRAND_NAME.toUpperCase(),
+    ]) {
       answerWith({
         paragraphs: [
           "Buffering is almost always the quality setting.",

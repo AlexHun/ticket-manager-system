@@ -2,6 +2,7 @@ import { NoObjectGeneratedError, Output, generateText } from "ai";
 import { z } from "zod";
 import {
   AUTO_REPLY_DECLINE,
+  BRAND_ATTRIBUTIVE,
   BRAND_NAME,
   MAX_MESSAGE_BODY_LENGTH,
   type AutoReplyDecline,
@@ -492,20 +493,25 @@ const SIGN_OFF_LINE =
  * Our own sign off has signed as `BRAND_NAME` since #488, so it is the
  * signature a model copying it would write, and without this the strip below
  * stopped at that line and left the "Best regards," above it in place: two
- * sign offs (#513). Built from `BRAND_NAME` rather than typed out again, so a
- * rename cannot leave it matching the old name.
+ * sign offs (#513). Built from `BRAND_ATTRIBUTIVE`, the name less its article,
+ * rather than typed out again, so a rename cannot leave it matching the old
+ * name.
  *
  * Anchored at both ends, unlike `SIGN_OFF_LINE`, and tested against the
- * paragraph with its trailing punctuation off: "The Great Forge Desk saves it
- * for you." opens with the name and is a sentence, not a signature.
+ * paragraph with its trailing punctuation off: "<the name> saves it for you."
+ * opens with the name and is a sentence, not a signature. Because nothing but
+ * the name can match, `SIGN_OFF_MAX` does not apply to it, so a longer name
+ * one day is still stripped.
  */
 const BRAND_SIGN_OFF = new RegExp(
-  `^(?:the\\s+)?${BRAND_NAME.replace(/^the\s+/i, "")
-    .split(/\s+/)
-    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("\\s+")}$`,
+  `^(?:the\\s+)?${BRAND_ATTRIBUTIVE.split(/\s+/).map(escapeRegExp).join("\\s+")}$`,
   "i",
 );
+
+/** `text` as a pattern that matches only itself. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /**
  * A sign off welded onto the end of the last real sentence.
@@ -556,8 +562,8 @@ function withoutBookends(paragraphs: string[]): string[] {
   while (kept.length > 0) {
     const last = kept[kept.length - 1]!;
     const bare = last.replace(/[.,;:!?\s]+$/, "");
-    if (bare.length > SIGN_OFF_MAX) break;
-    if (!SIGN_OFF_LINE.test(last) && !BRAND_SIGN_OFF.test(bare)) break;
+    const closer = bare.length <= SIGN_OFF_MAX && SIGN_OFF_LINE.test(last);
+    if (!closer && !BRAND_SIGN_OFF.test(bare)) break;
     kept.pop();
   }
 
