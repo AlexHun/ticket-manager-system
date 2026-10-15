@@ -3,6 +3,7 @@ import {
   MESSAGE_DIRECTION,
   OUTBOUND_EMAIL_STATUS,
   TICKET_STATUS,
+  USER_ROLE,
 } from "@ticket/shared";
 import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { signIn } from "./helpers/auth";
@@ -80,7 +81,7 @@ test("a demo's reply reaches the outbox as withheld, and is never queued", async
   // An admin, in a browser of their own, sees it on the outbox.
   const context = await browser.newContext();
   const admin = await context.newPage();
-  await signIn(admin, "admin");
+  await signIn(admin, USER_ROLE.admin);
   await admin.goto(ROUTE.outbox.path);
 
   const card = admin.locator('[data-slot="card"]', {

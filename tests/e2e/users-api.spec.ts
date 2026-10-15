@@ -23,7 +23,7 @@ async function getSeededUsers(
 ): Promise<{ admin: ApiUser; agent: ApiUser }> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await signIn(page, "admin");
+  await signIn(page, USER_ROLE.admin);
 
   const res = await page.request.get(`${API_URL}/api/users`);
   const body = (await res.json()) as { users: ApiUser[] };
@@ -91,7 +91,7 @@ test.describe("Users API — unauthenticated", () => {
 
 test.describe("Users API — agent session (forbidden)", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
   });
 
   test("GET /api/users -> 403", async ({ page }) => {
@@ -136,7 +136,7 @@ test.describe("Users API — admin-delete guard", () => {
   test("DELETE /api/users/:id on an admin user -> 403 with explicit message", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     const res = await page.request.delete(
       `${API_URL}/api/users/${adminUserId}`,
@@ -156,7 +156,7 @@ test.describe("Users API — admin-delete guard", () => {
 
 test.describe("Users API — self role-change guard", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
   });
 
   test("PATCH /api/users/:id demoting yourself -> 403, and no change", async ({

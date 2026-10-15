@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { USER_ROLE } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { API_URL } from "./helpers/env";
 
@@ -125,7 +126,7 @@ test.describe("Login flow", () => {
     page,
   }) => {
     // First sign in normally
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     // Now navigate to /login explicitly
     await page.goto("/login");
@@ -166,7 +167,7 @@ test.describe("Login flow", () => {
 
 test.describe("Logout flow", () => {
   test("sign out clears session and redirects to /login", async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     await page.getByRole("button", { name: "Sign out" }).click();
 
@@ -199,7 +200,7 @@ test.describe("Route protection — unauthenticated", () => {
 
 test.describe("Route protection — authenticated agent", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
   });
 
   test("/users redirects agent to / (admin-only route)", async ({ page }) => {
@@ -210,7 +211,7 @@ test.describe("Route protection — authenticated agent", () => {
 
 test.describe("Route protection — authenticated admin", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
   });
 
   test("/users renders the Team heading for admin", async ({ page }) => {
@@ -228,7 +229,7 @@ test.describe("Route protection — authenticated admin", () => {
 
 test.describe("Session persistence", () => {
   test("session survives a full page reload", async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     // Reload the tab — session cookie must keep the user authenticated
     await page.reload();

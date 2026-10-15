@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { MESSAGE_DIRECTION, TICKET_STATUS } from "@ticket/shared";
+import { MESSAGE_DIRECTION, TICKET_STATUS, USER_ROLE } from "@ticket/shared";
 import { ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { signIn } from "./helpers/auth";
 import { testDb } from "./helpers/db";
@@ -124,7 +124,7 @@ test.describe("reply composer on a phone", () => {
       }),
     );
     await page.setViewportSize(PHONE);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(ticketDetailPath(ticketId));
 
     const reply = page.getByPlaceholder("Write a reply…");
@@ -142,7 +142,7 @@ test.describe("reply composer on a phone", () => {
     page,
   }) => {
     await page.setViewportSize(DESKTOP);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(ticketDetailPath(ticketId));
     await page.getByPlaceholder("Write a reply…").fill("it ships today");
 

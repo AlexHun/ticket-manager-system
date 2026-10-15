@@ -24,7 +24,7 @@ const RENAMED_USER_NAME = "E2E Renamed User";
 // serial so create/edit/delete each build on the previous test's state.
 test.describe.serial("User management (admin)", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),
@@ -193,7 +193,7 @@ test.describe.serial("User management (admin)", () => {
 
 test.describe("Admin row protections", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),
@@ -224,7 +224,7 @@ test.describe("Admin row protections", () => {
 
 test.describe("User lifecycle — sign-in consequences", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),

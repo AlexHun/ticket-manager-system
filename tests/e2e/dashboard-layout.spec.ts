@@ -3,6 +3,7 @@ import {
   DEFAULT_DASHBOARD_LAYOUT,
   type DashboardPanelId,
   type DashboardPanelWidth,
+  USER_ROLE,
 } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { resetDashboardLayout } from "./helpers/db";
@@ -176,7 +177,7 @@ test.describe("Dashboard panel customization", () => {
   test("renders the default order and widths, with no customize controls until Customise is clicked", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await expect(
       page.getByRole("heading", { name: "Dashboard" }),
     ).toBeVisible();
@@ -209,7 +210,7 @@ test.describe("Dashboard panel customization", () => {
   test("reordering two panels via the move buttons persists across a reload", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await enterCustomizeMode(page);
 
     const expectedOrder = DEFAULT_DASHBOARD_LAYOUT.map((p) => p.panelId);
@@ -232,7 +233,7 @@ test.describe("Dashboard panel customization", () => {
   test("resizing a panel via grow/shrink persists across a reload", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await enterCustomizeMode(page);
 
     await expectWidth(page, NARROWEST_PANEL, "narrow");
@@ -250,7 +251,7 @@ test.describe("Dashboard panel customization", () => {
   test("a real pointer drag on the grip handle reorders two panels", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await enterCustomizeMode(page);
 
     const dragPanel = DEFAULT_DASHBOARD_LAYOUT[0]!.panelId;
@@ -311,7 +312,7 @@ test.describe("Dashboard panel customization", () => {
     browser,
   }) => {
     // Agent customizes their own dashboard.
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await enterCustomizeMode(page);
 
     const expectedAgentOrder = DEFAULT_DASHBOARD_LAYOUT.map((p) => p.panelId);
@@ -328,7 +329,7 @@ test.describe("Dashboard panel customization", () => {
     // Sign out and back in as the same user, same tab: still customized.
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL("/login");
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await enterCustomizeMode(page);
     expect(await panelOrder(page)).toEqual(expectedAgentOrder);
 
@@ -338,7 +339,7 @@ test.describe("Dashboard panel customization", () => {
     const freshContext = await browser.newContext();
     try {
       const freshPage = await freshContext.newPage();
-      await signIn(freshPage, "agent");
+      await signIn(freshPage, USER_ROLE.agent);
       await enterCustomizeMode(freshPage);
       expect(await panelOrder(freshPage)).toEqual(expectedAgentOrder);
 
@@ -346,7 +347,7 @@ test.describe("Dashboard panel customization", () => {
       // the untouched default — one user's customization doesn't leak.
       await freshPage.getByRole("button", { name: "Sign out" }).click();
       await expect(freshPage).toHaveURL("/login");
-      await signIn(freshPage, "admin");
+      await signIn(freshPage, USER_ROLE.admin);
       await enterCustomizeMode(freshPage);
       expect(await panelOrder(freshPage)).toEqual(
         DEFAULT_DASHBOARD_LAYOUT.map((p) => p.panelId),
@@ -362,7 +363,7 @@ test.describe("Dashboard panel customization", () => {
   test('"Reset to default" restores the original layout and then disappears', async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await enterCustomizeMode(page);
 
     await clickAndWaitForSave(
@@ -400,7 +401,7 @@ test.describe("Dashboard panel customization", () => {
   test("move/shrink/grow buttons are disabled at the boundaries", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await enterCustomizeMode(page);
 
     await expect(
@@ -466,7 +467,7 @@ test.describe("Dashboard prefetching", () => {
   test("starts all three requests at navigation time, in parallel", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // A full document load, which is what makes this test about the loader:
     // signing in already primed these three entries, and a `staleTime` of 30s
@@ -518,7 +519,7 @@ test.describe("Dashboard prefetching", () => {
   });
 
   test("a bookmarked range arrives already populated", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // The cold-entry half of the claim above, and the one that exercises the
     // loader's own reading of the URL: `?range=7d` reaches it through
@@ -539,7 +540,7 @@ test.describe("Dashboard prefetching", () => {
   test("a range change costs one request per endpoint, not two", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
 
     // Counted from here, so the initial load is not in the total.

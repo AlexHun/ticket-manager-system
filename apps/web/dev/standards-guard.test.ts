@@ -47,7 +47,7 @@ interface Rule {
   /** The banned forms. Each is matched against comment-stripped source. */
   forms: RegExp[];
   /** Which files the rule reads, as paths relative to `apps/web`. Every
-   *  scanned file when absent. */
+   *  `src/` and `dev/` file when absent. */
   applies?: (file: string) => boolean;
   /** Also read every `.ts` file under `tests/e2e`, all of them: `applies` is
    *  asked only about the web workspace's own files. */
@@ -176,7 +176,7 @@ const RULES: Rule[] = [
     ignores: `/** The test setup answers \`matches: true\` to \`prefers-reduced-motion\`. */`,
   },
   {
-    name: 'Role values read USER_ROLE from @ticket/shared: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
+    name: 'Role values read USER_ROLE from @ticket/shared: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, a signIn() or getByText() argument, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
     // The Playwright specs drive the API and assert on its answers, so they
     // write role values as often as the app does (#393).
@@ -192,6 +192,11 @@ const RULES: Rule[] = [
       // bans both by name.
       new RegExp(`\\bas\\s+${ROLE}`),
       new RegExp(`\\[\\s*${ROLE}\\s*,\\s*${ROLE}\\s*\\]`),
+      // The e2e `signIn(page, role)` helper takes a `UserRole`, unlike the
+      // API's `asCaller` fixture keys, and the users page prints the bare role
+      // value in its badge, so a query for that badge is one too.
+      new RegExp(`\\bsignIn\\(\\s*[\\w$.]+\\s*,\\s*${ROLE}`),
+      new RegExp(`\\.getByText\\(\\s*${ROLE}`),
     ],
     catches: [
       `const ADMIN = { name: "Aaron", role: "admin" };`,
@@ -200,6 +205,12 @@ const RULES: Rule[] = [
       `case "agent":`,
       `const r = value as "admin" | "agent";`,
       `roles: ["admin", "agent"],`,
+      `await signIn(page, "agent");`,
+      `await expect(row.getByText("admin", { exact: true })).toBeVisible();`,
+    ],
+    passes: [
+      `await signIn(page, USER_ROLE.admin);`,
+      `await expect(row.getByText("Admin", { exact: true })).toBeVisible();`,
     ],
     ignores: `// a placeholder span instead of a button for role === "admin".`,
   },
@@ -252,7 +263,7 @@ const CODE = new Map(
 test("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
   // walk is a green run that checked nothing.
-  expect(FILES.length).toBeGreaterThan(100);
+  expect(FILES.filter((file) => !isE2e(file)).length).toBeGreaterThan(100);
   expect(FILES).toContain("src/App.tsx");
   expect(FILES).toContain("dev/scan.ts");
   expect(FILES.some(isTest)).toBe(true);
