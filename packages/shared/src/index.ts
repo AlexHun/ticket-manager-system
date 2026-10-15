@@ -3514,6 +3514,15 @@ export const BRAND_NAME = "The Great Forge Desk";
 export const BRAND_SHORT = "Forge Desk";
 
 /**
+ * `BRAND_NAME` without its article, for where the name stands before a noun:
+ * "Your Great Forge Desk account", not "Your The Great Forge Desk account".
+ * Derived rather than restated, so nothing that reads it can drift from the
+ * name. The invitation and reset emails in `auth.ts` use it, and so does the
+ * auto-reply's strip of a product-name sign off the model wrote itself (#513).
+ */
+export const BRAND_ATTRIBUTIVE = BRAND_NAME.replace(/^The /, "");
+
+/**
  * A label as it reads after a dash mid-sentence: "Declined — not covered by
  * the knowledge base".
  *

@@ -45,6 +45,8 @@ import * as ai from "ai";
 import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
 import {
   AUTO_REPLY_DECLINE,
+  BRAND_ATTRIBUTIVE,
+  BRAND_NAME,
   DECLINE_OUTCOME,
   MAX_MESSAGE_BODY_LENGTH,
   PIPELINE_OUTCOME,
@@ -705,6 +707,63 @@ describe("autoReply — the bookends it was told not to write", () => {
     expect(result.reply).toBe(
       "Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\nThe Great Forge Desk",
     );
+  });
+
+  test("drops a sign off that names the product, with or without 'The'", async () => {
+    // Since #488 our own sign off is the product, so this is the closer a model
+    // that copied it would write. Left alone, the brand line stopped the strip
+    // at the last paragraph and the "Best regards," above it went out too:
+    // two sign offs (#513).
+    for (const name of [
+      BRAND_NAME,
+      BRAND_ATTRIBUTIVE,
+      `${BRAND_NAME}.`,
+      BRAND_NAME.toUpperCase(),
+    ]) {
+      answerWith({
+        paragraphs: [
+          "Buffering is almost always the quality setting.",
+          "Best regards,",
+          name,
+        ],
+        steps: null,
+      });
+
+      const result = await autoReply(ARTICLES, CONTEXT);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.reply).toBe(
+        `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
+      );
+    }
+  });
+
+  test("tells the model not to sign as the product either", async () => {
+    // Advisory, like every prompt rule here; the strip above is what holds.
+    // This only stops the product's name falling out of the do-not-sign list.
+    await autoReply(ARTICLES, CONTEXT);
+
+    const { system } = lastCall();
+    expect(system).toContain(`"The Support Team", "${BRAND_NAME}"`);
+  });
+
+  test("keeps a real sentence that happens to start with the product's name", async () => {
+    // Only a paragraph that is the name and nothing else is a signature; one
+    // that goes on to say something is the body.
+    answerWith({
+      paragraphs: [
+        "Buffering is almost always the quality setting.",
+        `${BRAND_NAME} saves it for you.`,
+      ],
+      steps: null,
+    });
+
+    const result = await autoReply(ARTICLES, CONTEXT);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.reply).toContain(`${BRAND_NAME} saves it for you.`);
   });
 
   test("keeps a real sentence that happens to start with 'Thanks'", async () => {

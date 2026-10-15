@@ -5,6 +5,7 @@ import { APIError, createAuthMiddleware, getIp } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { admin, anonymous } from "better-auth/plugins";
 import {
+  BRAND_ATTRIBUTIVE,
   BRAND_NAME,
   DEMO_MODE_OFF_MESSAGE,
   DEMO_START_LIMIT_MESSAGE,
@@ -47,13 +48,6 @@ export const trustedOrigins = parsedOrigins;
  * this same list before honouring it, so a bad value here fails closed.
  */
 export const appOrigin = parsedOrigins[0] as string;
-
-/**
- * `BRAND_NAME` without its article, for where the name stands before a noun:
- * "Your Great Forge Desk account", not "Your The Great Forge Desk account".
- * Derived rather than restated, so the emails cannot drift from the name.
- */
-const BRAND_ATTRIBUTIVE = BRAND_NAME.replace(/^The /, "");
 
 if (
   !process.env.BETTER_AUTH_SECRET ||
