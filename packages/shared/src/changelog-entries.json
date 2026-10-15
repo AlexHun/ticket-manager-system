@@ -878,5 +878,10 @@
     "version": "0.1.219",
     "date": "2026-10-15",
     "title": "Say what failed in a plain sentence, never the raw error text"
+  },
+  {
+    "version": "0.1.220",
+    "date": "2026-10-15",
+    "title": "Strip an auto-reply sign off that names the product"
   }
 ]
