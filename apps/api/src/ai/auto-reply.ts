@@ -527,7 +527,20 @@ function escapeRegExp(text: string): string {
  * legitimate way to end a support reply and this would eat it.
  */
 const TRAILING_SIGN_OFF =
-  /([.!?])\s+(?:(?:kind|best|warm)\s+(?:regards|wishes)|regards|sincerely|cheers|yours\s+\w+)\b[\s\S]*$/i;
+  /([.!?])\s+(?:[-–—]{1,2}\s*)?(?:(?:kind|best|warm)\s+(?:regards|wishes)|regards|sincerely|cheers|yours\s+\w+)\b[\s\S]*$/i;
+
+/**
+ * A dash a sign off may be led by: "— The Support Team", "- Best regards", or
+ * the "-- " that opens an email signature.
+ *
+ * `SIGN_OFF_LINE` and `BRAND_SIGN_OFF` anchor on a paragraph's first word, so a
+ * dash in front hid the closer from both, and `withoutDashes` then took an en or
+ * em dash off and shipped the rest under our own sign off (#547);
+ * `TRAILING_SIGN_OFF` takes the same dash inline for the same reason. Looked
+ * past only to test a paragraph, never cut from one that is kept, so a body
+ * sentence that opens with a dash goes out as it was written.
+ */
+const LEADING_DASH = /^[-–—]{1,2}\s*/;
 
 /**
  * Take out the greeting and sign off the model added anyway.
@@ -560,7 +573,7 @@ function withoutBookends(paragraphs: string[]): string[] {
   }
 
   while (kept.length > 0) {
-    const last = kept[kept.length - 1]!;
+    const last = kept[kept.length - 1]!.replace(LEADING_DASH, "");
     const bare = last.replace(/[.,;:!?\s]+$/, "");
     const closer = bare.length <= SIGN_OFF_MAX && SIGN_OFF_LINE.test(last);
     if (!closer && !BRAND_SIGN_OFF.test(bare)) break;
