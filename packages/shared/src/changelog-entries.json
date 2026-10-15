@@ -893,5 +893,15 @@
     "version": "0.1.223",
     "date": "2026-10-15",
     "title": "Bare-vitest hook catches indented lines and bunx.exe (#525)"
+  },
+  {
+    "version": "0.1.229",
+    "date": "2026-10-15",
+    "title": "Strip an auto-reply sign off led by a dash"
+  },
+  {
+    "version": "0.1.229",
+    "date": "2026-10-15",
+    "title": "Review fixes for the dash-led sign off strip"
   }
 ]
