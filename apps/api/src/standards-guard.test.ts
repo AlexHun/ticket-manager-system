@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { BRAND_ATTRIBUTIVE, BRAND_NAME, BRAND_SHORT } from "@ticket/shared";
 import { stripComments } from "./strip-comments";
 
 /**
@@ -337,7 +338,8 @@ const AGENT = (name: string, extra = "") =>
 
 /** The workspaces the product-name rule reads, repo-relative. */
 const BRAND_SCOPE = ["apps/api", "apps/web"];
-/** What the walk never enters: installed, built or generated output. */
+/** What the walk never enters: installed, built or generated output, and
+ *  dot-directories (tool caches). */
 const BRAND_SKIP_DIRS = new Set([
   "node_modules",
   "dist",
@@ -348,22 +350,30 @@ const BRAND_SKIP_DIRS = new Set([
 ]);
 /** The text files a name could be typed into. Not `.env*`: a local env file
  *  holds live secrets, and nothing reads it here. */
-const BRAND_EXTENSIONS =
-  /\.(?:ts|tsx|js|mjs|cjs|html|css|json|md|sql|prisma|toml|svg)$/;
+const BRAND_FILE =
+  /(?:\.(?:ts|tsx|js|mjs|cjs|html|css|json|md|sql|prisma|toml|svg|ya?ml)|^Dockerfile(?:\.\w+)?|^Caddyfile)$/;
 /**
  * The product name in any of its lengths, matched over raw text — comments
  * included, unlike the source rules above, because a comment restating the
- * name is how #513's first draft carried it (#545). "Forge Desk" is in all
- * three constants, "Great Forge" in the two longer ones; whitespace and case
- * are loose so a line break or a lower-case slug is still the name.
+ * name is how #513's first draft carried it (#545). Built from the words of
+ * `BRAND_ATTRIBUTIVE`, so this file never types the name: the last two are
+ * `BRAND_SHORT` and in all three constants, the first two in the two longer
+ * ones. Case is loose, and so is what joins the words — a
+ * space, a line break, a hyphen, an underscore or nothing — so a slug or an
+ * identifier that starts with it is still the name. Only the start is a word
+ * boundary: one at the end would let `…DeskSignOff` through.
  */
-const BRAND_FORM = /\b(?:Great\s+Forge|Forge\s+Desk)\b/gi;
+const [BRAND_W1, BRAND_W2, BRAND_W3] = BRAND_ATTRIBUTIVE.split(" ");
+const BRAND_FORM = new RegExp(
+  String.raw`\b(?:${BRAND_W1}[\s_-]*${BRAND_W2}|${BRAND_W2}[\s_-]*${BRAND_W3})`,
+  "gi",
+);
 
 /**
  * The files that may type the name, each with how many times and why. A file
- * here is held to exactly that count, so a second literal in it fails as one
- * anywhere else would, and an allowance whose file moved or dropped the name
- * fails rather than guarding nothing.
+ * here is held to exactly that count, so a literal added to it fails as one
+ * anywhere else would, and so does one removed, or an allowance whose file
+ * moved, rather than guarding nothing.
  */
 const BRAND_ALLOWANCES: Record<string, { count: number; reason: string }> = {
   "apps/web/index.html": {
@@ -378,9 +388,12 @@ const BRAND_ALLOWANCES: Record<string, { count: number; reason: string }> = {
   },
 };
 
-/** Every text file under `BRAND_SCOPE`, keyed by repo-relative path, less
- *  this file, which holds the name in every form as a fixture (as `SELF` is
- *  left out of the source rules). */
+/**
+ * Every text file under `BRAND_SCOPE`, keyed by repo-relative path. This file
+ * is read too: its fixtures build the name from the constants rather than
+ * typing it. The walk reads the disk, as `sourceFiles` does, so an untracked
+ * file under the two apps fails the push before it is committed.
+ */
 function brandScopeFiles(): FileContents {
   const paths: string[] = [];
   const walk = (dir: string) => {
@@ -392,11 +405,11 @@ function brandScopeFiles(): FileContents {
         if (!BRAND_SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) {
           walk(rel);
         }
-      } else if (BRAND_EXTENSIONS.test(entry.name)) paths.push(rel);
+      } else if (BRAND_FILE.test(entry.name)) paths.push(rel);
     }
   };
   for (const dir of BRAND_SCOPE) walk(dir);
-  return readRepo(...paths.filter((file) => file !== `apps/api/${SELF}`));
+  return readRepo(...paths);
 }
 
 /** The 1-based line of each place `text` names the product. */
@@ -405,11 +418,14 @@ const brandLines = (text: string) =>
     (match) => text.slice(0, match.index).split("\n").length,
   );
 
-const BRAND_SHELL = {
-  "apps/web/index.html": "<title>Forge Desk</title>\n",
-  "apps/api/src/routes/users.test.ts":
-    '"The Great Forge Desk"\n"The Great Forge Desk"\n"Your Great Forge Desk"\n"Your Great Forge Desk"\n"Reset your Great Forge Desk"\n',
-};
+/** Every allowed file holding exactly its count, which each planted set
+ *  starts from so it is caught for the one thing it plants. */
+const BRAND_SHELL: FileContents = Object.fromEntries(
+  Object.entries(BRAND_ALLOWANCES).map(([file, { count }]) => [
+    file,
+    `${BRAND_NAME}\n`.repeat(count),
+  ]),
+);
 
 const CONFIG_RULES: ConfigRule[] = [
   {
@@ -527,7 +543,7 @@ const CONFIG_RULES: ConfigRule[] = [
     },
   },
   {
-    name: "The product name is typed only in @ticket/shared's BRAND_NAME and BRAND_SHORT: apps/api and apps/web read the constants, comments included, outside the named allowances in BRAND_ALLOWANCES",
+    name: "The product name is typed only in @ticket/shared: apps/api and apps/web read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
     standard: "copy.md",
     read: brandScopeFiles,
     problems: (files) => {
@@ -554,38 +570,44 @@ const CONFIG_RULES: ConfigRule[] = [
       // A comment — the case the source rules' stripping would have missed.
       {
         ...BRAND_SHELL,
-        "apps/web/src/components/layout/Lockup.tsx":
-          '/** Reads "The Great Forge Desk". */\nexport const x = 1;\n',
+        "apps/web/src/components/layout/Lockup.tsx": `/** Reads "${BRAND_NAME}". */\nexport const x = 1;\n`,
       },
       // The short form, broken over a line, in lower case.
       {
         ...BRAND_SHELL,
-        "apps/api/src/auth.ts": "const slug = `forge\n  desk`;\n",
+        "apps/api/src/auth.ts": `const slug = \`${BRAND_SHORT.toLowerCase().replace(" ", "\n  ")}\`;\n`,
+      },
+      // A hyphenated slug, and an identifier.
+      {
+        ...BRAND_SHELL,
+        "apps/web/src/lib/storage.ts": `const KEY = "${BRAND_SHORT.toLowerCase().replace(" ", "-")}:density";\n`,
+      },
+      {
+        ...BRAND_SHELL,
+        "apps/api/src/mail/sign-off.ts": `export const ${BRAND_SHORT.replace(" ", "")}SignOff = 1;\n`,
       },
       // The attributive form, in a test that has no allowance.
       {
         ...BRAND_SHELL,
-        "apps/web/src/pages/LoginPage.test.tsx":
-          'expect(subject).toBe("Your Great Forge Desk account is ready");\n',
+        "apps/web/src/pages/LoginPage.test.tsx": `expect(subject).toBe("Your ${BRAND_ATTRIBUTIVE} account is ready");\n`,
       },
       // A second literal in an allowed file is over its count.
       {
         ...BRAND_SHELL,
-        "apps/web/index.html":
-          '<title>Forge Desk</title>\n<meta content="Forge Desk" />\n',
+        "apps/web/index.html": `<title>${BRAND_SHORT}</title>\n<meta content="${BRAND_SHORT}" />\n`,
       },
       // An allowance whose file is gone guards nothing.
       {
         "apps/api/src/routes/users.test.ts":
-          BRAND_SHELL["apps/api/src/routes/users.test.ts"],
+          BRAND_SHELL["apps/api/src/routes/users.test.ts"]!,
       },
     ],
     ignores: {
       ...BRAND_SHELL,
-      // Reading the constant is the rule kept; "forge" and "desk" apart are
-      // ordinary words.
+      // Reading the constant is the rule kept; the words apart, or with
+      // another word between, are ordinary words.
       "apps/web/src/components/layout/LoginLockup.tsx":
-        '// The lockup reads BRAND_NAME; a desk is where the agents forge replies.\n<span className="sr-only">{BRAND_NAME}</span>\n',
+        '// The lockup reads BRAND_NAME; at the desk the agents forge replies.\n<span className="sr-only">{BRAND_NAME}</span>\n',
     },
   },
 ];
@@ -597,6 +619,8 @@ test("the product-name rule reads the tree it means to", () => {
   expect(files).toContain("apps/api/src/auth.ts");
   expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
   expect(files).toContain("apps/web/index.html");
+  // No file is skipped by name: the guard itself is read like any other.
+  expect(files).toContain(`apps/api/${SELF}`);
   expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
 });
 
