@@ -514,6 +514,18 @@ function escapeRegExp(text: string): string {
 }
 
 /**
+ * A dash a sign off may be led by: "— The Support Team", "- Best regards", or
+ * the "-- " that opens an email signature. A pattern source, shared by
+ * `TRAILING_SIGN_OFF` and `LEADING_DASH` so the two cannot drift apart.
+ *
+ * `SIGN_OFF_LINE`, `BRAND_SIGN_OFF` and `TRAILING_SIGN_OFF` anchor on the
+ * closer's first word, so a dash in front hid it from all three, and
+ * `withoutDashes` then took an en or em dash off and shipped the rest under our
+ * own sign off (#547).
+ */
+const SIGN_OFF_DASH = "[-–—]{1,2}";
+
+/**
  * A sign off welded onto the end of the last real sentence.
  *
  * The variant `SIGN_OFF_LINE` cannot see, and the one actually observed: the
@@ -525,9 +537,22 @@ function escapeRegExp(text: string): string {
  * narrower than `SIGN_OFF_LINE`: only the formal closers. "Thanks" and "thank
  * you" are missing on purpose, because "…and thank you for your patience." is a
  * legitimate way to end a support reply and this would eat it.
+ *
+ * The closer may be led by a `SIGN_OFF_DASH`, "…closer look. — Best regards",
+ * for the reason that constant gives.
  */
-const TRAILING_SIGN_OFF =
-  /([.!?])\s+(?:(?:kind|best|warm)\s+(?:regards|wishes)|regards|sincerely|cheers|yours\s+\w+)\b[\s\S]*$/i;
+const TRAILING_SIGN_OFF = new RegExp(
+  String.raw`([.!?])\s+(?:${SIGN_OFF_DASH}\s*)?(?:(?:kind|best|warm)\s+(?:regards|wishes)|regards|sincerely|cheers|yours\s+\w+)\b[\s\S]*$`,
+  "i",
+);
+
+/**
+ * A paragraph's leading `SIGN_OFF_DASH`, looked past only to test it.
+ *
+ * Never cut from a paragraph that is kept, so a body sentence that opens with a
+ * dash goes out as it was written.
+ */
+const LEADING_DASH = new RegExp(String.raw`^${SIGN_OFF_DASH}\s*`);
 
 /**
  * Take out the greeting and sign off the model added anyway.
@@ -560,7 +585,7 @@ function withoutBookends(paragraphs: string[]): string[] {
   }
 
   while (kept.length > 0) {
-    const last = kept[kept.length - 1]!;
+    const last = kept[kept.length - 1]!.replace(LEADING_DASH, "");
     const bare = last.replace(/[.,;:!?\s]+$/, "");
     const closer = bare.length <= SIGN_OFF_MAX && SIGN_OFF_LINE.test(last);
     if (!closer && !BRAND_SIGN_OFF.test(bare)) break;
