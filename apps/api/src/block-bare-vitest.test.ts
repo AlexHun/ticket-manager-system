@@ -31,6 +31,18 @@ describe("block-bare-vitest hook", () => {
     "if ($?) { bunx vitest run }",
     "if ($?) {\n  bunx vitest run\n}",
     "git status\nBUNX vitest",
+    "npx vitest run",
+    "npx --yes vitest",
+    "npx.cmd vitest",
+    "bun --cwd apps/web x vitest run",
+    "bun --cwd=apps/web x vitest",
+    'pwsh -c "bunx vitest run src/App.test.tsx"',
+    'pwsh -NoProfile -Command "Set-Location apps/web; bunx vitest"',
+    "bash -c 'cd apps/web && bunx vitest run'",
+    'cmd /c "npx vitest"',
+    "bash -c \"pwsh -c 'bunx vitest'\"",
+    'bash -c "echo \\"go\\"; npx vitest"',
+    "git status; powershell.exe -c bunx vitest",
   ])("refuses `%s` and names the filtered script", (command) => {
     const { code, stderr } = run(command);
     expect(code).toBe(2);
@@ -44,6 +56,12 @@ describe("block-bare-vitest hook", () => {
     "bun run --filter @ticket/web test:ui",
     'gh issue comment 525 --body "a worker ran bunx vitest from the wrong directory"',
     "bunx prisma generate",
+    "npx prisma generate",
+    "bun --cwd apps/web run test",
+    'git commit -m "npx vitest and bun x vitest are refused now"',
+    "git commit -m 'refuse bunx vitest nested in a shell string'",
+    'gh issue comment 546 --body "a worker ran pwsh -c \\"bunx vitest\\" from the root"',
+    "bash -c 'bun run --filter @ticket/web test'",
   ])("lets `%s` through", (command) => {
     const { code, stderr } = run(command);
     expect(stderr).toBe("");

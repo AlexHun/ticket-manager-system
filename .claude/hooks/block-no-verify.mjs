@@ -5,7 +5,7 @@
 // Claude as the reason.
 import { readFileSync } from "node:fs";
 
-const { tool_input } = JSON.parse(readFileSync(0, "utf8"));
+const { tool_input } = JSON.parse(readFileSync(0, "utf8").replace(/^\uFEFF/, ""));
 const command = tool_input?.command ?? "";
 
 // Every pattern is anchored to a `git` invocation or to the start of a command,
