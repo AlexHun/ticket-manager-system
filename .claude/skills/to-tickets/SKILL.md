@@ -73,7 +73,7 @@ issue:
    `docs/agents/issue-tracker.md` (Blocking). The id it takes is the blocker's
    numeric database id, not its `#number`.
 3. Read the edges back with
-   `gh issue list --json number,blockedBy --jq '.[] | {number, blockers: (.blockedBy.nodes | map(.number))}'`.
+   `(gh issue list --json number,blockedBy | ConvertFrom-Json) | Select-Object number, @{n='blockers';e={$_.blockedBy.nodes.number}}`.
 
 If the source was an existing issue, attach each ticket to it as a sub-issue
 (`docs/agents/issue-tracker.md`, Make an issue a sub-issue of a parent), and

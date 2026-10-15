@@ -60,8 +60,11 @@ which earns a red feedback loop before it theorises.
 
 Run `git`, `gh` and `bun` through PowerShell: on this Windows machine the Bash
 tool has none of them on its path. Write every multi-line message to a file in
-the scratchpad and pass the file — `git commit -F`, `gh pr create --body-file`,
-`gh issue comment --body-file` — so quoting never reaches the text. End a line
+the scratchpad with the Write tool, since PS 5.1's `Out-File` adds a BOM, and
+pass the file — `git commit -F`, `gh pr create --body-file`,
+`gh issue comment --body-file` — so quoting never reaches the text. Read `gh`
+JSON with `(gh … --json … | ConvertFrom-Json)` rather than a quoted `--jq`
+filter, whose inner double quotes PS 5.1 splits. End a line
 on the hook-running or test command so its exit code is the one reported;
 `.claude/hooks/block-no-verify.mjs` refuses a trailing `; echo` or `|| true`.
 `.claude/hooks/block-env-read.mjs` refuses to read or write a local env file,
