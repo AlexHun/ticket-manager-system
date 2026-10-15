@@ -375,7 +375,7 @@ ANSWER ONLY IF THE ARTICLES FULLY ANSWER IT. Every fact, number, policy, address
 
 A FAULT REPORT IS NOT A QUESTION. When the customer tells you that what an article describes did not happen for them — the thing the article says is there is not there, the step it gives has been taken and did not work, the state it treats as the goal is the state they say they are already in — you may answer only if an article accounts for that failure. An article explaining why the thing goes wrong is an answer. An article that only says how it is supposed to work is not: repeating it tells someone whose system is broken that it works, and points them where they have already looked. If nothing here explains what went wrong for them, that is false, however squarely the article seems to be about their topic.
 
-WHEN YOU ANSWER, WRITE THE BODY ONLY. The greeting and the sign off are added for you. Do not open with "Hi", "Hello" or "Dear", do not close with "Best regards", "Thanks", "The Support Team" or any signature, and never leave a placeholder in brackets for a name.
+WHEN YOU ANSWER, WRITE THE BODY ONLY. The greeting and the sign off are added for you. Do not open with "Hi", "Hello" or "Dear", do not close with "Best regards", "Thanks", "The Support Team", "${BRAND_NAME}" or any signature, and never leave a placeholder in brackets for a name.
 
 HOW TO LAY IT OUT. "paragraphs" is the body, one short paragraph per entry. Answer the question in the first one, in the first sentence if you can. "steps" is only for things the customer has to do themselves, one plain sentence each, in the order they should do them; leave it null when there is nothing for them to do, and never put an explanation in there that is not an action. Finish with a short paragraph inviting them to reply if this did not sort it out. Two or three paragraphs at the very most.
 
@@ -487,6 +487,27 @@ const SIGN_OFF_LINE =
   /^(kind|best|warm)\s+(regards|wishes)\b|^(regards|sincerely|cheers|thanks|thank\s+you)\b|^(the\s+)?support\s+team\b|^yours\s+(sincerely|faithfully|truly)\b/i;
 
 /**
+ * A paragraph that is the product's name and nothing else, "The" optional.
+ *
+ * Our own sign off has signed as `BRAND_NAME` since #488, so it is the
+ * signature a model copying it would write, and without this the strip below
+ * stopped at that line and left the "Best regards," above it in place: two
+ * sign offs (#513). Built from `BRAND_NAME` rather than typed out again, so a
+ * rename cannot leave it matching the old name.
+ *
+ * Anchored at both ends, unlike `SIGN_OFF_LINE`, and tested against the
+ * paragraph with its trailing punctuation off: "The Great Forge Desk saves it
+ * for you." opens with the name and is a sentence, not a signature.
+ */
+const BRAND_SIGN_OFF = new RegExp(
+  `^(?:the\\s+)?${BRAND_NAME.replace(/^the\s+/i, "")
+    .split(/\s+/)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+")}$`,
+  "i",
+);
+
+/**
  * A sign off welded onto the end of the last real sentence.
  *
  * The variant `SIGN_OFF_LINE` cannot see, and the one actually observed: the
@@ -535,7 +556,8 @@ function withoutBookends(paragraphs: string[]): string[] {
   while (kept.length > 0) {
     const last = kept[kept.length - 1]!;
     const bare = last.replace(/[.,;:!?\s]+$/, "");
-    if (bare.length > SIGN_OFF_MAX || !SIGN_OFF_LINE.test(last)) break;
+    if (bare.length > SIGN_OFF_MAX) break;
+    if (!SIGN_OFF_LINE.test(last) && !BRAND_SIGN_OFF.test(bare)) break;
     kept.pop();
   }
 
