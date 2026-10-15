@@ -30,24 +30,30 @@ saying so.
 section, and both share the `<slug>`. List the open issues that name it:
 
 ```
-(gh issue list --state open --search "<slug> in:body" --limit 100 --json number,title,blockedBy | ConvertFrom-Json) | Select-Object number, title, @{n='blockers';e={$_.blockedBy.nodes.number}}
+(gh issue list --state open --search "<slug> in:body" --limit 100 --json number,title,blockedBy,labels | ConvertFrom-Json) | Select-Object number, title, @{n='blockers';e={$_.blockedBy.nodes.number}}, @{n='labels';e={$_.labels.name}}
 ```
 
 Tickets older than the `## Parent` section name no path; when the search comes
 back empty, ask the user for the issue numbers and read the same fields with
-`gh issue view <n> --json number,title,state,blockedBy`.
+`gh issue view <n> --json number,title,state,blockedBy,labels`.
 
 Order them by their blocking edges, blockers first, ties by issue number. Show
-the order, flag any blocker outside the chain that is still open, and wait for
-the user's OK. State lives in GitHub, so re-running `/chain` on the same
-argument resumes where a stopped chain left off.
+the order, flag any blocker outside the chain that is still open, and flag
+every `ready-for-human` ticket: no worker takes one, so the user lands it
+before the chain reaches it (`to-tickets` gives that label to a ticket that
+grants an agent permissions, which auto mode refuses an agent, as #524 found).
+Wait for the user's OK. State lives in GitHub, so re-running `/chain` on the
+same argument resumes where a stopped chain left off.
 
 ## 2. Run the next link
 
-Take the first ticket whose blockers are all closed. Confirm `git status` is
-clean and `git fetch origin` has run, then check the usage limit with
-`node .claude/scripts/usage-gate.mjs`, which reads the snapshot the user's
-terminal status line writes:
+Take the first ticket whose blockers are all closed. When it is
+`ready-for-human`, the user lands it: once they say its change is in, by
+their own commit or PR, check that `origin/develop` carries it, close the
+ticket with a comment naming the commit, and take the next ticket. Confirm
+`git status` is clean and `git fetch origin` has run, then check the usage
+limit with `node .claude/scripts/usage-gate.mjs`, which reads the snapshot the
+user's terminal status line writes:
 
 - `go`: start the worker.
 - `pause`: stop the chain (step 4) and give the reset time. A ticket started
@@ -166,7 +172,8 @@ The chain stops, and reports, when any of these holds:
 - the usage gate says `pause`, or a ticket stops on an API error a third time;
 - a worker returns `pr=none` or `questions` that are not `none`;
 - a worker's reply still has no `RESULT` line after one continue;
-- the next ticket is blocked by an open issue outside the chain;
+- the next ticket is blocked by an open issue outside the chain, or is
+  `ready-for-human` and its change has not landed;
 - a merge fails or the user declines one.
 
 The ticket that stopped the chain gets its `Usage:` comment too, in step 3's
