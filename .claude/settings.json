@@ -9,6 +9,18 @@
     "mattpocock-skills@claude-plugins-official": false,
     "github@claude-plugins-official": false
   },
+  "permissions": {
+    "allow": [
+      "PowerShell(gh pr merge * --merge --delete-branch)",
+      "Bash(gh pr merge * --merge --delete-branch)",
+      "PowerShell(bun run --filter @ticket/web test *)",
+      "Bash(bun run --filter @ticket/web test *)"
+    ],
+    "ask": [
+      "PowerShell(gh pr merge *-* --merge --delete-branch)",
+      "Bash(gh pr merge *-* --merge --delete-branch)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
