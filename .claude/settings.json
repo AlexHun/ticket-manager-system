@@ -19,6 +19,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-no-verify.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "Read|Edit|Write|Grep|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-env-read.mjs\""
+          }
+        ]
       }
     ],
     "StopFailure": [
@@ -38,6 +47,15 @@
             "type": "command",
             "command": "git fetch origin --quiet",
             "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/print-resume-state.mjs\""
           }
         ]
       }

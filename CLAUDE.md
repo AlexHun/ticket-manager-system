@@ -49,7 +49,9 @@ outgrows its window wants splitting, not compacting.
 
 **Resume from the repo, not from memory.** After an API error, a restore or a
 `Continue`, read `git status`, the current branch and `gh pr view` before the
-next action, and tell the user where things stand.
+next action, and tell the user where things stand. On a resume or after
+compaction, `.claude/hooks/print-resume-state.mjs` prints all three into context
+at session start; after an API error mid-session, read them yourself.
 
 A bug, a flake, or a regression starts at `/mattpocock-skills:diagnosing-bugs`,
 which earns a red feedback loop before it theorises.
@@ -62,6 +64,8 @@ the scratchpad and pass the file — `git commit -F`, `gh pr create --body-file`
 `gh issue comment --body-file` — so quoting never reaches the text. End a line
 on the hook-running or test command so its exit code is the one reported;
 `.claude/hooks/block-no-verify.mjs` refuses a trailing `; echo` or `|| true`.
+`.claude/hooks/block-env-read.mjs` refuses to read or write a local env file,
+which holds live secrets; read its committed example template for the names.
 
 ## Agent skills
 
