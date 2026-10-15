@@ -873,5 +873,10 @@
     "version": "0.1.217",
     "date": "2026-10-14",
     "title": "Keep doc-citations' git calls off a hook's repository (#531)"
+  },
+  {
+    "version": "0.1.219",
+    "date": "2026-10-15",
+    "title": "Say what failed in a plain sentence, never the raw error text"
   }
 ]
