@@ -888,5 +888,10 @@
     "version": "0.1.221",
     "date": "2026-10-15",
     "title": "Send the error boundary's dashboard button to ROUTE"
+  },
+  {
+    "version": "0.1.223",
+    "date": "2026-10-15",
+    "title": "Bare-vitest hook catches indented lines and bunx.exe (#525)"
   }
 ]
