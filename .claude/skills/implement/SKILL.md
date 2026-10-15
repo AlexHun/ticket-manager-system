@@ -53,21 +53,25 @@ invoke it.
    skill asks, and a background report reaches a subagent only between its
    own tool calls: a worker that ends its turn to wait never hears back
    (#523). While the axes are out, run CLAUDE.md's self-check over the whole
-   branch diff and write the PR body to the scratchpad. Then, when this
-   session is itself a subagent, open the PR now (step 8) and keep the turn
-   open with its foreground `gh pr checks <pr> --watch`, which is real work:
-   the harness refuses a standalone `Start-Sleep`, and all four workers of
-   `/chain 513, 521, 524-526` that reached review hit that refusal. Hold
-   every finding until both axes have reported, and state a review's result
-   only from its report. Run an axis still silent once the watch exits inline
-   instead. Fix every finding, or write down why one stands, and update the
-   PR body with each finding and how it was settled.
+   branch diff and write the PR body to the scratchpad. When this session is
+   itself a subagent, delete any `.scratch/review-<n>-*.md` an earlier run
+   left, end each axis's prompt with "Write your full report to
+   `.scratch/review-<n>-<axis>.md` as your last action", then keep the turn
+   open with one foreground PowerShell loop that waits on both files:
+   `$a = '.scratch/review-<n>-standards.md'; $b = '.scratch/review-<n>-spec.md'; $t = 0; while (-not ((Test-Path $a) -and (Test-Path $b)) -and $t -lt 60) { Start-Sleep 15; $t++ }`.
+   That loop ends on a condition; the harness refuses a standalone
+   `Start-Sleep`, which all four workers of `/chain 513, 521, 524-526` that
+   reached review hit. Hold every finding until both axes have reported, and
+   state a review's result only from its report. Run an axis whose file is
+   still missing after the loop's 15 minutes inline instead. Fix every
+   finding, or write down why one stands, and update the PR body with each
+   finding and how it was settled.
    Push, and comment `Progress: reviewed, next is ship (step 8)`. Done when
    both axes' results are in hand, every finding is fixed or answered in the
    PR body, and the fixes are pushed.
 8. **Ship.** Open a PR into `develop` from the body written in step 7, which
-   says `Closes #<n>`, unless step 7 already opened it, and take it to green
-   in CI as CLAUDE.md's Workflow describes.
+   says `Closes #<n>`, and take it to green in CI as CLAUDE.md's Workflow
+   describes.
 
 Done when the PR is open, closes the issue, and every CI job is green. Report
 it and stop: the next ticket starts in a fresh session.
