@@ -50,6 +50,13 @@ radius breaks every call site at once. Sequence it as **expand–contract**:
 off the table in `docs/agents/issue-tracker.md`. If a ticket forecasts above
 `L`, split it.
 
+**A ticket that grants an agent permissions is the user's to land.** Auto mode
+refuses an agent's edit to the `permissions` rules in `.claude/settings.json`
+as self-modification: in #524 the worker's edit and the conductor's were both
+refused, while a hook registration in the same file went through. Mark such a
+ticket `ready-for-human`, and put the exact rules in its body, so the user can
+paste them.
+
 ## 4. Quiz the user
 
 Present the breakdown as a numbered list. For each ticket, give:
@@ -68,7 +75,9 @@ Publish in dependency order, blockers first, so every edge can name a real
 issue:
 
 1. Write each body to a file from the template below. Create the issue with
-   `gh issue create --title "..." --body-file <file> --label ready-for-agent --label forecast/<S|M|L>`.
+   `gh issue create --title "..." --body-file <file> --label ready-for-agent --label forecast/<S|M|L>`,
+   with `ready-for-human` in place of `ready-for-agent` for a ticket that
+   grants an agent permissions.
 2. Add each blocking edge as a native dependency, using the command in
    `docs/agents/issue-tracker.md` (Blocking). The id it takes is the blocker's
    numeric database id, not its `#number`.
@@ -105,7 +114,8 @@ not layer by layer.
 
 </issue-template>
 
-Leave out file paths and code snippets, which go stale fast. One exception: a
+Leave out file paths and code snippets, which go stale fast. Two exceptions: a
 snippet from a prototype that encodes a decision (a state machine, a schema, a
-type shape) more precisely than prose can. Inline only the parts that carry the
-decision, and note that it came from a prototype.
+type shape) more precisely than prose can, and the rules a `ready-for-human`
+ticket asks the user to paste. Inline only the parts that carry the decision,
+and note where a prototype snippet came from.
