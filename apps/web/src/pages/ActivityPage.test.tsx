@@ -258,12 +258,15 @@ describe("ActivityPage", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  test("renders an alert when the request fails", async () => {
+  test("renders an alert when the request fails, without the raw error", async () => {
     mockApiRoutes({ activity: Promise.reject(new Error("boom")) });
     renderActivityPage();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("boom");
+    expect(alert).toHaveTextContent(
+      "Couldn't load the activity feed. Try again.",
+    );
+    expect(alert).not.toHaveTextContent("boom");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 

@@ -62,10 +62,12 @@ export function ResetPasswordPage() {
       token,
     });
 
+    // Better Auth's own `message` is never shown, and `LoginPage` does not show
+    // it either: it is worded its own way ("Invalid token"), not the copy
+    // standard's (#502).
     if (error) {
       setServerError(
-        error.message ??
-          "That link is no longer valid. Ask an admin to send you another.",
+        "That link is no longer valid. Ask an admin to send you another.",
       );
       return;
     }
