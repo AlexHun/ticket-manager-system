@@ -37,8 +37,9 @@ describe("extractErrorMessage", () => {
     expect(extractErrorMessage(err, "fallback")).toBe("fallback");
   });
 
-  test("returns err.message for a generic Error", () => {
-    expect(extractErrorMessage(new Error("boom"), "fallback")).toBe("boom");
+  // A thrown Error's message is written for a developer, not a reader (#502).
+  test("returns the fallback for a generic Error, not its message", () => {
+    expect(extractErrorMessage(new Error("boom"), "fallback")).toBe("fallback");
   });
 
   test("returns the fallback for a non-Error value", () => {

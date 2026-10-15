@@ -519,8 +519,6 @@ describe("UsersPage — delete user", () => {
 
   test("falls back to a Couldn't sentence when the API sends no message", async () => {
     usersGet.mockResolvedValue({ data: { users: [agentUser] } });
-    // Not an `Error`: `extractErrorMessage` prefers an error's own message, so
-    // only a rejection with none reaches the fallback.
     userDelete.mockRejectedValue({});
 
     renderUsersPage();

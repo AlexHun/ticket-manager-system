@@ -137,12 +137,13 @@ describe("TutorialsPage", () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
-  test("renders an alert when the request fails", async () => {
+  test("renders an alert when the request fails, without the raw error", async () => {
     tutorialsGet.mockRejectedValue(new Error("boom"));
     renderTutorialsPage();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("boom");
+    expect(alert).toHaveTextContent("Couldn't load the tutorials. Try again.");
+    expect(alert).not.toHaveTextContent("boom");
   });
 
   test("falls back to a Couldn't sentence when the API sends no message", async () => {

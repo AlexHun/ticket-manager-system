@@ -35,19 +35,18 @@ export function isDemoAiLimit(err: unknown): boolean {
 
 /**
  * The sentence a person reads when a request fails: the API's own `error`
- * when it sent one, otherwise `fallback`. An axios error's own `message`
- * ("Request failed with status code 409", "Network Error") is never it — a
- * status code is not copy (`docs/standards/copy.md`), and the fallback is the
- * "Couldn't …" sentence written for exactly the case the API sent nothing.
+ * when it sent one, otherwise `fallback`. It never shows an error's `message`:
+ * an axios error's is transport text ("Request failed with status code 409",
+ * "Network Error"), and neither that nor a status code is copy
+ * (`docs/standards/copy.md`); any other `Error`'s was written for a developer
+ * (#502). The fallback is the "Couldn't …" sentence written for exactly the
+ * case the API sent nothing.
  */
 export function extractErrorMessage(err: unknown, fallback: string): string {
-  if (axios.isAxiosError(err)) {
-    const responseError = (err.response?.data as { error?: string } | undefined)
-      ?.error;
-    return typeof responseError === "string" && responseError !== ""
-      ? responseError
-      : fallback;
-  }
-  if (err instanceof Error) return err.message;
-  return fallback;
+  if (!axios.isAxiosError(err)) return fallback;
+  const responseError = (err.response?.data as { error?: string } | undefined)
+    ?.error;
+  return typeof responseError === "string" && responseError !== ""
+    ? responseError
+    : fallback;
 }
