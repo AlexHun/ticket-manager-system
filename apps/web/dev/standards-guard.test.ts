@@ -20,7 +20,8 @@ import { stripComments } from "./scan.ts";
  * Matching runs over `stripComments`' output — the project map's own scanner,
  * which blanks comments and keeps strings — so an explanation never fails the
  * build. The `forms` cases at the bottom hold that for every rule: each one is
- * shown a violation it must catch and a comment it must ignore.
+ * shown a violation it must catch and a comment it must ignore, and a rule
+ * whose forms sit close to legitimate code is also shown lines it must pass.
  *
  * Scope is the web workspace's own code — `src/` and `dev/`. The Playwright
  * specs under `tests/e2e` are a different suite and are not read here.
@@ -45,6 +46,9 @@ interface Rule {
   allowed?: string[];
   /** Lines that break the rule, each of which must be caught. */
   catches: string[];
+  /** Lines that keep the rule while resembling a break, each of which must
+   *  pass. Only a rule whose forms sit close to a legitimate one carries it. */
+  passes?: string[];
   /** A comment that only mentions the form, and must be ignored. */
   ignores: string;
 }
@@ -54,7 +58,7 @@ const ROLE = `["'](?:admin|agent)["']`;
 
 const RULES: Rule[] = [
   {
-    name: "A route's path is declared once, in ROUTE: navigate(), <Navigate to>, <Link to> and a pathname comparison read ROUTE.<name>.path or ticketDetailPath, never a path literal",
+    name: "A route's path is declared once, in ROUTE: navigate(), <Navigate to>, <Link to>, a pathname comparison, a location.href assignment and location.assign()/replace() read ROUTE.<name>.path or ticketDetailPath, never a path literal",
     standard: "frontend.md",
     // A quoted literal, or a template that does not start by reading something
     // — `${ROUTE.tickets.path}?status=…` is the record plus a query.
@@ -67,6 +71,11 @@ const RULES: Rule[] = [
       /<(?:Navigate|Link|NavLink)\b[^<]*?\bto=\{\{\s*pathname:\s*(?:["']|`(?!\$\{))/,
       /\bpathname\s*[=!]==\s*(?:["']|`(?!\$\{))/,
       /(?:["']|`)\s*[=!]==\s*(?:[\w$]+\.)*pathname\b/,
+      // A full-page navigation (#544): `window.location.href = "/"` reached
+      // develop in #521 because no form above reads it. `=(?!=)` leaves a
+      // comparison and an `expect(location.href)` read alone.
+      /(?<![\w$])location\.href\s*=(?!=)\s*(?:["']|`(?!\$\{))/,
+      /(?<![\w$])location\.(?:assign|replace)\(\s*(?:["']|`(?!\$\{))/,
     ],
     // Client routes live in `src/`; the node half under `dev/` answers server
     // paths (`/health`). `src/test/` exercises the router helper with synthetic
@@ -77,6 +86,16 @@ const RULES: Rule[] = [
       `<Link onClick={() => track()} to="/tickets">`,
       `<Navigate to={{ pathname: "/login" }} />`,
       `if (location.pathname === "/tickets") return;`,
+      `window.location.href = "/";`,
+      `location.href = \`/tickets\`;`,
+      `window.location.assign("/login");`,
+      `location.replace('/');`,
+    ],
+    passes: [
+      `window.location.href = ROUTE.dashboard.path;`,
+      `window.location.assign(ROUTE.login.path);`,
+      `location.replace(\`\${ROUTE.tickets.path}?status=open\`);`,
+      `expect(location.href).toBe(ROUTE.dashboard.path);`,
     ],
     ignores: `// This used to be \`<Navigate to="/" replace />\`.`,
   },
@@ -243,6 +262,10 @@ describe.each(RULES)("$standard: $name", (rule) => {
 
   test.each(rule.catches)("catches %s", (line) => {
     expect(offendingLines(rule, stripComments(line).code)).toEqual([1]);
+  });
+
+  test.each(rule.passes ?? [])("passes %s", (line) => {
+    expect(offendingLines(rule, stripComments(line).code)).toEqual([]);
   });
 
   test("ignores a comment that only mentions the form", () => {
