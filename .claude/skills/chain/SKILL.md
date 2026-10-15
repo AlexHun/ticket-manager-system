@@ -30,7 +30,7 @@ saying so.
 section, and both share the `<slug>`. List the open issues that name it:
 
 ```
-gh issue list --state open --search "<slug> in:body" --limit 100 --json number,title,blockedBy --jq '.[] | {number, title, blockers: (.blockedBy.nodes | map(.number))}'
+(gh issue list --state open --search "<slug> in:body" --limit 100 --json number,title,blockedBy | ConvertFrom-Json) | Select-Object number, title, @{n='blockers';e={$_.blockedBy.nodes.number}}
 ```
 
 Tickets older than the `## Parent` section name no path; when the search comes

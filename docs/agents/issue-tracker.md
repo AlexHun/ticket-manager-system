@@ -4,9 +4,9 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 ## Conventions
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Create an issue**: `gh issue create --title "..." --body "..."`, or `--body-file <file>` for a multi-line body written to a file first.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **List issues**: `(gh issue list --state open --json number,title,body,labels,comments | ConvertFrom-Json) | Select-Object number, title, body, @{n='labels';e={$_.labels.name}}, @{n='comments';e={$_.comments.body}}` with appropriate `--label` and `--state` filters.
 - **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Without sub-issues, put `Part of #<parent>` at the top of the child body.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
@@ -39,7 +39,7 @@ no issue and is invisible to it.
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 
 - **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `gh api --paginate 'repos/{owner}/{repo}/pulls?state=open' --jq '.[] | select(.author_association | IN("OWNER","MEMBER","COLLABORATOR") | not) | {number, title, author: .user.login, author_association, labels: [.labels[].name]}'`.
+- **List external PRs for triage**: `(gh api --paginate --slurp 'repos/{owner}/{repo}/pulls?state=open' | ConvertFrom-Json) | ForEach-Object { $_ } | Where-Object { $_.author_association -notin 'OWNER','MEMBER','COLLABORATOR' } | Select-Object number, title, @{n='author';e={$_.user.login}}, author_association, @{n='labels';e={$_.labels.name}}`. `--slurp` wraps each page in an outer array, which the `ForEach-Object` unrolls.
 - **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
 
 GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
