@@ -752,7 +752,16 @@ describe("UsagePage", () => {
 
   test("surfaces a failed scan and leaves the page usable", async () => {
     const user = userEvent.setup();
-    post.mockRejectedValue(new Error("EPERM: operation not permitted"));
+    // The middleware's 500 carries the cause as `{ error }` (`dev/plugin.ts`).
+    post.mockRejectedValue(
+      Object.assign(new Error("Request failed with status code 500"), {
+        isAxiosError: true,
+        response: {
+          status: 500,
+          data: { error: "EPERM: operation not permitted" },
+        },
+      }),
+    );
     renderPage();
 
     await user.click(scanButton());
@@ -901,7 +910,15 @@ describe("UsagePage stored reading", () => {
     // The global mock is never cleared, and an earlier test's failed scan
     // toasts on purpose.
     vi.mocked(toast.error).mockClear();
-    get.mockRejectedValue(new Error("SQLITE_CORRUPT: file is not a database"));
+    get.mockRejectedValue(
+      Object.assign(new Error("Request failed with status code 500"), {
+        isAxiosError: true,
+        response: {
+          status: 500,
+          data: { error: "SQLITE_CORRUPT: file is not a database" },
+        },
+      }),
+    );
     const user = userEvent.setup();
     renderPage();
 

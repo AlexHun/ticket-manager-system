@@ -420,12 +420,13 @@ describe("TicketsPage", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
-  test("renders an alert when the request fails", async () => {
+  test("renders an alert when the request fails, without the raw error", async () => {
     ticketsGet.mockRejectedValue(new Error("boom"));
     renderTicketsPage();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("boom");
+    expect(alert).toHaveTextContent("Couldn't load tickets. Try again.");
+    expect(alert).not.toHaveTextContent("boom");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
