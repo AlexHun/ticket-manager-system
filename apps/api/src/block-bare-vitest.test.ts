@@ -1,24 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import path from "node:path";
+import { runHook } from "./test/run-hook";
 
-// `.claude/hooks/block-bare-vitest.mjs` is a PreToolUse hook: it reads the tool
-// call as JSON on stdin and exits 2, with the reason on stderr, to block it.
-// Run it as `.claude/settings.json` does — under `node`, one process per call.
-// It reads only `tool_input.command`, so every case is sent as a Bash call; the
-// same hook is registered for PowerShell.
-const hook = path.resolve(
-  import.meta.dir,
-  "../../../.claude/hooks/block-bare-vitest.mjs",
-);
-
-const run = (command: string) => {
-  const result = Bun.spawnSync(["node", hook], {
-    stdin: Buffer.from(
-      JSON.stringify({ tool_name: "Bash", tool_input: { command } }),
-    ),
+// `.claude/hooks/block-bare-vitest.mjs` is a PreToolUse hook registered for
+// both Bash and PowerShell. It reads `tool_input.command`, and `tool_name` only
+// to pick the shell's escape character for quoted strings, so a case is sent
+// as a Bash call unless it is about PowerShell's quoting.
+const run = (command: string, tool_name = "Bash") =>
+  runHook(".claude/hooks/block-bare-vitest.mjs", {
+    tool_name,
+    tool_input: { command },
   });
-  return { code: result.exitCode, stderr: result.stderr.toString() };
-};
 
 describe("block-bare-vitest hook", () => {
   test.each([
@@ -36,10 +27,14 @@ describe("block-bare-vitest hook", () => {
     "npx.cmd vitest",
     "bun --cwd apps/web x vitest run",
     "bun --cwd=apps/web x vitest",
+    "bun --env-file .env x vitest",
     'pwsh -c "bunx vitest run src/App.test.tsx"',
     'pwsh -NoProfile -Command "Set-Location apps/web; bunx vitest"',
     "bash -c 'cd apps/web && bunx vitest run'",
+    "bash -lc 'bunx vitest run'",
+    'sh -ec "npx vitest"',
     'cmd /c "npx vitest"',
+    "cmd.exe /d /c npx vitest",
     "bash -c \"pwsh -c 'bunx vitest'\"",
     'bash -c "echo \\"go\\"; npx vitest"',
     "git status; powershell.exe -c bunx vitest",
@@ -47,6 +42,14 @@ describe("block-bare-vitest hook", () => {
     const { code, stderr } = run(command);
     expect(code).toBe(2);
     expect(stderr).toContain("bun run --filter @ticket/web test");
+  });
+
+  test("reads a PowerShell string with PowerShell's escape, not bash's", () => {
+    // Read with bash's backslash escape, the first string would run on to the
+    // last quote and swallow the runner between them.
+    const command =
+      'Set-Location "C:\\work\\"; bunx vitest; git commit -m "done"';
+    expect(run(command, "PowerShell").code).toBe(2);
   });
 
   test.each([
@@ -60,6 +63,8 @@ describe("block-bare-vitest hook", () => {
     "bun --cwd apps/web run test",
     'git commit -m "npx vitest and bun x vitest are refused now"',
     "git commit -m 'refuse bunx vitest nested in a shell string'",
+    'git commit -m "fix; npx vitest is refused"',
+    'git commit -m "subject\n\nnpx vitest is refused"',
     'gh issue comment 546 --body "a worker ran pwsh -c \\"bunx vitest\\" from the root"',
     "bash -c 'bun run --filter @ticket/web test'",
   ])("lets `%s` through", (command) => {

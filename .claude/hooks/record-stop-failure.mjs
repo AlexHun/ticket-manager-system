@@ -20,7 +20,7 @@ const git = (args, cwd) => {
 
 let input = {};
 try {
-  input = JSON.parse(readFileSync(0, "utf8").replace(/^﻿/, ""));
+  input = JSON.parse(readFileSync(0, "utf8").replace(/^\uFEFF/, ""));
 } catch {
   // Record the stop even when the input is unreadable.
 }
