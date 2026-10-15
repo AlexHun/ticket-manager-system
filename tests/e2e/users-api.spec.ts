@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { ADMIN_DELETE_REFUSED_MESSAGE } from "@ticket/shared";
+import { ADMIN_DELETE_REFUSED_MESSAGE, USER_ROLE } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { API_URL } from "./helpers/env";
 
@@ -165,7 +165,11 @@ test.describe("Users API — self role-change guard", () => {
     const res = await page.request.patch(
       `${API_URL}/api/users/${adminUserId}`,
       {
-        data: { name: adminUser.name, email: ADMIN.email, role: "agent" },
+        data: {
+          name: adminUser.name,
+          email: ADMIN.email,
+          role: USER_ROLE.agent,
+        },
       },
     );
 
@@ -178,7 +182,9 @@ test.describe("Users API — self role-change guard", () => {
     // demotion had landed and taken this session's own access with it.
     const after = await page.request.get(`${API_URL}/api/users`);
     const body = (await after.json()) as { users: ApiUser[] };
-    expect(body.users.find((u) => u.id === adminUserId)?.role).toBe("admin");
+    expect(body.users.find((u) => u.id === adminUserId)?.role).toBe(
+      USER_ROLE.admin,
+    );
   });
 
   test("PATCH /api/users/:id on yourself with the role unchanged -> 200", async ({
@@ -187,7 +193,11 @@ test.describe("Users API — self role-change guard", () => {
     const res = await page.request.patch(
       `${API_URL}/api/users/${adminUserId}`,
       {
-        data: { name: adminUser.name, email: ADMIN.email, role: "admin" },
+        data: {
+          name: adminUser.name,
+          email: ADMIN.email,
+          role: USER_ROLE.admin,
+        },
       },
     );
 
