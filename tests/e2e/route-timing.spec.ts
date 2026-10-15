@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { TICKET_STATUS } from "@ticket/shared";
+import { TICKET_STATUS, USER_ROLE } from "@ticket/shared";
 import { signIn } from "./helpers/auth";
 import { resetTickets, testDb } from "./helpers/db";
 // The names under test, from the module that writes them — the same reach into
@@ -104,7 +104,7 @@ test.describe("route timing instrumentation", () => {
     // The navigation this route is actually reached by, for every user: the
     // redirect out of /login. `RouteTimingLayout` sits above `ProtectedRoute`
     // precisely so it is mounted to see this one start.
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await expectBracketed(page, ROUTE.dashboard.timingKey);
   });
@@ -112,7 +112,7 @@ test.describe("route timing instrumentation", () => {
   test("opening the ticket list brackets its first data render", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await page.getByRole("link", { name: "Tickets" }).click();
     await expect(page.getByRole("heading", { name: "Tickets" })).toBeVisible();
@@ -121,7 +121,7 @@ test.describe("route timing instrumentation", () => {
   });
 
   test("opening a ticket brackets its first data render", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(ROUTE.tickets.path);
 
     await page.getByRole("row").nth(1).getByRole("link").click();
@@ -133,7 +133,7 @@ test.describe("route timing instrumentation", () => {
   test("a cold load measures from the document's navigation start", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // A document load, not a client navigation: the router's navigation state
     // stays idle through the initial load, so this is the seeded path in

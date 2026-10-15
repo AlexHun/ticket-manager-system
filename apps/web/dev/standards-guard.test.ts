@@ -23,11 +23,18 @@ import { stripComments } from "./scan.ts";
  * shown a violation it must catch and a comment it must ignore, and a rule may
  * also be shown legitimate lines it must pass.
  *
- * Scope is the web workspace's own code — `src/` and `dev/`. The Playwright
- * specs under `tests/e2e` are a different suite and are not read here.
+ * Scope is the web workspace's own code — `src/` and `dev/` — and, for a rule
+ * that sets `e2e`, the Playwright specs and helpers under `tests/e2e` too
+ * (#393). Only the role-literal rule does: the others govern how the app is
+ * built — its controls, its data fetching, its tokens — and a spec drives the
+ * built app rather than being part of it. An e2e file is named by its path
+ * from the repository root.
  */
 
 const WEB_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(WEB_ROOT, "../..");
+const E2E_DIR = "tests/e2e";
+const isE2e = (file: string) => file.startsWith(`${E2E_DIR}/`);
 
 /** This file holds every banned form as a fixture, so it is never scanned. */
 const SELF = "dev/standards-guard.test.ts";
@@ -40,8 +47,11 @@ interface Rule {
   /** The banned forms. Each is matched against comment-stripped source. */
   forms: RegExp[];
   /** Which files the rule reads, as paths relative to `apps/web`. Every
-   *  scanned file when absent. */
+   *  `src/` and `dev/` file when absent. */
   applies?: (file: string) => boolean;
+  /** Also read every `.ts` file under `tests/e2e`, all of them: `applies` is
+   *  asked only about the web workspace's own files. */
+  e2e?: true;
   /** Files where the form is the point rather than a violation. */
   allowed?: string[];
   /** Lines that break the rule, each of which must be caught. */
@@ -166,8 +176,11 @@ const RULES: Rule[] = [
     ignores: `/** The test setup answers \`matches: true\` to \`prefers-reduced-motion\`. */`,
   },
   {
-    name: 'Role values read USER_ROLE from @ticket/shared: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
+    name: 'Role values read USER_ROLE from @ticket/shared: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, a signIn() or getByText() argument, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
+    // The Playwright specs drive the API and assert on its answers, so they
+    // write role values as often as the app does (#393).
+    e2e: true,
     forms: [
       new RegExp(`\\brole\\s*:\\s*${ROLE}`),
       new RegExp(`\\b(?:fromValue|toValue)\\s*:\\s*${ROLE}`),
@@ -179,6 +192,11 @@ const RULES: Rule[] = [
       // bans both by name.
       new RegExp(`\\bas\\s+${ROLE}`),
       new RegExp(`\\[\\s*${ROLE}\\s*,\\s*${ROLE}\\s*\\]`),
+      // The e2e `signIn(page, role)` helper takes a `UserRole`, unlike the
+      // API's `asCaller` fixture keys, and the users page prints the bare role
+      // value in its badge, so a query for that badge is one too.
+      new RegExp(`\\bsignIn\\(\\s*[\\w$.]+\\s*,\\s*${ROLE}`),
+      new RegExp(`\\.getByText\\(\\s*${ROLE}`),
     ],
     catches: [
       `const ADMIN = { name: "Aaron", role: "admin" };`,
@@ -187,25 +205,36 @@ const RULES: Rule[] = [
       `case "agent":`,
       `const r = value as "admin" | "agent";`,
       `roles: ["admin", "agent"],`,
+      `await signIn(page, "agent");`,
+      `await expect(row.getByText("admin", { exact: true })).toBeVisible();`,
+    ],
+    passes: [
+      `await signIn(page, USER_ROLE.admin);`,
+      `await expect(row.getByText("Admin", { exact: true })).toBeVisible();`,
     ],
     ignores: `// a placeholder span instead of a button for role === "admin".`,
   },
 ];
 
-/** Every `.ts`/`.tsx` file under `src/` and `dev/`, relative to `apps/web`. */
+/** The directory a scanned path is relative to. */
+const rootOf = (file: string) => (isE2e(file) ? REPO_ROOT : WEB_ROOT);
+
+/** Every `.ts`/`.tsx` file under `src/` and `dev/`, relative to `apps/web`,
+ *  then every `.ts` file under `tests/e2e`, relative to the repository root. */
 function sourceFiles(): string[] {
   const files: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(path.join(WEB_ROOT, dir), {
+  const walk = (root: string, dir: string, ext: RegExp) => {
+    for (const entry of readdirSync(path.join(root, dir), {
       withFileTypes: true,
     })) {
       const rel = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) walk(rel);
-      else if (/\.tsx?$/.test(entry.name)) files.push(rel);
+      if (entry.isDirectory()) walk(root, rel, ext);
+      else if (ext.test(entry.name)) files.push(rel);
     }
   };
-  walk("src");
-  walk("dev");
+  walk(WEB_ROOT, "src", /\.tsx?$/);
+  walk(WEB_ROOT, "dev", /\.tsx?$/);
+  walk(REPO_ROOT, E2E_DIR, /\.ts$/);
   return files.filter((file) => file !== SELF);
 }
 
@@ -227,26 +256,27 @@ const FILES = sourceFiles();
 const CODE = new Map(
   FILES.map((file) => [
     file,
-    stripComments(readFileSync(path.join(WEB_ROOT, file), "utf8")).code,
+    stripComments(readFileSync(path.join(rootOf(file), file), "utf8")).code,
   ]),
 );
 
 test("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
   // walk is a green run that checked nothing.
-  expect(FILES.length).toBeGreaterThan(100);
+  expect(FILES.filter((file) => !isE2e(file)).length).toBeGreaterThan(100);
   expect(FILES).toContain("src/App.tsx");
   expect(FILES).toContain("dev/scan.ts");
   expect(FILES.some(isTest)).toBe(true);
+  expect(FILES).toContain("tests/e2e/users-api.spec.ts");
+  expect(FILES).toContain("tests/e2e/helpers/auth.ts");
 });
 
 describe.each(RULES)("$standard: $name", (rule) => {
-  test("holds across src/ and dev/", () => {
+  test(`holds across src/ and dev/${rule.e2e ? ", and tests/e2e" : ""}`, () => {
     const offenders: string[] = [];
     for (const file of FILES) {
-      if (rule.applies?.(file) === false || rule.allowed?.includes(file)) {
-        continue;
-      }
+      if (isE2e(file) ? !rule.e2e : rule.applies?.(file) === false) continue;
+      if (rule.allowed?.includes(file)) continue;
       for (const line of offendingLines(rule, CODE.get(file)!)) {
         offenders.push(`${file}:${line}`);
       }

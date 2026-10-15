@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { USER_ROLE } from "@ticket/shared";
 import { acceptInvitation, CREDENTIALS, signIn } from "./helpers/auth";
 import { resetE2eEmails, resetE2eUsers } from "./helpers/db";
 
@@ -23,7 +24,7 @@ const RENAMED_USER_NAME = "E2E Renamed User";
 // serial so create/edit/delete each build on the previous test's state.
 test.describe.serial("User management (admin)", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),
@@ -36,12 +37,16 @@ test.describe.serial("User management (admin)", () => {
     const adminRow = page.getByRole("row", { name: ADMIN.email });
     await expect(adminRow).toBeVisible();
     await expect(adminRow.getByText("Admin", { exact: true })).toBeVisible();
-    await expect(adminRow.getByText("admin", { exact: true })).toBeVisible();
+    await expect(
+      adminRow.getByText(USER_ROLE.admin, { exact: true }),
+    ).toBeVisible();
 
     const agentRow = page.getByRole("row", { name: AGENT.email });
     await expect(agentRow).toBeVisible();
     await expect(agentRow.getByText("Agent", { exact: true })).toBeVisible();
-    await expect(agentRow.getByText("agent", { exact: true })).toBeVisible();
+    await expect(
+      agentRow.getByText(USER_ROLE.agent, { exact: true }),
+    ).toBeVisible();
   });
 
   test("creates a new user without setting a password", async ({ page }) => {
@@ -68,7 +73,9 @@ test.describe.serial("User management (admin)", () => {
     const newRow = page.getByRole("row", { name: NEW_USER_EMAIL });
     await expect(newRow).toBeVisible();
     await expect(newRow.getByText(NEW_USER_NAME)).toBeVisible();
-    await expect(newRow.getByText("agent", { exact: true })).toBeVisible();
+    await expect(
+      newRow.getByText(USER_ROLE.agent, { exact: true }),
+    ).toBeVisible();
   });
 
   test("edits the created user", async ({ page }) => {
@@ -119,7 +126,9 @@ test.describe.serial("User management (admin)", () => {
     await expect(dialog).toBeHidden();
 
     const promoted = page.getByRole("row", { name: NEW_USER_EMAIL });
-    await expect(promoted.getByText("admin", { exact: true })).toBeVisible();
+    await expect(
+      promoted.getByText(USER_ROLE.admin, { exact: true }),
+    ).toBeVisible();
     // An admin cannot be deleted, so the row's third slot is now a spacer.
     await expect(promoted.getByRole("button", { name: /Delete/ })).toHaveCount(
       0,
@@ -135,7 +144,9 @@ test.describe.serial("User management (admin)", () => {
     await expect(dialog).toBeHidden();
 
     const demoted = page.getByRole("row", { name: NEW_USER_EMAIL });
-    await expect(demoted.getByText("agent", { exact: true })).toBeVisible();
+    await expect(
+      demoted.getByText(USER_ROLE.agent, { exact: true }),
+    ).toBeVisible();
   });
 
   // The UI half of the rule that keeps at least one admin on the desk. The
@@ -182,7 +193,7 @@ test.describe.serial("User management (admin)", () => {
 
 test.describe("Admin row protections", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),
@@ -213,7 +224,7 @@ test.describe("Admin row protections", () => {
 
 test.describe("User lifecycle — sign-in consequences", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),

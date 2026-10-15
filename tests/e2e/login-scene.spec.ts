@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { BRAND_NAME } from "@ticket/shared";
+import { BRAND_NAME, USER_ROLE } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 
@@ -210,7 +210,7 @@ test.describe("login scene with motion", () => {
     });
 
     // The matcher has to be able to fail: signing in loads the scene.
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     expect(fetched.filter(isLoginScene)).not.toEqual([]);
 
     fetched.length = 0;
