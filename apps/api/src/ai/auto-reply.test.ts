@@ -741,17 +741,23 @@ describe("autoReply — the bookends it was told not to write", () => {
 
   test("drops a sign off led by a dash, the same as one without", async () => {
     // "— The Support Team" slipped past every pattern above, which all anchor on
-    // the first word, and `withoutDashes` then took the dash off and shipped the
-    // rest under our own sign off (#547). A hyphen, an en dash, an em dash, and
-    // the "-- " that opens an email signature, each before every closer stripped.
+    // the first word; `withoutDashes` then took an en or em dash off and shipped
+    // the rest under our own sign off, and a hyphen went out as it was (#547). A
+    // hyphen, an en dash, an em dash, and the "-- " that opens an email
+    // signature, each before every closer stripped.
     const closers = [
       "Best regards,",
       "Kind regards",
+      "Warm wishes",
+      "Best wishes",
       "Regards",
+      "Sincerely",
       "Cheers",
       "Thanks!",
       "Thank you",
       "Yours sincerely",
+      "Yours faithfully",
+      "Yours truly",
       "The Support Team",
       "Support Team",
       BRAND_NAME,
@@ -805,11 +811,23 @@ describe("autoReply — the bookends it was told not to write", () => {
 
   test("keeps a real sentence that happens to start with a dash", async () => {
     // The dash is looked past only to find a closer; a paragraph that goes on
-    // past one is still the body, and the length guard still holds for it.
-    for (const sentence of [
-      "- Thanks for letting us know, that helps us track it down.",
-      "- The Support Team can take a closer look if it happens again.",
-      `- ${BRAND_NAME} saves it for you.`,
+    // past one is still the body. The first two are kept by `SIGN_OFF_MAX`, the
+    // third by `BRAND_SIGN_OFF` being anchored at its end. An en or em dash
+    // opening a line is then taken off by `withoutDashes`, as on any line, so
+    // the sentence after it is what has to survive.
+    for (const [sentence, sent] of [
+      ...[
+        "Thanks for letting us know, that helps us track it down.",
+        "The Support Team can take a closer look if it happens again.",
+        `${BRAND_NAME} saves it for you.`,
+      ].map((text) => [`- ${text}`, `- ${text}`] as const),
+      ...["–", "—"].map(
+        (dash) =>
+          [
+            `${dash} Thanks for letting us know, that helps us track it down.`,
+            "Thanks for letting us know, that helps us track it down.",
+          ] as const,
+      ),
     ]) {
       answerWith({
         paragraphs: [
@@ -823,7 +841,9 @@ describe("autoReply — the bookends it was told not to write", () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) continue;
-      expect(result.reply).toContain(sentence);
+      expect(result.reply).toBe(
+        `Hi Marta,\n\nBuffering is almost always the quality setting.\n\n${sent}\n\nBest regards,\n${BRAND_NAME}`,
+      );
     }
   });
 
