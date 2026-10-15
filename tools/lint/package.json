@@ -1,0 +1,14 @@
+{
+  "name": "@ticket/lint",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "cd ../.. && eslint --config tools/lint/eslint.config.js apps/api packages/core packages/shared"
+  },
+  "devDependencies": {
+    "eslint": "^10.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.71.2"
+  }
+}

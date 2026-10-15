@@ -44,7 +44,7 @@ const steps = {
 };
 
 const actual = { ...(await import("./auto-reply-steps")) };
-mock.module("./auto-reply-steps", () => ({
+await mock.module("./auto-reply-steps", () => ({
   ...actual,
   draftReply: async (...args: Parameters<typeof actual.draftReply>) =>
     steps.reply ?? actual.draftReply(...args),

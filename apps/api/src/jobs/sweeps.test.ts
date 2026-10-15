@@ -85,7 +85,7 @@ const provider = { ...(await import("../ai/provider")) };
  * does".
  */
 let aiConfigured: boolean | undefined;
-mock.module("../ai/provider", () => ({
+await mock.module("../ai/provider", () => ({
   ...provider,
   isAiConfigured: () => aiConfigured ?? provider.isAiConfigured(),
 }));
@@ -114,7 +114,7 @@ let watchedQueue:
   | undefined;
 
 const bossModule = { ...(await import("./boss")) };
-mock.module("./boss", () => ({
+await mock.module("./boss", () => ({
   ...bossModule,
   // The only export replaced. `registerWorker`, `registerSweep` and the rest
   // stay real, which is what keeps `boss.test.ts` honest whichever order the

@@ -87,7 +87,7 @@ const config = { evalConfigured: () => configured };
 const evalRunModule = await import("../jobs/eval-run");
 
 let enqueued: { runId: number; corpus: EvalCorpus; caseIds: string[] }[] = [];
-mock.module("../jobs/eval-run", () => ({
+await mock.module("../jobs/eval-run", () => ({
   ...evalRunModule,
   enqueueEvalRun: async (
     runId: number,

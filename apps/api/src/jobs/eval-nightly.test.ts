@@ -43,7 +43,7 @@ let watching = false;
 // spreading itself.
 const startRunModule = { ...(await import("../evals/start-run")) };
 
-mock.module("../evals/start-run", () => ({
+await mock.module("../evals/start-run", () => ({
   ...startRunModule,
   startEvalRun: async (corpus: EvalCorpus, caseIds: string[]) => {
     if (!watching) return startRunModule.startEvalRun(corpus, caseIds);

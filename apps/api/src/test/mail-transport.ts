@@ -42,7 +42,7 @@ export async function stubMailTransport(): Promise<void> {
   // object").
   const actual = { ...(await import("../mail/transport")) };
 
-  mock.module("../mail/transport", () => ({
+  await mock.module("../mail/transport", () => ({
     ...actual,
     isMailConfigured: () =>
       mailTransportStub.bound || actual.isMailConfigured(),

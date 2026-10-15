@@ -15,6 +15,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
 COPY packages/shared/package.json packages/shared/
+COPY tools/lint/package.json tools/lint/
 
 RUN bun install --frozen-lockfile
 

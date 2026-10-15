@@ -133,7 +133,7 @@ const summarizeTicket = mock(
 // nothing to spread. `POLISH_FAILURE` needs no spreading either: the route
 // reads it from `../ai/polish`, which nothing replaces, so the real values
 // travel.
-mock.module("../ai/polish-reply", () => ({
+await mock.module("../ai/polish-reply", () => ({
   isPolishReplyConfigured: () => configured,
   polishReply,
 }));
@@ -149,7 +149,7 @@ mock.module("../ai/polish-reply", () => ({
 // nothing else touches — while its module has no test of its own. `summarize`
 // has none; `polish` has one, which is why that half goes through
 // `../ai/polish-reply` above (#303).
-mock.module("../ai/summarize", () => ({
+await mock.module("../ai/summarize", () => ({
   ...summarizeModule,
   isSummarizeConfigured: () => summaryConfigured,
   summarizeTicket,

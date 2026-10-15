@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tools/*"
   ],
   "scripts": {
     "prepare": "husky",
@@ -17,6 +18,7 @@
     "build": "bun --filter '*' build",
     "typecheck": "bun --filter '*' typecheck",
     "test": "bun run --filter '@ticket/shared' test && bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
+    "lint": "bun run --filter @ticket/lint lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "tokens": "bun scripts/issue-tokens.ts",
