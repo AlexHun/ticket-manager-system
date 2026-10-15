@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  BRAND_NAME,
   DEMO_MODE_OFF_MESSAGE,
   DEMO_START_LIMIT_MESSAGE,
   USER_ROLE,
@@ -58,13 +59,12 @@ afterEach(() => {
 
 const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
 
-const FORM_DESCRIPTION =
-  "Use your email and password to access The Great Forge Desk.";
+const FORM_DESCRIPTION = `Use your email and password to access ${BRAND_NAME}.`;
 
 describe("LoginPage — rendering", () => {
   test("renders the sign-in form with both fields and submit button", () => {
     renderLogin();
-    expect(screen.getByText("The Great Forge Desk")).toBeInTheDocument();
+    expect(screen.getByText(BRAND_NAME)).toBeInTheDocument();
     expect(screen.getByText(FORM_DESCRIPTION)).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe("LoginPage — rendering", () => {
   test("heads the page with the product's name and labels the form's panel", () => {
     renderLogin();
     expect(
-      screen.getByRole("heading", { level: 1, name: "The Great Forge Desk" }),
+      screen.getByRole("heading", { level: 1, name: BRAND_NAME }),
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Sign in" })).toContainElement(
       screen.getByLabelText("Email"),
@@ -388,7 +388,7 @@ describe("LoginPage — demo session", () => {
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't reach The Great Forge Desk.",
+      `Couldn't reach ${BRAND_NAME}.`,
     );
   });
 });

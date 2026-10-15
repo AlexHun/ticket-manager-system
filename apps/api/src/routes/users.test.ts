@@ -440,7 +440,9 @@ function expectInviteLink(textBody: string | undefined) {
  * Both auth emails name the product and sign off as it (`copy.md`, Outbound
  * email): no "support desk" in the body and no "The Support Team" at the foot.
  * The name is written out rather than read from `BRAND_NAME` on purpose: this
- * pins what the recipient reads, which an import would follow anywhere.
+ * pins what the recipient reads, which an import would follow anywhere. Each
+ * literal in this file is counted by the product-name rule's allowance in
+ * `src/standards-guard.test.ts` (#545), so a sixth fails it.
  */
 function expectSignedByTheProduct(textBody: string | undefined) {
   expect(textBody).toContain("The Great Forge Desk");
