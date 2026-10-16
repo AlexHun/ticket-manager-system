@@ -22,7 +22,7 @@ each piece exists twice:
   generated directory needs another exclusion. Neither guard reads `packages/`
   or `scripts/`, so a rule like "the generated Prisma client is imported only
   by `./db`" has no say there at all.
-- **The git environment cleanup.** `repositoryFreeEnv` in `doc-citations.ts`
+- **The git environment cleanup.** The one in `apps/api/src/doc-citations.ts`
   removes the 15 variables `git rev-parse --local-env-vars` lists. #531 was
   `pre-push` reaching a git call with `GIT_DIR` set, which pointed it at the
   wrong repository. `gitEnv` in `apps/web/dev/usage-store.ts` removes 3 of them.
