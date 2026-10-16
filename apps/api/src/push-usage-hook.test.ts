@@ -17,6 +17,8 @@ import { REPO_ROOT } from "./test/run-hook";
 // `bun run tokens --push <url>`: a fake that prints what the real one prints,
 // so no case scans transcripts or reaches the network. Home is a temporary
 // directory, so the log it writes is this test's, not the developer's.
+// `runHook` is not used for the run itself: it is synchronous and passes no
+// environment, and these cases set credentials and start hooks side by side.
 const HOOK = path.join(REPO_ROOT, ".claude/hooks/push-usage.mjs");
 const USER = "pushuser";
 const PASS = "s3cret-pass";
@@ -42,7 +44,9 @@ setTimeout(() => {
     console.error("gh did not answer, so titles are blank.");
     console.log("pushed 120 responses (3 new) and 40 issues to https://develop.example.app.");
   } else {
-    console.error("Push to " + url + "/__devtools/usage-push failed: 401 Unauthorized");
+    // A server that echoes the request back puts the header's base64 here too.
+    const header = Buffer.from(process.env.DEV_BASIC_AUTH_USERNAME + ":" + process.env.DEV_BASIC_AUTH_PASSWORD).toString("base64");
+    console.error("Push to " + url + "/__devtools/usage-push failed: 401 Unauthorized (Basic " + header + ")");
     process.exitCode = 1;
   }
 }, Number(delay));
@@ -144,5 +148,6 @@ describe("push-usage hook", () => {
     );
     expect(lines.join("\n")).not.toContain(USER);
     expect(lines.join("\n")).not.toContain(PASS);
+    expect(lines[1]).toContain("(Basic ***)");
   }, 20_000);
 });
