@@ -138,11 +138,11 @@ Re-check the PR yourself: `gh pr checks <pr>` all passing and
   Usage: <Name> final_context_tokens=<n> tool_uses=<n> duration_ms=<n> RESULT ticket=#<n> pr=#<pr> ci=<ci> questions=<...>
   ```
 
-  `final_context_tokens` is the notice's `<subagent_tokens>`, renamed for what
+  `final_context_tokens=<n>` is the notice's `<subagent_tokens>`, renamed for what
   it holds: how full the worker's context was at its last API call. Measured
   on #545-#547, it came within 2% of that response's input, cache and output
   summed, and ran about 10-14x the worker's output tokens. Comments posted
-  before the rename call it `subagent_tokens`. Read a ticket's spend from the
+  before the rename write it `subagent_tokens=<n>`. Read a ticket's spend from the
   transcripts, with `bun run tokens` or the `/__dev/usage` page.
 
   Write it to a scratchpad file and pass it with
