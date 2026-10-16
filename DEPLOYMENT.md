@@ -326,7 +326,8 @@ listing, and develop's scans tally those exactly as the laptop's do.
    the command below in the background and returns, provided
    `DEV_BASIC_AUTH_USERNAME` and `DEV_BASIC_AUTH_PASSWORD` are set in the
    environment Claude Code runs in (on Windows, as user-scope variables).
-   Without both it does nothing. Each push appends one line to
+   Claude Code reads them when it starts, so a session started before they
+   were set does not push. Without both it does nothing. Each push appends one line to
    `~/.claude-usage-history/push.log`, the time and then the rows added or the
    error, with the credentials redacted; read it when the page looks stale,
    since nothing else reports a failed push. A session that crashes or stops on
