@@ -321,8 +321,18 @@ listing, and develop's scans tally those exactly as the laptop's do.
    which `Dockerfile.dev` sets and which marks this server's history as fed by
    pushes; nothing on the dashboard sets it.
 
-3. **Push**, from the repo root on the laptop, after any session whose spend
-   should show:
+3. **Push.** Since #557 this runs by itself when a Claude Code session in
+   this repo ends: the `SessionEnd` hook `.claude/hooks/push-usage.mjs` starts
+   the command below in the background and returns, provided
+   `DEV_BASIC_AUTH_USERNAME` and `DEV_BASIC_AUTH_PASSWORD` are set in the
+   environment Claude Code runs in (on Windows, as user-scope variables).
+   Claude Code reads them when it starts, so a session started before they
+   were set does not push. Without both it does nothing. Each push appends one line to
+   `~/.claude-usage-history/push.log`, the time and then the rows added or the
+   error, with the credentials redacted; read it when the page looks stale,
+   since nothing else reports a failed push. A session that crashes or stops on
+   the usage limit may not fire the hook, and the next push catches up. To push
+   by hand, from the repo root on the laptop:
 
    ```bash
    DEV_BASIC_AUTH_USERNAME=… DEV_BASIC_AUTH_PASSWORD=… \
