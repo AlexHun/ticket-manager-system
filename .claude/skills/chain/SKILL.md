@@ -139,12 +139,11 @@ Re-check the PR yourself: `gh pr checks <pr>` all passing and
   ```
 
   `final_context_tokens` is the notice's `<subagent_tokens>`, renamed for what
-  it holds: how full the worker's context was at its last API call, not what
-  it spent. Measured on #545-#547,
-  it came within 2% of the last response's input, cache and output summed,
-  and ran 10-14x the worker's output tokens, which `bun run tokens` and the
-  `/__dev/usage` page count. Spend is read from the transcripts, never from
-  this line.
+  it holds: how full the worker's context was at its last API call. Measured
+  on #545-#547, it came within 2% of that response's input, cache and output
+  summed, and ran about 10-14x the worker's output tokens. Comments posted
+  before the rename call it `subagent_tokens`. Read a ticket's spend from the
+  transcripts, with `bun run tokens` or the `/__dev/usage` page.
 
   Write it to a scratchpad file and pass it with
   `gh issue comment <n> --body-file <file>`. Done when this ticket's comment
