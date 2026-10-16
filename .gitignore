@@ -77,6 +77,8 @@ desktop.ini
 .claude/agent-memory/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+# Scratchpad for commit messages, PR bodies and review reports (CLAUDE.md, implement skill).
+.scratch/
 
 # --- Personal LinkedIn drafts (docs/linkedin/) ------------------------------
 # Unpublished posts and the author's CV profile; the repo is public.
