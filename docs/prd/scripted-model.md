@@ -1,6 +1,6 @@
 # PRD: One scripted model for every API test that needs an answer
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-16
+**Status:** Draft Â· **Author:** Aleksei Hunich Â· **Date:** 2026-10-16
 
 ## Problem
 
@@ -21,9 +21,12 @@ That is eight registrations for one fact, "the model answered X". `mock.module`'
 registry is one process wide, so two files that stub the same specifier with
 stateful stubs leave one of them inert (#174). The fix each time has been a new
 one-function shim, so each test owns a specifier nothing else loads:
-`ai/polish-reply.ts`, `evals/reply-to-case.ts`, and the `draftReply` half of
-`jobs/auto-reply-steps.ts`. Each is a function, never a re-export (#303), with
-a docblock explaining the registry. #303 found 75 failures in reverse file
+`polishReply` in `ai/polish-reply.ts`, `evals/reply-to-case.ts`, and
+`draftReply` in `jobs/auto-reply-steps.ts`. Each is a function, never a
+re-export (#303), with a docblock explaining the registry. Some registrations
+carry a second job as well. The two in `routes/ai.test.ts` also flip the
+route's config guard, and the one in `auto-reply-ticket.test.ts` also wraps
+`readResolveState` to interleave a write. #303 found 75 failures in reverse file
 order, all but one from two registry collisions.
 
 Two costs follow:
@@ -45,7 +48,7 @@ module registry.
 | Metric                                                                         | Today      | Target    |
 | ------------------------------------------------------------------------------ | ---------- | --------- |
 | `mock.module` registrations that stand for a model answer, outside the preload | 8          | 0         |
-| One-function shims that exist only for the registry (the three above)          | 3          | 0         |
+| One-function model shims that exist only for the registry (the three above)    | 3          | 0         |
 | _Guardrail:_ the API suite in CI's forward and reverse file orders             | green      | green     |
 | _Guardrail:_ what each moved test asserts                                      | as written | unchanged |
 
@@ -53,16 +56,16 @@ module registry.
 
 ### In this pass
 
-| #   | Requirement                                                                                                                                                                                                                                 | Priority |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| R1  | One fake model is registered once, in the test preload, and every feature's model call in the API suite reaches it. A test scripts what the next call answers, or throws, and the script is reset between tests.                            | Must     |
-| R2  | With nothing scripted, a model call fails loudly and names the feature that made it. No test silently gets an answer it did not ask for.                                                                                                    | Must     |
-| R3  | A test can read what each call was sent: the system prompt, the user prompt and the provider options, so every assertion today's tests make on the prompt still has a home.                                                                 | Must     |
-| R4  | The eight registrations in the table are gone. Each test scripts the model instead, and asserts what it asserted before.                                                                                                                    | Must     |
-| R5  | `ai/polish-reply.ts`, `evals/reply-to-case.ts` and the `draftReply` half of `jobs/auto-reply-steps.ts` are deleted, and their callers import the feature directly. `readResolveState` stays, because a test interleaves a write through it. | Must     |
-| R6  | The API suite is green in both of CI's file orders after each step.                                                                                                                                                                         | Must     |
-| R7  | `ai/classify.ts` gets its own test file, covering the prompt and the classifier's result for each kind of answer and failure.                                                                                                               | Should   |
-| R8  | `testing-api.md` says where the fake lives and that a model answer is scripted, never registered, and the shims' docblocks are gone with them.                                                                                              | Should   |
+| #   | Requirement                                                                                                                                                                                                                                                                          | Priority |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| R1  | One fake model is registered once, in the test preload, and every feature's model call in the API suite reaches it. A test scripts what the next call answers, or throws, and the script is reset between tests.                                                                     | Must     |
+| R2  | With nothing scripted, a model call fails loudly and names the feature that made it. No test silently gets an answer it did not ask for.                                                                                                                                             | Must     |
+| R3  | A test can read what each call was sent: the system prompt, the user prompt and the provider options, so every assertion today's tests make on the prompt still has a home.                                                                                                          | Must     |
+| R4  | None of the eight registrations in the table stands for a model answer any more. Each test scripts the model instead and asserts what it asserted before. A registration that carries a second job shrinks to that job: a config guard, as ADR-0016 keeps it, or `readResolveState`. | Must     |
+| R5  | `polishReply`, `evals/reply-to-case.ts` and `draftReply` are deleted, and their callers call the feature directly. `isPolishReplyConfigured` and `readResolveState` stay where they are.                                                                                             | Must     |
+| R6  | The API suite is green in both of CI's file orders after each step.                                                                                                                                                                                                                  | Must     |
+| R7  | `ai/classify.ts` gets its own test file, covering the prompt and the classifier's result for each kind of answer and failure.                                                                                                                                                        | Should   |
+| R8  | `testing-api.md` says where the fake lives and that a model answer is scripted, never registered, and the shims' docblocks are gone with them.                                                                                                                                       | Should   |
 
 ### Non-goals
 
@@ -88,7 +91,7 @@ module registry.
 - **ADR-0014 and `testing-api.md`.** The preload already sets a fake
   `OPENAI_API_KEY` and points `OPENAI_BASE_URL` at a closed port, so a call that
   escapes the fake fails rather than reaching OpenAI. That stays.
-- **`ai` 7.0.69 ships `MockLanguageModelV4` in `ai/test`**, checked in the
+- **`ai` 7.0.69 ships MockLanguageModelV4 in `ai/test`**, checked in the
   installed package on 2026-10-16. context7 was unreachable, so its exact
   behaviour is unverified and the plan's first slice confirms it.
 - **ADR-0004.** The auto-reply's checks and their tests do not change. Only how
@@ -106,12 +109,12 @@ module registry.
 ## Open questions
 
 - [ ] Where does the fake attach: `openaiModel`, or the provider object it
-      builds? — _affects R1_, decide in the plan
+      builds? â€” _affects R1_, decide in the plan
 - [ ] Is a call routed to its feature by the model id, or by order? Several
-      tests make a classify call and an auto-reply call in one flow. —
+      tests make a classify call and an auto-reply call in one flow. â€”
       _affects R1, R4_, decide in the plan
 - [ ] **Assumed:** a model call that escapes the fake still fails at the closed
       port, so nothing reaches OpenAI even if R1 has a gap.
 - [ ] How does `provider.test.ts` still test the real `openaiModel` once the
-      preload replaces the model for the whole process? — _affects R1_,
+      preload replaces the model for the whole process? â€” _affects R1_,
       decide in the plan
