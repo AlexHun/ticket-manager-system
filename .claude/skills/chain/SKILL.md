@@ -130,20 +130,27 @@ Re-check the PR yourself: `gh pr checks <pr>` all passing and
 - Merge with `gh pr merge <pr> --merge --delete-branch`, the repo's merge-commit
   style. `Closes #<n>` in the PR body closes the ticket, which is what unblocks
   the next one.
-- Post the worker's spend on the issue, from its completion notice's
+- Post the worker's run on the issue, from its completion notice's
   `<usage>`: a `Usage:` comment, one line per notice when the ticket took
   more than one worker or round:
 
   ```
-  Usage: <Name> subagent_tokens=<n> tool_uses=<n> duration_ms=<n> RESULT ticket=#<n> pr=#<pr> ci=<ci> questions=<...>
+  Usage: <Name> final_context_tokens=<n> tool_uses=<n> duration_ms=<n> RESULT ticket=#<n> pr=#<pr> ci=<ci> questions=<...>
   ```
+
+  `final_context_tokens=<n>` is the notice's `<subagent_tokens>`, renamed for what
+  it holds: how full the worker's context was at its last API call. Measured
+  on #545-#547, it came within 2% of that response's input, cache and output
+  summed, and ran about 10-14x the worker's output tokens. Comments posted
+  before the rename write it `subagent_tokens=<n>`. Read a ticket's spend from the
+  transcripts, with `bun run tokens` or the `/__dev/usage` page.
 
   Write it to a scratchpad file and pass it with
   `gh issue comment <n> --body-file <file>`. Done when this ticket's comment
-  is posted. It is the one record of the spend that survives a session that
-  writes no transcript: session `6732eb5d` (`/chain 491-493`) wrote none,
-  neither its own nor any worker's, so `bun run tokens` and `retro` had
-  nothing to read (#522).
+  is posted. It is the one record of the worker's run — its size, tool uses
+  and duration — that survives a session that writes no transcript: session
+  `6732eb5d` (`/chain 491-493`) wrote none, neither its own nor any worker's,
+  so `bun run tokens` and `retro` had nothing to read (#522).
 - Score the work, then `git fetch origin` and go back to step 2.
 
 **Score** each ticket out of 100, from the worker's report, the PR body, its
