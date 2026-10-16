@@ -903,5 +903,15 @@
     "version": "0.1.229",
     "date": "2026-10-15",
     "title": "Review fixes for the dash-led sign off strip"
+  },
+  {
+    "version": "0.1.234",
+    "date": "2026-10-16",
+    "title": "Push usage history to develop at session end"
+  },
+  {
+    "version": "0.1.234",
+    "date": "2026-10-16",
+    "title": "End a timed-out push's whole tree, redact the auth header"
   }
 ]
