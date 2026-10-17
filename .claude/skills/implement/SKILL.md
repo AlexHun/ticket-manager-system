@@ -53,7 +53,11 @@ invoke it.
    skill asks, and a background report reaches a subagent only between its
    own tool calls: a worker that ends its turn to wait never hears back
    (#523). While the axes are out, run CLAUDE.md's self-check over the whole
-   branch diff and write the PR body to the scratchpad. When this session is
+   branch diff and write the PR body to the scratchpad: call the Skill tool
+   with `mattpocock-skills:pr` and fill its template, then add `Closes #<n>`
+   and a `## Review` section for the findings below. **Door** and **Blast
+   Radius** are read by `/chain`, which merges a one-way door only on the
+   user's yes. When this session is
    itself a subagent, delete any `.scratch/review-<n>-*.md` an earlier run
    left, end each axis's prompt with "Write your full report to
    `.scratch/review-<n>-<axis>.md` as your last action", then keep the turn
@@ -64,8 +68,8 @@ invoke it.
    reached review hit. Hold every finding until both axes have reported, and
    state a review's result only from its report. Run an axis whose file is
    still missing after the loop's 15 minutes inline instead. Fix every
-   finding, or write down why one stands, and update the PR body with each
-   finding and how it was settled.
+   finding, or write down why one stands, and list each finding and how it
+   was settled under the PR body's `## Review`.
    Push, and comment `Progress: reviewed, next is ship (step 8)`. Done when
    both axes' results are in hand, every finding is fixed or answered in the
    PR body, and the fixes are pushed.
