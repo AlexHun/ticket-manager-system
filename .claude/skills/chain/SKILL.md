@@ -21,8 +21,8 @@ the ticket keeps both.
 Arguments: the plan or PRD path (`docs/plans/<slug>.md`, `docs/prd/<slug>.md`)
 or an explicit list of issue numbers, plus an optional `auto`. Asking is the
 default: every merge waits for the user's yes. `auto` merges a green,
-question-free PR without asking; the user can also switch it on mid-chain by
-saying so.
+question-free, two-way-door PR without asking; the user can also switch it on
+mid-chain by saying so.
 
 ## 1. Find the chain
 
@@ -122,11 +122,14 @@ Allow two resumes per ticket. A third stop stops the chain (step 4).
 ## 3. Gate the merge
 
 Re-check the PR yourself: `gh pr checks <pr>` all passing and
-`gh pr view <pr> --json mergeable,baseRefName` showing `MERGEABLE` into
-`develop`. Then:
+`gh pr view <pr> --json mergeable,baseRefName,body` showing `MERGEABLE` into
+`develop`. The body follows `mattpocock-skills:pr`'s template, which
+`implement` fills; read its **Door** and **Blast Radius** under
+`## Merge Danger`. Then:
 
-- With `auto`, merge. Without it, show the PR link with the `RESULT` line and
-  ask; the user's yes covers this one PR only.
+- With `auto`, merge a two-way door. Otherwise — no `auto`, a one-way door,
+  or a body with no **Door** — show the PR link with the `RESULT` line, the
+  Door and the Blast Radius, and ask; the user's yes covers this one PR only.
 - Merge with `gh pr merge <pr> --merge --delete-branch`, the repo's merge-commit
   style. `Closes #<n>` in the PR body closes the ticket, which is what unblocks
   the next one.
@@ -160,9 +163,9 @@ grow its context with every ticket, so the score judges what the team showed:
 | Part      | Points | Earned by                                                                           |
 | --------- | ------ | ----------------------------------------------------------------------------------- |
 | Spec fit  | 30     | every acceptance criterion delivered; anything beyond the ticket flagged and argued |
-| Quality   | 25     | tests that prove the change; the review's findings and how each was settled         |
+| Quality   | 25     | Evidence whose before and after prove the change; the `## Review` findings settled  |
 | CI        | 15     | green on the first push; less for each fix round                                    |
-| Judgement | 15     | decisions the user owns raised, not buried; scope held                              |
+| Judgement | 15     | decisions the user owns raised, not buried; scope held; Door and Blast Radius true  |
 | Report    | 15     | accurate and plain, the `RESULT` line right                                         |
 
 Give the score with one line on where points went. A stop the worker did not
