@@ -84,13 +84,13 @@ cost.
 
 ## Risks
 
-| Risk                                                                                                              | Impact                                                 | Mitigation                                                                        |
-| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| The transcript layout (`subagents/*.jsonl`, `.meta.json`) is undocumented and changes across Claude Code versions | The tree breaks after an update with no warning        | A layout the page can't read shows a warning naming the file, never an empty page |
-| A session writes no transcript (session `6732eb5d`, #522)                                                         | That chain is invisible here and its spend is missing  | The page can't fix this; the `Usage:` issue comment stays the fallback            |
-| R9's step is inferred from tool calls and drifts when `implement` is edited                                       | A wrong step reads as fact                             | Should, not Must; an unrecognised step shows as unknown rather than a guess       |
-| A crashed session reads as Running forever                                                                        | The page tells the developer to wait on something dead | R11                                                                               |
-| The R5 hook fires in every session of every clone                                                                 | A slow or failing hook costs every session             | The hook writes one local file and exits; it never reaches the network            |
+| Risk                                                                                                                                    | Impact                                                 | Mitigation                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| The transcript layout (`subagents/agent-<id>.jsonl` and `agent-<id>.meta.json`) is undocumented and changes across Claude Code versions | The tree breaks after an update with no warning        | A layout the page can't read shows a warning naming the file, never an empty page |
+| A session writes no transcript (session `6732eb5d`, #522)                                                                               | That chain is invisible here and its spend is missing  | The page can't fix this; the `Usage:` issue comment stays the fallback            |
+| R9's step is inferred from tool calls and drifts when `implement` is edited                                                             | A wrong step reads as fact                             | Should, not Must; an unrecognised step shows as unknown rather than a guess       |
+| A crashed session reads as Running forever                                                                                              | The page tells the developer to wait on something dead | R11                                                                               |
+| The R5 hook fires in every session of every clone                                                                                       | A slow or failing hook costs every session             | The hook writes one local file and exits; it never reaches the network            |
 
 ## Open questions
 
@@ -105,7 +105,7 @@ cost.
 - [ ] **Assumed:** R11's idle time is TBD. It needs a measurement of the
       longest quiet gap a healthy session shows (a long `gh pr checks --watch`).
 - [ ] **Assumed:** a top-level session's "task" is its first prompt, cut to one
-      line, since it has no `.meta.json` description.
+      line, since it has no `agent-<id>.meta.json` description.
 - [ ] **Assumed:** cache-read tokens are left off the cards, as they're left
       out of the forecast comparison on the Usage page.
 - [ ] **Assumed:** the page sits in the dev-tools nav beside Map, Tests and
