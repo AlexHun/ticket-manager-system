@@ -19,7 +19,8 @@ web: new: apps/web/src/dev/SessionsPage.tsx, routed in DevRoutes.tsx,
                 <session>/subagents/agent-<id>.jsonl + agent-<id>.meta.json
           → new: a waiting-state file written by a new hook in
                  .claude/hooks/, registered in .claude/settings.json
-          → gh: one `gh issue list` call (dev/issues.ts), for chains only
+          → gh: one `gh issue list` call (dev/issues.ts), for chains only,
+                through #566's shared git/gh cleanup
 ```
 
 Every slice's E2E reads `CLAUDE_TRANSCRIPT_DIR`'s fixture copy, the one the
@@ -157,6 +158,23 @@ guess.
 
 **E2E:** extends the spec: the fixture worker that has run `gh pr create`
 reads "ship", and its card lists the tools in the fixture.
+
+## Existing issues
+
+Open issues on 2026-10-19 that touch the layers above, most of them cut from
+the `one-repo-scanner` plan and the improve-architecture review. The
+**blocks** rows become blocking edges when tickets are cut.
+
+| Issue | What it changes                                                                           | Relation to this plan                                                                                                                                                               |
+| ----- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #553  | The root `tsc` over the E2E project fails on `.ts` imports, and no CI job type-checks it  | **Blocks slice 1.** Slice 1's spec imports `src/dev` contracts, and fixing #553 first means it is type-checked from its first commit. Still `needs-triage`, so it is triaged first. |
+| #535  | `bun run lint` covers `apps/web`, with `exhaustive-deps` and `no-floating-promises`       | **Blocks slice 2.** Slice 2's stream hook is the effect-heavy code those rules are for. Landing #535 first means the hook is linted when written, not retrofitted.                  |
+| #566  | Every `git` and `gh` spawn goes through one cleanup, with a check that fails on any other | **Blocks slice 5.** Slice 5 adds a `gh issue list` call. Landing #566 first means the call is written once, through the shared cleanup, and #566's check covers it.                 |
+| #565  | One comment stripper in a new shared tooling workspace                                    | No edge. It edits `dev/scan.ts`, which no slice touches.                                                                                                                            |
+| #567  | Both standards guards share one rule runner over git's tracked files                      | No edge. New Sessions files are held to whichever guard is on `develop`, and a tracked-files guard sees a new file only once it is added to git.                                    |
+| #568  | Standards rules reach `packages/` and `scripts/`                                          | No edge. No slice writes to either.                                                                                                                                                 |
+| #585  | `/__dev/tests` on develop fails: the dev image lacks `.claude/hooks`, git and Node        | No edge. Slice 3's hook test sits beside `push-usage-hook.test.ts`, which already fails there for this reason, so #585's fix should cover it too.                                   |
+| #452  | An open tab doesn't reload when develop redeploys                                         | Unrelated. The Sessions page is local-only.                                                                                                                                         |
 
 ## Requirement coverage
 
