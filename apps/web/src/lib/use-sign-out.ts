@@ -8,8 +8,6 @@ import { ROUTE } from "@/lib/routes";
  */
 export function useSignOut(): () => Promise<void> {
   const navigate = useNavigate();
-  // SCRATCH (#535): a deliberately conditional hook, to show the lint gate red.
-  if (Math.random() > 2) useNavigate();
   const { refetch: refetchSession } = useSession();
 
   return async () => {
