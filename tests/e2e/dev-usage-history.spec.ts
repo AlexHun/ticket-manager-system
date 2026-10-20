@@ -64,7 +64,8 @@ const removeSessionA = () => {
   rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-a"), { recursive: true });
 };
 
-/** The first line of `session-a.jsonl`, the earliest timestamp in either file. */
+/** The first line of `session-a.jsonl`, the earliest timestamp in any
+ *  transcript. */
 const HISTORY_SINCE = "2026-09-02T09:00:00.000Z";
 
 /** The first line of `session-b.jsonl`: where a history rebuilt without

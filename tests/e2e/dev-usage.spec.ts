@@ -850,7 +850,8 @@ test.describe("dev tools: Usage", () => {
     );
     // 32,000 + 5,000 is what a row that swallowed it would read.
     await expect(row).not.toContainText("37,000");
-    // And the distribution is quartiles of the two issues, not of three figures.
+    // And the distribution is quartiles of the three issues, not of four
+    // figures with the `main` turn among them.
     await expect(
       page.getByRole("region", { name: "Output distribution" }),
     ).toContainText(CHARTS.measured);

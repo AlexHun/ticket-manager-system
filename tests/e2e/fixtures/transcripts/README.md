@@ -8,7 +8,7 @@ page has figures an assertion can be written against — a real machine's spend
 is not something a test can name. The specs remake that copy before they scan,
 and are free to change it; these files are never written to.
 
-What the five files add up to, and why each line is here:
+What the five transcripts add up to, and why each line is here:
 
 | Issue  | Output tokens                                       | Turns | Sessions | Cache read                                                 |
 | ------ | --------------------------------------------------- | ----- | -------- | ---------------------------------------------------------- |
