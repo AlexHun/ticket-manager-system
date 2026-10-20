@@ -45,7 +45,7 @@ export function DemoBanner() {
       <Button asChild variant="outline" size="xs">
         <Link to={ROUTE.welcome.path}>{WELCOME_LABEL.bannerLink}</Link>
       </Button>
-      <Button variant="outline" size="xs" onClick={exitDemo}>
+      <Button variant="outline" size="xs" onClick={() => void exitDemo()}>
         Exit demo
       </Button>
     </section>

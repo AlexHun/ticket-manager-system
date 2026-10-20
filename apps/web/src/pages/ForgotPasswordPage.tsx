@@ -86,7 +86,7 @@ export function ForgotPasswordPage() {
               </div>
             ) : (
               <form
-                onSubmit={handleSubmit(onSubmit)}
+                onSubmit={(event) => void handleSubmit(onSubmit)(event)}
                 noValidate
                 className="flex flex-col gap-4"
               >

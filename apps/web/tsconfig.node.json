@@ -19,5 +19,9 @@
   // file — alone in `src/dev/` — writes the `.ts` extension on its own relative
   // import: Vite's native config loader resolves nothing extensionless in
   // anything the node half pulls in, transitively included.
-  "include": ["vite.config.ts", "dev"]
+  //
+  // `csp.ts` is the policy `vite.config.ts` imports. Typecheck reached it through
+  // that import already; it is named here because the lint gate's project
+  // service only finds a file a tsconfig names (#535).
+  "include": ["vite.config.ts", "csp.ts", "dev"]
 }

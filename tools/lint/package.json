@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "cd ../.. && eslint --config tools/lint/eslint.config.js apps/api packages/core packages/shared"
+    "lint": "cd ../.. && eslint --config tools/lint/eslint.config.js apps/api apps/web packages/core packages/shared"
   },
   "devDependencies": {
     "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.71.2"
   }

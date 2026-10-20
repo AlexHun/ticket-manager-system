@@ -63,11 +63,12 @@ function useTicketQuery(id: string | undefined) {
   // something unrelated happened to touch the query. Keyed on the ticket's own
   // id rather than the query object, so a later mutation that leaves the id
   // unchanged (status, category, a reply) does not re-fire this.
+  const ticketId = query.data?.id;
   useEffect(() => {
-    if (query.data) {
+    if (ticketId) {
       void queryClient.invalidateQueries({ queryKey: ticketKeys.unread });
     }
-  }, [query.data?.id, queryClient]);
+  }, [ticketId, queryClient]);
 
   return query;
 }

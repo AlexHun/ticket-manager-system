@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,19 +88,21 @@ export function ArchitectureView() {
 
   // Focus follows the level: opening a box lands it on Back, and leaving lands
   // it on the box that was opened, so a keyboard user is never left on a
-  // control that has just disappeared.
+  // control that has just disappeared. Only a change of level moves focus, so
+  // `selectedId` is read through an effect event rather than watched.
+  const focusSelectedBox = useEffectEvent(() => {
+    if (!selectedId) return;
+    runtimeRef.current
+      ?.querySelector<SVGGElement>(`[${GRAPH_NODE_ATTRIBUTE}="${selectedId}"]`)
+      ?.focus();
+  });
   useEffect(() => {
     if (openBox) {
       backRef.current?.focus();
-    } else if (wasOpen.current && selectedId) {
-      runtimeRef.current
-        ?.querySelector<SVGGElement>(
-          `[${GRAPH_NODE_ATTRIBUTE}="${selectedId}"]`,
-        )
-        ?.focus();
+    } else if (wasOpen.current) {
+      focusSelectedBox();
     }
     wasOpen.current = openBox !== null;
-    // Only a change of level moves focus, so `selectedId` is read, not watched.
   }, [openBox]);
 
   const onKeyDown = (event: KeyboardEvent) => {

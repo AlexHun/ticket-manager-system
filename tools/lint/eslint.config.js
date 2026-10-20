@@ -1,6 +1,7 @@
-// The backend lint gate (#534): two type-aware rules and nothing else, over
-// the three backend workspaces. `docs/standards/conventions.md` has which rules,
-// why they run in CI only, what a run costs and how to exempt one line.
+// The lint gate: type-aware rules over the backend (#534) and the web app
+// (#535), and nothing else. `docs/standards/conventions.md` has which rules,
+// why they run in CI only, what a run costs and how to exempt one line;
+// `docs/standards/frontend.md` has the web app's two hooks rules.
 //
 // This config lives in its own workspace because typescript-eslint drives the
 // classic TypeScript compiler API, which TypeScript 7 no longer ships: its peer
@@ -8,9 +9,15 @@
 // linker resolves that peer against this package's own `typescript@6.0.3`, so
 // the pin here changes nothing the apps compile with.
 import { fileURLToPath } from "node:url";
+import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+
+const promiseRules = {
+  "@typescript-eslint/no-floating-promises": "error",
+  "@typescript-eslint/no-misused-promises": "error",
+};
 
 export default [
   {
@@ -19,10 +26,11 @@ export default [
     // ESLint runs from is ignored whatever the config says.
     files: [
       "apps/api/**/*.ts",
+      "apps/web/**/*.{ts,tsx}",
       "packages/core/**/*.ts",
       "packages/shared/**/*.ts",
     ],
-    ignores: ["apps/api/src/generated/**"],
+    ignores: ["apps/api/src/generated/**", "apps/web/dist/**"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -45,9 +53,14 @@ export default [
       reportUnusedDisableDirectives: "error",
     },
     plugins: { "@typescript-eslint": tseslint.plugin },
+    rules: promiseRules,
+  },
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
     rules: {
-      "@typescript-eslint/no-floating-promises": "error",
-      "@typescript-eslint/no-misused-promises": "error",
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
     },
   },
 ];

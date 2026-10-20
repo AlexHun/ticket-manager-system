@@ -53,7 +53,11 @@ export function AppTopBar() {
             {session.user.name}
           </span>
         )}
-        <Button variant="outline" size="sm" onClick={handleSignOut}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void handleSignOut()}
+        >
           Sign out
         </Button>
       </div>
