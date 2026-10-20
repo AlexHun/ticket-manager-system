@@ -135,16 +135,16 @@ Root scripts run from the repo root; anything database-shaped must run from
 `apps/api` — [`SCRIPTS.md`](./SCRIPTS.md) explains why, and is the full index of
 every command with what it writes and where it may be run.
 
-| Command                               | Does                                      |
-| ------------------------------------- | ----------------------------------------- |
-| `bun run dev`                         | both apps in watch mode                   |
-| `bun run build`                       | build every workspace                     |
-| `bun run typecheck`                   | typecheck the workspaces and E2E specs    |
-| `bun run lint`                        | type-aware lint of the backend workspaces |
-| `bun run --filter '@ticket/api' test` | API unit tests (`bun test`)               |
-| `bun run --filter '@ticket/web' test` | web unit tests (Vitest + Testing Library) |
-| `bun run test:e2e`                    | Playwright end-to-end suite               |
-| `bun run test:e2e:ui`                 | Playwright in UI mode                     |
+| Command                               | Does                                           |
+| ------------------------------------- | ---------------------------------------------- |
+| `bun run dev`                         | both apps in watch mode                        |
+| `bun run build`                       | build every workspace                          |
+| `bun run typecheck`                   | typecheck the workspaces and E2E specs         |
+| `bun run lint`                        | type-aware lint of both apps and both packages |
+| `bun run --filter '@ticket/api' test` | API unit tests (`bun test`)                    |
+| `bun run --filter '@ticket/web' test` | web unit tests (Vitest + Testing Library)      |
+| `bun run test:e2e`                    | Playwright end-to-end suite                    |
+| `bun run test:e2e:ui`                 | Playwright in UI mode                          |
 
 **End-to-end tests** run against their own database (`ticket_manager_test`) on
 their own ports (API `:3002`, web `:4001`), so a suite can run while
