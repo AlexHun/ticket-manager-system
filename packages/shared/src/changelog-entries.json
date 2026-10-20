@@ -913,5 +913,10 @@
     "version": "0.1.234",
     "date": "2026-10-16",
     "title": "End a timed-out push's whole tree, redact the auth header"
+  },
+  {
+    "version": "0.1.240",
+    "date": "2026-10-20",
+    "title": "Typecheck the root E2E project, and let it pass"
   }
 ]
