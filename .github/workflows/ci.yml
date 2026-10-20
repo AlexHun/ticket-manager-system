@@ -91,7 +91,9 @@ jobs:
       - name: Check formatting
         run: bun run format:check
 
-      - name: Typecheck all workspaces
+      # Every workspace, then the root project that holds playwright.config.ts
+      # and tests/e2e (#553; docs/standards/conventions.md).
+      - name: Typecheck all workspaces and the E2E project
         run: bun run typecheck
 
       # Type-aware ESLint over the three backend workspaces, two rules only:
