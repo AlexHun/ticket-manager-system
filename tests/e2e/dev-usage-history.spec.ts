@@ -50,8 +50,19 @@ import {
 /** `session-b.jsonl`'s two issues, from `fixtures/transcripts/README.md`. */
 const SESSION_B = { issue102: "3,000", issue105: "90,000" } as const;
 
-/** `session-a.jsonl`'s one issue, from the same README. */
-const SESSION_A = { issue101: "20,000" } as const;
+/** `session-a.jsonl`'s one issue, its subagents' spend included, from the same
+ *  README. */
+const SESSION_A = { issue101: "32,000" } as const;
+
+/**
+ * Session `a` whole, as Claude Code's cleanup takes it: its transcript and the
+ * directory beside it holding its three subagent transcripts (#589). Deleting
+ * the file alone would leave `#101` the subagents' 12,000.
+ */
+const removeSessionA = () => {
+  rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-a.jsonl"));
+  rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-a"), { recursive: true });
+};
 
 /** The first line of `session-a.jsonl`, the earliest timestamp in either file. */
 const HISTORY_SINCE = "2026-09-02T09:00:00.000Z";
@@ -77,17 +88,17 @@ const warnings = (page: Page) => page.locator("[data-usage-warning]");
  */
 const PANELS = {
   accuracy: "1/2 on target (50%)",
-  quartiles: "p25 3,000 · median 20,000 · p75 90,000",
-  quartileCells: ["3,000", "20,000", "90,000"],
+  quartiles: "p25 3,000 · median 32,000 · p75 90,000",
+  quartileCells: ["3,000", "32,000", "90,000"],
   edges: "S <60,000 · M <150,000 · L <250,000",
 } as const;
 
 /** After 40,000 more output tokens on `#102` (3,000 → 43,000): the sorted
- *  totals are 20,000, 43,000, 90,000. `#102` carries no forecast, so the
+ *  totals are 32,000, 43,000, 90,000. `#102` carries no forecast, so the
  *  accuracy figure does not move. */
 const SECOND_SCAN = {
-  quartiles: "p25 20,000 · median 43,000 · p75 90,000",
-  quartileCells: ["20,000", "43,000", "90,000"],
+  quartiles: "p25 32,000 · median 43,000 · p75 90,000",
+  quartileCells: ["32,000", "43,000", "90,000"],
 } as const;
 
 const REPO_ROOT = path.resolve(
@@ -143,7 +154,7 @@ test.describe("dev tools: Usage history", () => {
     const scan = page.getByRole("button", { name: "Scan" });
 
     await scan.click();
-    await expect(reading(page)).toContainText("2 transcripts");
+    await expect(reading(page)).toContainText("5 transcripts");
     // Before anything else is read: a Vite adopted on 4001 from another session
     // has none of the overrides, and would be reading — and writing — this
     // machine's own transcripts and history.
@@ -157,7 +168,7 @@ test.describe("dev tools: Usage history", () => {
     rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-b.jsonl"));
     await scan.click();
 
-    await expect(reading(page)).toContainText("1 transcript,");
+    await expect(reading(page)).toContainText("4 transcripts,");
     await expect(outFor(page, 102)).toHaveText(SESSION_B.issue102);
     await expect(outFor(page, 105)).toHaveText(SESSION_B.issue105);
 
@@ -282,7 +293,7 @@ test.describe("dev tools: Usage history", () => {
     await scan.click();
     await expect(since).toHaveAttribute("datetime", HISTORY_SINCE);
 
-    rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-a.jsonl"));
+    removeSessionA();
     await scan.click();
 
     await expect(reading(page)).toContainText("1 transcript,");
@@ -351,7 +362,7 @@ test.describe("dev tools: Usage history", () => {
     await expect(since).toHaveAttribute("datetime", HISTORY_SINCE);
     await expect(outFor(page, 101)).toHaveText(SESSION_A.issue101);
 
-    rmSync(path.join(TRANSCRIPT_WORKING_DIR, "session-a.jsonl"));
+    removeSessionA();
     rmSync(USAGE_HISTORY_PATH);
     await scan.click();
 
@@ -397,7 +408,7 @@ test.describe("dev tools: Usage history", () => {
     expect(readFileSync(USAGE_HISTORY_PATH, "utf8")).toBe(junk);
 
     const { stdout, stderr } = await runTokens();
-    expect(stdout).toMatch(/^#101\s.*\s20k\s/m);
+    expect(stdout).toMatch(/^#101\s.*\s32k\s/m);
     expect(stderr).toContain(USAGE_HISTORY_PATH);
     expect(stderr).toContain("USAGE_HISTORY_FILE");
     expect(readFileSync(USAGE_HISTORY_PATH, "utf8")).toBe(junk);

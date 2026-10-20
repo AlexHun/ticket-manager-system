@@ -36,10 +36,11 @@ import {
  * its own, and what this repository's issues are titled changes every time
  * somebody files one — so `playwright.config.ts` points
  * `CLAUDE_TRANSCRIPT_DIR` at a working copy of `fixtures/transcripts`, two
- * files whose totals are written down in that directory's README and restated
- * here as literals, and `GH_ISSUES_FILE` at the listing in
- * `fixtures/gh-issues.ts`. Recomputing either with the code under test would
- * make this spec agree with it about anything, including a wrong answer.
+ * sessions and three subagent transcripts whose totals are written down in
+ * that directory's README and restated here as literals, and `GH_ISSUES_FILE`
+ * at the listing in `fixtures/gh-issues.ts`. Recomputing either with the code
+ * under test would make this spec agree with it about anything, including a
+ * wrong answer.
  *
  * **No sign-in, no database, no API.** `/__dev` sits outside `ProtectedRoute`
  * and outside `AppShell` by construction (`DevRoutes.tsx`), and this page talks
@@ -59,10 +60,11 @@ import {
 
 /** The fixture's arithmetic, from `fixtures/transcripts/README.md`. */
 const EXPECTED = {
-  // 12,000 + 8,000 across two turns of `feat/101-a`, in one session. 20,000
-  // against the `forecast/S` band (<60k) in `fixtures/gh-issues.ts` is on
-  // target.
-  issue101: { out: "20,000", turns: "2", sessions: "1", cacheRead: "400,000" },
+  // 12,000 + 8,000 across two turns of `feat/101-a`, and 5,000 + 3,000 +
+  // 4,000 across the three responses of the subagents that session started
+  // (#589), all in one session. 32,000 against the `forecast/S` band (<60k) in
+  // `fixtures/gh-issues.ts` is on target.
+  issue101: { out: "32,000", turns: "5", sessions: "1", cacheRead: "560,000" },
   // One turn of `fix/102-b`, on an issue the listing carries no band for.
   issue102: { out: "3,000" },
   // One turn of `feat/105-over-its-band`, sharing `session-b.jsonl` with
@@ -92,7 +94,7 @@ const EXPECTED = {
  * label, `#103` has a band and no work — a chart that scored either would
  * report 1/3 or 1/4 here.
  *
- * **The distribution is three values: 3,000, 20,000 and 90,000.** Nearest-rank
+ * **The distribution is three values: 3,000, 32,000 and 90,000.** Nearest-rank
  * over them puts one mark on each. The two lower ones share band `S`, which
  * keeps the case the grouped label in `UsageCharts.tsx` exists for — two labels
  * at one x that a run drawing them one line each would overprint — and p75 now
@@ -100,7 +102,7 @@ const EXPECTED = {
  */
 const CHARTS = {
   accuracy: "1/2 on target (50%)",
-  quartiles: "p25 3,000 · median 20,000 · p75 90,000",
+  quartiles: "p25 3,000 · median 32,000 · p75 90,000",
   measured: "3 issues with recorded spend",
 } as const;
 
@@ -244,7 +246,7 @@ const SUNK = `#${FIXTURE_103!.number}`;
  *
  * `#105` leads the descending order because an over-budget row cannot be
  * anything but the largest figure in this fixture: `over` against `forecast/S`
- * means at least 60,000 output tokens, against `#101`'s 20,000 and `#102`'s
+ * means at least 60,000 output tokens, against `#101`'s 32,000 and `#102`'s
  * 3,000. The sunk row is outside the flip in both.
  */
 const SPENT_DESCENDING = ["#105", "#101", "#102", SUNK];
@@ -300,7 +302,8 @@ test.describe("dev tools: Usage", () => {
     // Before the rows, because this is what a wrong answer usually means: the
     // page read somewhere other than the fixture.
     await expect(gathered).toContainText(TRANSCRIPT_WORKING_DIR);
-    await expect(gathered).toContainText("2 transcripts");
+    // Two sessions and the three subagent transcripts under `session-a/`.
+    await expect(gathered).toContainText("5 transcripts");
     // The stamp survives the locale formatting beside it, and is a real date.
     const stamp = await gathered.locator("time").getAttribute("datetime");
     expect(Number.isNaN(Date.parse(stamp ?? ""))).toBe(false);
@@ -761,7 +764,7 @@ test.describe("dev tools: Usage", () => {
     // and since #274 added the over-budget row p75 sits alone in `M` — so both
     // arrangements are drawn on the one chart. `L` and `XL` hold no mark at
     // all, which is why the axis above is asserted separately.
-    for (const mark of ["p25 3,000", "median 20,000", "p75 90,000"]) {
+    for (const mark of ["p25 3,000", "median 32,000", "p75 90,000"]) {
       await expect(
         distribution.locator("svg text", { hasText: mark }),
       ).toBeVisible();
@@ -823,10 +826,11 @@ test.describe("dev tools: Usage", () => {
   });
 
   /**
-   * And no issue's figures absorbed it. `#101`'s output is the two turns of
-   * `feat/101-a` and nothing else — the `main` turn sits between them in
-   * `session-a.jsonl`, in the same session, which is exactly the arrangement a
-   * scan that attributed by session rather than by branch would get wrong.
+   * And no issue's figures absorbed it. `#101`'s output is the five turns of
+   * `feat/101-a`, three of them its subagents', and nothing else — the `main`
+   * turn sits between its two top-level turns in `session-a.jsonl`, in the
+   * same session, which is exactly the arrangement a scan that attributed by
+   * session rather than by branch would get wrong.
    */
   test("leaves the main turn out of every issue's figures", async ({
     page,
@@ -844,8 +848,8 @@ test.describe("dev tools: Usage", () => {
     await expect(row.getByRole("cell").nth(CELL.turns)).toHaveText(
       EXPECTED.issue101.turns,
     );
-    // 20,000 + 5,000 is what a row that swallowed it would read.
-    await expect(row).not.toContainText("25,000");
+    // 32,000 + 5,000 is what a row that swallowed it would read.
+    await expect(row).not.toContainText("37,000");
     // And the distribution is quartiles of the two issues, not of three figures.
     await expect(
       page.getByRole("region", { name: "Output distribution" }),
@@ -889,7 +893,7 @@ test.describe("dev tools: Usage", () => {
 
     await table.getByRole("button", { name: "Output tokens" }).click();
 
-    // 3,000 before 20,000 before 90,000 — and the row with no figures at all
+    // 3,000 before 32,000 before 90,000 — and the row with no figures at all
     // still last, which is the direction the sink has to be proved in.
     await expect(order).toHaveText(SPENT_ASCENDING);
     await expect(outHeader).toHaveAttribute("aria-sort", "ascending");
@@ -941,7 +945,7 @@ test.describe("dev tools: Usage", () => {
    * on it that came back from a re-scan without them would satisfy "the chosen
    * sort survives" and leave the rows ranked by a column with no arrow and no
    * `aria-sort` — a ranking with nothing on screen to explain it. The fixture's
-   * three spending rows disagree about turns and output tokens (`#101` has two
+   * three spending rows disagree about turns and output tokens (`#101` has five
    * turns and the middle spend; `#102` and `#105` have one turn each, at the
    * extremes), so ascending by turns is visibly a different question from the
    * default: the two one-turn rows come first, in issue order, which is the
