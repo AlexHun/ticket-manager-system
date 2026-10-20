@@ -92,8 +92,7 @@ jobs:
         run: bun run format:check
 
       # Every workspace, then the root project that holds playwright.config.ts
-      # and tests/e2e. Until #553 nothing typechecked the root, so a type error
-      # in a spec reached develop unreported.
+      # and tests/e2e (#553; docs/standards/conventions.md).
       - name: Typecheck all workspaces and the E2E project
         run: bun run typecheck
 
