@@ -15,6 +15,10 @@ blob-report
 # Lockfile.
 bun.lock
 
+# Subagent meta files, kept byte for byte as Claude Code writes them: one line
+# each, and one cut off mid-key on purpose (#589), which Prettier cannot parse.
+tests/e2e/fixtures/transcripts/**/*.meta.json
+
 # Agent skills. Most of these are vendored from upstream repos and pinned by
 # content hash in skills-lock.json (see `.claude/skills/`, `.agents/skills/`) —
 # reformatting one changes its hash and puts this repo permanently out of sync

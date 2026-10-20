@@ -47,7 +47,7 @@ const issue = (
 /**
  * Five issues: the three the transcript fixture spends on, and two it does not.
  *
- * `#101` spent 20,000 output tokens against a `forecast/S` band (<60k), so it
+ * `#101` spent 32,000 output tokens against a `forecast/S` band (<60k), so it
  * is **on target** — the enriched row the spec reads a title, an `href` and a
  * verdict off. `#102` carries no forecast label at all, which is the other case
  * worth holding: it must render with its figures and *no* verdict, rather than
