@@ -14,11 +14,6 @@ import tseslint from "typescript-eslint";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-const promiseRules = {
-  "@typescript-eslint/no-floating-promises": "error",
-  "@typescript-eslint/no-misused-promises": "error",
-};
-
 export default [
   {
     // Every path below is read from the repository root: the `lint` script
@@ -53,7 +48,10 @@ export default [
       reportUnusedDisableDirectives: "error",
     },
     plugins: { "@typescript-eslint": tseslint.plugin },
-    rules: promiseRules,
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+    },
   },
   {
     files: ["apps/web/**/*.{ts,tsx}"],
