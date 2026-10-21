@@ -10,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
 import {
   type Citation,
   checkCitations,
@@ -20,7 +21,6 @@ import {
   type Exemption,
   isSymbolSource,
   renameHints,
-  repositoryFreeEnv,
   resolvedCitationsIn,
   SymbolIndex,
   symbolSources,

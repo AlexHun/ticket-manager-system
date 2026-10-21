@@ -21,7 +21,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { BUCKETS, type Bucket } from "../src/dev/usage-protocol.ts";
-import { REPO_ROOT, childEnv } from "./child-env.ts";
+import { REPO_ROOT, gitEnv } from "./child-env.ts";
 
 /**
  * Environment variable naming a file to read the issue listing from, instead of
@@ -130,7 +130,7 @@ export type IssueLister = () => Promise<string>;
  * `IssueLister`, so every test injects past it, and the argv, the `cwd` and the
  * sanitised environment go unasserted. Those three are exactly what #249 warned
  * is easy to break by moving the call: one `issue list` rather than a loop of
- * `issue view`, a `cwd` inside the repo, and `childEnv` rather than the dev
+ * `issue view`, a `cwd` inside the repo, and `gitEnv` rather than the dev
  * server's own environment.
  */
 export type Spawn = (
@@ -151,9 +151,11 @@ export type Spawn = (
  * `cwd` is the repo root and that is load-bearing, not tidiness: `gh` resolves
  * which repository it is talking about from the git remote of the directory it
  * runs in, and the Vite dev server's own cwd is `apps/web`. The environment is
- * `childEnv`'s, because anything spawned from the dev server sanitises first —
- * a `gh` call is a spawn like any other, and the `--bun` shim it removes is on
- * the PATH of every child this server starts.
+ * `gitEnv`'s: `childEnv`, because anything spawned from the dev server
+ * sanitises first — a `gh` call is a spawn like any other, and the `--bun` shim
+ * it removes is on the PATH of every child this server starts — with the git
+ * variables that name a repository removed on top, since `gh` finds its
+ * repository through git (#566).
  *
  * **Asynchronous, and not as a matter of taste.** The obvious version is
  * `execFileSync`, and it is wrong here twice over. It blocks the thread Vite
@@ -188,7 +190,7 @@ export const listIssues = async (
     ],
     {
       cwd: REPO_ROOT,
-      env: childEnv(REPO_ROOT),
+      env: gitEnv(),
       encoding: "utf8",
       timeout: GH_TIMEOUT_MS,
       maxBuffer: GH_MAX_BUFFER,

@@ -93,10 +93,14 @@ merge, which the PR names as the thing to watch.
   the existing callers.
 - A test in `usage-store.test.ts` runs its `git` call with `GIT_DIR` and
   `GIT_INDEX_FILE` pointing at a second repository. The call must still answer
-  for `cwd`'s. This is #531's case, carried over.
+  for `cwd`'s. This is #531's case, carried over. (Built in #566: neither
+  variable can turn that call red against the 3-variable `gitEnv`, which
+  already dropped `GIT_DIR`, and `GIT_INDEX_FILE` does not move
+  `--git-common-dir`. So the red half is a `git ls-files` under the same
+  environment, which reads the index.)
 
-**Done:** the bar above, plus the planted `GIT_DIR` case red against today's
-3-variable `gitEnv` and green after.
+**Done:** the bar above, plus the planted `GIT_INDEX_FILE` case red against
+today's 3-variable `gitEnv` and green after.
 
 ## Slice 3 — One rule runner, over tracked files
 

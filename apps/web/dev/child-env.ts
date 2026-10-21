@@ -14,6 +14,7 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
 import { BASIC_AUTH_ENV } from "./basic-auth.ts";
 
 /**
@@ -145,4 +146,15 @@ export function childEnv(root: string): NodeJS.ProcessEnv {
   }
 
   return env;
+}
+
+/**
+ * The environment a `git` or `gh` child of the dev server runs in:
+ * `childEnv`'s, so the secret-stripping above still applies, with
+ * `repositoryFreeEnv` on top (#566). Inherited from a git hook, `GIT_DIR` and
+ * its siblings would make git answer for the hook's repository rather than for
+ * `cwd`'s (#531), and `gh` finds its repository through git.
+ */
+export function gitEnv(): NodeJS.ProcessEnv {
+  return repositoryFreeEnv(childEnv(REPO_ROOT));
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
@@ -20,12 +20,12 @@ import {
 } from "./transcripts.ts";
 import {
   HISTORY_FILE_ENV,
-  gitEnv,
   openUsageStore,
   resolveHistoryFile,
   usageStoreOver,
   type SqlDatabase,
 } from "./usage-store.ts";
+import { gitEnv } from "./child-env.ts";
 import type { TrendPoint } from "../src/dev/usage-protocol.ts";
 
 /**
@@ -71,6 +71,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "usage-store-"));
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -140,6 +141,36 @@ describe("resolveHistoryFile", () => {
     expect(file).toBe(
       join("/home/dev", ".claude-usage-history", "C--work-repo.sqlite"),
     );
+  });
+
+  it("answers for its own working directory when the environment names another repository (#531)", async () => {
+    // Git sets `GIT_DIR` for a hook, and a git call that inherits it answers
+    // for the hook's repository whatever its `cwd` says. `GIT_INDEX_FILE` does
+    // not move `--git-common-dir`'s answer (measured, git 2.52), so the second
+    // half holds the store's environment with a call that reads the index.
+    const own = join(dir, "own");
+    const other = join(dir, "other");
+    for (const [repo, file] of [
+      [own, "own.txt"],
+      [other, "other.txt"],
+    ] as const) {
+      mkdirSync(repo);
+      await git(repo, "init", "-q");
+      writeFileSync(join(repo, file), "");
+      await git(repo, "add", file);
+    }
+    vi.stubEnv("GIT_DIR", join(other, ".git"));
+    vi.stubEnv("GIT_INDEX_FILE", join(other, ".git", "index"));
+
+    expect(await resolveHistoryFile({}, { cwd: own, home: dir })).toMatch(
+      /-own\.sqlite$/,
+    );
+    const { stdout } = await execFileAsync("git", ["ls-files"], {
+      cwd: own,
+      env: gitEnv(),
+      encoding: "utf8",
+    });
+    expect(stdout.trim()).toBe("own.txt");
   });
 
   it("honours the override, which is how the E2E and the unit tests keep off the real file", async () => {

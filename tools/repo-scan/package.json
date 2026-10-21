@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./git-env": "./src/git-env.ts",
     "./strip-comments": "./src/strip-comments.ts"
   },
   "scripts": {
