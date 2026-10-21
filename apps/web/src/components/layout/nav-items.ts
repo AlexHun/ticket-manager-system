@@ -6,6 +6,7 @@ import {
   GraduationCapIcon,
   HistoryIcon,
   LayoutDashboardIcon,
+  ListTreeIcon,
   NetworkIcon,
   TicketIcon,
   SendIcon,
@@ -147,6 +148,12 @@ export const DEV_NAV_ITEMS: readonly NavItem[] = import.meta.env.DEV
         to: ROUTE.devUsage.path,
         label: "Usage",
         icon: CoinsIcon,
+        end: true,
+      },
+      {
+        to: ROUTE.devSessions.path,
+        label: "Sessions",
+        icon: ListTreeIcon,
         end: true,
       },
     ] as const)
