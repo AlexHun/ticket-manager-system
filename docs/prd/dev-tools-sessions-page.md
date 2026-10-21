@@ -104,9 +104,14 @@ cost.
       cover a wait that names no subagent. Only the session's own events end
       such a wait, so a foreground subagent's prompt that names no subagent
       clears once that subagent ends, not once it is answered.
-- [ ] Where does R8's chain order come from: the chain's issue listing on
+- [x] Where does R8's chain order come from: the chain's issue listing on
       GitHub (blocking edges and the `## Parent` slug, as `chain` step 1 reads
-      it), or something the conductor records? _Affects R8 with `gh` down._
+      it), or something the conductor records? _Answered by #594: the
+      listing._ The conductor's transcript names the plan `/chain` was given
+      and the workers it started; one `gh issue list` over the issues whose
+      body names the plan gives their states and blocking edges. With `gh`
+      down, or for a chain given issue numbers rather than a plan, the order
+      reads unknown and the workers are still listed.
 - [ ] **Assumed:** 5 seconds is fast enough for R4 and R5. Confirm with Aleksei.
 - [ ] **Assumed:** R11's idle time is TBD. It needs a measurement of the
       longest quiet gap a healthy session shows (a long `gh pr checks --watch`).

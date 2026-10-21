@@ -32,6 +32,7 @@ import {
 import { gatherUsage, readStoredUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
 import { createSessionsReader } from "./sessions.ts";
+import { createChainLister } from "./chains.ts";
 import { sessionsStream } from "./sessions-stream.ts";
 import { resolveWaitingDir } from "./waiting.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
@@ -146,11 +147,15 @@ export function devToolsPlugin(): Plugin {
    * dev server's life, rather than made per request.
    */
   const sessionsReader = createSessionsReader();
+  /** A running chain's issue listing, kept a minute per plan (#594), so the
+   *  stream's reading every 2 seconds is not a `gh` call every 2 seconds. */
+  const listChain = createChainLister();
   const sessions = sessionsStream(() =>
     sessionsReader.read(
       resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
       Date.now(),
       resolveWaitingDir(process.env),
+      listChain,
     ),
   );
 
@@ -405,7 +410,9 @@ export function devToolsPlugin(): Plugin {
         // above gives, and resolved on every reading so
         // `CLAUDE_TRANSCRIPT_DIR` points it at the E2E fixture. The waiting
         // records the hook writes (#592) are read beside them, from
-        // `CLAUDE_WAITING_DIR` when it is set (`./waiting.ts`). Reads only.
+        // `CLAUDE_WAITING_DIR` when it is set (`./waiting.ts`), and a running
+        // chain's issues are one `gh issue list`, or `GH_CHAIN_ISSUES_FILE`
+        // (#594, `./chains.ts`). Reads only.
         only("GET", (req, res) => {
           const leave = sessions.subscribe(
             openEventStream<SessionsStreamMessage>(res),

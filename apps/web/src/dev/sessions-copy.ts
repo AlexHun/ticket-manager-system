@@ -88,3 +88,30 @@ export function formatElapsed(ms: number | null): string {
   if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
+
+/** A running chain's heading, before the plan it was given (#594). */
+export const CHAIN_TITLE = "Chain";
+
+/** How a chain's order reads when it can't be known: the end of every reason
+ *  the node half gives (`apps/web/dev/chains.ts`). */
+export const CHAIN_ORDER_UNKNOWN = "the chain's order is unknown.";
+
+/** The accessible name of a chain's issues, in its order. */
+export const chainIssuesLabel = (plan: string | null) =>
+  plan === null ? "The chain's issues" : `The issues of ${plan}`;
+
+/** The accessible name of the workers a chain whose order is unknown shows. */
+export const CHAIN_WORKERS_LABEL = "The chain's workers";
+
+/** A worker, by name and issue: `Ember on #535`. */
+export const workerOn = (name: string, issue: number) => `${name} on #${issue}`;
+
+/** A chain that has started no worker yet. */
+export const NO_WORKERS = "No worker started yet.";
+
+/** What a Blocked issue waits on: `Blocked by #12 and #14`. */
+export const blockedBy = (issues: number[]) =>
+  `Blocked by ${issues
+    .map((n) => `#${n}`)
+    .join(", ")
+    .replace(/, ([^,]*)$/, " and $1")}`;

@@ -35,10 +35,18 @@ import { join } from "node:path";
 import {
   SESSION_IDLE_MS,
   SESSION_STATE,
+  type ChainView,
   type SessionCard,
   type SessionsReport,
   type SessionsWarning,
 } from "../src/dev/sessions-protocol.ts";
+import {
+  chainArgsOf,
+  chainPlanOf,
+  chainView,
+  workerOf,
+  type ChainLister,
+} from "./chains.ts";
 import { groupSessions, type CreditedCard } from "./session-groups.ts";
 import {
   identityOf,
@@ -93,6 +101,13 @@ interface SubagentMeta {
   finished?: unknown;
 }
 
+/** An `Agent` call that started one of `chain`'s workers (`./chains.ts`). */
+interface WorkerCall {
+  callId: string;
+  name: string;
+  issue: number;
+}
+
 /** What one transcript says about the card it belongs to. */
 interface TranscriptFacts {
   task: string | null;
@@ -107,6 +122,10 @@ interface TranscriptFacts {
   lastStop: string | null;
   /** Every `tool_use` id it made a call under. */
   calls: string[];
+  /** What its first `/chain` prompt was given, or null without one (#594). */
+  chainArgs: string | null;
+  /** The calls among `calls` that started a `chain` worker, in order. */
+  workerCalls: WorkerCall[];
   /**
    * Complete lines that did not parse. The unterminated last line is not
    * counted: half-written is its ordinary state while a session works.
@@ -123,6 +142,8 @@ const NO_FACTS: TranscriptFacts = {
   branch: null,
   lastStop: null,
   calls: [],
+  chainArgs: null,
+  workerCalls: [],
   badLines: 0,
 };
 
@@ -143,6 +164,8 @@ interface FactsSoFar {
   lastMs: number;
   lastStop: string | null;
   calls: string[];
+  chainArgs: string | null;
+  workerCalls: WorkerCall[];
   /** Each response by its `identityOf` key. Replaced rather than changed when
    *  a later record raises its count, so a copy of the map is a copy. */
   responses: Map<string, TranscriptResponse>;
@@ -160,6 +183,8 @@ const startFacts = (file: string): FactsSoFar => ({
   lastMs: -Infinity,
   lastStop: null,
   calls: [],
+  chainArgs: null,
+  workerCalls: [],
   responses: new Map(),
   branch: null,
   badLines: 0,
@@ -169,6 +194,7 @@ const startFacts = (file: string): FactsSoFar => ({
 const copyFacts = (f: FactsSoFar): FactsSoFar => ({
   ...f,
   calls: [...f.calls],
+  workerCalls: [...f.workerCalls],
   responses: new Map(f.responses),
 });
 
@@ -182,8 +208,8 @@ const isBlock = <T extends object>(
   b !== null &&
   (b as { type?: unknown }).type === type;
 
-/** A prompt's first non-empty line, or null for a record that is not one. */
-function promptText(rec: TranscriptRecord): string | null {
+/** A prompt's text, or null for a record that is not one. */
+function promptBody(rec: TranscriptRecord): string | null {
   if (rec.type !== "user" || rec.isMeta) return null;
   const content = rec.message?.content;
   let text: string | null = null;
@@ -197,21 +223,28 @@ function promptText(rec: TranscriptRecord): string | null {
     );
     text = block?.text ?? null;
   }
-  const line = text
-    ?.split("\n")
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  return line ?? null;
+  return text;
 }
 
-function toolCalls(content: unknown): string[] {
+/** A prompt's first non-empty line. */
+const firstLine = (text: string): string | null =>
+  text
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0) ?? null;
+
+type ToolUse = { type: string; id: string; name?: unknown; input?: unknown };
+
+function toolUses(content: unknown): ToolUse[] {
   if (!Array.isArray(content)) return [];
-  return content.flatMap((b: unknown) =>
-    isBlock<{ id: unknown }>(b, "tool_use") && typeof b.id === "string"
-      ? [b.id]
-      : [],
+  return content.filter(
+    (b: unknown): b is ToolUse =>
+      isBlock<{ id: unknown }>(b, "tool_use") && typeof b.id === "string",
   );
 }
+
+/** The tool a subagent is started with: `Agent`, `Task` before it. */
+const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
 
 /**
  * One line into `f`, its one-based number in the file being `lineNo`. An
@@ -247,12 +280,25 @@ function feed(
     }
   }
 
-  f.task ??= promptText(rec);
+  const body = promptBody(rec);
+  if (body !== null) {
+    f.task ??= firstLine(body);
+    // The first `/chain` command, wherever it falls: a conductor may have
+    // opened on a `/clear` (#594).
+    f.chainArgs ??= chainArgsOf(body);
+  }
   if (rec.gitBranch) f.branch = rec.gitBranch;
 
   const message = rec.message;
   if (!message) return;
-  f.calls.push(...toolCalls(message.content));
+  for (const use of toolUses(message.content)) {
+    f.calls.push(use.id);
+    if (typeof use.name !== "string" || !SUBAGENT_TOOLS.has(use.name)) {
+      continue;
+    }
+    const worker = workerOf(use.input);
+    if (worker) f.workerCalls.push({ callId: use.id, ...worker });
+  }
   if (!f.model && message.model && message.model !== SYNTHETIC_MODEL) {
     f.model = message.model;
   }
@@ -306,6 +352,8 @@ function factsOf(f: FactsSoFar, trailing: string): TranscriptFacts {
     branch: s.branch,
     lastStop: s.lastStop,
     calls: s.calls,
+    chainArgs: s.chainArgs,
+    workerCalls: s.workerCalls,
     badLines: s.badLines,
   };
 }
@@ -454,6 +502,12 @@ interface TreeNode {
   isSession: boolean;
   /** Whether a waiting record names it (`./waiting.ts`). */
   waiting: boolean;
+  /** The call that started a subagent; null on a session and on a subagent
+   *  no call started. */
+  toolUseId: string | null;
+  /** A session's `/chain` arguments and the workers it started (#594). */
+  chainArgs: string | null;
+  workerCalls: WorkerCall[];
 }
 
 const byStart = (a: TreeNode, b: TreeNode) =>
@@ -609,6 +663,9 @@ async function readSession(
     over: facts.lastStop === END_TURN,
     isSession: true,
     waiting: false,
+    toolUseId: null,
+    chainArgs: facts.chainArgs,
+    workerCalls: facts.workerCalls,
   };
 
   const { nodes: subagents, unclaimed } = await readSubagents(
@@ -731,6 +788,8 @@ async function readSubagents(
       continue;
     }
 
+    const toolUseId =
+      typeof meta.toolUseId === "string" ? meta.toolUseId : null;
     const transcript = name.slice(0, -META_SUFFIX.length) + TRANSCRIPT_SUFFIX;
     claimed.add(transcript);
     const transcriptPath = join(abs, transcript);
@@ -779,8 +838,11 @@ async function readSubagents(
         over: meta.finished === true,
         isSession: false,
         waiting: false,
+        toolUseId,
+        chainArgs: null,
+        workerCalls: [],
       },
-      toolUseId: typeof meta.toolUseId === "string" ? meta.toolUseId : null,
+      toolUseId,
       metaFile,
     });
   }
@@ -812,7 +874,52 @@ export interface SessionsReader {
    * with a warning for each file it could not use, its states settled
    * against `now` and the waiting records in `waitingDir`, when one is given.
    */
-  read(dir: string, now?: number, waitingDir?: string): Promise<SessionsReport>;
+  read(
+    dir: string,
+    now?: number,
+    waitingDir?: string,
+    listChain?: ChainLister,
+  ): Promise<SessionsReport>;
+}
+
+/**
+ * Where each running `/chain` stands (#594, `./chains.ts`): a session whose
+ * prompt ran `/chain`, while it reads Running or Waiting for you. A finished
+ * or stopped chain is history the issues themselves keep, and leaving it out
+ * keeps `gh` from being asked about every chain this machine ever ran.
+ * Without `listChain`, or for a chain given no plan, the order is unknown.
+ */
+async function readChains(
+  roots: TreeNode[],
+  listChain: ChainLister | undefined,
+): Promise<ChainView[]> {
+  const chains: ChainView[] = [];
+  for (const root of roots) {
+    if (root.chainArgs === null) continue;
+    const { state } = root.card;
+    if (state !== SESSION_STATE.running && state !== SESSION_STATE.waiting) {
+      continue;
+    }
+    const byCall = new Map(
+      root.children.flatMap((c) =>
+        c.toolUseId === null ? [] : [[c.toolUseId, c.card] as const],
+      ),
+    );
+    const workers = root.workerCalls.map(({ callId, name, issue }) => {
+      const card = byCall.get(callId) ?? null;
+      return {
+        name,
+        issue,
+        cardId: card?.id ?? null,
+        state: card?.state ?? null,
+      };
+    });
+    const plan = chainPlanOf(root.chainArgs);
+    const listing =
+      plan !== null && listChain !== undefined ? await listChain(plan) : null;
+    chains.push(chainView({ sessionId: root.card.id, plan, workers }, listing));
+  }
+  return chains;
 }
 
 /**
@@ -837,7 +944,7 @@ export function createSessionsReader(
   const metas = new Map<string, MetaReading>();
 
   return {
-    async read(dir, now = Date.now(), waitingDir) {
+    async read(dir, now = Date.now(), waitingDir, listChain) {
       const state: ReaderState = { cursors, metas, seen: new Set() };
       const warnings: SessionsWarning[] = [];
       const roots: TreeNode[] = [];
@@ -871,18 +978,20 @@ export function createSessionsReader(
         markWaiting(roots, await readWaiting(waitingDir));
       }
       for (const root of roots) settle(root, now, idleMs);
+      roots.sort((a, b) => byStart(b, a));
+      const chains = await readChains(roots, listChain);
       for (const path of cursors.keys()) {
         if (!state.seen.has(path)) cursors.delete(path);
       }
       for (const path of metas.keys()) {
         if (!state.seen.has(path)) metas.delete(path);
       }
-      roots.sort((a, b) => byStart(b, a));
       return {
         transcriptDir: dir,
         gatheredAt: new Date(now).toISOString(),
         sessions: roots.map((r) => r.card),
         groups: groupSessions(roots.map(toCreditedCard)),
+        chains,
         warnings,
       };
     },
@@ -891,5 +1000,9 @@ export function createSessionsReader(
 
 /** One reading with nothing kept, for a caller that reads once, as the unit
  *  tests do. */
-export const readSessions = (dir: string, now?: number, waitingDir?: string) =>
-  createSessionsReader().read(dir, now, waitingDir);
+export const readSessions = (
+  dir: string,
+  now?: number,
+  waitingDir?: string,
+  listChain?: ChainLister,
+) => createSessionsReader().read(dir, now, waitingDir, listChain);
