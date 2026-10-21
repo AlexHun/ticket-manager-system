@@ -110,14 +110,14 @@ const records = (where = dir) =>
 
 const quietly = { code: 0, stdout: "", stderr: "" };
 
-// Each case starts one or two `node` processes, which take a second or more
-// cold on a Windows dev machine, hence the timeouts.
+// Each case starts up to six `node` processes, one per event, which take a
+// second or more cold on a Windows dev machine, hence the timeouts.
 describe("record-waiting hook", () => {
   test("records a session held on a permission prompt, and clears it once the call has run", () => {
     expect(run(base(PERMISSION_PROMPT))).toEqual(quietly);
     expect(records()).toEqual([
       {
-        name: `${SESSION}.json`,
+        name: `${SESSION}@prompt.json`,
         record: { sessionId: SESSION, agentId: null },
       },
     ]);
@@ -126,9 +126,21 @@ describe("record-waiting hook", () => {
     expect(records()).toEqual([]);
   }, 20_000);
 
+  test("clears a prompt that named no subagent once any card in the session moves on", () => {
+    // The docs don't say whether a subagent's permission prompt carries
+    // `agent_id`. Without it the record is the session's, and the subagent's
+    // answered call, which does carry it, must still clear it.
+    run(base(PERMISSION_PROMPT));
+    expect(records()).toHaveLength(1);
+
+    run(base({ ...POST_TOOL_USE, ...inSubagent }));
+
+    expect(records()).toEqual([]);
+  }, 20_000);
+
   test("records which subagent is held on a question, apart from its session", () => {
     run(base({ ...QUESTION, ...inSubagent }));
-    run(base(PERMISSION_PROMPT));
+    run(base(QUESTION));
     expect(records()).toEqual([
       {
         name: `${SESSION}.${AGENT}.json`,
@@ -177,7 +189,7 @@ describe("record-waiting hook", () => {
     const other = "a1111111111111111";
     run(base({ ...PERMISSION_PROMPT, ...inSubagent }));
     run(base({ ...QUESTION, agent_id: other, agent_type: "general-purpose" }));
-    run(base(PERMISSION_PROMPT));
+    run(base(QUESTION));
     run(base({ ...PERMISSION_PROMPT, session_id: "another-session" }));
     expect(records()).toHaveLength(4);
 
@@ -185,11 +197,13 @@ describe("record-waiting hook", () => {
     expect(records().map((r) => r.name)).toEqual([
       `${SESSION}.${other}.json`,
       `${SESSION}.json`,
-      "another-session.json",
+      "another-session@prompt.json",
     ]);
 
     run(base({ hook_event_name: "SessionEnd", reason: "other" }));
-    expect(records().map((r) => r.name)).toEqual(["another-session.json"]);
+    expect(records().map((r) => r.name)).toEqual([
+      "another-session@prompt.json",
+    ]);
   }, 20_000);
 
   test("records nothing for a notification that is not a permission prompt, or a call that asks nothing", () => {
@@ -226,6 +240,6 @@ describe("record-waiting hook", () => {
   test("writes a record again in place, leaving no temporary file beside it", () => {
     mkdirSync(dir, { recursive: true });
     for (let i = 0; i < 3; i++) run(base(PERMISSION_PROMPT));
-    expect(readdirSync(dir)).toEqual([`${SESSION}.json`]);
+    expect(readdirSync(dir)).toEqual([`${SESSION}@prompt.json`]);
   }, 20_000);
 });

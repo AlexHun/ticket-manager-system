@@ -409,11 +409,6 @@ describe("readSessions", () => {
   });
 });
 
-/**
- * Slice 2 (#591): Stopped. A file's age is its modification time against the
- * clock the reading is given, so each case writes its files, sets their times
- * with `utimesSync` and reads at a `now` of its choosing.
- */
 /** Sets a file's modification time, relative to `dir`. */
 const touch = (file: string, ms: number) =>
   utimesSync(join(dir, file), ms / 1000, ms / 1000);
@@ -428,6 +423,11 @@ const stateIn = (cards: SessionCard[], id: string): string | undefined => {
   return undefined;
 };
 
+/**
+ * Slice 2 (#591): Stopped. A file's age is its modification time against the
+ * clock the reading is given, so each case writes its files, sets their times
+ * with `utimesSync` and reads at a `now` of its choosing.
+ */
 describe("readSessions: Stopped", () => {
   const NOW = Date.parse("2026-10-21T12:00:00.000Z");
   const idle = NOW - SESSION_IDLE_MS - 1000;
@@ -582,6 +582,20 @@ describe("readSessions: Waiting for you", () => {
   it("reads a session Waiting for you on a record of its own", async () => {
     nested();
     waiting("s");
+
+    expect(await states()).toEqual([
+      SESSION_STATE.waiting,
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+    ]);
+  });
+
+  it("reads a session Waiting for you on a permission prompt that named no subagent", async () => {
+    nested();
+    writeFileSync(
+      join(waitingDir, "s@prompt.json"),
+      JSON.stringify({ sessionId: "s", agentId: null }),
+    );
 
     expect(await states()).toEqual([
       SESSION_STATE.waiting,

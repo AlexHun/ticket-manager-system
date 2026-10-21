@@ -20,9 +20,14 @@
 // A payload carries `agent_id` when the hook fires inside a subagent, and the
 // record then names that subagent; without one it names the session. The id is
 // the one in `subagents/agent-<id>.jsonl`, which is how the page finds the card.
+// The docs promise `agent_id` on tool events, so a question always names who
+// asked it, but not on a notification. A permission prompt with no `agent_id`
+// may be any card's, so it is kept apart, as `<session>@prompt.json`, and the
+// next clearing event from any card in the session removes it: the subagent
+// that was held on it carries its own id when its call goes on to run.
 //
 // settings.json is committed, so this runs in every clone and session, and on
-// every tool call. It reads stdin, writes or removes one file, and exits 0;
+// every tool call. It reads stdin, writes or removes a file or two, and exits 0;
 // it prints nothing, since what some events' hooks print becomes the session's
 // context, and it never reaches the network. A directory it cannot write, or a
 // payload it cannot read, costs nothing.
@@ -45,9 +50,12 @@ const dir = process.env.CLAUDE_WAITING_DIR?.trim() || join(homedir(), ".claude-s
 const fileOf = (sessionId, agentId) =>
   join(dir, agentId ? `${sessionId}.${agentId}.json` : `${sessionId}.json`);
 
-function record(sessionId, agentId) {
+/** A permission prompt that named no subagent. `@` is in no id, so it cannot
+ *  meet a subagent's file. */
+const promptFileOf = (sessionId) => join(dir, `${sessionId}@prompt.json`);
+
+function record(file, sessionId, agentId) {
   mkdirSync(dir, { recursive: true });
-  const file = fileOf(sessionId, agentId);
   // Written beside it and renamed over it, so a reader never meets half a
   // record.
   const temp = `${file}.${process.pid}.tmp`;
@@ -55,11 +63,16 @@ function record(sessionId, agentId) {
   renameSync(temp, file);
 }
 
-const clear = (sessionId, agentId) => rmSync(fileOf(sessionId, agentId), { force: true });
+function clear(sessionId, agentId) {
+  rmSync(fileOf(sessionId, agentId), { force: true });
+  rmSync(promptFileOf(sessionId), { force: true });
+}
 
 function clearSession(sessionId) {
   for (const name of readdirSync(dir)) {
-    if (name.startsWith(`${sessionId}.`)) rmSync(join(dir, name), { force: true });
+    if (name.startsWith(`${sessionId}.`) || name.startsWith(`${sessionId}@`)) {
+      rmSync(join(dir, name), { force: true });
+    }
   }
 }
 
@@ -71,10 +84,15 @@ function handle(event) {
 
   switch (event.hook_event_name) {
     case "Notification":
-      if (event.notification_type === "permission_prompt") record(sessionId, agentId);
+      if (event.notification_type === "permission_prompt") {
+        const file = agentId ? fileOf(sessionId, agentId) : promptFileOf(sessionId);
+        record(file, sessionId, agentId);
+      }
       return;
     case "PreToolUse":
-      if (event.tool_name === "AskUserQuestion") record(sessionId, agentId);
+      if (event.tool_name === "AskUserQuestion") {
+        record(fileOf(sessionId, agentId), sessionId, agentId);
+      }
       return;
     case "PostToolUse":
     case "PostToolUseFailure":
