@@ -10,6 +10,8 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 import { USER_ROLE } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
+  CHAIN_ORDER_UNKNOWN,
+  CHAIN_WORKERS_LABEL,
   NO_MODEL,
   NO_SESSIONS_LEAD,
   NO_TASK,
@@ -17,14 +19,17 @@ import {
   SESSION_KIND_LABEL,
   issueGroupTitle,
   sessionCount,
+  chainIssuesLabel,
   toggleSubagentsLabel,
   waitingCount,
+  workerOn,
 } from "../../apps/web/src/dev/sessions-copy";
 import {
   USAGE_COLUMNS,
   USAGE_TABLE_LABEL,
 } from "../../apps/web/src/dev/usage-copy";
 import {
+  CHAIN_ISSUE_STATE,
   SESSION_IDLE_MS,
   SESSION_STATE,
 } from "../../apps/web/src/dev/sessions-protocol";
@@ -34,6 +39,10 @@ import {
   TRANSCRIPT_WORKING_DIR,
   WAITING_WORKING_DIR,
 } from "./fixtures/transcript-fixture";
+import {
+  removeGhChainIssuesFixture,
+  writeGhChainIssuesFixture,
+} from "./fixtures/gh-issues";
 
 /**
  * Slice 1 of `docs/plans/dev-tools-sessions-page.md` (#590), end to end: page
@@ -41,7 +50,8 @@ import {
  * working copy, which `playwright.config.ts` names as `CLAUDE_TRANSCRIPT_DIR`.
  * Later slices extend it: the live stream (#591), Waiting for you (#592), and
  * the groups by issue with each card's share of them (#593), whose `#101`
- * total is read off this page and the Usage page in one run and compared.
+ * total is read off this page and the Usage page in one run and compared,
+ * and a running chain's issues in its order (#594).
  *
  * What each card should say is worked out in
  * `fixtures/transcripts/README.md` ("What the Sessions page makes of them")
@@ -218,6 +228,73 @@ function backdateSessionA() {
   }
 }
 
+/**
+ * A `/chain` conductor (#594), written into the working copy by the chain
+ * tests alone, so every other test's cards and figures stand. Its prompt is
+ * what Claude Code records for `/chain <plan>`, and its two `Agent` calls are
+ * `chain` step 2's: Ember on `#201`, finished, and Flint on `#202`, still
+ * running, which keeps the conductor Running. Neither worker has a
+ * transcript, so no figure on the page moves.
+ */
+const CONDUCTOR = "session-c";
+const CHAIN_PLAN = "docs/plans/fixture-chain.md";
+const workerCall = (call: string, name: string, issue: number) =>
+  JSON.stringify({
+    type: "assistant",
+    sessionId: CONDUCTOR,
+    gitBranch: "develop",
+    timestamp: "2026-09-03T10:01:00.000Z",
+    message: {
+      model: "claude-opus-5-5",
+      content: [
+        {
+          type: "tool_use",
+          id: call,
+          name: "Agent",
+          input: {
+            description: `${name} implements issue #${issue}`,
+            prompt: `You are ${name}, on the team. Invoke the \`implement\` skill for issue #${issue} and follow it to the end.`,
+          },
+        },
+      ],
+    },
+  });
+
+function writeConductor() {
+  writeFileSync(
+    `${TRANSCRIPT_WORKING_DIR}/${CONDUCTOR}.jsonl`,
+    [
+      JSON.stringify({
+        type: "user",
+        sessionId: CONDUCTOR,
+        gitBranch: "develop",
+        timestamp: "2026-09-03T10:00:00.000Z",
+        message: {
+          role: "user",
+          content: `<command-message>chain</command-message>\n<command-name>/chain</command-name>\n<command-args>${CHAIN_PLAN}</command-args>`,
+        },
+      }),
+      workerCall("toolu_fixture_ember", "Ember", 201),
+      workerCall("toolu_fixture_flint", "Flint", 202),
+      "",
+    ].join("\n"),
+  );
+  const subagents = `${TRANSCRIPT_WORKING_DIR}/${CONDUCTOR}/subagents`;
+  mkdirSync(subagents, { recursive: true });
+  const meta = (id: string, name: string, issue: number, finished: boolean) =>
+    writeFileSync(
+      `${subagents}/agent-${id}.meta.json`,
+      JSON.stringify({
+        agentType: "general-purpose",
+        description: `${name} implements issue #${issue}`,
+        toolUseId: `toolu_fixture_${name.toLowerCase()}`,
+        ...(finished ? { finished: true } : {}),
+      }),
+    );
+  meta("a5555555555555555", "Ember", 201, true);
+  meta("a6666666666666666", "Flint", 202, false);
+}
+
 /** One group by its key (`issue:101`, `base`, `other`). */
 const groupIn = (page: Page, key: string) =>
   page.locator(`[data-session-group="${key}"]`);
@@ -279,6 +356,10 @@ async function expectCard(
 test.describe("dev tools: Sessions", () => {
   test.beforeEach(() => {
     resetTranscriptWorkingCopy();
+  });
+
+  test.afterEach(() => {
+    removeGhChainIssuesFixture();
   });
 
   test("reaches the page from the dev tools nav", async ({ page }) => {
@@ -592,6 +673,63 @@ test.describe("dev tools: Sessions", () => {
     await expect(main.locator("[data-session-card]")).toHaveCount(0);
   });
 
+  /** R8 (#594): a running chain's issues in the order it works them. */
+  test("lists a running chain's issues in order: merged, in progress with its worker, next, and blocked", async ({
+    page,
+  }) => {
+    writeConductor();
+    writeGhChainIssuesFixture();
+
+    await page.goto(ROUTE.devSessions.path);
+
+    const chain = page.locator(`[data-chain="${CONDUCTOR}"]`);
+    await expect(chain).toContainText(CHAIN_PLAN);
+    const issues = chain
+      .getByRole("list", { name: chainIssuesLabel(CHAIN_PLAN) })
+      .locator("[data-chain-issue]");
+    const expected = [
+      [201, CHAIN_ISSUE_STATE.merged, null],
+      [202, CHAIN_ISSUE_STATE.inProgress, "Flint"],
+      [203, CHAIN_ISSUE_STATE.next, null],
+      [204, CHAIN_ISSUE_STATE.blocked, null],
+    ] as const;
+    await expect(issues).toHaveCount(expected.length);
+    for (const [i, [issue, state, worker]] of expected.entries()) {
+      const row = issues.nth(i);
+      await expect(row).toHaveAttribute("data-chain-issue", String(issue));
+      await expect(row.locator("[data-chain-state]")).toHaveText(state);
+      const named = row.locator("[data-chain-worker]");
+      if (worker) await expect(named).toHaveText(worker);
+      else await expect(named).toHaveCount(0);
+    }
+    // The blocker outside the chain is named.
+    await expect(issues.nth(3)).toContainText("#299");
+    await expect(chain.locator("[data-chain-unknown]")).toHaveCount(0);
+  });
+
+  test("says a chain's order is unknown without a listing, and still lists its workers", async ({
+    page,
+  }) => {
+    writeConductor();
+    removeGhChainIssuesFixture();
+
+    await page.goto(ROUTE.devSessions.path);
+
+    const chain = page.locator(`[data-chain="${CONDUCTOR}"]`);
+    await expect(chain.locator("[data-chain-unknown]")).toContainText(
+      CHAIN_ORDER_UNKNOWN,
+    );
+    await expect(chain.locator("[data-chain-issue]")).toHaveCount(0);
+    const workers = chain
+      .getByRole("list", { name: CHAIN_WORKERS_LABEL })
+      .getByRole("listitem");
+    await expect(workers).toHaveCount(2);
+    await expect(workers.nth(0)).toContainText(workerOn("Ember", 201));
+    await expect(workers.nth(0)).toContainText(SESSION_STATE.done);
+    await expect(workers.nth(1)).toContainText(workerOn("Flint", 202));
+    await expect(workers.nth(1)).toContainText(SESSION_STATE.running);
+  });
+
   /**
    * R12: Claude Code's workers are sessions and subagents, and their progress
    * a state or a step, because `GLOSSARY.md` gives the other words to the
@@ -601,8 +739,12 @@ test.describe("dev tools: Sessions", () => {
   test("never uses the desk's words for Claude Code's workers", async ({
     page,
   }) => {
+    // A running chain too, so its words are held to the rule (#594).
+    writeConductor();
+    writeGhChainIssuesFixture();
     await page.goto(ROUTE.devSessions.path);
     await expect(sessionAIn101(page)).toBeVisible();
+    await expect(page.locator("[data-chain-issue]")).toHaveCount(4);
 
     const words = await page.getByRole("main").evaluate((main) => {
       const copy = main.cloneNode(true) as HTMLElement;

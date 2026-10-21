@@ -1,7 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { GH_ISSUES_FIXTURE_PATH } from "./tests/e2e/fixtures/gh-issues";
+import {
+  GH_CHAIN_ISSUES_FIXTURE_PATH,
+  GH_ISSUES_FIXTURE_PATH,
+} from "./tests/e2e/fixtures/gh-issues";
 import {
   TRANSCRIPT_WORKING_DIR,
   USAGE_HISTORY_PATH,
@@ -123,8 +126,10 @@ export default defineConfig({
       // instead of the developer's real `~/.claude-usage-history/<slug>.sqlite`,
       // and `CLAUDE_WAITING_DIR` points the Sessions page at a directory of
       // waiting records the spec writes (#592), instead of the
-      // `~/.claude-sessions-waiting` this machine's own sessions fill.
-      // All four belong here rather than in the spec because the middleware that
+      // `~/.claude-sessions-waiting` this machine's own sessions fill, and
+      // `GH_CHAIN_ISSUES_FILE` points a running chain's listing at a file the
+      // Sessions spec writes (#594), instead of `gh`.
+      // All five belong here rather than in the spec because the middleware that
       // reads them runs inside *this* process, not in the browser — which is
       // also the one thing to check first when `dev-usage.spec.ts` fails:
       // `reuseExistingServer` will happily adopt a leftover Vite on 4001 that
@@ -142,6 +147,7 @@ export default defineConfig({
         VITE_API_URL: API_URL,
         CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
+        GH_CHAIN_ISSUES_FILE: GH_CHAIN_ISSUES_FIXTURE_PATH,
         USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
         CLAUDE_WAITING_DIR: WAITING_WORKING_DIR,
       },

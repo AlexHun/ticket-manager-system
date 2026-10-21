@@ -108,3 +108,63 @@ export function writeGhIssuesFixture(): void {
 export function removeGhIssuesFixture(): void {
   rmSync(GH_ISSUES_FIXTURE_PATH, { force: true });
 }
+
+/**
+ * The issue listing a running chain is ordered by on the Sessions page
+ * (#594), and the file the dev server reads it from as `GH_CHAIN_ISSUES_FILE`
+ * (`apps/web/dev/issues.ts`). It holds what `listChainIssues`' call prints —
+ * `gh issue list --search "<plan>" in:body --json number,title,state,blockedBy`
+ * — and is written and removed by the spec for `GH_ISSUES_FIXTURE_PATH`'s
+ * reason: a missing file is how a chain whose order is unknown is reached
+ * through the real middleware.
+ */
+export const GH_CHAIN_ISSUES_FIXTURE_PATH = path.join(
+  HERE,
+  "gh-chain-issues.local.json",
+);
+
+const chainIssue = (
+  number: number,
+  title: string,
+  state: "OPEN" | "CLOSED",
+  blockedBy: [number, "OPEN" | "CLOSED"][] = [],
+) => ({
+  number,
+  title,
+  state,
+  blockedBy: {
+    nodes: blockedBy.map(([n, s]) => ({ number: n, state: s })),
+    totalCount: blockedBy.length,
+  },
+});
+
+/**
+ * Four issues of the conductor fixture's plan, listed out of order. `#201` is
+ * closed, so Merged; `#202` and `#203` wait on it alone, so in the chain's
+ * order — blockers first, ties by number — `#202`, which the conductor
+ * started Flint on, is In progress and `#203` is Next. `#204` waits on
+ * `#299`, which is outside the chain and still open, so it is Blocked.
+ */
+export const GH_CHAIN_ISSUES = [
+  chainIssue(204, "Fixture: a chain issue blocked from outside", "OPEN", [
+    [299, "OPEN"],
+  ]),
+  chainIssue(203, "Fixture: the chain's next issue", "OPEN", [[201, "CLOSED"]]),
+  chainIssue(202, "Fixture: the chain issue in progress", "OPEN", [
+    [201, "CLOSED"],
+  ]),
+  chainIssue(201, "Fixture: the chain issue already merged", "CLOSED"),
+];
+
+export function writeGhChainIssuesFixture(): void {
+  mkdirSync(HERE, { recursive: true });
+  writeFileSync(
+    GH_CHAIN_ISSUES_FIXTURE_PATH,
+    JSON.stringify(GH_CHAIN_ISSUES, null, 2),
+    "utf8",
+  );
+}
+
+export function removeGhChainIssuesFixture(): void {
+  rmSync(GH_CHAIN_ISSUES_FIXTURE_PATH, { force: true });
+}
