@@ -11,7 +11,10 @@ import {
   USAGE_WARNING_SOURCE,
   type UsageReport,
 } from "../src/dev/usage-protocol.ts";
-import type { SessionsReport } from "../src/dev/sessions-protocol.ts";
+import type {
+  SessionsReport,
+  SessionsStreamMessage,
+} from "../src/dev/sessions-protocol.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./transcripts.ts";
 import { HISTORY_FILE_ENV } from "./usage-store.ts";
@@ -516,8 +519,59 @@ describe(`POST ${DEVTOOLS_API.usagePush}`, () => {
   });
 });
 
+/**
+ * Open the Sessions stream, wait for its first event, and leave: the handler
+ * writes server-sent events rather than one JSON body, and keeps reading until
+ * the request closes, so the close is part of every call.
+ */
+async function firstSessionsEvent(): Promise<{
+  status: number;
+  contentType: string;
+  message: SessionsStreamMessage;
+}> {
+  const [handler] = mountPlugin().get(DEVTOOLS_API.sessions) ?? [];
+  if (!handler)
+    throw new Error(`Nothing registered on ${DEVTOOLS_API.sessions}`);
+
+  let status = 0;
+  let contentType = "";
+  const closers: (() => void)[] = [];
+  const message = await new Promise<SessionsStreamMessage>((resolve) => {
+    const res = {
+      writeHead(code: number, headers: Record<string, string>) {
+        status = code;
+        contentType = headers["Content-Type"] ?? "";
+        return this;
+      },
+      write(chunk: string) {
+        resolve(
+          JSON.parse(chunk.replace(/^data: /, "")) as SessionsStreamMessage,
+        );
+        return true;
+      },
+    } as unknown as ServerResponse;
+    const req = {
+      method: "GET",
+      url: DEVTOOLS_API.sessions,
+      on(event: string, listener: () => void) {
+        if (event === "close") closers.push(listener);
+      },
+    };
+    handler(req as never, res, () => {
+      throw new Error("the sessions route passed a GET on");
+    });
+  });
+  for (const close of closers) close();
+  return { status, contentType, message };
+}
+
+const reportOf = (message: SessionsStreamMessage): SessionsReport => {
+  if (message.kind !== "report") throw new Error(message.message);
+  return message.report;
+};
+
 describe(`GET ${DEVTOOLS_API.sessions}`, () => {
-  it("reads the directory the override names, which is how Playwright points it at a fixture", async () => {
+  it("streams the directory the override names, which is how Playwright points it at a fixture", async () => {
     const dir = mkdtempSync(join(tmpdir(), "plugin-sessions-"));
     writeFileSync(
       join(dir, "s.jsonl"),
@@ -529,14 +583,11 @@ describe(`GET ${DEVTOOLS_API.sessions}`, () => {
     );
     process.env[TRANSCRIPT_DIR_ENV] = dir;
     try {
-      const { status, body } = await callRoute(
-        mountPlugin(),
-        DEVTOOLS_API.sessions,
-        "GET",
-      );
+      const { status, contentType, message } = await firstSessionsEvent();
 
       expect(status).toBe(200);
-      const report = body as SessionsReport;
+      expect(contentType).toMatch(/^text\/event-stream/);
+      const report = reportOf(message);
       expect(report.transcriptDir).toBe(dir);
       expect(report.sessions.map((s) => [s.id, s.out])).toEqual([["s", 42]]);
     } finally {
@@ -558,13 +609,7 @@ describe(`GET ${DEVTOOLS_API.sessions}`, () => {
     process.env.HOME = home;
     process.env.USERPROFILE = home;
     try {
-      const { body } = await callRoute(
-        mountPlugin(),
-        DEVTOOLS_API.sessions,
-        "GET",
-      );
-
-      const { transcriptDir } = body as SessionsReport;
+      const { transcriptDir } = reportOf((await firstSessionsEvent()).message);
       expect(transcriptDir).toBe(resolveTranscriptDir({}, { cwd: repoRoot }));
       expect(transcriptDir.startsWith(home)).toBe(true);
       expect(transcriptDir).not.toMatch(/-apps-web$/);

@@ -14,8 +14,9 @@
  */
 
 /**
- * A card's state, as far as slice 1 of `docs/plans/dev-tools-sessions-page.md`
- * can tell it: Done or Running. Waiting for you and Stopped are later slices.
+ * A card's state, as far as slices 1 and 2 of
+ * `docs/plans/dev-tools-sessions-page.md` can tell it: Running, Done or
+ * Stopped. Waiting for you is slice 3.
  *
  * A subagent is Done when its `agent-<id>.meta.json` says `finished`. A
  * session has no meta file, so it is Done when its last response ended its
@@ -23,12 +24,37 @@
  * a conductor whose turn ended while its background subagents work is not
  * done. Measured 2026-10-21 over this machine's 206 sessions of this
  * repository: 186 ended on `end_turn`, 2 on `tool_use` and 18 had no response.
+ *
+ * One that is not Done is Stopped once its files have not been written for
+ * `SESSION_IDLE_MS` and nothing under it is Running (#591, R11): a crash or a
+ * closed terminal leaves a transcript that never ends its turn, and the page
+ * must not say to wait on it. It reads Running again the moment its
+ * transcript grows.
  */
 export const SESSION_STATE = {
   running: "Running",
   done: "Done",
+  stopped: "Stopped",
 } as const;
 export type SessionState = (typeof SESSION_STATE)[keyof typeof SESSION_STATE];
+
+/**
+ * How long a card that is not Done may go without a write to its transcript
+ * or meta file before it reads Stopped: 15 minutes.
+ *
+ * Measured 2026-10-21 over this machine's 735 transcripts of this repository
+ * (#591): the gaps between consecutive records inside a turn, those ending in
+ * a tool's result or a response rather than in a prompt. The healthy
+ * ones stop at the 10-minute ceiling Claude Code puts on a foreground command:
+ * 1,030 gaps were a `gh pr checks --watch` or `gh run watch`, the longest
+ * 10.0 minutes, and no command that was running rather than waiting took past
+ * 10.1. Every gap past that was the session waiting on the developer — an
+ * `AskUserQuestion` (up to 7 hours), or a `sed -n` or an `Edit` held on a
+ * permission answer for 11 to 90 minutes — which is slice 3's Waiting for you,
+ * not a dead session. Fifteen minutes is that ceiling plus the five a slow
+ * response can add on top of it.
+ */
+export const SESSION_IDLE_MS = 15 * 60_000;
 
 /** One card: a session, or a subagent somewhere under one. */
 export interface SessionCard {
@@ -78,3 +104,14 @@ export interface SessionsReport {
   sessions: SessionCard[];
   warnings: SessionsWarning[];
 }
+
+/**
+ * One server-sent event on `DEVTOOLS_API.sessions`, the shape the test
+ * runner's stream has (`./test-run-protocol`'s `DevStreamMessage`): a `data:`
+ * line holding one of these as JSON. A `report` is the whole reading, sent
+ * when a page connects and again whenever it changes; an `error` is a reading
+ * that threw, sent once until it reads again.
+ */
+export type SessionsStreamMessage =
+  | { kind: "report"; report: SessionsReport }
+  | { kind: "error"; message: string };

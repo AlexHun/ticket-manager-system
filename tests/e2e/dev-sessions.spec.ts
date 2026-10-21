@@ -1,4 +1,10 @@
-import { rmSync } from "node:fs";
+import {
+  appendFileSync,
+  readdirSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { USER_ROLE } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
@@ -6,12 +12,14 @@ import {
   NO_MODEL,
   NO_SESSIONS_LEAD,
   NO_TASK,
-  REFRESH_LABEL,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   sessionCount,
 } from "../../apps/web/src/dev/sessions-copy";
-import { SESSION_STATE } from "../../apps/web/src/dev/sessions-protocol";
+import {
+  SESSION_IDLE_MS,
+  SESSION_STATE,
+} from "../../apps/web/src/dev/sessions-protocol";
 import { signIn } from "./helpers/auth";
 import {
   resetTranscriptWorkingCopy,
@@ -78,6 +86,76 @@ const EXPECTED = {
     out: "4,000 output tokens",
   },
 } as const;
+
+/**
+ * R4: a change on disk is on the open page within 5 seconds. Every live
+ * assertion waits this long and no longer, so a slower stream fails here.
+ */
+const R4_MS = 5_000;
+
+const SESSION_A_FILE = "session-a.jsonl";
+const SUBAGENTS = `${TRANSCRIPT_WORKING_DIR}/session-a/subagents`;
+
+/**
+ * A response of 1,000 output tokens appended to `session-a.jsonl`, taking the
+ * session from the README's 32,000 to 33,000. No timestamp, so its elapsed
+ * time stands. (The fixture's cut-off line ends in a newline in the
+ * repository, so finishing it is not on offer: what followed would be a
+ * second bad line.)
+ */
+const NEW_RESPONSE = `${JSON.stringify({
+  sessionId: "a",
+  gitBranch: "feat/101-a",
+  message: { usage: { output_tokens: 1000 } },
+})}\n`;
+
+/** A subagent started while the page is open, by `LIVE_CALL`'s call. */
+const LIVE = "a4444444444444444";
+const LIVE_META = {
+  agentType: "Explore",
+  description: "Follow the fixture live",
+  toolUseId: "toolu_fixture_live",
+};
+/** Session a's response that makes the call: 500 output tokens more. */
+const LIVE_CALL = `${JSON.stringify({
+  sessionId: "a",
+  gitBranch: "feat/101-a",
+  timestamp: "2026-09-02T09:15:00.000Z",
+  message: {
+    model: "claude-opus-5-5",
+    content: [
+      { type: "tool_use", id: LIVE_META.toolUseId, name: "Agent", input: {} },
+    ],
+    usage: { output_tokens: 500 },
+  },
+})}\n`;
+const LIVE_RESPONSE = `${JSON.stringify({
+  timestamp: "2026-09-02T09:15:00.000Z",
+  message: { model: "claude-haiku-5-5", usage: { output_tokens: 600 } },
+})}\n`;
+/** 32,000 + the new response's 1,000 + the call's 500. */
+const LIVE_SESSION_OUT = "33,500 output tokens";
+
+function appendTranscript(file: string, ...text: string[]) {
+  appendFileSync(`${TRANSCRIPT_WORKING_DIR}/${file}`, text.join(""), "utf8");
+}
+
+/** Writes a subagent's meta file, and its transcript when given one. */
+function writeSubagent(id: string, meta: object, transcript?: string) {
+  writeFileSync(`${SUBAGENTS}/agent-${id}.meta.json`, JSON.stringify(meta));
+  if (transcript !== undefined) {
+    writeFileSync(`${SUBAGENTS}/agent-${id}.jsonl`, transcript);
+  }
+}
+
+/** Every file of session a, last written a minute past the idle time ago. */
+function backdateSessionA() {
+  const at = (Date.now() - SESSION_IDLE_MS - 60_000) / 1000;
+  utimesSync(`${TRANSCRIPT_WORKING_DIR}/${SESSION_A_FILE}`, at, at);
+  for (const name of readdirSync(SUBAGENTS)) {
+    utimesSync(`${SUBAGENTS}/${name}`, at, at);
+  }
+}
 
 /** A card anywhere under `scope`. */
 const cardIn = (scope: Page | Locator, id: string) =>
@@ -190,15 +268,95 @@ test.describe("dev tools: Sessions", () => {
     await expect(cardIn(page, UNPARSEABLE)).toHaveCount(0);
   });
 
-  test("reads again on Refresh", async ({ page }) => {
+  test("follows the transcripts without a reload: a new response, a new subagent, a change of state", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE.devSessions.path);
+    const a = cardIn(page, SESSION_A);
+    await expectCard(a, SESSION_A);
+
+    // Claude Code writes a response, then one whose call starts a subagent,
+    // and the subagent's files.
+    appendTranscript(SESSION_A_FILE, NEW_RESPONSE, LIVE_CALL);
+    writeSubagent(LIVE, LIVE_META, LIVE_RESPONSE);
+
+    const facts = own(a);
+    await expect(facts.locator('[data-session-fact="Own output"]')).toHaveText(
+      LIVE_SESSION_OUT,
+      { timeout: R4_MS },
+    );
+    const live = childOf(a, LIVE);
+    await expect(live).toHaveCount(1, { timeout: R4_MS });
+    await expect(own(live).getByRole("heading")).toHaveText(
+      LIVE_META.description,
+    );
+    await expect(
+      own(live).locator('[data-session-fact="Own output"]'),
+    ).toHaveText("600 output tokens");
+    await expect(own(live).locator('[data-session-fact="State"]')).toHaveText(
+      SESSION_STATE.running,
+    );
+
+    writeSubagent(LIVE, { ...LIVE_META, finished: true });
+
+    await expect(own(live).locator('[data-session-fact="State"]')).toHaveText(
+      SESSION_STATE.done,
+      { timeout: R4_MS },
+    );
+  });
+
+  test("reads a session left unfinished Stopped once it has been idle, and Running again when it grows", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE.devSessions.path);
+    const a = cardIn(page, SESSION_A);
+    const nested = childOf(childOf(a, REVIEW), NESTED);
+    await expectCard(a, SESSION_A);
+    await expectCard(nested, NESTED);
+
+    // The idle time passing, without the spec waiting it out: every file of
+    // session a last written longer ago than `SESSION_IDLE_MS`.
+    backdateSessionA();
+
+    const stateOf = (card: Locator) =>
+      own(card).locator('[data-session-fact="State"]');
+    await expect(stateOf(a)).toHaveText(SESSION_STATE.stopped, {
+      timeout: R4_MS,
+    });
+    await expect(stateOf(nested)).toHaveText(SESSION_STATE.stopped);
+    // Done is its own final word, however long ago.
+    await expect(stateOf(childOf(a, REVIEW))).toHaveText(SESSION_STATE.done);
+
+    appendTranscript(SESSION_A_FILE, NEW_RESPONSE);
+
+    await expect(stateOf(a)).toHaveText(SESSION_STATE.running, {
+      timeout: R4_MS,
+    });
+    await expect(stateOf(nested)).toHaveText(SESSION_STATE.stopped);
+  });
+
+  test("picks the stream up again after the page is left and reopened", async ({
+    page,
+  }) => {
     await page.goto(ROUTE.devSessions.path);
     await expect(cardIn(page, SESSION_A)).toBeVisible();
+    const nav = page.getByRole("navigation", { name: "Dev tools" });
 
+    // Left: the page unmounts and its stream closes.
+    await nav.getByRole("link", { name: "Project map", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${ROUTE.devMap.path}$`));
     rmSync(`${TRANSCRIPT_WORKING_DIR}/session-b.jsonl`);
-    await page.getByRole("button", { name: REFRESH_LABEL }).click();
 
-    await expect(cardIn(page, SESSION_B)).toHaveCount(0);
+    await nav.getByRole("link", { name: SESSIONS_TITLE, exact: true }).click();
+
+    // Reopened on a fresh reading, never the one from before it was left...
     await expect(cardIn(page, SESSION_A)).toBeVisible();
+    await expect(cardIn(page, SESSION_B)).toHaveCount(0);
+    // ...and following again.
+    appendTranscript(SESSION_A_FILE, NEW_RESPONSE);
+    await expect(
+      own(cardIn(page, SESSION_A)).locator('[data-session-fact="Own output"]'),
+    ).toHaveText("33,000 output tokens", { timeout: R4_MS });
   });
 
   test("says where it looked when there are no transcripts at all", async ({

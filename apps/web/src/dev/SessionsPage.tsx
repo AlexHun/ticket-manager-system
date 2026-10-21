@@ -1,43 +1,53 @@
 import { useId, type ReactNode } from "react";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { extractErrorMessage } from "@/lib/errors";
-import { useSessions } from "./dev-api";
 import {
   NO_MODEL,
   NO_SESSIONS_LEAD,
   NO_TASK,
-  REFRESHING_LABEL,
-  REFRESH_LABEL,
-  SESSIONS_LOAD_FAILED,
+  SESSIONS_RECONNECTING,
+  SESSIONS_STREAM_CLOSED,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   formatElapsed,
+  idleTime,
   outputTokens,
   sessionCount,
   subagentsLabel,
 } from "./sessions-copy";
 import {
+  SESSION_IDLE_MS,
   SESSION_STATE,
   type SessionCard,
+  type SessionState,
   type SessionsReport,
 } from "./sessions-protocol";
+import {
+  useSessionsStream,
+  type SessionsConnection,
+} from "./use-sessions-stream";
+
+/** A state's badge: Running filled, Done quiet, Stopped the one that alarms. */
+const STATE_BADGE = {
+  [SESSION_STATE.running]: "secondary",
+  [SESSION_STATE.done]: "outline",
+  [SESSION_STATE.stopped]: "destructive",
+} as const satisfies Record<SessionState, string>;
 
 /**
  * This repository's Claude Code sessions on this machine, each a card with
  * every subagent it started nested under it (#590, slice 1 of
- * `docs/plans/dev-tools-sessions-page.md`).
+ * `docs/plans/dev-tools-sessions-page.md`), following them as they run
+ * (#591, slice 2): a new subagent, new tokens and a change of state reach the
+ * open page within 5 seconds, without a reload.
  *
- * Read on load and on Refresh, like the project map — a query, not a stream:
- * the page is a snapshot until a later slice makes it follow a session live.
- * It talks only to the Vite dev server (`apps/web/dev/sessions.ts`), so it
- * opens with the API and the database stopped.
+ * It talks only to the Vite dev server (`apps/web/dev/sessions-stream.ts`),
+ * so it opens with the API and the database stopped.
  */
 export function SessionsPage() {
-  const { data, isPending, error, refetch, isFetching } = useSessions();
+  const { report, problem, connection } = useSessionsStream();
 
   return (
     /* Block layout with `space-y`, for the reason `TestRunnerPage` gives. */
@@ -47,52 +57,79 @@ export function SessionsPage() {
           <h1 className="text-lg font-semibold">{SESSIONS_TITLE}</h1>
           <p className="max-w-prose text-sm text-muted-foreground">
             This repository&rsquo;s Claude Code sessions on this machine, each
-            with the subagents it started nested under it, read off the
-            transcripts when the page opens and when you press {REFRESH_LABEL}.
+            with the subagents it started nested under it, followed live off the
+            transcripts while the page is open. One that has written nothing for{" "}
+            {idleTime(SESSION_IDLE_MS)} without finishing reads{" "}
+            {SESSION_STATE.stopped}.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">dev only</Badge>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-          >
-            {isFetching ? (
-              <Loader2 aria-hidden="true" className="animate-spin" />
-            ) : (
-              <RefreshCw aria-hidden="true" />
-            )}
-            {isFetching ? REFRESHING_LABEL : REFRESH_LABEL}
-          </Button>
-        </div>
+        <Badge variant="outline">dev only</Badge>
       </div>
 
-      {isPending ? (
+      {report ? (
+        <Reading report={report} problem={problem} connection={connection} />
+      ) : connection === "open" ? (
         <SessionsSkeleton />
-      ) : error || !data ? (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {extractErrorMessage(error, SESSIONS_LOAD_FAILED)}
-        </p>
       ) : (
-        <Reading report={data} />
+        <p
+          role="status"
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {CONNECTION_WORDS[connection]}
+        </p>
       )}
     </main>
   );
 }
 
-function Reading({ report }: { report: SessionsReport }) {
+/** What the page says while the stream is not open. */
+const CONNECTION_WORDS = {
+  reconnecting: SESSIONS_RECONNECTING,
+  closed: SESSIONS_STREAM_CLOSED,
+} as const satisfies Record<Exclude<SessionsConnection, "open">, string>;
+
+function Reading({
+  report,
+  problem,
+  connection,
+}: {
+  report: SessionsReport;
+  problem: string | null;
+  connection: SessionsConnection;
+}) {
   return (
     <>
-      <p
-        aria-live="polite"
-        className="rounded-lg bg-card px-3 py-2 text-sm ring-1 ring-border"
-      >
-        {sessionCount(report.sessions.length)} read from{" "}
-        <code className="font-mono text-xs">{report.transcriptDir}</code> at{" "}
-        {new Date(report.gatheredAt).toLocaleTimeString("en-GB")}.
+      {/* Not a live region: while a session runs this line changes every few
+          seconds, and announcing each reading would drown the page. Only
+          losing the stream is announced. */}
+      <p className="flex flex-wrap items-center gap-x-2 rounded-lg bg-card px-3 py-2 text-sm ring-1 ring-border">
+        <span>
+          {sessionCount(report.sessions.length)} read from{" "}
+          <code className="font-mono text-xs">{report.transcriptDir}</code>,
+          last changed at{" "}
+          {new Date(report.gatheredAt).toLocaleTimeString("en-GB")}.
+        </span>
+        {/* Mounted throughout, so the region exists before its words do. */}
+        <span
+          role="status"
+          className="flex items-center gap-1 text-muted-foreground"
+        >
+          {connection === "reconnecting" && (
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+          )}
+          {connection !== "open" && CONNECTION_WORDS[connection]}
+        </span>
       </p>
+
+      {problem && (
+        <p className="flex items-start gap-2 rounded-md px-3 py-2 text-sm text-status-warning ring-1 ring-status-warning/30">
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0"
+          />
+          <span>{problem}</span>
+        </p>
+      )}
 
       {/* A file the reading could not use, named rather than swallowed: the
           layout is undocumented and moves between Claude Code versions, and
@@ -170,13 +207,7 @@ function CardBody({ card, depth }: { card: SessionCard; depth: number }) {
           <Fact label="Type">{card.subagentType ?? SESSION_KIND_LABEL}</Fact>
           <Fact label="Model">{card.model ?? NO_MODEL}</Fact>
           <Fact label="State">
-            <Badge
-              variant={
-                card.state === SESSION_STATE.running ? "secondary" : "outline"
-              }
-            >
-              {card.state}
-            </Badge>
+            <Badge variant={STATE_BADGE[card.state]}>{card.state}</Badge>
           </Fact>
           <Fact label="Elapsed" numeric>
             {formatElapsed(card.elapsedMs)}

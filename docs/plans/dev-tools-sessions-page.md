@@ -75,8 +75,11 @@ for a file watcher.
 
 **E2E:** extends the spec. It appends a response to the working copy's
 transcript and writes a new subagent file, and the page shows both within 5
-seconds. With the idle time overridden short for the run, a session left
-unfinished reads Stopped.
+seconds. With the session's files set back past the idle time, a session left
+unfinished reads Stopped. (#591 set the files' times back rather than
+overriding the idle time: one web server serves every spec, so a short idle
+time would race slice 1's Running assertions, and the times reach the same
+state at once while driving the constant that ships.)
 
 ## Slice 3: Waiting for you
 

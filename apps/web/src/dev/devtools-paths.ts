@@ -50,7 +50,9 @@ export const DEVTOOLS_API = {
    *  connect mounts by prefix, so `/__devtools/usage/push` would reach the scan
    *  handler first. */
   usagePush: "/__devtools/usage-push",
-  /** `GET` reads this machine's sessions of this repository and the
-   *  subagents under each, writing nothing — `./sessions-protocol`. */
+  /** `GET` streams this machine's sessions of this repository and the
+   *  subagents under each, as server-sent events: the reading when a page
+   *  connects and again whenever it changes, writing nothing (#591) —
+   *  `./sessions-protocol`. */
   sessions: "/__devtools/sessions",
 } as const;

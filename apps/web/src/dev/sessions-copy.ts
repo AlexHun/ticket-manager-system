@@ -16,12 +16,18 @@ export const SESSIONS_TITLE = "Sessions";
  *  subagent type. */
 export const SESSION_KIND_LABEL = "Session";
 
-/** The button that reads the transcripts again, and its pending label. */
-export const REFRESH_LABEL = "Refresh";
-export const REFRESHING_LABEL = "Refreshing…";
+/** The stream to the dev server dropped, and the browser is trying again. */
+export const SESSIONS_RECONNECTING = "Reconnecting to the dev server…";
 
-/** The reading itself could not be fetched from the dev server. */
-export const SESSIONS_LOAD_FAILED = "Couldn't read the sessions. Try again.";
+/** The browser gave up on the stream, which it never retries after. */
+export const SESSIONS_STREAM_CLOSED =
+  "Couldn't reach the dev server. Reload the page once it is running.";
+
+/** `15 minutes`: the idle time a card reads Stopped after, in words. */
+export const idleTime = (ms: number) => {
+  const minutes = Math.round(ms / 60_000);
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+};
 
 /** How the empty state opens, before the directory it names. */
 export const NO_SESSIONS_LEAD = "No sessions in";

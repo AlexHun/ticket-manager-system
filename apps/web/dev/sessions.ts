@@ -24,12 +24,15 @@
 // at its largest count (#413, #431); slice 4 of the plan is where the page's
 // figures are held level with the Usage page's.
 //
-// Read only, per request, and asynchronously, so a reading of a few hundred
-// transcripts does not hold the thread Vite answers every other request on.
+// Read only and asynchronously, so a reading of a few hundred transcripts does
+// not hold the thread Vite answers every other request on. A reader kept
+// between readings (`createSessionsReader`) resumes each transcript from where
+// it left off, which is what the stream polls with (#591).
 
-import { readFile, readdir } from "node:fs/promises";
+import { open, readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  SESSION_IDLE_MS,
   SESSION_STATE,
   type SessionCard,
   type SessionsReport,
@@ -108,6 +111,45 @@ const NO_FACTS: TranscriptFacts = {
   badLines: 0,
 };
 
+/**
+ * What a transcript's lines add up to so far, fed one record at a time, so a
+ * reading can resume where the last one stopped. `out` is kept as a running
+ * total beside the per-id counts it is the sum of.
+ */
+interface FactsSoFar {
+  task: string | null;
+  model: string | null;
+  first: string | null;
+  firstMs: number;
+  lastMs: number;
+  lastStop: string | null;
+  calls: string[];
+  /** Output per response id; a record with no id is its own response. */
+  byId: Map<string, number>;
+  out: number;
+  badLines: number;
+}
+
+const startFacts = (): FactsSoFar => ({
+  task: null,
+  model: null,
+  first: null,
+  firstMs: Infinity,
+  lastMs: -Infinity,
+  lastStop: null,
+  calls: [],
+  byId: new Map(),
+  out: 0,
+  badLines: 0,
+});
+
+/** A copy that `feed` can write to without touching the original. */
+const copyFacts = (f: FactsSoFar): FactsSoFar => ({
+  ...f,
+  calls: [...f.calls],
+  byId: new Map(f.byId),
+});
+
 /** A content block of type `type`, as a transcript's `message.content`
  *  holds them. */
 const isBlock = <T extends object>(
@@ -150,81 +192,189 @@ function toolCalls(content: unknown): string[] {
 }
 
 /**
- * What a transcript's text says. An unparseable line is skipped, as the Usage
- * scan skips one, and counted unless it is the unterminated last line: the
- * files are append-only JSONL, and a half-written last line is their ordinary
- * state while a session works, where a bad line above it is a file the page
- * can't fully read.
+ * One line into `f`. An unparseable line is skipped, as the Usage scan skips
+ * one, and counted only when `complete`: the files are append-only JSONL, and
+ * a half-written last line is their ordinary state while a session works,
+ * where a bad line above it is a file the page can't fully read.
  */
-function factsOf(text: string): TranscriptFacts {
-  let task: string | null = null;
-  let model: string | null = null;
-  let first: string | null = null;
-  let firstMs = Infinity;
-  let lastMs = -Infinity;
-  let lastStop: string | null = null;
-  const calls: string[] = [];
-  /** Output per response id; a record with no id is its own response. */
-  const byId = new Map<string, number>();
-  let unkeyed = 0;
-  let badLines = 0;
+function feed(f: FactsSoFar, line: string, complete: boolean): void {
+  if (!line.trim()) return;
+  let rec: TranscriptRecord;
+  try {
+    rec = JSON.parse(line) as TranscriptRecord;
+  } catch {
+    if (complete) f.badLines++;
+    return;
+  }
+  if (typeof rec !== "object" || rec === null) return;
 
-  const lines = text.split("\n");
-  for (const [index, line] of lines.entries()) {
-    if (!line.trim()) continue;
-    let rec: TranscriptRecord;
-    try {
-      rec = JSON.parse(line) as TranscriptRecord;
-    } catch {
-      if (index < lines.length - 1) badLines++;
-      continue;
-    }
-    if (typeof rec !== "object" || rec === null) continue;
-
-    if (rec.timestamp) {
-      const ms = Date.parse(rec.timestamp);
-      if (!Number.isNaN(ms)) {
-        if (ms < firstMs) {
-          firstMs = ms;
-          first = rec.timestamp;
-        }
-        lastMs = Math.max(lastMs, ms);
+  if (rec.timestamp) {
+    const ms = Date.parse(rec.timestamp);
+    if (!Number.isNaN(ms)) {
+      if (ms < f.firstMs) {
+        f.firstMs = ms;
+        f.first = rec.timestamp;
       }
-    }
-
-    task ??= promptText(rec);
-
-    const message = rec.message;
-    if (!message) continue;
-    calls.push(...toolCalls(message.content));
-    if (!model && message.model && message.model !== SYNTHETIC_MODEL) {
-      model = message.model;
-    }
-    const usage = message.usage;
-    if (!usage) continue;
-    // Every block of a response carries the same `stop_reason`, the last
-    // one written being the final word.
-    lastStop = message.stop_reason ?? null;
-    const out = usage.output_tokens ?? 0;
-    if (message.id) {
-      byId.set(message.id, Math.max(byId.get(message.id) ?? 0, out));
-    } else {
-      unkeyed += out;
+      f.lastMs = Math.max(f.lastMs, ms);
     }
   }
 
-  let out = unkeyed;
-  for (const n of byId.values()) out += n;
+  f.task ??= promptText(rec);
+
+  const message = rec.message;
+  if (!message) return;
+  f.calls.push(...toolCalls(message.content));
+  if (!f.model && message.model && message.model !== SYNTHETIC_MODEL) {
+    f.model = message.model;
+  }
+  const usage = message.usage;
+  if (!usage) return;
+  // Every block of a response carries the same `stop_reason`, the last
+  // one written being the final word.
+  f.lastStop = message.stop_reason ?? null;
+  const out = usage.output_tokens ?? 0;
+  if (message.id) {
+    const before = f.byId.get(message.id);
+    if (before === undefined || out > before) {
+      f.byId.set(message.id, out);
+      f.out += out - (before ?? 0);
+    }
+  } else {
+    f.out += out;
+  }
+}
+
+/**
+ * The facts of the complete lines in `f`, plus `trailing`, the unterminated
+ * last line, when it parses: a complete record Claude Code has not yet ended
+ * with a newline still counts, but on a copy, so that the cursor never moves
+ * past it and it counts once when its newline arrives.
+ */
+function factsOf(f: FactsSoFar, trailing: string): TranscriptFacts {
+  let s = f;
+  if (trailing.trim()) {
+    s = copyFacts(f);
+    feed(s, trailing, false);
+  }
   return {
-    task,
-    model,
-    startedAt: first,
-    elapsedMs: first !== null && lastMs > firstMs ? lastMs - firstMs : null,
-    out,
-    lastStop,
-    calls,
-    badLines,
+    task: s.task,
+    model: s.model,
+    startedAt: s.first,
+    elapsedMs:
+      s.first !== null && s.lastMs > s.firstMs ? s.lastMs - s.firstMs : null,
+    out: s.out,
+    lastStop: s.lastStop,
+    calls: s.calls,
+    badLines: s.badLines,
   };
+}
+
+/**
+ * Bytes before a cursor that a resumed reading checks are still there: a file
+ * that no longer holds them at that offset was replaced rather than grown,
+ * and is read from the top. #418's cursors check the file's first bytes; a
+ * transcript's first records are much alike from one session to the next, so
+ * the bytes the cursor sits behind tell two files apart sooner.
+ */
+const ANCHOR_BYTES = 64;
+
+/** Where a reading of one transcript stopped, kept for the next. */
+interface Cursor {
+  size: number;
+  mtimeMs: number;
+  /** Bytes read, up to and including the last newline. */
+  offset: number;
+  /** The `ANCHOR_BYTES` (or fewer) that end at `offset`. */
+  anchor: Buffer;
+  facts: FactsSoFar;
+  /** The unterminated last line, read again next time. */
+  trailing: string;
+}
+
+const NEWLINE = 0x0a;
+
+/** Feeds `bytes`' complete lines into `facts`, and answers the rest. */
+function feedBytes(
+  facts: FactsSoFar,
+  bytes: Buffer,
+): { used: number; trailing: string } {
+  const end = bytes.lastIndexOf(NEWLINE) + 1;
+  for (const line of bytes.subarray(0, end).toString("utf8").split("\n")) {
+    feed(facts, line, true);
+  }
+  return { used: end, trailing: bytes.subarray(end).toString("utf8") };
+}
+
+/**
+ * Feeds `bytes` from index `skip` into `facts`, and answers the cursor that
+ * leaves: `bytes` starts at byte `base` of the file, the one place both a
+ * resumed and a whole reading turn what they read into a cursor.
+ */
+function advance(
+  facts: FactsSoFar,
+  bytes: Buffer,
+  base: number,
+  skip: number,
+  mtimeMs: number,
+): Cursor {
+  const { used, trailing } = feedBytes(facts, bytes.subarray(skip));
+  const end = skip + used;
+  return {
+    size: base + bytes.length,
+    mtimeMs,
+    offset: base + end,
+    anchor: Buffer.from(bytes.subarray(Math.max(0, end - ANCHOR_BYTES), end)),
+    facts,
+    trailing,
+  };
+}
+
+/**
+ * One transcript's facts and when it was last written, reading only what was
+ * appended since `cursors` last saw it — nothing at all when its size and
+ * modification time are unchanged. The cursor is replaced in `cursors`.
+ */
+async function readTranscript(
+  path: string,
+  cursors: Map<string, Cursor>,
+): Promise<{ facts: TranscriptFacts; mtimeMs: number }> {
+  const st = await stat(path);
+  const before = cursors.get(path);
+  if (before && st.size === before.size && st.mtimeMs === before.mtimeMs) {
+    return {
+      facts: factsOf(before.facts, before.trailing),
+      mtimeMs: st.mtimeMs,
+    };
+  }
+
+  let cursor: Cursor | null = null;
+  if (before && st.size >= before.offset) {
+    const from = before.offset - before.anchor.length;
+    const handle = await open(path, "r");
+    try {
+      const bytes = Buffer.alloc(st.size - from);
+      const { bytesRead } = await handle.read(bytes, 0, bytes.length, from);
+      const read = bytes.subarray(0, bytesRead);
+      const anchor = read.subarray(0, before.anchor.length);
+      if (anchor.equals(before.anchor)) {
+        cursor = advance(
+          before.facts,
+          read,
+          from,
+          before.anchor.length,
+          st.mtimeMs,
+        );
+      }
+    } finally {
+      await handle.close();
+    }
+  }
+
+  if (!cursor) {
+    cursor = advance(startFacts(), await readFile(path), 0, 0, st.mtimeMs);
+  }
+  cursors.set(path, cursor);
+  return { facts: factsOf(cursor.facts, cursor.trailing), mtimeMs: st.mtimeMs };
 }
 
 /**
@@ -232,26 +382,56 @@ function factsOf(text: string): TranscriptFacts {
  * carries the absolute path, which spells `agent-<id>` in a word the page
  * must not use (R12) and repeats the file the warning already names.
  */
-const errorText = (err: unknown) =>
+export const errorText = (err: unknown) =>
   (err as NodeJS.ErrnoException | null)?.code ??
   (err instanceof Error ? err.message : String(err));
 
 const isMissing = (err: unknown) =>
   (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
 
-/** A card plus the calls its transcript made, which only the linking reads. */
+/**
+ * A card plus what only the linking and the state read: the calls its
+ * transcript made, and what its state is settled from once the tree is built.
+ */
 interface TreeNode {
   card: SessionCard;
   calls: string[];
+  children: TreeNode[];
+  /** When its transcript or meta file was last written, in epoch ms. */
+  writtenMs: number;
+  /** Whether its own record says it is over: a subagent's `finished`, or a
+   *  session's last response ending its turn. */
+  over: boolean;
+  /** A session's Done also waits on everything under it; a subagent's
+   *  `finished` is its own final word. */
+  isSession: boolean;
 }
 
-const byStart = (a: SessionCard, b: SessionCard) =>
-  (a.startedAt ?? "").localeCompare(b.startedAt ?? "");
+const byStart = (a: TreeNode, b: TreeNode) =>
+  (a.card.startedAt ?? "").localeCompare(b.card.startedAt ?? "");
 
-const anyRunning = (cards: SessionCard[]): boolean =>
-  cards.some(
-    (c) => c.state === SESSION_STATE.running || anyRunning(c.children),
-  );
+/**
+ * Settles `node`'s state and every one under it, children first, against the
+ * clock (`SESSION_STATE`'s rules). Returns whether anything in the subtree is
+ * Running, which is what keeps a quiet parent waiting on it from reading
+ * Stopped, and a session whose turn ended from reading Done.
+ */
+function settle(node: TreeNode, now: number, idleMs: number): boolean {
+  let below = false;
+  for (const child of node.children) {
+    // Every child is settled, not only up to the first Running one.
+    if (settle(child, now, idleMs)) below = true;
+  }
+  const done = node.over && (!node.isSession || !below);
+  const quiet = now - node.writtenMs > idleMs;
+  node.card.state = done
+    ? SESSION_STATE.done
+    : quiet && !below
+      ? SESSION_STATE.stopped
+      : SESSION_STATE.running;
+  node.card.children = node.children.sort(byStart).map((c) => c.card);
+  return node.card.state === SESSION_STATE.running || below;
+}
 
 /**
  * A transcript with lines above its last that did not parse is a file the page
@@ -277,67 +457,6 @@ const cardFacts = (facts: TranscriptFacts) => ({
   out: facts.out,
 });
 
-/** One session's tree, or a warning and null when its transcript can't be read. */
-async function readSession(
-  dir: string,
-  id: string,
-  warnings: SessionsWarning[],
-): Promise<SessionCard | null> {
-  const file = `${id}${TRANSCRIPT_SUFFIX}`;
-  let facts: TranscriptFacts;
-  try {
-    facts = factsOf(await readFile(join(dir, file), "utf8"));
-  } catch (err) {
-    warnings.push({
-      file,
-      message: `Couldn't read this session's transcript (${errorText(err)}), so it is left out.`,
-    });
-    return null;
-  }
-  warnOfBadLines(file, facts, warnings);
-  const root: TreeNode = {
-    card: {
-      id,
-      subagentType: null,
-      task: facts.task,
-      ...cardFacts(facts),
-      // Settled below, once its subagents are known.
-      state: SESSION_STATE.running,
-      children: [],
-    },
-    calls: facts.calls,
-  };
-
-  const subagents = await readSubagents(dir, id, warnings);
-  const nodes = [root, ...subagents.map((s) => s.node)];
-  const callers = new Map<string, TreeNode>();
-  for (const node of nodes) {
-    for (const call of node.calls) callers.set(call, node);
-  }
-  for (const { node, toolUseId, metaFile } of subagents) {
-    if (toolUseId === null) {
-      root.card.children.push(node.card);
-      continue;
-    }
-    let parent = callers.get(toolUseId);
-    if (!parent || parent === node) {
-      warnings.push({
-        file: metaFile,
-        message: `No transcript in this session made the call ${toolUseId} that started this subagent, so it is shown under its session.`,
-      });
-      parent = root;
-    }
-    parent.card.children.push(node.card);
-  }
-  for (const node of nodes) node.card.children.sort(byStart);
-
-  root.card.state =
-    facts.lastStop === END_TURN && !anyRunning(root.card.children)
-      ? SESSION_STATE.done
-      : SESSION_STATE.running;
-  return root.card;
-}
-
 interface SubagentNode {
   node: TreeNode;
   /**
@@ -350,10 +469,112 @@ interface SubagentNode {
   metaFile: string;
 }
 
+/** A meta file's parse, kept until its size or modification time moves. */
+interface MetaReading {
+  size: number;
+  mtimeMs: number;
+  meta: SubagentMeta | null;
+}
+
+/** What one reader keeps between readings, by absolute path. */
+interface ReaderState {
+  cursors: Map<string, Cursor>;
+  metas: Map<string, MetaReading>;
+  /** Every path this reading looked at, so the rest can be forgotten. */
+  seen: Set<string>;
+}
+
+/** One session's tree, or a warning and null when its transcript can't be read. */
+async function readSession(
+  dir: string,
+  id: string,
+  state: ReaderState,
+  warnings: SessionsWarning[],
+): Promise<TreeNode | null> {
+  const file = `${id}${TRANSCRIPT_SUFFIX}`;
+  const path = join(dir, file);
+  state.seen.add(path);
+  let read: Awaited<ReturnType<typeof readTranscript>>;
+  try {
+    read = await readTranscript(path, state.cursors);
+  } catch (err) {
+    warnings.push({
+      file,
+      message: `Couldn't read this session's transcript (${errorText(err)}), so it is left out.`,
+    });
+    return null;
+  }
+  const { facts } = read;
+  warnOfBadLines(file, facts, warnings);
+  const root: TreeNode = {
+    card: {
+      id,
+      subagentType: null,
+      task: facts.task,
+      ...cardFacts(facts),
+      // Settled once the whole tree is known.
+      state: SESSION_STATE.running,
+      children: [],
+    },
+    calls: facts.calls,
+    children: [],
+    writtenMs: read.mtimeMs,
+    over: facts.lastStop === END_TURN,
+    isSession: true,
+  };
+
+  const subagents = await readSubagents(dir, id, state, warnings);
+  const callers = new Map<string, TreeNode>();
+  for (const node of [root, ...subagents.map((s) => s.node)]) {
+    for (const call of node.calls) callers.set(call, node);
+  }
+  for (const { node, toolUseId, metaFile } of subagents) {
+    if (toolUseId === null) {
+      root.children.push(node);
+      continue;
+    }
+    let parent = callers.get(toolUseId);
+    if (!parent || parent === node) {
+      warnings.push({
+        file: metaFile,
+        message: `No transcript in this session made the call ${toolUseId} that started this subagent, so it is shown under its session.`,
+      });
+      parent = root;
+    }
+    parent.children.push(node);
+  }
+  return root;
+}
+
+/** A meta file parsed, or the reason it could not be, reusing the last parse
+ *  while the file is unchanged. */
+async function readMeta(
+  path: string,
+  state: ReaderState,
+): Promise<{ meta: SubagentMeta | null; mtimeMs: number }> {
+  state.seen.add(path);
+  const st = await stat(path);
+  const before = state.metas.get(path);
+  if (before && before.size === st.size && before.mtimeMs === st.mtimeMs) {
+    return before;
+  }
+  // A parse failure throws to the caller and is not kept: the next reading
+  // tries again, which is what a meta file still being written wants.
+  const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+  const meta =
+    typeof parsed === "object" && parsed !== null
+      ? (parsed as SubagentMeta)
+      : null;
+  const reading = { size: st.size, mtimeMs: st.mtimeMs, meta };
+  state.metas.set(path, reading);
+  return reading;
+}
+
 /** Every subagent of one session that has a usable meta file. */
 async function readSubagents(
   dir: string,
   sessionId: string,
+  state: ReaderState,
   warnings: SessionsWarning[],
 ): Promise<SubagentNode[]> {
   /** As the warnings name it, relative to `dir`. */
@@ -378,11 +599,9 @@ async function readSubagents(
     const agentId = META_FILE.exec(name)?.[1];
     if (!agentId) continue;
     const metaFile = `${rel}/${name}`;
-    let meta: SubagentMeta;
+    let read: { meta: SubagentMeta | null; mtimeMs: number };
     try {
-      meta = JSON.parse(
-        await readFile(join(abs, name), "utf8"),
-      ) as SubagentMeta;
+      read = await readMeta(join(abs, name), state);
     } catch (err) {
       warnings.push({
         file: metaFile,
@@ -390,7 +609,8 @@ async function readSubagents(
       });
       continue;
     }
-    if (typeof meta !== "object" || meta === null) {
+    const { meta } = read;
+    if (meta === null) {
       warnings.push({
         file: metaFile,
         message:
@@ -400,9 +620,14 @@ async function readSubagents(
     }
 
     const transcript = name.slice(0, -META_SUFFIX.length) + TRANSCRIPT_SUFFIX;
+    const transcriptPath = join(abs, transcript);
+    state.seen.add(transcriptPath);
     let facts = NO_FACTS;
+    let writtenMs = read.mtimeMs;
     try {
-      facts = factsOf(await readFile(join(abs, transcript), "utf8"));
+      const t = await readTranscript(transcriptPath, state.cursors);
+      facts = t.facts;
+      writtenMs = Math.max(writtenMs, t.mtimeMs);
       warnOfBadLines(`${rel}/${transcript}`, facts, warnings);
     } catch (err) {
       // A subagent that has only just started has a meta file and no
@@ -426,11 +651,14 @@ async function readSubagents(
               ? meta.description
               : facts.task,
           ...cardFacts(facts),
-          state:
-            meta.finished === true ? SESSION_STATE.done : SESSION_STATE.running,
+          state: SESSION_STATE.running,
           children: [],
         },
         calls: facts.calls,
+        children: [],
+        writtenMs,
+        over: meta.finished === true,
+        isSession: false,
       },
       toolUseId: typeof meta.toolUseId === "string" ? meta.toolUseId : null,
       metaFile,
@@ -439,42 +667,85 @@ async function readSubagents(
   return nodes;
 }
 
+/** Reads a transcript directory again and again, each time only what moved. */
+export interface SessionsReader {
+  /**
+   * Every session in `dir` as a tree of cards, most recently started first,
+   * with a warning for each file it could not use, its states settled
+   * against `now`.
+   */
+  read(dir: string, now?: number): Promise<SessionsReport>;
+}
+
 /**
- * Every session in `dir` as a tree of cards, most recently started first, with
- * a warning for each file it could not use.
+ * A reader that keeps a cursor per transcript between readings, so the next
+ * reading parses only what was appended — and opens nothing whose size and
+ * modification time are unchanged — as the Usage scan's cursors do (#418).
+ * That is what lets the stream poll (`./sessions-stream.ts`). Measured
+ * 2026-10-21 on Windows over this machine's 206 sessions (735 transcripts):
+ * the first reading took 15-20s, and each one after it 457-818ms on Bun
+ * (median 532ms) and 534-972ms on Node (median 587ms), ten readings each a
+ * second apart while a session wrote. A path a reading no longer finds is
+ * forgotten.
  *
  * A directory that does not exist is an empty reading rather than a warning:
  * it is the ordinary state of a clone Claude Code has never opened, and the
  * page's empty state names the directory it looked in.
  */
-export async function readSessions(dir: string): Promise<SessionsReport> {
-  const warnings: SessionsWarning[] = [];
-  const sessions: SessionCard[] = [];
-  let names: string[] = [];
-  try {
-    names = await readdir(dir);
-  } catch (err) {
-    if (!isMissing(err)) {
-      warnings.push({
-        file: ".",
-        message: `Couldn't list the transcript directory (${errorText(err)}).`,
-      });
-    }
-  }
-  for (const name of names.sort()) {
-    if (!name.endsWith(TRANSCRIPT_SUFFIX)) continue;
-    const card = await readSession(
-      dir,
-      name.slice(0, -TRANSCRIPT_SUFFIX.length),
-      warnings,
-    );
-    if (card) sessions.push(card);
-  }
-  sessions.sort((a, b) => byStart(b, a));
+export function createSessionsReader(
+  idleMs: number = SESSION_IDLE_MS,
+): SessionsReader {
+  const cursors = new Map<string, Cursor>();
+  const metas = new Map<string, MetaReading>();
+
   return {
-    transcriptDir: dir,
-    gatheredAt: new Date().toISOString(),
-    sessions,
-    warnings,
+    async read(dir, now = Date.now()) {
+      const state: ReaderState = { cursors, metas, seen: new Set() };
+      const warnings: SessionsWarning[] = [];
+      const roots: TreeNode[] = [];
+      let names: string[] = [];
+      try {
+        names = await readdir(dir);
+      } catch (err) {
+        if (!isMissing(err)) {
+          warnings.push({
+            file: ".",
+            message: `Couldn't list the transcript directory (${errorText(err)}).`,
+          });
+        }
+      }
+      // One session at a time. All of them at once read a little faster warm
+      // (a median of 375ms against 532ms, 2026-10-21) and would hold every
+      // transcript in memory together on a cold reading, 605 MB here.
+      for (const name of names.sort()) {
+        if (!name.endsWith(TRANSCRIPT_SUFFIX)) continue;
+        const root = await readSession(
+          dir,
+          name.slice(0, -TRANSCRIPT_SUFFIX.length),
+          state,
+          warnings,
+        );
+        if (root) roots.push(root);
+      }
+      for (const root of roots) settle(root, now, idleMs);
+      for (const path of cursors.keys()) {
+        if (!state.seen.has(path)) cursors.delete(path);
+      }
+      for (const path of metas.keys()) {
+        if (!state.seen.has(path)) metas.delete(path);
+      }
+      roots.sort((a, b) => byStart(b, a));
+      return {
+        transcriptDir: dir,
+        gatheredAt: new Date(now).toISOString(),
+        sessions: roots.map((r) => r.card),
+        warnings,
+      };
+    },
   };
 }
+
+/** One reading with nothing kept, for a caller that reads once, as the unit
+ *  tests do. */
+export const readSessions = (dir: string, now?: number) =>
+  createSessionsReader().read(dir, now);
