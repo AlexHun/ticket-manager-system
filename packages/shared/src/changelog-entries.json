@@ -928,5 +928,30 @@
     "version": "0.1.246",
     "date": "2026-10-21",
     "title": "The Sessions page follows a running session, and a dead one reads Stopped"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "A hook records each session or subagent waiting on the developer"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "The Sessions reader reads a card a waiting record names Waiting for you"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "The Sessions page reads Waiting for you, and its header counts the waiting"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "A permission prompt that names no subagent clears when any card moves on"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "A subagent's event never ends the session's own wait"
   }
 ]
