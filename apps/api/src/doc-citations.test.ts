@@ -432,11 +432,6 @@ const EXEMPTIONS: Exemption[] = [
       "$queryRawUnsafe",
       "the Prisma method the reviewer is told to look for, which this code never calls.",
     ],
-    [
-      ".claude/skills/write-a-prd/SKILL.md",
-      "AskUserQuestion",
-      "a Claude Code tool.",
-    ],
   ].map(([doc, citation, what]) => ({
     doc: doc!,
     citation: citation!,
