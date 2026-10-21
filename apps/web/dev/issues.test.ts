@@ -110,6 +110,18 @@ describe("listIssues", () => {
     expect(env.PATH ?? env.Path).toBeTruthy();
   });
 
+  it("drops the variables that name a repository, since gh finds its repo through git (#566)", async () => {
+    const { calls, spawn } = capture();
+    vi.stubEnv("GIT_DIR", "C:/elsewhere/.git");
+    vi.stubEnv("GIT_INDEX_FILE", "C:/elsewhere/.git/index");
+
+    await listIssues(spawn);
+
+    const { env } = calls[0]![2];
+    expect(env.GIT_DIR).toBeUndefined();
+    expect(env.GIT_INDEX_FILE).toBeUndefined();
+  });
+
   it("gives gh a deadline, so a hung child cannot be a Scan that never ends", async () => {
     const { calls, spawn } = capture();
 

@@ -6,6 +6,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
 import { basicAuthPlugin } from "./dev/basic-auth.ts";
 import { devToolsPlugin } from "./dev/plugin.ts";
 import {
@@ -22,12 +23,15 @@ import {
  * tarball, a Docker context without `.git`, or a machine with no git installed
  * are all normal, and none of them is a reason to fail a build. `stdio` silences
  * git's own stderr so those cases don't print an alarming line during a build
- * that is going to succeed anyway.
+ * that is going to succeed anyway. `env` drops the variables that name a
+ * repository, so a build started from a git hook still reads this checkout
+ * (#566).
  */
 function git(...args: string[]): string {
   try {
     return execFileSync("git", args, {
       cwd: import.meta.dirname,
+      env: repositoryFreeEnv(),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
