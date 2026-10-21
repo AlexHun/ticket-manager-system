@@ -78,6 +78,12 @@ describe("chainPlanOf", () => {
     expect(chainPlanOf("auto docs/prd/y-z.md")).toBe("docs/prd/y-z.md");
   });
 
+  it("reads a Windows path or one written from ./ as the path issues name", () => {
+    expect(chainPlanOf("docs\\plans\\x.md")).toBe("docs/plans/x.md");
+    expect(chainPlanOf("./docs/plans/x.md auto")).toBe("docs/plans/x.md");
+    expect(chainPlanOf(".\\docs\\prd\\y.md")).toBe("docs/prd/y.md");
+  });
+
   it("answers null for a chain given issue numbers", () => {
     expect(chainPlanOf("397-401 auto")).toBeNull();
     expect(chainPlanOf("")).toBeNull();
@@ -108,8 +114,8 @@ describe("chainView", () => {
   it("orders the issues blockers first, ties by number, and marks merged, in progress and next", () => {
     const view = chainView(
       { sessionId: "c", plan: PLAN, workers: [worker("Flint", 202)] },
-      // Listed out of order: 203 is blocked by 202, which a lower number
-      // alone would put first.
+      // Listed out of order: the order comes from the blockers and the
+      // numbers, never from where gh happens to print an issue.
       listing(
         listed(203, open, [[201, closed]]),
         listed(204, open, [[203, open]]),
@@ -215,7 +221,7 @@ describe("createChainLister", () => {
       env: {},
       ttlMs: 60_000,
       clock: () => now,
-      fetch: () => {
+      list: () => {
         calls++;
         return Promise.resolve({ issues: [], warning: null });
       },
@@ -237,7 +243,7 @@ describe("createChainLister", () => {
       env: { GH_CHAIN_ISSUES_FILE: "listing.json" },
       ttlMs: 60_000,
       clock: () => 0,
-      fetch: () => {
+      list: () => {
         calls++;
         return Promise.resolve({ issues: [], warning: null });
       },

@@ -44,12 +44,13 @@ export function chainArgsOf(text: string): string | null {
   return COMMAND_ARGS.exec(text)?.[1]?.trim() ?? "";
 }
 
-const PLAN_PATH = /(?:^|\s)(docs\/(?:plans|prd)\/[\w.-]+\.md)(?=\s|$)/;
+const PLAN_PATH = /(?:^|\s)(?:\.\/)?(docs\/(?:plans|prd)\/[\w.-]+\.md)(?=\s|$)/;
 
 /** The plan or PRD path among `/chain`'s arguments, or null when it was given
- *  issue numbers. */
+ *  issue numbers. A Windows path or one written from `./` is read as the
+ *  forward-slash path from the repo root, the form an issue's body names. */
 export const chainPlanOf = (args: string): string | null =>
-  PLAN_PATH.exec(args)?.[1] ?? null;
+  PLAN_PATH.exec(args.replaceAll("\\", "/"))?.[1] ?? null;
 
 /** The opening `chain` step 2 gives every worker's prompt. */
 const WORKER_PROMPT =
@@ -170,23 +171,23 @@ export function createChainLister({
   env = process.env,
   ttlMs = CHAIN_LISTING_TTL_MS,
   clock = Date.now,
-  fetch = (plan: string) => fetchChainListing(plan, env),
+  list = (plan: string) => fetchChainListing(plan, env),
 }: {
   env?: Record<string, string | undefined>;
   ttlMs?: number;
   clock?: () => number;
-  fetch?: ChainLister;
+  list?: ChainLister;
 } = {}): ChainLister {
   const kept = new Map<
     string,
     { at: number; listing: Promise<ChainListing> }
   >();
   return (plan) => {
-    if (env[CHAIN_ISSUES_FILE_ENV]?.trim()) return fetch(plan);
+    if (env[CHAIN_ISSUES_FILE_ENV]?.trim()) return list(plan);
     const now = clock();
     const before = kept.get(plan);
     if (before && now - before.at <= ttlMs) return before.listing;
-    const listing = fetch(plan);
+    const listing = list(plan);
     kept.set(plan, { at: now, listing });
     return listing;
   };

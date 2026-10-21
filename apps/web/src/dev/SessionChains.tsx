@@ -104,7 +104,10 @@ function IssueRow({ issue }: { issue: ChainIssue }) {
         {issue.state}
       </Badge>
       {issue.worker !== null && (
-        <span data-chain-worker className="text-muted-foreground">
+        <span
+          data-chain-worker={issue.worker}
+          className="text-muted-foreground"
+        >
           {issue.worker}
         </span>
       )}
