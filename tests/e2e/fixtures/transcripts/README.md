@@ -76,6 +76,12 @@ what the usage history's start date is taken from (#417). The earliest is
 mirror of the `main` turn above: two branches in one session must land in two
 rows, the same way one session's `main` turn must land in none.
 
+Between them sits a turn on `develop`, **1,000** output tokens (#593). The
+scan drops it, as it drops `chore/no-issue-here`: `develop` names no issue and
+is not `main`, so it is neither a row nor unattributed, and no figure above
+moves. It is there for the Sessions page, which counts `develop` with `main`
+(below).
+
 ## What the bands and the listing make of these figures
 
 `fixtures/gh-issues.ts` is the other half — it pins what was _forecast_ where
@@ -134,8 +140,8 @@ under test.
 ## What the Sessions page makes of them
 
 `tests/e2e/dev-sessions.spec.ts` reads the same working copy through
-`/__dev/sessions` (#590). Two lines are here for it alone, and neither moves a
-figure above:
+`/__dev/sessions` (#590). Three lines are here for it alone, and none moves a
+figure above: the `develop` turn in `session-b.jsonl` (#593), and these two:
 
 - the first line of `session-a.jsonl` is its prompt, "Implement issue #101.",
   which is the session's task. It carries no `usage`, so the Usage scan skips
@@ -146,25 +152,41 @@ figure above:
   subagent is still running, so it reads Running.
 
 A session's card is named for its transcript (`session-a`), a subagent's for
-its `agentId`. A card's output tokens are its own transcript's, whatever branch each line
-ran on, and its elapsed time runs from its transcript's first timestamp to its
-latest:
+its `agentId`. Its elapsed time runs from its transcript's first timestamp to
+its latest:
 
-| Card                | Type              | Model              | State   | Elapsed  | Output tokens                               |
-| ------------------- | ----------------- | ------------------ | ------- | -------- | ------------------------------------------- |
-| `session-b`         | Session           | unknown            | Done    | `5m 0s`  | 3,000 + 90,000 = **93,000**                 |
-| `session-a`         | Session           | `claude-opus-5-5`  | Running | `15m 0s` | 12,000 + 5,000 + 8,000 + 7,000 = **32,000** |
-| `a1111111111111111` | `general-purpose` | `claude-opus-5-5`  | Done    | `1m 55s` | **8,000**                                   |
-| `a2222222222222222` | `Explore`         | `claude-haiku-5-5` | Running | `55s`    | **4,000**                                   |
+| Card                | Type              | Model              | State   | Elapsed  |
+| ------------------- | ----------------- | ------------------ | ------- | -------- |
+| `session-b`         | Session           | unknown            | Done    | `5m 0s`  |
+| `session-a`         | Session           | `claude-opus-5-5`  | Running | `15m 0s` |
+| `a1111111111111111` | `general-purpose` | `claude-opus-5-5`  | Done    | `1m 55s` |
+| `a2222222222222222` | `Explore`         | `claude-haiku-5-5` | Running | `55s`    |
 
-Session `b` is listed first, being the more recently started. Session `b` has
-no prompt, so its task reads "No prompt recorded". `a3333333333333333`'s meta
-file is the warning, and it has no card.
+Session `b` has no prompt, so its task reads "No prompt recorded".
+`a3333333333333333`'s meta file is the warning, and it has no card.
+
+The cards are grouped by the branch each response ran on (#593): one group per
+issue, one for `develop` and `main`, and one for the rest. A session that ran on
+several branches is in each of their groups with its share of each, so a card's
+output tokens are those of its own responses on the group's branches, and
+"with its subagents" adds every card under it. Issue groups come first, by
+their most recently started session (session `b` before `a`), then by number:
+
+| Group                | Total                               | Cards: own (with its subagents)                                                       |
+| -------------------- | ----------------------------------- | ------------------------------------------------------------------------------------- |
+| `#102`               | **3,000**                           | `session-b` 3,000                                                                     |
+| `#105`               | **90,000**                          | `session-b` 90,000                                                                    |
+| `#101`               | **32,000**, the Usage page's `#101` | `session-a` 12,000 + 8,000 = 20,000 (32,000); `a1111…` 8,000 (12,000); `a2222…` 4,000 |
+| `develop` and `main` | 1,000 + 5,000 = **6,000**           | `session-b` 1,000, then `session-a` 5,000                                             |
+| other branches       | **7,000**                           | `session-a` 7,000, on `chore/no-issue-here`                                           |
+
+The subagents ran on `feat/101-a` alone, so only `#101`'s group draws them.
 
 The Running states above hold only while the working copy's files are fresh:
 a card that is not Done reads Stopped once its files have gone unwritten for
 `SESSION_IDLE_MS` (#591). `resetTranscriptWorkingCopy` stamps every copied
 file with the current time for that reason. The spec's live cases (#591)
 write to the working copy at run time and never to these files: a response
-of 1,000 output tokens appended to `session-a.jsonl` (32,000 → 33,000), one
-of 500 whose call starts a new subagent (33,500), and that subagent's own 600.
+of 1,000 output tokens appended to `session-a.jsonl` (its share of `#101`
+20,000 → 21,000), one of 500 whose call starts a new subagent (21,500), and
+that subagent's own 600, all on `feat/101-a` (`#101` 32,000 → 34,100).
