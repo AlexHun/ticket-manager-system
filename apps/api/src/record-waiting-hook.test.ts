@@ -126,17 +126,36 @@ describe("record-waiting hook", () => {
     expect(records()).toEqual([]);
   }, 20_000);
 
-  test("clears a prompt that named no subagent once any card in the session moves on", () => {
-    // The docs don't say whether a subagent's permission prompt carries
-    // `agent_id`. Without it the record is the session's, and the subagent's
-    // answered call, which does carry it, must still clear it.
-    run(base(PERMISSION_PROMPT));
-    expect(records()).toHaveLength(1);
+  // A conductor waiting on the developer while a background worker it launched
+  // keeps running, as in a `/chain`: the worker's events carry its `agent_id`,
+  // and none of them may end a wait that named no subagent.
+  const workerEvents = [
+    ["the worker's next call", { ...POST_TOOL_USE, ...inSubagent }],
+    ["the worker stopping", { hook_event_name: "SubagentStop", ...inSubagent }],
+    // A SubagentStop that names no subagent says nothing about the session.
+    [
+      "a SubagentStop that names no subagent",
+      { hook_event_name: "SubagentStop" },
+    ],
+  ] as const;
 
-    run(base({ ...POST_TOOL_USE, ...inSubagent }));
+  test.each([
+    ["a permission prompt", PERMISSION_PROMPT, `${SESSION}@prompt.json`],
+    ["a question", QUESTION, `${SESSION}.json`],
+  ])(
+    "keeps the session's wait on %s while a background worker moves on, and clears it on the session's own next call",
+    (_, wait, name) => {
+      run(base(wait));
+      for (const [, event] of workerEvents) {
+        run(base(event));
+        expect(records().map((r) => r.name)).toEqual([name]);
+      }
 
-    expect(records()).toEqual([]);
-  }, 20_000);
+      run(base(POST_TOOL_USE));
+      expect(records()).toEqual([]);
+    },
+    30_000,
+  );
 
   test("records which subagent is held on a question, apart from its session", () => {
     run(base({ ...QUESTION, ...inSubagent }));

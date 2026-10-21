@@ -20,11 +20,20 @@
 // A payload carries `agent_id` when the hook fires inside a subagent, and the
 // record then names that subagent; without one it names the session. The id is
 // the one in `subagents/agent-<id>.jsonl`, which is how the page finds the card.
+// An event ends only the wait of the card it names: a background worker's
+// events carry its `agent_id`, and in a `/chain` one comes on every call it
+// makes while the conductor is held, so none may end the conductor's wait. A
+// `SubagentStop` that names no subagent ends nothing.
+//
 // The docs promise `agent_id` on tool events, so a question always names who
 // asked it, but not on a notification. A permission prompt with no `agent_id`
-// may be any card's, so it is kept apart, as `<session>@prompt.json`, and the
-// next clearing event from any card in the session removes it: the subagent
-// that was held on it carries its own id when its call goes on to run.
+// is kept apart, as `<session>@prompt.json`, and only the session's own events
+// end it, like any wait that names the session. If it was in fact a subagent's,
+// the record outlives the prompt until the session's next event of its own: a
+// background subagent cannot ask, so it was a foreground one, and the session
+// was blocked on the call that ran it, whose `PostToolUse` comes once that
+// subagent ends. The session's card reading Waiting for you until then is the
+// lesser wrong of the two; the other is a real wait lost to a worker's next call.
 //
 // settings.json is committed, so this runs in every clone and session, and on
 // every tool call. It reads stdin, writes or removes a file or two, and exits 0;
@@ -63,9 +72,11 @@ function record(file, sessionId, agentId) {
   renameSync(temp, file);
 }
 
+/** An event that names a subagent ends only that subagent's wait; one that
+ *  names none ends the session's own, and a prompt that named no subagent. */
 function clear(sessionId, agentId) {
   rmSync(fileOf(sessionId, agentId), { force: true });
-  rmSync(promptFileOf(sessionId), { force: true });
+  if (!agentId) rmSync(promptFileOf(sessionId), { force: true });
 }
 
 function clearSession(sessionId) {
@@ -98,8 +109,12 @@ function handle(event) {
     case "PostToolUseFailure":
     case "UserPromptSubmit":
     case "Stop":
-    case "SubagentStop":
       clear(sessionId, agentId);
+      return;
+    case "SubagentStop":
+      // One that names no subagent says nothing about the session, which is
+      // still running: it must not end the session's own wait.
+      if (agentId) clear(sessionId, agentId);
       return;
     case "SessionEnd":
       clearSession(sessionId);
