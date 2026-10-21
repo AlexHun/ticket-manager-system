@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { stripComments } from "./strip-comments";
+import { stripComments } from "@ticket/repo-scan/strip-comments";
 
 /**
  * The citation index and the two resolvers behind `doc-citations.test.ts`:
@@ -466,7 +466,7 @@ const SLASH_COMMENTED = /\.(?:[cm]?[jt]sx?|json|jsonc)$/;
  * comment.
  */
 function codeOutsideComments(file: string, text: string): string {
-  if (SLASH_COMMENTED.test(file)) return stripComments(text);
+  if (SLASH_COMMENTED.test(file)) return stripComments(text).code;
   if (file.endsWith(".css")) return text.replace(/\/\*[\s\S]*?\*\//g, "");
   if (file.endsWith(".sql")) return text.replace(/--.*$/gm, "");
   if (file.endsWith(".prisma")) return text.replace(/\/\/.*$/gm, "");

@@ -137,7 +137,7 @@ function clean(text: string): string {
  * parsers below — they anchor on the line start, and `✓ src/foo.test.tsx` never
  * appears there. It is stripped for *parsing only*: the displayed log keeps the
  * prefix, both because it is the real output and because `bun run typecheck` runs
- * four workspaces at once and the prefix is the only thing saying which one is
+ * five workspaces at once and the prefix is the only thing saying which one is
  * talking. The root E2E project's `tsc` runs after them, outside `--filter`, so
  * its lines carry no prefix and only their file paths say where an error is.
  *

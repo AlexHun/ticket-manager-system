@@ -28,6 +28,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
 COPY packages/shared/package.json packages/shared/
 COPY tools/lint/package.json tools/lint/
+COPY tools/repo-scan/package.json tools/repo-scan/
 
 RUN bun install --frozen-lockfile
 
@@ -37,8 +38,10 @@ COPY tsconfig.base.json ./
 # and the Prisma schema, and the typecheck and API-unit suites run against it.
 # The root `.dockerignore` still applies, so `tests/`, `scripts/`, `*.md` and
 # `playwright.config.ts` are absent — the map does not see them and the E2E
-# suite cannot run here.
+# suite cannot run here. `tools/repo-scan` is the comment stripper the project
+# map and both standards guards import (#565).
 COPY packages packages
+COPY tools/repo-scan tools/repo-scan
 COPY apps apps
 
 # The generated client is gitignored; the typecheck and API-unit suites need it.

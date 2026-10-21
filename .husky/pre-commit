@@ -7,7 +7,7 @@
 # fixtures pass straight through instead of erroring for want of a parser.
 bunx lint-staged
 
-# The cheapest real feedback in the repo: four workspaces and the E2E project,
+# The cheapest real feedback in the repo: five workspaces and the E2E project,
 # ~18s, and it is the check that catches the class of mistake nothing else
 # here would.
 bun run typecheck

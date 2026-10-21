@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
+    "@ticket/repo-scan": "workspace:*",
     "@types/bun": "latest",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
