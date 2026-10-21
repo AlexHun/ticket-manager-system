@@ -29,9 +29,11 @@ import {
   type SessionsConnection,
 } from "./use-sessions-stream";
 
-/** A state's badge: Running filled, Done quiet, Stopped the one that alarms. */
+/** A state's badge: Running filled, Waiting for you in the primary fill that
+ *  asks for the developer, Done quiet, Stopped the one that alarms. */
 const STATE_BADGE = {
   [SESSION_STATE.running]: "secondary",
+  [SESSION_STATE.waiting]: "default",
   [SESSION_STATE.done]: "outline",
   [SESSION_STATE.stopped]: "destructive",
 } as const satisfies Record<SessionState, string>;

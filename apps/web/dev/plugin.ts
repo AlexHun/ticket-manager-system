@@ -33,6 +33,7 @@ import { gatherUsage, readStoredUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
 import { createSessionsReader } from "./sessions.ts";
 import { sessionsStream } from "./sessions-stream.ts";
+import { resolveWaitingDir } from "./waiting.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
 import { historyIsPushed, pushHistoryFile, receivePush } from "./usage-push.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
@@ -146,7 +147,11 @@ export function devToolsPlugin(): Plugin {
    */
   const sessionsReader = createSessionsReader();
   const sessions = sessionsStream(() =>
-    sessionsReader.read(resolveTranscriptDir(process.env, { cwd: REPO_ROOT })),
+    sessionsReader.read(
+      resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+      Date.now(),
+      resolveWaitingDir(process.env),
+    ),
   );
 
   const broadcast = (message: DevStreamMessage): void => {
@@ -398,7 +403,9 @@ export function devToolsPlugin(): Plugin {
         // listens (`./sessions-stream.ts`). The same transcript directory the
         // Usage scan reads — `REPO_ROOT` for the reason the scan's comment
         // above gives, and resolved on every reading so
-        // `CLAUDE_TRANSCRIPT_DIR` points it at the E2E fixture. Reads only.
+        // `CLAUDE_TRANSCRIPT_DIR` points it at the E2E fixture. The waiting
+        // records the hook writes (#592) are read beside them, from
+        // `CLAUDE_WAITING_DIR` when it is set (`./waiting.ts`). Reads only.
         only("GET", (req, res) => {
           const leave = sessions.subscribe(
             openEventStream<SessionsStreamMessage>(res),

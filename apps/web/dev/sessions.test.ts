@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { createSessionsReader, readSessions } from "./sessions.ts";
 import {
   SESSION_IDLE_MS,
@@ -414,23 +414,24 @@ describe("readSessions", () => {
  * clock the reading is given, so each case writes its files, sets their times
  * with `utimesSync` and reads at a `now` of its choosing.
  */
+/** Sets a file's modification time, relative to `dir`. */
+const touch = (file: string, ms: number) =>
+  utimesSync(join(dir, file), ms / 1000, ms / 1000);
+
+/** The state of the card `id`, wherever it is in the tree. */
+const stateIn = (cards: SessionCard[], id: string): string | undefined => {
+  for (const c of cards) {
+    if (c.id === id) return c.state;
+    const found = stateIn(c.children, id);
+    if (found) return found;
+  }
+  return undefined;
+};
+
 describe("readSessions: Stopped", () => {
   const NOW = Date.parse("2026-10-21T12:00:00.000Z");
   const idle = NOW - SESSION_IDLE_MS - 1000;
   const fresh = NOW - 1000;
-
-  /** Sets a file's modification time, relative to `dir`. */
-  const touch = (file: string, ms: number) =>
-    utimesSync(join(dir, file), ms / 1000, ms / 1000);
-
-  const stateIn = (cards: SessionCard[], id: string): string | undefined => {
-    for (const c of cards) {
-      if (c.id === id) return c.state;
-      const found = stateIn(c.children, id);
-      if (found) return found;
-    }
-    return undefined;
-  };
 
   it("reads a session Stopped once its transcript is older than the idle time, and Done stays Done", async () => {
     session("crashed", response(1, T(0), { stop: "tool_use" }));
@@ -512,6 +513,172 @@ describe("readSessions: Stopped", () => {
     expect(stateIn((await reader.read(dir, NOW)).sessions, "s")).toBe(
       SESSION_STATE.running,
     );
+  });
+});
+
+/**
+ * Slice 3 (#592): a card a waiting record names reads Waiting for you. The
+ * records are what `.claude/hooks/record-waiting.mjs` writes, one file per
+ * session or subagent holding `{ sessionId, agentId }`, in a directory of the
+ * case's own beside the transcripts.
+ */
+describe("readSessions: Waiting for you", () => {
+  // The real clock, since the files these cases write are stamped by it.
+  const NOW = Date.now();
+  const idle = NOW - SESSION_IDLE_MS - 1000;
+  let waitingDir: string;
+
+  beforeEach(() => {
+    waitingDir = join(dir, "..", `${basename(dir)}-waiting`);
+    mkdirSync(waitingDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(waitingDir, { recursive: true, force: true });
+  });
+
+  const waiting = (sessionId: string, agentId: string | null = null) =>
+    writeFileSync(
+      join(
+        waitingDir,
+        agentId ? `${sessionId}.${agentId}.json` : `${sessionId}.json`,
+      ),
+      JSON.stringify({ sessionId, agentId }),
+    );
+
+  /** A session whose call started subagent `a`, whose call started `b`. */
+  function nested() {
+    session("s", response(1, T(0), { calls: ["toolu_a"], stop: "tool_use" }));
+    subagent(
+      "s",
+      "a",
+      { agentType: "x", description: "a", toolUseId: "toolu_a" },
+      response(1, T(1), { calls: ["toolu_b"] }),
+    );
+    subagent(
+      "s",
+      "b",
+      { agentType: "x", description: "b", toolUseId: "toolu_b" },
+      response(1, T(2)),
+    );
+  }
+
+  const states = async (now = NOW) => {
+    const { sessions } = await readSessions(dir, now, waitingDir);
+    return ["s", "a", "b"].map((id) => stateIn(sessions, id));
+  };
+
+  it("reads the nested subagent a record names Waiting for you, and only it", async () => {
+    nested();
+    waiting("s", "b");
+
+    expect(await states()).toEqual([
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+      SESSION_STATE.waiting,
+    ]);
+  });
+
+  it("reads a session Waiting for you on a record of its own", async () => {
+    nested();
+    waiting("s");
+
+    expect(await states()).toEqual([
+      SESSION_STATE.waiting,
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+    ]);
+  });
+
+  it("goes back to what the transcripts say once the record is gone", async () => {
+    nested();
+    const reader = createSessionsReader();
+    waiting("s", "b");
+    const read = async () =>
+      stateIn((await reader.read(dir, NOW, waitingDir)).sessions, "b");
+    expect(await read()).toBe(SESSION_STATE.waiting);
+
+    rmSync(join(waitingDir, "s.b.json"));
+
+    expect(await read()).toBe(SESSION_STATE.running);
+  });
+
+  it("keeps a quiet card waiting rather than Stopped, and everything above it Running", async () => {
+    nested();
+    waiting("s", "b");
+    for (const f of [
+      "s.jsonl",
+      "s/subagents/agent-a.jsonl",
+      "s/subagents/agent-a.meta.json",
+      "s/subagents/agent-b.jsonl",
+      "s/subagents/agent-b.meta.json",
+    ]) {
+      touch(f, idle);
+    }
+
+    // A permission prompt can be held for an hour: the wait is the developer's.
+    expect(await states()).toEqual([
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+      SESSION_STATE.waiting,
+    ]);
+  });
+
+  it("leaves a Done card Done whatever a record left behind says", async () => {
+    session("s", response(1, T(0), { calls: ["toolu_a"] }));
+    subagent(
+      "s",
+      "a",
+      {
+        agentType: "x",
+        description: "a",
+        toolUseId: "toolu_a",
+        finished: true,
+      },
+      response(1, T(1)),
+    );
+    session("over", response(1, T(0), { stop: "end_turn" }));
+    waiting("s", "a");
+    waiting("over");
+
+    const { sessions } = await readSessions(dir, NOW, waitingDir);
+
+    expect(stateIn(sessions, "a")).toBe(SESSION_STATE.done);
+    expect(stateIn(sessions, "over")).toBe(SESSION_STATE.done);
+  });
+
+  it("shows a record naming a subagent the session has no card for on the session's card", async () => {
+    nested();
+    waiting("s", "a9999999999999999");
+
+    expect(await states()).toEqual([
+      SESSION_STATE.waiting,
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+    ]);
+  });
+
+  it("ignores a record for a session it has no transcript of, one it can't parse, and a missing directory", async () => {
+    nested();
+    waiting("elsewhere");
+    writeFileSync(join(waitingDir, "s.json"), "{ not json");
+    writeFileSync(join(waitingDir, "s.a.json.123.tmp"), "{}");
+
+    const { sessions, warnings } = await readSessions(dir, NOW, waitingDir);
+    expect(sessions.map((c) => c.id)).toEqual(["s"]);
+    expect(await states()).toEqual([
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+    ]);
+    expect(warnings).toEqual([]);
+
+    rmSync(waitingDir, { recursive: true });
+    expect(await states()).toEqual([
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+      SESSION_STATE.running,
+    ]);
   });
 });
 
