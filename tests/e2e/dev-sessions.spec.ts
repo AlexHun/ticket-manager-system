@@ -4,9 +4,12 @@ import { USER_ROLE } from "@ticket/shared";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 import {
   NO_MODEL,
+  NO_SESSIONS_LEAD,
   NO_TASK,
+  REFRESH_LABEL,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
+  sessionCount,
 } from "../../apps/web/src/dev/sessions-copy";
 import { SESSION_STATE } from "../../apps/web/src/dev/sessions-protocol";
 import { signIn } from "./helpers/auth";
@@ -36,7 +39,9 @@ const SESSION_A = "session-a";
 const SESSION_B = "session-b";
 const REVIEW = "a1111111111111111";
 const NESTED = "a2222222222222222";
-const BAD_META = "session-a/subagents/agent-a3333333333333333.meta.json";
+/** The subagent whose meta file is cut off mid-key, on purpose. */
+const UNPARSEABLE = "a3333333333333333";
+const BAD_META = `session-a/subagents/agent-${UNPARSEABLE}.meta.json`;
 
 /** The fixture's cards, from its README. */
 const EXPECTED = {
@@ -95,7 +100,9 @@ async function expectCard(card: Locator, id: keyof typeof EXPECTED) {
   await expect(facts.locator('[data-session-fact="Model"]')).toHaveText(
     want.model,
   );
-  await expect(facts.locator("[data-session-state]")).toHaveText(want.state);
+  await expect(facts.locator('[data-session-fact="State"]')).toHaveText(
+    want.state,
+  );
   await expect(facts.locator('[data-session-fact="Elapsed"]')).toHaveText(
     want.elapsed,
   );
@@ -148,7 +155,7 @@ test.describe("dev tools: Sessions", () => {
 
     const main = page.getByRole("main");
     await expect(main).toContainText(TRANSCRIPT_WORKING_DIR);
-    await expect(main).toContainText("2 sessions read from");
+    await expect(main).toContainText(`${sessionCount(2)} read from`);
 
     // Most recently started first. A session's own card is the first in its
     // list item, in document order; the rest are nested under it.
@@ -180,7 +187,7 @@ test.describe("dev tools: Sessions", () => {
     await expect(warning).toHaveCount(1);
     await expect(warning).toContainText(BAD_META);
     await expect(warning).toContainText("Couldn't read");
-    await expect(cardIn(page, "a3333333333333333")).toHaveCount(0);
+    await expect(cardIn(page, UNPARSEABLE)).toHaveCount(0);
   });
 
   test("reads again on Refresh", async ({ page }) => {
@@ -188,7 +195,7 @@ test.describe("dev tools: Sessions", () => {
     await expect(cardIn(page, SESSION_A)).toBeVisible();
 
     rmSync(`${TRANSCRIPT_WORKING_DIR}/session-b.jsonl`);
-    await page.getByRole("button", { name: "Refresh" }).click();
+    await page.getByRole("button", { name: REFRESH_LABEL }).click();
 
     await expect(cardIn(page, SESSION_B)).toHaveCount(0);
     await expect(cardIn(page, SESSION_A)).toBeVisible();
@@ -202,9 +209,9 @@ test.describe("dev tools: Sessions", () => {
     await page.goto(ROUTE.devSessions.path);
 
     const main = page.getByRole("main");
-    await expect(main.getByText(/^No sessions in/)).toContainText(
-      TRANSCRIPT_WORKING_DIR,
-    );
+    await expect(
+      main.getByText(new RegExp(`^${NO_SESSIONS_LEAD}`)),
+    ).toContainText(TRANSCRIPT_WORKING_DIR);
     await expect(main.locator("[data-session-card]")).toHaveCount(0);
   });
 

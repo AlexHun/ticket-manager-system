@@ -13,8 +13,8 @@
  *
  * This record was the one name that did not cluster. Every tool's handler in
  * `apps/web/dev/plugin.ts` registers a path out of it and the browser client in
- * `./dev-api` calls all three, so it belongs to none of the three and to all of
- * them. Putting it in one would have made the other two read that page's
+ * `./dev-api` calls every one, so it belongs to none of the tools and to all of
+ * them. Putting it in one would have made the others read that page's
  * contract to find a route — the map importing the Usage module for the sake of
  * `graph` — which is exactly the coupling the split was for. Copying it per
  * tool was the other option and is worse: these strings are a *pairing* between

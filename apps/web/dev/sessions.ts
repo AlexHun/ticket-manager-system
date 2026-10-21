@@ -42,6 +42,11 @@ const SUBAGENTS_DIR = "subagents";
 
 const META_SUFFIX = ".meta.json";
 
+const TRANSCRIPT_SUFFIX = ".jsonl";
+
+/** The `stop_reason` of a response that ended its turn, waiting on nothing. */
+const END_TURN = "end_turn";
+
 /** `agent-<id>.meta.json` → `<id>`. */
 const META_FILE = /^agent-(.+)\.meta\.json$/;
 
@@ -85,6 +90,11 @@ interface TranscriptFacts {
   lastStop: string | null;
   /** Every `tool_use` id it made a call under. */
   calls: string[];
+  /**
+   * Complete lines that did not parse. The unterminated last line is not
+   * counted: half-written is its ordinary state while a session works.
+   */
+  badLines: number;
 }
 
 const NO_FACTS: TranscriptFacts = {
@@ -95,7 +105,18 @@ const NO_FACTS: TranscriptFacts = {
   out: 0,
   lastStop: null,
   calls: [],
+  badLines: 0,
 };
+
+/** A content block of type `type`, as a transcript's `message.content`
+ *  holds them. */
+const isBlock = <T extends object>(
+  b: unknown,
+  type: string,
+): b is { type: string } & T =>
+  typeof b === "object" &&
+  b !== null &&
+  (b as { type?: unknown }).type === type;
 
 /** A prompt's first non-empty line, or null for a record that is not one. */
 function promptText(rec: TranscriptRecord): string | null {
@@ -107,11 +128,8 @@ function promptText(rec: TranscriptRecord): string | null {
   } else if (Array.isArray(content)) {
     // A tool's answer comes back as a user record too; only text is a prompt.
     const block = content.find(
-      (b: unknown): b is { type: "text"; text: string } =>
-        typeof b === "object" &&
-        b !== null &&
-        (b as { type?: unknown }).type === "text" &&
-        typeof (b as { text?: unknown }).text === "string",
+      (b: unknown): b is { type: string; text: string } =>
+        isBlock<{ text: unknown }>(b, "text") && typeof b.text === "string",
     );
     text = block?.text ?? null;
   }
@@ -125,19 +143,18 @@ function promptText(rec: TranscriptRecord): string | null {
 function toolCalls(content: unknown): string[] {
   if (!Array.isArray(content)) return [];
   return content.flatMap((b: unknown) =>
-    typeof b === "object" &&
-    b !== null &&
-    (b as { type?: unknown }).type === "tool_use" &&
-    typeof (b as { id?: unknown }).id === "string"
-      ? [(b as { id: string }).id]
+    isBlock<{ id: unknown }>(b, "tool_use") && typeof b.id === "string"
+      ? [b.id]
       : [],
   );
 }
 
 /**
  * What a transcript's text says. An unparseable line is skipped, as the Usage
- * scan skips one: the files are append-only JSONL, and a half-written last
- * line is their ordinary state while a session works.
+ * scan skips one, and counted unless it is the unterminated last line: the
+ * files are append-only JSONL, and a half-written last line is their ordinary
+ * state while a session works, where a bad line above it is a file the page
+ * can't fully read.
  */
 function factsOf(text: string): TranscriptFacts {
   let task: string | null = null;
@@ -150,13 +167,16 @@ function factsOf(text: string): TranscriptFacts {
   /** Output per response id; a record with no id is its own response. */
   const byId = new Map<string, number>();
   let unkeyed = 0;
+  let badLines = 0;
 
-  for (const line of text.split("\n")) {
+  const lines = text.split("\n");
+  for (const [index, line] of lines.entries()) {
     if (!line.trim()) continue;
     let rec: TranscriptRecord;
     try {
       rec = JSON.parse(line) as TranscriptRecord;
     } catch {
+      if (index < lines.length - 1) badLines++;
       continue;
     }
     if (typeof rec !== "object" || rec === null) continue;
@@ -203,17 +223,24 @@ function factsOf(text: string): TranscriptFacts {
     out,
     lastStop,
     calls,
+    badLines,
   };
 }
 
+/**
+ * An I/O error as its code (`EACCES`), never its message: Node's message
+ * carries the absolute path, which spells `agent-<id>` in a word the page
+ * must not use (R12) and repeats the file the warning already names.
+ */
 const errorText = (err: unknown) =>
-  err instanceof Error ? err.message : String(err);
+  (err as NodeJS.ErrnoException | null)?.code ??
+  (err instanceof Error ? err.message : String(err));
 
 const isMissing = (err: unknown) =>
   (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
 
 /** A card plus the calls its transcript made, which only the linking reads. */
-interface Node {
+interface TreeNode {
   card: SessionCard;
   calls: string[];
 }
@@ -226,13 +253,37 @@ const anyRunning = (cards: SessionCard[]): boolean =>
     (c) => c.state === SESSION_STATE.running || anyRunning(c.children),
   );
 
+/**
+ * A transcript with lines above its last that did not parse is a file the page
+ * can't fully read, so its card's figures may be short: said, never swallowed.
+ */
+function warnOfBadLines(
+  file: string,
+  facts: TranscriptFacts,
+  warnings: SessionsWarning[],
+) {
+  if (facts.badLines === 0) return;
+  warnings.push({
+    file,
+    message: `Couldn't read ${facts.badLines} ${facts.badLines === 1 ? "line" : "lines"} of this transcript, so its card may be missing figures.`,
+  });
+}
+
+/** The fields a card takes straight from its transcript. */
+const cardFacts = (facts: TranscriptFacts) => ({
+  model: facts.model,
+  startedAt: facts.startedAt,
+  elapsedMs: facts.elapsedMs,
+  out: facts.out,
+});
+
 /** One session's tree, or a warning and null when its transcript can't be read. */
 async function readSession(
   dir: string,
   id: string,
   warnings: SessionsWarning[],
 ): Promise<SessionCard | null> {
-  const file = `${id}.jsonl`;
+  const file = `${id}${TRANSCRIPT_SUFFIX}`;
   let facts: TranscriptFacts;
   try {
     facts = factsOf(await readFile(join(dir, file), "utf8"));
@@ -243,22 +294,24 @@ async function readSession(
     });
     return null;
   }
-  const { lastStop, calls, ...rest } = facts;
-  const root: Node = {
+  warnOfBadLines(file, facts, warnings);
+  const root: TreeNode = {
     card: {
       id,
       subagentType: null,
-      ...rest,
+      task: facts.task,
+      ...cardFacts(facts),
       // Settled below, once its subagents are known.
       state: SESSION_STATE.running,
       children: [],
     },
-    calls,
+    calls: facts.calls,
   };
 
   const subagents = await readSubagents(dir, id, warnings);
-  const callers = new Map<string, Node>();
-  for (const node of [root, ...subagents.map((s) => s.node)]) {
+  const nodes = [root, ...subagents.map((s) => s.node)];
+  const callers = new Map<string, TreeNode>();
+  for (const node of nodes) {
     for (const call of node.calls) callers.set(call, node);
   }
   for (const { node, toolUseId, metaFile } of subagents) {
@@ -276,19 +329,17 @@ async function readSession(
     }
     parent.card.children.push(node.card);
   }
-  for (const node of [root, ...subagents.map((s) => s.node)]) {
-    node.card.children.sort(byStart);
-  }
+  for (const node of nodes) node.card.children.sort(byStart);
 
   root.card.state =
-    lastStop === "end_turn" && !anyRunning(root.card.children)
+    facts.lastStop === END_TURN && !anyRunning(root.card.children)
       ? SESSION_STATE.done
       : SESSION_STATE.running;
   return root.card;
 }
 
 interface SubagentNode {
-  node: Node;
+  node: TreeNode;
   /**
    * The call that started it, or null for a subagent no call started: a skill
    * that forks one (`/code-review`, say) writes a meta file with a `name` and
@@ -305,10 +356,12 @@ async function readSubagents(
   sessionId: string,
   warnings: SessionsWarning[],
 ): Promise<SubagentNode[]> {
+  /** As the warnings name it, relative to `dir`. */
   const rel = `${sessionId}/${SUBAGENTS_DIR}`;
+  const abs = join(dir, sessionId, SUBAGENTS_DIR);
   let names: string[];
   try {
-    names = await readdir(join(dir, sessionId, SUBAGENTS_DIR));
+    names = await readdir(abs);
   } catch (err) {
     // Most sessions start no subagent and have no such directory.
     if (!isMissing(err)) {
@@ -328,7 +381,7 @@ async function readSubagents(
     let meta: SubagentMeta;
     try {
       meta = JSON.parse(
-        await readFile(join(dir, sessionId, SUBAGENTS_DIR, name), "utf8"),
+        await readFile(join(abs, name), "utf8"),
       ) as SubagentMeta;
     } catch (err) {
       warnings.push({
@@ -346,12 +399,11 @@ async function readSubagents(
       continue;
     }
 
-    const transcript = name.slice(0, -META_SUFFIX.length) + ".jsonl";
+    const transcript = name.slice(0, -META_SUFFIX.length) + TRANSCRIPT_SUFFIX;
     let facts = NO_FACTS;
     try {
-      facts = factsOf(
-        await readFile(join(dir, sessionId, SUBAGENTS_DIR, transcript), "utf8"),
-      );
+      facts = factsOf(await readFile(join(abs, transcript), "utf8"));
+      warnOfBadLines(`${rel}/${transcript}`, facts, warnings);
     } catch (err) {
       // A subagent that has only just started has a meta file and no
       // transcript yet; it is drawn from the meta file alone.
@@ -373,10 +425,7 @@ async function readSubagents(
             typeof meta.description === "string"
               ? meta.description
               : facts.task,
-          model: facts.model,
-          startedAt: facts.startedAt,
-          elapsedMs: facts.elapsedMs,
-          out: facts.out,
+          ...cardFacts(facts),
           state:
             meta.finished === true ? SESSION_STATE.done : SESSION_STATE.running,
           children: [],
@@ -398,10 +447,7 @@ async function readSubagents(
  * it is the ordinary state of a clone Claude Code has never opened, and the
  * page's empty state names the directory it looked in.
  */
-export async function readSessions(
-  dir: string,
-  now: Date = new Date(),
-): Promise<SessionsReport> {
+export async function readSessions(dir: string): Promise<SessionsReport> {
   const warnings: SessionsWarning[] = [];
   const sessions: SessionCard[] = [];
   let names: string[] = [];
@@ -416,10 +462,10 @@ export async function readSessions(
     }
   }
   for (const name of names.sort()) {
-    if (!name.endsWith(".jsonl")) continue;
+    if (!name.endsWith(TRANSCRIPT_SUFFIX)) continue;
     const card = await readSession(
       dir,
-      name.slice(0, -".jsonl".length),
+      name.slice(0, -TRANSCRIPT_SUFFIX.length),
       warnings,
     );
     if (card) sessions.push(card);
@@ -427,7 +473,7 @@ export async function readSessions(
   sessions.sort((a, b) => byStart(b, a));
   return {
     transcriptDir: dir,
-    gatheredAt: now.toISOString(),
+    gatheredAt: new Date().toISOString(),
     sessions,
     warnings,
   };

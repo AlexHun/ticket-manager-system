@@ -345,6 +345,48 @@ describe("readSessions", () => {
     });
   });
 
+  it("warns about a transcript with lines it can't parse above its last, and still draws its card", async () => {
+    writeFileSync(
+      join(dir, "s.jsonl"),
+      "not json\n" + lines(response(4000, T(0))),
+      "utf8",
+    );
+
+    const report = await readSessions(dir);
+
+    expect(report.sessions.map((s) => [s.id, s.out])).toEqual([["s", 4000]]);
+    expect(report.warnings).toEqual([
+      {
+        file: "s.jsonl",
+        message: expect.stringMatching(/^Couldn't read 1 line /),
+      },
+    ]);
+  });
+
+  it("warns about a transcript it can't open, naming it by its code rather than its path", async () => {
+    // A directory where a transcript should be: opening it fails with EISDIR.
+    mkdirSync(join(dir, "broken.jsonl"));
+    session("s", response(1, T(0), { calls: ["toolu_x"] }));
+    subagent("s", "x", {
+      agentType: "x",
+      description: "unopenable",
+      toolUseId: "toolu_x",
+    });
+    mkdirSync(join(dir, "s", "subagents", "agent-x.jsonl"));
+
+    const report = await readSessions(dir);
+
+    expect(shape(report.sessions)).toEqual(["s", "  x"]);
+    expect(report.warnings.map((w) => w.file)).toEqual([
+      "broken.jsonl",
+      "s/subagents/agent-x.jsonl",
+    ]);
+    for (const { message } of report.warnings) {
+      expect(message).toMatch(/^Couldn't read .*\(EISDIR\)/);
+      expect(message).not.toContain(dir);
+    }
+  });
+
   it("skips a half-written last line without losing the lines above it", async () => {
     writeFileSync(
       join(dir, "s.jsonl"),

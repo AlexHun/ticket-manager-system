@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,11 @@ import { extractErrorMessage } from "@/lib/errors";
 import { useSessions } from "./dev-api";
 import {
   NO_MODEL,
+  NO_SESSIONS_LEAD,
   NO_TASK,
+  REFRESHING_LABEL,
+  REFRESH_LABEL,
+  SESSIONS_LOAD_FAILED,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   formatElapsed,
@@ -21,8 +25,6 @@ import {
   type SessionCard,
   type SessionsReport,
 } from "./sessions-protocol";
-
-const LOAD_FAILED = "Couldn't read the sessions. Try again.";
 
 /**
  * This repository's Claude Code sessions on this machine, each a card with
@@ -46,7 +48,7 @@ export function SessionsPage() {
           <p className="max-w-prose text-sm text-muted-foreground">
             This repository&rsquo;s Claude Code sessions on this machine, each
             with the subagents it started nested under it, read off the
-            transcripts when the page opens and when you press Refresh.
+            transcripts when the page opens and when you press {REFRESH_LABEL}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -62,7 +64,7 @@ export function SessionsPage() {
             ) : (
               <RefreshCw aria-hidden="true" />
             )}
-            {isFetching ? "Refreshing…" : "Refresh"}
+            {isFetching ? REFRESHING_LABEL : REFRESH_LABEL}
           </Button>
         </div>
       </div>
@@ -71,7 +73,7 @@ export function SessionsPage() {
         <SessionsSkeleton />
       ) : error || !data ? (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {extractErrorMessage(error, LOAD_FAILED)}
+          {extractErrorMessage(error, SESSIONS_LOAD_FAILED)}
         </p>
       ) : (
         <Reading report={data} />
@@ -114,7 +116,7 @@ function Reading({ report }: { report: SessionsReport }) {
 
       {report.sessions.length === 0 ? (
         <p className="max-w-prose text-sm text-muted-foreground">
-          No sessions in{" "}
+          {NO_SESSIONS_LEAD}{" "}
           <code className="font-mono text-xs">{report.transcriptDir}</code> yet.
           A session appears here once Claude Code has worked in this repository.
         </p>
@@ -124,7 +126,7 @@ function Reading({ report }: { report: SessionsReport }) {
             <li key={session.id}>
               <Card size="sm">
                 <CardContent>
-                  <CardBody card={session} />
+                  <CardBody card={session} depth={0} />
                 </CardContent>
               </Card>
             </li>
@@ -135,6 +137,10 @@ function Reading({ report }: { report: SessionsReport }) {
   );
 }
 
+/** A card's heading level by its depth, the session's being `h2` under the
+ *  page's `h1`, so the outline follows the tree. Past `h6` it stays there. */
+const HEADINGS = ["h2", "h3", "h4", "h5", "h6"] as const;
+
 /**
  * One card's facts, then the subagents under it, recursively.
  *
@@ -143,9 +149,10 @@ function Reading({ report }: { report: SessionsReport }) {
  * card (design.md): the nesting is the tree, and the rule already says what is
  * under what.
  */
-function CardBody({ card }: { card: SessionCard }) {
+function CardBody({ card, depth }: { card: SessionCard; depth: number }) {
   const headingId = useId();
   const task = card.task ?? NO_TASK;
+  const Heading = HEADINGS[Math.min(depth, HEADINGS.length - 1)];
   return (
     <article
       aria-labelledby={headingId}
@@ -153,30 +160,30 @@ function CardBody({ card }: { card: SessionCard }) {
       className="space-y-2"
     >
       <div className="space-y-1">
-        <h2
+        <Heading
           id={headingId}
           className="text-sm font-medium text-balance break-words"
         >
           {task}
-        </h2>
+        </Heading>
         <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <Fact label="Type" value={card.subagentType ?? SESSION_KIND_LABEL} />
-          <Fact label="Model" value={card.model ?? NO_MODEL} />
-          <div className="flex items-center gap-1">
-            <dt className="sr-only">State</dt>
-            <dd>
-              <Badge
-                variant={
-                  card.state === SESSION_STATE.running ? "secondary" : "outline"
-                }
-                data-session-state={card.state}
-              >
-                {card.state}
-              </Badge>
-            </dd>
-          </div>
-          <Fact label="Elapsed" value={formatElapsed(card.elapsedMs)} numeric />
-          <Fact label="Own output" value={outputTokens(card.out)} numeric />
+          <Fact label="Type">{card.subagentType ?? SESSION_KIND_LABEL}</Fact>
+          <Fact label="Model">{card.model ?? NO_MODEL}</Fact>
+          <Fact label="State">
+            <Badge
+              variant={
+                card.state === SESSION_STATE.running ? "secondary" : "outline"
+              }
+            >
+              {card.state}
+            </Badge>
+          </Fact>
+          <Fact label="Elapsed" numeric>
+            {formatElapsed(card.elapsedMs)}
+          </Fact>
+          <Fact label="Own output" numeric>
+            {outputTokens(card.out)}
+          </Fact>
         </dl>
       </div>
       {card.children.length > 0 && (
@@ -186,7 +193,7 @@ function CardBody({ card }: { card: SessionCard }) {
         >
           {card.children.map((child) => (
             <li key={child.id}>
-              <CardBody card={child} />
+              <CardBody card={child} depth={depth + 1} />
             </li>
           ))}
         </ol>
@@ -197,12 +204,12 @@ function CardBody({ card }: { card: SessionCard }) {
 
 function Fact({
   label,
-  value,
   numeric = false,
+  children,
 }: {
   label: string;
-  value: string;
   numeric?: boolean;
+  children: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -211,7 +218,7 @@ function Fact({
         data-session-fact={label}
         className={numeric ? "tabular-nums" : undefined}
       >
-        {value}
+        {children}
       </dd>
     </div>
   );

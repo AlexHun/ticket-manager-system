@@ -9,12 +9,22 @@
  * _stage_ or _handoff_ (`GLOSSARY.md`).
  */
 
-/** The page's heading, and the name of its entry in the dev tools nav. */
+/** The page's heading. Its entry in `DEV_NAV_ITEMS` carries the same word. */
 export const SESSIONS_TITLE = "Sessions";
 
 /** What a session's card names as its type, where a subagent's names its
  *  subagent type. */
 export const SESSION_KIND_LABEL = "Session";
+
+/** The button that reads the transcripts again, and its pending label. */
+export const REFRESH_LABEL = "Refresh";
+export const REFRESHING_LABEL = "Refreshing…";
+
+/** The reading itself could not be fetched from the dev server. */
+export const SESSIONS_LOAD_FAILED = "Couldn't read the sessions. Try again.";
+
+/** How the empty state opens, before the directory it names. */
+export const NO_SESSIONS_LEAD = "No sessions in";
 
 /** A card whose transcript holds no prompt and whose meta file no task. */
 export const NO_TASK = "No prompt recorded";
