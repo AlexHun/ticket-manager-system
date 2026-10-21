@@ -67,6 +67,7 @@ export const ROUTE = {
   devMap: { path: "/__dev/map" },
   devTests: { path: "/__dev/tests" },
   devUsage: { path: "/__dev/usage" },
+  devSessions: { path: "/__dev/sessions" },
   dev: { path: "/__dev/*" },
 
   /** The 404, which matches whatever nothing above did. */

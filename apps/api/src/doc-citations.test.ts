@@ -411,11 +411,6 @@ const EXEMPTIONS: Exemption[] = [
       "setColumnSizingInfo",
       "TanStack Table's internal updater.",
     ],
-    [
-      "docs/standards/frontend.md",
-      "tool_use",
-      "a content-block type in Claude Code's transcripts.",
-    ],
     ["docs/standards/security.md", "remote_ip", "a Caddy matcher."],
     [
       "docs/standards/testing.md",

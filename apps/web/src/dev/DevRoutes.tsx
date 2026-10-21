@@ -9,6 +9,7 @@ import { ROUTE } from "@/lib/routes";
 import { DEV_NAV_ITEMS } from "@/components/layout/nav-items";
 import { ProjectMapPage } from "./ProjectMapPage";
 import { TestRunnerPage } from "./TestRunnerPage";
+import { SessionsPage } from "./SessionsPage";
 import { UsagePage } from "./UsagePage";
 
 /** `"/__dev/"` — `ROUTE.dev.path` is the splat `"/__dev/*"`, less its `*`. */
@@ -97,6 +98,7 @@ export function DevRoutes() {
           <Route path={segment(ROUTE.devMap)} element={<ProjectMapPage />} />
           <Route path={segment(ROUTE.devTests)} element={<TestRunnerPage />} />
           <Route path={segment(ROUTE.devUsage)} element={<UsagePage />} />
+          <Route path={segment(ROUTE.devSessions)} element={<SessionsPage />} />
           {/* Absolute rather than relative: a relative target inside a splat
               route resolves against the matched splat, not the parent path. */}
           <Route

@@ -31,6 +31,7 @@ import {
 } from "./suites.ts";
 import { gatherUsage, readStoredUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
+import { readSessions } from "./sessions.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
 import { historyIsPushed, pushHistoryFile, receivePush } from "./usage-push.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
@@ -370,6 +371,23 @@ export function devToolsPlugin(): Plugin {
         }),
       );
 
+      server.middlewares.use(
+        DEVTOOLS_API.sessions,
+        // The Sessions page (#590): every session's tree, read off the same
+        // transcript directory the Usage scan reads — `REPO_ROOT` for the
+        // reason the scan's comment above gives, and resolved per request so
+        // `CLAUDE_TRANSCRIPT_DIR` points it at the E2E fixture. Reads only.
+        only("GET", async (_req, res) =>
+          sendJson(
+            res,
+            200,
+            await readSessions(
+              resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+            ),
+          ),
+        ),
+      );
+
       // A dev-server restart (editing this file, or vite.config.ts) must not
       // leave a Playwright run holding ports 3002 and 4001.
       server.httpServer?.once("close", () => {
@@ -378,9 +396,9 @@ export function devToolsPlugin(): Plugin {
       });
 
       // Printed plainly rather than dressed up in Vite's colours: this is the
-      // only hint the two pages exist, so it should survive a piped log.
+      // only hint the pages exist, so it should survive a piped log.
       server.config.logger.info(
-        "  dev tools:  /__dev/map  /__dev/tests  /__dev/usage",
+        "  dev tools:  /__dev/map  /__dev/tests  /__dev/usage  /__dev/sessions",
       );
     },
   };

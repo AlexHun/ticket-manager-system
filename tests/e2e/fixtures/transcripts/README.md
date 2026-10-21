@@ -48,7 +48,7 @@ Every record is on `feat/101-a`, so all of it is `#101`'s:
 
 | Agent               | Started by                                          | Meta file                                                             | Output tokens                        |
 | ------------------- | --------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------ |
-| `a1111111111111111` | session `a`, `toolu_fixture_review` on its 3rd line | `general-purpose`, "Review the fixture", depth 1, `finished`          | 5,000 + 3,000 = **8,000**, two turns |
+| `a1111111111111111` | session `a`, `toolu_fixture_review` on its 4th line | `general-purpose`, "Review the fixture", depth 1, `finished`          | 5,000 + 3,000 = **8,000**, two turns |
 | `a2222222222222222` | `a1111…`, `toolu_fixture_nested` on its 4th line    | `Explore`, "Find the fixture's specs", depth 2, `parentAgentId` named | **4,000**, one turn                  |
 | `a3333333333333333` | —                                                   | **unparseable**: cut off mid-key, on purpose                          | none: a prompt, no response          |
 
@@ -69,7 +69,7 @@ it, as Claude Code's cleanup would, or `#101` keeps the subagents' 12,000.
 
 Every complete line carries a `timestamp`, which no figure above reads: it is
 what the usage history's start date is taken from (#417). The earliest is
-**2026-09-02T09:00:00.000Z**, the first line of `session-a.jsonl`, and
+**2026-09-02T09:00:00.000Z**, on the first two lines of `session-a.jsonl`, and
 `dev-usage-history.spec.ts` asserts the page names it.
 
 `#105` shares `session-b.jsonl` with `#102`, on its own branch. That is the
@@ -130,3 +130,33 @@ file.
 Change a number here and `dev-usage.spec.ts` goes red, which is the point: the
 spec states these totals as literals rather than recomputing them with the code
 under test.
+
+## What the Sessions page makes of them
+
+`tests/e2e/dev-sessions.spec.ts` reads the same working copy through
+`/__dev/sessions` (#590). Two lines are here for it alone, and neither moves a
+figure above:
+
+- the first line of `session-a.jsonl` is its prompt, "Implement issue #101.",
+  which is the session's task. It carries no `usage`, so the Usage scan skips
+  it, and the same timestamp as the line after it, so the history's start date
+  stands;
+- the last line of `session-b.jsonl` ends its turn (`stop_reason: "end_turn"`),
+  so session `b` reads Done. Session `a` ends on no such line, and its nested
+  subagent is still running, so it reads Running.
+
+A session's card is named for its transcript (`session-a`), a subagent's for
+its `agentId`. A card's output tokens are its own transcript's, whatever branch each line
+ran on, and its elapsed time runs from its transcript's first timestamp to its
+latest:
+
+| Card                | Type              | Model              | State   | Elapsed  | Output tokens                               |
+| ------------------- | ----------------- | ------------------ | ------- | -------- | ------------------------------------------- |
+| `session-b`         | Session           | unknown            | Done    | `5m 0s`  | 3,000 + 90,000 = **93,000**                 |
+| `session-a`         | Session           | `claude-opus-5-5`  | Running | `15m 0s` | 12,000 + 5,000 + 8,000 + 7,000 = **32,000** |
+| `a1111111111111111` | `general-purpose` | `claude-opus-5-5`  | Done    | `1m 55s` | **8,000**                                   |
+| `a2222222222222222` | `Explore`         | `claude-haiku-5-5` | Running | `55s`    | **4,000**                                   |
+
+Session `b` is listed first, being the more recently started. Session `b` has
+no prompt, so its task reads "No prompt recorded". `a3333333333333333`'s meta
+file is the warning, and it has no card.

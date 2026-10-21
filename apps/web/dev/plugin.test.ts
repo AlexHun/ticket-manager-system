@@ -11,6 +11,7 @@ import {
   USAGE_WARNING_SOURCE,
   type UsageReport,
 } from "../src/dev/usage-protocol.ts";
+import type { SessionsReport } from "../src/dev/sessions-protocol.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
 import { TRANSCRIPT_DIR_ENV, resolveTranscriptDir } from "./transcripts.ts";
 import { HISTORY_FILE_ENV } from "./usage-store.ts";
@@ -512,5 +513,67 @@ describe(`POST ${DEVTOOLS_API.usagePush}`, () => {
     await expect(
       callRoute(routes, DEVTOOLS_API.usagePush, "GET"),
     ).rejects.toThrow(/No handler answered/);
+  });
+});
+
+describe(`GET ${DEVTOOLS_API.sessions}`, () => {
+  it("reads the directory the override names, which is how Playwright points it at a fixture", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "plugin-sessions-"));
+    writeFileSync(
+      join(dir, "s.jsonl"),
+      JSON.stringify({
+        sessionId: "s",
+        message: { usage: { output_tokens: 42 } },
+      }),
+      "utf8",
+    );
+    process.env[TRANSCRIPT_DIR_ENV] = dir;
+    try {
+      const { status, body } = await callRoute(
+        mountPlugin(),
+        DEVTOOLS_API.sessions,
+        "GET",
+      );
+
+      expect(status).toBe(200);
+      const report = body as SessionsReport;
+      expect(report.transcriptDir).toBe(dir);
+      expect(report.sessions.map((s) => [s.id, s.out])).toEqual([["s", 42]]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("derives the directory from the repo root when nothing overrides it", async () => {
+    const repoRoot = resolve(import.meta.dirname, "../../..");
+    // An empty home, so the derived directory exists nowhere and the reading
+    // is instant: `os.homedir()` reads these two before asking the OS, and
+    // this machine's real transcripts took the case past its timeout under
+    // the full suite.
+    const home = mkdtempSync(join(tmpdir(), "plugin-sessions-home-"));
+    const savedHome = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+    };
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    try {
+      const { body } = await callRoute(
+        mountPlugin(),
+        DEVTOOLS_API.sessions,
+        "GET",
+      );
+
+      const { transcriptDir } = body as SessionsReport;
+      expect(transcriptDir).toBe(resolveTranscriptDir({}, { cwd: repoRoot }));
+      expect(transcriptDir.startsWith(home)).toBe(true);
+      expect(transcriptDir).not.toMatch(/-apps-web$/);
+    } finally {
+      for (const [key, value] of Object.entries(savedHome)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

@@ -1,6 +1,6 @@
 /**
- * The paths the dev-only Vite middleware answers on, and the one thing all
- * three dev tools share.
+ * The paths the dev-only Vite middleware answers on, and the one thing every
+ * dev tool shares.
  *
  * **Why this is its own module** (#284). `protocol.ts` used to hold three
  * unrelated contracts in one file — the project map's graph, the test runner's
@@ -50,4 +50,7 @@ export const DEVTOOLS_API = {
    *  connect mounts by prefix, so `/__devtools/usage/push` would reach the scan
    *  handler first. */
   usagePush: "/__devtools/usage-push",
+  /** `GET` reads this machine's sessions of this repository and the
+   *  subagents under each, writing nothing — `./sessions-protocol`. */
+  sessions: "/__devtools/sessions",
 } as const;
