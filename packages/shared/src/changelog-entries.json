@@ -918,5 +918,10 @@
     "version": "0.1.240",
     "date": "2026-10-20",
     "title": "Typecheck the root E2E project, and let it pass"
+  },
+  {
+    "version": "0.1.245",
+    "date": "2026-10-21",
+    "title": "A dev-tools Sessions page drawing each session's subagent tree"
   }
 ]
