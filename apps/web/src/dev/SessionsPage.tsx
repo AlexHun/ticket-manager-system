@@ -16,6 +16,7 @@ import {
   outputTokens,
   sessionCount,
   subagentsLabel,
+  waitingCount,
 } from "./sessions-copy";
 import {
   SESSION_IDLE_MS,
@@ -29,9 +30,11 @@ import {
   type SessionsConnection,
 } from "./use-sessions-stream";
 
-/** A state's badge: Running filled, Done quiet, Stopped the one that alarms. */
+/** A state's badge: Running filled, Waiting for you in the primary fill that
+ *  asks for the developer, Done quiet, Stopped the one that alarms. */
 const STATE_BADGE = {
   [SESSION_STATE.running]: "secondary",
+  [SESSION_STATE.waiting]: "default",
   [SESSION_STATE.done]: "outline",
   [SESSION_STATE.stopped]: "destructive",
 } as const satisfies Record<SessionState, string>;
@@ -41,13 +44,15 @@ const STATE_BADGE = {
  * every subagent it started nested under it (#590, slice 1 of
  * `docs/plans/dev-tools-sessions-page.md`), following them as they run
  * (#591, slice 2): a new subagent, new tokens and a change of state reach the
- * open page within 5 seconds, without a reload.
+ * open page within 5 seconds, without a reload. A card held on the developer
+ * reads Waiting for you, and the header counts them (#592, slice 3).
  *
  * It talks only to the Vite dev server (`apps/web/dev/sessions-stream.ts`),
  * so it opens with the API and the database stopped.
  */
 export function SessionsPage() {
   const { report, problem, connection } = useSessionsStream();
+  const waiting = report ? countWaiting(report.sessions) : 0;
 
   return (
     /* Block layout with `space-y`, for the reason `TestRunnerPage` gives. */
@@ -58,12 +63,22 @@ export function SessionsPage() {
           <p className="max-w-prose text-sm text-muted-foreground">
             This repository&rsquo;s Claude Code sessions on this machine, each
             with the subagents it started nested under it, followed live off the
-            transcripts while the page is open. One that has written nothing for{" "}
-            {idleTime(SESSION_IDLE_MS)} without finishing reads{" "}
-            {SESSION_STATE.stopped}.
+            transcripts while the page is open. One held on a permission prompt
+            or a question to you reads {SESSION_STATE.waiting}. One that has
+            written nothing for {idleTime(SESSION_IDLE_MS)} without finishing
+            reads {SESSION_STATE.stopped}.
           </p>
         </div>
-        <Badge variant="outline">dev only</Badge>
+        <div className="flex items-center gap-2">
+          {/* A live region, mounted throughout so it exists before its words
+              do: unlike the reading's line below, this changes only when
+              something starts or stops waiting on the developer, which is
+              worth announcing. */}
+          <span role="status" data-sessions-waiting={waiting}>
+            {waiting > 0 && <Badge>{waitingCount(waiting)}</Badge>}
+          </span>
+          <Badge variant="outline">dev only</Badge>
+        </div>
       </div>
 
       {report ? (
@@ -81,6 +96,16 @@ export function SessionsPage() {
     </main>
   );
 }
+
+/** How many cards, at any depth, read Waiting for you. */
+const countWaiting = (cards: SessionCard[]): number =>
+  cards.reduce(
+    (n, card) =>
+      n +
+      (card.state === SESSION_STATE.waiting ? 1 : 0) +
+      countWaiting(card.children),
+    0,
+  );
 
 /** What the page says while the stream is not open. */
 const CONNECTION_WORDS = {

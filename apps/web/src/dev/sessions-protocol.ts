@@ -14,9 +14,8 @@
  */
 
 /**
- * A card's state, as far as slices 1 and 2 of
- * `docs/plans/dev-tools-sessions-page.md` can tell it: Running, Done or
- * Stopped. Waiting for you is slice 3.
+ * A card's state: Running, Waiting for you, Done or Stopped (R2 of
+ * `docs/prd/dev-tools-sessions-page.md`).
  *
  * A subagent is Done when its `agent-<id>.meta.json` says `finished`. A
  * session has no meta file, so it is Done when its last response ended its
@@ -30,9 +29,18 @@
  * closed terminal leaves a transcript that never ends its turn, and the page
  * must not say to wait on it. It reads Running again the moment its
  * transcript grows.
+ *
+ * One that is not Done reads Waiting for you while a waiting record names it
+ * (#592, R5): `.claude/hooks/record-waiting.mjs` writes one when a permission
+ * prompt or a question to the developer holds it, and removes it once
+ * answered. That outranks Stopped, since a prompt can be held for an hour and
+ * the wait is the developer's, and like Running it keeps the cards above it
+ * from reading Stopped or Done. A record whose payload named no subagent, or
+ * one the session has no card for, shows on its session's card.
  */
 export const SESSION_STATE = {
   running: "Running",
+  waiting: "Waiting for you",
   done: "Done",
   stopped: "Stopped",
 } as const;
@@ -50,9 +58,9 @@ export type SessionState = (typeof SESSION_STATE)[keyof typeof SESSION_STATE];
  * 10.0 minutes, and no command that was running rather than waiting took past
  * 10.1. Every gap past that was the session waiting on the developer — an
  * `AskUserQuestion` (up to 7 hours), or a `sed -n` or an `Edit` held on a
- * permission answer for 11 to 90 minutes — which is slice 3's Waiting for you,
- * not a dead session. Fifteen minutes is that ceiling plus the five a slow
- * response can add on top of it.
+ * permission answer for 11 to 90 minutes — which reads Waiting for you
+ * (#592), not a dead session. Fifteen minutes is that ceiling plus the five a
+ * slow response can add on top of it.
  */
 export const SESSION_IDLE_MS = 15 * 60_000;
 

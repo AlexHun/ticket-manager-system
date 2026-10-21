@@ -58,8 +58,25 @@ export const TRANSCRIPT_WORKING_DIR = path.join(HERE, "transcripts.local");
 export const USAGE_HISTORY_PATH = path.join(HERE, "usage-history.local.sqlite");
 
 /**
+ * The directory of waiting records the dev server reads under the E2E, in
+ * place of `~/.claude-sessions-waiting` (#592): what
+ * `.claude/hooks/record-waiting.mjs` writes while a session or subagent waits
+ * on the developer.
+ *
+ * Shared the way `TRANSCRIPT_WORKING_DIR` is: `playwright.config.ts` puts it in
+ * the web server's environment as `CLAUDE_WAITING_DIR`, and
+ * `dev-sessions.spec.ts` writes records into it. Without the override the page
+ * would read the developer's own, and a session of this repository waiting
+ * while the suite ran would be counted in the header. Gitignored as a
+ * `.local` directory, and removed with the working copy so a record one spec
+ * wrote never reaches the next.
+ */
+export const WAITING_WORKING_DIR = path.join(HERE, "waiting.local");
+
+/**
  * Replaces the working copy with a fresh one of the checked-in fixtures, and
- * removes the usage history the last reading left behind.
+ * removes the usage history and the waiting records the last reading left
+ * behind.
  *
  * Removed first rather than copied over, so a file an earlier test (or an
  * earlier run that died part-way) added, grew or deleted cannot survive into
@@ -78,6 +95,7 @@ export function resetTranscriptWorkingCopy(): void {
   cpSync(TRANSCRIPT_FIXTURE_DIR, TRANSCRIPT_WORKING_DIR, { recursive: true });
   stampNow(TRANSCRIPT_WORKING_DIR);
   rmSync(USAGE_HISTORY_PATH, { force: true });
+  rmSync(WAITING_WORKING_DIR, { recursive: true, force: true });
 }
 
 /**

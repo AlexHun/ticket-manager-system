@@ -38,6 +38,7 @@ import {
   type SessionsReport,
   type SessionsWarning,
 } from "../src/dev/sessions-protocol.ts";
+import { readWaiting, type WaitingRecord } from "./waiting.ts";
 
 /** Where Claude Code puts a session's subagents, under the session's own
  *  directory — the name `./transcripts.ts` lists them under too. */
@@ -405,6 +406,8 @@ interface TreeNode {
   /** A session's Done also waits on everything under it; a subagent's
    *  `finished` is its own final word. */
   isSession: boolean;
+  /** Whether a waiting record names it (`./waiting.ts`). */
+  waiting: boolean;
 }
 
 const byStart = (a: TreeNode, b: TreeNode) =>
@@ -413,24 +416,53 @@ const byStart = (a: TreeNode, b: TreeNode) =>
 /**
  * Settles `node`'s state and every one under it, children first, against the
  * clock (`SESSION_STATE`'s rules). Returns whether anything in the subtree is
- * Running, which is what keeps a quiet parent waiting on it from reading
- * Stopped, and a session whose turn ended from reading Done.
+ * Running or Waiting for you, which is what keeps a quiet parent waiting on it
+ * from reading Stopped, and a session whose turn ended from reading Done.
  */
 function settle(node: TreeNode, now: number, idleMs: number): boolean {
   let below = false;
   for (const child of node.children) {
-    // Every child is settled, not only up to the first Running one.
+    // Every child is settled, not only up to the first live one.
     if (settle(child, now, idleMs)) below = true;
   }
   const done = node.over && (!node.isSession || !below);
   const quiet = now - node.writtenMs > idleMs;
   node.card.state = done
     ? SESSION_STATE.done
-    : quiet && !below
-      ? SESSION_STATE.stopped
-      : SESSION_STATE.running;
+    : node.waiting
+      ? SESSION_STATE.waiting
+      : quiet && !below
+        ? SESSION_STATE.stopped
+        : SESSION_STATE.running;
   node.card.children = node.children.sort(byStart).map((c) => c.card);
-  return node.card.state === SESSION_STATE.running || below;
+  return (
+    node.card.state === SESSION_STATE.running ||
+    node.card.state === SESSION_STATE.waiting ||
+    below
+  );
+}
+
+/**
+ * Marks each card a waiting record names. A record naming no subagent, or one
+ * the session has no card for, marks the session: the wait is real, and its
+ * session is the nearest card the page can say it of. A record for a session
+ * not in this reading is passed over.
+ */
+function markWaiting(roots: TreeNode[], records: WaitingRecord[]): void {
+  const find = (node: TreeNode, id: string): TreeNode | null => {
+    for (const child of node.children) {
+      if (child.card.id === id) return child;
+      const found = find(child, id);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const { sessionId, agentId } of records) {
+    const root = roots.find((r) => r.card.id === sessionId);
+    if (!root) continue;
+    const node = agentId === null ? root : (find(root, agentId) ?? root);
+    node.waiting = true;
+  }
 }
 
 /**
@@ -521,6 +553,7 @@ async function readSession(
     writtenMs: read.mtimeMs,
     over: facts.lastStop === END_TURN,
     isSession: true,
+    waiting: false,
   };
 
   const subagents = await readSubagents(dir, id, state, warnings);
@@ -659,6 +692,7 @@ async function readSubagents(
         writtenMs,
         over: meta.finished === true,
         isSession: false,
+        waiting: false,
       },
       toolUseId: typeof meta.toolUseId === "string" ? meta.toolUseId : null,
       metaFile,
@@ -672,9 +706,9 @@ export interface SessionsReader {
   /**
    * Every session in `dir` as a tree of cards, most recently started first,
    * with a warning for each file it could not use, its states settled
-   * against `now`.
+   * against `now` and the waiting records in `waitingDir`, when one is given.
    */
-  read(dir: string, now?: number): Promise<SessionsReport>;
+  read(dir: string, now?: number, waitingDir?: string): Promise<SessionsReport>;
 }
 
 /**
@@ -699,7 +733,7 @@ export function createSessionsReader(
   const metas = new Map<string, MetaReading>();
 
   return {
-    async read(dir, now = Date.now()) {
+    async read(dir, now = Date.now(), waitingDir) {
       const state: ReaderState = { cursors, metas, seen: new Set() };
       const warnings: SessionsWarning[] = [];
       const roots: TreeNode[] = [];
@@ -727,6 +761,11 @@ export function createSessionsReader(
         );
         if (root) roots.push(root);
       }
+      // Read every time, never kept: a handful of small files, and a record
+      // removed must clear its card on the next reading.
+      if (waitingDir !== undefined) {
+        markWaiting(roots, await readWaiting(waitingDir));
+      }
       for (const root of roots) settle(root, now, idleMs);
       for (const path of cursors.keys()) {
         if (!state.seen.has(path)) cursors.delete(path);
@@ -747,5 +786,5 @@ export function createSessionsReader(
 
 /** One reading with nothing kept, for a caller that reads once, as the unit
  *  tests do. */
-export const readSessions = (dir: string, now?: number) =>
-  createSessionsReader().read(dir, now);
+export const readSessions = (dir: string, now?: number, waitingDir?: string) =>
+  createSessionsReader().read(dir, now, waitingDir);
