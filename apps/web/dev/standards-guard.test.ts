@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { stripComments } from "./scan.ts";
+import { stripComments } from "@ticket/repo-scan/strip-comments";
 
 /**
  * The frontend standards a check can decide without judgement, enforced here
@@ -17,7 +17,8 @@ import { stripComments } from "./scan.ts";
  * `retryLimit:` rather than the bare names, and this file does the same for the
  * same reason: the source here explains itself at length, and several files
  * already say *why* there is no `<select>` or `dangerouslySetInnerHTML` in them.
- * Matching runs over `stripComments`' output — the project map's own scanner,
+ * Matching runs over `stripComments`' output — `@ticket/repo-scan`'s scanner,
+ * which the project map, the API's guard and the doc citations read too, and
  * which blanks comments and keeps strings — so an explanation never fails the
  * build. The `forms` cases at the bottom hold that for every rule: each one is
  * shown a violation it must catch and a comment it must ignore, and a rule may

@@ -1,0 +1,17 @@
+{
+  "name": "@ticket/repo-scan",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./strip-comments": "./src/strip-comments.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
+  }
+}

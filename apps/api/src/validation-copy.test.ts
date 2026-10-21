@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { TICKET_INPUT_MESSAGE } from "@ticket/shared";
-import { stripComments } from "./strip-comments";
+import { stripComments } from "@ticket/repo-scan/strip-comments";
 
 /**
  * Every validation message in `@ticket/core` that a person can see ends in a
@@ -30,7 +30,7 @@ const LITERAL =
 
 /** The literals in `source` that read as a message, with their line numbers. */
 function messagesIn(source: string): { text: string; line: number }[] {
-  const code = stripComments(source);
+  const code = stripComments(source).code;
   const found: { text: string; line: number }[] = [];
   for (const match of code.matchAll(LITERAL)) {
     const text = match[1] ?? match[2] ?? match[3] ?? "";

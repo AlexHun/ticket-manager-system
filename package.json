@@ -17,7 +17,7 @@
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-stop.ps1",
     "build": "bun --filter '*' build",
     "typecheck": "bun --filter '*' typecheck && tsc -p tsconfig.json",
-    "test": "bun run --filter '@ticket/shared' test && bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
+    "test": "bun run --filter '@ticket/shared' test && bun run --filter '@ticket/repo-scan' test && bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
     "lint": "bun run --filter @ticket/lint lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

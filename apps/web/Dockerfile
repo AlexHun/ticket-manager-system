@@ -16,6 +16,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
 COPY packages/shared/package.json packages/shared/
 COPY tools/lint/package.json tools/lint/
+COPY tools/repo-scan/package.json tools/repo-scan/
 
 RUN bun install --frozen-lockfile
 
@@ -25,6 +26,10 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.base.json ./
 
 COPY packages packages
+# `vite.config.ts` loads the dev-tools plugin even for a build, and its project
+# map imports the comment stripper from this workspace, so the build needs its
+# source, not only its manifest (#565).
+COPY tools/repo-scan tools/repo-scan
 COPY apps/web apps/web
 
 # --- Build-time configuration -----------------------------------------------

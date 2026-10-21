@@ -30,6 +30,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
 COPY packages/shared/package.json packages/shared/
 COPY tools/lint/package.json tools/lint/
+COPY tools/repo-scan/package.json tools/repo-scan/
 
 # devDependencies are installed on purpose: the Prisma CLI is one, and it is
 # needed twice — for `prisma generate` below and for `prisma migrate deploy` as

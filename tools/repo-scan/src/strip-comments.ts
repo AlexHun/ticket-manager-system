@@ -1,35 +1,49 @@
 /**
  * Blank out every comment in a JS, TS or JSON source, keeping every other
- * character and every newline — so a regex run over the result cannot match
- * inside a comment, and a match's line number is still the source's.
+ * character and every newline, so a regex run over the result cannot match
+ * inside a comment and a match's line number is still the source's.
  *
- * For `standards-guard.test.ts` (#391), which bans forms rather than words and
- * must let a file explain *why* it avoids one, and for `doc-citations.ts`
- * (#440), where a symbol that survives only in a comment counts as gone. It
- * sits in `src/` rather than `src/test/` because `doc-citations.ts` is not
- * test code: `scripts/graph.ts` (`bun run graph`, #444) imports it too.
+ * The one copy (#565). Every reader of source in both apps takes it from here:
+ * the two standards guards (#390, #391), which ban forms rather than words and
+ * must let a file explain *why* it avoids one; `validation-copy.test.ts`;
+ * `doc-citations.ts` (#440), where a symbol that survives only in a comment
+ * counts as gone, and `scripts/graph.ts` through it; and the project map's
+ * scanner, `apps/web/dev/scan.ts`. A reader that wants only the text takes
+ * `.code`.
  *
- * The same scanner as `apps/web/dev/scan.ts`'s `stripComments`, copied rather
- * than imported: that module is the web workspace's project-map scanner, it
- * imports the web's protocol types, and the API's `tsconfig` does not reach
- * outside `src/`. A fix to either copy belongs in both.
+ * A character scanner rather than a line-based one, and the reason is a bug it
+ * replaced: `path="/__dev/*"` contains `/*`, so a scanner that does not know it
+ * is inside a string opens a block comment there and swallows the rest of the
+ * file. Two routes silently vanished from the map. Strings, template literals
+ * and regex literals are therefore all skipped over as units and kept.
  *
- * A character scanner rather than a line-based one, because a string can hold
- * what looks like a comment opener — `"/__dev/*"` — and a scanner that does not
- * know it is inside a string swallows the rest of the file there. Strings,
- * template literals and regex literals are skipped over as units and kept.
+ * Template contents are *preserved*, not blanked: `api.get(\`/api/tickets/${id}\`)`
+ * is read back out of this text by the project map's endpoint matcher.
  *
  * The one shape it gets wrong is a template literal nested inside another
- * template's `${…}`; the cost would be a missed comment in one file, not a
+ * template's `${…}`. The cost would be a missed comment in one file, not a
  * swallowed one.
  *
- * An import-free leaf, so nothing has a reason to mock it.
+ * An import-free leaf, so nothing has a reason to mock it, and so the API's
+ * compiler options and Vite's native config loader both read it as it is.
  */
+
+export interface StrippedSource {
+  /** The file with every comment blanked out, newlines preserved so line
+   *  numbers still line up. */
+  code: string;
+  /** Lines on which anything survived. */
+  codeLines: number;
+  /** Lines that held something and on which nothing survived. */
+  commentLines: number;
+}
 
 /**
  * Characters after which a `/` opens a regex literal rather than dividing.
- * Division always follows a value — an identifier, a number, `)` or `]` — and
- * none of those are in here.
+ *
+ * The distinction is decidable from the previous non-space character, because
+ * division always follows a *value*: an identifier, a number, `)` or `]`. None
+ * of those are in here, so anything else means a regex is starting.
  */
 const REGEX_MAY_FOLLOW = new Set([
   "(",
@@ -92,7 +106,7 @@ function skipRegex(source: string, start: number): number {
   return at;
 }
 
-export function stripComments(source: string): string {
+export function stripComments(source: string): StrippedSource {
   const chars = source.split("");
   const blank = (from: number, to: number): void => {
     for (let at = from; at < to && at < chars.length; at += 1) {
@@ -142,5 +156,17 @@ export function stripComments(source: string): string {
     at += 1;
   }
 
-  return chars.join("");
+  // Counted from the result rather than tracked during the scan: a line is code
+  // if anything survived, a comment if something was there and nothing did.
+  const code = chars.join("");
+  const before = source.split("\n");
+  const after = code.split("\n");
+  let codeLines = 0;
+  let commentLines = 0;
+  for (let line = 0; line < after.length; line += 1) {
+    if (after[line]!.trim().length > 0) codeLines += 1;
+    else if ((before[line] ?? "").trim().length > 0) commentLines += 1;
+  }
+
+  return { code, codeLines, commentLines };
 }

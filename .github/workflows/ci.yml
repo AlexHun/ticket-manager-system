@@ -153,6 +153,9 @@ jobs:
       - name: Shared package tests
         run: bun run --filter '@ticket/shared' test
 
+      - name: Repo scanner tests
+        run: bun run --filter '@ticket/repo-scan' test
+
       - name: Web component tests
         run: bun run --filter '@ticket/web' test
 
