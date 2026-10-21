@@ -1,4 +1,4 @@
-import { cpSync, rmSync } from "node:fs";
+import { cpSync, readdirSync, rmSync, utimesSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,5 +76,26 @@ export const USAGE_HISTORY_PATH = path.join(HERE, "usage-history.local.sqlite");
 export function resetTranscriptWorkingCopy(): void {
   rmSync(TRANSCRIPT_WORKING_DIR, { recursive: true, force: true });
   cpSync(TRANSCRIPT_FIXTURE_DIR, TRANSCRIPT_WORKING_DIR, { recursive: true });
+  stampNow(TRANSCRIPT_WORKING_DIR);
   rmSync(USAGE_HISTORY_PATH, { force: true });
+}
+
+/**
+ * Every file under `dir` last written now, as a copy just made is.
+ *
+ * The Sessions page reads a card Stopped once its files have gone unwritten
+ * for `SESSION_IDLE_MS` (#591), and on Windows `cpSync` keeps the source's
+ * modification time, the OS's file copy carrying it over. Without this the
+ * working copy there is as old as the checkout, and every card that is not
+ * Done reads Stopped once the checkout is older than the idle time.
+ */
+function stampNow(dir: string): void {
+  const now = new Date();
+  for (const entry of readdirSync(dir, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (entry.isFile())
+      utimesSync(path.join(entry.parentPath, entry.name), now, now);
+  }
 }

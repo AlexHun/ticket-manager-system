@@ -14,7 +14,6 @@ import axios from "axios";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DEVTOOLS_API } from "./devtools-paths";
 import type { ProjectGraph } from "./map-protocol";
-import type { SessionsReport } from "./sessions-protocol";
 import type { SuiteDescriptor } from "./test-run-protocol";
 import type { UsageReport } from "./usage-protocol";
 
@@ -24,7 +23,6 @@ export const devKeys = {
   graph: ["dev", "graph"] as const,
   suites: ["dev", "suites"] as const,
   storedUsage: ["dev", "usage", "stored"] as const,
-  sessions: ["dev", "sessions"] as const,
 };
 
 /**
@@ -104,27 +102,6 @@ export function useUsageScan() {
   return useMutation({
     mutationFn: async () => {
       const { data } = await devApi.post<UsageReport>(DEVTOOLS_API.usage);
-      return data;
-    },
-  });
-}
-
-/**
- * Every session of this repository on this machine, as trees of subagents
- * (#590). A query, read on load and again on Refresh, like the project map:
- * it reads and writes nothing else. `staleTime: 0` for the map's reason — the
- * point is the transcripts as they are now — and `retry: false` so a failure
- * is on screen at once rather than after three attempts.
- */
-export function useSessions() {
-  return useQuery({
-    queryKey: devKeys.sessions,
-    staleTime: 0,
-    retry: false,
-    queryFn: async ({ signal }) => {
-      const { data } = await devApi.get<SessionsReport>(DEVTOOLS_API.sessions, {
-        signal,
-      });
       return data;
     },
   });

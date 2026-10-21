@@ -160,3 +160,11 @@ latest:
 Session `b` is listed first, being the more recently started. Session `b` has
 no prompt, so its task reads "No prompt recorded". `a3333333333333333`'s meta
 file is the warning, and it has no card.
+
+The Running states above hold only while the working copy's files are fresh:
+a card that is not Done reads Stopped once its files have gone unwritten for
+`SESSION_IDLE_MS` (#591). `resetTranscriptWorkingCopy` stamps every copied
+file with the current time for that reason. The spec's live cases (#591)
+write to the working copy at run time and never to these files: a response
+of 1,000 output tokens appended to `session-a.jsonl` (32,000 → 33,000), one
+of 500 whose call starts a new subagent (33,500), and that subagent's own 600.

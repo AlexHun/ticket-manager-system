@@ -1,11 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSessions } from "./sessions.ts";
+import { createSessionsReader, readSessions } from "./sessions.ts";
 import {
+  SESSION_IDLE_MS,
   SESSION_STATE,
   type SessionCard,
+  type SessionsReport,
 } from "../src/dev/sessions-protocol.ts";
 
 /**
@@ -397,5 +406,214 @@ describe("readSessions", () => {
     const [s] = (await readSessions(dir)).sessions;
 
     expect(s.out).toBe(4000);
+  });
+});
+
+/**
+ * Slice 2 (#591): Stopped. A file's age is its modification time against the
+ * clock the reading is given, so each case writes its files, sets their times
+ * with `utimesSync` and reads at a `now` of its choosing.
+ */
+describe("readSessions: Stopped", () => {
+  const NOW = Date.parse("2026-10-21T12:00:00.000Z");
+  const idle = NOW - SESSION_IDLE_MS - 1000;
+  const fresh = NOW - 1000;
+
+  /** Sets a file's modification time, relative to `dir`. */
+  const touch = (file: string, ms: number) =>
+    utimesSync(join(dir, file), ms / 1000, ms / 1000);
+
+  const stateIn = (cards: SessionCard[], id: string): string | undefined => {
+    for (const c of cards) {
+      if (c.id === id) return c.state;
+      const found = stateIn(c.children, id);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  it("reads a session Stopped once its transcript is older than the idle time, and Done stays Done", async () => {
+    session("crashed", response(1, T(0), { stop: "tool_use" }));
+    session("finished", response(1, T(0), { stop: "end_turn" }));
+    session("working", response(1, T(0), { stop: "tool_use" }));
+    touch("crashed.jsonl", idle);
+    touch("finished.jsonl", idle);
+    touch("working.jsonl", fresh);
+
+    const { sessions } = await readSessions(dir, NOW);
+
+    expect(stateIn(sessions, "crashed")).toBe(SESSION_STATE.stopped);
+    expect(stateIn(sessions, "finished")).toBe(SESSION_STATE.done);
+    expect(stateIn(sessions, "working")).toBe(SESSION_STATE.running);
+  });
+
+  it("reads a subagent Stopped by its own files' age, and its session Running while it is", async () => {
+    session("s", response(1, T(0), { calls: ["toolu_a", "toolu_b"] }));
+    subagent(
+      "s",
+      "dead",
+      { agentType: "x", description: "dead", toolUseId: "toolu_a" },
+      response(1, T(1)),
+    );
+    subagent(
+      "s",
+      "live",
+      { agentType: "x", description: "live", toolUseId: "toolu_b" },
+      response(1, T(1)),
+    );
+    // The session waits on its subagents, so its own transcript is quiet.
+    touch("s.jsonl", idle);
+    for (const f of ["agent-dead.jsonl", "agent-dead.meta.json"]) {
+      touch(`s/subagents/${f}`, idle);
+    }
+    touch("s/subagents/agent-live.jsonl", fresh);
+    touch("s/subagents/agent-live.meta.json", idle);
+
+    const { sessions } = await readSessions(dir, NOW);
+
+    expect(stateIn(sessions, "dead")).toBe(SESSION_STATE.stopped);
+    expect(stateIn(sessions, "live")).toBe(SESSION_STATE.running);
+    expect(stateIn(sessions, "s")).toBe(SESSION_STATE.running);
+  });
+
+  it("reads a session Stopped once nothing under it is Running either", async () => {
+    session("s", response(1, T(0), { calls: ["toolu_a"] }));
+    subagent(
+      "s",
+      "a",
+      { agentType: "x", description: "dead", toolUseId: "toolu_a" },
+      response(1, T(1)),
+    );
+    for (const f of [
+      "s.jsonl",
+      "s/subagents/agent-a.jsonl",
+      "s/subagents/agent-a.meta.json",
+    ]) {
+      touch(f, idle);
+    }
+
+    const { sessions } = await readSessions(dir, NOW);
+
+    expect(stateIn(sessions, "s")).toBe(SESSION_STATE.stopped);
+    expect(stateIn(sessions, "a")).toBe(SESSION_STATE.stopped);
+  });
+
+  it("reads a Stopped session Running again once its transcript grows", async () => {
+    const reader = createSessionsReader();
+    session("s", response(1, T(0), { stop: "tool_use" }));
+    touch("s.jsonl", idle);
+    expect(stateIn((await reader.read(dir, NOW)).sessions, "s")).toBe(
+      SESSION_STATE.stopped,
+    );
+
+    appendFileSync(join(dir, "s.jsonl"), lines(response(1, T(30))));
+    touch("s.jsonl", fresh);
+
+    expect(stateIn((await reader.read(dir, NOW)).sessions, "s")).toBe(
+      SESSION_STATE.running,
+    );
+  });
+});
+
+/**
+ * Slice 2 (#591): one reader kept between readings resumes each transcript
+ * from where it left off, which is what makes polling cheap enough for the
+ * stream. Every answer must equal a fresh reading's.
+ */
+describe("createSessionsReader", () => {
+  const fresh = () => readSessions(dir);
+  const withoutClock = ({ gatheredAt: _, ...rest }: SessionsReport) => rest;
+
+  it("reads what was appended since the last reading, and agrees with a fresh one", async () => {
+    const reader = createSessionsReader();
+    session("s", prompt("Do it.", T(0)), response(100, T(1), { id: "msg_1" }));
+    await reader.read(dir);
+
+    appendFileSync(
+      join(dir, "s.jsonl"),
+      lines(
+        // The same response again with its final count, as a subagent writes.
+        response(900, T(2), { id: "msg_1" }),
+        response(50, T(3), { calls: ["toolu_new"] }),
+      ),
+    );
+    subagent(
+      "s",
+      "new",
+      { agentType: "x", description: "new one", toolUseId: "toolu_new" },
+      response(7, T(4)),
+    );
+    const live = await reader.read(dir);
+
+    expect(live.sessions[0]).toMatchObject({ out: 950, elapsedMs: 180_000 });
+    expect(shape(live.sessions)).toEqual(["s", "  new"]);
+    expect(withoutClock(live)).toEqual(withoutClock(await fresh()));
+  });
+
+  it("counts a half-written last line once, when it is finished", async () => {
+    const reader = createSessionsReader();
+    const whole = JSON.stringify(response(300, T(1)));
+    writeFileSync(
+      join(dir, "s.jsonl"),
+      lines(response(100, T(0))) + whole.slice(0, 20),
+      "utf8",
+    );
+    expect((await reader.read(dir)).sessions[0].out).toBe(100);
+
+    appendFileSync(join(dir, "s.jsonl"), whole.slice(20));
+    // Complete JSON with no newline yet: counted, but not past the cursor.
+    expect((await reader.read(dir)).sessions[0].out).toBe(400);
+
+    appendFileSync(join(dir, "s.jsonl"), "\n");
+    const settled = await reader.read(dir);
+
+    expect(settled.sessions[0].out).toBe(400);
+    expect(settled.warnings).toEqual([]);
+  });
+
+  it("reads a transcript from the top again when it was replaced rather than grown", async () => {
+    const reader = createSessionsReader();
+    session("s", response(5000, T(0)), response(5000, T(1)));
+    await reader.read(dir);
+
+    // Shorter: it shrank. Then a different file of the same length and more.
+    session("s", response(1, T(0)));
+    expect((await reader.read(dir)).sessions[0].out).toBe(1);
+    session("s", response(2, T(0)), response(3, T(1)), response(4, T(2)));
+
+    expect((await reader.read(dir)).sessions[0].out).toBe(9);
+  });
+
+  it("forgets a session whose transcript is gone", async () => {
+    const reader = createSessionsReader();
+    session("gone", response(1, T(0)));
+    session("kept", response(1, T(1)));
+    await reader.read(dir);
+
+    rmSync(join(dir, "gone.jsonl"));
+
+    expect((await reader.read(dir)).sessions.map((s) => s.id)).toEqual([
+      "kept",
+    ]);
+  });
+
+  it("notices a subagent that has just finished", async () => {
+    const reader = createSessionsReader();
+    session("s", response(1, T(0), { calls: ["toolu_a"] }));
+    const meta = { agentType: "x", description: "a", toolUseId: "toolu_a" };
+    subagent("s", "a", meta, response(1, T(1)));
+    expect((await reader.read(dir)).sessions[0].children[0].state).toBe(
+      SESSION_STATE.running,
+    );
+
+    writeFileSync(
+      join(dir, "s", "subagents", "agent-a.meta.json"),
+      JSON.stringify({ ...meta, finished: true }),
+      "utf8",
+    );
+
+    expect((await reader.read(dir)).sessions[0].children[0].state).toBe(
+      SESSION_STATE.done,
+    );
   });
 });

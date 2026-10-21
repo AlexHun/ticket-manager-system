@@ -31,7 +31,8 @@ import {
 } from "./suites.ts";
 import { gatherUsage, readStoredUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
-import { readSessions } from "./sessions.ts";
+import { createSessionsReader } from "./sessions.ts";
+import { sessionsStream } from "./sessions-stream.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
 import { historyIsPushed, pushHistoryFile, receivePush } from "./usage-push.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
@@ -120,6 +121,16 @@ export function devToolsPlugin(): Plugin {
    */
   let active: string | null = null;
   let queue: string[] = [];
+
+  /**
+   * The Sessions stream, one for every page that opens it. Its reader keeps
+   * a cursor per transcript between readings, so it is held here, for the
+   * dev server's life, rather than made per request.
+   */
+  const sessionsReader = createSessionsReader();
+  const sessions = sessionsStream(() =>
+    sessionsReader.read(resolveTranscriptDir(process.env, { cwd: REPO_ROOT })),
+  );
 
   const broadcast = (message: DevStreamMessage): void => {
     for (const listener of listeners) listener(message);
@@ -373,26 +384,32 @@ export function devToolsPlugin(): Plugin {
 
       server.middlewares.use(
         DEVTOOLS_API.sessions,
-        // The Sessions page (#590): every session's tree, read off the same
-        // transcript directory the Usage scan reads — `REPO_ROOT` for the
-        // reason the scan's comment above gives, and resolved per request so
+        // The Sessions page (#590, #591): every session's tree as a stream,
+        // in the test runner's SSE shape above, read again while any page
+        // listens (`./sessions-stream.ts`). The same transcript directory the
+        // Usage scan reads — `REPO_ROOT` for the reason the scan's comment
+        // above gives, and resolved on every reading so
         // `CLAUDE_TRANSCRIPT_DIR` points it at the E2E fixture. Reads only.
-        only("GET", async (_req, res) =>
-          sendJson(
-            res,
-            200,
-            await readSessions(
-              resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
-            ),
-          ),
-        ),
+        only("GET", (req, res) => {
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+          });
+          const leave = sessions.subscribe((message) => {
+            res.write(`data: ${JSON.stringify(message)}\n\n`);
+          });
+          req.on("close", leave);
+        }),
       );
 
       // A dev-server restart (editing this file, or vite.config.ts) must not
-      // leave a Playwright run holding ports 3002 and 4001.
+      // leave a Playwright run holding ports 3002 and 4001, nor a clock
+      // reading transcripts for pages that are gone.
       server.httpServer?.once("close", () => {
         queue = [];
         for (const stored of runs.values()) stored.handle?.cancel();
+        sessions.close();
       });
 
       // Printed plainly rather than dressed up in Vite's colours: this is the
