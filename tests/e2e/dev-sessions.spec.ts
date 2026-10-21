@@ -1,5 +1,6 @@
 import {
   appendFileSync,
+  mkdirSync,
   readdirSync,
   rmSync,
   utimesSync,
@@ -15,6 +16,7 @@ import {
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   sessionCount,
+  waitingCount,
 } from "../../apps/web/src/dev/sessions-copy";
 import {
   SESSION_IDLE_MS,
@@ -24,6 +26,7 @@ import { signIn } from "./helpers/auth";
 import {
   resetTranscriptWorkingCopy,
   TRANSCRIPT_WORKING_DIR,
+  WAITING_WORKING_DIR,
 } from "./fixtures/transcript-fixture";
 
 /**
@@ -333,6 +336,44 @@ test.describe("dev tools: Sessions", () => {
       timeout: R4_MS,
     });
     await expect(stateOf(nested)).toHaveText(SESSION_STATE.stopped);
+  });
+
+  test("reads the nested subagent Waiting for you while a record names it, and counts it in the header", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE.devSessions.path);
+    const a = cardIn(page, SESSION_A);
+    const nested = childOf(childOf(a, REVIEW), NESTED);
+    await expectCard(nested, NESTED);
+    const count = page.locator("[data-sessions-waiting]");
+    await expect(count).toHaveText("");
+
+    // What `.claude/hooks/record-waiting.mjs` writes when a subagent's
+    // permission prompt or question holds it.
+    mkdirSync(WAITING_WORKING_DIR, { recursive: true });
+    const record = `${WAITING_WORKING_DIR}/${SESSION_A}.${NESTED}.json`;
+    writeFileSync(
+      record,
+      JSON.stringify({ sessionId: SESSION_A, agentId: NESTED }),
+    );
+
+    const stateOf = (card: Locator) =>
+      own(card).locator('[data-session-fact="State"]');
+    await expect(stateOf(nested)).toHaveText(SESSION_STATE.waiting, {
+      timeout: R4_MS,
+    });
+    await expect(count).toHaveText(waitingCount(1));
+    // The wait is the subagent's, not the cards above it.
+    await expect(stateOf(a)).toHaveText(SESSION_STATE.running);
+    await expect(stateOf(childOf(a, REVIEW))).toHaveText(SESSION_STATE.done);
+
+    // Answered: the hook removes the record.
+    rmSync(record);
+
+    await expect(stateOf(nested)).toHaveText(SESSION_STATE.running, {
+      timeout: R4_MS,
+    });
+    await expect(count).toHaveText("");
   });
 
   test("picks the stream up again after the page is left and reopened", async ({

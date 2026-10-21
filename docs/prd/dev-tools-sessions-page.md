@@ -34,20 +34,20 @@ cost.
 
 ### In this pass
 
-| #   | Requirement                                                                                                                                                                                                                                            | Priority |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
-| R1  | A developer can open a Sessions page from the dev tools and see this repository's Claude Code sessions on this machine, each as a tree of the session and every subagent under it, to any depth, without the API or the database running.              | Must     |
-| R2  | Each card shows the task it was given, its subagent type, its model, its state (Running, Waiting for you, Done or Stopped), its elapsed time and its own output tokens.                                                                                | Must     |
-| R3  | Each card with children also shows the output tokens of itself and everything under it, and its children can be collapsed.                                                                                                                             | Must     |
-| R4  | While a session runs, a newly started subagent, a change of state and new tokens show on the open page within 5 seconds, without a reload.                                                                                                             | Must     |
-| R5  | A session or subagent waiting on a permission answer or on the developer's input shows Waiting for you within 5 seconds, the page header counts how many are waiting, and the state clears once answered.                                              | Must     |
-| R6  | Sessions are grouped by the issue their branch names, each issue showing its total output tokens and a link to it on `AlexHun/ticket-manager-system`; work on `develop` or `main` is its own group, never counted toward an issue.                     | Must     |
-| R7  | An issue's output-token total on this page equals the Usage page's and `bun run tokens`'s for the same issue.                                                                                                                                          | Must     |
-| R8  | For a running `/chain`, the page lists the chain's issues in the order the chain works them, each marked merged, in progress, next, waiting or blocked, with the worker's name on the one in progress.                                                 | Must     |
-| R9  | A worker running `implement` shows the step it has reached: read the ticket, branch, standards, build, commit, review, ship or CI.                                                                                                                     | Should   |
-| R10 | Each card shows which tools it has called.                                                                                                                                                                                                             | Should   |
-| R11 | A session whose transcript has stopped growing without ending reads as Stopped, not Running, after a stated idle time.                                                                                                                                 | Should   |
-| R12 | Wherever this feature reads, writes or displays them, Claude Code's workers are called _sessions_ and _subagents_, and their progress _state_ and _step_, never _agent_, _run_, _status_, _stage_ or _handoff_, which `GLOSSARY.md` gives to the desk. | Must     |
+| #   | Requirement                                                                                                                                                                                                                                                                                                 | Priority |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| R1  | A developer can open a Sessions page from the dev tools and see this repository's Claude Code sessions on this machine, each as a tree of the session and every subagent under it, to any depth, without the API or the database running.                                                                   | Must     |
+| R2  | Each card shows the task it was given, its subagent type, its model, its state (Running, Waiting for you, Done or Stopped), its elapsed time and its own output tokens.                                                                                                                                     | Must     |
+| R3  | Each card with children also shows the output tokens of itself and everything under it, and its children can be collapsed.                                                                                                                                                                                  | Must     |
+| R4  | While a session runs, a newly started subagent, a change of state and new tokens show on the open page within 5 seconds, without a reload.                                                                                                                                                                  | Must     |
+| R5  | A session or subagent waiting on a permission answer or on the developer's input shows Waiting for you within 5 seconds, the page header counts how many are waiting, and the state clears once answered. A wait whose hook event doesn't say which subagent is waiting shows on its session's card (#592). | Must     |
+| R6  | Sessions are grouped by the issue their branch names, each issue showing its total output tokens and a link to it on `AlexHun/ticket-manager-system`; work on `develop` or `main` is its own group, never counted toward an issue.                                                                          | Must     |
+| R7  | An issue's output-token total on this page equals the Usage page's and `bun run tokens`'s for the same issue.                                                                                                                                                                                               | Must     |
+| R8  | For a running `/chain`, the page lists the chain's issues in the order the chain works them, each marked merged, in progress, next, waiting or blocked, with the worker's name on the one in progress.                                                                                                      | Must     |
+| R9  | A worker running `implement` shows the step it has reached: read the ticket, branch, standards, build, commit, review, ship or CI.                                                                                                                                                                          | Should   |
+| R10 | Each card shows which tools it has called.                                                                                                                                                                                                                                                                  | Should   |
+| R11 | A session whose transcript has stopped growing without ending reads as Stopped, not Running, after a stated idle time.                                                                                                                                                                                      | Should   |
+| R12 | Wherever this feature reads, writes or displays them, Claude Code's workers are called _sessions_ and _subagents_, and their progress _state_ and _step_, never _agent_, _run_, _status_, _stage_ or _handoff_, which `GLOSSARY.md` gives to the desk.                                                      | Must     |
 
 ### Non-goals
 
@@ -94,10 +94,14 @@ cost.
 
 ## Open questions
 
-- [ ] Do Claude Code's hook events say whether the session or one of its
+- [x] Do Claude Code's hook events say whether the session or one of its
       subagents is the one waiting, and do they fire when input is answered?
-      `context7` was unreachable while this was written, so this is
-      unverified. _Blocks R5._
+      _Answered by #592's spike, from the hooks reference._ A question to the
+      developer is a tool call, and tool events carry the subagent's id. The
+      docs don't say whether a permission prompt's notification carries it.
+      The wait ends on the held call's result, the next prompt, the end of the
+      turn or of the subagent, or the end of the session. R5 is restated to
+      cover a wait that names no subagent.
 - [ ] Where does R8's chain order come from: the chain's issue listing on
       GitHub (blocking edges and the `## Parent` slug, as `chain` step 1 reads
       it), or something the conductor records? _Affects R8 with `gh` down._

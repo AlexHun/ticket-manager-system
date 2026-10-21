@@ -45,6 +45,11 @@ export const subagentsLabel = (task: string) => `Subagents of ${task}`;
 export const outputTokens = (n: number) =>
   `${n.toLocaleString("en-GB")} output ${n === 1 ? "token" : "tokens"}`;
 
+/** The header's count of cards reading Waiting for you: `2 waiting for you`.
+ *  The same words for one and for many, so no plural to agree. */
+export const waitingCount = (n: number) =>
+  `${n.toLocaleString("en-GB")} waiting for you`;
+
 /** `n sessions`, the plural agreeing with the number. */
 export const sessionCount = (n: number) =>
   `${n.toLocaleString("en-GB")} ${n === 1 ? "session" : "sessions"}`;
