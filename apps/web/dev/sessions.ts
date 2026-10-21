@@ -20,9 +20,10 @@
 // Its own reader rather than `./transcripts.ts`'s `readTranscripts`, which
 // answers per response with no file on the row — and whose six fields are the
 // usage history's stored row and the push's wire (ADR-0023), so they are not
-// widened for this page. The counting rule is the same one, each response once
-// at its largest count (#413, #431); slice 4 of the plan is where the page's
-// figures are held level with the Usage page's.
+// widened for this page. Instead each card keeps the responses its own file
+// holds, keyed by the same `identityOf` and folded at the same largest count
+// (#413, #431), and `./session-groups.ts` totals them with the Usage page's
+// `tallySpend` (#593): which card a response is in is which list holds it.
 //
 // Read only and asynchronously, so a reading of a few hundred transcripts does
 // not hold the thread Vite answers every other request on. A reader kept
@@ -38,6 +39,12 @@ import {
   type SessionsReport,
   type SessionsWarning,
 } from "../src/dev/sessions-protocol.ts";
+import { groupSessions, type CreditedCard } from "./session-groups.ts";
+import {
+  identityOf,
+  largerCounts,
+  type TranscriptResponse,
+} from "./transcripts.ts";
 import { readWaiting, type WaitingRecord } from "./waiting.ts";
 
 /** Where Claude Code puts a session's subagents, under the session's own
@@ -65,13 +72,16 @@ const SYNTHETIC_MODEL = "<synthetic>";
 interface TranscriptRecord {
   type?: string;
   isMeta?: boolean;
+  sessionId?: string;
+  gitBranch?: string;
+  uuid?: string;
   timestamp?: string;
   message?: {
     id?: string;
     model?: string;
     stop_reason?: string | null;
     content?: unknown;
-    usage?: { output_tokens?: number };
+    usage?: { output_tokens?: number; cache_read_input_tokens?: number };
   };
 }
 
@@ -89,7 +99,10 @@ interface TranscriptFacts {
   model: string | null;
   startedAt: string | null;
   elapsedMs: number | null;
-  out: number;
+  /** Each response once, at its largest count, as the Usage scan reads it. */
+  responses: TranscriptResponse[];
+  /** The `gitBranch` of its latest record that carries one, or null. */
+  branch: string | null;
   /** The `stop_reason` of its last response, or null. */
   lastStop: string | null;
   /** Every `tool_use` id it made a call under. */
@@ -106,7 +119,8 @@ const NO_FACTS: TranscriptFacts = {
   model: null,
   startedAt: null,
   elapsedMs: null,
-  out: 0,
+  responses: [],
+  branch: null,
   lastStop: null,
   calls: [],
   badLines: 0,
@@ -114,10 +128,14 @@ const NO_FACTS: TranscriptFacts = {
 
 /**
  * What a transcript's lines add up to so far, fed one record at a time, so a
- * reading can resume where the last one stopped. `out` is kept as a running
- * total beside the per-id counts it is the sum of.
+ * reading can resume where the last one stopped.
  */
 interface FactsSoFar {
+  /** The transcript as `listTranscripts` names it, which a response with no
+   *  id or uuid is keyed on (`identityOf`). */
+  file: string;
+  /** Lines fed so far, so a resumed reading numbers the next one. */
+  lines: number;
   task: string | null;
   model: string | null;
   first: string | null;
@@ -125,13 +143,16 @@ interface FactsSoFar {
   lastMs: number;
   lastStop: string | null;
   calls: string[];
-  /** Output per response id; a record with no id is its own response. */
-  byId: Map<string, number>;
-  out: number;
+  /** Each response by its `identityOf` key. Replaced rather than changed when
+   *  a later record raises its count, so a copy of the map is a copy. */
+  responses: Map<string, TranscriptResponse>;
+  branch: string | null;
   badLines: number;
 }
 
-const startFacts = (): FactsSoFar => ({
+const startFacts = (file: string): FactsSoFar => ({
+  file,
+  lines: 0,
   task: null,
   model: null,
   first: null,
@@ -139,8 +160,8 @@ const startFacts = (): FactsSoFar => ({
   lastMs: -Infinity,
   lastStop: null,
   calls: [],
-  byId: new Map(),
-  out: 0,
+  responses: new Map(),
+  branch: null,
   badLines: 0,
 });
 
@@ -148,7 +169,7 @@ const startFacts = (): FactsSoFar => ({
 const copyFacts = (f: FactsSoFar): FactsSoFar => ({
   ...f,
   calls: [...f.calls],
-  byId: new Map(f.byId),
+  responses: new Map(f.responses),
 });
 
 /** A content block of type `type`, as a transcript's `message.content`
@@ -193,12 +214,18 @@ function toolCalls(content: unknown): string[] {
 }
 
 /**
- * One line into `f`. An unparseable line is skipped, as the Usage scan skips
- * one, and counted only when `complete`: the files are append-only JSONL, and
- * a half-written last line is their ordinary state while a session works,
- * where a bad line above it is a file the page can't fully read.
+ * One line into `f`, its one-based number in the file being `lineNo`. An
+ * unparseable line is skipped, as the Usage scan skips one, and counted only
+ * when `complete`: the files are append-only JSONL, and a half-written last
+ * line is their ordinary state while a session works, where a bad line above
+ * it is a file the page can't fully read.
  */
-function feed(f: FactsSoFar, line: string, complete: boolean): void {
+function feed(
+  f: FactsSoFar,
+  line: string,
+  lineNo: number,
+  complete: boolean,
+): void {
   if (!line.trim()) return;
   let rec: TranscriptRecord;
   try {
@@ -221,6 +248,7 @@ function feed(f: FactsSoFar, line: string, complete: boolean): void {
   }
 
   f.task ??= promptText(rec);
+  if (rec.gitBranch) f.branch = rec.gitBranch;
 
   const message = rec.message;
   if (!message) return;
@@ -233,15 +261,26 @@ function feed(f: FactsSoFar, line: string, complete: boolean): void {
   // Every block of a response carries the same `stop_reason`, the last
   // one written being the final word.
   f.lastStop = message.stop_reason ?? null;
+  // As `readTranscripts` keeps a response: under its first record's session,
+  // branch and time, at the largest counts any of its records carries.
+  const id = identityOf(rec, f.file, lineNo);
   const out = usage.output_tokens ?? 0;
-  if (message.id) {
-    const before = f.byId.get(message.id);
-    if (before === undefined || out > before) {
-      f.byId.set(message.id, out);
-      f.out += out - (before ?? 0);
-    }
-  } else {
-    f.out += out;
+  const cacheRead = usage.cache_read_input_tokens ?? 0;
+  const before = f.responses.get(id);
+  if (!before) {
+    f.responses.set(id, {
+      id,
+      session: rec.sessionId ?? null,
+      branch: rec.gitBranch ?? null,
+      at: rec.timestamp ?? null,
+      out,
+      cacheRead,
+    });
+  } else if (out > before.out || cacheRead > before.cacheRead) {
+    f.responses.set(id, {
+      ...before,
+      ...largerCounts(before, { out, cacheRead }),
+    });
   }
 }
 
@@ -255,7 +294,7 @@ function factsOf(f: FactsSoFar, trailing: string): TranscriptFacts {
   let s = f;
   if (trailing.trim()) {
     s = copyFacts(f);
-    feed(s, trailing, false);
+    feed(s, trailing, f.lines + 1, false);
   }
   return {
     task: s.task,
@@ -263,7 +302,8 @@ function factsOf(f: FactsSoFar, trailing: string): TranscriptFacts {
     startedAt: s.first,
     elapsedMs:
       s.first !== null && s.lastMs > s.firstMs ? s.lastMs - s.firstMs : null,
-    out: s.out,
+    responses: [...s.responses.values()],
+    branch: s.branch,
     lastStop: s.lastStop,
     calls: s.calls,
     badLines: s.badLines,
@@ -300,9 +340,12 @@ function feedBytes(
   bytes: Buffer,
 ): { used: number; trailing: string } {
   const end = bytes.lastIndexOf(NEWLINE) + 1;
-  for (const line of bytes.subarray(0, end).toString("utf8").split("\n")) {
-    feed(facts, line, true);
+  const lines = bytes.subarray(0, end).toString("utf8").split("\n");
+  // Every piece but the last ended in a newline; the last is empty.
+  for (let i = 0; i < lines.length - 1; i++) {
+    feed(facts, lines[i]!, facts.lines + i + 1, true);
   }
+  facts.lines += lines.length - 1;
   return { used: end, trailing: bytes.subarray(end).toString("utf8") };
 }
 
@@ -337,6 +380,7 @@ function advance(
  */
 async function readTranscript(
   path: string,
+  file: string,
   cursors: Map<string, Cursor>,
 ): Promise<{ facts: TranscriptFacts; mtimeMs: number }> {
   const st = await stat(path);
@@ -372,7 +416,7 @@ async function readTranscript(
   }
 
   if (!cursor) {
-    cursor = advance(startFacts(), await readFile(path), 0, 0, st.mtimeMs);
+    cursor = advance(startFacts(file), await readFile(path), 0, 0, st.mtimeMs);
   }
   cursors.set(path, cursor);
   return { facts: factsOf(cursor.facts, cursor.trailing), mtimeMs: st.mtimeMs };
@@ -397,6 +441,8 @@ const isMissing = (err: unknown) =>
 interface TreeNode {
   card: SessionCard;
   calls: string[];
+  responses: TranscriptResponse[];
+  branch: string | null;
   children: TreeNode[];
   /** When its transcript or meta file was last written, in epoch ms. */
   writtenMs: number;
@@ -486,7 +532,14 @@ const cardFacts = (facts: TranscriptFacts) => ({
   model: facts.model,
   startedAt: facts.startedAt,
   elapsedMs: facts.elapsedMs,
-  out: facts.out,
+});
+
+/** What `./session-groups.ts` reads off a settled tree. */
+const toCreditedCard = (node: TreeNode): CreditedCard => ({
+  id: node.card.id,
+  branch: node.branch,
+  responses: node.responses,
+  children: node.children.map(toCreditedCard),
 });
 
 interface SubagentNode {
@@ -528,7 +581,7 @@ async function readSession(
   state.seen.add(path);
   let read: Awaited<ReturnType<typeof readTranscript>>;
   try {
-    read = await readTranscript(path, state.cursors);
+    read = await readTranscript(path, file, state.cursors);
   } catch (err) {
     warnings.push({
       file,
@@ -549,6 +602,8 @@ async function readSession(
       children: [],
     },
     calls: facts.calls,
+    responses: facts.responses,
+    branch: facts.branch,
     children: [],
     writtenMs: read.mtimeMs,
     over: facts.lastStop === END_TURN,
@@ -556,7 +611,17 @@ async function readSession(
     waiting: false,
   };
 
-  const subagents = await readSubagents(dir, id, state, warnings);
+  const { nodes: subagents, unclaimed } = await readSubagents(
+    dir,
+    id,
+    state,
+    warnings,
+  );
+  // A subagent transcript with no card still spent what it spent, and the
+  // Usage scan counts it (R7): its session's card holds it, and any call it
+  // made is the session's.
+  root.responses = [...root.responses, ...unclaimed.responses];
+  root.calls = [...root.calls, ...unclaimed.calls];
   const callers = new Map<string, TreeNode>();
   for (const node of [root, ...subagents.map((s) => s.node)]) {
     for (const call of node.calls) callers.set(call, node);
@@ -603,13 +668,25 @@ async function readMeta(
   return reading;
 }
 
-/** Every subagent of one session that has a usable meta file. */
+/**
+ * Every subagent of one session that has a usable meta file, and what the
+ * transcripts of the rest hold: one whose meta file can't be read, or that has
+ * none. They draw no card, but `readTranscripts` counts every `.jsonl` here,
+ * so their responses are kept for the session's.
+ */
 async function readSubagents(
   dir: string,
   sessionId: string,
   state: ReaderState,
   warnings: SessionsWarning[],
-): Promise<SubagentNode[]> {
+): Promise<{
+  nodes: SubagentNode[];
+  unclaimed: { responses: TranscriptResponse[]; calls: string[] };
+}> {
+  const unclaimed = {
+    responses: [] as TranscriptResponse[],
+    calls: [] as string[],
+  };
   /** As the warnings name it, relative to `dir`. */
   const rel = `${sessionId}/${SUBAGENTS_DIR}`;
   const abs = join(dir, sessionId, SUBAGENTS_DIR);
@@ -624,10 +701,12 @@ async function readSubagents(
         message: `Couldn't list this session's subagents (${errorText(err)}).`,
       });
     }
-    return [];
+    return { nodes: [], unclaimed };
   }
 
   const nodes: SubagentNode[] = [];
+  /** Transcripts a card was drawn from. */
+  const claimed = new Set<string>();
   for (const name of names.sort()) {
     const agentId = META_FILE.exec(name)?.[1];
     if (!agentId) continue;
@@ -653,12 +732,17 @@ async function readSubagents(
     }
 
     const transcript = name.slice(0, -META_SUFFIX.length) + TRANSCRIPT_SUFFIX;
+    claimed.add(transcript);
     const transcriptPath = join(abs, transcript);
     state.seen.add(transcriptPath);
     let facts = NO_FACTS;
     let writtenMs = read.mtimeMs;
     try {
-      const t = await readTranscript(transcriptPath, state.cursors);
+      const t = await readTranscript(
+        transcriptPath,
+        `${rel}/${transcript}`,
+        state.cursors,
+      );
       facts = t.facts;
       writtenMs = Math.max(writtenMs, t.mtimeMs);
       warnOfBadLines(`${rel}/${transcript}`, facts, warnings);
@@ -688,6 +772,8 @@ async function readSubagents(
           children: [],
         },
         calls: facts.calls,
+        responses: facts.responses,
+        branch: facts.branch,
         children: [],
         writtenMs,
         over: meta.finished === true,
@@ -698,7 +784,25 @@ async function readSubagents(
       metaFile,
     });
   }
-  return nodes;
+
+  for (const name of names) {
+    if (!name.endsWith(TRANSCRIPT_SUFFIX) || claimed.has(name)) continue;
+    const file = `${rel}/${name}`;
+    const path = join(abs, name);
+    state.seen.add(path);
+    try {
+      const { facts } = await readTranscript(path, file, state.cursors);
+      warnOfBadLines(file, facts, warnings);
+      unclaimed.responses.push(...facts.responses);
+      unclaimed.calls.push(...facts.calls);
+    } catch (err) {
+      warnings.push({
+        file,
+        message: `Couldn't read this subagent's transcript (${errorText(err)}), so its session's figures may be short.`,
+      });
+    }
+  }
+  return { nodes, unclaimed };
 }
 
 /** Reads a transcript directory again and again, each time only what moved. */
@@ -778,6 +882,7 @@ export function createSessionsReader(
         transcriptDir: dir,
         gatheredAt: new Date(now).toISOString(),
         sessions: roots.map((r) => r.card),
+        groups: groupSessions(roots.map(toCreditedCard)),
         warnings,
       };
     },

@@ -45,6 +45,27 @@ export const subagentsLabel = (task: string) => `Subagents of ${task}`;
 export const outputTokens = (n: number) =>
   `${n.toLocaleString("en-GB")} output ${n === 1 ? "token" : "tokens"}`;
 
+/** A card's own output tokens and every subagent's under it, together. */
+export const withSubagents = (n: number) =>
+  `${outputTokens(n)} with its subagents`;
+
+/** The control that folds a card's subagents away, and opens them again. */
+export const toggleSubagentsLabel = (open: boolean, task: string) =>
+  `${open ? "Hide" : "Show"} the subagents of ${task}`;
+
+/** An issue group's heading, which links to the issue on GitHub. */
+export const issueGroupTitle = (issue: number) => `Issue #${issue}`;
+
+/** The group of work on `develop` and `main` (`BASE_BRANCHES`). */
+export const BASE_GROUP_TITLE = "On develop and main";
+export const BASE_GROUP_NOTE =
+  "Counted toward no issue. A /chain conductor works on develop.";
+
+/** The group of work on a branch that names no issue, or on none. */
+export const OTHER_GROUP_TITLE = "On other branches";
+export const OTHER_GROUP_NOTE =
+  "Branches that name no issue, and work with no branch recorded. Counted toward no issue.";
+
 /** The header's count of cards reading Waiting for you: `2 waiting for you`.
  *  The same words for one and for many, so no plural to agree. */
 export const waitingCount = (n: number) =>

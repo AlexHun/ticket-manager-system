@@ -87,14 +87,67 @@ export interface SessionCard {
    * timestamps to measure between.
    */
   elapsedMs: number | null;
-  /**
-   * Its own output tokens, never its children's: each response once, at the
-   * largest count any of its records carries (#413, #431).
-   */
-  out: number;
   /** The subagents it started, oldest first. */
   children: SessionCard[];
 }
+
+/**
+ * The branches whose work is a group of its own and counted toward no issue
+ * (R6): a `/chain` conductor runs on `develop`, and `main` is production.
+ */
+export const BASE_BRANCHES = ["develop", "main"] as const;
+
+/**
+ * What a group gathers (#593, R6): the work on one issue's branches, the work
+ * on `BASE_BRANCHES`, or the rest — a branch that names no issue, or a record
+ * with no branch.
+ */
+export const SESSION_GROUP_KIND = {
+  issue: "issue",
+  base: "base",
+  other: "other",
+} as const;
+
+/**
+ * One card's share of one group: the output tokens of its own responses on
+ * that group's branches, and of its own plus every subagent under it. Its
+ * facts — task, type, model, state — are the card's of the same `id` in
+ * `SessionsReport.sessions`, which a group never repeats.
+ *
+ * A card is in a group when one of its responses ran on that group's branches,
+ * when its latest record is on one of them (where it works now, figures or
+ * not), or when a subagent under it is in the group.
+ */
+export interface SessionSlice {
+  id: string;
+  /** Each response once, at the largest count any of its records carries
+   *  (#413, #431), credited to the card whose transcript holds it. */
+  out: number;
+  /** `out` plus every `subtreeOut` in `children`. */
+  subtreeOut: number;
+  children: SessionSlice[];
+}
+
+/**
+ * The sessions that worked on one issue's branches, on `develop` or `main`, or
+ * on the rest, and what they spent there.
+ *
+ * An issue group's `out` is the issue's output tokens as the Usage page and
+ * `bun run tokens` total them (`tallySpend`, R7), over the same responses the
+ * slices are credited from, so it is also the sum of its slices'
+ * `subtreeOut`. A session that worked on several branches is in each of their
+ * groups, with its share of each.
+ */
+export type SessionGroup = {
+  /** `issue:<n>`, `base` or `other`: unique in a report. */
+  key: string;
+  out: number;
+  /** Most recently started first, as `SessionsReport.sessions` is. */
+  sessions: SessionSlice[];
+} & (
+  | { kind: typeof SESSION_GROUP_KIND.issue; issue: number }
+  | { kind: typeof SESSION_GROUP_KIND.base | typeof SESSION_GROUP_KIND.other }
+);
 
 /** A file the reading could not use, and what that cost. */
 export interface SessionsWarning {
@@ -108,8 +161,15 @@ export interface SessionsReport {
   transcriptDir: string;
   /** When the reading was taken, as an ISO 8601 string. */
   gatheredAt: string;
-  /** Every session, most recently started first. */
+  /** Every session, most recently started first: each card once, with the
+   *  facts the groups' slices name by `id`. */
   sessions: SessionCard[];
+  /**
+   * The sessions grouped by where they worked (#593): every issue group, the
+   * most recently started session first, then `develop` and `main`, then the
+   * rest.
+   */
+  groups: SessionGroup[];
   warnings: SessionsWarning[];
 }
 

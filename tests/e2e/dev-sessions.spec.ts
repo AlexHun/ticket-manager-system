@@ -15,9 +15,15 @@ import {
   NO_TASK,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
+  issueGroupTitle,
   sessionCount,
+  toggleSubagentsLabel,
   waitingCount,
 } from "../../apps/web/src/dev/sessions-copy";
+import {
+  USAGE_COLUMNS,
+  USAGE_TABLE_LABEL,
+} from "../../apps/web/src/dev/usage-copy";
 import {
   SESSION_IDLE_MS,
   SESSION_STATE,
@@ -33,6 +39,9 @@ import {
  * Slice 1 of `docs/plans/dev-tools-sessions-page.md` (#590), end to end: page
  * → dev middleware → `apps/web/dev/sessions.ts` → the transcript fixture's
  * working copy, which `playwright.config.ts` names as `CLAUDE_TRANSCRIPT_DIR`.
+ * Later slices extend it: the live stream (#591), Waiting for you (#592), and
+ * the groups by issue with each card's share of them (#593), whose `#101`
+ * total is read off this page and the Usage page in one run and compared.
  *
  * What each card should say is worked out in
  * `fixtures/transcripts/README.md` ("What the Sessions page makes of them")
@@ -62,7 +71,6 @@ const EXPECTED = {
     model: NO_MODEL,
     state: SESSION_STATE.done,
     elapsed: "5m 0s",
-    out: "93,000 output tokens",
   },
   [SESSION_A]: {
     task: "Implement issue #101.",
@@ -70,7 +78,6 @@ const EXPECTED = {
     model: "claude-opus-5-5",
     state: SESSION_STATE.running,
     elapsed: "15m 0s",
-    out: "32,000 output tokens",
   },
   [REVIEW]: {
     task: "Review the fixture",
@@ -78,7 +85,6 @@ const EXPECTED = {
     model: "claude-opus-5-5",
     state: SESSION_STATE.done,
     elapsed: "1m 55s",
-    out: "8,000 output tokens",
   },
   [NESTED]: {
     task: "Find the fixture's specs",
@@ -86,7 +92,55 @@ const EXPECTED = {
     model: "claude-haiku-5-5",
     state: SESSION_STATE.running,
     elapsed: "55s",
-    out: "4,000 output tokens",
+  },
+} as const;
+
+/** The groups, in the order the page lists them, from the README. */
+const GROUP = {
+  issue102: "issue:102",
+  issue105: "issue:105",
+  issue101: "issue:101",
+  base: "base",
+  other: "other",
+} as const;
+
+/**
+ * Each group's total and each card's share of it, from the README: the own
+ * output tokens, and with its subagents where it has any in the group.
+ */
+const SHARES = {
+  [GROUP.issue102]: {
+    total: "3,000 output tokens",
+    cards: { [SESSION_B]: { own: "3,000 output tokens" } },
+  },
+  [GROUP.issue105]: {
+    total: "90,000 output tokens",
+    cards: { [SESSION_B]: { own: "90,000 output tokens" } },
+  },
+  [GROUP.issue101]: {
+    total: "32,000 output tokens",
+    cards: {
+      [SESSION_A]: {
+        own: "20,000 output tokens",
+        with: "32,000 output tokens with its subagents",
+      },
+      [REVIEW]: {
+        own: "8,000 output tokens",
+        with: "12,000 output tokens with its subagents",
+      },
+      [NESTED]: { own: "4,000 output tokens" },
+    },
+  },
+  [GROUP.base]: {
+    total: "6,000 output tokens",
+    cards: {
+      [SESSION_B]: { own: "1,000 output tokens" },
+      [SESSION_A]: { own: "5,000 output tokens" },
+    },
+  },
+  [GROUP.other]: {
+    total: "7,000 output tokens",
+    cards: { [SESSION_A]: { own: "7,000 output tokens" } },
   },
 } as const;
 
@@ -101,10 +155,10 @@ const SUBAGENTS = `${TRANSCRIPT_WORKING_DIR}/session-a/subagents`;
 
 /**
  * A response of 1,000 output tokens appended to `session-a.jsonl`, taking the
- * session from the README's 32,000 to 33,000. No timestamp, so its elapsed
- * time stands. (The fixture's cut-off line ends in a newline in the
- * repository, so finishing it is not on offer: what followed would be a
- * second bad line.)
+ * session's share of `#101` from the README's 20,000 to 21,000, and `#101`
+ * from 32,000 to 33,000. No timestamp, so its elapsed time stands. (The
+ * fixture's cut-off line ends in a newline in the repository, so finishing it
+ * is not on offer: what followed would be a second bad line.)
  */
 const NEW_RESPONSE = `${JSON.stringify({
   sessionId: "a",
@@ -133,11 +187,15 @@ const LIVE_CALL = `${JSON.stringify({
   },
 })}\n`;
 const LIVE_RESPONSE = `${JSON.stringify({
+  sessionId: "a",
+  gitBranch: "feat/101-a",
   timestamp: "2026-09-02T09:15:00.000Z",
   message: { model: "claude-haiku-5-5", usage: { output_tokens: 600 } },
 })}\n`;
-/** 32,000 + the new response's 1,000 + the call's 500. */
-const LIVE_SESSION_OUT = "33,500 output tokens";
+/** Session a's 20,000 of `#101` + the new response's 1,000 + the call's 500. */
+const LIVE_SESSION_OUT = "21,500 output tokens";
+/** `#101`'s 32,000 + 1,000 + 500 + the new subagent's 600. */
+const LIVE_ISSUE_OUT = "34,100 output tokens";
 
 function appendTranscript(file: string, ...text: string[]) {
   appendFileSync(`${TRANSCRIPT_WORKING_DIR}/${file}`, text.join(""), "utf8");
@@ -160,9 +218,20 @@ function backdateSessionA() {
   }
 }
 
-/** A card anywhere under `scope`. */
+/** One group by its key (`issue:101`, `base`, `other`). */
+const groupIn = (page: Page, key: string) =>
+  page.locator(`[data-session-group="${key}"]`);
+
+/** A card anywhere under `scope`. A session that worked on several branches
+ *  is in each of their groups, so a card is found within one. */
 const cardIn = (scope: Page | Locator, id: string) =>
   scope.locator(`[data-session-card="${id}"]`);
+
+/** Session a's card in `#101`'s group, where its subagents are. */
+const sessionAIn101 = (page: Page) =>
+  cardIn(groupIn(page, GROUP.issue101), SESSION_A);
+
+const totalOf = (group: Locator) => group.locator("[data-session-group-total]");
 
 /** A card directly under `parent`: one level down, never two. */
 const childOf = (parent: Locator, id: string) =>
@@ -171,8 +240,17 @@ const childOf = (parent: Locator, id: string) =>
 /** A card's own facts, not those of the subagents nested under it. */
 const own = (card: Locator) => card.locator(":scope > div");
 
-async function expectCard(card: Locator, id: keyof typeof EXPECTED) {
+/** A card's facts, and its share of the group `key` it is found in. */
+async function expectCard(
+  card: Locator,
+  id: keyof typeof EXPECTED,
+  key: keyof typeof SHARES,
+) {
   const want = EXPECTED[id];
+  const shares: Record<string, { own: string; with?: string }> =
+    SHARES[key].cards;
+  const share = shares[id];
+  if (!share) throw new Error(`${id} has no share of ${key} in the README`);
   const facts = own(card);
   await expect(facts.getByRole("heading")).toHaveText(want.task);
   await expect(facts.locator('[data-session-fact="Type"]')).toHaveText(
@@ -188,8 +266,14 @@ async function expectCard(card: Locator, id: keyof typeof EXPECTED) {
     want.elapsed,
   );
   await expect(facts.locator('[data-session-fact="Own output"]')).toHaveText(
-    want.out,
+    share.own,
   );
+  const withSubagents = facts.locator('[data-session-fact="With subagents"]');
+  if (share.with) {
+    await expect(withSubagents).toHaveText(share.with);
+  } else {
+    await expect(withSubagents).toHaveCount(0);
+  }
 }
 
 test.describe("dev tools: Sessions", () => {
@@ -238,30 +322,66 @@ test.describe("dev tools: Sessions", () => {
     await expect(main).toContainText(TRANSCRIPT_WORKING_DIR);
     await expect(main).toContainText(`${sessionCount(2)} read from`);
 
-    // Most recently started first. A session's own card is the first in its
-    // list item, in document order; the rest are nested under it.
-    const sessions = main.locator(":scope > ol > li");
-    await expect(sessions).toHaveCount(2);
-    const outermost = (i: number) =>
-      sessions.nth(i).locator("[data-session-card]").first();
-    await expect(outermost(0)).toHaveAttribute("data-session-card", SESSION_B);
-    await expect(outermost(1)).toHaveAttribute("data-session-card", SESSION_A);
+    // Issue groups by their most recent session, then develop and main, then
+    // the rest; each with its total.
+    const groups = main.locator("[data-session-group]");
+    await expect(groups).toHaveCount(Object.keys(GROUP).length);
+    for (const [i, key] of Object.values(GROUP).entries()) {
+      await expect(groups.nth(i)).toHaveAttribute("data-session-group", key);
+      await expect(totalOf(groups.nth(i))).toHaveText(SHARES[key].total);
+    }
+    await expect(
+      groupIn(page, GROUP.issue101).getByRole("link", {
+        name: issueGroupTitle(101),
+      }),
+    ).toHaveAttribute("href", /\/AlexHun\/ticket-manager-system\/issues\/101$/);
 
-    const a = cardIn(page, SESSION_A);
+    // Each group's sessions most recently started first. A session's own card
+    // is the first in its list item, in document order; the rest are nested
+    // under it.
+    const sessionsOf = (key: string) =>
+      groupIn(page, key).locator(":scope > ol > li");
+    const outermost = (key: string, i: number) =>
+      sessionsOf(key).nth(i).locator("[data-session-card]").first();
+    await expect(sessionsOf(GROUP.base)).toHaveCount(2);
+    await expect(outermost(GROUP.base, 0)).toHaveAttribute(
+      "data-session-card",
+      SESSION_B,
+    );
+    await expect(outermost(GROUP.base, 1)).toHaveAttribute(
+      "data-session-card",
+      SESSION_A,
+    );
+
+    const a = sessionAIn101(page);
     const review = childOf(a, REVIEW);
     const nested = childOf(review, NESTED);
     await expect(review).toHaveCount(1);
     await expect(nested).toHaveCount(1);
     // Under the subagent that started it, and not beside it.
     await expect(childOf(a, NESTED)).toHaveCount(0);
-    await expect(
-      cardIn(page, SESSION_B).locator("[data-session-card]"),
-    ).toHaveCount(0);
+    // A's subagents ran on #101's branch alone, so no other group draws them.
+    for (const key of [GROUP.base, GROUP.other]) {
+      await expect(
+        cardIn(groupIn(page, key), SESSION_A).locator("[data-session-card]"),
+      ).toHaveCount(0);
+    }
 
-    await expectCard(cardIn(page, SESSION_B), SESSION_B);
-    await expectCard(a, SESSION_A);
-    await expectCard(review, REVIEW);
-    await expectCard(nested, NESTED);
+    for (const [key, { cards }] of Object.entries(SHARES)) {
+      for (const id of Object.keys(cards)) {
+        const card =
+          id === REVIEW
+            ? review
+            : id === NESTED
+              ? nested
+              : cardIn(groupIn(page, key), id);
+        await expectCard(
+          card,
+          id as keyof typeof EXPECTED,
+          key as keyof typeof SHARES,
+        );
+      }
+    }
 
     // The unparseable meta file is named, and costs its own card only.
     const warning = page.locator(`[data-sessions-warning="${BAD_META}"]`);
@@ -275,8 +395,8 @@ test.describe("dev tools: Sessions", () => {
     page,
   }) => {
     await page.goto(ROUTE.devSessions.path);
-    const a = cardIn(page, SESSION_A);
-    await expectCard(a, SESSION_A);
+    const a = sessionAIn101(page);
+    await expectCard(a, SESSION_A, GROUP.issue101);
 
     // Claude Code writes a response, then one whose call starts a subagent,
     // and the subagent's files.
@@ -286,6 +406,10 @@ test.describe("dev tools: Sessions", () => {
     const facts = own(a);
     await expect(facts.locator('[data-session-fact="Own output"]')).toHaveText(
       LIVE_SESSION_OUT,
+      { timeout: R4_MS },
+    );
+    await expect(totalOf(groupIn(page, GROUP.issue101))).toHaveText(
+      LIVE_ISSUE_OUT,
       { timeout: R4_MS },
     );
     const live = childOf(a, LIVE);
@@ -312,10 +436,10 @@ test.describe("dev tools: Sessions", () => {
     page,
   }) => {
     await page.goto(ROUTE.devSessions.path);
-    const a = cardIn(page, SESSION_A);
+    const a = sessionAIn101(page);
     const nested = childOf(childOf(a, REVIEW), NESTED);
-    await expectCard(a, SESSION_A);
-    await expectCard(nested, NESTED);
+    await expectCard(a, SESSION_A, GROUP.issue101);
+    await expectCard(nested, NESTED, GROUP.issue101);
 
     // The idle time passing, without the spec waiting it out: every file of
     // session a last written longer ago than `SESSION_IDLE_MS`.
@@ -342,9 +466,9 @@ test.describe("dev tools: Sessions", () => {
     page,
   }) => {
     await page.goto(ROUTE.devSessions.path);
-    const a = cardIn(page, SESSION_A);
+    const a = sessionAIn101(page);
     const nested = childOf(childOf(a, REVIEW), NESTED);
-    await expectCard(nested, NESTED);
+    await expectCard(nested, NESTED, GROUP.issue101);
     const count = page.locator("[data-sessions-waiting]");
     await expect(count).toHaveText("");
 
@@ -380,7 +504,7 @@ test.describe("dev tools: Sessions", () => {
     page,
   }) => {
     await page.goto(ROUTE.devSessions.path);
-    await expect(cardIn(page, SESSION_A)).toBeVisible();
+    await expect(sessionAIn101(page)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Dev tools" });
 
     // Left: the page unmounts and its stream closes.
@@ -391,13 +515,67 @@ test.describe("dev tools: Sessions", () => {
     await nav.getByRole("link", { name: SESSIONS_TITLE, exact: true }).click();
 
     // Reopened on a fresh reading, never the one from before it was left...
-    await expect(cardIn(page, SESSION_A)).toBeVisible();
+    await expect(sessionAIn101(page)).toBeVisible();
     await expect(cardIn(page, SESSION_B)).toHaveCount(0);
     // ...and following again.
     appendTranscript(SESSION_A_FILE, NEW_RESPONSE);
     await expect(
-      own(cardIn(page, SESSION_A)).locator('[data-session-fact="Own output"]'),
-    ).toHaveText("33,000 output tokens", { timeout: R4_MS });
+      own(sessionAIn101(page)).locator('[data-session-fact="Own output"]'),
+    ).toHaveText("21,000 output tokens", { timeout: R4_MS });
+  });
+
+  test("folds a card's subagents away and keeps its figures", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE.devSessions.path);
+    const a = sessionAIn101(page);
+    await expectCard(a, SESSION_A, GROUP.issue101);
+    const task = EXPECTED[SESSION_A].task;
+
+    await own(a)
+      .getByRole("button", { name: toggleSubagentsLabel(true, task) })
+      .click();
+
+    await expect(childOf(a, REVIEW)).toHaveCount(0);
+    await expect(a.locator("[data-session-card]")).toHaveCount(0);
+    await expectCard(a, SESSION_A, GROUP.issue101);
+    await expect(totalOf(groupIn(page, GROUP.issue101))).toHaveText(
+      SHARES[GROUP.issue101].total,
+    );
+
+    await own(a)
+      .getByRole("button", { name: toggleSubagentsLabel(false, task) })
+      .click();
+
+    await expect(childOf(childOf(a, REVIEW), NESTED)).toHaveCount(1);
+  });
+
+  /**
+   * R7: an issue's total here is the Usage page's. Read off both pages in one
+   * run rather than restated, so the claim is that they agree, whatever the
+   * fixture says.
+   */
+  test("totals the fixture issue as the Usage page does", async ({ page }) => {
+    await page.goto(ROUTE.devUsage.path);
+    await page.getByRole("button", { name: "Scan" }).click();
+    const row = page
+      .getByRole("region", { name: USAGE_TABLE_LABEL })
+      .getByRole("row")
+      .filter({
+        has: page.getByRole("rowheader", { name: "#101", exact: true }),
+      });
+    const usageOut = row.getByRole("cell").nth(USAGE_COLUMNS.indexOf("out"));
+    await expect(usageOut).toHaveText(/\d/);
+    const onUsage = (await usageOut.textContent()) ?? "";
+
+    await page.goto(ROUTE.devSessions.path);
+    const total = totalOf(groupIn(page, GROUP.issue101));
+    await expect(total).toHaveText(/\d/);
+    const onSessions = (await total.textContent()) ?? "";
+
+    const digits = (text: string) => text.replace(/\D/g, "");
+    expect(digits(onSessions)).not.toBe("");
+    expect(digits(onSessions)).toBe(digits(onUsage));
   });
 
   test("says where it looked when there are no transcripts at all", async ({
@@ -424,7 +602,7 @@ test.describe("dev tools: Sessions", () => {
     page,
   }) => {
     await page.goto(ROUTE.devSessions.path);
-    await expect(cardIn(page, SESSION_A)).toBeVisible();
+    await expect(sessionAIn101(page)).toBeVisible();
 
     const words = await page.getByRole("main").evaluate((main) => {
       const copy = main.cloneNode(true) as HTMLElement;

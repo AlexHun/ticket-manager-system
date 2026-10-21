@@ -589,7 +589,8 @@ describe(`GET ${DEVTOOLS_API.sessions}`, () => {
       expect(contentType).toMatch(/^text\/event-stream/);
       const report = reportOf(message);
       expect(report.transcriptDir).toBe(dir);
-      expect(report.sessions.map((s) => [s.id, s.out])).toEqual([["s", 42]]);
+      expect(report.sessions.map((s) => s.id)).toEqual(["s"]);
+      expect(report.groups.map((g) => [g.key, g.out])).toEqual([["other", 42]]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
