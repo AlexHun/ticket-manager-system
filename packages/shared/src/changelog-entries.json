@@ -958,5 +958,10 @@
     "version": "0.1.248",
     "date": "2026-10-21",
     "title": "The Sessions page groups cards by issue, each with its own and its subtree's output tokens"
+  },
+  {
+    "version": "0.1.249",
+    "date": "2026-10-21",
+    "title": "The Sessions page lists a running chain's issues in order, merged, in progress, next"
   }
 ]
