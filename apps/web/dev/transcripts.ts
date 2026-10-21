@@ -283,6 +283,21 @@ function listTranscripts(dir: string): string[] {
 }
 
 /**
+ * Two copies of one response's counts folded into one: the larger of each,
+ * since a subagent transcript writes a partial count on a response's first
+ * record and the final one on its last (#431). The one rule every reader that
+ * collapses a response uses — `readTranscripts` here, and the Sessions reader
+ * (`./sessions.ts`, `./session-groups.ts`), whose totals must equal these (R7).
+ */
+export const largerCounts = (
+  a: Pick<TranscriptResponse, "out" | "cacheRead">,
+  b: Pick<TranscriptResponse, "out" | "cacheRead">,
+) => ({
+  out: Math.max(a.out, b.out),
+  cacheRead: Math.max(a.cacheRead, b.cacheRead),
+});
+
+/**
  * The key a record's response is counted once under (`TranscriptResponse.id`):
  * its `message.id`, then its `uuid`, then `file` (as `listTranscripts` names
  * it) and its one-based `line`. Exported for the Sessions reader
@@ -403,8 +418,7 @@ export function readTranscripts(
         if (kept) {
           // A later block of a response already kept: only its counts can say
           // more, and in a subagent transcript the first block's are partial.
-          kept.out = Math.max(kept.out, out);
-          kept.cacheRead = Math.max(kept.cacheRead, cacheRead);
+          Object.assign(kept, largerCounts(kept, { out, cacheRead }));
           return;
         }
         const response: TranscriptResponse = {

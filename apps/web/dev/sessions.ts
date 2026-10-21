@@ -40,7 +40,11 @@ import {
   type SessionsWarning,
 } from "../src/dev/sessions-protocol.ts";
 import { groupSessions, type CreditedCard } from "./session-groups.ts";
-import { identityOf, type TranscriptResponse } from "./transcripts.ts";
+import {
+  identityOf,
+  largerCounts,
+  type TranscriptResponse,
+} from "./transcripts.ts";
 import { readWaiting, type WaitingRecord } from "./waiting.ts";
 
 /** Where Claude Code puts a session's subagents, under the session's own
@@ -275,8 +279,7 @@ function feed(
   } else if (out > before.out || cacheRead > before.cacheRead) {
     f.responses.set(id, {
       ...before,
-      out: Math.max(before.out, out),
-      cacheRead: Math.max(before.cacheRead, cacheRead),
+      ...largerCounts(before, { out, cacheRead }),
     });
   }
 }
@@ -532,11 +535,11 @@ const cardFacts = (facts: TranscriptFacts) => ({
 });
 
 /** What `./session-groups.ts` reads off a settled tree. */
-const credited = (node: TreeNode): CreditedCard => ({
+const toCreditedCard = (node: TreeNode): CreditedCard => ({
   id: node.card.id,
   branch: node.branch,
   responses: node.responses,
-  children: node.children.map(credited),
+  children: node.children.map(toCreditedCard),
 });
 
 interface SubagentNode {
@@ -608,7 +611,17 @@ async function readSession(
     waiting: false,
   };
 
-  const subagents = await readSubagents(dir, id, state, warnings);
+  const { nodes: subagents, unclaimed } = await readSubagents(
+    dir,
+    id,
+    state,
+    warnings,
+  );
+  // A subagent transcript with no card still spent what it spent, and the
+  // Usage scan counts it (R7): its session's card holds it, and any call it
+  // made is the session's.
+  root.responses = [...root.responses, ...unclaimed.responses];
+  root.calls = [...root.calls, ...unclaimed.calls];
   const callers = new Map<string, TreeNode>();
   for (const node of [root, ...subagents.map((s) => s.node)]) {
     for (const call of node.calls) callers.set(call, node);
@@ -655,13 +668,25 @@ async function readMeta(
   return reading;
 }
 
-/** Every subagent of one session that has a usable meta file. */
+/**
+ * Every subagent of one session that has a usable meta file, and what the
+ * transcripts of the rest hold: one whose meta file can't be read, or that has
+ * none. They draw no card, but `readTranscripts` counts every `.jsonl` here,
+ * so their responses are kept for the session's.
+ */
 async function readSubagents(
   dir: string,
   sessionId: string,
   state: ReaderState,
   warnings: SessionsWarning[],
-): Promise<SubagentNode[]> {
+): Promise<{
+  nodes: SubagentNode[];
+  unclaimed: { responses: TranscriptResponse[]; calls: string[] };
+}> {
+  const unclaimed = {
+    responses: [] as TranscriptResponse[],
+    calls: [] as string[],
+  };
   /** As the warnings name it, relative to `dir`. */
   const rel = `${sessionId}/${SUBAGENTS_DIR}`;
   const abs = join(dir, sessionId, SUBAGENTS_DIR);
@@ -676,10 +701,12 @@ async function readSubagents(
         message: `Couldn't list this session's subagents (${errorText(err)}).`,
       });
     }
-    return [];
+    return { nodes: [], unclaimed };
   }
 
   const nodes: SubagentNode[] = [];
+  /** Transcripts a card was drawn from. */
+  const claimed = new Set<string>();
   for (const name of names.sort()) {
     const agentId = META_FILE.exec(name)?.[1];
     if (!agentId) continue;
@@ -705,6 +732,7 @@ async function readSubagents(
     }
 
     const transcript = name.slice(0, -META_SUFFIX.length) + TRANSCRIPT_SUFFIX;
+    claimed.add(transcript);
     const transcriptPath = join(abs, transcript);
     state.seen.add(transcriptPath);
     let facts = NO_FACTS;
@@ -756,7 +784,25 @@ async function readSubagents(
       metaFile,
     });
   }
-  return nodes;
+
+  for (const name of names) {
+    if (!name.endsWith(TRANSCRIPT_SUFFIX) || claimed.has(name)) continue;
+    const file = `${rel}/${name}`;
+    const path = join(abs, name);
+    state.seen.add(path);
+    try {
+      const { facts } = await readTranscript(path, file, state.cursors);
+      warnOfBadLines(file, facts, warnings);
+      unclaimed.responses.push(...facts.responses);
+      unclaimed.calls.push(...facts.calls);
+    } catch (err) {
+      warnings.push({
+        file,
+        message: `Couldn't read this subagent's transcript (${errorText(err)}), so its session's figures may be short.`,
+      });
+    }
+  }
+  return { nodes, unclaimed };
 }
 
 /** Reads a transcript directory again and again, each time only what moved. */
@@ -836,7 +882,7 @@ export function createSessionsReader(
         transcriptDir: dir,
         gatheredAt: new Date(now).toISOString(),
         sessions: roots.map((r) => r.card),
-        groups: groupSessions(roots.map(credited)),
+        groups: groupSessions(roots.map(toCreditedCard)),
         warnings,
       };
     },

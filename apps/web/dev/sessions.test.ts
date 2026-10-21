@@ -757,6 +757,31 @@ describe("readSessions: groups", () => {
     ]);
   });
 
+  it("credits a subagent transcript with no usable meta file to its session, as the Usage scan still counts it", async () => {
+    session("s", on("feat/7-x", response(1, T(0))));
+    // A meta file cut off mid-write: no card, but its spend is real.
+    subagent(
+      "s",
+      "cut",
+      '{"agentType":"x","descr',
+      on("feat/7-x", response(500, T(1))),
+    );
+    // A transcript whose meta file is not there at all.
+    writeFileSync(
+      join(dir, "s", "subagents", "agent-bare.jsonl"),
+      lines(on("feat/7-x", response(40, T(2)))),
+      "utf8",
+    );
+
+    const report = await readSessions(dir);
+
+    expect(shape(report.sessions)).toEqual(["s"]);
+    expect(report.groups.map((g) => [g.key, g.out])).toEqual([
+      ["issue:7", scanSpend(dir).byIssue.get(7)?.out],
+    ]);
+    expect(ownOut(report, "s")).toBe(541);
+  });
+
   it("keeps the figures level with the Usage scan after a reading resumes from its cursor", async () => {
     const reader = createSessionsReader();
     session("s", on("feat/7-x", response(1, T(0))));

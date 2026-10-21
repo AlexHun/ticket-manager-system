@@ -15,6 +15,7 @@ import {
   NO_TASK,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
+  issueGroupTitle,
   sessionCount,
   toggleSubagentsLabel,
   waitingCount,
@@ -155,13 +156,11 @@ const SUBAGENTS = `${TRANSCRIPT_WORKING_DIR}/session-a/subagents`;
 /**
  * A response of 1,000 output tokens appended to `session-a.jsonl`, taking the
  * session's share of `#101` from the README's 20,000 to 21,000, and `#101`
- * from 32,000 to 33,000. No timestamp, so its elapsed
- * time stands. (The fixture's cut-off line ends in a newline in the
- * repository, so finishing it is not on offer: what followed would be a
- * second bad line.)
+ * from 32,000 to 33,000. No timestamp, so its elapsed time stands. (The
+ * fixture's cut-off line ends in a newline in the repository, so finishing it
+ * is not on offer: what followed would be a second bad line.)
  */
 const NEW_RESPONSE = `${JSON.stringify({
-  // On #101's branch, so it is #101's: 20,000 → 21,000 of session a's own.
   sessionId: "a",
   gitBranch: "feat/101-a",
   message: { usage: { output_tokens: 1000 } },
@@ -332,7 +331,9 @@ test.describe("dev tools: Sessions", () => {
       await expect(totalOf(groups.nth(i))).toHaveText(SHARES[key].total);
     }
     await expect(
-      groupIn(page, GROUP.issue101).getByRole("link", { name: "Issue #101" }),
+      groupIn(page, GROUP.issue101).getByRole("link", {
+        name: issueGroupTitle(101),
+      }),
     ).toHaveAttribute("href", /\/AlexHun\/ticket-manager-system\/issues\/101$/);
 
     // Each group's sessions most recently started first. A session's own card

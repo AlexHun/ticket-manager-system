@@ -28,6 +28,7 @@ import {
 } from "../src/dev/sessions-protocol.ts";
 import {
   issueOfBranch,
+  largerCounts,
   tallySpend,
   type TranscriptResponse,
 } from "./transcripts.ts";
@@ -45,13 +46,35 @@ export interface CreditedCard {
 
 const BASE = new Set<string>(BASE_BRANCHES);
 
-/** The key of the group a branch's work is in. */
-function groupKeyOf(branch: string | null): string {
-  if (branch !== null && BASE.has(branch)) return SESSION_GROUP_KIND.base;
+/** `Omit` over each member of a union rather than over the union as one. */
+type WithoutFigures<T> = T extends unknown
+  ? Omit<T, "out" | "sessions">
+  : never;
+
+/** Which group a branch's work is in: a group less its figures, so the key is
+ *  built once and never parsed back. */
+type GroupId = WithoutFigures<SessionGroup>;
+
+const BASE_GROUP: GroupId = {
+  key: SESSION_GROUP_KIND.base,
+  kind: SESSION_GROUP_KIND.base,
+};
+const OTHER_GROUP: GroupId = {
+  key: SESSION_GROUP_KIND.other,
+  kind: SESSION_GROUP_KIND.other,
+};
+
+/** The group a branch's work is in. */
+function groupOf(branch: string | null): GroupId {
+  if (branch !== null && BASE.has(branch)) return BASE_GROUP;
   const issue = branch === null ? null : issueOfBranch(branch);
   return issue === null
-    ? SESSION_GROUP_KIND.other
-    : `${SESSION_GROUP_KIND.issue}:${issue}`;
+    ? OTHER_GROUP
+    : {
+        key: `${SESSION_GROUP_KIND.issue}:${issue}`,
+        kind: SESSION_GROUP_KIND.issue,
+        issue,
+      };
 }
 
 /** What one card spent in each group it worked in, and the group it is in now. */
@@ -75,23 +98,25 @@ function creditAll(roots: readonly CreditedCard[]) {
         responses.set(r.id, r);
         creditedTo.set(r.id, c);
       } else if (r.out > before.out || r.cacheRead > before.cacheRead) {
-        responses.set(r.id, {
-          ...before,
-          out: Math.max(before.out, r.out),
-          cacheRead: Math.max(before.cacheRead, r.cacheRead),
-        });
+        responses.set(r.id, { ...before, ...largerCounts(before, r) });
       }
     }
     c.children.forEach(visit);
   };
   roots.forEach(visit);
 
+  /** Every group any card is in, by key. */
+  const groups = new Map<string, GroupId>();
+  const keyOf = (id: GroupId) => {
+    groups.set(id.key, id);
+    return id.key;
+  };
   const shares = new Map<CreditedCard, CardShares>();
   const place = (c: CreditedCard, parentHome: string | null) => {
     const home =
       c.branch !== null
-        ? groupKeyOf(c.branch)
-        : (parentHome ?? SESSION_GROUP_KIND.other);
+        ? keyOf(groupOf(c.branch))
+        : (parentHome ?? keyOf(OTHER_GROUP));
     shares.set(c, { byGroup: new Map(), home });
     c.children.forEach((child) => place(child, home));
   };
@@ -100,10 +125,10 @@ function creditAll(roots: readonly CreditedCard[]) {
   for (const [id, r] of responses) {
     const card = creditedTo.get(id)!;
     const { byGroup } = shares.get(card)!;
-    const key = groupKeyOf(r.branch);
+    const key = keyOf(groupOf(r.branch));
     byGroup.set(key, (byGroup.get(key) ?? 0) + r.out);
   }
-  return { responses: [...responses.values()], shares };
+  return { responses: [...responses.values()], shares, groups };
 }
 
 /** `card`'s share of group `key`, or null when it has no part in it. */
@@ -146,45 +171,27 @@ const issueOf = (g: SessionGroup) =>
  * most recently started session, then by number.
  */
 export function groupSessions(roots: readonly CreditedCard[]): SessionGroup[] {
-  const { responses, shares } = creditAll(roots);
+  const { responses, shares, groups: ids } = creditAll(roots);
   const { byIssue } = tallySpend(responses);
 
-  const keys = new Set<string>();
-  for (const s of shares.values()) {
-    keys.add(s.home);
-    for (const key of s.byGroup.keys()) keys.add(key);
-  }
-
   const groups: { group: SessionGroup; first: number }[] = [];
-  for (const key of keys) {
+  for (const id of ids.values()) {
     const sessions: SessionSlice[] = [];
     let first = Infinity;
     roots.forEach((root, i) => {
-      const slice = sliceOf(root, key, shares);
+      const slice = sliceOf(root, id.key, shares);
       if (!slice) return;
       sessions.push(slice);
       first = Math.min(first, i);
     });
     if (sessions.length === 0) continue;
-    const summed = sessions.reduce((n, s) => n + s.subtreeOut, 0);
-    const [kind, number] = key.split(":");
     const group: SessionGroup =
-      kind === SESSION_GROUP_KIND.issue
-        ? {
-            key,
-            kind: SESSION_GROUP_KIND.issue,
-            issue: Number(number),
-            // The Usage page's figure (R7), which the slices sum to.
-            out: byIssue.get(Number(number))?.out ?? 0,
-            sessions,
-          }
+      id.kind === SESSION_GROUP_KIND.issue
+        ? // The Usage page's figure (R7), which the slices sum to.
+          { ...id, out: byIssue.get(id.issue)?.out ?? 0, sessions }
         : {
-            key,
-            kind:
-              kind === SESSION_GROUP_KIND.base
-                ? SESSION_GROUP_KIND.base
-                : SESSION_GROUP_KIND.other,
-            out: summed,
+            ...id,
+            out: sessions.reduce((n, s) => n + s.subtreeOut, 0),
             sessions,
           };
     groups.push({ group, first });
