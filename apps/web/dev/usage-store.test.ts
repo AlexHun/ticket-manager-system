@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
@@ -25,8 +25,8 @@ import {
   usageStoreOver,
   type SqlDatabase,
 } from "./usage-store.ts";
-import type { TrendPoint } from "../src/dev/usage-protocol.ts";
 import { gitEnv } from "./child-env.ts";
+import type { TrendPoint } from "../src/dev/usage-protocol.ts";
 
 /**
  * The usage history (#417), under vitest — which runs on Node, so the store is
@@ -71,6 +71,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "usage-store-"));
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -158,28 +159,18 @@ describe("resolveHistoryFile", () => {
       writeFileSync(join(repo, file), "");
       await git(repo, "add", file);
     }
-    const saved = {
-      GIT_DIR: process.env.GIT_DIR,
-      GIT_INDEX_FILE: process.env.GIT_INDEX_FILE,
-    };
-    process.env.GIT_DIR = join(other, ".git");
-    process.env.GIT_INDEX_FILE = join(other, ".git", "index");
-    try {
-      expect(await resolveHistoryFile({}, { cwd: own, home: dir })).toMatch(
-        /-own\.sqlite$/,
-      );
-      const { stdout } = await execFileAsync("git", ["ls-files"], {
-        cwd: own,
-        env: gitEnv(),
-        encoding: "utf8",
-      });
-      expect(stdout.trim()).toBe("own.txt");
-    } finally {
-      for (const [name, value] of Object.entries(saved)) {
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-    }
+    vi.stubEnv("GIT_DIR", join(other, ".git"));
+    vi.stubEnv("GIT_INDEX_FILE", join(other, ".git", "index"));
+
+    expect(await resolveHistoryFile({}, { cwd: own, home: dir })).toMatch(
+      /-own\.sqlite$/,
+    );
+    const { stdout } = await execFileAsync("git", ["ls-files"], {
+      cwd: own,
+      env: gitEnv(),
+      encoding: "utf8",
+    });
+    expect(stdout.trim()).toBe("own.txt");
   });
 
   it("honours the override, which is how the E2E and the unit tests keep off the real file", async () => {

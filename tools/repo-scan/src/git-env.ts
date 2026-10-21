@@ -1,7 +1,8 @@
 /**
  * The one git environment cleanup (#566). Every `git` and `gh` process started
  * from `apps/` or `scripts/` takes its environment from `repositoryFreeEnv`, and
- * `apps/api/src/git-spawn-env.test.ts` fails a spawn that does not (R4).
+ * `apps/api/src/git-spawn-env.test.ts` fails a spawn that does not
+ * (`docs/prd/one-repo-scanner.md`, R3 and R4).
  *
  * Git sets `GIT_DIR` for the hooks it runs, and from a linked worktree
  * `pre-push` reached the doc-citations check with it set: every git call read

@@ -190,7 +190,7 @@ export const listIssues = async (
     ],
     {
       cwd: REPO_ROOT,
-      env: gitEnv(REPO_ROOT),
+      env: gitEnv(),
       encoding: "utf8",
       timeout: GH_TIMEOUT_MS,
       maxBuffer: GH_MAX_BUFFER,

@@ -155,6 +155,6 @@ export function childEnv(root: string): NodeJS.ProcessEnv {
  * its siblings would make git answer for the hook's repository rather than for
  * `cwd`'s (#531), and `gh` finds its repository through git.
  */
-export function gitEnv(root: string = REPO_ROOT): NodeJS.ProcessEnv {
-  return repositoryFreeEnv(childEnv(root));
+export function gitEnv(): NodeJS.ProcessEnv {
+  return repositoryFreeEnv(childEnv(REPO_ROOT));
 }

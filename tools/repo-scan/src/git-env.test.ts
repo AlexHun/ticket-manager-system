@@ -5,7 +5,8 @@ import { GIT_LOCAL_ENV, repositoryFreeEnv } from "./git-env.ts";
 describe("repositoryFreeEnv", () => {
   test("removes every variable this machine's git says ties it to one repository", () => {
     // The list is written out rather than asked for on every call, so a git
-    // that adds a variable leaves it short. This is where that shows (R3).
+    // that adds a variable leaves it short. This is where that shows
+    // (`docs/prd/one-repo-scanner.md`, R3).
     const listed = execFileSync("git", ["rev-parse", "--local-env-vars"], {
       env: repositoryFreeEnv(),
       encoding: "utf8",
