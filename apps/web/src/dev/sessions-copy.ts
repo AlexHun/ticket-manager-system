@@ -38,6 +38,20 @@ export const NO_TASK = "No prompt recorded";
 /** A card whose transcript names no model yet. */
 export const NO_MODEL = "Model unknown";
 
+/** The `implement` step a card has reached (#595): `Step: Ship`. */
+export const stepLabel = (step: string) => `Step: ${step}`;
+
+/** A card running `implement` whose calls match no step's rules. */
+export const STEP_UNKNOWN = "Step unknown";
+
+/** A card whose transcript holds no tool call. */
+export const NO_TOOLS = "No tools called";
+
+/** How many times a card called one tool, after its name: `×3`. Nothing for
+ *  one call, which the name alone says. */
+export const toolCallCount = (n: number) =>
+  n === 1 ? "" : `×${n.toLocaleString("en-GB")}`;
+
 /** The accessible name of the list of subagents under a card. */
 export const subagentsLabel = (task: string) => `Subagents of ${task}`;
 

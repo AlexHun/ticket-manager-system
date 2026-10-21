@@ -17,23 +17,28 @@ import {
   NO_MODEL,
   NO_SESSIONS_LEAD,
   NO_TASK,
+  NO_TOOLS,
   OTHER_GROUP_NOTE,
   OTHER_GROUP_TITLE,
   SESSIONS_RECONNECTING,
   SESSIONS_STREAM_CLOSED,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
+  STEP_UNKNOWN,
   formatElapsed,
   idleTime,
   issueGroupTitle,
   outputTokens,
   sessionCount,
+  stepLabel,
   subagentsLabel,
   toggleSubagentsLabel,
+  toolCallCount,
   waitingCount,
   withSubagents,
 } from "./sessions-copy";
 import {
+  IMPLEMENT_STEP,
   SESSION_GROUP_KIND,
   SESSION_IDLE_MS,
   SESSION_STATE,
@@ -41,6 +46,7 @@ import {
   type SessionGroup,
   type SessionSlice,
   type SessionsReport,
+  type ToolTally,
 } from "./sessions-protocol";
 import { SessionChains } from "./SessionChains";
 import { STATE_BADGE } from "./session-visuals";
@@ -60,7 +66,8 @@ import {
  * showing what it and its subagents spent there, and an issue's total is the
  * Usage page's (#593, slice 4). A running `/chain` lists its issues in the
  * order it works them, each merged, in progress, next, waiting or blocked
- * (#594, slice 5).
+ * (#594, slice 5). Each card lists the tools it has called, and one running
+ * `implement` the step it has reached (#595, slice 6).
  *
  * It talks only to the Vite dev server (`apps/web/dev/sessions-stream.ts`),
  * so it opens with the API and the database stopped.
@@ -384,6 +391,18 @@ function CardBody({
                 {withSubagents(slice.subtreeOut)}
               </Fact>
             )}
+            {/* Only a card running `implement` has a step; any other shows
+                none rather than an empty one. */}
+            {card.step !== null && (
+              <Fact label="Step">
+                {card.step === IMPLEMENT_STEP.unknown
+                  ? STEP_UNKNOWN
+                  : stepLabel(card.step)}
+              </Fact>
+            )}
+            <Fact label="Tools">
+              <Tools tools={card.tools} />
+            </Fact>
           </dl>
         </div>
         {hasChildren && (
@@ -402,6 +421,25 @@ function CardBody({
         )}
       </article>
     </Collapsible>
+  );
+}
+
+/**
+ * The tools a card has called, each by Claude Code's own name and in `code`,
+ * as a file name is: they are Claude Code's words, `Agent` among them, not
+ * the page's (R12).
+ */
+function Tools({ tools }: { tools: ToolTally[] }) {
+  if (tools.length === 0) return NO_TOOLS;
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {tools.map(({ name, calls }) => (
+        <span key={name} data-session-tool={name} className="tabular-nums">
+          <code className="font-mono">{name}</code>
+          {toolCallCount(calls) && <> {toolCallCount(calls)}</>}
+        </span>
+      ))}
+    </span>
   );
 }
 

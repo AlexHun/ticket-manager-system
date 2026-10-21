@@ -36,9 +36,11 @@ import {
   SESSION_IDLE_MS,
   SESSION_STATE,
   type ChainView,
+  type ImplementStep,
   type SessionCard,
   type SessionsReport,
   type SessionsWarning,
+  type ToolTally,
 } from "../src/dev/sessions-protocol.ts";
 import {
   chainArgsOf,
@@ -47,6 +49,12 @@ import {
   workerOf,
   type ChainLister,
 } from "./chains.ts";
+import {
+  implementStepOf,
+  marksOf,
+  marksOfPrompt,
+  type StepMark,
+} from "./implement-step.ts";
 import { groupSessions, type CreditedCard } from "./session-groups.ts";
 import {
   identityOf,
@@ -126,6 +134,10 @@ interface TranscriptFacts {
   chainArgs: string | null;
   /** The calls among `calls` that started a `chain` worker, in order. */
   workerCalls: WorkerCall[];
+  /** The `implement` step its calls have reached, or null (#595). */
+  step: ImplementStep | null;
+  /** Every tool it called, in the order it first called each (#595). */
+  tools: ToolTally[];
   /**
    * Complete lines that did not parse. The unterminated last line is not
    * counted: half-written is its ordinary state while a session works.
@@ -144,6 +156,8 @@ const NO_FACTS: TranscriptFacts = {
   calls: [],
   chainArgs: null,
   workerCalls: [],
+  step: null,
+  tools: [],
   badLines: 0,
 };
 
@@ -166,6 +180,11 @@ interface FactsSoFar {
   calls: string[];
   chainArgs: string | null;
   workerCalls: WorkerCall[];
+  /** What each prompt and call said of `implement`'s progress, in order:
+   *  only the marks, never the calls' inputs, which can be whole files. */
+  marks: StepMark[];
+  /** Calls per tool name, in the order each was first called. */
+  tools: Map<string, number>;
   /** Each response by its `identityOf` key. Replaced rather than changed when
    *  a later record raises its count, so a copy of the map is a copy. */
   responses: Map<string, TranscriptResponse>;
@@ -185,6 +204,8 @@ const startFacts = (file: string): FactsSoFar => ({
   calls: [],
   chainArgs: null,
   workerCalls: [],
+  marks: [],
+  tools: new Map(),
   responses: new Map(),
   branch: null,
   badLines: 0,
@@ -195,6 +216,8 @@ const copyFacts = (f: FactsSoFar): FactsSoFar => ({
   ...f,
   calls: [...f.calls],
   workerCalls: [...f.workerCalls],
+  marks: [...f.marks],
+  tools: new Map(f.tools),
   responses: new Map(f.responses),
 });
 
@@ -286,6 +309,8 @@ function feed(
     // The first `/chain` command, wherever it falls: a conductor may have
     // opened on a `/clear` (#594).
     f.chainArgs ??= chainArgsOf(body);
+    // A `/implement` typed at the prompt invokes it as a `Skill` call does.
+    f.marks.push(...marksOfPrompt(body));
   }
   if (rec.gitBranch) f.branch = rec.gitBranch;
 
@@ -293,9 +318,10 @@ function feed(
   if (!message) return;
   for (const use of toolUses(message.content)) {
     f.calls.push(use.id);
-    if (typeof use.name !== "string" || !SUBAGENT_TOOLS.has(use.name)) {
-      continue;
-    }
+    if (typeof use.name !== "string") continue;
+    f.tools.set(use.name, (f.tools.get(use.name) ?? 0) + 1);
+    f.marks.push(...marksOf({ name: use.name, input: use.input }));
+    if (!SUBAGENT_TOOLS.has(use.name)) continue;
     const worker = workerOf(use.input);
     if (worker) f.workerCalls.push({ callId: use.id, ...worker });
   }
@@ -354,6 +380,8 @@ function factsOf(f: FactsSoFar, trailing: string): TranscriptFacts {
     calls: s.calls,
     chainArgs: s.chainArgs,
     workerCalls: s.workerCalls,
+    step: implementStepOf(s.marks),
+    tools: [...s.tools].map(([name, calls]) => ({ name, calls })),
     badLines: s.badLines,
   };
 }
@@ -586,6 +614,8 @@ const cardFacts = (facts: TranscriptFacts) => ({
   model: facts.model,
   startedAt: facts.startedAt,
   elapsedMs: facts.elapsedMs,
+  step: facts.step,
+  tools: facts.tools,
 });
 
 /** What `./session-groups.ts` reads off a settled tree. */
