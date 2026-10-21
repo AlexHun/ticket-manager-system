@@ -23,7 +23,7 @@ Done when every matching file has been read and every rule in it either applied 
 | --- | --- |
 | [domain.md](../../../docs/standards/domain.md) | Ticket statuses, assignment, the `/pipeline` page, the automated assistant account, handoff routing, reopen behaviour |
 | [backend.md](../../../docs/standards/backend.md) | `apps/api` — Prisma, Express, CORS, Better Auth config, pg-boss jobs, `ingest.ts`, the outbox, outbound mail |
-| [frontend.md](../../../docs/standards/frontend.md) | `apps/web` — shadcn/Radix controls, Tailwind tokens, forms, axios + react-query, sonner, `AiShine`, `/__dev` tooling |
+| [frontend.md](../../../docs/standards/frontend.md) | `apps/web` — shadcn/Radix controls, Tailwind tokens, forms, axios + react-query, sonner, the React hooks and promise lint rules, `AiShine`, `/__dev` tooling |
 | [design.md](../../../docs/standards/design.md) | How a screen looks — fonts and type tokens, colour and surfaces, spacing, alignment, radius, icons; any new or restyled UI |
 | [design-states.md](../../../docs/standards/design-states.md) | How a screen behaves — hover/focus/disabled states, loading skeletons, empty and error screens, motion and transitions, semantic markup |
 | [copy.md](../../../docs/standards/copy.md) | Any word a person reads — labels, buttons, headings, tooltips, placeholders, `aria-label`s, empty states, toasts, dialogs, error messages (API ones included), tutorial steps, the invitation and reset emails |

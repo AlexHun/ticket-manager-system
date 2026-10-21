@@ -96,14 +96,15 @@ jobs:
       - name: Typecheck all workspaces and the E2E project
         run: bun run typecheck
 
-      # Type-aware ESLint over the three backend workspaces, two rules only:
-      # `no-floating-promises` and `no-misused-promises` (#534). A missing
-      # `await` on a Prisma call, an outbox write or a pg-boss send compiles
-      # cleanly and drops its error, and typecheck cannot see it. Here and in
-      # no hook: it is the slow kind of check, and the pre-commit hook is the
-      # fast gate (docs/standards/conventions.md has the measured cost). After
-      # the Prisma client is generated, because the rules read its types.
-      - name: Lint the backend
+      # Type-aware ESLint over both apps and both packages:
+      # `no-floating-promises` and `no-misused-promises` (#534), plus the React
+      # hooks rules on apps/web (#535). A missing `await` on a Prisma call, an
+      # outbox write or a react-query mutation compiles cleanly and drops its
+      # error, and typecheck cannot see it. Here and in no hook: it is the slow
+      # kind of check, and the pre-commit hook is the fast gate
+      # (docs/standards/conventions.md has the measured cost). After the Prisma
+      # client is generated, because the rules read its types.
+      - name: Lint the apps and packages
         run: bun run lint
 
       # The provider and the session are mocked; the database is real but runs

@@ -178,7 +178,10 @@ export function PipelineSimulator({
         </p>
       )}
 
-      <form onSubmit={onSubmit} className="mt-4 space-y-4">
+      <form
+        onSubmit={(event) => void onSubmit(event)}
+        className="mt-4 space-y-4"
+      >
         <fieldset disabled={disabled || busy} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="scenario">Scenario</Label>

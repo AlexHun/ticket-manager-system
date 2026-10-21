@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Rows3 } from "lucide-react";
@@ -129,6 +129,13 @@ export function TicketsPage() {
     setSearchParams((prev) => writeTicketListParams(prev, patch), { replace });
   };
 
+  // The effect below writes the settled search through this, reading the
+  // latest `update` without watching it: `update` is a new function on every
+  // render, and the effect must run only when the search or `q` moves.
+  const writeSearch = useEffectEvent((q: string) => {
+    update({ q: q || undefined }, true);
+  });
+
   // The `q` this component last agreed with, so the effect below can tell which
   // side moved. Without it the two directions are indistinguishable, and the
   // input wins a fight it should lose — see the effect.
@@ -182,7 +189,7 @@ export function TicketsPage() {
     // The settled search lands in the URL. `replace`, because every pause in
     // typing would otherwise leave a history entry to click back through.
     settledSearch.current = debouncedSearch;
-    update({ q: debouncedSearch || undefined }, true);
+    writeSearch(debouncedSearch);
   }, [debouncedSearch, searchInput, urlSearch]);
 
   const sorting = useMemo<SortingState>(

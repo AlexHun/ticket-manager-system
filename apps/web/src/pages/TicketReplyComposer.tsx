@@ -351,7 +351,7 @@ export function TicketReplyComposer({ ticketId }: { ticketId: number }) {
     // the rest. The rule is what separates it from the last bubble once the
     // thread is scrolled to the bottom.
     <form
-      onSubmit={submit}
+      onSubmit={(event) => void submit(event)}
       noValidate
       className="mt-4 flex shrink-0 flex-col gap-2 border-t border-border pt-4"
     >

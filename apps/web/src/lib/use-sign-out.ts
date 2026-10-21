@@ -21,6 +21,6 @@ export function useSignOut(): () => Promise<void> {
     // been typed into it. Awaiting the refetch here closes the gap, so
     // LoginPage only ever mounts against a settled, signed-out store.
     await refetchSession();
-    navigate(ROUTE.login.path, { replace: true });
+    void navigate(ROUTE.login.path, { replace: true });
   };
 }

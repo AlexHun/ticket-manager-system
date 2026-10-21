@@ -73,7 +73,7 @@ export function ResetPasswordPage() {
     }
 
     toast.success("Password set — you can sign in now");
-    navigate(ROUTE.login.path, { replace: true });
+    void navigate(ROUTE.login.path, { replace: true });
   };
 
   const unusable = !token || linkError !== null;
@@ -115,7 +115,7 @@ export function ResetPasswordPage() {
               </div>
             ) : (
               <form
-                onSubmit={handleSubmit(onSubmit)}
+                onSubmit={(event) => void handleSubmit(onSubmit)(event)}
                 noValidate
                 className="flex flex-col gap-4"
               >

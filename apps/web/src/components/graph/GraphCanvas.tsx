@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -93,6 +94,31 @@ export function GraphCanvas({
   );
   const reducedMotion = useReducedMotion();
 
+  /**
+   * Moves the view through the zoom behaviour, as a gesture would, so the next
+   * wheel or drag carries on from where it left off: animated over `ms`, or at
+   * once under reduced motion. Either way it stops a move still under way.
+   */
+  const moveView = useCallback(
+    (
+      move: (
+        target: CanvasSelection | CanvasTransition,
+        behaviour: ZoomBehavior<SVGSVGElement, unknown>,
+      ) => void,
+      ms: number,
+    ) => {
+      const svg = svgRef.current;
+      const behaviour = behaviourRef.current;
+      if (!svg || !behaviour) return;
+      const target = select(svg).interrupt();
+      move(
+        reducedMotion ? target : target.transition().duration(ms),
+        behaviour,
+      );
+    },
+    [reducedMotion],
+  );
+
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -144,26 +170,7 @@ export function GraphCanvas({
       (target, behaviour) => behaviour.translateTo(target, x, y),
       GRAPH_GLIDE_MS,
     );
-  }, [focus, width, height, reducedMotion]);
-
-  /**
-   * Moves the view through the zoom behaviour, as a gesture would, so the next
-   * wheel or drag carries on from where it left off: animated over `ms`, or at
-   * once under reduced motion. Either way it stops a move still under way.
-   */
-  function moveView(
-    move: (
-      target: CanvasSelection | CanvasTransition,
-      behaviour: ZoomBehavior<SVGSVGElement, unknown>,
-    ) => void,
-    ms: number,
-  ) {
-    const svg = svgRef.current;
-    const behaviour = behaviourRef.current;
-    if (!svg || !behaviour) return;
-    const target = select(svg).interrupt();
-    move(reducedMotion ? target : target.transition().duration(ms), behaviour);
-  }
+  }, [focus, width, height, moveView]);
 
   const zoomBy = (factor: number) =>
     moveView((target, behaviour) => behaviour.scaleBy(target, factor), ZOOM_MS);

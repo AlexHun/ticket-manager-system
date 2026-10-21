@@ -155,10 +155,12 @@ export function TutorialEditorDialog({
         </DialogHeader>
 
         <form
-          onSubmit={handleSubmit((values) => {
-            setServerError(null);
-            mutation.mutate(values);
-          })}
+          onSubmit={(event) =>
+            void handleSubmit((values) => {
+              setServerError(null);
+              mutation.mutate(values);
+            })(event)
+          }
           noValidate
           className="flex flex-col gap-5"
         >

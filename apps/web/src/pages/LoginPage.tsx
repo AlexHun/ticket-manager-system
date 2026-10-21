@@ -101,7 +101,7 @@ export function LoginPage() {
       return;
     }
 
-    navigate(ROUTE.dashboard.path, { replace: true });
+    void navigate(ROUTE.dashboard.path, { replace: true });
   };
 
   /**
@@ -137,7 +137,7 @@ export function LoginPage() {
       return;
     }
 
-    navigate(ROUTE.welcome.path, { replace: true });
+    void navigate(ROUTE.welcome.path, { replace: true });
   };
 
   const busy = isSubmitting || startingDemo;
@@ -165,7 +165,7 @@ export function LoginPage() {
             </p>
           </div>
           <form
-            onSubmit={handleSubmit(onSubmit)}
+            onSubmit={(event) => void handleSubmit(onSubmit)(event)}
             noValidate
             className="flex flex-col gap-4"
           >
@@ -234,7 +234,7 @@ export function LoginPage() {
                 type="button"
                 variant="outline"
                 disabled={busy}
-                onClick={startDemo}
+                onClick={() => void startDemo()}
               >
                 {startingDemo && <Loader2 className="size-4 animate-spin" />}
                 {startingDemo ? "Starting demo session…" : "Start demo session"}
