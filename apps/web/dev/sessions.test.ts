@@ -904,3 +904,147 @@ describe("createSessionsReader", () => {
     );
   });
 });
+
+/**
+ * Slice 5 (#594): a running `/chain`, read off its conductor's transcript —
+ * the command it was given and the workers it started — and ordered by the
+ * listing the lister answers (`./chains.ts`).
+ */
+describe("readSessions: chains", () => {
+  const PLAN = "docs/plans/fixture-chain.md";
+  const command = (args: string) =>
+    `<command-message>chain</command-message>\n<command-name>/chain</command-name>\n<command-args>${args}</command-args>`;
+  /** A conductor response whose `Agent` call starts `name` on `issue`. */
+  const starts = (call: string, name: string, issue: number, at: string) => ({
+    type: "assistant",
+    timestamp: at,
+    message: {
+      model: "claude-opus-5-5",
+      stop_reason: "tool_use",
+      content: [
+        {
+          type: "tool_use",
+          id: call,
+          name: "Agent",
+          input: {
+            description: `${name} implements issue #${issue}`,
+            prompt: `You are ${name}, on the team. Invoke the \`implement\` skill for issue #${issue} and follow it to the end.`,
+          },
+        },
+      ],
+      usage: { output_tokens: 10 },
+    },
+  });
+  const lister = (calls: string[]) => (plan: string) => {
+    calls.push(plan);
+    return Promise.resolve({
+      issues: [
+        { number: 202, title: "B", state: "OPEN" as const, blockedBy: [] },
+        { number: 201, title: "A", state: "CLOSED" as const, blockedBy: [] },
+        { number: 203, title: "C", state: "OPEN" as const, blockedBy: [] },
+      ],
+      warning: null,
+    });
+  };
+
+  function conductor(args: string) {
+    session(
+      "conductor",
+      prompt("<command-name>/clear</command-name>", T(0)),
+      prompt(command(args), T(1)),
+      starts("toolu_ember", "Ember", 201, T(2)),
+      starts("toolu_flint", "Flint", 202, T(3)),
+    );
+    subagent(
+      "conductor",
+      "aember",
+      {
+        agentType: "general-purpose",
+        description: "Ember implements issue #201",
+        toolUseId: "toolu_ember",
+        finished: true,
+      },
+      response(1, T(2)),
+    );
+    subagent(
+      "conductor",
+      "aflint",
+      {
+        agentType: "general-purpose",
+        description: "Flint implements issue #202",
+        toolUseId: "toolu_flint",
+      },
+      response(1, T(3)),
+    );
+  }
+
+  it("lists a running chain's issues in order, with the worker on the one in progress", async () => {
+    conductor(`${PLAN} auto`);
+    session("plain", prompt("Hello", T(0)), response(1, T(0)));
+    const asked: string[] = [];
+
+    const { chains } = await readSessions(
+      dir,
+      undefined,
+      undefined,
+      lister(asked),
+    );
+
+    expect(asked).toEqual([PLAN]);
+    expect(chains).toHaveLength(1);
+    const [chain] = chains;
+    expect(chain?.sessionId).toBe("conductor");
+    expect(chain?.plan).toBe(PLAN);
+    expect(chain?.issues?.map((i) => [i.issue, i.state, i.worker])).toEqual([
+      [201, "Merged", null],
+      [202, "In progress", "Flint"],
+      [203, "Next", null],
+    ]);
+    expect(chain?.workers).toEqual([
+      {
+        name: "Ember",
+        issue: 201,
+        cardId: "aember",
+        state: SESSION_STATE.done,
+      },
+      {
+        name: "Flint",
+        issue: 202,
+        cardId: "aflint",
+        state: SESSION_STATE.running,
+      },
+    ]);
+  });
+
+  it("names no order for a chain given issue numbers, and still lists its workers", async () => {
+    conductor("201-203 auto");
+    const asked: string[] = [];
+
+    const { chains } = await readSessions(
+      dir,
+      undefined,
+      undefined,
+      lister(asked),
+    );
+
+    expect(asked).toEqual([]);
+    expect(chains[0]?.issues).toBeNull();
+    expect(chains[0]?.unknown).toMatch(/order is unknown/);
+    expect(chains[0]?.workers.map((w) => w.name)).toEqual(["Ember", "Flint"]);
+  });
+
+  it("leaves out a chain that has stopped, and asks nothing about it", async () => {
+    conductor(PLAN);
+    const asked: string[] = [];
+
+    const { chains } = await readSessions(
+      dir,
+      Date.now() + SESSION_IDLE_MS + 60_000,
+      undefined,
+      lister(asked),
+    );
+
+    expect(chains).toEqual([]);
+    expect(asked).toEqual([]);
+  });
+});

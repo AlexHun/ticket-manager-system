@@ -37,6 +37,7 @@ const report = (
       sessions: [{ id: "s", out, subtreeOut: out, children: [] }],
     },
   ],
+  chains: [],
   warnings: [],
 });
 

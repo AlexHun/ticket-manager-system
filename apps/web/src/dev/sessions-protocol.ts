@@ -149,6 +149,75 @@ export type SessionGroup = {
   | { kind: typeof SESSION_GROUP_KIND.base | typeof SESSION_GROUP_KIND.other }
 );
 
+/**
+ * Where one issue of a running `/chain` stands (#594, R8):
+ *
+ * - **Merged**: the issue is closed.
+ * - **In progress**: open, and the conductor has started a worker on it.
+ * - **Blocked**: open, with a blocker outside the chain still open, which no
+ *   worker of this chain will close.
+ * - **Next**: the first open issue, in the chain's order, that is none of the
+ *   above and whose blockers are all closed: the one the conductor starts
+ *   once the one in progress is merged.
+ * - **Waiting**: every other open issue, behind a blocker in the chain.
+ */
+export const CHAIN_ISSUE_STATE = {
+  merged: "Merged",
+  inProgress: "In progress",
+  next: "Next",
+  waiting: "Waiting",
+  blocked: "Blocked",
+} as const;
+export type ChainIssueState =
+  (typeof CHAIN_ISSUE_STATE)[keyof typeof CHAIN_ISSUE_STATE];
+
+/** One issue of a chain, in the chain's order. */
+export interface ChainIssue {
+  issue: number;
+  title: string;
+  state: ChainIssueState;
+  /** The worker's name on an issue In progress (`Ember`), else null. */
+  worker: string | null;
+  /** Its blockers outside the chain that are still open: what a Blocked
+   *  issue waits on. */
+  blockers: number[];
+}
+
+/**
+ * A worker the conductor started: an `Agent` call whose prompt is `chain`'s
+ * ("You are Ember, on the team. Invoke the `implement` skill for issue #…").
+ */
+export interface ChainWorker {
+  name: string;
+  issue: number;
+  /** The worker's card, or null before its meta file is written. */
+  cardId: string | null;
+  /** Its card's state, or null without a card. */
+  state: SessionState | null;
+}
+
+/**
+ * A running `/chain` (#594, R8): the session whose prompt ran the `chain`
+ * skill, while it reads Running or Waiting for you.
+ */
+export interface ChainView {
+  /** The conductor's card. */
+  sessionId: string;
+  /** The plan or PRD `/chain` was given (`docs/plans/<slug>.md`), or null
+   *  when it was given issue numbers instead. */
+  plan: string | null;
+  /**
+   * Its issues in the order the chain works them — blockers first, ties by
+   * issue number, as `chain` step 1 orders them — or null when the order
+   * can't be known: no plan named, or no listing to read it from.
+   */
+  issues: ChainIssue[] | null;
+  /** Why `issues` is null, in a sentence the page shows; null otherwise. */
+  unknown: string | null;
+  /** Every worker the conductor started, in the order it started them. */
+  workers: ChainWorker[];
+}
+
 /** A file the reading could not use, and what that cost. */
 export interface SessionsWarning {
   /** The file, relative to `transcriptDir` and written with `/`. */
@@ -170,6 +239,8 @@ export interface SessionsReport {
    * rest.
    */
   groups: SessionGroup[];
+  /** Every running `/chain`, most recently started first (#594). */
+  chains: ChainView[];
   warnings: SessionsWarning[];
 }
 

@@ -40,22 +40,14 @@ import {
   type SessionCard,
   type SessionGroup,
   type SessionSlice,
-  type SessionState,
   type SessionsReport,
 } from "./sessions-protocol";
+import { SessionChains } from "./SessionChains";
+import { STATE_BADGE } from "./session-visuals";
 import {
   useSessionsStream,
   type SessionsConnection,
 } from "./use-sessions-stream";
-
-/** A state's badge: Running filled, Waiting for you in the primary fill that
- *  asks for the developer, Done quiet, Stopped the one that alarms. */
-const STATE_BADGE = {
-  [SESSION_STATE.running]: "secondary",
-  [SESSION_STATE.waiting]: "default",
-  [SESSION_STATE.done]: "outline",
-  [SESSION_STATE.stopped]: "destructive",
-} as const satisfies Record<SessionState, string>;
 
 /**
  * This repository's Claude Code sessions on this machine, each a card with
@@ -66,7 +58,9 @@ const STATE_BADGE = {
  * reads Waiting for you, and the header counts them (#592, slice 3). The
  * sessions are grouped by the issue each response's branch names, every card
  * showing what it and its subagents spent there, and an issue's total is the
- * Usage page's (#593, slice 4).
+ * Usage page's (#593, slice 4). A running `/chain` lists its issues in the
+ * order it works them, each merged, in progress, next, waiting or blocked
+ * (#594, slice 5).
  *
  * It talks only to the Vite dev server (`apps/web/dev/sessions-stream.ts`),
  * so it opens with the API and the database stopped.
@@ -90,7 +84,8 @@ export function SessionsPage() {
             issue&rsquo;s total matches the Usage page. One held on a permission
             prompt or a question to you reads {SESSION_STATE.waiting}. One that
             has written nothing for {idleTime(SESSION_IDLE_MS)} without
-            finishing reads {SESSION_STATE.stopped}.
+            finishing reads {SESSION_STATE.stopped}. A running /chain lists its
+            issues above them, in the order it works them.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -207,7 +202,10 @@ function Reading({
           A session appears here once Claude Code has worked in this repository.
         </p>
       ) : (
-        <Groups report={report} />
+        <>
+          <SessionChains chains={report.chains} />
+          <Groups report={report} />
+        </>
       )}
     </>
   );

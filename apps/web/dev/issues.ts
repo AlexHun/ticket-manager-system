@@ -21,6 +21,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { BUCKETS, type Bucket } from "../src/dev/usage-protocol.ts";
+import { CHAIN_ORDER_UNKNOWN } from "../src/dev/sessions-copy.ts";
 import { REPO_ROOT, gitEnv } from "./child-env.ts";
 
 /**
@@ -198,6 +199,123 @@ export const listIssues = async (
   );
   return stdout;
 };
+
+/**
+ * Environment variable naming a file to read a chain's issue listing from,
+ * instead of asking `gh` (#594): the Sessions page's seam, beside
+ * `ISSUES_FILE_ENV`, which the Usage page reads. Its own file because the two
+ * listings answer different questions — every issue with its labels, and one
+ * plan's issues with their blocking edges — and a fixture of one is not a
+ * fixture of the other. The file holds what `listChainIssues`' call prints,
+ * and like `ISSUES_FILE_ENV` it **never falls back** to `gh`: a missing file
+ * is how the E2E reaches a chain whose order is unknown.
+ */
+export const CHAIN_ISSUES_FILE_ENV = "GH_CHAIN_ISSUES_FILE";
+
+/** One issue of a chain's listing, with its blockers and their states. */
+export interface ListedChainIssue {
+  number: number;
+  title: string;
+  state: IssueState;
+  blockedBy: { number: number; state: IssueState }[];
+}
+
+/**
+ * One attempt to read a chain's issues. `issues` is null, and `warning` says
+ * why, when the listing could not be read, as `IssueMetadata.byIssue` is.
+ */
+export interface ChainListing {
+  issues: ListedChainIssue[] | null;
+  warning: string | null;
+}
+
+/** `gh` prints one of two words; anything else is read as not open. */
+const stateOf = (state: unknown): IssueState =>
+  state === ISSUE_STATE.open ? ISSUE_STATE.open : ISSUE_STATE.closed;
+
+/**
+ * Every issue whose body names `plan`, open and closed, with its blockers:
+ * the call `chain` step 1 makes (`.claude/skills/chain/SKILL.md`), with
+ * `--state all` where that one asks for open issues only, since a merged
+ * issue is a closed one and the page shows it. The plan is searched as its
+ * whole quoted path, as the `implement` skill searches a PRD's, because a
+ * bare slug matches issues that mention it in passing.
+ *
+ * Through `gitEnv` and from the repo root, for `listIssues`' reasons (#249,
+ * #566), and asynchronous for the same one.
+ */
+export const listChainIssues = async (
+  plan: string,
+  spawn: Spawn = execFileAsync,
+): Promise<string> => {
+  const { stdout } = await spawn(
+    "gh",
+    [
+      "issue",
+      "list",
+      "--state",
+      "all",
+      "--search",
+      `"${plan}" in:body`,
+      "--limit",
+      "100",
+      "--json",
+      "number,title,state,blockedBy",
+    ],
+    {
+      cwd: REPO_ROOT,
+      env: gitEnv(),
+      encoding: "utf8",
+      timeout: GH_TIMEOUT_MS,
+      maxBuffer: GH_MAX_BUFFER,
+    },
+  );
+  return stdout;
+};
+
+/** `listChainIssues`' output, as `gh` prints `blockedBy` (`{ nodes: […] }`). */
+export function parseChainListing(raw: string): ListedChainIssue[] {
+  const issues = JSON.parse(raw) as {
+    number: number;
+    title: string;
+    state: string;
+    blockedBy?: { nodes?: { number: number; state: string }[] } | null;
+  }[];
+  if (!Array.isArray(issues)) throw new Error("expected a JSON array");
+  return issues.map((issue) => ({
+    number: issue.number,
+    title: issue.title,
+    state: stateOf(issue.state),
+    blockedBy: (issue.blockedBy?.nodes ?? []).map((b) => ({
+      number: b.number,
+      state: stateOf(b.state),
+    })),
+  }));
+}
+
+/**
+ * One reading of a chain's issues — from the override file when set, from
+ * `gh` otherwise. Never throws, for `fetchIssueMetadata`'s reason: no `gh` is
+ * an ordinary state, and it costs the order, not the page.
+ */
+export async function fetchChainListing(
+  plan: string,
+  env: Record<string, string | undefined> = process.env,
+  run: (plan: string) => Promise<string> = listChainIssues,
+): Promise<ChainListing> {
+  const file = env[CHAIN_ISSUES_FILE_ENV]?.trim();
+  try {
+    const raw = file ? await readFile(file, "utf8") : await run(plan);
+    return { issues: parseChainListing(raw), warning: null };
+  } catch (err) {
+    return {
+      issues: null,
+      warning: file
+        ? `Couldn't read the chain's issue listing at ${file} (${CHAIN_ISSUES_FILE_ENV}): ${reason(err)}, so ${CHAIN_ORDER_UNKNOWN}`
+        : `\`gh\` couldn't list the issues that name ${plan}: ${reason(err)}, so ${CHAIN_ORDER_UNKNOWN}`,
+    };
+  }
+}
 
 /** The band a label set names, if it names one this repo's bands recognise. */
 function forecastOf(labels: { name: string }[]): Bucket | null {
