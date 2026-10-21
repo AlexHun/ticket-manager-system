@@ -8,7 +8,7 @@ import {
   NO_SESSIONS_LEAD,
   NO_TASK,
   SESSIONS_RECONNECTING,
-  SESSIONS_STREAM_LOST,
+  SESSIONS_STREAM_CLOSED,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   formatElapsed,
@@ -24,7 +24,10 @@ import {
   type SessionState,
   type SessionsReport,
 } from "./sessions-protocol";
-import { useSessionsStream } from "./use-sessions-stream";
+import {
+  useSessionsStream,
+  type SessionsConnection,
+} from "./use-sessions-stream";
 
 /** A state's badge: Running filled, Done quiet, Stopped the one that alarms. */
 const STATE_BADGE = {
@@ -44,7 +47,7 @@ const STATE_BADGE = {
  * so it opens with the API and the database stopped.
  */
 export function SessionsPage() {
-  const { report, problem, lost } = useSessionsStream();
+  const { report, problem, connection } = useSessionsStream();
 
   return (
     /* Block layout with `space-y`, for the reason `TestRunnerPage` gives. */
@@ -64,26 +67,35 @@ export function SessionsPage() {
       </div>
 
       {report ? (
-        <Reading report={report} problem={problem} lost={lost} />
-      ) : lost ? (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {SESSIONS_STREAM_LOST}
-        </p>
-      ) : (
+        <Reading report={report} problem={problem} connection={connection} />
+      ) : connection === "open" ? (
         <SessionsSkeleton />
+      ) : (
+        <p
+          role="status"
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {CONNECTION_WORDS[connection]}
+        </p>
       )}
     </main>
   );
 }
 
+/** What the page says while the stream is not open. */
+const CONNECTION_WORDS = {
+  reconnecting: SESSIONS_RECONNECTING,
+  closed: SESSIONS_STREAM_CLOSED,
+} as const satisfies Record<Exclude<SessionsConnection, "open">, string>;
+
 function Reading({
   report,
   problem,
-  lost,
+  connection,
 }: {
   report: SessionsReport;
   problem: string | null;
-  lost: boolean;
+  connection: SessionsConnection;
 }) {
   return (
     <>
@@ -102,12 +114,10 @@ function Reading({
           role="status"
           className="flex items-center gap-1 text-muted-foreground"
         >
-          {lost && (
-            <>
-              <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-              {SESSIONS_RECONNECTING}
-            </>
+          {connection === "reconnecting" && (
+            <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
           )}
+          {connection !== "open" && CONNECTION_WORDS[connection]}
         </span>
       </p>
 

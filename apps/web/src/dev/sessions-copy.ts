@@ -16,12 +16,12 @@ export const SESSIONS_TITLE = "Sessions";
  *  subagent type. */
 export const SESSION_KIND_LABEL = "Session";
 
-/** The stream to the dev server dropped before any reading arrived. */
-export const SESSIONS_STREAM_LOST =
-  "Couldn't reach the dev server. The page reconnects on its own once it is back.";
-
-/** The stream dropped after a reading arrived, which stays on screen. */
+/** The stream to the dev server dropped, and the browser is trying again. */
 export const SESSIONS_RECONNECTING = "Reconnecting to the dev server…";
+
+/** The browser gave up on the stream, which it never retries after. */
+export const SESSIONS_STREAM_CLOSED =
+  "Couldn't reach the dev server. Reload the page once it is running.";
 
 /** `15 minutes`: the idle time a card reads Stopped after, in words. */
 export const idleTime = (ms: number) => {

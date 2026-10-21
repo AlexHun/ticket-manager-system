@@ -23,18 +23,24 @@ export interface SessionsStreamState {
   report: SessionsReport | null;
   /** The server's own account of a reading that threw, until one succeeds. */
   problem: string | null;
-  /** The stream dropped and has not come back yet. */
-  lost: boolean;
+  /**
+   * Whether the stream is up: `reconnecting` after it dropped, while
+   * `EventSource` tries again on its own, and `closed` once it has given up,
+   * which it does on an answer that is not an event stream and never undoes.
+   */
+  connection: SessionsConnection;
 }
+
+export type SessionsConnection = "open" | "reconnecting" | "closed";
 
 export function useSessionsStream(): SessionsStreamState {
   const [report, setReport] = useState<SessionsReport | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [lost, setLost] = useState(false);
+  const [connection, setConnection] = useState<SessionsConnection>("open");
 
   useEffect(() => {
     const source = new EventSource(DEVTOOLS_API.sessions);
-    source.onopen = () => setLost(false);
+    source.onopen = () => setConnection("open");
     source.onmessage = (raw) => {
       let message: SessionsStreamMessage;
       try {
@@ -49,9 +55,12 @@ export function useSessionsStream(): SessionsStreamState {
         setProblem(message.message);
       }
     };
-    source.onerror = () => setLost(true);
+    source.onerror = () =>
+      setConnection(
+        source.readyState === EventSource.CLOSED ? "closed" : "reconnecting",
+      );
     return () => source.close();
   }, []);
 
-  return { report, problem, lost };
+  return { report, problem, connection };
 }

@@ -20,6 +20,7 @@ import type {
   SessionsReport,
   SessionsStreamMessage,
 } from "../src/dev/sessions-protocol.ts";
+import { errorText } from "./sessions.ts";
 
 /**
  * How often an open page's transcripts are read again. With a reading's
@@ -35,8 +36,9 @@ export interface SessionsStream {
   close(): void;
 }
 
-/** What makes two readings the same reading: everything but their clock. */
-const sameness = ({ gatheredAt: _, ...rest }: SessionsReport) =>
+/** A key two readings share when they are the same reading: everything but
+ *  their clock. */
+const readingKey = ({ gatheredAt: _, ...rest }: SessionsReport) =>
   JSON.stringify(rest);
 
 export function sessionsStream(
@@ -57,12 +59,13 @@ export function sessionsStream(
     try {
       const report = await read();
       message = { kind: "report", report };
-      key = sameness(report);
+      key = readingKey(report);
     } catch (err) {
-      const why = err instanceof Error ? err.message : String(err);
+      // Its code where it has one, never a path-bearing message (R12).
+      const why = errorText(err);
       message = {
         kind: "error",
-        message: `Couldn't read the transcripts (${why}). The page tries again every ${intervalMs / 1000} seconds.`,
+        message: `Couldn't read the transcripts (${why}). The dev server reads them again every ${intervalMs / 1000} seconds.`,
       };
       key = `error:${why}`;
     } finally {

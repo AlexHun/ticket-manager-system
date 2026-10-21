@@ -48,8 +48,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** Lets the stub's promise and the stream's handling of it settle. */
-const settle = () => vi.advanceTimersByTimeAsync(0);
+/** Lets the stub's promise, and the stream's handling of it, run to the end. */
+const flush = () => vi.advanceTimersByTimeAsync(0);
 
 const outs = (messages: SessionsStreamMessage[]) =>
   messages.map((m) =>
@@ -64,7 +64,7 @@ describe("sessionsStream", () => {
 
     const got: SessionsStreamMessage[] = [];
     stream.subscribe((m) => got.push(m));
-    await settle();
+    await flush();
 
     expect(read).toHaveBeenCalledTimes(1);
     expect(outs(got)).toEqual([1]);
@@ -74,7 +74,7 @@ describe("sessionsStream", () => {
     const stream = sessionsStream(read);
     const got: SessionsStreamMessage[] = [];
     stream.subscribe((m) => got.push(m));
-    await settle();
+    await flush();
 
     await vi.advanceTimersByTimeAsync(SESSIONS_POLL_MS * 2);
     expect(read).toHaveBeenCalledTimes(3);
@@ -90,7 +90,7 @@ describe("sessionsStream", () => {
     const stream = sessionsStream(read);
     const first = stream.subscribe(() => {});
     const second = stream.subscribe(() => {});
-    await settle();
+    await flush();
 
     first();
     await vi.advanceTimersByTimeAsync(SESSIONS_POLL_MS);
@@ -104,7 +104,7 @@ describe("sessionsStream", () => {
     out = 3;
     const got: SessionsStreamMessage[] = [];
     stream.subscribe((m) => got.push(m));
-    await settle();
+    await flush();
 
     expect(read).toHaveBeenCalledTimes(3);
     expect(outs(got)).toEqual([3]);
@@ -113,7 +113,7 @@ describe("sessionsStream", () => {
   it("hands a page that joins the latest reading without waiting for the next", async () => {
     const stream = sessionsStream(read);
     stream.subscribe(() => {});
-    await settle();
+    await flush();
 
     const got: SessionsStreamMessage[] = [];
     stream.subscribe((m) => got.push(m));
@@ -135,7 +135,7 @@ describe("sessionsStream", () => {
     expect(read).toHaveBeenCalledTimes(1);
 
     finish(report(9));
-    await settle();
+    await flush();
     expect(outs(got)).toEqual([9]);
   });
 
@@ -145,7 +145,7 @@ describe("sessionsStream", () => {
     const stream = sessionsStream(read);
     const got: SessionsStreamMessage[] = [];
     stream.subscribe((m) => got.push(m));
-    await settle();
+    await flush();
     await vi.advanceTimersByTimeAsync(SESSIONS_POLL_MS * 2);
 
     expect(got.map((m) => m.kind)).toEqual(["error", "report"]);
@@ -155,7 +155,7 @@ describe("sessionsStream", () => {
   it("stops reading when closed, whoever is still listening", async () => {
     const stream = sessionsStream(read);
     stream.subscribe(() => {});
-    await settle();
+    await flush();
 
     stream.close();
     await vi.advanceTimersByTimeAsync(SESSIONS_POLL_MS * 5);

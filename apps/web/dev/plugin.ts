@@ -41,6 +41,7 @@ import type {
   DevStreamMessage,
   RunEvent,
 } from "../src/dev/test-run-protocol.ts";
+import type { SessionsStreamMessage } from "../src/dev/sessions-protocol.ts";
 
 /**
  * Events retained per suite for replay.
@@ -69,6 +70,22 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
     "Content-Length": Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+/**
+ * Answers with a server-sent-event stream, and returns what sends one event:
+ * a `data:` line holding the message as JSON. The test runner's stream and
+ * the Sessions page's share the shape.
+ */
+function openEventStream<T>(res: ServerResponse): (message: T) => void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+  return (message) => {
+    res.write(`data: ${JSON.stringify(message)}\n\n`);
+  };
 }
 
 /** Wraps a handler so it answers one method only, and never takes the dev server
@@ -209,15 +226,7 @@ export function devToolsPlugin(): Plugin {
       server.middlewares.use(
         DEVTOOLS_API.events,
         only("GET", (req, res) => {
-          res.writeHead(200, {
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-          });
-
-          const send = (message: DevStreamMessage): void => {
-            res.write(`data: ${JSON.stringify(message)}\n\n`);
-          };
+          const send = openEventStream<DevStreamMessage>(res);
 
           // Backlog first, then live. Both happen in this one tick, so no event
           // can slip between the replay and the subscription.
@@ -391,14 +400,9 @@ export function devToolsPlugin(): Plugin {
         // above gives, and resolved on every reading so
         // `CLAUDE_TRANSCRIPT_DIR` points it at the E2E fixture. Reads only.
         only("GET", (req, res) => {
-          res.writeHead(200, {
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-          });
-          const leave = sessions.subscribe((message) => {
-            res.write(`data: ${JSON.stringify(message)}\n\n`);
-          });
+          const leave = sessions.subscribe(
+            openEventStream<SessionsStreamMessage>(res),
+          );
           req.on("close", leave);
         }),
       );

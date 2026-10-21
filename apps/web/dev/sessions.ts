@@ -306,6 +306,30 @@ function feedBytes(
 }
 
 /**
+ * Feeds `bytes` from index `skip` into `facts`, and answers the cursor that
+ * leaves: `bytes` starts at byte `base` of the file, the one place both a
+ * resumed and a whole reading turn what they read into a cursor.
+ */
+function advance(
+  facts: FactsSoFar,
+  bytes: Buffer,
+  base: number,
+  skip: number,
+  mtimeMs: number,
+): Cursor {
+  const { used, trailing } = feedBytes(facts, bytes.subarray(skip));
+  const end = skip + used;
+  return {
+    size: base + bytes.length,
+    mtimeMs,
+    offset: base + end,
+    anchor: Buffer.from(bytes.subarray(Math.max(0, end - ANCHOR_BYTES), end)),
+    facts,
+    trailing,
+  };
+}
+
+/**
  * One transcript's facts and when it was last written, reading only what was
  * appended since `cursors` last saw it — nothing at all when its size and
  * modification time are unchanged. The cursor is replaced in `cursors`.
@@ -333,25 +357,13 @@ async function readTranscript(
       const read = bytes.subarray(0, bytesRead);
       const anchor = read.subarray(0, before.anchor.length);
       if (anchor.equals(before.anchor)) {
-        const facts = before.facts;
-        const { used, trailing } = feedBytes(
-          facts,
-          read.subarray(before.anchor.length),
+        cursor = advance(
+          before.facts,
+          read,
+          from,
+          before.anchor.length,
+          st.mtimeMs,
         );
-        const offset = before.offset + used;
-        cursor = {
-          size: from + bytesRead,
-          mtimeMs: st.mtimeMs,
-          offset,
-          anchor: Buffer.from(
-            read.subarray(
-              Math.max(0, offset - from - ANCHOR_BYTES),
-              offset - from,
-            ),
-          ),
-          facts,
-          trailing,
-        };
       }
     } finally {
       await handle.close();
@@ -359,19 +371,7 @@ async function readTranscript(
   }
 
   if (!cursor) {
-    const bytes = await readFile(path);
-    const facts = startFacts();
-    const { used, trailing } = feedBytes(facts, bytes);
-    cursor = {
-      size: bytes.length,
-      mtimeMs: st.mtimeMs,
-      offset: used,
-      anchor: Buffer.from(
-        bytes.subarray(Math.max(0, used - ANCHOR_BYTES), used),
-      ),
-      facts,
-      trailing,
-    };
+    cursor = advance(startFacts(), await readFile(path), 0, 0, st.mtimeMs);
   }
   cursors.set(path, cursor);
   return { facts: factsOf(cursor.facts, cursor.trailing), mtimeMs: st.mtimeMs };
@@ -382,7 +382,7 @@ async function readTranscript(
  * carries the absolute path, which spells `agent-<id>` in a word the page
  * must not use (R12) and repeats the file the warning already names.
  */
-const errorText = (err: unknown) =>
+export const errorText = (err: unknown) =>
   (err as NodeJS.ErrnoException | null)?.code ??
   (err instanceof Error ? err.message : String(err));
 
