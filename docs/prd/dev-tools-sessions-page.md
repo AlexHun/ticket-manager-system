@@ -101,7 +101,9 @@ cost.
       docs don't say whether a permission prompt's notification carries it.
       The wait ends on the held call's result, the next prompt, the end of the
       turn or of the subagent, or the end of the session. R5 is restated to
-      cover a wait that names no subagent.
+      cover a wait that names no subagent. Only the session's own events end
+      such a wait, so a foreground subagent's prompt that names no subagent
+      clears once that subagent ends, not once it is answered.
 - [ ] Where does R8's chain order come from: the chain's issue listing on
       GitHub (blocking edges and the `## Parent` slug, as `chain` step 1 reads
       it), or something the conductor records? _Affects R8 with `gh` down._

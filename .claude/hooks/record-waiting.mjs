@@ -34,6 +34,9 @@
 // was blocked on the call that ran it, whose `PostToolUse` comes once that
 // subagent ends. The session's card reading Waiting for you until then is the
 // lesser wrong of the two; the other is a real wait lost to a worker's next call.
+// One gap stays: a call the session ran beside the held one, finishing while
+// the dialog is up, ends the session's wait early. The notification's six
+// seconds let most of them finish first; a long command does not.
 //
 // settings.json is committed, so this runs in every clone and session, and on
 // every tool call. It reads stdin, writes or removes a file or two, and exits 0;

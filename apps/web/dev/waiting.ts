@@ -7,12 +7,11 @@
 //
 // A record is `<session>.json` or `<session>.<agent>.json` holding
 // `{ sessionId, agentId }`, `agentId` null for the session itself, or
-// `<session>@prompt.json` for a permission prompt that named no subagent and
-// so shows on the session's card too. The reader
-// goes by what the file holds rather than its name, and passes over a file
-// that is not a record: the hook renames each one into place, so a file that
-// does not parse is nothing the hook wrote, and the page has no reason to warn
-// about it.
+// `<session>@prompt.json` for a permission prompt that named no subagent, which
+// shows on the session's card. The reader goes by what the file holds rather
+// than its name, and passes over a file that is not a record: the hook renames
+// each one into place, so a file that does not parse is nothing the hook
+// wrote, and the page has no reason to warn about it.
 
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";

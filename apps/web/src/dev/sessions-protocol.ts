@@ -59,8 +59,8 @@ export type SessionState = (typeof SESSION_STATE)[keyof typeof SESSION_STATE];
  * 10.1. Every gap past that was the session waiting on the developer — an
  * `AskUserQuestion` (up to 7 hours), or a `sed -n` or an `Edit` held on a
  * permission answer for 11 to 90 minutes — which reads Waiting for you
- * (#592), not a dead session. Fifteen minutes is that ceiling plus the five a slow
- * response can add on top of it.
+ * (#592), not a dead session. Fifteen minutes is that ceiling plus the five a
+ * slow response can add on top of it.
  */
 export const SESSION_IDLE_MS = 15 * 60_000;
 
