@@ -10,10 +10,12 @@ import {
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { createSessionsReader, readSessions } from "./sessions.ts";
+import { scanSpend } from "./transcripts.ts";
 import {
   SESSION_IDLE_MS,
   SESSION_STATE,
   type SessionCard,
+  type SessionSlice,
   type SessionsReport,
 } from "../src/dev/sessions-protocol.ts";
 
@@ -110,6 +112,13 @@ const shape = (cards: SessionCard[], depth = 0): string[] =>
     ...shape(c.children, depth + 1),
   ]);
 
+/** A card's own output tokens, summed over every group it is in (#593). */
+const ownOut = (report: SessionsReport, id: string): number => {
+  const sum = (slices: SessionSlice[]): number =>
+    slices.reduce((n, s) => n + (s.id === id ? s.out : 0) + sum(s.children), 0);
+  return report.groups.reduce((n, g) => n + sum(g.sessions), 0);
+};
+
 describe("readSessions", () => {
   it("nests each subagent under the call that started it, at every depth", async () => {
     session(
@@ -153,7 +162,6 @@ describe("readSessions", () => {
       subagentType: null,
       task: "Implement issue #101.",
       model: "claude-opus-5-5",
-      out: 1000,
       startedAt: T(0),
       elapsedMs: 60_000,
     });
@@ -161,16 +169,17 @@ describe("readSessions", () => {
       subagentType: "general-purpose",
       task: "Review it",
       state: SESSION_STATE.done,
-      out: 500,
     });
     expect(a2).toMatchObject({
       subagentType: "Explore",
       task: "Find the specs",
       model: "claude-haiku-5-5",
       state: SESSION_STATE.running,
-      out: 200,
       elapsedMs: 90_000,
     });
+    expect(["s", "a1", "a2"].map((id) => ownOut(report, id))).toEqual([
+      1000, 500, 200,
+    ]);
   });
 
   it("links by the call alone, not by the meta file's depth or parent", async () => {
@@ -210,9 +219,7 @@ describe("readSessions", () => {
       response(7, T(2)),
     );
 
-    const [s] = (await readSessions(dir)).sessions;
-
-    expect(s.out).toBe(8007);
+    expect(ownOut(await readSessions(dir), "s")).toBe(8007);
   });
 
   it("takes a session's task from its first prompt, not from a tool result or a meta record", async () => {
@@ -321,16 +328,16 @@ describe("readSessions", () => {
       toolUseId: "toolu_new",
     });
 
-    const [s] = (await readSessions(dir)).sessions;
+    const report = await readSessions(dir);
 
-    expect(s.children[0]).toMatchObject({
+    expect(report.sessions[0].children[0]).toMatchObject({
       id: "new",
       task: "just started",
       model: null,
-      out: 0,
       startedAt: null,
       elapsedMs: null,
     });
+    expect(ownOut(report, "new")).toBe(0);
   });
 
   it("lists the most recently started session first", async () => {
@@ -350,6 +357,7 @@ describe("readSessions", () => {
     expect(report).toMatchObject({
       transcriptDir: missing,
       sessions: [],
+      groups: [],
       warnings: [],
     });
   });
@@ -363,7 +371,9 @@ describe("readSessions", () => {
 
     const report = await readSessions(dir);
 
-    expect(report.sessions.map((s) => [s.id, s.out])).toEqual([["s", 4000]]);
+    expect(report.sessions.map((s) => [s.id, ownOut(report, s.id)])).toEqual([
+      ["s", 4000],
+    ]);
     expect(report.warnings).toEqual([
       {
         file: "s.jsonl",
@@ -403,9 +413,7 @@ describe("readSessions", () => {
       "utf8",
     );
 
-    const [s] = (await readSessions(dir)).sessions;
-
-    expect(s.out).toBe(4000);
+    expect(ownOut(await readSessions(dir), "s")).toBe(4000);
   });
 });
 
@@ -697,6 +705,78 @@ describe("readSessions: Waiting for you", () => {
 });
 
 /**
+ * Slice 4 (#593): what each card spent and on which issue, read off real files
+ * and held against the Usage scan's own reading of the same directory (R7).
+ * The grouping rules over made-up cards are `./session-groups.test.ts`'s.
+ */
+describe("readSessions: groups", () => {
+  const on = (branch: string, record: object) => ({
+    ...record,
+    sessionId: "s",
+    gitBranch: branch,
+  });
+
+  it("totals each issue as the Usage scan does, subagents, partial counts and records with no id included", async () => {
+    session(
+      "s",
+      on("feat/7-x", prompt("Do it.", T(0))),
+      on("feat/7-x", response(100, T(1), { calls: ["toolu_a"] })),
+      on("develop", response(9, T(2))),
+      on("feat/8-y", response(40, T(3), { id: "msg_s" })),
+    );
+    subagent(
+      "s",
+      "a",
+      { agentType: "x", description: "help", toolUseId: "toolu_a" },
+      on("feat/7-x", response(25, T(4), { id: "msg_a" })),
+      on("feat/7-x", response(5000, T(4), { id: "msg_a" })),
+      on("feat/8-y", response(3, T(5))),
+    );
+
+    const report = await readSessions(dir);
+
+    const { byIssue } = scanSpend(dir);
+    expect(byIssue.size).toBe(2);
+    for (const [issue, spend] of byIssue) {
+      const group = report.groups.find((g) => g.key === `issue:${issue}`);
+      expect(group?.out).toBe(spend.out);
+    }
+    const issue7 = report.groups.find((g) => g.key === "issue:7");
+    expect(issue7?.sessions).toEqual([
+      {
+        id: "s",
+        out: 100,
+        subtreeOut: 5100,
+        children: [{ id: "a", out: 5000, subtreeOut: 5000, children: [] }],
+      },
+    ]);
+    expect(report.groups.map((g) => [g.key, g.out])).toEqual([
+      ["issue:7", 5100],
+      ["issue:8", 43],
+      ["base", 9],
+    ]);
+  });
+
+  it("keeps the figures level with the Usage scan after a reading resumes from its cursor", async () => {
+    const reader = createSessionsReader();
+    session("s", on("feat/7-x", response(1, T(0))));
+    await reader.read(dir);
+
+    appendFileSync(
+      join(dir, "s.jsonl"),
+      lines(
+        on("feat/7-x", response(2, T(1))),
+        on("feat/7-x", response(4, T(2))),
+      ),
+    );
+    const report = await reader.read(dir);
+
+    expect(report.groups[0]?.out).toBe(scanSpend(dir).byIssue.get(7)?.out);
+    expect(report.groups[0]?.out).toBe(7);
+  });
+});
+
+/**
  * Slice 2 (#591): one reader kept between readings resumes each transcript
  * from where it left off, which is what makes polling cheap enough for the
  * stream. Every answer must equal a fresh reading's.
@@ -726,7 +806,8 @@ describe("createSessionsReader", () => {
     );
     const live = await reader.read(dir);
 
-    expect(live.sessions[0]).toMatchObject({ out: 950, elapsedMs: 180_000 });
+    expect(live.sessions[0]).toMatchObject({ elapsedMs: 180_000 });
+    expect(ownOut(live, "s")).toBe(950);
     expect(shape(live.sessions)).toEqual(["s", "  new"]);
     expect(withoutClock(live)).toEqual(withoutClock(await fresh()));
   });
@@ -739,16 +820,16 @@ describe("createSessionsReader", () => {
       lines(response(100, T(0))) + whole.slice(0, 20),
       "utf8",
     );
-    expect((await reader.read(dir)).sessions[0].out).toBe(100);
+    expect(ownOut(await reader.read(dir), "s")).toBe(100);
 
     appendFileSync(join(dir, "s.jsonl"), whole.slice(20));
     // Complete JSON with no newline yet: counted, but not past the cursor.
-    expect((await reader.read(dir)).sessions[0].out).toBe(400);
+    expect(ownOut(await reader.read(dir), "s")).toBe(400);
 
     appendFileSync(join(dir, "s.jsonl"), "\n");
     const settled = await reader.read(dir);
 
-    expect(settled.sessions[0].out).toBe(400);
+    expect(ownOut(settled, "s")).toBe(400);
     expect(settled.warnings).toEqual([]);
   });
 
@@ -759,10 +840,10 @@ describe("createSessionsReader", () => {
 
     // Shorter: it shrank. Then a different file of the same length and more.
     session("s", response(1, T(0)));
-    expect((await reader.read(dir)).sessions[0].out).toBe(1);
+    expect(ownOut(await reader.read(dir), "s")).toBe(1);
     session("s", response(2, T(0)), response(3, T(1)), response(4, T(2)));
 
-    expect((await reader.read(dir)).sessions[0].out).toBe(9);
+    expect(ownOut(await reader.read(dir), "s")).toBe(9);
   });
 
   it("forgets a session whose transcript is gone", async () => {

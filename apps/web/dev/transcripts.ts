@@ -282,7 +282,18 @@ function listTranscripts(dir: string): string[] {
   return files;
 }
 
-const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
+/**
+ * The key a record's response is counted once under (`TranscriptResponse.id`):
+ * its `message.id`, then its `uuid`, then `file` (as `listTranscripts` names
+ * it) and its one-based `line`. Exported for the Sessions reader
+ * (`./sessions.ts`, #593), which credits each response to the card whose file
+ * holds it and must count the same responses this does (R7).
+ */
+export const identityOf = (
+  rec: Pick<TranscriptRecord, "uuid" | "message">,
+  file: string,
+  line: number,
+) =>
   rec.message?.id
     ? `message:${rec.message.id}`
     : rec.uuid

@@ -26,8 +26,15 @@ const report = (
       state: "Running",
       startedAt: null,
       elapsedMs: null,
-      out,
       children: [],
+    },
+  ],
+  groups: [
+    {
+      key: "other",
+      kind: "other",
+      out,
+      sessions: [{ id: "s", out, subtreeOut: out, children: [] }],
     },
   ],
   warnings: [],
@@ -53,7 +60,7 @@ const flush = () => vi.advanceTimersByTimeAsync(0);
 
 const outs = (messages: SessionsStreamMessage[]) =>
   messages.map((m) =>
-    m.kind === "report" ? m.report.sessions[0].out : m.message,
+    m.kind === "report" ? m.report.groups[0]?.out : m.message,
   );
 
 describe("sessionsStream", () => {

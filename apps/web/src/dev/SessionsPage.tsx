@@ -1,27 +1,45 @@
-import { useId, type ReactNode } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { useId, useMemo, useState, type ReactNode } from "react";
+import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
+import { WELCOME_REPOSITORY } from "@/lib/welcome";
+import { cn } from "@/lib/utils";
+import {
+  BASE_GROUP_NOTE,
+  BASE_GROUP_TITLE,
   NO_MODEL,
   NO_SESSIONS_LEAD,
   NO_TASK,
+  OTHER_GROUP_NOTE,
+  OTHER_GROUP_TITLE,
   SESSIONS_RECONNECTING,
   SESSIONS_STREAM_CLOSED,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   formatElapsed,
   idleTime,
+  issueGroupTitle,
   outputTokens,
   sessionCount,
   subagentsLabel,
+  toggleSubagentsLabel,
   waitingCount,
+  withSubagents,
 } from "./sessions-copy";
 import {
+  SESSION_GROUP_KIND,
   SESSION_IDLE_MS,
   SESSION_STATE,
   type SessionCard,
+  type SessionGroup,
+  type SessionSlice,
   type SessionState,
   type SessionsReport,
 } from "./sessions-protocol";
@@ -45,7 +63,10 @@ const STATE_BADGE = {
  * `docs/plans/dev-tools-sessions-page.md`), following them as they run
  * (#591, slice 2): a new subagent, new tokens and a change of state reach the
  * open page within 5 seconds, without a reload. A card held on the developer
- * reads Waiting for you, and the header counts them (#592, slice 3).
+ * reads Waiting for you, and the header counts them (#592, slice 3). The
+ * sessions are grouped by the issue each response's branch names, every card
+ * showing what it and its subagents spent there, and an issue's total is the
+ * Usage page's (#593, slice 4).
  *
  * It talks only to the Vite dev server (`apps/web/dev/sessions-stream.ts`),
  * so it opens with the API and the database stopped.
@@ -63,10 +84,13 @@ export function SessionsPage() {
           <p className="max-w-prose text-sm text-muted-foreground">
             This repository&rsquo;s Claude Code sessions on this machine, each
             with the subagents it started nested under it, followed live off the
-            transcripts while the page is open. One held on a permission prompt
-            or a question to you reads {SESSION_STATE.waiting}. One that has
-            written nothing for {idleTime(SESSION_IDLE_MS)} without finishing
-            reads {SESSION_STATE.stopped}.
+            transcripts while the page is open. They are grouped by the issue
+            each response&rsquo;s branch names, so a session that worked on
+            several issues shows under each with its share of it, and an
+            issue&rsquo;s total matches the Usage page. One held on a permission
+            prompt or a question to you reads {SESSION_STATE.waiting}. One that
+            has written nothing for {idleTime(SESSION_IDLE_MS)} without
+            finishing reads {SESSION_STATE.stopped}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -183,78 +207,203 @@ function Reading({
           A session appears here once Claude Code has worked in this repository.
         </p>
       ) : (
-        <ol className="space-y-3">
-          {report.sessions.map((session) => (
-            <li key={session.id}>
-              <Card size="sm">
-                <CardContent>
-                  <CardBody card={session} depth={0} />
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ol>
+        <Groups report={report} />
       )}
     </>
   );
 }
 
-/** A card's heading level by its depth, the session's being `h2` under the
- *  page's `h1`, so the outline follows the tree. Past `h6` it stays there. */
-const HEADINGS = ["h2", "h3", "h4", "h5", "h6"] as const;
+/** Every card in `cards`, at any depth, by its id. */
+function indexCards(
+  cards: SessionCard[],
+  into = new Map<string, SessionCard>(),
+): Map<string, SessionCard> {
+  for (const card of cards) {
+    into.set(card.id, card);
+    indexCards(card.children, into);
+  }
+  return into;
+}
+
+function Groups({ report }: { report: SessionsReport }) {
+  // A slice names its card by id; the facts are the card's, once per reading.
+  const cards = useMemo(() => indexCards(report.sessions), [report.sessions]);
+  return (
+    <div className="space-y-6">
+      {report.groups.map((group) => (
+        <Group key={group.key} group={group} cards={cards} />
+      ))}
+    </div>
+  );
+}
+
+/** A group's heading and the line under it, by its kind. */
+function groupWords(group: SessionGroup): { title: ReactNode; note?: string } {
+  switch (group.kind) {
+    case SESSION_GROUP_KIND.issue:
+      return {
+        title: (
+          <a
+            href={`${WELCOME_REPOSITORY.href}/issues/${group.issue}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-link underline-offset-4 hover:underline"
+          >
+            {issueGroupTitle(group.issue)}
+          </a>
+        ),
+      };
+    case SESSION_GROUP_KIND.base:
+      return { title: BASE_GROUP_TITLE, note: BASE_GROUP_NOTE };
+    case SESSION_GROUP_KIND.other:
+      return { title: OTHER_GROUP_TITLE, note: OTHER_GROUP_NOTE };
+  }
+}
+
+function Group({
+  group,
+  cards,
+}: {
+  group: SessionGroup;
+  cards: Map<string, SessionCard>;
+}) {
+  const headingId = useId();
+  const { title, note } = groupWords(group);
+  return (
+    <section
+      aria-labelledby={headingId}
+      data-session-group={group.key}
+      className="space-y-3"
+    >
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 id={headingId} className="text-base font-semibold">
+            {title}
+          </h2>
+          <span
+            data-session-group-total
+            className="text-sm text-muted-foreground tabular-nums"
+          >
+            {outputTokens(group.out)}
+          </span>
+        </div>
+        {note && (
+          <p className="max-w-prose text-xs text-muted-foreground">{note}</p>
+        )}
+      </div>
+      <ol className="space-y-3">
+        {group.sessions.map((slice) => (
+          <li key={slice.id}>
+            <Card size="sm">
+              <CardContent>
+                <CardBody slice={slice} cards={cards} depth={0} />
+              </CardContent>
+            </Card>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** A card's heading level by its depth, the session's being `h3` under its
+ *  group's `h2`, so the outline follows the tree. Past `h6` it stays there. */
+const HEADINGS = ["h3", "h4", "h5", "h6"] as const;
 
 /**
- * One card's facts, then the subagents under it, recursively.
+ * One card's facts and its share of the group, then the subagents under it,
+ * recursively, which fold away under a control beside its task. Folded, the
+ * figures stay: they are the card's and its subtree's whatever is shown.
  *
  * Only a session is a `Card`. Its subagents are an indented list inside it, a
  * rule down the left marking each level, rather than a card in a card in a
  * card (design.md): the nesting is the tree, and the rule already says what is
  * under what.
  */
-function CardBody({ card, depth }: { card: SessionCard; depth: number }) {
+function CardBody({
+  slice,
+  cards,
+  depth,
+}: {
+  slice: SessionSlice;
+  cards: Map<string, SessionCard>;
+  depth: number;
+}) {
   const headingId = useId();
+  const [open, setOpen] = useState(true);
+  const card = cards.get(slice.id);
+  // Built from the same reading, so never missing; a reading that disagreed
+  // with itself would cost the one card, not the page.
+  if (!card) return null;
   const task = card.task ?? NO_TASK;
   const Heading = HEADINGS[Math.min(depth, HEADINGS.length - 1)];
+  const hasChildren = slice.children.length > 0;
   return (
-    <article
-      aria-labelledby={headingId}
-      data-session-card={card.id}
-      className="space-y-2"
-    >
-      <div className="space-y-1">
-        <Heading
-          id={headingId}
-          className="text-sm font-medium text-balance break-words"
-        >
-          {task}
-        </Heading>
-        <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <Fact label="Type">{card.subagentType ?? SESSION_KIND_LABEL}</Fact>
-          <Fact label="Model">{card.model ?? NO_MODEL}</Fact>
-          <Fact label="State">
-            <Badge variant={STATE_BADGE[card.state]}>{card.state}</Badge>
-          </Fact>
-          <Fact label="Elapsed" numeric>
-            {formatElapsed(card.elapsedMs)}
-          </Fact>
-          <Fact label="Own output" numeric>
-            {outputTokens(card.out)}
-          </Fact>
-        </dl>
-      </div>
-      {card.children.length > 0 && (
-        <ol
-          aria-label={subagentsLabel(task)}
-          className="space-y-3 border-l border-border pl-4"
-        >
-          {card.children.map((child) => (
-            <li key={child.id}>
-              <CardBody card={child} depth={depth + 1} />
-            </li>
-          ))}
-        </ol>
-      )}
-    </article>
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
+      <article
+        aria-labelledby={headingId}
+        data-session-card={card.id}
+        className="space-y-2"
+      >
+        <div className="space-y-1">
+          <div className="flex items-start gap-1">
+            {hasChildren && (
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="-ml-1"
+                  aria-label={toggleSubagentsLabel(open, task)}
+                >
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={cn("transition-transform", open && "rotate-90")}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+            )}
+            <Heading
+              id={headingId}
+              className="text-sm font-medium text-balance break-words"
+            >
+              {task}
+            </Heading>
+          </div>
+          <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <Fact label="Type">{card.subagentType ?? SESSION_KIND_LABEL}</Fact>
+            <Fact label="Model">{card.model ?? NO_MODEL}</Fact>
+            <Fact label="State">
+              <Badge variant={STATE_BADGE[card.state]}>{card.state}</Badge>
+            </Fact>
+            <Fact label="Elapsed" numeric>
+              {formatElapsed(card.elapsedMs)}
+            </Fact>
+            <Fact label="Own output" numeric>
+              {outputTokens(slice.out)}
+            </Fact>
+            {hasChildren && (
+              <Fact label="With subagents" numeric>
+                {withSubagents(slice.subtreeOut)}
+              </Fact>
+            )}
+          </dl>
+        </div>
+        {hasChildren && (
+          <CollapsibleContent asChild>
+            <ol
+              aria-label={subagentsLabel(task)}
+              className="space-y-3 border-l border-border pl-4"
+            >
+              {slice.children.map((child) => (
+                <li key={child.id}>
+                  <CardBody slice={child} cards={cards} depth={depth + 1} />
+                </li>
+              ))}
+            </ol>
+          </CollapsibleContent>
+        )}
+      </article>
+    </Collapsible>
   );
 }
 
