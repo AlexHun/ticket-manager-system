@@ -923,5 +923,10 @@
     "version": "0.1.245",
     "date": "2026-10-21",
     "title": "A dev-tools Sessions page drawing each session's subagent tree"
+  },
+  {
+    "version": "0.1.246",
+    "date": "2026-10-21",
+    "title": "The Sessions page follows a running session, and a dead one reads Stopped"
   }
 ]
