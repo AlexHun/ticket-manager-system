@@ -15,10 +15,16 @@ export const SESSIONS_TITLE = "Sessions";
 /** The one sentence under the heading; the rest of what the page says about
  *  itself folds away under `SESSIONS_HOW_LABEL` (#613). */
 export const SESSIONS_LEAD =
-  "This repository's Claude Code sessions on this machine, each with the subagents it started, followed live while the page is open.";
+  "This repository's Claude Code sessions on this machine, each with the subagents it started nested under it, followed live off the transcripts while the page is open.";
 
 /** The fold that holds how the page groups and names what it shows. */
 export const SESSIONS_HOW_LABEL = "How this page reads";
+
+/** What that fold says, given the two states it explains and the idle time
+ *  in words; the rest of the paragraph that stood under the heading before
+ *  #613, unchanged. */
+export const sessionsHow = (waiting: string, stopped: string, idle: string) =>
+  `They are grouped by the issue each response's branch names, so a session that worked on several issues shows under each with its share of it, and an issue's total matches the Usage page. One held on a permission prompt or a question to you reads ${waiting}. One that has written nothing for ${idle} without finishing reads ${stopped}. A running /chain lists its issues above them, in the order it works them.`;
 
 /** The state filter's accessible name, and its choice that keeps them all. */
 export const STATE_FILTER_LABEL = "Show sessions by state";
@@ -144,8 +150,8 @@ export const chainMerged = (merged: number, total: number) =>
   `${merged} of ${total} merged`;
 
 /** The control that folds a chain's issues away, and opens them again. */
-export const toggleChainLabel = (open: boolean, plan: string | null) =>
-  `${open ? "Hide" : "Show"} ${chainIssuesLabel(plan).replace(/^The/, "the")}`;
+export const toggleChainLabel = (open: boolean) =>
+  `${open ? "Hide" : "Show"} the chain's issues`;
 
 /** A chain that has started no worker yet. */
 export const NO_WORKERS = "No worker started yet.";

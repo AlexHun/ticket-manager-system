@@ -1,5 +1,4 @@
 import { useId, useState } from "react";
-import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +8,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { WELCOME_REPOSITORY } from "@/lib/welcome";
-import { cn } from "@/lib/utils";
 import {
   CHAIN_TITLE,
   CHAIN_WORKERS_LABEL,
@@ -27,6 +25,7 @@ import {
   type ChainView,
   type ChainWorker,
 } from "./sessions-protocol";
+import { FoldChevron } from "./FoldChevron";
 import { STATE_BADGE } from "./session-visuals";
 
 /** An issue's badge: Next in the primary fill, as the one to watch for,
@@ -78,15 +77,9 @@ function Chain({ chain }: { chain: ChainView }) {
                     variant="ghost"
                     size="icon-xs"
                     className="-ml-1"
-                    aria-label={toggleChainLabel(open, chain.plan)}
+                    aria-label={toggleChainLabel(open)}
                   >
-                    <ChevronRight
-                      aria-hidden="true"
-                      className={cn(
-                        "transition-transform",
-                        open && "rotate-90",
-                      )}
-                    />
+                    <FoldChevron open={open} />
                   </Button>
                 </CollapsibleTrigger>
               )}

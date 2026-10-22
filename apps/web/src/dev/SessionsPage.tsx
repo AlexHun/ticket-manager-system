@@ -1,5 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,7 +11,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { WELCOME_REPOSITORY } from "@/lib/welcome";
-import { cn } from "@/lib/utils";
 import {
   BASE_GROUP_NOTE,
   BASE_GROUP_TITLE,
@@ -37,6 +36,7 @@ import {
   issueGroupTitle,
   outputTokens,
   sessionCount,
+  sessionsHow,
   stepLabel,
   subagentsLabel,
   toggleSubagentsLabel,
@@ -56,6 +56,7 @@ import {
   type SessionsReport,
   type ToolTally,
 } from "./sessions-protocol";
+import { FoldChevron } from "./FoldChevron";
 import { SessionChains } from "./SessionChains";
 import { ALL_STATES, filterGroups, type StateChoice } from "./sessions-filter";
 import { STATE_BADGE } from "./session-visuals";
@@ -101,11 +102,7 @@ export function SessionsPage() {
           <Collapsible open={howOpen} onOpenChange={setHowOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="xs" className="-ml-2">
-                <ChevronRight
-                  aria-hidden="true"
-                  data-icon="inline-start"
-                  className={cn("transition-transform", howOpen && "rotate-90")}
-                />
+                <FoldChevron open={howOpen} inline />
                 {SESSIONS_HOW_LABEL}
               </Button>
             </CollapsibleTrigger>
@@ -114,14 +111,11 @@ export function SessionsPage() {
                 data-sessions-how
                 className="max-w-prose pt-1 text-sm text-muted-foreground"
               >
-                They are grouped by the issue each response&rsquo;s branch
-                names, so a session that worked on several issues shows under
-                each with its share of it, and an issue&rsquo;s total matches
-                the Usage page. One held on a permission prompt or a question to
-                you reads {SESSION_STATE.waiting}. One that has written nothing
-                for {idleTime(SESSION_IDLE_MS)} without finishing reads{" "}
-                {SESSION_STATE.stopped}. A running /chain lists its issues above
-                them, in the order it works them.
+                {sessionsHow(
+                  SESSION_STATE.waiting,
+                  SESSION_STATE.stopped,
+                  idleTime(SESSION_IDLE_MS),
+                )}
               </p>
             </CollapsibleContent>
           </Collapsible>
@@ -441,10 +435,7 @@ function CardBody({
                   className="-ml-1"
                   aria-label={toggleSubagentsLabel(open, task)}
                 >
-                  <ChevronRight
-                    aria-hidden="true"
-                    className={cn("transition-transform", open && "rotate-90")}
-                  />
+                  <FoldChevron open={open} />
                 </Button>
               </CollapsibleTrigger>
             )}
@@ -482,7 +473,7 @@ function CardBody({
           </dl>
           <dl className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <dt className="shrink-0 font-medium">{TOOLS_LABEL}</dt>
-            <dd data-session-fact="Tools" className="min-w-0">
+            <dd data-session-fact={TOOLS_LABEL} className="min-w-0">
               <Tools tools={card.tools} />
             </dd>
           </dl>

@@ -18,6 +18,7 @@ import {
   NO_TASK,
   NO_TOOLS,
   SESSIONS_HOW_LABEL,
+  SESSIONS_LEAD,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   STATE_FILTER_ALL,
@@ -25,8 +26,10 @@ import {
   STEP_UNKNOWN,
   TOOLS_LABEL,
   chainMerged,
+  idleTime,
   issueGroupTitle,
   sessionCount,
+  sessionsHow,
   stepLabel,
   chainIssuesLabel,
   toggleChainLabel,
@@ -223,6 +226,24 @@ const LIVE_RESPONSE = `${JSON.stringify({
   timestamp: "2026-09-02T09:15:00.000Z",
   message: { model: "claude-haiku-5-5", usage: { output_tokens: 600 } },
 })}\n`;
+/** How many tools `MANY_TOOLS_RESPONSE` calls, each once and by a long name. */
+const MANY_TOOLS = 16;
+/** A response of session a's that calls them, with no usage, so no figure on
+ *  the page moves (#613). */
+const MANY_TOOLS_RESPONSE = `${JSON.stringify({
+  sessionId: "a",
+  gitBranch: "feat/101-a",
+  message: {
+    model: "claude-opus-5-5",
+    content: Array.from({ length: MANY_TOOLS }, (_, i) => ({
+      type: "tool_use",
+      id: `toolu_fixture_many_${i}`,
+      name: `mcp__fixture__a_long_tool_name_${i}`,
+      input: {},
+    })),
+  },
+})}\n`;
+
 /** Session a's 20,000 of `#101` + the new response's 1,000 + the call's 500. */
 const LIVE_SESSION_OUT = "21,500 output tokens";
 /** `#101`'s 32,000 + 1,000 + 500 + the new subagent's 600. */
@@ -373,7 +394,8 @@ function writeConductor() {
 /**
  * A session that typed `/implement` and then only edited, and a subagent it
  * started that did the same through a `Skill` call: both have a gap before
- * Build, so both read Unknown (#595). Written by the step test alone, on a
+ * Build, so both are on the Unknown step (#595), which only the subagent
+ * shows (#613). Written by the step test alone, on a
  * branch of its own, so no other group's figures move.
  */
 const IMPLEMENTER = "session-d";
@@ -1054,49 +1076,49 @@ test.describe("dev tools: Sessions", () => {
 
   /**
    * #613: what a developer scans for first, state, time and spend, leads the
-   * card; what it is follows, quieter; its tools close it under a label of
-   * their own, inside the card at a desktop width and a phone's.
+   * card in the foreground; what it is follows, muted; its tools close it
+   * under a label of their own, wrapping inside the card at a desktop width
+   * and a phone's.
    */
   test("ranks a card's facts: state, time and spend first, then type and model, then its tools", async ({
     page,
   }) => {
-    writeConductor();
     await page.goto(ROUTE.devSessions.path);
     const a = sessionAIn101(page);
     await expectCard(a, SESSION_A, GROUP.issue101);
 
     const rows = own(a).locator(":scope > dl");
     await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toHaveClass(/\btext-foreground\b/);
     for (const fact of ["State", "Elapsed", "Own output", "With subagents"]) {
       await expect(
         rows.nth(0).locator(`[data-session-fact="${fact}"]`),
       ).toHaveCount(1);
     }
+    await expect(rows.nth(1)).toHaveClass(/\btext-muted-foreground\b/);
     for (const fact of ["Type", "Model"]) {
       await expect(
         rows.nth(1).locator(`[data-session-fact="${fact}"]`),
       ).toHaveCount(1);
     }
+    await expect(rows.nth(2)).toHaveClass(/\btext-muted-foreground\b/);
     await expect(rows.nth(2).locator("dt")).toHaveText(TOOLS_LABEL);
     await expect(rows.nth(2).locator("dt")).toBeVisible();
 
-    // Flint lists three tools; the list stays inside its session's card.
-    const group = groupIn(page, FLINT_GROUP);
-    const card = group.locator(":scope > ol > li > *").first();
-    const tools = own(childOf(cardIn(group, CONDUCTOR), FLINT)).locator(
-      '[data-session-fact="Tools"]',
-    );
+    // Session a calls sixteen tools more, far wider than a phone, and no
+    // figure moves: the response carries no usage.
+    appendTranscript(SESSION_A_FILE, MANY_TOOLS_RESPONSE);
+    const tools = rows.nth(2).locator("[data-session-tool]");
+    await expect(tools).toHaveCount(1 + MANY_TOOLS, { timeout: R4_MS });
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      await tools.scrollIntoViewIfNeeded();
-      const [inner, outer] = await Promise.all([
-        tools.boundingBox(),
-        card.boundingBox(),
-      ]);
-      if (!inner || !outer) throw new Error(`${width}px: nothing drawn`);
-      expect(inner.x + inner.width, `${width}px`).toBeLessThanOrEqual(
-        outer.x + outer.width,
-      );
+      const card = await a.boundingBox();
+      if (!card) throw new Error(`${width}px: no card drawn`);
+      for (const box of await tools.evaluateAll((all) =>
+        all.map((tool) => tool.getBoundingClientRect().right),
+      )) {
+        expect(box, `${width}px`).toBeLessThanOrEqual(card.x + card.width);
+      }
     }
   });
 
@@ -1105,13 +1127,19 @@ test.describe("dev tools: Sessions", () => {
   }) => {
     await page.goto(ROUTE.devSessions.path);
     const how = page.getByRole("button", { name: SESSIONS_HOW_LABEL });
+    await expect(page.getByText(SESSIONS_LEAD)).toBeVisible();
     await expect(how).toHaveAttribute("aria-expanded", "false");
     await expect(page.locator("[data-sessions-how]")).toHaveCount(0);
 
     await how.click();
 
-    await expect(page.locator("[data-sessions-how]")).toContainText(
-      SESSION_STATE.stopped,
+    // The words that stood under the heading before #613, unchanged.
+    await expect(page.locator("[data-sessions-how]")).toHaveText(
+      sessionsHow(
+        SESSION_STATE.waiting,
+        SESSION_STATE.stopped,
+        idleTime(SESSION_IDLE_MS),
+      ),
     );
   });
 
@@ -1129,9 +1157,7 @@ test.describe("dev tools: Sessions", () => {
     );
     await expect(chain.locator("[data-chain-issue]")).toHaveCount(0);
 
-    await chain
-      .getByRole("button", { name: toggleChainLabel(false, CHAIN_PLAN) })
-      .click();
+    await chain.getByRole("button", { name: toggleChainLabel(false) }).click();
 
     await expect(chain.locator("[data-chain-issue]")).toHaveCount(4);
   });
@@ -1149,8 +1175,12 @@ test.describe("dev tools: Sessions", () => {
     await expect(
       own(session).locator('[data-session-fact="Step"]'),
     ).toHaveCount(0);
+    // On the subagent's quieter second row, with its type and model.
     await expect(
-      own(childOf(session, GAPPED)).locator('[data-session-fact="Step"]'),
+      own(childOf(session, GAPPED))
+        .locator(":scope > dl")
+        .nth(1)
+        .locator('[data-session-fact="Step"]'),
     ).toHaveText(STEP_UNKNOWN);
   });
 
