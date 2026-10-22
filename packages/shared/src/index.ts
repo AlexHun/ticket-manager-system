@@ -1462,12 +1462,13 @@ export interface AssistantEffectivenessResponse {
   classified: number;
   autoReply: {
     /**
-     * Currently assigned to the assistant's own account — the durable signal a
-     * resolution was the machine's (see `docs/standards/domain.md`: "Resolved by
-     * the machine ⇒ assigned to the assistant's own account"). Not `autoResolvedAt`
-     * alone: a reopen clears that column just as it moves the assignee off the
-     * assistant, so the two never disagree, and reading the assignee is what the
-     * ticket asked for.
+     * Tickets in the slice carrying the auto-resolve stamp — `assistantResolved`
+     * in the API's `assistant-decisions.ts`, the same statement `autoResolved`
+     * counts on `/pipeline` (#562). A customer's reopen clears the stamp, so it
+     * withdraws the resolution here and there alike; an agent's reassignment or
+     * status change touches neither. Not the assignee: a resolved ticket is
+     * filed under the assistant's account, but that is who owns it, which an
+     * agent may change, and the two disagreed as soon as an agent reassigned one.
      */
     resolved: number;
     /** `resolved / classified`. Null, not 0, when nothing was classified — there is no rate to report. */
@@ -1868,7 +1869,11 @@ export interface PipelineCounts {
    * `classifyPending`, every ticket in `received` is counted exactly once.
    */
   classifyNotOffered: Record<ClassifyNotOffered, number>;
-  /** Answered from the knowledge base and resolved. */
+  /**
+   * Answered from the knowledge base and resolved, and not reopened by the
+   * customer since: `assistantResolved`, the statement the dashboard's
+   * `autoReply.resolved` counts too (#562).
+   */
   autoResolved: number;
   /** Every decline reason, including the zeroes — a zero is information here. */
   declines: Record<AutoReplyDecline, number>;

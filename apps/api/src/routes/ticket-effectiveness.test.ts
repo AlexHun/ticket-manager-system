@@ -1,6 +1,6 @@
 /**
  * Unit tests for the two pieces of the effectiveness endpoint expressible as
- * pure functions over plain rows rather than a raw SQL string, and so the
+ * pure functions over plain rows rather than a database query, and so the
  * pieces a `bun test` file (no database, per `docs/standards/testing.md`) can
  * actually exercise: `countCategoryOverrides` (`./ticket-effectiveness-override`)
  * and `editDistance`/`averageEditDistance`
@@ -19,8 +19,8 @@
  * factory binds the same client now. What is left is the plainer reason — the
  * two modules above are pure functions over plain rows and need no database to
  * exercise, so this file mocks nothing and imports neither. The handler's own
- * raw SQL is testable the way `routes/activity.ts`'s `UNION ALL` is (#171),
- * against real rows in a real Postgres — and since #226 it *is* tested, in
+ * queries are tested against real rows in a real Postgres, the way
+ * `routes/activity.ts`'s `UNION ALL` is (#171) — since #226, in
  * `ticket-effectiveness-handler.test.ts`, which is its own file for the reason
  * this paragraph gave when it was still a plan: what that one needs is a
  * database and this one needs nothing at all.

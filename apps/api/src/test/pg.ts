@@ -49,8 +49,8 @@ import { scopeTransactions } from "../transaction-scope";
 
 // Re-exported so `./preload.ts`'s `../db` factory can hand the modules under
 // test the same `Prisma` namespace the real `../db` exports — it is a *value*
-// export (`Prisma.sql`), which `routes/activity.ts`, `routes/ticket-stats.ts`
-// and `routes/ticket-effectiveness.ts` import as one. A test file needs it only
+// export (`Prisma.sql`), which `routes/activity.ts` and `routes/ticket-stats.ts`
+// import as one. A test file needs it only
 // if it composes raw SQL of its own; `routes/users.test.ts` is the one that
 // does.
 export { Prisma } from "../generated/prisma/client";

@@ -12,19 +12,12 @@ import {
   type AssistantEffectivenessResponse,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import { classifierFiled } from "../assistant-decisions";
-import { Prisma, prisma } from "../db";
+import { assistantResolved, classifierFiled } from "../assistant-decisions";
+import { prisma } from "../db";
 import { averageEditDistance } from "./ticket-effectiveness-edit-distance";
 import { countCategoryOverrides } from "./ticket-effectiveness-override";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Same UTC-safe cast `ticket-stats.ts` uses — see the comment there for why a
- *  plain bind parameter would silently shift every number by the API host's
- *  local offset. Duplicated rather than imported: route files here don't reach
- *  into one another, and this is three lines. */
-const ts = (d: Date) =>
-  Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
 
 /**
  * The decline reasons that are a verdict about the ticket.
@@ -44,18 +37,13 @@ const VERDICT_DECLINES = AUTO_REPLY_DECLINES.filter(
   (d) => DECLINE_OUTCOME[d] === PIPELINE_OUTCOME.declined,
 );
 
-interface FactsRow {
-  resolvedByAssistant: number;
-  declined: number;
-}
-
 /**
  * GET /api/tickets/effectiveness
  *
- * The assistant's numbers, aggregated the way `ticket-stats.ts` already does
- * it — raw SQL for the facts a single scan answers, `count`/`groupBy`/`findMany`
- * for the counts that are more naturally a Prisma query, all five run inside one
- * transaction so the whole response describes the same slice. Part of #16;
+ * The assistant's numbers: `count`/`groupBy`/`findMany` over one window, all
+ * six run inside one transaction so the whole response describes the same
+ * slice. No raw SQL since #562: its one reason was the join to `user` that
+ * counted the assistant's assignments as its resolutions. Part of #16;
  * see `ticket-effectiveness-edit-distance.ts` for how `avgEditDistance` is
  * computed and why it no longer has to stay null.
  */
@@ -76,70 +64,62 @@ export async function ticketEffectivenessHandler(
   const from = new Date(to.getTime() - days * DAY_MS);
   const window = { createdAt: { gte: from, lt: to } };
 
-  const slice = Prisma.sql`t."createdAt" >= ${ts(from)} AND t."createdAt" < ${ts(to)}`;
-
-  // `resolvedByAssistant` and `declined` fall out of one scan of `ticket`, so
-  // they are one query rather than two. `resolvedByAssistant` reads the
-  // assignee (`u.automated`) rather than `autoResolvedAt` — see the field
-  // comment in `@ticket/shared` for why the two never disagree and the assignee
-  // is the one the ticket asked for. `classified` is counted beside it with
-  // `classifierFiled`, the statement `/pipeline` counts too (#561).
-  const factsSql = Prisma.sql`
-    SELECT
-      COUNT(*) FILTER (WHERE u.automated = true)::int AS "resolvedByAssistant",
-      COUNT(*) FILTER (
-        WHERE t."autoReplyDecline" IN (${Prisma.join(VERDICT_DECLINES)})
-      )::int AS declined
-    FROM "ticket" t
-    LEFT JOIN "user" u ON u.id = t."assignedToId"
-    WHERE ${slice}
-  `;
-
-  const [classified, facts, declineGroups, overrideRows, editDistancePairs] =
-    await prisma.$transaction([
-      prisma.ticket.count({ where: { ...window, ...classifierFiled } }),
-      prisma.$queryRaw<FactsRow[]>(factsSql),
-      // Every reason, including the zeroes — same pattern `routes/pipeline.ts`
-      // uses for the identical column.
-      prisma.ticket.groupBy({
-        by: ["autoReplyDecline"],
-        where: { ...window, autoReplyDecline: { not: null } },
-        _count: { _all: true },
-      }),
-      // Bounded by "tickets classified or re-categorised in the slice", not by
-      // ticket volume — most tickets never generate a second `category_changed`
-      // row at all.
-      prisma.ticketActivity.findMany({
-        where: {
-          action: TICKET_ACTIVITY_ACTION.category_changed,
-          actorKind: {
-            in: [TICKET_ACTOR_KIND.assistant, TICKET_ACTOR_KIND.agent],
-          },
-          ticket: window,
+  // Every count is a Prisma `where` over the same `window`. `resolved` and
+  // `classified` read the statements `/pipeline` counts with too, from
+  // `assistant-decisions.ts` (#561, #562): the auto-resolve stamp, never the
+  // assignee, which records who owns the ticket and is the column an agent
+  // changes.
+  const [
+    classified,
+    resolved,
+    declined,
+    declineGroups,
+    overrideRows,
+    editDistancePairs,
+  ] = await prisma.$transaction([
+    prisma.ticket.count({ where: { ...window, ...classifierFiled } }),
+    prisma.ticket.count({ where: { ...window, ...assistantResolved } }),
+    prisma.ticket.count({
+      where: { ...window, autoReplyDecline: { in: VERDICT_DECLINES } },
+    }),
+    // Every reason, including the zeroes — same pattern `routes/pipeline.ts`
+    // uses for the identical column.
+    prisma.ticket.groupBy({
+      by: ["autoReplyDecline"],
+      where: { ...window, autoReplyDecline: { not: null } },
+      _count: { _all: true },
+    }),
+    // Bounded by "tickets classified or re-categorised in the slice", not by
+    // ticket volume — most tickets never generate a second `category_changed`
+    // row at all.
+    prisma.ticketActivity.findMany({
+      where: {
+        action: TICKET_ACTIVITY_ACTION.category_changed,
+        actorKind: {
+          in: [TICKET_ACTOR_KIND.assistant, TICKET_ACTOR_KIND.agent],
         },
-        select: { ticketId: true, actorKind: true },
-      }),
-      // Scoped through the `ticket` relation rather than the message's own
-      // `createdAt`, so this reads "sent-and-polished pairs on tickets in the
-      // slice" — the same slice every other field on this response uses,
-      // `ticket.createdAt`, not "replies sent in the slice" (a ticket opened
-      // just inside the window can be answered just after it). `automated`
-      // replies are excluded implicitly: the auto-reply never touches Polish,
-      // so `polishedDraft` is always null on one.
-      prisma.message.findMany({
-        where: {
-          direction: MESSAGE_DIRECTION.outbound,
-          polishedDraft: { not: null },
-          textBody: { not: null },
-          ticket: window,
-        },
-        select: { polishedDraft: true, textBody: true },
-      }),
-    ]);
+        ticket: window,
+      },
+      select: { ticketId: true, actorKind: true },
+    }),
+    // Scoped through the `ticket` relation rather than the message's own
+    // `createdAt`, so this reads "sent-and-polished pairs on tickets in the
+    // slice" — the same slice every other field on this response uses,
+    // `ticket.createdAt`, not "replies sent in the slice" (a ticket opened
+    // just inside the window can be answered just after it). `automated`
+    // replies are excluded implicitly: the auto-reply never touches Polish,
+    // so `polishedDraft` is always null on one.
+    prisma.message.findMany({
+      where: {
+        direction: MESSAGE_DIRECTION.outbound,
+        polishedDraft: { not: null },
+        textBody: { not: null },
+        ticket: window,
+      },
+      select: { polishedDraft: true, textBody: true },
+    }),
+  ]);
 
-  const f = facts[0];
-  const resolved = f?.resolvedByAssistant ?? 0;
-  const declined = f?.declined ?? 0;
   const overridden = countCategoryOverrides(overrideRows);
 
   const reasons = Object.fromEntries(
