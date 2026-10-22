@@ -332,6 +332,28 @@ describe("shapeReply — whatever dash the model used", () => {
     }
   });
 
+  test("keeps a first sentence that opens with a hyphenated greeting word", () => {
+    // "Hi-res" opens with "Hi", and a spaced hyphen inside 30 characters would
+    // close a greeting. It is a word, not a greeting, so neither applies.
+    expect(shaped(["Hi-res video - set it to Auto in the player."])).toBe(
+      `Hi Marta,\n\nHi-res video - set it to Auto in the player.\n\nBest regards,\n${BRAND_NAME}`,
+    );
+  });
+
+  test("takes a dash after a sentence's end out without a stray comma", () => {
+    // The tail is too long to be a sign off, so it stays; `withoutDashes` alone
+    // turns ". —" into "., ".
+    for (const dash of ["-", "–", "—", "--"]) {
+      expect(
+        shaped([
+          `Buffering is almost always the quality setting. ${dash} Thanks for your patience while we look into it.`,
+        ]),
+      ).toBe(
+        `Hi Marta,\n\nBuffering is almost always the quality setting. Thanks for your patience while we look into it.\n\nBest regards,\n${BRAND_NAME}`,
+      );
+    }
+  });
+
   test("one greeting, one sign off and no dash, wherever the dash went", () => {
     // R3 of `docs/prd/reply-shaping.md`. Every greeting `GREETING_LINE` names and
     // every closer the strips know, crossed with a hyphen, an en dash, an em

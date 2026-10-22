@@ -98,15 +98,26 @@ function flatten(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-/** Openings and closings the model was told not to write, in case it did. */
+/**
+ * Openings and closings the model was told not to write, in case it did.
+ *
+ * The word must end where a word ends, not at a hyphen or an apostrophe:
+ * "Hi-res video - set it to Auto" is a sentence, and with `\b` it read as "Hi"
+ * closed by the spaced hyphen, and lost "Hi-res video".
+ */
 const GREETING_LINE =
-  /^(hi|hello|hey|dear|greetings|good\s+(morning|afternoon|evening|day))\b/i;
+  /^(hi|hello|hey|dear|greetings|good\s+(morning|afternoon|evening|day))(?![\w'’-])/i;
+
+/** The dash glyphs: a hyphen, an en dash and an em dash, as a class body. */
+const DASH_GLYPHS = "-–—";
 
 /**
  * A dash the model may put where a comma or a bullet would go: "— The Support
  * Team", "Hi Marta — buffering…", a step "– Set the quality to Auto", or the
- * "-- " that opens an email signature. A pattern source, shared by every strip
- * below so they cannot drift apart.
+ * "-- " that opens an email signature. A pattern source, built from
+ * `DASH_GLYPHS` like the other dash patterns that treat all three alike, so
+ * they cannot drift apart. `GREETING_PREFIX` and `SENTENCE_DASH` close on a
+ * hyphen only beside a space, and say why they spell the glyphs out.
  *
  * The strips anchor on a bookend's first word, or close a greeting on its
  * punctuation, so a dash hid a bookend from them, and `withoutDashes` runs last,
@@ -115,7 +126,7 @@ const GREETING_LINE =
  * which `TRAILING_SIGN_OFF` no longer matches. So the strips learn the dash
  * (#547 for sign offs, #573 for greetings and steps).
  */
-const DASH = "[-–—]{1,2}";
+const DASH = `[${DASH_GLYPHS}]{1,2}`;
 
 /**
  * The greeting itself, up to and including what closes it: a comma, a full
@@ -129,8 +140,10 @@ const DASH = "[-–—]{1,2}";
  * long before any real sentence has finished.
  *
  * An en or em dash closes it wherever it sits, "Hi Marta—buffering" included.
- * A hyphen closes it only with space either side, so "Hi Anne-Marie," is still
- * closed by its comma. Lazy, so the first closer wins.
+ * A hyphen closes it only with space before it and space or the end after, so
+ * "Hi Anne-Marie," is still closed by its comma. That split is why the hyphen
+ * is spelled apart from the other two here rather than read from `DASH`. Lazy,
+ * so the first closer wins.
  */
 const GREETING_PREFIX =
   /^[^,.!?:–—]{0,30}?(?:[,.:!?]|\s*[–—]{1,2}|\s+-{1,2}(?=\s|$))\s*/;
@@ -217,10 +230,30 @@ const DASHED_TAIL = new RegExp(String.raw`([.!?])\s+${DASH}\s*([\s\S]*)$`);
 const LEADING_DASH = new RegExp(String.raw`^${DASH}\s*`);
 
 /** A paragraph that is a dash and nothing else: a separator. */
-const DASH_ONLY = /^[-–—]+$/;
+const DASH_ONLY = new RegExp(`^[${DASH_GLYPHS}]+$`);
+
+/**
+ * A dash after a sentence's end, inside a paragraph that is kept.
+ *
+ * `withoutDashes` turns any en or em dash into a comma, and after a full stop
+ * that is a stray one: "…setting. — Thanks for your patience…" went out as
+ * "…setting., Thanks for…". Here the dash goes and the full stop stays. A
+ * hyphen needs space after it, so "-5" is left alone, which is why the glyphs
+ * are spelled here rather than read from `DASH`. Run after the strips, which
+ * read the dash to find a welded sign off.
+ */
+const SENTENCE_DASH = /([.!?])\s+(?:[–—]{1,2}\s*|-{1,2}\s+)/g;
+
+/** `text` with every dash after a sentence's end taken out. */
+function withoutSentenceDashes(text: string): string {
+  return text.replace(SENTENCE_DASH, "$1 ");
+}
 
 /** The bullet, dash or number a step was led by, which the numbering replaces. */
 const STEP_MARKER = new RegExp(String.raw`^(?:${DASH}|[*•]|\d+[.)])\s*`);
+
+/** Punctuation, dashes and space at the end of a line. */
+const TRAILING_PUNCTUATION = new RegExp(`[${DASH_GLYPHS}.,;:!?\\s]+$`);
 
 /**
  * Whether `text` is a sign off and nothing else, a leading dash looked past.
@@ -231,7 +264,7 @@ const STEP_MARKER = new RegExp(String.raw`^(?:${DASH}|[*•]|\d+[.)])\s*`);
  */
 function isSignOff(text: string): boolean {
   const line = text.replace(LEADING_DASH, "");
-  const bare = line.replace(/[-–—.,;:!?\s]+$/, "");
+  const bare = line.replace(TRAILING_PUNCTUATION, "");
   return (
     (bare.length <= SIGN_OFF_MAX && SIGN_OFF_LINE.test(line)) ||
     BRAND_SIGN_OFF.test(bare)
@@ -310,7 +343,7 @@ function composeReply(
       .map(flatten)
       // A dash on its own is a separator, "--" above a signature, not content.
       .filter((p) => p.length > 0 && !DASH_ONLY.test(p)),
-  );
+  ).map(withoutSentenceDashes);
   const actions = steps
     // The prompt says the numbering is ours; strip it when it arrives anyway,
     // or the customer reads "1. 1. Try a different browser". A dash leads a
