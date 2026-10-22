@@ -1,6 +1,6 @@
 # PRD: The auto-reply's text is shaped in one place, in one order
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-16
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-16
 
 ## Problem
 
@@ -109,12 +109,12 @@ greeting, one sign-off and clean steps.
 
 ## Open questions
 
-- [ ] Does the dash pass move ahead of the bookend strip, or do the strips
+- [x] Does the dash pass move ahead of the bookend strip, or do the strips
       learn dashes everywhere, as `SIGN_OFF_DASH` did for sign-offs? —
-      _affects R1, R2_, decide in the plan
-- [ ] **Assumed:** a dash-led step should lose its dash the way a `-`, `*` or
-      `•` bullet already does.
-- [ ] **Assumed:** a final dash pass over the assembled text stays as a
-      backstop, so a dash in our own fixed text can never ship either.
-- [ ] **Assumed:** "reply shaping" needs no `GLOSSARY.md` entry. It is a code
-      concept inside the **Auto-reply**, and the desk has no word for it.
+      _affects R1, R2_, decide in the plan. **Decided:** the strips learn the dash, renamed `DASH` (#573).
+- [x] **Assumed:** a dash-led step should lose its dash the way a `-`, `*` or
+      `•` bullet already does. Held (#573).
+- [x] **Assumed:** a final dash pass over the assembled text stays as a
+      backstop, so a dash in our own fixed text can never ship either. Held (#573).
+- [x] **Assumed:** "reply shaping" needs no `GLOSSARY.md` entry. It is a code
+      concept inside the **Auto-reply**, and the desk has no word for it. Held: none was added.

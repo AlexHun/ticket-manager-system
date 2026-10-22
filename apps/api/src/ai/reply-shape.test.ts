@@ -206,64 +206,8 @@ describe("shapeReply — the bookends it was told not to write", () => {
     }
   });
 
-  test("drops a sign off led by a dash, the same as one without", () => {
-    // "— The Support Team" slipped past every pattern above, which all anchor on
-    // the first word; `withoutDashes` then took an en or em dash off and shipped
-    // the rest under our own sign off, and a hyphen went out as it was (#547). A
-    // hyphen, an en dash, an em dash, and the "-- " that opens an email
-    // signature, each before every closer stripped.
-    const closers = [
-      "Best regards,",
-      "Kind regards",
-      "Warm wishes",
-      "Best wishes",
-      "Regards",
-      "Sincerely",
-      "Cheers",
-      "Thanks!",
-      "Thank you",
-      "Yours sincerely",
-      "Yours faithfully",
-      "Yours truly",
-      "The Support Team",
-      "Support Team",
-      BRAND_NAME,
-      BRAND_ATTRIBUTIVE,
-    ];
-    for (const dash of ["-", "–", "—", "--"]) {
-      for (const closer of closers) {
-        for (const paragraphs of [
-          [`${dash} ${closer}`],
-          [`${dash}${closer}`],
-          ["Best regards,", `${dash} ${closer}`],
-        ]) {
-          expect(
-            shaped([
-              "Buffering is almost always the quality setting.",
-              ...paragraphs,
-            ]),
-          ).toBe(
-            `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
-          );
-        }
-      }
-    }
-  });
-
-  test("takes a dash-led sign off off the end of the last real sentence", () => {
-    for (const dash of ["-", "–", "—", "--"]) {
-      expect(
-        shaped([
-          `Set the quality to Auto and we can take a closer look. ${dash} Best regards, Support Team`,
-        ]),
-      ).toBe(
-        `Hi Marta,\n\nSet the quality to Auto and we can take a closer look.\n\nBest regards,\n${BRAND_NAME}`,
-      );
-    }
-  });
-
   test("keeps a real sentence that happens to start with a dash", () => {
-    // The dash is looked past only to find a closer; a paragraph that goes on
+    // The dash is looked past only to find a bookend; a paragraph that goes on
     // past one is still the body. The first two are kept by `SIGN_OFF_MAX`, the
     // third by `BRAND_SIGN_OFF` being anchored at its end. An en or em dash
     // opening a line is then taken off by `withoutDashes`, as on any line, so
@@ -330,5 +274,189 @@ describe("shapeReply — the bookends it was told not to write", () => {
   test("returns nothing when the bookends were the whole of the answer", () => {
     // `autoReply` reads this as a decline: said yes, and wrote nothing.
     expect(shapeReply(NAME, ["Hi Marta,", "Best regards,"], [])).toBeNull();
+  });
+});
+
+describe("shapeReply — whatever dash the model used", () => {
+  // The three replies the 2026-10-16 probe found reaching a customer (#573).
+  // The dash pass runs after the strips, so a dash hid a bookend from them.
+
+  test("takes the dash off a dash-led step, as it does a bullet", () => {
+    // Shipped as "1., Set the quality to Auto".
+    expect(
+      shaped(
+        ["Buffering is almost always the quality setting."],
+        ["— Set the quality to Auto"],
+      ),
+    ).toBe(
+      "Hi Marta,\n\n" +
+        "Buffering is almost always the quality setting.\n\n" +
+        "1. Set the quality to Auto\n\n" +
+        `Best regards,\n${BRAND_NAME}`,
+    );
+  });
+
+  test("keeps the sentence a greeting was welded to by a dash, recapitalised", () => {
+    // Shipped as "Hi Marta," and then "Hi Marta, buffering is…".
+    expect(
+      shaped(["Hi Marta — buffering is almost always the quality setting."]),
+    ).toBe(
+      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
+    );
+  });
+
+  test("drops a greeting paragraph led by a dash", () => {
+    // Shipped as "Hi Marta," twice.
+    expect(
+      shaped([
+        "— Hi Marta,",
+        "Buffering is almost always the quality setting.",
+      ]),
+    ).toBe(
+      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
+    );
+  });
+
+  test("keeps a first sentence that opens with a dash and a greeting word", () => {
+    // The dash is looked past to find a greeting, and the 30-character ceiling
+    // still decides whether there is one. Kept, the en or em dash opening the
+    // line is then taken off by `withoutDashes`, as on any line.
+    for (const dash of ["–", "—"]) {
+      expect(
+        shaped([
+          `${dash} Hi there is a setting in the player that controls this.`,
+        ]),
+      ).toBe(
+        `Hi Marta,\n\nHi there is a setting in the player that controls this.\n\nBest regards,\n${BRAND_NAME}`,
+      );
+    }
+  });
+
+  test("keeps a first sentence that opens with a hyphenated greeting word", () => {
+    // "Hi-res" opens with "Hi", and a spaced hyphen inside 30 characters would
+    // close a greeting. It is a word, not a greeting, so neither applies.
+    expect(shaped(["Hi-res video - set it to Auto in the player."])).toBe(
+      `Hi Marta,\n\nHi-res video - set it to Auto in the player.\n\nBest regards,\n${BRAND_NAME}`,
+    );
+  });
+
+  test("takes a dash after a sentence's end out without a stray comma", () => {
+    // The tail is too long to be a sign off, so it stays; `withoutDashes` alone
+    // turns ". —" into "., ".
+    for (const dash of ["-", "–", "—", "--"]) {
+      expect(
+        shaped([
+          `Buffering is almost always the quality setting. ${dash} Thanks for your patience while we look into it.`,
+        ]),
+      ).toBe(
+        `Hi Marta,\n\nBuffering is almost always the quality setting. Thanks for your patience while we look into it.\n\nBest regards,\n${BRAND_NAME}`,
+      );
+    }
+  });
+
+  test("one greeting, one sign off and no dash, wherever the dash went", () => {
+    // R3 of `docs/prd/reply-shaping.md`. Every greeting `GREETING_LINE` names and
+    // every closer the strips know, crossed with a hyphen, an en dash, an em
+    // dash and the "-- " that opens an email signature, in every place the
+    // model has been seen to put one. Each row names itself in a failure, so a
+    // red run says which shape came back. It took in #547's two dash tests.
+    const BODY = "Buffering is almost always the quality setting.";
+    const STEP = "Set the quality to Auto";
+    const greetings = [
+      "Hi Marta",
+      "Hello",
+      "Hey Marta",
+      "Dear Marta",
+      "Greetings",
+      "Good morning",
+      "Good afternoon",
+      "Good evening",
+      "Good day",
+    ];
+    const closers = [
+      "Best regards,",
+      "Best regards, Support Team",
+      "Kind regards",
+      "Warm wishes",
+      "Best wishes",
+      "Regards",
+      "Sincerely",
+      "Cheers",
+      "Thanks!",
+      "Thank you",
+      "Yours sincerely",
+      "Yours faithfully",
+      "Yours truly",
+      "The Support Team",
+      "Support Team",
+      BRAND_NAME,
+      BRAND_ATTRIBUTIVE,
+    ];
+    const lower = BODY[0]!.toLowerCase() + BODY.slice(1);
+
+    type Row = { row: string; paragraphs: string[]; steps?: string[] };
+    const rows: Row[] = [];
+    for (const dash of ["-", "–", "—", "--"]) {
+      for (const greeting of greetings) {
+        const row = (where: string) => `${dash} ${where}: ${greeting}`;
+        rows.push(
+          { row: row("leading"), paragraphs: [`${dash} ${greeting},`, BODY] },
+          {
+            row: row("leading, unspaced"),
+            paragraphs: [`${dash}${greeting},`, BODY],
+          },
+          { row: row("trailing"), paragraphs: [`${greeting} ${dash}`, BODY] },
+          {
+            row: row("welded"),
+            paragraphs: [`${greeting} ${dash} ${lower}`],
+          },
+          {
+            row: row("own paragraph"),
+            paragraphs: [`${greeting},`, dash, BODY],
+          },
+          {
+            row: row("in a step"),
+            paragraphs: [`${dash} ${greeting},`, BODY],
+            steps: [`${dash} ${STEP}`],
+          },
+        );
+      }
+      for (const closer of closers) {
+        const row = (where: string) => `${dash} ${where}: ${closer}`;
+        rows.push(
+          { row: row("leading"), paragraphs: [BODY, `${dash} ${closer}`] },
+          {
+            row: row("leading, unspaced"),
+            paragraphs: [BODY, `${dash}${closer}`],
+          },
+          {
+            row: row("leading, after a closer"),
+            paragraphs: [BODY, "Best regards,", `${dash} ${closer}`],
+          },
+          { row: row("trailing"), paragraphs: [BODY, `${closer} ${dash}`] },
+          { row: row("welded"), paragraphs: [`${BODY} ${dash} ${closer}`] },
+          { row: row("own paragraph"), paragraphs: [BODY, dash, closer] },
+          {
+            row: row("in a step"),
+            paragraphs: [BODY, `${dash} ${closer}`],
+            steps: [`${dash} ${STEP}`],
+          },
+        );
+      }
+    }
+
+    // One greeting, one sign off, no en or em dash, the body intact: the whole
+    // reply is compared, so a doubled bookend or a stray comma cannot hide. Every
+    // misshaped row is listed with what it shipped, not only the first.
+    const misshaped = rows.flatMap(({ row, paragraphs, steps = [] }) => {
+      const reply = shapeReply(NAME, paragraphs, steps);
+      const expected =
+        `Hi Marta,\n\n${BODY}\n\n` +
+        (steps.length > 0 ? `1. ${STEP}\n\n` : "") +
+        `Best regards,\n${BRAND_NAME}`;
+      return reply === expected ? [] : [`${row} -> ${JSON.stringify(reply)}`];
+    });
+    expect(rows.length).toBe(692);
+    expect(misshaped).toEqual([]);
   });
 });
