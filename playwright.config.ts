@@ -143,7 +143,17 @@ export default defineConfig({
       // path is reached through the real middleware. The transcripts are a
       // copy for the same kind of reason: a spec may delete or append to one,
       // which must never reach the checked-in fixtures.
+      //
+      // The two Basic Auth credentials are blanked because `env` is merged over
+      // the shell's, and a developer who pushes usage to `develop` (DEPLOYMENT.md
+      // §7) carries both: `apps/web/dev/basic-auth.ts` then gated every request
+      // and every page read "Authentication required" (#619). Empty is the
+      // gate's "off", the state CI runs in. A leftover Vite on this port that
+      // was started from such a shell keeps the gate, since `env` never reaches
+      // a reused server: stop it.
       env: {
+        DEV_BASIC_AUTH_USERNAME: "",
+        DEV_BASIC_AUTH_PASSWORD: "",
         VITE_API_URL: API_URL,
         CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
