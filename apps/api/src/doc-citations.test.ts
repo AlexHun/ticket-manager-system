@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -931,8 +932,17 @@ describe("a stale citation that git history shows was renamed", () => {
     git(repo, "commit", "-q", "-m", message);
   };
 
+  // A move is a plain rename that the next `add -A` stages: git records no
+  // renames, and `log` finds them by content, so `git mv` was a process apiece
+  // for nothing.
+  const move = (from: string, to: string) =>
+    renameSync(path.join(repo, from), path.join(repo, to));
+
   // Built in `beforeAll` rather than in the describe body, so a run filtered
   // to other tests starts no git, and a git failure fails these tests alone.
+  // Its eleven git processes take ~1.2s on a Windows dev machine and passed
+  // bun's 5s hook default under memory pressure, blocking a push (#614), so
+  // the hook has a timeout of its own.
   let movedIn = "";
   let renamedIn = "";
   beforeAll(() => {
@@ -950,9 +960,9 @@ describe("a stale citation that git history shows was renamed", () => {
     write("a/util.ts", "export const alpha = 'the first util';\n");
     write("b/util.ts", "export const beta = 'the second util, unlike it';\n");
     commit("add the provider");
-    git(repo, "mv", "src/provider.ts", "src/llm.ts");
-    git(repo, "mv", "a/util.ts", "a/helpers.ts");
-    git(repo, "mv", "b/util.ts", "b/tools.ts");
+    move("src/provider.ts", "src/llm.ts");
+    move("a/util.ts", "a/helpers.ts");
+    move("b/util.ts", "b/tools.ts");
     commit("rename the provider and the utils");
     write(
       "src/llm.ts",
@@ -980,7 +990,7 @@ describe("a stale citation that git history shows was renamed", () => {
       pathToFileURL(repo).href,
       shallow,
     );
-  });
+  }, 30_000);
 
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
