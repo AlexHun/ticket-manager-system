@@ -12,6 +12,25 @@
 /** The page's heading. Its entry in `DEV_NAV_ITEMS` carries the same word. */
 export const SESSIONS_TITLE = "Sessions";
 
+/** The one sentence under the heading; the rest of what the page says about
+ *  itself folds away under `SESSIONS_HOW_LABEL` (#613). */
+export const SESSIONS_LEAD =
+  "This repository's Claude Code sessions on this machine, each with the subagents it started, followed live while the page is open.";
+
+/** The fold that holds how the page groups and names what it shows. */
+export const SESSIONS_HOW_LABEL = "How this page reads";
+
+/** The state filter's accessible name, and its choice that keeps them all. */
+export const STATE_FILTER_LABEL = "Show sessions by state";
+export const STATE_FILTER_ALL = "All";
+
+/** What the page says when the state filter keeps no session. */
+export const NO_SESSIONS_IN_STATE =
+  "No session is in that state. Choose All to see every session.";
+
+/** The visible label before a card's tools. */
+export const TOOLS_LABEL = "Tools";
+
 /** What a session's card names as its type, where a subagent's names its
  *  subagent type. */
 export const SESSION_KIND_LABEL = "Session";
@@ -119,6 +138,14 @@ export const CHAIN_WORKERS_LABEL = "The chain's workers";
 
 /** A worker, by name and issue: `Ember on #535`. */
 export const workerOn = (name: string, issue: number) => `${name} on #${issue}`;
+
+/** A chain's merged count, beside its heading: `7 of 7 merged`. */
+export const chainMerged = (merged: number, total: number) =>
+  `${merged} of ${total} merged`;
+
+/** The control that folds a chain's issues away, and opens them again. */
+export const toggleChainLabel = (open: boolean, plan: string | null) =>
+  `${open ? "Hide" : "Show"} ${chainIssuesLabel(plan).replace(/^The/, "the")}`;
 
 /** A chain that has started no worker yet. */
 export const NO_WORKERS = "No worker started yet.";
