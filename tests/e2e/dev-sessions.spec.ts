@@ -15,10 +15,12 @@ import {
   NO_MODEL,
   NO_SESSIONS_LEAD,
   NO_TASK,
+  NO_TOOLS,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
   issueGroupTitle,
   sessionCount,
+  stepLabel,
   chainIssuesLabel,
   toggleSubagentsLabel,
   waitingCount,
@@ -30,6 +32,7 @@ import {
 } from "../../apps/web/src/dev/usage-copy";
 import {
   CHAIN_ISSUE_STATE,
+  IMPLEMENT_STEP,
   SESSION_IDLE_MS,
   SESSION_STATE,
 } from "../../apps/web/src/dev/sessions-protocol";
@@ -73,7 +76,11 @@ const NESTED = "a2222222222222222";
 const UNPARSEABLE = "a3333333333333333";
 const BAD_META = `session-a/subagents/agent-${UNPARSEABLE}.meta.json`;
 
-/** The fixture's cards, from its README. */
+/**
+ * The fixture's cards, from its README. `tools` is each tool a card's
+ * transcript called, in the order it first called each, as the card reads it
+ * (#595). None of them runs `implement`, so none shows a step.
+ */
 const EXPECTED = {
   [SESSION_B]: {
     task: NO_TASK,
@@ -81,6 +88,7 @@ const EXPECTED = {
     model: NO_MODEL,
     state: SESSION_STATE.done,
     elapsed: "5m 0s",
+    tools: [],
   },
   [SESSION_A]: {
     task: "Implement issue #101.",
@@ -88,6 +96,7 @@ const EXPECTED = {
     model: "claude-opus-5-5",
     state: SESSION_STATE.running,
     elapsed: "15m 0s",
+    tools: ["Agent"],
   },
   [REVIEW]: {
     task: "Review the fixture",
@@ -95,6 +104,7 @@ const EXPECTED = {
     model: "claude-opus-5-5",
     state: SESSION_STATE.done,
     elapsed: "1m 55s",
+    tools: ["Read", "Agent"],
   },
   [NESTED]: {
     task: "Find the fixture's specs",
@@ -102,6 +112,7 @@ const EXPECTED = {
     model: "claude-haiku-5-5",
     state: SESSION_STATE.running,
     elapsed: "55s",
+    tools: ["Grep"],
   },
 } as const;
 
@@ -233,10 +244,63 @@ function backdateSessionA() {
  * tests alone, so every other test's cards and figures stand. Its prompt is
  * what Claude Code records for `/chain <plan>`, and its two `Agent` calls are
  * `chain` step 2's: Ember on `#201`, finished, and Flint on `#202`, still
- * running, which keeps the conductor Running. Neither worker has a
- * transcript, so no figure on the page moves.
+ * running, which keeps the conductor Running. Ember has no transcript.
+ * Flint's holds the calls `implement` makes up to opening its PR (#595), and
+ * no `usage`, so no figure on the page moves.
  */
 const CONDUCTOR = "session-c";
+const EMBER = "a5555555555555555";
+const FLINT = "a6666666666666666";
+/** Flint's branch, which puts it and its conductor in `#202`'s group. */
+const FLINT_GROUP = "issue:202";
+
+/** Flint's calls, one response each, in `implement`'s order. */
+const FLINT_CALLS: [string, object][] = [
+  ["Skill", { skill: "implement", args: "#202" }],
+  ["PowerShell", { command: "gh issue view 202 --json number,title,body" }],
+  [
+    "PowerShell",
+    {
+      command:
+        "git fetch origin; git switch -c feat/202-fixture origin/develop",
+    },
+  ],
+  ["Skill", { skill: "coding-standards" }],
+  ["Skill", { skill: "mattpocock-skills:tdd" }],
+  ["Edit", { file_path: "apps/web/src/fixture.ts" }],
+  [
+    "PowerShell",
+    {
+      command:
+        'gh issue comment 202 --body "Progress: built, next is review (step 7)"',
+    },
+  ],
+  ["Skill", { skill: "mattpocock-skills:code-review" }],
+  ["PowerShell", { command: "gh pr create --body-file .scratch/pr-202.md" }],
+];
+/** What Flint's card lists for them. */
+const FLINT_TOOLS = ["Skill ×4", "PowerShell ×4", "Edit"];
+
+const flintTranscript = () =>
+  [
+    ...FLINT_CALLS.map(([name, input], i) =>
+      JSON.stringify({
+        type: "assistant",
+        isSidechain: true,
+        agentId: FLINT,
+        sessionId: CONDUCTOR,
+        gitBranch: "feat/202-fixture",
+        timestamp: `2026-09-03T10:02:${String(i * 5).padStart(2, "0")}.000Z`,
+        message: {
+          model: "claude-opus-5-5",
+          content: [
+            { type: "tool_use", id: `toolu_fixture_flint_${i}`, name, input },
+          ],
+        },
+      }),
+    ),
+    "",
+  ].join("\n");
 const CHAIN_PLAN = "docs/plans/fixture-chain.md";
 const workerCall = (call: string, name: string, issue: number) =>
   JSON.stringify({
@@ -291,8 +355,9 @@ function writeConductor() {
         ...(finished ? { finished: true } : {}),
       }),
     );
-  meta("a5555555555555555", "Ember", 201, true);
-  meta("a6666666666666666", "Flint", 202, false);
+  meta(EMBER, "Ember", 201, true);
+  meta(FLINT, "Flint", 202, false);
+  writeFileSync(`${subagents}/agent-${FLINT}.jsonl`, flintTranscript());
 }
 
 /** One group by its key (`issue:101`, `base`, `other`). */
@@ -351,6 +416,21 @@ async function expectCard(
   } else {
     await expect(withSubagents).toHaveCount(0);
   }
+  await expect(facts.locator('[data-session-fact="Step"]')).toHaveCount(0);
+  await expectTools(facts, want.tools);
+}
+
+/**
+ * A card's tools, each its name as the card shows it, then `×n` when it was
+ * called more than once: `["Skill ×4", "Edit"]`. None reads "No tools called".
+ */
+async function expectTools(facts: Locator, tools: readonly string[]) {
+  const shown = facts.locator('[data-session-fact="Tools"]');
+  if (tools.length === 0) {
+    await expect(shown).toHaveText(NO_TOOLS);
+    return;
+  }
+  await expect(shown.locator("[data-session-tool]")).toHaveText([...tools]);
 }
 
 test.describe("dev tools: Sessions", () => {
@@ -728,6 +808,36 @@ test.describe("dev tools: Sessions", () => {
     await expect(workers.nth(0)).toContainText(SESSION_STATE.done);
     await expect(workers.nth(1)).toContainText(workerOn("Flint", 202));
     await expect(workers.nth(1)).toContainText(SESSION_STATE.running);
+  });
+
+  /** R9 and R10 (#595): the `implement` step a worker has reached, and the
+   *  tools every card has called. */
+  test("reads the worker that opened its PR at Ship, and lists the tools it called", async ({
+    page,
+  }) => {
+    writeConductor();
+
+    await page.goto(ROUTE.devSessions.path);
+
+    const group = groupIn(page, FLINT_GROUP);
+    const flint = own(childOf(cardIn(group, CONDUCTOR), FLINT));
+    await expect(flint.locator('[data-session-fact="Step"]')).toHaveText(
+      stepLabel(IMPLEMENT_STEP.ship),
+    );
+    await expectTools(flint, FLINT_TOOLS);
+
+    // The conductor started two workers and runs no `implement` itself, and
+    // Ember, with no transcript, has called nothing: neither shows a step.
+    const conductor = own(cardIn(groupIn(page, GROUP.base), CONDUCTOR));
+    await expect(conductor.locator('[data-session-fact="Step"]')).toHaveCount(
+      0,
+    );
+    await expectTools(conductor, ["Agent ×2"]);
+    const ember = own(
+      childOf(cardIn(groupIn(page, GROUP.base), CONDUCTOR), EMBER),
+    );
+    await expect(ember.locator('[data-session-fact="Step"]')).toHaveCount(0);
+    await expectTools(ember, []);
   });
 
   /**

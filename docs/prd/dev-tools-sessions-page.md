@@ -1,6 +1,6 @@
 # PRD: Dev-tools Sessions page
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-19
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-19
 
 ## Problem
 
