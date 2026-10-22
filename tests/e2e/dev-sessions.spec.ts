@@ -360,6 +360,72 @@ function writeConductor() {
   writeFileSync(`${subagents}/agent-${FLINT}.jsonl`, flintTranscript());
 }
 
+/**
+ * A page the size of a working machine's, written by the fold test alone:
+ * `MANY_SESSIONS` sessions on `#901`, each with `MANY_SUBAGENTS` subagents,
+ * about 6k elements, a quarter of the 26k the probe on #611 measured, enough
+ * that a fold laying out the whole page shows against one laying out its own
+ * session.
+ */
+const MANY_SESSIONS = 40;
+const MANY_SUBAGENTS = 4;
+const MANY_GROUP = "issue:901";
+
+function writeManySessions() {
+  const now = new Date().toISOString();
+  const record = (sessionId: string, message: object, extra: object = {}) =>
+    JSON.stringify({
+      sessionId,
+      gitBranch: "feat/901-fold",
+      timestamp: now,
+      message,
+      ...extra,
+    });
+  for (let s = 0; s < MANY_SESSIONS; s++) {
+    const session = `fold-${s}`;
+    const subagents = `${TRANSCRIPT_WORKING_DIR}/${session}/subagents`;
+    mkdirSync(subagents, { recursive: true });
+    const calls: string[] = [];
+    for (let n = 0; n < MANY_SUBAGENTS; n++) {
+      const call = `toolu_fixture_fold_${s}_${n}`;
+      calls.push(
+        record(session, {
+          model: "claude-opus-5-5",
+          content: [{ type: "tool_use", id: call, name: "Agent", input: {} }],
+          usage: { output_tokens: 100 },
+        }),
+      );
+      const agent = `a${String(s).padStart(8, "0")}${String(n).padStart(8, "0")}`;
+      writeFileSync(
+        `${subagents}/agent-${agent}.meta.json`,
+        JSON.stringify({
+          agentType: "Explore",
+          description: `Fold subagent ${n} of session ${s}`,
+          toolUseId: call,
+        }),
+      );
+      writeFileSync(
+        `${subagents}/agent-${agent}.jsonl`,
+        `${record(
+          session,
+          {
+            model: "claude-haiku-5-5",
+            content: [
+              { type: "tool_use", id: `${call}_grep`, name: "Grep", input: {} },
+            ],
+            usage: { output_tokens: 50 },
+          },
+          { isSidechain: true, agentId: agent },
+        )}\n`,
+      );
+    }
+    writeFileSync(
+      `${TRANSCRIPT_WORKING_DIR}/${session}.jsonl`,
+      `${calls.join("\n")}\n`,
+    );
+  }
+}
+
 /** One group by its key (`issue:101`, `base`, `other`). */
 const groupIn = (page: Page, key: string) =>
   page.locator(`[data-session-group="${key}"]`);
@@ -709,6 +775,60 @@ test.describe("dev tools: Sessions", () => {
       .click();
 
     await expect(childOf(childOf(a, REVIEW), NESTED)).toHaveCount(1);
+  });
+
+  /**
+   * #611: a fold froze a full page for over a second, because each one
+   * laid out and pre-painted every card on it to move the few below the
+   * fold. Held by what the browser's own trace says it laid out, a count,
+   * rather than by a time, which would pass or fail on the machine's speed:
+   * without each session's `content-visibility`, every layout of the fold
+   * covered more objects than the page has elements (38,930 for 26,307).
+   */
+  test("lays out the folded session, not the whole page", async ({
+    browser,
+    page,
+  }) => {
+    writeManySessions();
+    await page.goto(ROUTE.devSessions.path);
+    const card = cardIn(groupIn(page, MANY_GROUP), "fold-0");
+    const toggle = own(card).getByRole("button", {
+      name: /^Hide the subagents of/,
+    });
+    // The first reading of 200 transcripts takes longer than the fixture's 4.
+    await expect(toggle).toBeVisible({ timeout: 30_000 });
+    const elements = await page.evaluate(
+      () => document.getElementsByTagName("*").length,
+    );
+
+    await browser.startTracing(page, { categories: ["devtools.timeline"] });
+    // Pressed from inside the page, so the trace holds the fold's layouts
+    // and none of the test runner's own hit tests.
+    await toggle.evaluate(async (button: HTMLElement) => {
+      button.click();
+      await new Promise((settled) =>
+        requestAnimationFrame(() => setTimeout(settled, 0)),
+      );
+    });
+    const trace = JSON.parse((await browser.stopTracing()).toString()) as {
+      traceEvents: {
+        name: string;
+        ph: string;
+        args?: { beginData?: { totalObjects?: number } };
+      }[];
+    };
+
+    await expect(card.locator("[data-session-card]")).toHaveCount(0);
+    const laidOut = trace.traceEvents
+      .filter((event) => event.name === "Layout" && event.ph === "X")
+      .map((event) => event.args?.beginData?.totalObjects);
+    // A trace with no layout in it, or one whose events no longer say what
+    // they covered, fails here rather than passing on nothing.
+    expect(laidOut.length).toBeGreaterThan(0);
+    for (const objects of laidOut) {
+      expect(objects).toBeDefined();
+      expect(objects).toBeLessThan(elements / 4);
+    }
   });
 
   /**
