@@ -11,6 +11,7 @@ import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
 import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
+import { assistantResolved } from "../assistant-decisions";
 import { assistantUser, resolveHandoff } from "../automation";
 import { prisma, type Prisma } from "../db";
 import {
@@ -185,7 +186,7 @@ export async function enqueueAutoReply(ticketId: number): Promise<void> {
 export function autoReplyWillStillAct(): Prisma.TicketWhereInput {
   return {
     autoReplyOfferedAt: { not: null },
-    autoResolvedAt: null,
+    NOT: assistantResolved,
     autoReplyDecline: null,
     OR: [
       { messages: { none: { direction: MESSAGE_DIRECTION.outbound } } },

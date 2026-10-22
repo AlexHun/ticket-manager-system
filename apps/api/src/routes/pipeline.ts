@@ -171,8 +171,10 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
  * Which columns a run is rebuilt from. Exactly the ones the jobs write, plus
  * enough of the thread to answer "what did the machine cite". Whether each half
  * will still act — which reads `autoReplyOfferedAt` and the whole thread — is
- * asked of the database by `factsOf` instead, and so is what the classifier
- * decided (#561).
+ * asked of the database by `factsOf` instead, and so is what the assistant
+ * decided: the classifier's verdict (#561) and whether it resolved the ticket
+ * (#562). `autoResolvedAt` is still selected, for the time the resolved stop
+ * shows.
  */
 const RUN_SELECT = {
   id: true,

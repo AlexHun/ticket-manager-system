@@ -67,7 +67,8 @@ export async function ticketEffectivenessHandler(
   // Every count is a Prisma `where` over the same `window`. `resolved` and
   // `classified` read the statements `/pipeline` counts with too, from
   // `assistant-decisions.ts` (#561, #562): the auto-resolve stamp, never the
-  // assignee, which is the routing rule and the column an agent changes.
+  // assignee, which records who owns the ticket and is the column an agent
+  // changes.
   const [
     classified,
     resolved,

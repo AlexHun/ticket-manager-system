@@ -50,7 +50,7 @@ export const classifierGaveUp = {
  * touches it.
  *
  * Not the assignee. The resolved ticket is filed under the assistant's account,
- * but that is the routing rule, and the column an agent uses: the dashboard
+ * but that records who owns it, in the column an agent uses: the dashboard
  * used to count the assistant's assignments, so an agent reassigning a ticket
  * the assistant resolved took it out of the published auto-resolve rate while
  * `/pipeline` went on drawing it resolved.

@@ -588,23 +588,34 @@ describe("pipelineCounts — a classified ticket with no verdict", () => {
       autoReplyNotOffered: 2,
     });
   });
+});
 
-  test("counts as resolved what carries the stamp, whoever holds it (#562)", async () => {
+describe("pipelineCounts — a ticket the assistant resolved (#562)", () => {
+  const TO = new Date("2026-09-10T12:00:00.000Z");
+  const FROM = new Date(TO.getTime() - 30 * 24 * 60 * 60 * 1_000);
+  const AN_HOUR_AGO = new Date(TO.getTime() - 60 * 60 * 1_000);
+
+  const classified = {
+    createdAt: AN_HOUR_AGO,
+    category: TICKET_CATEGORY.Technical,
+    classifierCategory: TICKET_CATEGORY.Technical,
+    classifiedAt: AN_HOUR_AGO,
+    autoReplyOfferedAt: AN_HOUR_AGO,
+  };
+
+  test("counts what carries the stamp, whoever holds it", async () => {
     // R3: one the assistant resolved, then reassigned and closed by an agent;
     // and one still filed under the assistant whose stamp a reopen cleared.
     await seedTicket({
       ...classified,
       status: TICKET_STATUS.Closed,
-      autoReplyOfferedAt: AN_HOUR_AGO,
       autoResolvedAt: AN_HOUR_AGO,
       assignedToId: COLLEAGUE.admin.id,
     });
     await seedTicket({
       ...classified,
       status: TICKET_STATUS.Open,
-      autoReplyOfferedAt: AN_HOUR_AGO,
       assignedToId: COLLEAGUE.assistant.id,
-      ...reply(MESSAGE_DIRECTION.outbound, true),
     });
 
     const counts = await pipelineCounts(FROM, TO, true);
@@ -678,7 +689,7 @@ describe("GET /api/pipeline/runs/:id", () => {
 
   test("a ticket the assistant resolved and an agent reassigned is still resolved", async () => {
     // R3 (#562), through the route and so through `assistantResolved`: the
-    // assignee is the routing rule, and moving it withdraws nothing.
+    // assignee records who owns the ticket, and moving it withdraws nothing.
     const ticket = await seedTicket({
       status: TICKET_STATUS.Closed,
       category: TICKET_CATEGORY.Technical,

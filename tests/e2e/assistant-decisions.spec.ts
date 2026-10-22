@@ -296,6 +296,11 @@ test.describe("Assistant decisions: resolved by the assistant reads one way", ()
       },
     });
     expect(reply.status()).toBe(201);
+    // Threaded onto the ticket, not a new one: that is what makes it a reopen.
+    expect(await reply.json()).toMatchObject({
+      ticketId: reopened.ticketId,
+      threaded: true,
+    });
 
     const rows = await testDb.ticket.findMany({
       where: { id: { in: [reassigned.ticketId, reopened.ticketId] } },
