@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY, type TicketCategory } from "@ticket/shared";
+import { classifyStub, stubClassify } from "../test/classify";
 import { prisma, resetDb } from "../test/pg";
 
 /**
@@ -19,12 +20,19 @@ import { prisma, resetDb } from "../test/pg";
  * hand-written fake would be asserting against its own re-implementation of that
  * clause.
  *
- * No model is called on any path below, and none is mocked: every case here is
- * one the guards settle before `classifyTicket` is reached, which is exactly
- * what makes them worth pinning down.
+ * No model is called on any path below. Most cases are ones the guards settle
+ * before `classifyTicket` is reached, which is exactly what makes them worth
+ * pinning down; the ones about what a verdict records (#561) answer through the
+ * shared stub in `../test/classify`, which every other case leaves at its real
+ * default.
  */
 
+// The success and give-up paths are the two that reach the model, so they are
+// reached through the shared stub (`../test/classify`), set per test below.
+await stubClassify();
+
 const { CLASSIFY_WORKER } = await import("./classify-ticket");
+const { AI_FAILURE } = await import("../ai/provider");
 
 /** One ticket, as `ingest.ts` would have left it: no verdict, no category. */
 async function newTicket(
@@ -50,7 +58,60 @@ async function verdictOn(id: number) {
 }
 
 beforeEach(async () => {
+  classifyStub.answer = null;
   await resetDb();
+});
+
+afterAll(() => {
+  classifyStub.answer = null;
+});
+
+/** What the classifier recorded of its own decision (#561). */
+async function classifierCategoryOf(id: number) {
+  const row = await prisma.ticket.findUniqueOrThrow({
+    where: { id },
+    select: { classifierCategory: true },
+  });
+  return row.classifierCategory;
+}
+
+describe("handle — what the classifier records of its verdict (#561)", () => {
+  test("filing a category records it beside `category`, in the same write", async () => {
+    classifyStub.answer = { ok: true, category: TICKET_CATEGORY.Refund };
+    const id = await newTicket();
+
+    await CLASSIFY_WORKER.handle({ ticketId: id });
+
+    const row = await prisma.ticket.findUniqueOrThrow({
+      where: { id },
+      select: { category: true, classifierCategory: true, classifiedAt: true },
+    });
+    expect(row.category).toBe(TICKET_CATEGORY.Refund);
+    expect(row.classifierCategory).toBe(TICKET_CATEGORY.Refund);
+    expect(row.classifiedAt).toBeInstanceOf(Date);
+  });
+
+  test("an agent clearing the category afterwards leaves the record alone", async () => {
+    classifyStub.answer = { ok: true, category: TICKET_CATEGORY.Technical };
+    const id = await newTicket();
+    await CLASSIFY_WORKER.handle({ ticketId: id });
+
+    // The agent's write, as `PATCH /:id/category` makes it: `category` alone.
+    await prisma.ticket.update({ where: { id }, data: { category: null } });
+
+    expect(await classifierCategoryOf(id)).toBe(TICKET_CATEGORY.Technical);
+  });
+
+  test("giving up records nothing, which is how it stays told apart", async () => {
+    classifyStub.answer = { ok: false, reason: AI_FAILURE.auth };
+    const id = await newTicket();
+
+    await CLASSIFY_WORKER.handle({ ticketId: id });
+
+    expect(await verdictOn(id)).toMatchObject({ category: null });
+    expect((await verdictOn(id))?.classifiedAt).toBeInstanceOf(Date);
+    expect(await classifierCategoryOf(id)).toBeNull();
+  });
 });
 
 describe("handle", () => {

@@ -228,7 +228,9 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
 
     // Terminal. Stamp the ticket so the sweep below leaves it alone, and say so
     // once at error level — a misconfigured key is not visible anywhere else,
-    // and without this it looks exactly like a quiet week.
+    // and without this it looks exactly like a quiet week. No
+    // `classifierCategory`: a stamp without one is what "the classifier gave
+    // up" means (`assistant-decisions.ts`).
     console.error(
       `[classify] ticket ${ticketId} abandoned: ${result.reason} is not retryable`,
     );
@@ -247,9 +249,19 @@ async function handle(job: ClassifyTicketJob): Promise<void> {
   // row by id and would happily overwrite a category an agent chose while the
   // model was thinking. This one writes only if the field is still empty, in a
   // single statement, so there is no window between checking and writing.
+  //
+  // `classifierCategory` is the classifier's own record of what it filed, and
+  // this is its only writer (#561). `category` is the agent's column too, so an
+  // agent who clears it later would otherwise leave exactly what the terminal
+  // path above leaves. `assistant-decisions.ts` reads this instead. In the same
+  // write, so the record exists exactly when the filing does.
   const written = await prisma.ticket.updateMany({
     where: { id: ticketId, category: null },
-    data: { category: result.category, classifiedAt: new Date() },
+    data: {
+      category: result.category,
+      classifierCategory: result.category,
+      classifiedAt: new Date(),
+    },
   });
 
   // Silent when the guard fired: an agent got there first, which is the system
