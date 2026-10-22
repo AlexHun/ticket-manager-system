@@ -968,5 +968,15 @@
     "version": "0.1.250",
     "date": "2026-10-22",
     "title": "A Sessions card shows its implement step and the tools it called"
+  },
+  {
+    "version": "0.1.251",
+    "date": "2026-10-22",
+    "title": "A Sessions fold lays out its own session, not the whole page"
+  },
+  {
+    "version": "0.1.251",
+    "date": "2026-10-22",
+    "title": "Settle the #611 review findings"
   }
 ]
