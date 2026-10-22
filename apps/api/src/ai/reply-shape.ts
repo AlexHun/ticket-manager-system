@@ -198,7 +198,8 @@ const TRAILING_SIGN_OFF = new RegExp(
 );
 
 /**
- * Whatever follows a dash after the last full stop, tested as a sign off.
+ * Whatever follows the first dash after a sentence's end, to the end of the
+ * paragraph, tested as a sign off.
  *
  * `TRAILING_SIGN_OFF` leaves out "Thanks", "Thank you", the support team and the
  * product's name, because a sentence may end with them. After a dash they are
@@ -225,8 +226,8 @@ const STEP_MARKER = new RegExp(String.raw`^(?:${DASH}|[*•]|\d+[.)])\s*`);
  * Whether `text` is a sign off and nothing else, a leading dash looked past.
  *
  * Trailing punctuation and dashes are off before the length test and the brand
- * test, so "Best regards, —" is a closer and "The Great Forge Desk." a
- * signature.
+ * test, so "Best regards, —" is a closer and the product's name with a full
+ * stop after it is a signature.
  */
 function isSignOff(text: string): boolean {
   const line = text.replace(LEADING_DASH, "");

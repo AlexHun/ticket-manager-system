@@ -1,6 +1,6 @@
 # PRD: The auto-reply's text is shaped in one place, in one order
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-16
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-16
 
 ## Problem
 
