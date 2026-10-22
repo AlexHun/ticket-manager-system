@@ -925,24 +925,25 @@ describe("a stale citation that git history shows was renamed", () => {
     execFileSync("git", args, { cwd, env, encoding: "utf8" }).trim();
   const write = (file: string, text: string) =>
     writeFileSync(path.join(repo, file), text);
-  // Each git call is a process, ~60ms on Windows, so the hashes are read once
-  // at the end rather than after every commit.
+  // Each git call is a process, ~60ms or more on Windows, so the hashes are
+  // read once at the end rather than after every commit.
   const commit = (message: string) => {
     git(repo, "add", "-A");
     git(repo, "commit", "-q", "-m", message);
   };
 
   // A move is a plain rename that the next `add -A` stages: git records no
-  // renames, and `log` finds them by content, so `git mv` was a process apiece
-  // for nothing.
+  // renames either way, and `log` finds them by content.
   const move = (from: string, to: string) =>
     renameSync(path.join(repo, from), path.join(repo, to));
+  // The hook's eleven git processes take ~1.2s on a Windows dev machine, the
+  // clone dearer than the rest, and under memory pressure ran past bun's 5s
+  // default, blocking a push (#614). The hook and every test here that starts
+  // git have this timeout instead.
+  const GIT_TIMEOUT_MS = 30_000;
 
   // Built in `beforeAll` rather than in the describe body, so a run filtered
   // to other tests starts no git, and a git failure fails these tests alone.
-  // Its eleven git processes take ~1.2s on a Windows dev machine and passed
-  // bun's 5s hook default under memory pressure, blocking a push (#614), so
-  // the hook has a timeout of its own.
   let movedIn = "";
   let renamedIn = "";
   beforeAll(() => {
@@ -990,7 +991,7 @@ describe("a stale citation that git history shows was renamed", () => {
       pathToFileURL(repo).href,
       shallow,
     );
-  }, 30_000);
+  }, GIT_TIMEOUT_MS);
 
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -1010,31 +1011,39 @@ describe("a stale citation that git history shows was renamed", () => {
     ).stale;
   };
 
-  test("fails with the new name and the commit that renamed it, and a citation never renamed fails as before", () => {
-    expect(staleIn(repo)).toEqual([
-      `${DOC}:1 cites \`provider.ts\`, which no tracked file matches; renamed provider.ts → src/llm.ts (${movedIn})`,
-      `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches; renamed src/provider.ts → src/llm.ts (${movedIn})`,
-      `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment; renamed TABLE_FRAME → TableFrame (${renamedIn})`,
-      `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
-      `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
-      // Two files named `util.ts` were renamed: no telling which one is meant.
-      `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
-      `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches; renamed a/util.ts → a/helpers.ts (${movedIn})`,
-    ]);
-  });
+  test(
+    "fails with the new name and the commit that renamed it, and a citation never renamed fails as before",
+    () => {
+      expect(staleIn(repo)).toEqual([
+        `${DOC}:1 cites \`provider.ts\`, which no tracked file matches; renamed provider.ts → src/llm.ts (${movedIn})`,
+        `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches; renamed src/provider.ts → src/llm.ts (${movedIn})`,
+        `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment; renamed TABLE_FRAME → TableFrame (${renamedIn})`,
+        `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
+        `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+        // Two files named `util.ts` were renamed: no telling which one is meant.
+        `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+        `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches; renamed a/util.ts → a/helpers.ts (${movedIn})`,
+      ]);
+    },
+    GIT_TIMEOUT_MS,
+  );
 
-  test("on a shallow clone still fails, naming the document, line and citation, with no hint", () => {
-    expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe("true");
-    expect(staleIn(shallow)).toEqual([
-      `${DOC}:1 cites \`provider.ts\`, which no tracked file matches`,
-      `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches`,
-      `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment`,
-      `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
-      `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
-      `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
-      `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches`,
-    ]);
-  });
+  test(
+    "on a shallow clone still fails, naming the document, line and citation, with no hint",
+    () => {
+      expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe("true");
+      expect(staleIn(shallow)).toEqual([
+        `${DOC}:1 cites \`provider.ts\`, which no tracked file matches`,
+        `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches`,
+        `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment`,
+        `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
+        `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+        `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+        `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches`,
+      ]);
+    },
+    GIT_TIMEOUT_MS,
+  );
 
   test("when git cannot run, the lookup answers nothing rather than throwing", () => {
     // A directory that does not exist: git cannot even start in it, whatever
@@ -1052,33 +1061,37 @@ describe("a stale citation that git history shows was renamed", () => {
     ).toBeUndefined();
   });
 
-  test("asks the repository at its root even when the environment names another", () => {
-    // Git runs a hook with `GIT_DIR` set; from a linked worktree, `pre-push`
-    // reached this suite with it pointing at the worktree being pushed. Every
-    // git call here inherited it, so `trackedFiles` and `renameHints` read
-    // that repository instead of `root`, and this block's own `git init` and
-    // commits landed in it: the branch gained four planted commits, and the
-    // shared config `core.bare = true` (#531). A child process, because Bun
-    // hands a child the environment it started with, not `process.env` as a
-    // test has since changed it.
-    const other = path.join(scratch, "other");
-    mkdirSync(other);
-    git(other, "init", "-q");
-    const module = path.join(import.meta.dir, "doc-citations.ts");
-    const listed = execFileSync(
-      process.execPath,
-      [
-        "-e",
-        `import { trackedFiles } from ${JSON.stringify(module)};
+  test(
+    "asks the repository at its root even when the environment names another",
+    () => {
+      // Git runs a hook with `GIT_DIR` set; from a linked worktree, `pre-push`
+      // reached this suite with it pointing at the worktree being pushed. Every
+      // git call here inherited it, so `trackedFiles` and `renameHints` read
+      // that repository instead of `root`, and this block's own `git init` and
+      // commits landed in it: the branch gained four planted commits, and the
+      // shared config `core.bare = true` (#531). A child process, because Bun
+      // hands a child the environment it started with, not `process.env` as a
+      // test has since changed it.
+      const other = path.join(scratch, "other");
+      mkdirSync(other);
+      git(other, "init", "-q");
+      const module = path.join(import.meta.dir, "doc-citations.ts");
+      const listed = execFileSync(
+        process.execPath,
+        [
+          "-e",
+          `import { trackedFiles } from ${JSON.stringify(module)};
          console.log(JSON.stringify(trackedFiles(${JSON.stringify(repo)})));`,
-      ],
-      {
-        env: { ...env, GIT_DIR: path.join(other, ".git") },
-        encoding: "utf8",
-      },
-    );
-    expect(JSON.parse(listed)).toContain("src/llm.ts");
-  });
+        ],
+        {
+          env: { ...env, GIT_DIR: path.join(other, ".git") },
+          encoding: "utf8",
+        },
+      );
+      expect(JSON.parse(listed)).toContain("src/llm.ts");
+    },
+    GIT_TIMEOUT_MS,
+  );
 
   test("a green run performs no history lookup", () => {
     const citations = plantedCitations("See `provider.ts` and `TableFrame`.\n");
