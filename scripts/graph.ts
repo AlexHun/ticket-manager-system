@@ -15,7 +15,7 @@
 //     `/__dev/map`, whose `imports`, `importedBy` and `exports` are read here.
 // So this file only decides argv and layout, the split `bun run tokens` keeps
 // with `gatherUsage`, and for the same reason: `scripts/` has no test runner
-// (`docs/standards/frontend.md`). Change what it prints and check it by hand.
+// (`docs/standards/dev-tools.md`). Change what it prints and check it by hand.
 //
 // Run by Bun, like every script here: both modules it reaches are TypeScript.
 //
