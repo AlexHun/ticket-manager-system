@@ -963,5 +963,10 @@
     "version": "0.1.249",
     "date": "2026-10-21",
     "title": "The Sessions page lists a running chain's issues in order, merged, in progress, next"
+  },
+  {
+    "version": "0.1.250",
+    "date": "2026-10-22",
+    "title": "A Sessions card shows its implement step and the tools it called"
   }
 ]
