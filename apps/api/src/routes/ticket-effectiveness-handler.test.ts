@@ -1,13 +1,13 @@
 /**
- * Unit tests for `ticketEffectivenessHandler`'s facts scan — the raw SQL half of
+ * Unit tests for `ticketEffectivenessHandler`'s counts — the database half of
  * `apps/api/src/routes/ticket-effectiveness.ts`.
  *
  * A second file rather than an extension of `ticket-effectiveness.test.ts`,
  * which says so itself: that one is about the two pure functions over plain rows
  * and deliberately imports neither `../db` nor the handler. This one is the
- * opposite half — a `COUNT(*) FILTER` against a real Postgres (`../test/pg`,
- * ADR-0014), which is the only seam that can tell a `WHERE` clause apart from an
- * assertion about the string it was written into.
+ * opposite half — the handler's `where`s against a real Postgres (`../test/pg`,
+ * ADR-0014), which is the only seam that can tell a query apart from an
+ * assertion about the arguments it was written with.
  *
  * What it is here for is `decline.count` and the rate over it. Both used to read
  * `autoReplyDecline IS NOT NULL`, which folded outages in with verdicts and
@@ -32,8 +32,8 @@ import {
   type AssistantEffectivenessResponse,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import { resetDb } from "../test/pg";
-import { seedTicket } from "../test/fixtures";
+import { prisma, resetDb } from "../test/pg";
+import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 const { ticketEffectivenessHandler } = await import("./ticket-effectiveness");
@@ -174,5 +174,54 @@ describe("GET /api/tickets/effectiveness — what counts as classified (#561)", 
     });
 
     expect((await read()).classified).toBe(0);
+  });
+});
+
+describe("GET /api/tickets/effectiveness — what counts as resolved by the assistant (#562)", () => {
+  /** A ticket the auto-reply answered, as `auto-reply-ticket.ts` leaves it. */
+  function seedAutoResolved(assignedToId: string | null) {
+    return seedTicket({
+      status: TICKET_STATUS.Resolved,
+      category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
+      createdAt: SEEDED_AT,
+      classifiedAt: SEEDED_AT,
+      autoResolvedAt: SEEDED_AT,
+      assignedToId,
+    });
+  }
+
+  beforeEach(async () => {
+    await seedColleagues("agent", "assistant");
+  });
+
+  test("a ticket the assistant resolved counts, whoever it is assigned to since", async () => {
+    // R3: an agent reassigning it, or moving its status on, withdraws nothing.
+    await seedAutoResolved(COLLEAGUE.assistant.id);
+    const reassigned = await seedAutoResolved(COLLEAGUE.agent.id);
+    await prisma.ticket.update({
+      where: { id: reassigned.id },
+      data: { status: TICKET_STATUS.Closed },
+    });
+
+    const body = await read();
+
+    expect(body.autoReply.resolved).toBe(2);
+    expect(body.autoReply.rate).toBe(1);
+  });
+
+  test("a ticket assigned to the assistant with no auto-resolve stamp does not", async () => {
+    // A customer's reopen clears the stamp (`ingest.ts`), and that is the one
+    // thing that withdraws the resolution, wherever the ticket is assigned.
+    await seedTicket({
+      status: TICKET_STATUS.Open,
+      category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
+      createdAt: SEEDED_AT,
+      classifiedAt: SEEDED_AT,
+      assignedToId: COLLEAGUE.assistant.id,
+    });
+
+    expect((await read()).autoReply.resolved).toBe(0);
   });
 });

@@ -32,7 +32,11 @@ import {
   type PipelineStageState,
 } from "@ticket/shared";
 import { autoReplyArticleCount } from "../ai/knowledge-base";
-import { classifierFiled, classifierGaveUp } from "../assistant-decisions";
+import {
+  assistantResolved,
+  classifierFiled,
+  classifierGaveUp,
+} from "../assistant-decisions";
 import { isAiConfigured } from "../ai/provider";
 import { prisma, type Prisma } from "../db";
 import {
@@ -218,16 +222,26 @@ type ClassifierVerdict =
   (typeof CLASSIFIER_VERDICT)[keyof typeof CLASSIFIER_VERDICT] | null;
 
 /**
+ * What the assistant decided about a row: the classifier's verdict, and
+ * whether the auto-reply resolved it (`assistantResolved`, #562). Both are the
+ * database's answers to the statements in `assistant-decisions.ts`, asked by
+ * `factsOf` below.
+ */
+type Decided = { verdict: ClassifierVerdict; resolved: boolean };
+
+/**
  * Rebuild one ticket's trip down the rail.
  *
  * Every branch here is a fact a column records. Whether each half will still
  * act on this row arrives as `awaiting`: the caller asks the database, through
  * `factsOf` below, which runs `classifierWillStillAct` and
  * `autoReplyWillStillAct` — the statements the rail's counts read too, and the
- * first the reconcile sweep. What the classifier decided arrives the same way,
- * as `verdict`, from `classifierFiled` and `classifierGaveUp` (#561): read
- * off `category` here, an agent clearing a category the classifier filed was
- * drawn as the classifier giving up. What this deliberately does *not* do is
+ * first the reconcile sweep. What the assistant decided arrives the same way,
+ * as `decided`: the classifier's verdict from `classifierFiled` and
+ * `classifierGaveUp` (#561) — read off `category` here, an agent clearing a
+ * category the classifier filed was drawn as the classifier giving up — and
+ * whether the auto-reply resolved it from `assistantResolved` (#562), the
+ * statement the dashboard counts. What this deliberately does *not* do is
  * guess: a ticket with no classification verdict that nothing will classify —
  * no API key, a category a person filed first, or older than the reconcile
  * window — is `notOffered`, not "still thinking", because nothing is scheduled
@@ -250,7 +264,7 @@ export function toRun(
   row: RunRow,
   config: PipelineConfig,
   awaiting: Awaiting,
-  verdict: ClassifierVerdict,
+  { verdict, resolved }: Decided,
 ): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
   const machineClassified = verdict === CLASSIFIER_VERDICT.filed;
@@ -259,7 +273,6 @@ export function toRun(
   // `PipelineCounts.classifyAbandoned` uses — because `abandoned` is now an
   // outcome two different exits reach.
   const classifyAbandoned = verdict === CLASSIFIER_VERDICT.gaveUp;
-  const resolved = row.autoResolvedAt !== null;
 
   // Is anything still going to happen to this ticket? Two different answers,
   // one per half of the pipeline. A ticket waiting on a stage nothing will ever
@@ -425,8 +438,9 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * can check.
  *
  * Filed and given up are `classifierFiled` and `classifierGaveUp` from
- * `assistant-decisions.ts` (#561), the statements `factsOf` asks of each listed
- * ticket and the effectiveness route counts its `classified` with.
+ * `assistant-decisions.ts` (#561), and resolved is `assistantResolved` from the
+ * same module (#562): the statements `factsOf` asks of each listed ticket and
+ * the effectiveness route counts its `classified` and `resolved` with.
  *
  * The classifier's rule is `classifierWillStillAct` from `jobs/classify-ticket.ts`
  * at `to`, the statement `factsOf` asks of each listed ticket, so the
@@ -456,7 +470,7 @@ export async function pipelineCounts(
   const noAutoReplyVerdict = {
     ...window,
     ...classifierFiled,
-    autoResolvedAt: null,
+    NOT: assistantResolved,
     autoReplyDecline: null,
   } satisfies Prisma.TicketWhereInput;
 
@@ -476,9 +490,7 @@ export async function pipelineCounts(
     prisma.ticket.count({
       where: { AND: [window, classifierWillStillAct(to)] },
     }),
-    prisma.ticket.count({
-      where: { ...window, autoResolvedAt: { not: null } },
-    }),
+    prisma.ticket.count({ where: { ...window, ...assistantResolved } }),
     prisma.ticket.groupBy({
       by: ["autoReplyDecline"],
       where: { ...window, autoReplyDecline: { not: null } },
@@ -528,14 +540,13 @@ export async function pipelineCounts(
  * What `toRun` takes about each of `ticketIds` at `now`, asked through the
  * statements `pipelineCounts` counts: what each half of the pipeline will still
  * act on (`classifierWillStillAct`, `autoReplyWillStillAct`), and what the
- * classifier decided (`classifierFiled`, `classifierGaveUp`, #561).
+ * assistant decided (`classifierFiled`, `classifierGaveUp`, #561;
+ * `assistantResolved`, #562).
  */
 async function factsOf(
   ticketIds: number[],
   now: Date,
-): Promise<
-  (ticketId: number) => { awaiting: Awaiting; verdict: ClassifierVerdict }
-> {
+): Promise<(ticketId: number) => { awaiting: Awaiting; decided: Decided }> {
   const matching = async (rule: Prisma.TicketWhereInput) => {
     const rows = await prisma.ticket.findMany({
       where: { AND: [{ id: { in: ticketIds } }, rule] },
@@ -543,23 +554,27 @@ async function factsOf(
     });
     return new Set(rows.map((row) => row.id));
   };
-  const [classifierWillAct, autoReplyWillAct, filed, gaveUp] =
+  const [classifierWillAct, autoReplyWillAct, filed, gaveUp, resolved] =
     await Promise.all([
       matching(classifierWillStillAct(now)),
       matching(autoReplyWillStillAct()),
       matching(classifierFiled),
       matching(classifierGaveUp),
+      matching(assistantResolved),
     ]);
   return (ticketId) => ({
     awaiting: {
       classifier: classifierWillAct.has(ticketId),
       autoReply: autoReplyWillAct.has(ticketId),
     },
-    verdict: filed.has(ticketId)
-      ? CLASSIFIER_VERDICT.filed
-      : gaveUp.has(ticketId)
-        ? CLASSIFIER_VERDICT.gaveUp
-        : null,
+    decided: {
+      verdict: filed.has(ticketId)
+        ? CLASSIFIER_VERDICT.filed
+        : gaveUp.has(ticketId)
+          ? CLASSIFIER_VERDICT.gaveUp
+          : null,
+      resolved: resolved.has(ticketId),
+    },
   });
 }
 
@@ -569,8 +584,8 @@ function runOf(
   config: PipelineConfig,
   facts: Awaited<ReturnType<typeof factsOf>>,
 ): PipelineRun {
-  const { awaiting, verdict } = facts(row.id);
-  return toRun(row, config, awaiting, verdict);
+  const { awaiting, decided } = facts(row.id);
+  return toRun(row, config, awaiting, decided);
 }
 
 pipelineRouter.get(

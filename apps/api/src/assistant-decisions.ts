@@ -13,7 +13,9 @@ import type { Prisma } from "./db";
  * was reported as the machine failing.
  *
  * So the classifier records what it filed in `classifierCategory`, a column no
- * agent write touches, and the facts below read that. Queries rather than row
+ * agent write touches, and the facts below read that. "Resolved by the
+ * assistant" was read two ways as well, off the assignee on the dashboard and
+ * off `autoResolvedAt` on `/pipeline` (#562); it is the stamp now, on both. Queries rather than row
  * predicates, for the reason `classifierWillStillAct` is one: every reader can
  * run a query, so the routes count with these and ask them of the tickets they
  * list, and `toRun` takes the answer rather than restating it.
@@ -39,4 +41,20 @@ export const classifierFiled = {
 export const classifierGaveUp = {
   classifiedAt: { not: null },
   classifierCategory: null,
+} satisfies Prisma.TicketWhereInput;
+
+/**
+ * The auto-reply resolved the ticket, and no customer has reopened it since
+ * (#562). `autoResolvedAt` is stamped by the auto-reply's success path and
+ * cleared by a customer's reply in `ingest.ts`, and nothing an agent does
+ * touches it.
+ *
+ * Not the assignee. The resolved ticket is filed under the assistant's account,
+ * but that is the routing rule, and the column an agent uses: the dashboard
+ * used to count the assistant's assignments, so an agent reassigning a ticket
+ * the assistant resolved took it out of the published auto-resolve rate while
+ * `/pipeline` went on drawing it resolved.
+ */
+export const assistantResolved = {
+  autoResolvedAt: { not: null },
 } satisfies Prisma.TicketWhereInput;

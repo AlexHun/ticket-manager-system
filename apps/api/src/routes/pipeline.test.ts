@@ -99,12 +99,14 @@ const NOT_AWAITING = { classifier: false, autoReply: false };
 /** The auto-reply was offered the row and nobody has answered it since. */
 const AWAITING_AUTO_REPLY = { classifier: false, autoReply: true };
 /**
- * `toRun`'s answer to what the classifier decided, which the routes ask of the
- * database through `classifierFiled` and `classifierGaveUp` (#561).
+ * `toRun`'s answer to what the assistant decided, which the routes ask of the
+ * database through `classifierFiled` and `classifierGaveUp` (#561) and
+ * `assistantResolved` (#562).
  */
-const FILED = CLASSIFIER_VERDICT.filed;
-const GAVE_UP = CLASSIFIER_VERDICT.gaveUp;
-const UNSTAMPED = null;
+const FILED = { verdict: CLASSIFIER_VERDICT.filed, resolved: false };
+const GAVE_UP = { verdict: CLASSIFIER_VERDICT.gaveUp, resolved: false };
+const UNSTAMPED = { verdict: null, resolved: false };
+const RESOLVED = { verdict: CLASSIFIER_VERDICT.filed, resolved: true };
 
 /** Everything on and nothing withheld: the deployment where the pipeline runs. */
 const LIVE: PipelineConfig = {
@@ -232,7 +234,7 @@ describe("toRun — the rest of the outcomes", () => {
       }),
       LIVE,
       NOT_AWAITING,
-      FILED,
+      RESOLVED,
     );
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.resolved);
@@ -586,6 +588,29 @@ describe("pipelineCounts — a classified ticket with no verdict", () => {
       autoReplyNotOffered: 2,
     });
   });
+
+  test("counts as resolved what carries the stamp, whoever holds it (#562)", async () => {
+    // R3: one the assistant resolved, then reassigned and closed by an agent;
+    // and one still filed under the assistant whose stamp a reopen cleared.
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Closed,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      autoResolvedAt: AN_HOUR_AGO,
+      assignedToId: COLLEAGUE.admin.id,
+    });
+    await seedTicket({
+      ...classified,
+      status: TICKET_STATUS.Open,
+      autoReplyOfferedAt: AN_HOUR_AGO,
+      assignedToId: COLLEAGUE.assistant.id,
+      ...reply(MESSAGE_DIRECTION.outbound, true),
+    });
+
+    const counts = await pipelineCounts(FROM, TO, true);
+
+    expect(counts.autoResolved).toBe(1);
+  });
 });
 
 describe("GET /api/pipeline/runs/:id", () => {
@@ -649,6 +674,24 @@ describe("GET /api/pipeline/runs/:id", () => {
 
     expect(body.run.outcome).not.toBe(PIPELINE_OUTCOME.abandoned);
     expect(body.run.category).toBeNull();
+  });
+
+  test("a ticket the assistant resolved and an agent reassigned is still resolved", async () => {
+    // R3 (#562), through the route and so through `assistantResolved`: the
+    // assignee is the routing rule, and moving it withdraws nothing.
+    const ticket = await seedTicket({
+      status: TICKET_STATUS.Closed,
+      category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
+      classifiedAt: CLASSIFIED_AT,
+      autoResolvedAt: CLASSIFIED_AT,
+      assignedToId: COLLEAGUE.admin.id,
+    });
+
+    const res = await fetch(url(`/runs/${ticket.id}`), { headers: ADMIN });
+    const body = (await res.json()) as PipelineRunResponse;
+
+    expect(body.run.outcome).toBe(PIPELINE_OUTCOME.resolved);
   });
 
   test("a ticket the classifier gave up on is abandoned at the classified stop", async () => {
