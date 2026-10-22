@@ -64,6 +64,33 @@ export type SessionState = (typeof SESSION_STATE)[keyof typeof SESSION_STATE];
  */
 export const SESSION_IDLE_MS = 15 * 60_000;
 
+/**
+ * How far through the `implement` skill a card is (#595): R9's eight steps
+ * in their order (`apps/web/dev/implement-step.ts` maps them onto the skill's), or Unknown when its tool calls match none of the
+ * rules `apps/web/dev/implement-step.ts` reads them by, never the nearest
+ * guess.
+ */
+export const IMPLEMENT_STEP = {
+  read: "Read the ticket",
+  branch: "Branch",
+  standards: "Standards",
+  build: "Build",
+  commit: "Commit",
+  review: "Review",
+  ship: "Ship",
+  ci: "CI",
+  unknown: "Unknown",
+} as const;
+export type ImplementStep =
+  (typeof IMPLEMENT_STEP)[keyof typeof IMPLEMENT_STEP];
+
+/** One tool a card has called, and how many times (#595, R10). */
+export interface ToolTally {
+  /** Claude Code's name for it: `Bash`, `Read`, `mcp__context7__query-docs`. */
+  name: string;
+  calls: number;
+}
+
 /** One card: a session, or a subagent somewhere under one. */
 export interface SessionCard {
   /** The session's id (its transcript's name), or the subagent's `agentId`. */
@@ -87,6 +114,12 @@ export interface SessionCard {
    * timestamps to measure between.
    */
   elapsedMs: number | null;
+  /** The `implement` step it has reached, or null when it is not running
+   *  `implement` at all. */
+  step: ImplementStep | null;
+  /** Every tool its own transcript called, in the order it first called
+   *  each. */
+  tools: ToolTally[];
   /** The subagents it started, oldest first. */
   children: SessionCard[];
 }

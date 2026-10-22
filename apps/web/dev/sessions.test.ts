@@ -14,6 +14,7 @@ import { scanSpend } from "./transcripts.ts";
 import {
   SESSION_IDLE_MS,
   SESSION_STATE,
+  IMPLEMENT_STEP,
   type SessionCard,
   type SessionSlice,
   type SessionsReport,
@@ -1046,5 +1047,137 @@ describe("readSessions: chains", () => {
 
     expect(chains).toEqual([]);
     expect(asked).toEqual([]);
+  });
+});
+
+/**
+ * Slice 6 (#595): the `implement` step a card has reached and the tools it
+ * has called, off its own transcript's calls (`./implement-step.ts`).
+ */
+describe("readSessions: step and tools", () => {
+  const calls = (at: string, ...uses: [string, object][]) => ({
+    type: "assistant",
+    timestamp: at,
+    message: {
+      model: "claude-opus-5-5",
+      content: uses.map(([name, input], i) => ({
+        type: "tool_use",
+        id: `toolu_${at}_${i}`,
+        name,
+        input,
+      })),
+      usage: { output_tokens: 1 },
+    },
+  });
+  const shell = (command: string): [string, object] => [
+    "PowerShell",
+    { command },
+  ];
+  const skill = (name: string): [string, object] => ["Skill", { skill: name }];
+
+  it("reads a worker that opened its PR at Ship, and tallies its tools in the order it first called each", async () => {
+    session(
+      "s",
+      prompt("Run a chain.", T(0)),
+      response(1, T(1), { calls: ["toolu_w", "toolu_x"] }),
+    );
+    subagent(
+      "s",
+      "worker",
+      {
+        agentType: "general-purpose",
+        description: "Ember implements #595",
+        toolUseId: "toolu_w",
+      },
+      prompt(
+        "You are Ember. Invoke the `implement` skill for issue #595.",
+        T(2),
+      ),
+      calls(T(3), skill("implement"), shell("gh issue view 595")),
+      calls(T(4), shell("git switch -c feat/595-x origin/develop")),
+      calls(T(5), skill("coding-standards"), ["Read", { file_path: "a" }]),
+      calls(T(6), skill("mattpocock-skills:tdd"), ["Edit", {}], ["Edit", {}]),
+      calls(
+        T(7),
+        shell(
+          'gh issue comment 595 --body "Progress: built, next is review (step 7)"',
+        ),
+      ),
+      calls(T(8), skill("mattpocock-skills:code-review"), ["Agent", {}]),
+      calls(T(9), shell("gh pr create --body-file pr.md")),
+    );
+    subagent(
+      "s",
+      "explore",
+      {
+        agentType: "Explore",
+        description: "Look around",
+        toolUseId: "toolu_x",
+      },
+      calls(T(3), ["Grep", {}]),
+    );
+
+    const [card] = (await readSessions(dir)).sessions;
+    expect(card?.step).toBeNull();
+    expect(card?.tools).toEqual([{ name: "Agent", calls: 2 }]);
+    const [worker, explore] = card!.children;
+    expect(worker?.id).toBe("worker");
+    expect(worker?.step).toBe(IMPLEMENT_STEP.ship);
+    expect(worker?.tools).toEqual([
+      { name: "Skill", calls: 4 },
+      { name: "PowerShell", calls: 4 },
+      { name: "Read", calls: 1 },
+      { name: "Edit", calls: 2 },
+      { name: "Agent", calls: 1 },
+    ]);
+    expect(explore?.id).toBe("explore");
+    expect(explore?.step).toBeNull();
+    expect(explore?.tools).toEqual([{ name: "Grep", calls: 1 }]);
+  });
+
+  it("reads a session given /implement at the prompt as having invoked it", async () => {
+    session(
+      "s",
+      prompt(
+        "<command-message>implement</command-message>\n<command-name>/implement</command-name>\n<command-args>#595</command-args>",
+        T(0),
+      ),
+      calls(T(1), shell("gh issue view 595")),
+    );
+
+    const [card] = (await readSessions(dir)).sessions;
+    expect(card?.step).toBe(IMPLEMENT_STEP.read);
+  });
+
+  it("lists no tools and no step for a card that has called none", async () => {
+    session("s", prompt("Hello", T(0)), response(1, T(1)));
+
+    const [card] = (await readSessions(dir)).sessions;
+    expect(card?.tools).toEqual([]);
+    expect(card?.step).toBeNull();
+  });
+
+  it("moves the step on when a resumed reading reads the next call", async () => {
+    session(
+      "s",
+      prompt("Go.", T(0)),
+      calls(T(1), skill("implement"), shell("gh issue view 595")),
+    );
+    const reader = createSessionsReader();
+    expect((await reader.read(dir)).sessions[0]?.step).toBe(
+      IMPLEMENT_STEP.read,
+    );
+
+    appendFileSync(
+      join(dir, "s.jsonl"),
+      lines(calls(T(2), shell("git switch -c feat/595-x"))),
+    );
+
+    const [card] = (await reader.read(dir)).sessions;
+    expect(card?.step).toBe(IMPLEMENT_STEP.branch);
+    expect(card?.tools).toEqual([
+      { name: "Skill", calls: 1 },
+      { name: "PowerShell", calls: 2 },
+    ]);
   });
 });

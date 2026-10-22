@@ -26,6 +26,8 @@ const report = (
       state: "Running",
       startedAt: null,
       elapsedMs: null,
+      step: null,
+      tools: [],
       children: [],
     },
   ],

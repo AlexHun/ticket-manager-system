@@ -153,14 +153,15 @@ figure above: the `develop` turn in `session-b.jsonl` (#593), and these two:
 
 A session's card is named for its transcript (`session-a`), a subagent's for
 its `agentId`. Its elapsed time runs from its transcript's first timestamp to
-its latest:
+its latest. Its tools are those its own transcript called, in the order it
+first called each (#595); none of them runs `implement`, so none shows a step:
 
-| Card                | Type              | Model              | State   | Elapsed  |
-| ------------------- | ----------------- | ------------------ | ------- | -------- |
-| `session-b`         | Session           | unknown            | Done    | `5m 0s`  |
-| `session-a`         | Session           | `claude-opus-5-5`  | Running | `15m 0s` |
-| `a1111111111111111` | `general-purpose` | `claude-opus-5-5`  | Done    | `1m 55s` |
-| `a2222222222222222` | `Explore`         | `claude-haiku-5-5` | Running | `55s`    |
+| Card                | Type              | Model              | State   | Elapsed  | Tools           |
+| ------------------- | ----------------- | ------------------ | ------- | -------- | --------------- |
+| `session-b`         | Session           | unknown            | Done    | `5m 0s`  | none            |
+| `session-a`         | Session           | `claude-opus-5-5`  | Running | `15m 0s` | `Agent`         |
+| `a1111111111111111` | `general-purpose` | `claude-opus-5-5`  | Done    | `1m 55s` | `Read`, `Agent` |
+| `a2222222222222222` | `Explore`         | `claude-haiku-5-5` | Running | `55s`    | `Grep`          |
 
 Session `b` has no prompt, so its task reads "No prompt recorded".
 `a3333333333333333`'s meta file is the warning, and it has no card.
