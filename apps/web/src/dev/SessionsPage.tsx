@@ -299,7 +299,15 @@ function Group({
       <ol className="space-y-3">
         {group.sessions.map((slice) => (
           <li key={slice.id}>
-            <Card size="sm">
+            {/* Each session skips its layout and paint while off screen. A
+                fold otherwise laid out and pre-painted every card on the
+                page: with this machine's 256 sessions, 1.3s of frozen page
+                per press (#611). On the card rather than the `<li>`, whose
+                paint containment would clip the card's ring. */}
+            <Card
+              size="sm"
+              className="[contain-intrinsic-size:auto_15rem] [content-visibility:auto]"
+            >
               <CardContent>
                 <CardBody slice={slice} cards={cards} depth={0} />
               </CardContent>
