@@ -843,8 +843,9 @@ test.describe("dev tools: Sessions", () => {
   /**
    * R12: Claude Code's workers are sessions and subagents, and their progress
    * a state or a step, because `GLOSSARY.md` gives the other words to the
-   * desk. File and directory names are left out of the check: they are
-   * Claude Code's (`agent-<id>.meta.json`), not the page's words.
+   * desk. File and directory names, and the tools a card lists (`Agent`
+   * among them, #595), are left out of the check: every one is in `<code>`
+   * and is Claude Code's (`agent-<id>.meta.json`), not the page's words.
    */
   test("never uses the desk's words for Claude Code's workers", async ({
     page,

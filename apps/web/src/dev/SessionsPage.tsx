@@ -436,7 +436,7 @@ function Tools({ tools }: { tools: ToolTally[] }) {
       {tools.map(({ name, calls }) => (
         <span key={name} data-session-tool={name} className="tabular-nums">
           <code className="font-mono">{name}</code>
-          {toolCallCount(calls) && <> {toolCallCount(calls)}</>}
+          {toolCallCount(calls)}
         </span>
       ))}
     </span>

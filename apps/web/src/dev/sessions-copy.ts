@@ -47,10 +47,10 @@ export const STEP_UNKNOWN = "Step unknown";
 /** A card whose transcript holds no tool call. */
 export const NO_TOOLS = "No tools called";
 
-/** How many times a card called one tool, after its name: `×3`. Nothing for
- *  one call, which the name alone says. */
+/** How many times a card called one tool, after its name and the space
+ *  before it: ` ×3`. Nothing for one call, which the name alone says. */
 export const toolCallCount = (n: number) =>
-  n === 1 ? "" : `×${n.toLocaleString("en-GB")}`;
+  n === 1 ? "" : ` ×${n.toLocaleString("en-GB")}`;
 
 /** The accessible name of the list of subagents under a card. */
 export const subagentsLabel = (task: string) => `Subagents of ${task}`;

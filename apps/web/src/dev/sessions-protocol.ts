@@ -65,8 +65,8 @@ export type SessionState = (typeof SESSION_STATE)[keyof typeof SESSION_STATE];
 export const SESSION_IDLE_MS = 15 * 60_000;
 
 /**
- * How far through the `implement` skill a card is (#595, R9): its eight
- * steps in their order, or Unknown when its tool calls match none of the
+ * How far through the `implement` skill a card is (#595): R9's eight steps
+ * in their order (`apps/web/dev/implement-step.ts` maps them onto the skill's), or Unknown when its tool calls match none of the
  * rules `apps/web/dev/implement-step.ts` reads them by, never the nearest
  * guess.
  */

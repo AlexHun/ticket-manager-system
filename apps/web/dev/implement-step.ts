@@ -2,8 +2,11 @@
 // calls its transcript holds — slice 6 of
 // `docs/plans/dev-tools-sessions-page.md` (#595, R9).
 //
-// The rules are `.claude/skills/implement/SKILL.md`'s steps, each matched by
-// the call that step tells the worker to make:
+// The steps are R9's eight, which are `.claude/skills/implement/SKILL.md`'s
+// with two differences: the skill's step 5 (mark the PRD shipped) has no
+// step of its own, so a worker there still reads Build, and its step 8 is
+// two here, Ship once the PR is opened and CI once its checks are watched.
+// Each is matched by the call the skill tells the worker to make:
 //
 // | Step            | The call                                              |
 // | --------------- | ----------------------------------------------------- |
@@ -20,7 +23,10 @@
 // last time it invoked `implement` (a `Skill` call, or a `/implement`
 // prompt the reader turns into one). Commit is the comment, not a
 // `git commit`, because step 4 commits every slice too: a commit alone says
-// nothing about which of the two it was.
+// nothing about which of the two it was. The comment is matched in the
+// command, as step 6 writes it (`--body "Progress: built…"`); one posted
+// with `--body-file` names no text to match, and the card reads Unknown from
+// Review on.
 //
 // **A sequence the rules don't recognise reads Unknown, never the nearest
 // guess** (the PRD's third risk): a card that invoked `implement` and has made
