@@ -9,7 +9,7 @@
     // Specs reach apps/web/src/dev, where usage-readings.ts and usage-sort.ts
     // import with a `.ts` extension because the node half loads them through
     // Vite's config loader, which resolves nothing extensionless
-    // (docs/standards/frontend.md). Both web configs allow it; without it
+    // (docs/standards/dev-tools.md). Both web configs allow it; without it
     // here, root tsc fails TS5097 on those imports (#553).
     "allowImportingTsExtensions": true
   },

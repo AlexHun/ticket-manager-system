@@ -90,13 +90,13 @@ const EXEMPTIONS: Exemption[] = [
     reason: `${MEMORY} a subagent's own memory index.`,
   },
   {
-    doc: "docs/standards/frontend.md",
+    doc: "docs/standards/dev-tools.md",
     citation: "protocol.ts",
     reason:
       "History: the one module the dev tools' contracts were split out of in #284.",
   },
   {
-    doc: "docs/standards/frontend.md",
+    doc: "docs/standards/dev-tools.md",
     citation: ".vite/stats.html",
     reason: `${GITIGNORED} the bundle report a web build writes.`,
   },
@@ -121,12 +121,12 @@ const EXEMPTIONS: Exemption[] = [
     reason: `${GITIGNORED} each developer's own environment file.`,
   },
   {
-    doc: "docs/standards/frontend.md",
+    doc: "docs/standards/dev-tools.md",
     citation: "tests/e2e/fixtures/transcripts.local",
     reason: `${GITIGNORED} the local-only fixture directory, kept out on purpose.`,
   },
   {
-    doc: "docs/standards/frontend.md",
+    doc: "docs/standards/dev-tools.md",
     citation: "tests/e2e/fixtures/usage-history.local.sqlite",
     reason: `${GITIGNORED} the local-only usage database, kept out on purpose.`,
   },
@@ -252,12 +252,12 @@ const EXEMPTIONS: Exemption[] = [
       "a column the ADR decided not to add.",
     ],
     [
-      "docs/standards/frontend.md",
+      "docs/standards/dev-tools.md",
       "UNSTARTED_RANK",
       "the sink value #286 deleted.",
     ],
     [
-      "docs/standards/frontend.md",
+      "docs/standards/dev-tools.md",
       "emptyScan",
       "renamed `emptyRead` in #417, as the bullet says.",
     ],
@@ -382,7 +382,7 @@ const EXEMPTIONS: Exemption[] = [
       "Vite's variable, set on Railway rather than in the repo.",
     ],
     [
-      "docs/standards/frontend.md",
+      "docs/standards/dev-tools.md",
       "__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS",
       "Vite's variable, set on Railway rather than in the repo.",
     ],
