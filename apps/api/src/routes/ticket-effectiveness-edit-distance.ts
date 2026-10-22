@@ -105,8 +105,9 @@ export interface EditDistancePair {
  * caller to have already filtered `not: null` — the query does filter on
  * both columns, but a defensive skip here means this stays correct even if a
  * future caller forgets to, the same trade `countCategoryOverrides` (in
- * `assistant-decisions.ts`) makes for its own rows. `null` — not `0` — when there are no pairs to average, since a
- * rate of zero and "nothing measured yet" are different facts.
+ * `assistant-decisions.ts`) makes for its own rows. `null` — not `0` — when
+ * there are no pairs to average, since a rate of zero and "nothing measured
+ * yet" are different facts.
  */
 export function averageEditDistance(pairs: EditDistancePair[]): number | null {
   let total = 0;

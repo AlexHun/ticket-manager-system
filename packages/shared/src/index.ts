@@ -1487,9 +1487,10 @@ export interface AssistantEffectivenessResponse {
     /**
      * Every reason, including the zeroes — a zero is information. The same
      * tally as `/pipeline`'s `declines`, both taken from `windowCounts` in the
-     * API's `assistant-decisions.ts` (#563). Unfiltered on purpose: this breaks the column down by reason,
-     * and a reason is what the column honestly holds, so `unavailable` keeps its
-     * own count here while staying out of `count` and `rate`.
+     * API's `assistant-decisions.ts` (#563). Unfiltered on purpose: this
+     * breaks the column down by reason, and a reason is what the column
+     * honestly holds, so `unavailable` keeps its own count here while staying
+     * out of `count` and `rate`.
      */
     reasons: Record<AutoReplyDecline, number>;
   };

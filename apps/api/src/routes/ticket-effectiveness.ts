@@ -40,8 +40,13 @@ const VERDICT_DECLINES = AUTO_REPLY_DECLINES.filter(
 /**
  * GET /api/tickets/effectiveness
  *
- * The assistant's numbers over one window, pinned once so the whole response
- * describes the same slice. The window and its classified, resolved and
+ * The assistant's numbers over one window, pinned once so every figure in the
+ * response is taken over the same `[from, to)`. The reads run side by side
+ * rather than in one array `$transaction`, as `/pipeline`'s always have: under
+ * Postgres' default READ COMMITTED that transaction gave each statement its own
+ * snapshot anyway, so a write landing mid-request could move one count and not
+ * another either way, and `windowCounts`, being a function, cannot join a
+ * batch. The window and its classified, resolved and
  * per-reason decline counts are `windowFor` and `windowCounts` from
  * `assistant-decisions.ts`, the same calls `/pipeline` makes, so for the same
  * range the two screens cannot disagree (#563). What only this screen

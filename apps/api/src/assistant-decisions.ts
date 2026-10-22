@@ -7,6 +7,7 @@ import {
   type DashboardRange,
   type TicketActorKind,
 } from "@ticket/shared";
+import { DAY_MS } from "./demo/utc-day";
 import { prisma, type Prisma } from "./db";
 
 /**
@@ -42,8 +43,13 @@ import { prisma, type Prisma } from "./db";
  * to stub.
  */
 
-/** One day, in milliseconds: what `DASHBOARD_RANGE_DAYS` is multiplied by. */
-export const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * One day, in milliseconds: what `DASHBOARD_RANGE_DAYS` is multiplied by.
+ * Stated once for the whole API, in the import-free leaf the demo's clocks
+ * read too, and handed on here so a dashboard route takes it from the module
+ * that pins its window.
+ */
+export { DAY_MS };
 
 /**
  * The classifier filed a category on the ticket. Whatever an agent did to

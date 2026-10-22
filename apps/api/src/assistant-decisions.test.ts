@@ -34,10 +34,6 @@ const { countCategoryOverrides, windowCounts, windowFor } =
 const TO = new Date("2026-09-10T12:00:00.000Z");
 const AN_HOUR_AGO = new Date("2026-09-10T11:00:00.000Z");
 
-beforeEach(async () => {
-  await resetDb();
-});
-
 describe("windowFor", () => {
   test.each<[DashboardRange, string]>([
     [DASHBOARD_RANGE.d7, "2026-09-03T12:00:00.000Z"],
@@ -54,6 +50,11 @@ describe("windowFor", () => {
 
 describe("windowCounts", () => {
   const window = windowFor(DASHBOARD_RANGE.d30, TO);
+
+  // Scoped here: the window and the override walk read no rows.
+  beforeEach(async () => {
+    await resetDb();
+  });
 
   /** Filed by the classifier, as `handle` leaves a ticket. */
   const filed = {
