@@ -42,10 +42,12 @@ export interface Credentials {
 /**
  * The credentials in force, or `null` when the gate is off.
  *
- * Off only when nothing at all is set, which is every developer's machine.
- * Anything else is a request for the gate, so a missing half **throws** rather
- * than serving an open dev server: the flag the dev image sets, or one
- * credential without the other.
+ * Off only when nothing at all is set, or set empty. Anything else is a request
+ * for the gate, so a missing half **throws** rather than serving an open dev
+ * server: the flag the dev image sets, or one credential without the other.
+ *
+ * A developer who pushes usage to `develop` carries both credentials, so the
+ * E2E web server blanks them (`playwright.config.ts`, #619).
  */
 export function readCredentials(
   env: Record<string, string | undefined>,
