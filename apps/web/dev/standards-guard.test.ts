@@ -145,7 +145,7 @@ const RULES: Rule[] = [
   },
   {
     name: "Anything spawned from the dev server is asynchronous: no execFileSync, spawnSync or execSync under dev/",
-    standard: "frontend.md",
+    standard: "dev-tools.md",
     // The identifier anywhere in code: the call, the import, an aliased import
     // (`execFileSync as run`, which a call-form match missed when planted), a
     // `child_process.spawnSync` member read. Comments are already blanked, and

@@ -81,7 +81,7 @@ const GIT_TIMEOUT_MS = 5_000;
  * shares. `null` when git cannot answer — not installed, older than 2.31 (no
  * `--path-format`), or `cwd` is outside any checkout or does not exist.
  *
- * Asynchronous because a spawn under `dev/` is (frontend.md).
+ * Asynchronous because a spawn under `dev/` is (dev-tools.md).
  */
 async function mainWorktreeRoot(cwd: string): Promise<string | null> {
   try {
