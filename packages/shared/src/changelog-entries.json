@@ -993,5 +993,15 @@
     "version": "0.1.253",
     "date": "2026-10-22",
     "title": "Blank the dev Basic Auth credentials for the E2E web server"
+  },
+  {
+    "version": "0.1.257",
+    "date": "2026-10-22",
+    "title": "The reply strips learn the dash for greetings and steps"
+  },
+  {
+    "version": "0.1.257",
+    "date": "2026-10-22",
+    "title": "Settle the #573 review findings"
   }
 ]
