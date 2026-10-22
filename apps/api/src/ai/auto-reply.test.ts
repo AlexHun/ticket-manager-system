@@ -24,7 +24,9 @@
  * `generateText` is replaced with a function this file controls, so the two
  * interesting halves are both reachable: what the module *sends* (a stranger's
  * email, quoted as data, alongside a corpus that is ours) and what it does with
- * what comes *back* (composition, and the checks that throw a reply away).
+ * what comes *back* (the declines, and the checks that throw a reply away). How
+ * the paragraphs become the reply's text is `reply-shape.ts`'s, tested pure in
+ * `reply-shape.test.ts` with no model call to script.
  *
  * There is no `../db` mock here, deliberately: `auto-reply.ts` is not allowed to
  * reach a database, and the corpus every assertion below is written against is
@@ -45,7 +47,6 @@ import * as ai from "ai";
 import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
 import {
   AUTO_REPLY_DECLINE,
-  BRAND_ATTRIBUTIVE,
   BRAND_NAME,
   DECLINE_OUTCOME,
   MAX_MESSAGE_BODY_LENGTH,
@@ -463,7 +464,10 @@ describe("autoReply — the email it was asked about", () => {
 });
 
 describe("autoReply — composing the reply", () => {
-  test("writes the greeting and the sign off itself", async () => {
+  // The text itself is `shapeReply`'s, tested pure in `reply-shape.test.ts`.
+  // What stays here is the seam: the prompt, the declines, the length limit,
+  // and one reply that shows the greeting coming from the ticket's own name.
+  test("greets the customer by the ticket's name and signs off, end to end", async () => {
     const result = await autoReply(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
@@ -477,139 +481,14 @@ describe("autoReply — composing the reply", () => {
     });
   });
 
-  test("reduces a hostile display name to a name token, or to nothing", async () => {
-    // The guarantee is that a payload cannot survive, and these two cases are
-    // what it actually looks like. Only the first token is read and its
-    // surrounding punctuation is trimmed *before* the test — the same trimming
-    // that keeps the "Vogel, Marta" form — so this greets Marta and drops the
-    // rest unread. Both parts matter: the name is plausible, and the link is
-    // not in the reply.
-    const named = await autoReply(ARTICLES, {
-      ...CONTEXT,
-      customerName: "Marta, urgent: see https://evil.example",
-    });
+  test("tells the model not to sign as the product either", async () => {
+    // Advisory, like every prompt rule here; the strip in `reply-shape.ts` is
+    // what holds. This only stops the product's name falling out of the
+    // do-not-sign list.
+    await autoReply(ARTICLES, CONTEXT);
 
-    expect(named.ok).toBe(true);
-    if (!named.ok) return;
-    expect(named.reply.startsWith("Hi Marta,\n\n")).toBe(true);
-    expect(named.reply).not.toContain("evil.example");
-
-    // And when the first token is not a plausible name, nobody is greeted. Note
-    // what this is not relying on: had the URL reached the greeting, check 6
-    // would have discarded the whole reply rather than sent it.
-    answerWith();
-    const nameless = await autoReply(ARTICLES, {
-      ...CONTEXT,
-      customerName: "https://evil.example is down",
-    });
-
-    expect(nameless.ok).toBe(true);
-    if (!nameless.ok) return;
-    expect(nameless.reply.startsWith("Hello,\n\n")).toBe(true);
-    expect(nameless.reply).not.toContain("evil.example");
-  });
-
-  test("greets people whose names are not spelled in ASCII", async () => {
-    for (const name of ["Ünal Demir", "Łukasz Nowak", "marta ohlsson"]) {
-      answerWith();
-      const result = await autoReply(ARTICLES, {
-        ...CONTEXT,
-        customerName: name,
-      });
-      expect(result.ok).toBe(true);
-      if (!result.ok) continue;
-      // The case is left exactly as it arrived: correcting somebody's name for
-      // them is a bigger discourtesy than "hi marta".
-      expect(result.reply.startsWith(`Hi ${name.split(" ")[0]},`)).toBe(true);
-    }
-  });
-
-  test("reads the 'Vogel, Marta' form some clients send", async () => {
-    const result = await autoReply(ARTICLES, {
-      ...CONTEXT,
-      customerName: "Vogel, Marta",
-    });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply.startsWith("Hi Vogel,")).toBe(true);
-  });
-
-  test("drops a display name that is not one token of a plausible name", async () => {
-    for (const name of [
-      "",
-      "   ",
-      "007",
-      "50%",
-      "M@rta",
-      "Marta.Ohlsson",
-      "https://evil.example",
-      "A".repeat(41),
-    ]) {
-      answerWith();
-      const result = await autoReply(ARTICLES, {
-        ...CONTEXT,
-        customerName: name,
-      });
-      expect(result.ok).toBe(true);
-      if (!result.ok) continue;
-      expect(result.reply.startsWith("Hello,\n\n")).toBe(true);
-    }
-  });
-
-  test("numbers the steps, and unnumbers the ones the model numbered anyway", async () => {
-    answerWith({
-      paragraphs: [
-        "Buffering is almost always the quality setting.",
-        "Write back if it persists.",
-      ],
-      steps: [
-        "1. Open the player settings",
-        "- Set quality to Auto",
-        "Restart the app",
-      ],
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // Steps sit after the opening paragraph, which is where an answer that
-    // begins "this is usually X" wants them.
-    expect(result.reply).toBe(
-      "Hi Marta,\n\n" +
-        "Buffering is almost always the quality setting.\n\n" +
-        "1. Open the player settings\n2. Set quality to Auto\n3. Restart the app\n\n" +
-        "Write back if it persists.\n\n" +
-        `Best regards,\n${BRAND_NAME}`,
-    );
-  });
-
-  test("flattens the model's own line breaks — the layout is ours", async () => {
-    answerWith({
-      paragraphs: ["Buffering is usually\n  the quality   setting."],
-      steps: null,
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply).toContain("Buffering is usually the quality setting.");
-  });
-
-  test("takes the em and en dashes out, whatever the prompt achieved", async () => {
-    answerWith({
-      paragraphs: ["Buffering — nearly always — is the quality setting."],
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply).toContain(
-      "Buffering, nearly always, is the quality setting.",
-    );
+    const { system } = lastCall();
+    expect(system).toContain(`"The Support Team", "${BRAND_NAME}"`);
   });
 
   test("declines when it said yes and then wrote nothing", async () => {
@@ -633,298 +512,6 @@ describe("autoReply — composing the reply", () => {
       ok: false,
       reason: AUTO_REPLY_FAILURE.ungrounded,
       decline: AUTO_REPLY_DECLINE.tooLong,
-    });
-  });
-});
-
-describe("autoReply — the bookends it was told not to write", () => {
-  test("keeps the sentence a greeting was welded to, recapitalised", async () => {
-    answerWith({
-      paragraphs: ["Hi Marta, buffering is almost always the quality setting."],
-      steps: null,
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply).toBe(
-      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
-    );
-  });
-
-  test("drops a paragraph that is nothing but a greeting, punctuated or not", async () => {
-    for (const greeting of ["Hi Marta,", "Hello there", "Good morning!"]) {
-      answerWith({
-        paragraphs: [
-          greeting,
-          "Buffering is almost always the quality setting.",
-        ],
-        steps: null,
-      });
-      const result = await autoReply(ARTICLES, CONTEXT);
-      expect(result.ok).toBe(true);
-      if (!result.ok) continue;
-      expect(result.reply).toBe(
-        `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
-      );
-    }
-  });
-
-  test("does not eat a sentence that merely opens with a greeting word", async () => {
-    // Measured: "Hi there is a setting in the player that controls this." opens
-    // with a word `GREETING_LINE` matches, and an unbounded prefix pattern
-    // consumed the whole sentence and left an empty paragraph.
-    answerWith({
-      paragraphs: ["Hi there is a setting in the player that controls this."],
-      steps: null,
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply).toContain(
-      "Hi there is a setting in the player that controls this.",
-    );
-  });
-
-  test("drops a sign off the model added as its own paragraph", async () => {
-    answerWith({
-      paragraphs: [
-        "Buffering is almost always the quality setting.",
-        "Best regards,",
-        "The Support Team",
-      ],
-      steps: null,
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // One sign off, and it is ours.
-    expect(result.reply).toBe(
-      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
-    );
-  });
-
-  test("drops a sign off that names the product, with or without 'The'", async () => {
-    // Since #488 our own sign off is the product, so this is the closer a model
-    // that copied it would write. Left alone, the brand line stopped the strip
-    // at the last paragraph and the "Best regards," above it went out too:
-    // two sign offs (#513).
-    for (const name of [
-      BRAND_NAME,
-      BRAND_ATTRIBUTIVE,
-      `${BRAND_NAME}.`,
-      BRAND_NAME.toUpperCase(),
-    ]) {
-      answerWith({
-        paragraphs: [
-          "Buffering is almost always the quality setting.",
-          "Best regards,",
-          name,
-        ],
-        steps: null,
-      });
-
-      const result = await autoReply(ARTICLES, CONTEXT);
-
-      expect(result.ok).toBe(true);
-      if (!result.ok) continue;
-      expect(result.reply).toBe(
-        `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
-      );
-    }
-  });
-
-  test("drops a sign off led by a dash, the same as one without", async () => {
-    // "— The Support Team" slipped past every pattern above, which all anchor on
-    // the first word; `withoutDashes` then took an en or em dash off and shipped
-    // the rest under our own sign off, and a hyphen went out as it was (#547). A
-    // hyphen, an en dash, an em dash, and the "-- " that opens an email
-    // signature, each before every closer stripped.
-    const closers = [
-      "Best regards,",
-      "Kind regards",
-      "Warm wishes",
-      "Best wishes",
-      "Regards",
-      "Sincerely",
-      "Cheers",
-      "Thanks!",
-      "Thank you",
-      "Yours sincerely",
-      "Yours faithfully",
-      "Yours truly",
-      "The Support Team",
-      "Support Team",
-      BRAND_NAME,
-      BRAND_ATTRIBUTIVE,
-    ];
-    for (const dash of ["-", "–", "—", "--"]) {
-      for (const closer of closers) {
-        for (const paragraphs of [
-          [`${dash} ${closer}`],
-          [`${dash}${closer}`],
-          ["Best regards,", `${dash} ${closer}`],
-        ]) {
-          answerWith({
-            paragraphs: [
-              "Buffering is almost always the quality setting.",
-              ...paragraphs,
-            ],
-            steps: null,
-          });
-
-          const result = await autoReply(ARTICLES, CONTEXT);
-
-          expect(result.ok).toBe(true);
-          if (!result.ok) continue;
-          expect(result.reply).toBe(
-            `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
-          );
-        }
-      }
-    }
-  });
-
-  test("takes a dash-led sign off off the end of the last real sentence", async () => {
-    for (const dash of ["-", "–", "—", "--"]) {
-      answerWith({
-        paragraphs: [
-          `Set the quality to Auto and we can take a closer look. ${dash} Best regards, Support Team`,
-        ],
-        steps: null,
-      });
-
-      const result = await autoReply(ARTICLES, CONTEXT);
-
-      expect(result.ok).toBe(true);
-      if (!result.ok) continue;
-      expect(result.reply).toBe(
-        `Hi Marta,\n\nSet the quality to Auto and we can take a closer look.\n\nBest regards,\n${BRAND_NAME}`,
-      );
-    }
-  });
-
-  test("keeps a real sentence that happens to start with a dash", async () => {
-    // The dash is looked past only to find a closer; a paragraph that goes on
-    // past one is still the body. The first two are kept by `SIGN_OFF_MAX`, the
-    // third by `BRAND_SIGN_OFF` being anchored at its end. An en or em dash
-    // opening a line is then taken off by `withoutDashes`, as on any line, so
-    // the sentence after it is what has to survive.
-    for (const [sentence, sent] of [
-      ...[
-        "Thanks for letting us know, that helps us track it down.",
-        "The Support Team can take a closer look if it happens again.",
-        `${BRAND_NAME} saves it for you.`,
-      ].map((text) => [`- ${text}`, `- ${text}`] as const),
-      ...["–", "—"].map(
-        (dash) =>
-          [
-            `${dash} Thanks for letting us know, that helps us track it down.`,
-            "Thanks for letting us know, that helps us track it down.",
-          ] as const,
-      ),
-    ]) {
-      answerWith({
-        paragraphs: [
-          "Buffering is almost always the quality setting.",
-          sentence,
-        ],
-        steps: null,
-      });
-
-      const result = await autoReply(ARTICLES, CONTEXT);
-
-      expect(result.ok).toBe(true);
-      if (!result.ok) continue;
-      expect(result.reply).toBe(
-        `Hi Marta,\n\nBuffering is almost always the quality setting.\n\n${sent}\n\nBest regards,\n${BRAND_NAME}`,
-      );
-    }
-  });
-
-  test("tells the model not to sign as the product either", async () => {
-    // Advisory, like every prompt rule here; the strip above is what holds.
-    // This only stops the product's name falling out of the do-not-sign list.
-    await autoReply(ARTICLES, CONTEXT);
-
-    const { system } = lastCall();
-    expect(system).toContain(`"The Support Team", "${BRAND_NAME}"`);
-  });
-
-  test("keeps a real sentence that happens to start with the product's name", async () => {
-    // Only a paragraph that is the name and nothing else is a signature; one
-    // that goes on to say something is the body.
-    answerWith({
-      paragraphs: [
-        "Buffering is almost always the quality setting.",
-        `${BRAND_NAME} saves it for you.`,
-      ],
-      steps: null,
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply).toContain(`${BRAND_NAME} saves it for you.`);
-  });
-
-  test("keeps a real sentence that happens to start with 'Thanks'", async () => {
-    // Measured: "Thanks for letting us know, that helps us track it down."
-    // matches `SIGN_OFF_LINE`, and at the 80 characters this guard used to allow
-    // it was discarded. A sign off is a fragment; forty characters keeps every
-    // real closer and no real sentence.
-    answerWith({
-      paragraphs: [
-        "Buffering is almost always the quality setting.",
-        "Thanks for letting us know, that helps us track it down.",
-      ],
-      steps: null,
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply).toContain(
-      "Thanks for letting us know, that helps us track it down.",
-    );
-  });
-
-  test("takes a sign off off the end of the last real sentence", async () => {
-    // The variant a paragraph-level check cannot see, and the one observed: the
-    // model ended a paragraph "…and we can take a closer look. Best regards,
-    // Support Team". Left alone that ships two sign offs, the wrong one first.
-    answerWith({
-      paragraphs: [
-        "Set the quality to Auto and we can take a closer look. Best regards, Support Team",
-      ],
-      steps: null,
-    });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.reply).toBe(
-      `Hi Marta,\n\nSet the quality to Auto and we can take a closer look.\n\nBest regards,\n${BRAND_NAME}`,
-    );
-  });
-
-  test("declines when the bookends were the whole of the answer", async () => {
-    answerWith({ paragraphs: ["Hi Marta,", "Best regards,"], steps: null });
-
-    const result = await autoReply(ARTICLES, CONTEXT);
-
-    expect(result).toEqual({
-      ok: false,
-      reason: AUTO_REPLY_FAILURE.declined,
-      decline: AUTO_REPLY_DECLINE.notCovered,
     });
   });
 });
