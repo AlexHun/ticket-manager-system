@@ -161,32 +161,64 @@ beforeEach(() => {
   writeFileSync(listing, JSON.stringify(LISTING), "utf8");
   process.env[ISSUES_FILE_ENV] = listing;
   // The usage history too (#417), and for a sharper reason than the listing's:
-  // unset, the route stores what it read in this developer's real history file,
-  // and the first test below reads the real transcript directory.
+  // unset, the route stores what it read in this developer's real history file.
   process.env[HISTORY_FILE_ENV] = join(envDir, "history.sqlite");
 });
-afterEach(() => {
+/** Puts back each variable as `saved` holds it, deleting one that was unset. */
+function restoreEnv(saved: Record<string, string | undefined>): void {
   for (const [key, value] of Object.entries(saved)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+}
+
+afterEach(() => {
+  restoreEnv(saved);
   rmSync(envDir, { recursive: true, force: true });
 });
+
+/**
+ * Runs `body` with an empty home directory, so a directory derived from it
+ * exists nowhere and a reading of it is instant. `os.homedir()` reads `HOME`
+ * (POSIX) or `USERPROFILE` (Windows) before asking the OS, so both are set.
+ * Reading this machine's real transcripts instead took both "derives the
+ * directory" cases past their timeout under the full suite (#622).
+ */
+async function withEmptyHome(
+  body: (home: string) => Promise<void>,
+): Promise<void> {
+  const home = mkdtempSync(join(tmpdir(), "plugin-home-"));
+  const savedHome = {
+    HOME: process.env.HOME,
+    USERPROFILE: process.env.USERPROFILE,
+  };
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+  try {
+    await body(home);
+  } finally {
+    restoreEnv(savedHome);
+    rmSync(home, { recursive: true, force: true });
+  }
+}
 
 describe(`POST ${DEVTOOLS_API.usage}`, () => {
   it("derives the transcript directory from the repo root, not the dev server's cwd", async () => {
     // `apps/web/dev` → the repo root, the same two steps up the plugin makes.
     const repoRoot = resolve(import.meta.dirname, "../../..");
 
-    const { transcriptDir } = await scanUsage();
+    await withEmptyHome(async (home) => {
+      const { transcriptDir } = await scanUsage();
 
-    expect(transcriptDir).toBe(resolveTranscriptDir({}, { cwd: repoRoot }));
-    // The shape of the wrong answer, named so a regression is legible rather
-    // than just unequal: `process.cwd()` here is `apps/web`.
-    expect(transcriptDir).not.toMatch(/-apps-web$/);
-    expect(transcriptDir).not.toBe(
-      resolveTranscriptDir({}, { cwd: process.cwd() }),
-    );
+      expect(transcriptDir).toBe(resolveTranscriptDir({}, { cwd: repoRoot }));
+      expect(transcriptDir.startsWith(home)).toBe(true);
+      // The shape of the wrong answer, named so a regression is legible rather
+      // than just unequal: `process.cwd()` here is `apps/web`.
+      expect(transcriptDir).not.toMatch(/-apps-web$/);
+      expect(transcriptDir).not.toBe(
+        resolveTranscriptDir({}, { cwd: process.cwd() }),
+      );
+    });
   });
 
   it("honours the override, which is how Playwright points it at a fixture", async () => {
@@ -598,28 +630,11 @@ describe(`GET ${DEVTOOLS_API.sessions}`, () => {
 
   it("derives the directory from the repo root when nothing overrides it", async () => {
     const repoRoot = resolve(import.meta.dirname, "../../..");
-    // An empty home, so the derived directory exists nowhere and the reading
-    // is instant: `os.homedir()` reads these two before asking the OS, and
-    // this machine's real transcripts took the case past its timeout under
-    // the full suite.
-    const home = mkdtempSync(join(tmpdir(), "plugin-sessions-home-"));
-    const savedHome = {
-      HOME: process.env.HOME,
-      USERPROFILE: process.env.USERPROFILE,
-    };
-    process.env.HOME = home;
-    process.env.USERPROFILE = home;
-    try {
+    await withEmptyHome(async (home) => {
       const { transcriptDir } = reportOf((await firstSessionsEvent()).message);
       expect(transcriptDir).toBe(resolveTranscriptDir({}, { cwd: repoRoot }));
       expect(transcriptDir.startsWith(home)).toBe(true);
       expect(transcriptDir).not.toMatch(/-apps-web$/);
-    } finally {
-      for (const [key, value] of Object.entries(savedHome)) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
-      rmSync(home, { recursive: true, force: true });
-    }
+    });
   });
 });
