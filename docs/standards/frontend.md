@@ -1,6 +1,6 @@
 # Frontend standards (`apps/web`)
 
-Client-side conventions: forms, styling, UI controls, data fetching, notifications. The `/__dev` tools live in [dev-tools.md](dev-tools.md); component testing lives in [testing.md](testing.md); how a screen looks and behaves lives in [design.md](design.md) and [design-states.md](design-states.md).
+Client-side conventions: forms, styling, UI controls, data fetching, notifications. Component testing lives in [testing.md](testing.md); how a screen looks and behaves lives in [design.md](design.md) and [design-states.md](design-states.md).
 
 - Forms: **react-hook-form** + **zod** via `@hookform/resolvers/zod`. Define the schema, infer the values type with `z.infer`, disable inputs on `isSubmitting`, surface server errors in local state.
 - Icons: **lucide-react**. Use `Loader2` with `animate-spin` for pending/loading states.
