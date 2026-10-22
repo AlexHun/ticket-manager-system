@@ -988,5 +988,10 @@
     "version": "0.1.252",
     "date": "2026-10-22",
     "title": "Settle the #613 review findings"
+  },
+  {
+    "version": "0.1.253",
+    "date": "2026-10-22",
+    "title": "Blank the dev Basic Auth credentials for the E2E web server"
   }
 ]
