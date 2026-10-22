@@ -1485,8 +1485,9 @@ export interface AssistantEffectivenessResponse {
     /** `count / classified`. Null, not 0, when nothing was classified. */
     rate: number | null;
     /**
-     * Every reason, including the zeroes — a zero is information, same as on
-     * `/pipeline`. Unfiltered on purpose: this breaks the column down by reason,
+     * Every reason, including the zeroes — a zero is information. The same
+     * tally as `/pipeline`'s `declines`, both taken from `windowCounts` in the
+     * API's `assistant-decisions.ts` (#563). Unfiltered on purpose: this breaks the column down by reason,
      * and a reason is what the column honestly holds, so `unavailable` keeps its
      * own count here while staying out of `count` and `rate`.
      */

@@ -5,6 +5,8 @@ import {
   type APIRequestContext,
 } from "@playwright/test";
 import {
+  AUTO_REPLY_DECLINE,
+  DASHBOARD_RANGE,
   MESSAGE_DIRECTION,
   PIPELINE_OUTCOME,
   PIPELINE_STAGE,
@@ -15,6 +17,7 @@ import {
   TICKET_STATUS,
   USER_ROLE,
   type AssistantEffectivenessResponse,
+  type AutoReplyDecline,
   type PipelineOverviewResponse,
   type PipelineRun,
 } from "@ticket/shared";
@@ -35,6 +38,10 @@ import { WEBHOOK_PASSWORD, WEBHOOK_URL, WEBHOOK_USERNAME } from "./helpers/env";
  * screens. Before it, the dashboard counted the assistant's assignments, so an
  * agent reassigning a ticket the assistant resolved took it out of the
  * published auto-resolve rate while `/pipeline` still drew it resolved.
+ *
+ * Slice 3 (#563): the window and the counts both screens publish over it come
+ * from one module, `assistant-decisions.ts`. For the same range, every case
+ * above plus untouched tickets reads the same on both.
  *
  * The tickets are seeded as the jobs leave them, and every later change is made
  * through the real route — the agent's correction through
@@ -145,6 +152,51 @@ async function seedAutoResolved(
     select: { id: true },
   });
   return { ticketId: ticket.id, replyMessageId };
+}
+
+/** A ticket the auto-reply handed back with `decline`, as `release` leaves it. */
+async function seedDeclined(
+  subject: string,
+  decline: AutoReplyDecline,
+): Promise<number> {
+  const at = AN_HOUR_AGO();
+  const ticket = await testDb.ticket.create({
+    data: {
+      subject,
+      ...CUSTOMER,
+      status: TICKET_STATUS.Open,
+      category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
+      classifiedAt: at,
+      autoReplyOfferedAt: at,
+      autoReplyDecline: decline,
+      autoReplyDeclinedAt: at,
+      createdAt: at,
+    },
+    select: { id: true },
+  });
+  return ticket.id;
+}
+
+/** The customer writes back on a thread, through the inbound webhook. */
+async function customerReplies(
+  request: APIRequestContext,
+  messageId: string,
+  inReplyTo: string,
+) {
+  return request.post(WEBHOOK_URL, {
+    data: {
+      messageId,
+      subject: "Re: your reply",
+      senderEmail: CUSTOMER.customerEmail,
+      senderName: CUSTOMER.customerName,
+      textBody: "That didn't help.",
+      inReplyTo,
+    },
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${WEBHOOK_USERNAME}:${WEBHOOK_PASSWORD}`).toString("base64")}`,
+    },
+  });
 }
 
 async function signedIn(
@@ -282,19 +334,11 @@ test.describe("Assistant decisions: resolved by the assistant reads one way", ()
     await agent.dispose();
 
     // The customer writes back on the second one, through the inbound webhook.
-    const reply = await request.post(WEBHOOK_URL, {
-      data: {
-        messageId: "e2e-assistant-decisions-reopen@example.com",
-        subject: "Re: Answered, then reopened",
-        senderEmail: CUSTOMER.customerEmail,
-        senderName: CUSTOMER.customerName,
-        textBody: "That didn't help.",
-        inReplyTo: reopened.replyMessageId,
-      },
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${WEBHOOK_USERNAME}:${WEBHOOK_PASSWORD}`).toString("base64")}`,
-      },
-    });
+    const reply = await customerReplies(
+      request,
+      "e2e-assistant-decisions-reopen@example.com",
+      reopened.replyMessageId,
+    );
     expect(reply.status()).toBe(201);
     // Threaded onto the ticket, not a new one: that is what makes it a reopen.
     expect(await reply.json()).toMatchObject({
@@ -350,5 +394,98 @@ test.describe("Assistant decisions: resolved by the assistant reads one way", ()
     await expect(reassignedRow).toContainText(PIPELINE_OUTCOME.resolved);
     await expect(reopenedRow).toBeVisible();
     await expect(reopenedRow).not.toContainText(PIPELINE_OUTCOME.resolved);
+  });
+});
+
+test.describe("Assistant decisions: the two screens agree", () => {
+  test.beforeEach(async () => {
+    await resetTickets();
+  });
+
+  test.afterAll(async () => {
+    await resetTickets();
+  });
+
+  test("for the same range, /pipeline and the dashboard publish the same counts", async ({
+    request,
+  }) => {
+    // Every case from the first two slices, each changed through the real route.
+    const filedThenCleared = await seedFiledByClassifier("Filed, then cleared");
+    const givenUpThenFiled = await seedGivenUp("Given up on, then filed");
+    const reassigned = await seedAutoResolved("Answered, then reassigned");
+    const reopened = await seedAutoResolved("Answered, then reopened");
+    // And the tickets nobody has touched since the pipeline.
+    await seedFiledByClassifier("Filed, untouched");
+    await seedGivenUp("Given up on, untouched");
+    await seedDeclined("Outage, untouched", AUTO_REPLY_DECLINE.unavailable);
+    await seedDeclined("Declined, untouched", AUTO_REPLY_DECLINE.notCovered);
+
+    const agentUser = await testDb.user.findUniqueOrThrow({
+      where: { email: CREDENTIALS.agent.email },
+      select: { id: true },
+    });
+    const agent = await signedIn(CREDENTIALS.agent);
+    for (const [ticketId, category] of [
+      [filedThenCleared, null],
+      [givenUpThenFiled, TICKET_CATEGORY.Refund],
+    ] as const) {
+      const patch = await agent.patch(
+        `${API_URL}/api/tickets/${ticketId}/category`,
+        { data: { category } },
+      );
+      expect(patch.status()).toBe(200);
+    }
+    const assign = await agent.patch(
+      `${API_URL}/api/tickets/${reassigned.ticketId}/assignee`,
+      { data: { assignedToId: agentUser.id } },
+    );
+    expect(assign.status()).toBe(200);
+    await agent.dispose();
+
+    const reply = await customerReplies(
+      request,
+      "e2e-assistant-decisions-agree-reopen@example.com",
+      reopened.replyMessageId,
+    );
+    expect(reply.status()).toBe(201);
+
+    const admin = await signedIn(CREDENTIALS.admin);
+    const range = DASHBOARD_RANGE.d30;
+    const pipelineRes = await admin.get(
+      `${API_URL}/api/pipeline?range=${range}`,
+    );
+    expect(pipelineRes.status()).toBe(200);
+    const pipeline = (await pipelineRes.json()) as PipelineOverviewResponse;
+    const effectivenessRes = await admin.get(
+      `${API_URL}/api/tickets/effectiveness?range=${range}`,
+    );
+    expect(effectivenessRes.status()).toBe(200);
+    const effectiveness =
+      (await effectivenessRes.json()) as AssistantEffectivenessResponse;
+    await admin.dispose();
+
+    expect(pipeline.range).toBe(range);
+    expect(effectiveness.range).toBe(range);
+
+    // R4: the same figures on both screens.
+    expect(pipeline.counts.machineClassified).toBe(effectiveness.classified);
+    expect(pipeline.counts.autoResolved).toBe(effectiveness.autoReply.resolved);
+    expect(pipeline.counts.declines).toEqual(effectiveness.decline.reasons);
+
+    // And the figures they agree on are the right ones, not a shared zero:
+    // filed (cleared, untouched, both auto-resolved, both declined) is six; the
+    // two given up on stay given up on, whoever filed one since; only the
+    // reassigned ticket is still resolved.
+    expect(effectiveness.classified).toBe(6);
+    expect(pipeline.counts.classifyAbandoned).toBe(2);
+    expect(effectiveness.autoReply.resolved).toBe(1);
+    expect(effectiveness.decline.reasons[AUTO_REPLY_DECLINE.notCovered]).toBe(
+      1,
+    );
+    expect(effectiveness.decline.reasons[AUTO_REPLY_DECLINE.unavailable]).toBe(
+      1,
+    );
+    // The outage is in the tally and out of the verdict count.
+    expect(effectiveness.decline.count).toBe(1);
   });
 });

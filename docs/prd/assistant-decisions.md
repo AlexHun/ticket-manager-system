@@ -1,6 +1,6 @@
 # PRD: One answer to what the assistant decided
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-16
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-16
 
 ## Problem
 
