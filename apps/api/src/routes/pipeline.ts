@@ -225,7 +225,7 @@ type ClassifierVerdict =
  * `factsOf` below, which runs `classifierWillStillAct` and
  * `autoReplyWillStillAct` — the statements the rail's counts read too, and the
  * first the reconcile sweep. What the classifier decided arrives the same way,
- * as `classifier`, from `classifierFiled` and `classifierGaveUp` (#561): read
+ * as `verdict`, from `classifierFiled` and `classifierGaveUp` (#561): read
  * off `category` here, an agent clearing a category the classifier filed was
  * drawn as the classifier giving up. What this deliberately does *not* do is
  * guess: a ticket with no classification verdict that nothing will classify —
@@ -250,15 +250,15 @@ export function toRun(
   row: RunRow,
   config: PipelineConfig,
   awaiting: Awaiting,
-  classifier: ClassifierVerdict,
+  verdict: ClassifierVerdict,
 ): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
-  const machineClassified = classifier === CLASSIFIER_VERDICT.filed;
+  const machineClassified = verdict === CLASSIFIER_VERDICT.filed;
   // The classifier's own terminal path: it stamped a time and never filed a
   // category. Named for which half of the pipeline gave up — the same word
   // `PipelineCounts.classifyAbandoned` uses — because `abandoned` is now an
   // outcome two different exits reach.
-  const classifyAbandoned = classifier === CLASSIFIER_VERDICT.gaveUp;
+  const classifyAbandoned = verdict === CLASSIFIER_VERDICT.gaveUp;
   const resolved = row.autoResolvedAt !== null;
 
   // Is anything still going to happen to this ticket? Two different answers,
@@ -534,7 +534,7 @@ async function factsOf(
   ticketIds: number[],
   now: Date,
 ): Promise<
-  (ticketId: number) => { awaiting: Awaiting; classifier: ClassifierVerdict }
+  (ticketId: number) => { awaiting: Awaiting; verdict: ClassifierVerdict }
 > {
   const matching = async (rule: Prisma.TicketWhereInput) => {
     const rows = await prisma.ticket.findMany({
@@ -543,18 +543,19 @@ async function factsOf(
     });
     return new Set(rows.map((row) => row.id));
   };
-  const [classifier, autoReply, filed, gaveUp] = await Promise.all([
-    matching(classifierWillStillAct(now)),
-    matching(autoReplyWillStillAct()),
-    matching(classifierFiled),
-    matching(classifierGaveUp),
-  ]);
+  const [classifierWillAct, autoReplyWillAct, filed, gaveUp] =
+    await Promise.all([
+      matching(classifierWillStillAct(now)),
+      matching(autoReplyWillStillAct()),
+      matching(classifierFiled),
+      matching(classifierGaveUp),
+    ]);
   return (ticketId) => ({
     awaiting: {
-      classifier: classifier.has(ticketId),
-      autoReply: autoReply.has(ticketId),
+      classifier: classifierWillAct.has(ticketId),
+      autoReply: autoReplyWillAct.has(ticketId),
     },
-    classifier: filed.has(ticketId)
+    verdict: filed.has(ticketId)
       ? CLASSIFIER_VERDICT.filed
       : gaveUp.has(ticketId)
         ? CLASSIFIER_VERDICT.gaveUp
@@ -568,8 +569,8 @@ function runOf(
   config: PipelineConfig,
   facts: Awaited<ReturnType<typeof factsOf>>,
 ): PipelineRun {
-  const { awaiting, classifier } = facts(row.id);
-  return toRun(row, config, awaiting, classifier);
+  const { awaiting, verdict } = facts(row.id);
+  return toRun(row, config, awaiting, verdict);
 }
 
 pipelineRouter.get(

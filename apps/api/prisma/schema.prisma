@@ -258,7 +258,9 @@ model Ticket {
   classifiedAt        DateTime?
   // The category the classifier filed, written by `handle` in
   // `jobs/classify-ticket.ts` in the same conditional write that files
-  // `category` and stamps `classifiedAt`, and by nothing else (#561).
+  // `category` and stamps `classifiedAt`, and by nothing else in the app
+  // (#561). Its migration backfilled the tickets from before it, from the
+  // classifier's own activity trail.
   //
   // `category` is the agent's column as much as the machine's, so it cannot
   // say what the classifier decided: an agent who clears a category the

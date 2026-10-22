@@ -136,6 +136,25 @@ describe("the #561 classifier-category backfill", () => {
     expect(await recorded(id)).toBeNull();
   });
 
+  test("given up on and then filed by an agent, by the trail, stays unrecorded", async () => {
+    // R2 and R6: the trail shows a person filed the category, so the
+    // classifier's stamp was the terminal path's, not a filing.
+    const { id } = await seedTicket({
+      classifiedAt: STAMPED,
+      category: TICKET_CATEGORY.Refund,
+    });
+    await categoryChanged(
+      id,
+      TICKET_ACTOR_KIND.agent,
+      null,
+      TICKET_CATEGORY.Refund,
+    );
+
+    await execSql(MIGRATION);
+
+    expect(await recorded(id)).toBeNull();
+  });
+
   test("a stamped, categorised ticket with no trail keeps today's reading", async () => {
     // Activity is pruned after a year (ADR-0012). Before the column this read
     // as filed by the classifier, and it still does.

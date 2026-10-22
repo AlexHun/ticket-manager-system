@@ -241,8 +241,9 @@ describe("toRun — the rest of the outcomes", () => {
 
   test("the classifier out of retries is `abandoned` too, with no reason", () => {
     // The other road to `abandoned`, and the reason its wording has to be true
-    // of more than one thing: a stamped `classifiedAt` with no category is the
-    // classifier's terminal path, which never reached the auto-reply at all.
+    // of more than one thing: a stamped `classifiedAt` with no category of the
+    // classifier's own (`classifierGaveUp`) is its terminal path, which never
+    // reached the auto-reply at all.
     const run = toRun(row({ category: null }), LIVE, NOT_AWAITING, GAVE_UP);
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.abandoned);

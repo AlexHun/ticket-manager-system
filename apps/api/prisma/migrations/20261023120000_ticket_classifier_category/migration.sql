@@ -20,11 +20,19 @@ WHERE a."ticketId" = t.id
   AND a."toValue" IS NOT NULL
   AND t."classifierCategory" IS NULL;
 
--- A ticket with no such row keeps the reading it had before this column:
+-- A ticket whose trail is gone keeps the reading it had before this column:
 -- stamped and categorised reads as filed by the classifier. Activity is pruned
--- after a year (ADR-0012), so this is the old tickets whose trail is gone.
+-- after a year (ADR-0012), so this is the old tickets with no `category_changed`
+-- row at all. One with an agent's row and no assistant's is a ticket the
+-- classifier gave up on and a person filed, and the trail says so; it stays
+-- null.
 UPDATE "ticket" t
 SET "classifierCategory" = t.category
 WHERE t."classifierCategory" IS NULL
   AND t."classifiedAt" IS NOT NULL
-  AND t.category IS NOT NULL;
+  AND t.category IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM "ticket_activity" a
+    WHERE a."ticketId" = t.id
+      AND a.action = 'category_changed'
+  );
