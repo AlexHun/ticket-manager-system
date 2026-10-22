@@ -1449,10 +1449,11 @@ export interface TicketStatsResponse {
  *
  * `classified` is the shared denominator for every rate below: tickets the
  * classifier reached a terminal, *successful* verdict on in the slice —
- * `classifiedAt` and `category` both set, the same definition `machineClassified`
- * uses on `/pipeline`. Kept identical on purpose: two definitions of "classified"
- * across the same dashboard would disagree on exactly the day someone compared
- * them.
+ * `classifierFiled` in the API's `assistant-decisions.ts`, the same statement
+ * `machineClassified` counts on `/pipeline` (#561). It reads the classifier's
+ * own record of the filing, so a ticket an agent un-categorised since still
+ * counts. One statement on purpose: two definitions of "classified" across the
+ * same dashboard would disagree on exactly the day someone compared them.
  */
 export interface AssistantEffectivenessResponse {
   range: DashboardRange;
@@ -1843,9 +1844,16 @@ export const AUTO_REPLY_NOT_OFFERED_LABEL = "Never offered to the auto-reply";
 export interface PipelineCounts {
   /** Tickets created inside the window. The top of the rail. */
   received: number;
-  /** Of those, filed by the classifier — `classifiedAt` and `category` both set. */
+  /**
+   * Of those, filed by the classifier — `classifiedAt` and `classifierCategory`
+   * both set (`classifierFiled`, #561), whatever an agent did to `category`
+   * since.
+   */
   machineClassified: number;
-  /** Attempted and given up on: `classifiedAt` set, `category` still null. */
+  /**
+   * Attempted and given up on: `classifiedAt` set and no `classifierCategory`
+   * (`classifierGaveUp`), whatever an agent filed since.
+   */
   classifyAbandoned: number;
   /**
    * Neither yet, and the classifier will still act on it: there is a key, no

@@ -32,6 +32,7 @@ import {
   type PipelineStageState,
 } from "@ticket/shared";
 import { autoReplyArticleCount } from "../ai/knowledge-base";
+import { classifierFiled, classifierGaveUp } from "../assistant-decisions";
 import { isAiConfigured } from "../ai/provider";
 import { prisma, type Prisma } from "../db";
 import {
@@ -68,11 +69,12 @@ import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
  *
  * Nothing here writes anything a job would not have written. There is no
  * `/pipeline` column and no simulated-ticket flag: every number below is
- * derived from `classifiedAt`, `category`, `status`, `autoResolvedAt`,
- * `autoReplyDecline`, `autoReplyOfferedAt` and the messages' `direction` /
- * `automated` / `citedArticleIds`. The one column added since the page existed,
- * `autoReplyOfferedAt` (#360), is the job's record of a decision it made, like
- * `autoReplyDecline`, and is not written for the page's benefit.
+ * derived from `classifiedAt`, `classifierCategory`, `category`, `status`,
+ * `autoResolvedAt`, `autoReplyDecline`, `autoReplyOfferedAt` and the messages'
+ * `direction` / `automated` / `citedArticleIds`. The two columns added since the
+ * page existed, `autoReplyOfferedAt` (#360) and `classifierCategory` (#561),
+ * are each a job's record of a decision it made, like `autoReplyDecline`, and
+ * neither is written for the page's benefit.
  */
 
 export const pipelineRouter = Router();
@@ -165,7 +167,8 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
  * Which columns a run is rebuilt from. Exactly the ones the jobs write, plus
  * enough of the thread to answer "what did the machine cite". Whether each half
  * will still act — which reads `autoReplyOfferedAt` and the whole thread — is
- * asked of the database by `awaitingOf` instead.
+ * asked of the database by `factsOf` instead, and so is what the classifier
+ * decided (#561).
  */
 const RUN_SELECT = {
   id: true,
@@ -197,18 +200,34 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 /**
  * Whether each half of the pipeline will still act on a row: the database's
  * answers to `classifierWillStillAct` and `autoReplyWillStillAct`, asked by
- * `awaitingOf` below.
+ * `factsOf` below.
  */
 type Awaiting = { classifier: boolean; autoReply: boolean };
+
+/**
+ * What the classifier decided about a row, if anything yet: the database's
+ * answer to `classifierFiled` and `classifierGaveUp` in `assistant-decisions.ts`,
+ * asked by `factsOf` below (#561). Null is no verdict yet. Exported for the
+ * test that hands `toRun` each answer.
+ */
+export const CLASSIFIER_VERDICT = {
+  filed: "filed",
+  gaveUp: "gaveUp",
+} as const;
+type ClassifierVerdict =
+  (typeof CLASSIFIER_VERDICT)[keyof typeof CLASSIFIER_VERDICT] | null;
 
 /**
  * Rebuild one ticket's trip down the rail.
  *
  * Every branch here is a fact a column records. Whether each half will still
  * act on this row arrives as `awaiting`: the caller asks the database, through
- * `awaitingOf` below, which runs `classifierWillStillAct` and
+ * `factsOf` below, which runs `classifierWillStillAct` and
  * `autoReplyWillStillAct` — the statements the rail's counts read too, and the
- * first the reconcile sweep. What this deliberately does *not* do is
+ * first the reconcile sweep. What the classifier decided arrives the same way,
+ * as `verdict`, from `classifierFiled` and `classifierGaveUp` (#561): read
+ * off `category` here, an agent clearing a category the classifier filed was
+ * drawn as the classifier giving up. What this deliberately does *not* do is
  * guess: a ticket with no classification verdict that nothing will classify —
  * no API key, a category a person filed first, or older than the reconcile
  * window — is `notOffered`, not "still thinking", because nothing is scheduled
@@ -231,14 +250,15 @@ export function toRun(
   row: RunRow,
   config: PipelineConfig,
   awaiting: Awaiting,
+  verdict: ClassifierVerdict,
 ): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
-  const machineClassified = row.classifiedAt !== null && row.category !== null;
+  const machineClassified = verdict === CLASSIFIER_VERDICT.filed;
   // The classifier's own terminal path: it stamped a time and never filed a
   // category. Named for which half of the pipeline gave up — the same word
   // `PipelineCounts.classifyAbandoned` uses — because `abandoned` is now an
   // outcome two different exits reach.
-  const classifyAbandoned = row.classifiedAt !== null && row.category === null;
+  const classifyAbandoned = verdict === CLASSIFIER_VERDICT.gaveUp;
   const resolved = row.autoResolvedAt !== null;
 
   // Is anything still going to happen to this ticket? Two different answers,
@@ -404,8 +424,12 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * header), and the split below is a claim about rows that only a real database
  * can check.
  *
+ * Filed and given up are `classifierFiled` and `classifierGaveUp` from
+ * `assistant-decisions.ts` (#561), the statements `factsOf` asks of each listed
+ * ticket and the effectiveness route counts its `classified` with.
+ *
  * The classifier's rule is `classifierWillStillAct` from `jobs/classify-ticket.ts`
- * at `to`, the statement `awaitingOf` asks of each listed ticket, so the
+ * at `to`, the statement `factsOf` asks of each listed ticket, so the
  * rail and the Recent arrivals list beside it cannot disagree about the same
  * tickets (#355, #361). With a key, what it matches is `classifyPending`. With
  * none, nothing is coming for those tickets either, so they are not offered and
@@ -427,15 +451,11 @@ export async function pipelineCounts(
   aiConfigured: boolean,
 ): Promise<PipelineCounts> {
   const window = { createdAt: { gte: from, lt: to } };
-  const machineFiled = {
-    classifiedAt: { not: null },
-    category: { not: null },
-  } satisfies Prisma.TicketWhereInput;
   // Machine-classified, with neither a resolve nor a decline: what the two
   // auto-reply counts split by the offer record (#363).
   const noAutoReplyVerdict = {
     ...window,
-    ...machineFiled,
+    ...classifierFiled,
     autoResolvedAt: null,
     autoReplyDecline: null,
   } satisfies Prisma.TicketWhereInput;
@@ -451,10 +471,8 @@ export async function pipelineCounts(
     autoReplyNotOffered,
   ] = await Promise.all([
     prisma.ticket.count({ where: window }),
-    prisma.ticket.count({ where: { ...window, ...machineFiled } }),
-    prisma.ticket.count({
-      where: { ...window, classifiedAt: { not: null }, category: null },
-    }),
+    prisma.ticket.count({ where: { ...window, ...classifierFiled } }),
+    prisma.ticket.count({ where: { ...window, ...classifierGaveUp } }),
     prisma.ticket.count({
       where: { AND: [window, classifierWillStillAct(to)] },
     }),
@@ -507,15 +525,17 @@ export async function pipelineCounts(
 }
 
 /**
- * What each half of the pipeline will still act on among `ticketIds` at `now`
- * — the `awaiting` answer `toRun` takes, asked through the same
- * `classifierWillStillAct` and `autoReplyWillStillAct` statements
- * `pipelineCounts` counts.
+ * What `toRun` takes about each of `ticketIds` at `now`, asked through the
+ * statements `pipelineCounts` counts: what each half of the pipeline will still
+ * act on (`classifierWillStillAct`, `autoReplyWillStillAct`), and what the
+ * classifier decided (`classifierFiled`, `classifierGaveUp`, #561).
  */
-async function awaitingOf(
+async function factsOf(
   ticketIds: number[],
   now: Date,
-): Promise<(ticketId: number) => Awaiting> {
+): Promise<
+  (ticketId: number) => { awaiting: Awaiting; verdict: ClassifierVerdict }
+> {
   const matching = async (rule: Prisma.TicketWhereInput) => {
     const rows = await prisma.ticket.findMany({
       where: { AND: [{ id: { in: ticketIds } }, rule] },
@@ -523,14 +543,34 @@ async function awaitingOf(
     });
     return new Set(rows.map((row) => row.id));
   };
-  const [classifier, autoReply] = await Promise.all([
-    matching(classifierWillStillAct(now)),
-    matching(autoReplyWillStillAct()),
-  ]);
+  const [classifierWillAct, autoReplyWillAct, filed, gaveUp] =
+    await Promise.all([
+      matching(classifierWillStillAct(now)),
+      matching(autoReplyWillStillAct()),
+      matching(classifierFiled),
+      matching(classifierGaveUp),
+    ]);
   return (ticketId) => ({
-    classifier: classifier.has(ticketId),
-    autoReply: autoReply.has(ticketId),
+    awaiting: {
+      classifier: classifierWillAct.has(ticketId),
+      autoReply: autoReplyWillAct.has(ticketId),
+    },
+    verdict: filed.has(ticketId)
+      ? CLASSIFIER_VERDICT.filed
+      : gaveUp.has(ticketId)
+        ? CLASSIFIER_VERDICT.gaveUp
+        : null,
   });
+}
+
+/** One listed row's run, from the row and what `factsOf` answered about it. */
+function runOf(
+  row: RunRow,
+  config: PipelineConfig,
+  facts: Awaited<ReturnType<typeof factsOf>>,
+): PipelineRun {
+  const { awaiting, verdict } = facts(row.id);
+  return toRun(row, config, awaiting, verdict);
 }
 
 pipelineRouter.get(
@@ -571,7 +611,7 @@ pipelineRouter.get(
 
     // After the rows rather than beside them: it asks about the listed ids
     // alone, at the same `to` the count reads.
-    const awaiting = await awaitingOf(
+    const facts = await factsOf(
       recentRows.map((row) => row.id),
       to,
     );
@@ -583,7 +623,7 @@ pipelineRouter.get(
       to: to.toISOString(),
       counts,
       queues: { classify, autoReply },
-      recent: recentRows.map((row) => toRun(row, config, awaiting(row.id))),
+      recent: recentRows.map((row) => runOf(row, config, facts)),
     });
   },
 );
@@ -603,13 +643,13 @@ pipelineRouter.get(
       return;
     }
 
-    const [config, row, awaiting] = await Promise.all([
+    const [config, row, facts] = await Promise.all([
       readConfig(),
       prisma.ticket.findUnique({
         where: { id: parsed.data },
         select: RUN_SELECT,
       }),
-      awaitingOf([parsed.data], new Date()),
+      factsOf([parsed.data], new Date()),
     ]);
 
     if (!row) {
@@ -617,7 +657,7 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: toRun(row, config, awaiting(row.id)) });
+    res.json({ run: runOf(row, config, facts) });
   },
 );
 

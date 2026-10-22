@@ -12,6 +12,7 @@ import {
   type AssistantEffectivenessResponse,
   type AutoReplyDecline,
 } from "@ticket/shared";
+import { classifierFiled } from "../assistant-decisions";
 import { Prisma, prisma } from "../db";
 import { averageEditDistance } from "./ticket-effectiveness-edit-distance";
 import { countCategoryOverrides } from "./ticket-effectiveness-override";
@@ -44,7 +45,6 @@ const VERDICT_DECLINES = AUTO_REPLY_DECLINES.filter(
 );
 
 interface FactsRow {
-  classified: number;
   resolvedByAssistant: number;
   declined: number;
 }
@@ -53,8 +53,8 @@ interface FactsRow {
  * GET /api/tickets/effectiveness
  *
  * The assistant's numbers, aggregated the way `ticket-stats.ts` already does
- * it — raw SQL for the facts a single scan answers, `groupBy`/`findMany` for
- * the counts that are more naturally a Prisma query, all four run inside one
+ * it — raw SQL for the facts a single scan answers, `count`/`groupBy`/`findMany`
+ * for the counts that are more naturally a Prisma query, all five run inside one
  * transaction so the whole response describes the same slice. Part of #16;
  * see `ticket-effectiveness-edit-distance.ts` for how `avgEditDistance` is
  * computed and why it no longer has to stay null.
@@ -78,16 +78,14 @@ export async function ticketEffectivenessHandler(
 
   const slice = Prisma.sql`t."createdAt" >= ${ts(from)} AND t."createdAt" < ${ts(to)}`;
 
-  // `classified`, `resolvedByAssistant` and `declined` all fall out of one scan
-  // of `ticket`, so they are one query rather than three. `resolvedByAssistant`
-  // reads the assignee (`u.automated`) rather than `autoResolvedAt` — see the
-  // field comment in `@ticket/shared` for why the two never disagree and the
-  // assignee is the one the ticket asked for.
+  // `resolvedByAssistant` and `declined` fall out of one scan of `ticket`, so
+  // they are one query rather than two. `resolvedByAssistant` reads the
+  // assignee (`u.automated`) rather than `autoResolvedAt` — see the field
+  // comment in `@ticket/shared` for why the two never disagree and the assignee
+  // is the one the ticket asked for. `classified` is counted beside it with
+  // `classifierFiled`, the statement `/pipeline` counts too (#561).
   const factsSql = Prisma.sql`
     SELECT
-      COUNT(*) FILTER (
-        WHERE t."classifiedAt" IS NOT NULL AND t.category IS NOT NULL
-      )::int AS classified,
       COUNT(*) FILTER (WHERE u.automated = true)::int AS "resolvedByAssistant",
       COUNT(*) FILTER (
         WHERE t."autoReplyDecline" IN (${Prisma.join(VERDICT_DECLINES)})
@@ -97,8 +95,9 @@ export async function ticketEffectivenessHandler(
     WHERE ${slice}
   `;
 
-  const [facts, declineGroups, overrideRows, editDistancePairs] =
+  const [classified, facts, declineGroups, overrideRows, editDistancePairs] =
     await prisma.$transaction([
+      prisma.ticket.count({ where: { ...window, ...classifierFiled } }),
       prisma.$queryRaw<FactsRow[]>(factsSql),
       // Every reason, including the zeroes — same pattern `routes/pipeline.ts`
       // uses for the identical column.
@@ -139,7 +138,6 @@ export async function ticketEffectivenessHandler(
     ]);
 
   const f = facts[0];
-  const classified = f?.classified ?? 0;
   const resolved = f?.resolvedByAssistant ?? 0;
   const declined = f?.declined ?? 0;
   const overridden = countCategoryOverrides(overrideRows);

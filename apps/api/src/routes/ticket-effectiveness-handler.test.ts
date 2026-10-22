@@ -65,6 +65,7 @@ function seedDeclined(decline: AutoReplyDecline) {
   return seedTicket({
     status: TICKET_STATUS.Open,
     category: TICKET_CATEGORY.Technical,
+    classifierCategory: TICKET_CATEGORY.Technical,
     createdAt: SEEDED_AT,
     classifiedAt: SEEDED_AT,
     autoReplyDecline: decline,
@@ -141,5 +142,37 @@ describe("GET /api/tickets/effectiveness — the decline aggregate", () => {
 
     expect(body.decline.count).toBe(0);
     expect(body.decline.rate).toBeNull();
+  });
+});
+
+describe("GET /api/tickets/effectiveness — what counts as classified (#561)", () => {
+  test("a ticket the classifier filed and an agent cleared is still classified", async () => {
+    // R1: the row an agent's clear leaves — stamped, no category — beside the
+    // classifier's own record of what it filed.
+    await seedTicket({
+      status: TICKET_STATUS.Open,
+      createdAt: SEEDED_AT,
+      classifiedAt: SEEDED_AT,
+      classifierCategory: TICKET_CATEGORY.Technical,
+    });
+
+    expect((await read()).classified).toBe(1);
+  });
+
+  test("a ticket the classifier gave up on is not, whoever filed it since", async () => {
+    // R2: stamped by the terminal path, then filed by a person.
+    await seedTicket({
+      status: TICKET_STATUS.Open,
+      category: TICKET_CATEGORY.Refund,
+      createdAt: SEEDED_AT,
+      classifiedAt: SEEDED_AT,
+    });
+    await seedTicket({
+      status: TICKET_STATUS.Open,
+      createdAt: SEEDED_AT,
+      classifiedAt: SEEDED_AT,
+    });
+
+    expect((await read()).classified).toBe(0);
   });
 });

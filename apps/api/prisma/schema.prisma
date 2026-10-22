@@ -256,6 +256,20 @@ model Ticket {
   // lands in the dead-letter queue, which is what stops that sweep re-queueing
   // a ticket forever.
   classifiedAt        DateTime?
+  // The category the classifier filed, written by `handle` in
+  // `jobs/classify-ticket.ts` in the same conditional write that files
+  // `category` and stamps `classifiedAt`, and by nothing else in the app
+  // (#561). Its migration backfilled the tickets from before it, from the
+  // classifier's own activity trail.
+  //
+  // `category` is the agent's column as much as the machine's, so it cannot
+  // say what the classifier decided: an agent who clears a category the
+  // classifier filed leaves `classifiedAt` set and `category` null, which is
+  // exactly what the terminal path leaves. This one no agent write touches, so
+  // "the classifier filed it" and "the classifier gave up" are read off it
+  // (`assistant-decisions.ts`). Null with `classifiedAt` set is the classifier
+  // giving up; null with `classifiedAt` null is no verdict yet.
+  classifierCategory  TicketCategory?
   // When the knowledge-base auto-reply answered this ticket and resolved it.
   //
   // The classifier's `classifiedAt` records a verdict either way; this one only
