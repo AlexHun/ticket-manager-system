@@ -91,12 +91,6 @@ const EXEMPTIONS: Exemption[] = [
   },
   {
     doc: "docs/standards/dev-tools.md",
-    citation: "protocol.ts",
-    reason:
-      "History: the one module the dev tools' contracts were split out of in #284.",
-  },
-  {
-    doc: "docs/standards/dev-tools.md",
     citation: ".vite/stats.html",
     reason: `${GITIGNORED} the bundle report a web build writes.`,
   },
@@ -250,16 +244,6 @@ const EXEMPTIONS: Exemption[] = [
       "docs/adr/0021-a-planned-run-is-not-a-run.md",
       "stopRequestedAt",
       "a column the ADR decided not to add.",
-    ],
-    [
-      "docs/standards/dev-tools.md",
-      "UNSTARTED_RANK",
-      "the sink value #286 deleted.",
-    ],
-    [
-      "docs/standards/dev-tools.md",
-      "emptyScan",
-      "renamed `emptyRead` in #417, as the bullet says.",
     ],
     [
       "docs/standards/testing.md",
