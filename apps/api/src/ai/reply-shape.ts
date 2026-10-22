@@ -25,8 +25,8 @@ import { withoutDashes } from "./provider";
  * of a string transform had to script a model call to reach it.
  *
  * Nothing here is a safety check. The length limit and checks 4-6 stay in
- * `autoReply`, and run over exactly the string this returns, greeting and sign
- * off included (ADR-0004).
+ * `autoReply`; the length limit and checks 5 and 6 run over exactly the string
+ * this returns, greeting and sign off included (ADR-0004).
  */
 
 /**
@@ -40,11 +40,11 @@ import { withoutDashes } from "./provider";
  * The sign off deliberately carries no personal name, no agent handle and no
  * contact details. A name would be a lie; an address or a URL here would be
  * worse than a lie, because `unbackedReferences` in `autoReply` runs over the
- * assembled reply and would discard every single one of these for citing a link no article
- * contains. If a future sign off needs contact details, they belong in an
- * article first. It signs as the product, `BRAND_NAME`, as the invitation and
- * reset emails do (#488); the name carries no money word, link or address, so
- * checks 5 and 6 pass it as they passed "The Support Team".
+ * assembled reply and would discard every single one of these for citing a
+ * link no article contains. If a future sign off needs contact details, they
+ * belong in an article first. It signs as the product, `BRAND_NAME`, as the
+ * invitation and reset emails do (#488); the name carries no money word, link
+ * or address, so checks 5 and 6 pass it as they passed "The Support Team".
  */
 const GREETING_FALLBACK = "Hello,";
 const SIGN_OFF = `Best regards,\n${BRAND_NAME}`;
@@ -199,7 +199,7 @@ const LEADING_DASH = new RegExp(String.raw`^${SIGN_OFF_DASH}\s*`);
 /**
  * Take out the greeting and sign off the model added anyway.
  *
- * It was asked twice not to, which — as everything else in this file records —
+ * It was asked twice not to, which — as everything in `auto-reply.ts` records —
  * is not the same as it not doing so. Without this the customer gets "Hi Marta,"
  * twice, and the doubled version is the one that looks automated.
  *

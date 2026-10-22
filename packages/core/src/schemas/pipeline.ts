@@ -57,7 +57,7 @@ const simulateEmailFields = z.object({
    * reaches `greetingName` in `ai/reply-shape.ts`. Constraining it here would
    * make the page unable to demonstrate the thing that field exists to defend
    * against — type `Marta, see https://evil.example` and watch the greeting
-   * come back as `Hello,` with no link in it.
+   * come back as `Hi Marta,` with no link in it.
    */
   senderName: z
     .string()
