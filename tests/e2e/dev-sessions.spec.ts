@@ -363,13 +363,23 @@ function writeConductor() {
 /**
  * A page the size of a working machine's, written by the fold test alone:
  * `MANY_SESSIONS` sessions on `#901`, each with `MANY_SUBAGENTS` subagents,
- * about 6k elements, a quarter of the 26k the probe on #611 measured, enough
+ * about 6k elements against the 26k the probe on #611 measured, enough
  * that a fold laying out the whole page shows against one laying out its own
  * session.
  */
 const MANY_SESSIONS = 40;
 const MANY_SUBAGENTS = 4;
 const MANY_GROUP = "issue:901";
+/** Its first reading: 200 transcripts more than the fixture's 5. */
+const MANY_READ_MS = 30_000;
+/**
+ * The most a layout of a fold may cover, as a share of the page's elements.
+ * Laying out the whole page covers more objects than there are elements
+ * (9,236 for 6,326 here without #611's fix); laying out what is on screen
+ * covers about a quarter (1,498 for 6,167 with it), the same at any page
+ * size, since the window is. A half sits about twice from either.
+ */
+const FOLD_LAYOUT_SHARE = 1 / 2;
 
 function writeManySessions() {
   const now = new Date().toISOString();
@@ -795,8 +805,7 @@ test.describe("dev tools: Sessions", () => {
     const toggle = own(card).getByRole("button", {
       name: /^Hide the subagents of/,
     });
-    // The first reading of 200 transcripts takes longer than the fixture's 4.
-    await expect(toggle).toBeVisible({ timeout: 30_000 });
+    await expect(toggle).toBeVisible({ timeout: MANY_READ_MS });
     const elements = await page.evaluate(
       () => document.getElementsByTagName("*").length,
     );
@@ -827,7 +836,7 @@ test.describe("dev tools: Sessions", () => {
     expect(laidOut.length).toBeGreaterThan(0);
     for (const objects of laidOut) {
       expect(objects).toBeDefined();
-      expect(objects).toBeLessThan(elements / 4);
+      expect(objects).toBeLessThan(elements * FOLD_LAYOUT_SHARE);
     }
   });
 
