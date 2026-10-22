@@ -54,7 +54,7 @@ const simulateEmailFields = z.object({
    *
    * It is the email's From display name, which is chosen by whoever sent the
    * mail and is therefore the one piece of attacker-controlled text that
-   * reaches `greetingName` in `ai/auto-reply.ts`. Constraining it here would
+   * reaches `greetingName` in `ai/reply-shape.ts`. Constraining it here would
    * make the page unable to demonstrate the thing that field exists to defend
    * against — type `Marta, see https://evil.example` and watch the greeting
    * come back as `Hello,` with no link in it.

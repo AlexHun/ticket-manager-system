@@ -2059,7 +2059,7 @@ export const PIPELINE_RECENT_LIMIT = 12;
  * constant is shared so the form can show the address it is going to get.
  *
  * The **display name** is deliberately not constrained — it is the one piece of
- * attacker-controlled text `ai/auto-reply.ts` has to neutralise (`greetingName`),
+ * attacker-controlled text `ai/reply-shape.ts` has to neutralise (`greetingName`),
  * and being able to type a hostile one is how you watch it work.
  */
 export const SIMULATED_SENDER_DOMAIN = "sim.example.com";

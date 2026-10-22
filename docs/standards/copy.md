@@ -64,7 +64,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 The invitation and reset emails (`apps/api/src/auth.ts`) and the auto-reply's sign-off are the only copy that reaches someone outside the app.
 
-- They name the product and sign off as it — "The Great Forge Desk", not "the support desk" and "The Support Team" — and so does the auto-reply's sign off (`composeReply` in `apps/api/src/ai/auto-reply.ts`). **`BRAND_NAME` and `BRAND_SHORT` live in `@ticket/shared`** since #488 (and `BRAND_ATTRIBUTIVE`, the name less its article, since #513), the one module the web app, the API and the E2E suite can all import, so nobody restates the literal; the web app's own brand module, which the API could not reach, is gone.
+- They name the product and sign off as it — "The Great Forge Desk", not "the support desk" and "The Support Team" — and so does the auto-reply's sign off (`composeReply` in `apps/api/src/ai/reply-shape.ts`). **`BRAND_NAME` and `BRAND_SHORT` live in `@ticket/shared`** since #488 (and `BRAND_ATTRIBUTIVE`, the name less its article, since #513), the one module the web app, the API and the E2E suite can all import, so nobody restates the literal; the web app's own brand module, which the API could not reach, is gone.
 - Subject lines say what the email is for, in sentence case: "Your Great Forge Desk account is ready", "Reset your Great Forge Desk password". Where the name stands before a noun it drops its article, derived from `BRAND_NAME` in `auth.ts` rather than retyped.
 
 ## Changing copy safely
