@@ -332,3 +332,44 @@ describe("shapeReply — the bookends it was told not to write", () => {
     expect(shapeReply(NAME, ["Hi Marta,", "Best regards,"], [])).toBeNull();
   });
 });
+
+describe("shapeReply — whatever dash the model used", () => {
+  // The three replies the 2026-10-16 probe found reaching a customer (#573).
+  // The dash pass runs after the strips, so a dash hid a bookend from them.
+
+  test("takes the dash off a dash-led step, as it does a bullet", () => {
+    // Shipped as "1., Set the quality to Auto".
+    expect(
+      shaped(
+        ["Buffering is almost always the quality setting."],
+        ["— Set the quality to Auto"],
+      ),
+    ).toBe(
+      "Hi Marta,\n\n" +
+        "Buffering is almost always the quality setting.\n\n" +
+        "1. Set the quality to Auto\n\n" +
+        `Best regards,\n${BRAND_NAME}`,
+    );
+  });
+
+  test("keeps the sentence a greeting was welded to by a dash, recapitalised", () => {
+    // Shipped as "Hi Marta," and then "Hi Marta, buffering is…".
+    expect(
+      shaped(["Hi Marta — buffering is almost always the quality setting."]),
+    ).toBe(
+      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
+    );
+  });
+
+  test("drops a greeting paragraph led by a dash", () => {
+    // Shipped as "Hi Marta," twice.
+    expect(
+      shaped([
+        "— Hi Marta,",
+        "Buffering is almost always the quality setting.",
+      ]),
+    ).toBe(
+      `Hi Marta,\n\nBuffering is almost always the quality setting.\n\nBest regards,\n${BRAND_NAME}`,
+    );
+  });
+});
