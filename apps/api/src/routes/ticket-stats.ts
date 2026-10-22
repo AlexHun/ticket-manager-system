@@ -18,10 +18,9 @@ import {
   type TicketCategoryCount,
   type TicketStatsResponse,
 } from "@ticket/shared";
+import { DAY_MS } from "../assistant-decisions";
 import { Prisma, prisma } from "../db";
 import { sessionOf } from "../middleware/auth";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * `generate_series` step per bucket width. Like `ORDER_BY` in `tickets.ts`, the

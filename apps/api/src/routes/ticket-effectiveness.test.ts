@@ -1,89 +1,24 @@
 /**
- * Unit tests for the two pieces of the effectiveness endpoint expressible as
- * pure functions over plain rows rather than a database query, and so the
- * pieces a `bun test` file (no database, per `docs/standards/testing.md`) can
- * actually exercise: `countCategoryOverrides` (`./ticket-effectiveness-override`)
- * and `editDistance`/`averageEditDistance`
- * (`./ticket-effectiveness-edit-distance`). `ticketEffectivenessHandler` calls
- * the first over exactly the rows `prisma.ticketActivity.findMany` would
- * return for `category_changed` activity in the slice, and the second over
- * exactly the rows `prisma.message.findMany` would return for outbound,
- * sent-and-polished messages in the slice.
+ * Unit tests for the piece of the effectiveness endpoint expressible as pure
+ * functions over plain strings rather than a database query:
+ * `editDistance`/`averageEditDistance` (`./ticket-effectiveness-edit-distance`).
+ * `ticketEffectivenessHandler` calls the second over exactly the rows
+ * `prisma.message.findMany` would return for outbound, sent-and-polished
+ * messages in the slice.
  *
- * Deliberately does not import `./ticket-effectiveness` itself, which pulls in
- * `../db`. That used to be a hazard — the specifier is `mock.module`d
- * process-wide by most of the suite, and until #174 one of those factories was
- * a hand-written client rather than the shared `../test/pg` one, so importing
- * anything reaching `../db` here would bind to whichever registration
- * `bun test` happened to load first. It is not a hazard any more: every
- * factory binds the same client now. What is left is the plainer reason — the
- * two modules above are pure functions over plain rows and need no database to
- * exercise, so this file mocks nothing and imports neither. The handler's own
- * queries are tested against real rows in a real Postgres, the way
- * `routes/activity.ts`'s `UNION ALL` is (#171) — since #226, in
- * `ticket-effectiveness-handler.test.ts`, which is its own file for the reason
- * this paragraph gave when it was still a plan: what that one needs is a
- * database and this one needs nothing at all.
+ * Deliberately does not import `./ticket-effectiveness` itself: the module
+ * above needs no database to exercise, so this file mocks nothing and needs
+ * nothing. The handler's own queries are tested against real rows in a real
+ * Postgres in `ticket-effectiveness-handler.test.ts`, and the counts it shares
+ * with `/pipeline`, the category-override walk among them, in
+ * `../assistant-decisions.test.ts` (#563).
  */
 
 import { describe, expect, test } from "bun:test";
-import { TICKET_ACTOR_KIND } from "@ticket/shared";
 import {
   averageEditDistance,
   editDistance,
 } from "./ticket-effectiveness-edit-distance";
-import { countCategoryOverrides } from "./ticket-effectiveness-override";
-
-describe("countCategoryOverrides", () => {
-  test("classifier filed it, an agent later changed it: counted", () => {
-    const rows = [
-      { ticketId: 1, actorKind: TICKET_ACTOR_KIND.assistant },
-      { ticketId: 1, actorKind: TICKET_ACTOR_KIND.agent },
-    ];
-    expect(countCategoryOverrides(rows)).toBe(1);
-  });
-
-  test("classifier filed it, nobody touched it since: not counted", () => {
-    const rows = [{ ticketId: 1, actorKind: TICKET_ACTOR_KIND.assistant }];
-    expect(countCategoryOverrides(rows)).toBe(0);
-  });
-
-  test("an agent filed it directly — the classifier never set a category: not counted", () => {
-    // No assistant-authored row exists for this ticket, so there is nothing on
-    // record for the agent to have overridden.
-    const rows = [{ ticketId: 1, actorKind: TICKET_ACTOR_KIND.agent }];
-    expect(countCategoryOverrides(rows)).toBe(0);
-  });
-
-  test("an agent changed it twice after the classifier: counted once, not twice", () => {
-    const rows = [
-      { ticketId: 1, actorKind: TICKET_ACTOR_KIND.assistant },
-      { ticketId: 1, actorKind: TICKET_ACTOR_KIND.agent },
-      { ticketId: 1, actorKind: TICKET_ACTOR_KIND.agent },
-    ];
-    expect(countCategoryOverrides(rows)).toBe(1);
-  });
-
-  test("mixed tickets: only the ones with both an assistant and an agent row count", () => {
-    const rows = [
-      // Ticket 1: overridden.
-      { ticketId: 1, actorKind: TICKET_ACTOR_KIND.assistant },
-      { ticketId: 1, actorKind: TICKET_ACTOR_KIND.agent },
-      // Ticket 2: classifier only.
-      { ticketId: 2, actorKind: TICKET_ACTOR_KIND.assistant },
-      // Ticket 3: agent only — the classifier never reached it.
-      { ticketId: 3, actorKind: TICKET_ACTOR_KIND.agent },
-      // Ticket 4: overridden too.
-      { ticketId: 4, actorKind: TICKET_ACTOR_KIND.assistant },
-      { ticketId: 4, actorKind: TICKET_ACTOR_KIND.agent },
-    ];
-    expect(countCategoryOverrides(rows)).toBe(2);
-  });
-
-  test("no rows: zero", () => {
-    expect(countCategoryOverrides([])).toBe(0);
-  });
-});
 
 /** Textbook full-matrix Levenshtein, kept only in this test file as a slow but
  *  obviously-correct oracle for `editDistance` — the implementation under test

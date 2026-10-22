@@ -1,4 +1,14 @@
-import type { Prisma } from "./db";
+import {
+  asAutoReplyDecline,
+  AUTO_REPLY_DECLINES,
+  DASHBOARD_RANGE_DAYS,
+  TICKET_ACTOR_KIND,
+  type AutoReplyDecline,
+  type DashboardRange,
+  type TicketActorKind,
+} from "@ticket/shared";
+import { DAY_MS } from "./demo/utc-day";
+import { prisma, type Prisma } from "./db";
 
 /**
  * What the assistant decided about a ticket, each fact stated once (#561).
@@ -20,8 +30,26 @@ import type { Prisma } from "./db";
  * run a query, so the routes count with these and ask them of the tickets they
  * list, and `toRun` takes the answer rather than restating it.
  *
- * No runtime imports, so no test has anything here to stub.
+ * The window both screens count over, and the counts over it that both
+ * publish, are here too (#563): `windowFor`, `inWindow` and `windowCounts`.
+ * Each route used to pin its own window and run its own copy of these counts
+ * and of the zero-filled decline tally, so for the same range the two screens
+ * agreed only while the copies did. The one count only the dashboard
+ * publishes, the category overrides, is here as well, beside the classifier's
+ * facts it is about.
+ *
+ * The only runtime import that reaches a database is `./db`, which the test
+ * preload binds for the whole process (ADR-0014), so no test has anything here
+ * to stub.
  */
+
+/**
+ * One day, in milliseconds: what `DASHBOARD_RANGE_DAYS` is multiplied by.
+ * Stated once for the whole API, in the import-free leaf the demo's clocks
+ * read too, and handed on here so a dashboard route takes it from the module
+ * that pins its window.
+ */
+export { DAY_MS };
 
 /**
  * The classifier filed a category on the ticket. Whatever an agent did to
@@ -58,3 +86,112 @@ export const classifierGaveUp = {
 export const assistantResolved = {
   autoResolvedAt: { not: null },
 } satisfies Prisma.TicketWhereInput;
+
+/** Tickets created in `[from, to)`: the slice every count below is taken over. */
+export type CountWindow = { from: Date; to: Date };
+
+/**
+ * The window a dashboard range names, ending at `to`. A route pins `to` once
+ * and passes the window to every count, so the whole response describes one
+ * slice.
+ */
+export function windowFor(
+  range: DashboardRange,
+  to: Date = new Date(),
+): CountWindow {
+  return {
+    from: new Date(to.getTime() - DASHBOARD_RANGE_DAYS[range] * DAY_MS),
+    to,
+  };
+}
+
+/**
+ * The window as a `where` on the ticket. `lt` rather than `lte` at the top, and
+ * a JS `Date` against a column Postgres stamps to the microsecond, is why a
+ * time-sliced test pins its rows in the past (`testing-api.md`).
+ */
+export function inWindow({ from, to }: CountWindow) {
+  return {
+    createdAt: { gte: from, lt: to },
+  } satisfies Prisma.TicketWhereInput;
+}
+
+/** What both screens publish about one window. */
+export type WindowCounts = {
+  /** `classifierFiled`: `/pipeline`'s `machineClassified`, the dashboard's `classified`. */
+  classified: number;
+  /** `classifierGaveUp`: `/pipeline`'s `classifyAbandoned`. */
+  gaveUp: number;
+  /** `assistantResolved`: `/pipeline`'s `autoResolved`, the dashboard's `autoReply.resolved`. */
+  resolved: number;
+  /**
+   * Tickets per decline reason, every reason present and the zeroes included:
+   * a zero is the difference between "that check has never fired" and "we do
+   * not measure it". Unfiltered by `DECLINE_OUTCOME`, because a reason is what
+   * the column honestly holds; the dashboard's verdict-only decline count is
+   * taken from this tally rather than counted again.
+   */
+  declines: Record<AutoReplyDecline, number>;
+};
+
+/**
+ * The counts `/pipeline` and the dashboard both publish for `window`, so for
+ * the same range the two screens cannot disagree.
+ */
+export async function windowCounts(window: CountWindow): Promise<WindowCounts> {
+  const slice = inWindow(window);
+  const [classified, gaveUp, resolved, declineGroups] = await Promise.all([
+    prisma.ticket.count({ where: { ...slice, ...classifierFiled } }),
+    prisma.ticket.count({ where: { ...slice, ...classifierGaveUp } }),
+    prisma.ticket.count({ where: { ...slice, ...assistantResolved } }),
+    prisma.ticket.groupBy({
+      by: ["autoReplyDecline"],
+      where: { ...slice, autoReplyDecline: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const declines = Object.fromEntries(
+    AUTO_REPLY_DECLINES.map((d) => [d, 0]),
+  ) as Record<AutoReplyDecline, number>;
+  for (const group of declineGroups) {
+    const reason = asAutoReplyDecline(group.autoReplyDecline);
+    if (reason) declines[reason] += group._count._all;
+  }
+
+  return { classified, gaveUp, resolved, declines };
+}
+
+/**
+ * Did an agent change a category the classifier set? Counted over a window's
+ * `category_changed` activity rows written by the assistant or an agent.
+ *
+ * The classifier writes its own `category_changed` activity row exactly once
+ * per ticket — `jobs/classify-ticket.ts` only ever fires while `category` is
+ * still null, so there is never a second one to collide with. So "the
+ * classifier set this ticket's category" is exactly "an assistant-authored
+ * `category_changed` row exists for it", and "an agent later changed it" is
+ * exactly "an agent-authored one does too" — no ordering check needed, because
+ * the assistant's row can only ever be the first.
+ */
+export function countCategoryOverrides(
+  rows: { ticketId: number; actorKind: TicketActorKind }[],
+): number {
+  const kindsByTicket = new Map<number, Set<TicketActorKind>>();
+  for (const row of rows) {
+    const kinds = kindsByTicket.get(row.ticketId) ?? new Set();
+    kinds.add(row.actorKind);
+    kindsByTicket.set(row.ticketId, kinds);
+  }
+
+  let overridden = 0;
+  for (const kinds of kindsByTicket.values()) {
+    if (
+      kinds.has(TICKET_ACTOR_KIND.assistant) &&
+      kinds.has(TICKET_ACTOR_KIND.agent)
+    ) {
+      overridden++;
+    }
+  }
+  return overridden;
+}

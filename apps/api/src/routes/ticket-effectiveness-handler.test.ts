@@ -3,9 +3,9 @@
  * `apps/api/src/routes/ticket-effectiveness.ts`.
  *
  * A second file rather than an extension of `ticket-effectiveness.test.ts`,
- * which says so itself: that one is about the two pure functions over plain rows
+ * which says so itself: that one is about pure functions over plain strings
  * and deliberately imports neither `../db` nor the handler. This one is the
- * opposite half — the handler's `where`s against a real Postgres (`../test/pg`,
+ * opposite half — the handler against a real Postgres (`../test/pg`,
  * ADR-0014), which is the only seam that can tell a query apart from an
  * assertion about the arguments it was written with.
  *
@@ -13,9 +13,11 @@
  * `autoReplyDecline IS NOT NULL`, which folded outages in with verdicts and
  * **inflated a published number** — the one an admin reads to decide whether the
  * knowledge base needs work (`docs/adr/0019`). The aggregate now counts
- * `DECLINE_OUTCOME`'s nine verdicts and the per-reason breakdown beside it still
- * counts all ten, because a reason is what the column honestly holds; a test
- * that only watched the first would let the second quietly follow it.
+ * `DECLINE_OUTCOME`'s nine verdicts, summed from the per-reason tally that
+ * still counts all ten, because a reason is what the column honestly holds.
+ * What counts as classified and as resolved, and that tally itself, are the
+ * counts this route shares with `/pipeline`, and are tested where they are
+ * stated: `../assistant-decisions.test.ts` (#563).
  *
  * The router is stood up around the bare handler rather than importing
  * `./tickets`, which mounts it behind `requireAuth`: the guard is not what is
@@ -32,8 +34,8 @@ import {
   type AssistantEffectivenessResponse,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import { prisma, resetDb } from "../test/pg";
-import { COLLEAGUE, seedColleagues, seedTicket } from "../test/fixtures";
+import { resetDb } from "../test/pg";
+import { seedTicket } from "../test/fixtures";
 import { serveRouter } from "../test/route-app";
 
 const { ticketEffectivenessHandler } = await import("./ticket-effectiveness");
@@ -103,19 +105,6 @@ describe("GET /api/tickets/effectiveness — the decline aggregate", () => {
     expect(body.decline.rate).toBe(0);
   });
 
-  test("the per-reason breakdown still reports it under its own key", async () => {
-    await seedDeclined(AUTO_REPLY_DECLINE.unavailable);
-    await seedDeclined(AUTO_REPLY_DECLINE.notCovered);
-
-    const body = await read();
-
-    // Unchanged, deliberately: this breaks the column down by reason, and every
-    // reason including the zeroes is information — same as on `/pipeline`.
-    expect(body.decline.reasons[AUTO_REPLY_DECLINE.unavailable]).toBe(1);
-    expect(body.decline.reasons[AUTO_REPLY_DECLINE.notCovered]).toBe(1);
-    expect(body.decline.reasons[AUTO_REPLY_DECLINE.tooLong]).toBe(0);
-  });
-
   test("every verdict reason counts, not just the one the model reached", async () => {
     // Nine of the ten are verdicts, and the filter is built from
     // `DECLINE_OUTCOME` rather than written out — so a gate reason and an output
@@ -142,86 +131,5 @@ describe("GET /api/tickets/effectiveness — the decline aggregate", () => {
 
     expect(body.decline.count).toBe(0);
     expect(body.decline.rate).toBeNull();
-  });
-});
-
-describe("GET /api/tickets/effectiveness — what counts as classified (#561)", () => {
-  test("a ticket the classifier filed and an agent cleared is still classified", async () => {
-    // R1: the row an agent's clear leaves — stamped, no category — beside the
-    // classifier's own record of what it filed.
-    await seedTicket({
-      status: TICKET_STATUS.Open,
-      createdAt: SEEDED_AT,
-      classifiedAt: SEEDED_AT,
-      classifierCategory: TICKET_CATEGORY.Technical,
-    });
-
-    expect((await read()).classified).toBe(1);
-  });
-
-  test("a ticket the classifier gave up on is not, whoever filed it since", async () => {
-    // R2: stamped by the terminal path, then filed by a person.
-    await seedTicket({
-      status: TICKET_STATUS.Open,
-      category: TICKET_CATEGORY.Refund,
-      createdAt: SEEDED_AT,
-      classifiedAt: SEEDED_AT,
-    });
-    await seedTicket({
-      status: TICKET_STATUS.Open,
-      createdAt: SEEDED_AT,
-      classifiedAt: SEEDED_AT,
-    });
-
-    expect((await read()).classified).toBe(0);
-  });
-});
-
-describe("GET /api/tickets/effectiveness — what counts as resolved by the assistant (#562)", () => {
-  /** A ticket the auto-reply answered, as `auto-reply-ticket.ts` leaves it. */
-  function seedAutoResolved(assignedToId: string | null) {
-    return seedTicket({
-      status: TICKET_STATUS.Resolved,
-      category: TICKET_CATEGORY.Technical,
-      classifierCategory: TICKET_CATEGORY.Technical,
-      createdAt: SEEDED_AT,
-      classifiedAt: SEEDED_AT,
-      autoResolvedAt: SEEDED_AT,
-      assignedToId,
-    });
-  }
-
-  beforeEach(async () => {
-    await seedColleagues("agent", "assistant");
-  });
-
-  test("a ticket the assistant resolved counts, whoever it is assigned to since", async () => {
-    // R3: an agent reassigning it, or moving its status on, withdraws nothing.
-    await seedAutoResolved(COLLEAGUE.assistant.id);
-    const reassigned = await seedAutoResolved(COLLEAGUE.agent.id);
-    await prisma.ticket.update({
-      where: { id: reassigned.id },
-      data: { status: TICKET_STATUS.Closed },
-    });
-
-    const body = await read();
-
-    expect(body.autoReply.resolved).toBe(2);
-    expect(body.autoReply.rate).toBe(1);
-  });
-
-  test("a ticket assigned to the assistant with no auto-resolve stamp does not", async () => {
-    // A customer's reopen clears the stamp (`ingest.ts`), and that is the one
-    // thing that withdraws the resolution, wherever the ticket is assigned.
-    await seedTicket({
-      status: TICKET_STATUS.Open,
-      category: TICKET_CATEGORY.Technical,
-      classifierCategory: TICKET_CATEGORY.Technical,
-      createdAt: SEEDED_AT,
-      classifiedAt: SEEDED_AT,
-      assignedToId: COLLEAGUE.assistant.id,
-    });
-
-    expect((await read()).autoReply.resolved).toBe(0);
   });
 });

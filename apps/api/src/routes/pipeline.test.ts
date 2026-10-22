@@ -455,7 +455,7 @@ describe("pipelineCounts — an unstamped ticket", () => {
       classifiedAt: AN_HOUR_AGO,
     });
 
-    const counts = await pipelineCounts(FROM, TO, true);
+    const counts = await pipelineCounts({ from: FROM, to: TO }, true);
 
     expect(counts).toMatchObject({
       received: 8,
@@ -483,7 +483,7 @@ describe("pipelineCounts — an unstamped ticket", () => {
       category: TICKET_CATEGORY.Technical,
     });
 
-    const counts = await pipelineCounts(FROM, TO, false);
+    const counts = await pipelineCounts({ from: FROM, to: TO }, false);
 
     expect(counts).toMatchObject({
       received: 3,
@@ -579,7 +579,7 @@ describe("pipelineCounts — a classified ticket with no verdict", () => {
     // Unstamped, so the classifier's half, not this one.
     await seedTicket({ createdAt: AN_HOUR_AGO, status: TICKET_STATUS.New });
 
-    const counts = await pipelineCounts(FROM, TO, true);
+    const counts = await pipelineCounts({ from: FROM, to: TO }, true);
 
     expect(counts).toMatchObject({
       received: 9,
@@ -587,40 +587,6 @@ describe("pipelineCounts — a classified ticket with no verdict", () => {
       autoReplyPending: 2,
       autoReplyNotOffered: 2,
     });
-  });
-});
-
-describe("pipelineCounts — a ticket the assistant resolved (#562)", () => {
-  const TO = new Date("2026-09-10T12:00:00.000Z");
-  const FROM = new Date(TO.getTime() - 30 * 24 * 60 * 60 * 1_000);
-  const AN_HOUR_AGO = new Date(TO.getTime() - 60 * 60 * 1_000);
-
-  const classified = {
-    createdAt: AN_HOUR_AGO,
-    category: TICKET_CATEGORY.Technical,
-    classifierCategory: TICKET_CATEGORY.Technical,
-    classifiedAt: AN_HOUR_AGO,
-    autoReplyOfferedAt: AN_HOUR_AGO,
-  };
-
-  test("counts what carries the stamp, whoever holds it", async () => {
-    // R3: one the assistant resolved, then reassigned and closed by an agent;
-    // and one still filed under the assistant whose stamp a reopen cleared.
-    await seedTicket({
-      ...classified,
-      status: TICKET_STATUS.Closed,
-      autoResolvedAt: AN_HOUR_AGO,
-      assignedToId: COLLEAGUE.admin.id,
-    });
-    await seedTicket({
-      ...classified,
-      status: TICKET_STATUS.Open,
-      assignedToId: COLLEAGUE.assistant.id,
-    });
-
-    const counts = await pipelineCounts(FROM, TO, true);
-
-    expect(counts.autoResolved).toBe(1);
   });
 });
 

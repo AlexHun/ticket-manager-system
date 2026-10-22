@@ -15,11 +15,9 @@
  * strings are genuinely unrelated, which degrades to the same cost the naive
  * approach always paid — but only for that rarer pair, not for every one.
  *
- * Kept in its own module, importing nothing from `../db`, for the same reason
- * `ticket-effectiveness-override.ts` is: a `bun test` file can exercise it
- * directly against plain strings without touching the process-wide `../db`
- * mock registry — see `ticket-effectiveness.test.ts` and the "registry is one
- * process wide" note in `docs/standards/testing.md`.
+ * Kept in its own module, importing nothing from `../db`, so a `bun test` file
+ * can exercise it directly against plain strings with no database at all — see
+ * `ticket-effectiveness.test.ts`.
  */
 
 const UNBOUNDED = Number.MAX_SAFE_INTEGER;
@@ -106,9 +104,10 @@ export interface EditDistancePair {
  * Takes the row shape the Prisma query returns rather than requiring the
  * caller to have already filtered `not: null` — the query does filter on
  * both columns, but a defensive skip here means this stays correct even if a
- * future caller forgets to, the same trade `countCategoryOverrides` makes for
- * its own rows. `null` — not `0` — when there are no pairs to average, since a
- * rate of zero and "nothing measured yet" are different facts.
+ * future caller forgets to, the same trade `countCategoryOverrides` (in
+ * `assistant-decisions.ts`) makes for its own rows. `null` — not `0` — when
+ * there are no pairs to average, since a rate of zero and "nothing measured
+ * yet" are different facts.
  */
 export function averageEditDistance(pairs: EditDistancePair[]): number | null {
   let total = 0;

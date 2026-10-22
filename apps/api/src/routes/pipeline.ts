@@ -4,10 +4,8 @@ import { z } from "zod";
 import { simulateEmailSchema } from "@ticket/core";
 import {
   asAutoReplyDecline,
-  AUTO_REPLY_DECLINES,
   CLASSIFY_NOT_OFFERED,
   DASHBOARD_RANGE,
-  DASHBOARD_RANGE_DAYS,
   DECLINE_OUTCOME,
   DECLINE_STAGE,
   DEFAULT_DASHBOARD_RANGE,
@@ -20,7 +18,6 @@ import {
   PIPELINE_STAGE_STATE,
   SIMULATED_SENDER_DOMAIN,
   TICKET_STATUS,
-  type AutoReplyDecline,
   type PipelineConfig,
   type PipelineCounts,
   type PipelineOverviewResponse,
@@ -36,6 +33,10 @@ import {
   assistantResolved,
   classifierFiled,
   classifierGaveUp,
+  inWindow,
+  windowCounts,
+  windowFor,
+  type CountWindow,
 } from "../assistant-decisions";
 import { isAiConfigured } from "../ai/provider";
 import { prisma, type Prisma } from "../db";
@@ -164,8 +165,6 @@ const pipelineQuerySchema = z.object({
     .enum(DASHBOARD_RANGE, { error: "Invalid range" })
     .default(DEFAULT_DASHBOARD_RANGE),
 });
-
-const DAY_MS = 24 * 60 * 60 * 1_000;
 
 /**
  * Which columns a run is rebuilt from. Exactly the ones the jobs write, plus
@@ -432,17 +431,19 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
 }
 
 /**
- * The overview's raw facts for tickets created in `[from, to)`.
+ * The overview's raw facts for tickets created in `window`.
  *
  * **Exported for its test**, for the reason `toRun` is: `GET /` also reads queue
  * depth through `getBoss()`, which `pipeline.test.ts` cannot reach (see its
  * header), and the split below is a claim about rows that only a real database
  * can check.
  *
- * Filed and given up are `classifierFiled` and `classifierGaveUp` from
- * `assistant-decisions.ts` (#561), and resolved is `assistantResolved` from the
- * same module (#562): the statements `factsOf` asks of each listed ticket and
- * the effectiveness route counts its `classified` and `resolved` with.
+ * Filed, given up, resolved and the decline tally are `windowCounts` from
+ * `assistant-decisions.ts` (#563), the call the effectiveness route makes for
+ * its `classified`, `resolved` and per-reason declines, so for the same range
+ * the two screens cannot disagree. Its counts read `classifierFiled`,
+ * `classifierGaveUp` (#561) and `assistantResolved` (#562), the statements
+ * `factsOf` asks of each listed ticket.
  *
  * The classifier's rule is `classifierWillStillAct` from `jobs/classify-ticket.ts`
  * at `to`, the statement `factsOf` asks of each listed ticket, so the
@@ -462,41 +463,35 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * offer is only ever recorded where one could run.
  */
 export async function pipelineCounts(
-  from: Date,
-  to: Date,
+  window: CountWindow,
   aiConfigured: boolean,
 ): Promise<PipelineCounts> {
-  const window = { createdAt: { gte: from, lt: to } };
+  const slice = inWindow(window);
   // Machine-classified, with neither a resolve nor a decline: what the two
   // auto-reply counts split by the offer record (#363).
   const noAutoReplyVerdict = {
-    ...window,
+    ...slice,
     ...classifierFiled,
     NOT: assistantResolved,
     autoReplyDecline: null,
   } satisfies Prisma.TicketWhereInput;
 
   const [
+    {
+      classified: machineClassified,
+      gaveUp: classifyAbandoned,
+      resolved: autoResolved,
+      declines,
+    },
     received,
-    machineClassified,
-    classifyAbandoned,
     classifierRuleMatches,
-    autoResolved,
-    declineGroups,
     autoReplyPending,
     autoReplyNotOffered,
   ] = await Promise.all([
-    prisma.ticket.count({ where: window }),
-    prisma.ticket.count({ where: { ...window, ...classifierFiled } }),
-    prisma.ticket.count({ where: { ...window, ...classifierGaveUp } }),
+    windowCounts(window),
+    prisma.ticket.count({ where: slice }),
     prisma.ticket.count({
-      where: { AND: [window, classifierWillStillAct(to)] },
-    }),
-    prisma.ticket.count({ where: { ...window, ...assistantResolved } }),
-    prisma.ticket.groupBy({
-      by: ["autoReplyDecline"],
-      where: { ...window, autoReplyDecline: { not: null } },
-      _count: { _all: true },
+      where: { AND: [slice, classifierWillStillAct(window.to)] },
     }),
     prisma.ticket.count({
       where: { AND: [noAutoReplyVerdict, autoReplyWillStillAct()] },
@@ -505,16 +500,6 @@ export async function pipelineCounts(
       where: { ...noAutoReplyVerdict, autoReplyOfferedAt: null },
     }),
   ]);
-
-  // Every reason, including the zeroes. A zero here is information — it is the
-  // difference between "that check has never fired" and "we do not measure it".
-  const declines = Object.fromEntries(
-    AUTO_REPLY_DECLINES.map((d) => [d, 0]),
-  ) as Record<AutoReplyDecline, number>;
-  for (const group of declineGroups) {
-    const reason = asAutoReplyDecline(group.autoReplyDecline);
-    if (reason) declines[reason] += group._count._all;
-  }
 
   const classifyPending = aiConfigured ? classifierRuleMatches : 0;
 
@@ -604,19 +589,18 @@ pipelineRouter.get(
     }
 
     const { range } = parsed.data;
-    const days = DASHBOARD_RANGE_DAYS[range];
 
-    // Pinned once, so every number in the response describes the same window.
-    const to = new Date();
-    const from = new Date(to.getTime() - days * DAY_MS);
+    // Pinned once, so every number in the response describes the same window:
+    // `windowFor`, which the effectiveness route pins its window with too.
+    const window = windowFor(range);
 
     const [config, counts, recentRows, classify, autoReply] = await Promise.all(
       [
         readConfig(),
         // The key `readConfig` reports: `provider.ts` reads it once, at import.
-        pipelineCounts(from, to, isAiConfigured()),
+        pipelineCounts(window, isAiConfigured()),
         prisma.ticket.findMany({
-          where: { createdAt: { gte: from, lt: to } },
+          where: inWindow(window),
           select: RUN_SELECT,
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: PIPELINE_RECENT_LIMIT,
@@ -630,14 +614,14 @@ pipelineRouter.get(
     // alone, at the same `to` the count reads.
     const facts = await factsOf(
       recentRows.map((row) => row.id),
-      to,
+      window.to,
     );
 
     res.json({
       config,
       range,
-      from: from.toISOString(),
-      to: to.toISOString(),
+      from: window.from.toISOString(),
+      to: window.to.toISOString(),
       counts,
       queues: { classify, autoReply },
       recent: recentRows.map((row) => runOf(row, config, facts)),
