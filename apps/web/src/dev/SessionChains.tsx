@@ -1,6 +1,12 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { WELCOME_REPOSITORY } from "@/lib/welcome";
 import {
   CHAIN_TITLE,
@@ -8,6 +14,8 @@ import {
   NO_WORKERS,
   blockedBy,
   chainIssuesLabel,
+  chainMerged,
+  toggleChainLabel,
   workerOn,
 } from "./sessions-copy";
 import {
@@ -17,6 +25,7 @@ import {
   type ChainView,
   type ChainWorker,
 } from "./sessions-protocol";
+import { FoldChevron } from "./FoldChevron";
 import { STATE_BADGE } from "./session-visuals";
 
 /** An issue's badge: Next in the primary fill, as the one to watch for,
@@ -32,7 +41,8 @@ const ISSUE_BADGE = {
 /**
  * Every running `/chain`, each its issues in the order the chain works them
  * and where each stands (#594, R8), or, when the order can't be known, why
- * and the workers its conductor started.
+ * and the workers its conductor started. A chain with every issue merged
+ * starts folded to its count (#613).
  */
 export function SessionChains({ chains }: { chains: ChainView[] }) {
   if (chains.length === 0) return null;
@@ -47,38 +57,75 @@ export function SessionChains({ chains }: { chains: ChainView[] }) {
 
 function Chain({ chain }: { chain: ChainView }) {
   const headingId = useId();
+  const issues = chain.issues;
+  const merged =
+    issues?.filter((issue) => issue.state === CHAIN_ISSUE_STATE.merged)
+      .length ?? 0;
+  // A chain whose every issue is merged has nothing left to watch, but its
+  // conductor still runs, so it stays (R8) folded to its count (#613).
+  const finished = issues !== null && merged === issues.length;
+  const [open, setOpen] = useState(!finished);
   return (
     <section aria-labelledby={headingId} data-chain={chain.sessionId}>
       <Card size="sm">
-        <CardContent className="space-y-2">
-          <h2 id={headingId} className="text-base font-semibold">
-            {CHAIN_TITLE}
-            {chain.plan !== null && (
+        <CardContent>
+          <Collapsible open={open} onOpenChange={setOpen} className="space-y-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {issues !== null && (
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="-ml-1"
+                    aria-label={toggleChainLabel(open)}
+                  >
+                    <FoldChevron open={open} />
+                  </Button>
+                </CollapsibleTrigger>
+              )}
+              <h2 id={headingId} className="text-base font-semibold">
+                {CHAIN_TITLE}
+                {chain.plan !== null && (
+                  <>
+                    {" "}
+                    <code className="font-mono text-xs font-normal">
+                      {chain.plan}
+                    </code>
+                  </>
+                )}
+              </h2>
+              {issues !== null && (
+                <span
+                  data-chain-merged
+                  className="text-sm text-muted-foreground tabular-nums"
+                >
+                  {chainMerged(merged, issues.length)}
+                </span>
+              )}
+            </div>
+            {issues !== null ? (
+              <CollapsibleContent asChild>
+                <ol
+                  aria-label={chainIssuesLabel(chain.plan)}
+                  className="space-y-1"
+                >
+                  {issues.map((issue) => (
+                    <IssueRow key={issue.issue} issue={issue} />
+                  ))}
+                </ol>
+              </CollapsibleContent>
+            ) : (
               <>
-                {" "}
-                <code className="font-mono text-xs font-normal">
-                  {chain.plan}
-                </code>
+                <p
+                  data-chain-unknown
+                  className="max-w-prose text-sm text-muted-foreground"
+                >
+                  {chain.unknown}
+                </p>
+                <Workers workers={chain.workers} />
               </>
             )}
-          </h2>
-          {chain.issues !== null ? (
-            <ol aria-label={chainIssuesLabel(chain.plan)} className="space-y-1">
-              {chain.issues.map((issue) => (
-                <IssueRow key={issue.issue} issue={issue} />
-              ))}
-            </ol>
-          ) : (
-            <>
-              <p
-                data-chain-unknown
-                className="max-w-prose text-sm text-muted-foreground"
-              >
-                {chain.unknown}
-              </p>
-              <Workers workers={chain.workers} />
-            </>
-          )}
+          </Collapsible>
         </CardContent>
       </Card>
     </section>

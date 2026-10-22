@@ -13,15 +13,26 @@ import {
   CHAIN_ORDER_UNKNOWN,
   CHAIN_WORKERS_LABEL,
   NO_MODEL,
+  NO_SESSIONS_IN_STATE,
   NO_SESSIONS_LEAD,
   NO_TASK,
   NO_TOOLS,
+  SESSIONS_HOW_LABEL,
+  SESSIONS_LEAD,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
+  STATE_FILTER_ALL,
+  STATE_FILTER_LABEL,
+  STEP_UNKNOWN,
+  TOOLS_LABEL,
+  chainMerged,
+  idleTime,
   issueGroupTitle,
   sessionCount,
+  sessionsHow,
   stepLabel,
   chainIssuesLabel,
+  toggleChainLabel,
   toggleSubagentsLabel,
   waitingCount,
   workerOn,
@@ -43,6 +54,7 @@ import {
   WAITING_WORKING_DIR,
 } from "./fixtures/transcript-fixture";
 import {
+  GH_CHAIN_ISSUES_ALL_MERGED,
   removeGhChainIssuesFixture,
   writeGhChainIssuesFixture,
 } from "./fixtures/gh-issues";
@@ -54,7 +66,8 @@ import {
  * Later slices extend it: the live stream (#591), Waiting for you (#592), and
  * the groups by issue with each card's share of them (#593), whose `#101`
  * total is read off this page and the Usage page in one run and compared,
- * and a running chain's issues in its order (#594).
+ * a running chain's issues in its order (#594), and a card's facts ranked
+ * with a filter by state and the folds that keep the page short (#613).
  *
  * What each card should say is worked out in
  * `fixtures/transcripts/README.md` ("What the Sessions page makes of them")
@@ -213,6 +226,24 @@ const LIVE_RESPONSE = `${JSON.stringify({
   timestamp: "2026-09-02T09:15:00.000Z",
   message: { model: "claude-haiku-5-5", usage: { output_tokens: 600 } },
 })}\n`;
+/** How many tools `MANY_TOOLS_RESPONSE` calls, each once and by a long name. */
+const MANY_TOOLS = 16;
+/** A response of session a's that calls them, with no usage, so no figure on
+ *  the page moves (#613). */
+const MANY_TOOLS_RESPONSE = `${JSON.stringify({
+  sessionId: "a",
+  gitBranch: "feat/101-a",
+  message: {
+    model: "claude-opus-5-5",
+    content: Array.from({ length: MANY_TOOLS }, (_, i) => ({
+      type: "tool_use",
+      id: `toolu_fixture_many_${i}`,
+      name: `mcp__fixture__a_long_tool_name_${i}`,
+      input: {},
+    })),
+  },
+})}\n`;
+
 /** Session a's 20,000 of `#101` + the new response's 1,000 + the call's 500. */
 const LIVE_SESSION_OUT = "21,500 output tokens";
 /** `#101`'s 32,000 + 1,000 + 500 + the new subagent's 600. */
@@ -358,6 +389,76 @@ function writeConductor() {
   meta(EMBER, "Ember", 201, true);
   meta(FLINT, "Flint", 202, false);
   writeFileSync(`${subagents}/agent-${FLINT}.jsonl`, flintTranscript());
+}
+
+/**
+ * A session that typed `/implement` and then only edited, and a subagent it
+ * started that did the same through a `Skill` call: both have a gap before
+ * Build, so both are on the Unknown step (#595), which only the subagent
+ * shows (#613). Written by the step test alone, on a
+ * branch of its own, so no other group's figures move.
+ */
+const IMPLEMENTER = "session-d";
+const GAPPED = "a7777777777777777";
+const IMPLEMENTER_GROUP = "issue:903";
+
+function writeImplementer() {
+  const line = (message: object, extra: object = {}) =>
+    JSON.stringify({
+      sessionId: IMPLEMENTER,
+      gitBranch: "feat/903-gap",
+      timestamp: "2026-09-04T10:00:00.000Z",
+      message,
+      ...extra,
+    });
+  const call = (id: string, name: string, input: object) => ({
+    model: "claude-opus-5-5",
+    content: [{ type: "tool_use", id, name, input }],
+  });
+  const edit = { file_path: "apps/web/src/fixture.ts" };
+  writeFileSync(
+    `${TRANSCRIPT_WORKING_DIR}/${IMPLEMENTER}.jsonl`,
+    [
+      line(
+        {
+          role: "user",
+          content:
+            "<command-message>implement</command-message>\n<command-name>/implement</command-name>\n<command-args>903</command-args>",
+        },
+        { type: "user" },
+      ),
+      line(call("toolu_fixture_gap_edit", "Edit", edit), {
+        type: "assistant",
+      }),
+      line(call("toolu_fixture_gapped", "Agent", {}), { type: "assistant" }),
+      "",
+    ].join("\n"),
+  );
+  const subagents = `${TRANSCRIPT_WORKING_DIR}/${IMPLEMENTER}/subagents`;
+  mkdirSync(subagents, { recursive: true });
+  writeFileSync(
+    `${subagents}/agent-${GAPPED}.meta.json`,
+    JSON.stringify({
+      agentType: "general-purpose",
+      description: "Implement issue #903 from Build",
+      toolUseId: "toolu_fixture_gapped",
+    }),
+  );
+  const sidechain = { type: "assistant", isSidechain: true, agentId: GAPPED };
+  writeFileSync(
+    `${subagents}/agent-${GAPPED}.jsonl`,
+    [
+      line(
+        call("toolu_fixture_gapped_skill", "Skill", {
+          skill: "implement",
+          args: "#903",
+        }),
+        sidechain,
+      ),
+      line(call("toolu_fixture_gapped_edit", "Edit", edit), sidechain),
+      "",
+    ].join("\n"),
+  );
 }
 
 /**
@@ -893,6 +994,10 @@ test.describe("dev tools: Sessions", () => {
 
     const chain = page.locator(`[data-chain="${CONDUCTOR}"]`);
     await expect(chain).toContainText(CHAIN_PLAN);
+    // Work left, so it starts open, its count beside the heading (#613).
+    await expect(chain.locator("[data-chain-merged]")).toHaveText(
+      chainMerged(1, 4),
+    );
     const issues = chain
       .getByRole("list", { name: chainIssuesLabel(CHAIN_PLAN) })
       .locator("[data-chain-issue]");
@@ -967,6 +1072,157 @@ test.describe("dev tools: Sessions", () => {
     );
     await expect(ember.locator('[data-session-fact="Step"]')).toHaveCount(0);
     await expectTools(ember, []);
+  });
+
+  /**
+   * #613: what a developer scans for first, state, time and spend, leads the
+   * card in the foreground; what it is follows, muted; its tools close it
+   * under a label of their own, wrapping inside the card at a desktop width
+   * and a phone's.
+   */
+  test("ranks a card's facts: state, time and spend first, then type and model, then its tools", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE.devSessions.path);
+    const a = sessionAIn101(page);
+    await expectCard(a, SESSION_A, GROUP.issue101);
+
+    const rows = own(a).locator(":scope > dl");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0)).toHaveClass(/\btext-foreground\b/);
+    for (const fact of ["State", "Elapsed", "Own output", "With subagents"]) {
+      await expect(
+        rows.nth(0).locator(`[data-session-fact="${fact}"]`),
+      ).toHaveCount(1);
+    }
+    await expect(rows.nth(1)).toHaveClass(/\btext-muted-foreground\b/);
+    for (const fact of ["Type", "Model"]) {
+      await expect(
+        rows.nth(1).locator(`[data-session-fact="${fact}"]`),
+      ).toHaveCount(1);
+    }
+    await expect(rows.nth(2)).toHaveClass(/\btext-muted-foreground\b/);
+    await expect(rows.nth(2).locator("dt")).toHaveText(TOOLS_LABEL);
+    await expect(rows.nth(2).locator("dt")).toBeVisible();
+
+    // Session a calls sixteen tools more, far wider than a phone, and no
+    // figure moves: the response carries no usage.
+    appendTranscript(SESSION_A_FILE, MANY_TOOLS_RESPONSE);
+    const tools = rows.nth(2).locator("[data-session-tool]");
+    await expect(tools).toHaveCount(1 + MANY_TOOLS, { timeout: R4_MS });
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      const card = await a.boundingBox();
+      if (!card) throw new Error(`${width}px: no card drawn`);
+      for (const box of await tools.evaluateAll((all) =>
+        all.map((tool) => tool.getBoundingClientRect().right),
+      )) {
+        expect(box, `${width}px`).toBeLessThanOrEqual(card.x + card.width);
+      }
+    }
+  });
+
+  test("opens on one sentence, with the rest folded under How this page reads", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE.devSessions.path);
+    const how = page.getByRole("button", { name: SESSIONS_HOW_LABEL });
+    await expect(page.getByText(SESSIONS_LEAD)).toBeVisible();
+    await expect(how).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator("[data-sessions-how]")).toHaveCount(0);
+
+    await how.click();
+
+    // The words that stood under the heading before #613, unchanged.
+    await expect(page.locator("[data-sessions-how]")).toHaveText(
+      sessionsHow(
+        SESSION_STATE.waiting,
+        SESSION_STATE.stopped,
+        idleTime(SESSION_IDLE_MS),
+      ),
+    );
+  });
+
+  test("folds a chain whose issues are all merged to its count, and opens it on press", async ({
+    page,
+  }) => {
+    writeConductor();
+    writeGhChainIssuesFixture(GH_CHAIN_ISSUES_ALL_MERGED);
+
+    await page.goto(ROUTE.devSessions.path);
+
+    const chain = page.locator(`[data-chain="${CONDUCTOR}"]`);
+    await expect(chain.locator("[data-chain-merged]")).toHaveText(
+      chainMerged(4, 4),
+    );
+    await expect(chain.locator("[data-chain-issue]")).toHaveCount(0);
+
+    await chain.getByRole("button", { name: toggleChainLabel(false) }).click();
+
+    await expect(chain.locator("[data-chain-issue]")).toHaveCount(4);
+  });
+
+  /** R9 gives a step to a worker: a session whose calls have a gap shows
+   *  none, where its subagent in the same case still reads unknown (#613). */
+  test("shows no Step unknown on a session, and still does on its subagent", async ({
+    page,
+  }) => {
+    writeImplementer();
+    await page.goto(ROUTE.devSessions.path);
+
+    const session = cardIn(groupIn(page, IMPLEMENTER_GROUP), IMPLEMENTER);
+    await expect(own(session).getByRole("heading")).toBeVisible();
+    await expect(
+      own(session).locator('[data-session-fact="Step"]'),
+    ).toHaveCount(0);
+    // On the subagent's quieter second row, with its type and model.
+    await expect(
+      own(childOf(session, GAPPED))
+        .locator(":scope > dl")
+        .nth(1)
+        .locator('[data-session-fact="Step"]'),
+    ).toHaveText(STEP_UNKNOWN);
+  });
+
+  test("filters sessions by state, keeping a session for the subagent under it and every group's total", async ({
+    page,
+  }) => {
+    await page.goto(ROUTE.devSessions.path);
+    const nested = childOf(childOf(sessionAIn101(page), REVIEW), NESTED);
+    await expectCard(nested, NESTED, GROUP.issue101);
+
+    mkdirSync(WAITING_WORKING_DIR, { recursive: true });
+    writeFileSync(
+      `${WAITING_WORKING_DIR}/${SESSION_A}.${NESTED}.json`,
+      JSON.stringify({ sessionId: SESSION_A, agentId: NESTED }),
+    );
+    await expect(own(nested).locator('[data-session-fact="State"]')).toHaveText(
+      SESSION_STATE.waiting,
+      { timeout: R4_MS },
+    );
+
+    const filter = page.getByRole("radiogroup", { name: STATE_FILTER_LABEL });
+    await filter.getByRole("radio", { name: SESSION_STATE.waiting }).click();
+
+    // Session a, for its nested subagent, in each group it is in; session b,
+    // done and waiting on nothing, in none.
+    await expect(cardIn(page, SESSION_B)).toHaveCount(0);
+    for (const key of [GROUP.issue101, GROUP.base, GROUP.other]) {
+      await expect(cardIn(groupIn(page, key), SESSION_A)).toHaveCount(1);
+      await expect(totalOf(groupIn(page, key))).toHaveText(SHARES[key].total);
+    }
+    await expect(groupIn(page, GROUP.issue102)).toHaveCount(0);
+
+    await filter.getByRole("radio", { name: SESSION_STATE.stopped }).click();
+
+    await expect(page.locator("[data-session-group]")).toHaveCount(0);
+    await expect(page.getByText(NO_SESSIONS_IN_STATE)).toBeVisible();
+
+    await filter.getByRole("radio", { name: STATE_FILTER_ALL }).click();
+
+    await expect(page.locator("[data-session-group]")).toHaveCount(
+      Object.keys(GROUP).length,
+    );
   });
 
   /**

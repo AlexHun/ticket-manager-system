@@ -1,5 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,27 +9,34 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { WELCOME_REPOSITORY } from "@/lib/welcome";
-import { cn } from "@/lib/utils";
 import {
   BASE_GROUP_NOTE,
   BASE_GROUP_TITLE,
   NO_MODEL,
+  NO_SESSIONS_IN_STATE,
   NO_SESSIONS_LEAD,
   NO_TASK,
   NO_TOOLS,
   OTHER_GROUP_NOTE,
   OTHER_GROUP_TITLE,
+  SESSIONS_HOW_LABEL,
+  SESSIONS_LEAD,
   SESSIONS_RECONNECTING,
   SESSIONS_STREAM_CLOSED,
   SESSIONS_TITLE,
   SESSION_KIND_LABEL,
+  STATE_FILTER_ALL,
+  STATE_FILTER_LABEL,
   STEP_UNKNOWN,
+  TOOLS_LABEL,
   formatElapsed,
   idleTime,
   issueGroupTitle,
   outputTokens,
   sessionCount,
+  sessionsHow,
   stepLabel,
   subagentsLabel,
   toggleSubagentsLabel,
@@ -42,13 +49,16 @@ import {
   SESSION_GROUP_KIND,
   SESSION_IDLE_MS,
   SESSION_STATE,
+  type ImplementStep,
   type SessionCard,
   type SessionGroup,
   type SessionSlice,
   type SessionsReport,
   type ToolTally,
 } from "./sessions-protocol";
+import { FoldChevron } from "./FoldChevron";
 import { SessionChains } from "./SessionChains";
+import { ALL_STATES, filterGroups, type StateChoice } from "./sessions-filter";
 import { STATE_BADGE } from "./session-visuals";
 import {
   useSessionsStream,
@@ -67,7 +77,8 @@ import {
  * Usage page's (#593, slice 4). A running `/chain` lists its issues in the
  * order it works them, each merged, in progress, next, waiting or blocked
  * (#594, slice 5). Each card lists the tools it has called, and one running
- * `implement` the step it has reached (#595, slice 6).
+ * `implement` the step it has reached (#595, slice 6). Since #613 a card ranks
+ * its facts, the page filters by state, and what is read once folds away.
  *
  * It talks only to the Vite dev server (`apps/web/dev/sessions-stream.ts`),
  * so it opens with the API and the database stopped.
@@ -75,25 +86,39 @@ import {
 export function SessionsPage() {
   const { report, problem, connection } = useSessionsStream();
   const waiting = report ? countWaiting(report.sessions) : 0;
+  const [howOpen, setHowOpen] = useState(false);
 
   return (
     /* Block layout with `space-y`, for the reason `TestRunnerPage` gives. */
     <main className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="space-y-1">
           <h1 className="text-lg font-semibold">{SESSIONS_TITLE}</h1>
           <p className="max-w-prose text-sm text-muted-foreground">
-            This repository&rsquo;s Claude Code sessions on this machine, each
-            with the subagents it started nested under it, followed live off the
-            transcripts while the page is open. They are grouped by the issue
-            each response&rsquo;s branch names, so a session that worked on
-            several issues shows under each with its share of it, and an
-            issue&rsquo;s total matches the Usage page. One held on a permission
-            prompt or a question to you reads {SESSION_STATE.waiting}. One that
-            has written nothing for {idleTime(SESSION_IDLE_MS)} without
-            finishing reads {SESSION_STATE.stopped}. A running /chain lists its
-            issues above them, in the order it works them.
+            {SESSIONS_LEAD}
           </p>
+          {/* The rest is read once, so it starts folded rather than standing
+              above the sessions on every visit (#613). */}
+          <Collapsible open={howOpen} onOpenChange={setHowOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="xs" className="-ml-2">
+                <FoldChevron open={howOpen} inline />
+                {SESSIONS_HOW_LABEL}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <p
+                data-sessions-how
+                className="max-w-prose pt-1 text-sm text-muted-foreground"
+              >
+                {sessionsHow(
+                  SESSION_STATE.waiting,
+                  SESSION_STATE.stopped,
+                  idleTime(SESSION_IDLE_MS),
+                )}
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
         <div className="flex items-center gap-2">
           {/* A live region, mounted throughout so it exists before its words
@@ -218,6 +243,59 @@ function Reading({
   );
 }
 
+/** The state filter's choices, in the order the bar offers them. */
+const STATE_CHOICES = [
+  [ALL_STATES, STATE_FILTER_ALL],
+  ...Object.values(SESSION_STATE).map((state) => [state, state] as const),
+] as const satisfies readonly (readonly [StateChoice, string])[];
+
+function Groups({ report }: { report: SessionsReport }) {
+  // A slice names its card by id; the facts are the card's, once per reading.
+  const cards = useMemo(() => indexCards(report.sessions), [report.sessions]);
+  const [choice, setChoice] = useState<StateChoice>(ALL_STATES);
+  const groups = useMemo(
+    () => filterGroups(report.groups, cards, choice),
+    [report.groups, cards, choice],
+  );
+  return (
+    <div className="space-y-4">
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        size="sm"
+        spacing={0}
+        value={choice}
+        // Radix emits "" when the chosen item is pressed again; the filter
+        // always has a choice, so that is ignored.
+        onValueChange={(value) => {
+          if (value) setChoice(value as StateChoice);
+        }}
+        aria-label={STATE_FILTER_LABEL}
+        className="flex-wrap"
+      >
+        {STATE_CHOICES.map(([value, label]) => (
+          <ToggleGroupItem key={value} value={value}>
+            {label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      {/* Below the bar rather than in its place, so the filter can still be
+          cleared (design-states.md). */}
+      {groups.length === 0 ? (
+        <p className="max-w-prose text-sm text-muted-foreground">
+          {NO_SESSIONS_IN_STATE}
+        </p>
+      ) : (
+        <div className="space-y-6">
+          {groups.map((group) => (
+            <Group key={group.key} group={group} cards={cards} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Every card in `cards`, at any depth, by its id. */
 function indexCards(
   cards: SessionCard[],
@@ -228,18 +306,6 @@ function indexCards(
     indexCards(card.children, into);
   }
   return into;
-}
-
-function Groups({ report }: { report: SessionsReport }) {
-  // A slice names its card by id; the facts are the card's, once per reading.
-  const cards = useMemo(() => indexCards(report.sessions), [report.sessions]);
-  return (
-    <div className="space-y-6">
-      {report.groups.map((group) => (
-        <Group key={group.key} group={group} cards={cards} />
-      ))}
-    </div>
-  );
 }
 
 /** A group's heading and the line under it, by its kind. */
@@ -351,6 +417,7 @@ function CardBody({
   const task = card.task ?? NO_TASK;
   const Heading = HEADINGS[Math.min(depth, HEADINGS.length - 1)];
   const hasChildren = slice.children.length > 0;
+  const step = stepWords(card.step, depth);
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
       <article
@@ -368,10 +435,7 @@ function CardBody({
                   className="-ml-1"
                   aria-label={toggleSubagentsLabel(open, task)}
                 >
-                  <ChevronRight
-                    aria-hidden="true"
-                    className={cn("transition-transform", open && "rotate-90")}
-                  />
+                  <FoldChevron open={open} />
                 </Button>
               </CollapsibleTrigger>
             )}
@@ -382,9 +446,11 @@ function CardBody({
               {task}
             </Heading>
           </div>
-          <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <Fact label="Type">{card.subagentType ?? SESSION_KIND_LABEL}</Fact>
-            <Fact label="Model">{card.model ?? NO_MODEL}</Fact>
+          {/* Ranked rows rather than one run of a dozen facts alike (#613):
+              what a developer scans for first, state, time and spend, in the
+              foreground; what the card is, quieter; then its tools, under a
+              label of their own. */}
+          <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-foreground">
             <Fact label="State">
               <Badge variant={STATE_BADGE[card.state]}>{card.state}</Badge>
             </Fact>
@@ -399,18 +465,17 @@ function CardBody({
                 {withSubagents(slice.subtreeOut)}
               </Fact>
             )}
-            {/* Only a card running `implement` has a step; any other shows
-                none rather than an empty one. */}
-            {card.step !== null && (
-              <Fact label="Step">
-                {card.step === IMPLEMENT_STEP.unknown
-                  ? STEP_UNKNOWN
-                  : stepLabel(card.step)}
-              </Fact>
-            )}
-            <Fact label="Tools">
+          </dl>
+          <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <Fact label="Type">{card.subagentType ?? SESSION_KIND_LABEL}</Fact>
+            <Fact label="Model">{card.model ?? NO_MODEL}</Fact>
+            {step && <Fact label="Step">{step}</Fact>}
+          </dl>
+          <dl className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <dt className="shrink-0 font-medium">{TOOLS_LABEL}</dt>
+            <dd data-session-fact={TOOLS_LABEL} className="min-w-0">
               <Tools tools={card.tools} />
-            </Fact>
+            </dd>
           </dl>
         </div>
         {hasChildren && (
@@ -430,6 +495,19 @@ function CardBody({
       </article>
     </Collapsible>
   );
+}
+
+/**
+ * A card's step in words, or null for none. Only a card running `implement`
+ * has a step. R9 gives one to a worker, so a session whose calls match no
+ * step's rules shows none rather than "Step unknown" (#613): a long session
+ * that typed `/implement` once and went on to other work reads unknown for
+ * the rest of its life. A subagent still says it.
+ */
+function stepWords(step: ImplementStep | null, depth: number): string | null {
+  if (step === null) return null;
+  if (step !== IMPLEMENT_STEP.unknown) return stepLabel(step);
+  return depth === 0 ? null : STEP_UNKNOWN;
 }
 
 /**

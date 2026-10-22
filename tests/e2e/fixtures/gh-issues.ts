@@ -156,11 +156,20 @@ export const GH_CHAIN_ISSUES = [
   chainIssue(201, "Fixture: the chain issue already merged", "CLOSED"),
 ];
 
-export function writeGhChainIssuesFixture(): void {
+/**
+ * The same four issues, every one closed: a chain with nothing left to
+ * watch, which the Sessions page folds to its count (#613).
+ */
+export const GH_CHAIN_ISSUES_ALL_MERGED = GH_CHAIN_ISSUES.map((issue) => ({
+  ...issue,
+  state: "CLOSED" as const,
+}));
+
+export function writeGhChainIssuesFixture(issues = GH_CHAIN_ISSUES): void {
   mkdirSync(HERE, { recursive: true });
   writeFileSync(
     GH_CHAIN_ISSUES_FIXTURE_PATH,
-    JSON.stringify(GH_CHAIN_ISSUES, null, 2),
+    JSON.stringify(issues, null, 2),
     "utf8",
   );
 }
