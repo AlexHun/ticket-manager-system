@@ -132,7 +132,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "The SDK's LanguageModelUsage and the usage fields are read only in ai/provider.ts: callers ask usdFor / wasCached (ADR-0018)",
     standard: "ai-features.md",
-    roots: API,
+    roots: ALL,
     // Tests build SDK-shaped fixtures and assert the mapped fields, which is
     // what checking the seam takes; the rule is about production code.
     forms: [
