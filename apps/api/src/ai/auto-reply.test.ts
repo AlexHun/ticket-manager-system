@@ -57,6 +57,7 @@ import {
 // the module itself still comes in through the dynamic import.
 import type { AutoReplyResult } from "./auto-reply";
 import type { KbArticle } from "./knowledge-base";
+import { scriptedFeature } from "../test/model";
 
 /** Set before `./auto-reply` is imported below — the provider reads it at import. */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
@@ -91,7 +92,25 @@ let respond: (
   options: GenerateTextOptions,
 ) => Promise<{ output: AutoReplyOutput }>;
 
-const generateText = mock((options: GenerateTextOptions) => respond(options));
+/**
+ * The real one, taken before the registration below replaces the namespace.
+ *
+ * This file's stub answers only the auto-reply's calls and hands every other
+ * feature's to the real `generateText` (#578). The registry is one process
+ * wide, so this `"ai"` registration reaches `polish.ts` too, and `polish.test.ts`
+ * scripts the preload's fake model under a real `generateText` now; a stub that
+ * answered every call with this file's `respond` failed all of that file's
+ * tests in forward order. Which feature a call is for is read off the scripted
+ * model the preload's `openaiModel` built for it.
+ */
+const realGenerateText = ai.generateText;
+
+const generateText = mock(
+  (options: GenerateTextOptions & { model: unknown }) =>
+    scriptedFeature(options.model) === "auto-reply"
+      ? respond(options)
+      : realGenerateText(options as Parameters<typeof realGenerateText>[0]),
+);
 
 // Registered before the dynamic import below, so `auto-reply.ts` binds to this
 // `generateText`. The real error classes pass straight through — the module

@@ -10,8 +10,8 @@ import {
   type PolishReplyResponse,
   type SummarizeTicketResponse,
 } from "@ticket/shared";
-import { POLISH_FAILURE, type PolishFailure } from "../ai/polish";
-import { isPolishReplyConfigured, polishReply } from "../ai/polish-reply";
+import { POLISH_FAILURE, polishDraft, type PolishFailure } from "../ai/polish";
+import { isPolishReplyConfigured } from "../ai/polish-reply";
 import {
   AI_FAILURE,
   usdFor,
@@ -285,7 +285,7 @@ aiRouter.post(
       if (!res.writableEnded) abort.abort();
     });
 
-    const result = await polishReply(
+    const result = await polishDraft(
       body.data.draft,
       {
         subject: ticket.subject,

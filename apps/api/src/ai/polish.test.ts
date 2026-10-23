@@ -5,61 +5,50 @@
  * runner, and the only thing these tests need is module mocking, which
  * `mock.module` gives without a config file or a new dependency.
  *
- * Nothing here talks to OpenAI. `generateText` is replaced with a function this
- * file controls, which is what makes the two interesting halves testable: what
- * the module *sends* (the prompt a stranger's email is quoted into) and what it
- * does with what comes *back* (dash stripping, fences, and the invented
- * commitment check that is the last line of defence against prompt injection).
+ * Nothing here talks to OpenAI. The model is the preload's scripted fake
+ * (`../test/model`, #578), and `generateText` above it is the real one, so
+ * the two interesting halves are testable through everything the SDK does in
+ * between: what the module *sends* (the prompt a stranger's email is quoted
+ * into) and what it does with what comes *back* (dash stripping, fences, and
+ * the invented commitment check that is the last line of defence against
+ * prompt injection). This file registered its own `"ai"` stand-in until #578.
  */
 
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
-  afterAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  spyOn,
-  test,
-} from "bun:test";
-import * as ai from "ai";
-import { APICallError, RetryError, type LanguageModelUsage } from "ai";
+  type ModelAnswer,
+  type ModelCall,
+  type ModelUsage,
+  modelCalls,
+  providerError,
+  scriptModel,
+} from "../test/model";
 
 /** Set before `./polish` is imported below — the module reads it once, at import. */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
 
-/** The subset of the SDK's options this module actually sets. */
-interface GenerateTextOptions {
-  system: string;
-  prompt: string;
-  maxOutputTokens: number;
-  maxRetries: number;
-  timeout: number;
-  abortSignal?: AbortSignal;
-  providerOptions: { openai: { reasoningEffort: string } };
-}
-
-/**
- * What the next call answers with, swapped per test.
- *
- * A mutable delegate rather than `mockResolvedValue`/`mockRejectedValue`: the
- * mock stays one function for the whole file, so `.mock.calls` is always the
- * same object and there is no per-runner API surface to get wrong.
- */
-let respond: (
-  options: GenerateTextOptions,
-) => Promise<{ text: string; usage?: LanguageModelUsage }>;
-
-const generateText = mock((options: GenerateTextOptions) => respond(options));
-
-// Registered before the dynamic import below, so `polish.ts` binds to this
-// `generateText`. The real error classes are passed straight through — the
-// module's `classify` calls `RetryError.isInstance` / `APICallError.isInstance`
-// on them, and a stubbed class would make every one of those tests a tautology.
-await mock.module("ai", () => ({ ...ai, generateText }));
-
 const { POLISH_FAILURE, isPolishConfigured, polishDraft } =
   await import("./polish");
 type PolishContext = Parameters<typeof polishDraft>[1];
+
+/**
+ * `polishDraft`'s outcome without the call's `usage`, for the tests about what
+ * came back rather than what it cost. The real SDK reports usage on every
+ * answer, which a stubbed `generateText` never did, so these tests compare
+ * the outcome alone and the "what the call cost" block below asserts usage.
+ */
+async function polish(
+  draft: string,
+  context: PolishContext,
+  signal?: AbortSignal,
+) {
+  const { usage: _usage, ...outcome } = await polishDraft(
+    draft,
+    context,
+    signal,
+  );
+  return outcome;
+}
 
 const CONTEXT: PolishContext = {
   subject: "Order TR-99182 never arrived",
@@ -70,56 +59,29 @@ const CONTEXT: PolishContext = {
 
 const DRAFT = "shipped fri, ur parcel is on the way";
 
-/** The options the module handed the SDK on its most recent call. */
-function lastCall(): GenerateTextOptions {
-  const call = generateText.mock.calls.at(-1);
-  if (!call) throw new Error("generateText was never called");
-  return call[0];
+/** What the module sent the model on its most recent call. */
+function lastCall(): ModelCall {
+  const call = modelCalls("polish").at(-1);
+  if (!call) throw new Error("the model was never called");
+  return call;
 }
 
 function replyWith(text: string): void {
-  respond = () => Promise.resolve({ text });
+  scriptModel("polish", { text });
 }
 
-/** A usage report in the SDK's own shape, which `toAiUsage` maps. */
-const USAGE: LanguageModelUsage = {
-  inputTokens: 900,
-  outputTokens: 300,
-  totalTokens: 1_200,
-  inputTokenDetails: {
-    noCacheTokens: 900,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-  },
-  outputTokenDetails: { textTokens: 100, reasoningTokens: 200 },
+/** A usage report in the provider's own shape, which the SDK and `toAiUsage` map. */
+const USAGE: ModelUsage = {
+  inputTokens: { total: 900, noCache: 900, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 300, text: 100, reasoning: 200 },
 };
 
 function replyWithUsage(text: string): void {
-  respond = () => Promise.resolve({ text, usage: USAGE });
+  scriptModel("polish", { text, usage: USAGE });
 }
 
-function failWith(err: unknown): void {
-  respond = () => Promise.reject(err);
-}
-
-/** An APICallError as the SDK would raise it, with only the fields `classify` reads. */
-function apiError(statusCode: number, responseBody = ""): APICallError {
-  return new APICallError({
-    message: "the provider said no",
-    url: "https://api.openai.com/v1/responses",
-    requestBodyValues: {},
-    statusCode,
-    responseBody,
-  });
-}
-
-/** The same error after the SDK has given up retrying — one level deeper. */
-function retryWrapped(err: Error): RetryError {
-  return new RetryError({
-    message: "maximum retries exceeded",
-    reason: "maxRetriesExceeded",
-    errors: [err],
-  });
+function failWith(err: unknown, ...then: ModelAnswer[]): void {
+  scriptModel("polish", { throws: err }, ...then);
 }
 
 // The module logs the real cause of every failure. That is wanted in production
@@ -128,7 +90,6 @@ function retryWrapped(err: Error): RetryError {
 const errorLog = spyOn(console, "error").mockImplementation(() => {});
 
 beforeEach(() => {
-  generateText.mockClear();
   errorLog.mockClear();
   replyWith("Hi Marta,\n\nYour parcel shipped on Friday.\n\nThanks,\nAaron");
 });
@@ -238,26 +199,79 @@ describe("polishDraft — what reaches the model", () => {
     // Not "minimal". gpt-5-nano accepts it, answers 200, and hands the draft
     // back byte-for-byte unedited — a polish endpoint that polishes nothing and
     // has no failing status code to notice.
-    expect(lastCall().providerOptions.openai.reasoningEffort).toBe("low");
+    expect(lastCall().providerOptions?.openai?.reasoningEffort).toBe("low");
   });
 
   test("bounds the call someone is watching a spinner for", async () => {
     await polishDraft(DRAFT, CONTEXT);
 
-    const { maxRetries, timeout, maxOutputTokens } = lastCall();
-    expect(maxRetries).toBe(1);
-    expect(timeout).toBe(20_000);
     // Generous on purpose: on a GPT-5 model this budget covers reasoning tokens
     // as well as the answer, so a tight number buys an empty string.
-    expect(maxOutputTokens).toBe(2_000);
+    expect(lastCall().maxOutputTokens).toBe(2_000);
+  });
+
+  // `maxRetries` and `timeout` never reach the model, so since #578 they are
+  // asserted by what they do rather than read off the options.
+  test("asks once more after a failure worth retrying", async () => {
+    failWith(providerError(500, "internal error"), {
+      text: "Hi Marta,\n\nYour parcel shipped on Friday.",
+    });
+
+    const result = await polish(DRAFT, CONTEXT);
+
+    expect(result).toEqual({
+      ok: true,
+      text: "Hi Marta,\n\nYour parcel shipped on Friday.",
+    });
+    expect(modelCalls("polish")).toHaveLength(2);
+  });
+
+  test("and only once: a second failure is the answer", async () => {
+    failWith(
+      providerError(500, "internal error"),
+      {
+        throws: providerError(500, "internal error"),
+      },
+      { text: "never reached" },
+    );
+
+    const result = await polish(DRAFT, CONTEXT);
+
+    expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
+    expect(modelCalls("polish")).toHaveLength(2);
+  });
+
+  test("cuts off a model that is still thinking after 20 seconds", async () => {
+    // The SDK turns `timeout` into `AbortSignal.timeout(ms)`. The spy records
+    // the figure and shortens the wait to 1ms, so the slow answer below is cut
+    // off by the real timeout path without the test waiting 20s for it.
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() =>
+      realTimeout(1),
+    );
+    scriptModel("polish", { hangs: true });
+
+    try {
+      const result = await polish(DRAFT, CONTEXT);
+
+      expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
+      expect(timeout).toHaveBeenCalledWith(20_000);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   test("forwards the caller's abort signal", async () => {
+    // The model is handed the caller's signal merged with the timeout's, so
+    // what is asserted is that aborting the one aborts the other.
     const abort = new AbortController();
 
     await polishDraft(DRAFT, CONTEXT, abort.signal);
+    const signal = lastCall().abortSignal;
+    expect(signal?.aborted).toBe(false);
+    abort.abort();
 
-    expect(lastCall().abortSignal).toBe(abort.signal);
+    expect(signal?.aborted).toBe(true);
   });
 });
 
@@ -265,7 +279,7 @@ describe("polishDraft — what comes back", () => {
   test("returns the rewrite, trimmed", async () => {
     replyWith("\n\nHi Marta,\n\nYour parcel shipped on Friday.\n");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -276,7 +290,7 @@ describe("polishDraft — what comes back", () => {
   test("unwraps a code fence the model was told not to emit", async () => {
     replyWith("```text\nHi Marta,\n\nYour parcel shipped on Friday.\n```");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -287,7 +301,7 @@ describe("polishDraft — what comes back", () => {
   test("replaces em and en dashes with commas", async () => {
     replyWith("Your order — the blue shoes — shipped on Friday.");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -298,7 +312,7 @@ describe("polishDraft — what comes back", () => {
   test("does not stack a comma on punctuation that is already there", async () => {
     replyWith("One thing, — your parcel shipped on Friday.");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -309,7 +323,7 @@ describe("polishDraft — what comes back", () => {
   test("drops a dash that opens a line, which is a bullet in disguise", async () => {
     replyWith("Hi Marta,\n\n— Your parcel shipped on Friday.");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -320,7 +334,7 @@ describe("polishDraft — what comes back", () => {
   test("reports a success that carried no text", async () => {
     replyWith("");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.empty });
   });
@@ -328,7 +342,7 @@ describe("polishDraft — what comes back", () => {
   test("counts whitespace as no text", async () => {
     replyWith("   \n\n  ");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.empty });
   });
@@ -340,7 +354,7 @@ describe("polishDraft — invented commitments", () => {
       "Hi Marta,\n\nAs a goodwill gesture we have credited 50 EUR to your account.\n\nThanks,\nAaron",
     );
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.invented });
   });
@@ -367,7 +381,7 @@ describe("polishDraft — invented commitments", () => {
       "Hi Marta,\n\nI can't refund this order: it is past the 30 day window.\n\nThanks,\nAaron",
     );
 
-    const result = await polishDraft(draft, CONTEXT);
+    const result = await polish(draft, CONTEXT);
 
     expect(result.ok).toBe(true);
   });
@@ -387,7 +401,7 @@ describe("polishDraft — invented commitments", () => {
 
     for (const sample of samples) {
       replyWith(sample);
-      const result = await polishDraft(DRAFT, CONTEXT);
+      const result = await polish(DRAFT, CONTEXT);
       expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.invented });
     }
   });
@@ -399,7 +413,7 @@ describe("polishDraft — invented commitments", () => {
       "Hi Marta,\n\nYour credit card was not charged.\n\nThanks,\nAaron",
     );
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result.ok).toBe(true);
   });
@@ -410,35 +424,36 @@ describe("polishDraft — classifying a failure", () => {
     // The interesting case is the wrapped one: OpenAI marks quota exhaustion
     // retryable, so by the time it surfaces the real error is one level down and
     // an `APICallError.isInstance` check on the outer error never matches.
-    failWith(
-      retryWrapped(apiError(429, '{"error":{"code":"insufficient_quota"}}')),
-    );
+    // The wrapper is the SDK's own since #578: a 429 is retryable, so the real
+    // retry asks twice and then wraps the second failure.
+    failWith(providerError(429, '{"error":{"code":"insufficient_quota"}}'));
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.quota });
+    expect(modelCalls("polish")).toHaveLength(2);
   });
 
   test("keeps a plain 429 as busy, which is worth retrying", async () => {
-    failWith(apiError(429, '{"error":{"code":"rate_limit_exceeded"}}'));
+    failWith(providerError(429, '{"error":{"code":"rate_limit_exceeded"}}'));
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.busy });
   });
 
   test("reads billing wording as quota whatever the status says", async () => {
-    failWith(apiError(400, "billing hard limit reached"));
+    failWith(providerError(400, "billing hard limit reached"));
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.quota });
   });
 
   test("treats a rejected key as auth", async () => {
     for (const status of [401, 403]) {
-      failWith(apiError(status));
-      const result = await polishDraft(DRAFT, CONTEXT);
+      failWith(providerError(status));
+      const result = await polish(DRAFT, CONTEXT);
       expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.auth });
     }
   });
@@ -447,16 +462,16 @@ describe("polishDraft — classifying a failure", () => {
     // An unknown model or a parameter this model does not take fails identically
     // forever. gpt-5.4-mini rejecting reasoningEffort "minimal" landed here.
     for (const status of [400, 404]) {
-      failWith(apiError(status, "unsupported_value"));
-      const result = await polishDraft(DRAFT, CONTEXT);
+      failWith(providerError(status, "unsupported_value"));
+      const result = await polish(DRAFT, CONTEXT);
       expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.config });
     }
   });
 
   test("falls back to provider for a 500", async () => {
-    failWith(apiError(500, "internal error"));
+    failWith(providerError(500, "internal error"));
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
   });
@@ -464,7 +479,7 @@ describe("polishDraft — classifying a failure", () => {
   test("falls back to provider for something that is not an API error at all", async () => {
     failWith(new TypeError("fetch failed"));
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
   });
@@ -472,7 +487,7 @@ describe("polishDraft — classifying a failure", () => {
   test("never throws at the caller, whatever came out of the SDK", async () => {
     failWith("a string, because someone threw one");
 
-    const result = await polishDraft(DRAFT, CONTEXT);
+    const result = await polish(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
   });
@@ -517,7 +532,7 @@ describe("polishDraft — what the call cost", () => {
   });
 
   test("a call that threw carries none", async () => {
-    failWith(apiError(500, "internal error"));
+    failWith(providerError(500, "internal error"));
 
     const result = await polishDraft(DRAFT, CONTEXT);
 

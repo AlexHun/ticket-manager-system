@@ -5,9 +5,11 @@
  * The router on a real Express app over a real socket, over a real database
  * (#174 — the last file ADR-0014 had left) and a stubbed provider. That last
  * one is not a seam ADR-0014 moves: an AI feature test must not spend money or
- * depend on the network, so `../ai/polish-reply` and `../ai/summarize` stay
- * mocked, and `polishDraft` itself is covered next door in
- * `../ai/polish.test.ts`.
+ * depend on the network. The polish half runs the real `polishDraft` over the
+ * preload's scripted model (`../test/model`, #578), so `../ai/polish-reply` is
+ * registered only for its config guard; `../ai/summarize` stays mocked until
+ * the summariser moves onto the same fake. `polishDraft` itself is covered
+ * next door in `../ai/polish.test.ts`.
  * What is under test is the order each route does things in — configured,
  * valid, found, within budget, only then paid for — the context it assembles
  * from the thread, and the sentence each failure turns into.
@@ -72,7 +74,16 @@
  * reading the row; otherwise what converted here is the read.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import {
   DEMO_AI_LIMIT_MESSAGE,
   DEMO_AI_LIMIT_REASON,
@@ -93,6 +104,14 @@ import { chargeDemoAi } from "../demo/ai-budget";
 import { asCaller } from "../test/caller";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
 import { dbCalls, prisma, resetDb } from "../test/pg";
+import {
+  type ModelAnswer,
+  type ModelCall,
+  type ModelUsage,
+  modelCalls,
+  providerError,
+  scriptModel,
+} from "../test/model";
 import { serveRouter } from "../test/route-app";
 
 const { POLISH_FAILURE } = polishModule;
@@ -108,16 +127,14 @@ type AiFailureValue = Extract<SummarizeResult, { ok: false }>["reason"];
 
 /* ── The world behind the route ──────────────────────────────────────────── */
 
-/** What the model does, swapped per test. */
-let polishResult: PolishResult;
+/**
+ * Whether the deployment can polish, swapped per test. What the model answers
+ * is scripted on the preload's fake (`../test/model`, #578), and the real
+ * `polishDraft` runs between it and the route.
+ */
 let configured: boolean;
 
-const polishReply = mock(
-  (_draft: string, _context: PolishContext, _signal?: AbortSignal) =>
-    Promise.resolve(polishResult),
-);
-
-/** The same two, for the other endpoint. */
+/** What the summariser does, and whether it can, for the other endpoint. */
 let summaryResult: SummarizeResult;
 let summaryConfigured: boolean;
 
@@ -127,22 +144,22 @@ const summarizeTicket = mock(
 );
 
 // `../ai/polish-reply`, never `../ai/polish`: `ai/polish.test.ts` tests the
-// real `polishDraft`, and a factory on its specifier is what that file imports
-// whenever this one loads first (#303) — see the seam's header. This replaces
-// the seam's two exports outright and never delegates to them, so there is
-// nothing to spread. `POLISH_FAILURE` needs no spreading either: the route
-// reads it from `../ai/polish`, which nothing replaces, so the real values
-// travel.
+// real `isPolishConfigured`, and a factory on its specifier is what that file
+// imports whenever this one loads first (#303) — see the seam's header. This
+// replaces the seam's one export outright and never delegates to it, so there
+// is nothing to spread. Until #578 it replaced `polishReply` beside it, the
+// rewrite itself; the route now calls the real `polishDraft`, and the model
+// under it is scripted instead.
 await mock.module("../ai/polish-reply", () => ({
   isPolishReplyConfigured: () => configured,
-  polishReply,
 }));
 
 // The summary endpoint's twin, and the reason `../ai/summarize` grew an
 // `isSummarizeConfigured` in #174 rather than this file replacing the
-// provider's `isAiConfigured` directly: `jobs/sweeps.test.ts` already registers
-// a `../ai/provider` factory, and that stub holds **state** — a switch its own
-// reconcile tests flip. Two stateful copies on one specifier are two boxes, of
+// provider's `isAiConfigured` directly: the preload registers a
+// `../ai/provider` factory (`jobs/sweeps.test.ts` did until #578), and that
+// stub holds **state** — the scripted model, and a switch the sweeps' reconcile
+// tests flip. Two stateful copies on one specifier are two boxes, of
 // which the process-wide registry keeps one, leaving the other file's switch
 // inert (`docs/standards/testing.md` says so about `../test/send-email`, for
 // exactly this reason). A per-feature guard gives this route's test a specifier
@@ -156,6 +173,13 @@ await mock.module("../ai/summarize", () => ({
 }));
 
 const { aiRouter } = await import("./ai");
+
+// The real `polishDraft` logs the cause of every failure it reports, which
+// the failure tests below provoke on purpose. Wanted in production, noise here.
+const errorLog = spyOn(console, "error").mockImplementation(() => {});
+afterAll(() => {
+  errorLog.mockRestore();
+});
 
 /* ── The thread ──────────────────────────────────────────────────────────── */
 
@@ -296,12 +320,62 @@ function goodBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** The context the route handed the model on its most recent call. */
-function lastContext(): PolishContext {
-  const call = polishReply.mock.calls.at(-1);
-  if (!call) throw new Error("polishReply was never called");
-  return call[1];
+/** What the model was sent on the most recent polish. */
+function lastPolishCall(): ModelCall {
+  const call = modelCalls("polish").at(-1);
+  if (!call) throw new Error("the model was never asked to polish");
+  return call;
 }
+
+/** The text inside one of the prompt's `<<<name … >>>` fences, or null. */
+function fencedText(prompt: string, name: string): string | null {
+  const match = new RegExp(`<<<${name}\\n([\\s\\S]*?)\\n>>>`).exec(prompt);
+  return match ? match[1] : null;
+}
+
+/** One `Label: value` line of the prompt's frame. */
+function frameLine(prompt: string, label: string): string | undefined {
+  return prompt
+    .split("\n")
+    .find((line) => line.startsWith(`${label}: `))
+    ?.slice(label.length + 2);
+}
+
+/**
+ * The context the route handed `polishDraft` on its most recent call, read
+ * back out of the prompt the model was sent.
+ *
+ * Until #578 the route called a stub that recorded this object directly. Now
+ * the real `polishDraft` builds the prompt from it, so each field is read from
+ * the line `polishDraft` writes it into; `ai/polish.test.ts` pins those lines.
+ * A null `customerMessage` is the prompt's "not available" branch, which is
+ * the only thing `polishDraft` does with one.
+ */
+function lastContext(): PolishContext {
+  const { prompt } = lastPolishCall();
+  return {
+    subject: frameLine(prompt, "Ticket subject") ?? "",
+    customerName: frameLine(prompt, "Address the customer by their name") ?? "",
+    customerMessage: fencedText(prompt, "customer_message"),
+    agentName: frameLine(prompt, "Sign off with the agent's name") ?? "",
+  };
+}
+
+/** What the model answers on the way to each failure the route reports. */
+const POLISH_ANSWER: Record<PolishFailureValue, ModelAnswer> = {
+  provider: { throws: providerError(500, "internal error") },
+  busy: { throws: providerError(429, '{"error":{"code":"rate_limit"}}') },
+  quota: {
+    throws: providerError(429, '{"error":{"code":"insufficient_quota"}}'),
+  },
+  auth: { throws: providerError(401) },
+  config: { throws: providerError(400, "unsupported_value") },
+  empty: { text: "   " },
+  invented: { text: "We have refunded your order in full." },
+};
+
+/** The rewrite every test gets unless it is about something else. */
+const POLISHED = "Hi Marta,\n\nYour parcel shipped on Friday.";
 
 interface Summarised {
   status: number;
@@ -351,14 +425,10 @@ function lastSummaryContext(): SummarizeContext {
 
 beforeEach(async () => {
   await resetDb();
-  polishReply.mockClear();
   summarizeTicket.mockClear();
   configured = true;
   summaryConfigured = true;
-  polishResult = {
-    ok: true,
-    text: "Hi Marta,\n\nYour parcel shipped on Friday.",
-  };
+  scriptModel("polish", { text: POLISHED });
   summaryResult = { ok: true, summary: SUMMARY };
   await seedTicket({ id: TICKET, subject: SUBJECT, createdAt: AT.opened });
   await seedMessage();
@@ -377,7 +447,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     // Checked first, before the body is even parsed: the answer is the same for
     // every request, so nothing else should run.
     expect(dbCalls("ticket.findUnique")).toBe(0);
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 
   test("rejects an empty draft with the composer's own sentence", async () => {
@@ -385,7 +455,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
 
     expect(sent.status).toBe(400);
     expect(sent.body.error).toBe(TICKET_INPUT_MESSAGE.draftEmpty);
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 
   test("rejects a draft over the shared cap", async () => {
@@ -399,7 +469,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post({ draft: "shipped fri" });
 
     expect(sent.status).toBe(400);
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 
   test("rejects a ticket id that is not one", async () => {
@@ -418,7 +488,7 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
 
     expect(sent.status).toBe(404);
     expect(sent.body.error).toBe(TICKET_NOT_FOUND_MESSAGE);
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 });
 
@@ -554,13 +624,20 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
   test("passes the draft trimmed, as the schema left it", async () => {
     await post(goodBody({ draft: "  shipped fri  " }));
 
-    expect(polishReply.mock.calls.at(-1)![0]).toBe("shipped fri");
+    // Since #578 this reads the draft out of the prompt, and `fenced` trims
+    // what it quotes as well, so the route's own trim is no longer what this
+    // line distinguishes: it is green with the schema's `.trim()` removed.
+    // Nothing downstream of the fence can see the difference either.
+    expect(fencedText(lastPolishCall().prompt, "draft")).toBe("shipped fri");
   });
 
   test("hands the model a signal it can be abandoned with", async () => {
     await post(goodBody());
 
-    expect(polishReply.mock.calls.at(-1)![2]).toBeInstanceOf(AbortSignal);
+    // Only that one is handed over. The stronger test, that a browser hanging
+    // up fires it, was written under #578 and found it never does under Bun:
+    // `res` emits no `close` on a disconnect (#651).
+    expect(lastPolishCall().abortSignal).toBeInstanceOf(AbortSignal);
   });
 });
 
@@ -601,7 +678,7 @@ describe("POST /api/ai/polish-reply — answering", () => {
     ];
 
     for (const { reason, status, says } of cases) {
-      polishResult = { ok: false, reason };
+      scriptModel("polish", POLISH_ANSWER[reason]);
       const sent = await post(goodBody());
       expect(sent.status).toBe(status);
       expect(sent.body.error).toContain(says);
@@ -619,14 +696,14 @@ describe("POST /api/ai/polish-reply — answering", () => {
       POLISH_FAILURE.auth,
       POLISH_FAILURE.config,
     ]) {
-      polishResult = { ok: false, reason };
+      scriptModel("polish", POLISH_ANSWER[reason]);
       const sent = await post(goodBody());
       expect(sent.body.error).toEndWith("Send your draft as it is.");
     }
   });
 
   test("does not tell an agent to retry an empty balance", async () => {
-    polishResult = { ok: false, reason: POLISH_FAILURE.quota };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.quota]);
 
     const sent = await post(goodBody());
 
@@ -635,10 +712,10 @@ describe("POST /api/ai/polish-reply — answering", () => {
   });
 
   test("says when to come back, but only when coming back would help", async () => {
-    polishResult = { ok: false, reason: POLISH_FAILURE.busy };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.busy]);
     expect((await post(goodBody())).retryAfter).toBe("10");
 
-    polishResult = { ok: false, reason: POLISH_FAILURE.config };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.config]);
     expect((await post(goodBody())).retryAfter).toBeNull();
   });
 });
@@ -656,7 +733,7 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
     expect(refused.body.error).toContain("try again in a minute");
     expect(Number(refused.retryAfter)).toBeGreaterThan(0);
     // The refusal is free: it never reaches the provider.
-    expect(polishReply).toHaveBeenCalledTimes(10);
+    expect(modelCalls("polish")).toHaveLength(10);
   });
 
   test("counts per user, not per process", async () => {
@@ -686,7 +763,7 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
 
   test("does not refund a slot when the provider fails", async () => {
     const user = await freshUser();
-    polishResult = { ok: false, reason: POLISH_FAILURE.provider };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.provider]);
 
     for (let i = 0; i < 10; i++) {
       expect((await post(goodBody(), { user })).status).toBe(502);
@@ -1024,10 +1101,16 @@ const COSTLY: AiUsage = {
   cachedInputTokens: 0,
 };
 
+/** `COSTLY`, as the model reports it to the SDK under the real `polishDraft`. */
+const COSTLY_ANSWERED: ModelUsage = {
+  inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 2_500, text: 2_500, reasoning: 0 },
+};
+
 describe("the demo AI budget", () => {
   beforeEach(() => {
     process.env.DEMO_AI_DAILY_USD = "0.001";
-    polishResult = { ok: true, text: "Hi Marta,", usage: COSTLY };
+    scriptModel("polish", { text: "Hi Marta,", usage: COSTLY_ANSWERED });
     summaryResult = { ok: true, summary: SUMMARY, usage: COSTLY };
   });
 
@@ -1045,7 +1128,7 @@ describe("the demo AI budget", () => {
       error: DEMO_AI_LIMIT_MESSAGE,
       reason: DEMO_AI_LIMIT_REASON,
     });
-    expect(polishReply).toHaveBeenCalledTimes(1);
+    expect(modelCalls("polish")).toHaveLength(1);
   });
 
   test("so is a demo's summary", async () => {
@@ -1076,11 +1159,11 @@ describe("the demo AI budget", () => {
 
   // A rewrite the route discards was still paid for.
   test("a demo polish that failed after the model answered is charged too", async () => {
-    polishResult = {
-      ok: false,
-      reason: POLISH_FAILURE.invented,
-      usage: COSTLY,
-    };
+    // The answer `POLISH_ANSWER` turns into `invented`, now carrying a cost.
+    scriptModel("polish", {
+      text: "We have refunded your order in full.",
+      usage: COSTLY_ANSWERED,
+    });
     expect((await post(goodBody(), { demo: true })).status).toBe(502);
 
     expect((await post(goodBody(), { demo: true })).status).toBe(429);
