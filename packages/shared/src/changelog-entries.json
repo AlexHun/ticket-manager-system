@@ -1028,5 +1028,15 @@
     "version": "0.1.260",
     "date": "2026-10-22",
     "title": "Settle the #563 review findings"
+  },
+  {
+    "version": "0.1.261",
+    "date": "2026-10-23",
+    "title": "Stop the last pg-boss and server on a hot reload (#639)"
+  },
+  {
+    "version": "0.1.261",
+    "date": "2026-10-23",
+    "title": "Settle the #639 review findings"
   }
 ]
