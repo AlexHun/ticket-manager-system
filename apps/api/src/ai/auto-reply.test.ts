@@ -21,12 +21,15 @@
  *   5. no money word its cited articles do not contain
  *   6. no link or address its cited articles do not contain
  *
- * `generateText` is replaced with a function this file controls, so the two
- * interesting halves are both reachable: what the module *sends* (a stranger's
- * email, quoted as data, alongside a corpus that is ours) and what it does with
- * what comes *back* (the declines, and the checks that throw a reply away). How
- * the paragraphs become the reply's text is `reply-shape.ts`'s, tested pure in
- * `reply-shape.test.ts` with no model call to script.
+ * The model is the preload's scripted fake (`../test/model`, #578), and
+ * `generateText` above it is the real one, so the two interesting halves are
+ * both reachable through everything the SDK does in between: what the module
+ * *sends* (a stranger's email, quoted as data, alongside a corpus that is ours)
+ * and what it does with what comes *back* (the declines, and the checks that
+ * throw a reply away). A scripted answer is the JSON `Output.object` parses, so
+ * the schema is exercised too. How the paragraphs become the reply's text is
+ * `reply-shape.ts`'s, tested pure in `reply-shape.test.ts` with no model call to
+ * script. This file registered its own `"ai"` stand-in until #580.
  *
  * There is no `../db` mock here, deliberately: `auto-reply.ts` is not allowed to
  * reach a database, and the corpus every assertion below is written against is
@@ -34,17 +37,7 @@
  * somewhere else, and the prompt and citation tests would say so.
  */
 
-import {
-  afterAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  spyOn,
-  test,
-} from "bun:test";
-import * as ai from "ai";
-import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   BRAND_NAME,
@@ -55,69 +48,19 @@ import {
 } from "@ticket/shared";
 // Type-only, so it is erased rather than hoisted above the key set below —
 // the module itself still comes in through the dynamic import.
-import type { AutoReplyResult } from "./auto-reply";
+import type { AutoReplyAnswer, AutoReplyResult } from "./auto-reply";
 import type { KbArticle } from "./knowledge-base";
-import { scriptedFeature } from "../test/model";
+import {
+  type ModelAnswer,
+  lastModelCall,
+  modelCalls,
+  providerError,
+  scriptModel,
+} from "../test/model";
+import { autoReplyAnswer } from "../test/auto-reply-answer";
 
 /** Set before `./auto-reply` is imported below — the provider reads it at import. */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
-
-/** The subset of the SDK's options this module actually sets. */
-interface GenerateTextOptions {
-  system: string;
-  prompt: string;
-  maxOutputTokens: number;
-  maxRetries: number;
-  timeout: number;
-  abortSignal?: AbortSignal;
-  providerOptions: { openai: { reasoningEffort: string } };
-}
-
-/** What `Output.object` hands back, in the shape `autoReplySchema` describes. */
-interface AutoReplyOutput {
-  answered: boolean;
-  articleIds: string[];
-  paragraphs: string[] | null;
-  steps: string[] | null;
-}
-
-/**
- * What the next call answers with, swapped per test.
- *
- * A mutable delegate rather than `mockResolvedValue`, for the reason
- * `polish.test.ts` gives: the mock stays one function for the whole file, so
- * `.mock.calls` is always the same object.
- */
-let respond: (
-  options: GenerateTextOptions,
-) => Promise<{ output: AutoReplyOutput }>;
-
-/**
- * The real one, taken before the registration below replaces the namespace.
- *
- * This file's stub answers only the auto-reply's calls and hands every other
- * feature's to the real `generateText` (#578). The registry is one process
- * wide, so this `"ai"` registration reaches `polish.ts` too, and `polish.test.ts`
- * scripts the preload's fake model under a real `generateText` now; a stub that
- * answered every call with this file's `respond` failed all of that file's
- * tests in forward order. Which feature a call is for is read off the scripted
- * model the preload's `openaiModel` built for it.
- */
-const realGenerateText = ai.generateText;
-
-const generateText = mock(
-  (options: GenerateTextOptions & { model: unknown }) =>
-    scriptedFeature(options.model) === "auto-reply"
-      ? respond(options)
-      : realGenerateText(options as Parameters<typeof realGenerateText>[0]),
-);
-
-// Registered before the dynamic import below, so `auto-reply.ts` binds to this
-// `generateText`. The real error classes pass straight through — the module
-// calls `NoObjectGeneratedError.isInstance` and the shared `classify` calls
-// `RetryError` / `APICallError`, and a stubbed class would make those tests
-// tautologies.
-await mock.module("ai", () => ({ ...ai, generateText }));
 
 const { AUTO_REPLY_FAILURE, autoReply } = await import("./auto-reply");
 
@@ -165,7 +108,7 @@ const CONTEXT: AutoReplyContext = {
 };
 
 /** The reply a cooperative model writes for `CONTEXT`, before anything is added. */
-const ANSWER: AutoReplyOutput = {
+const ANSWER: AutoReplyAnswer = {
   answered: true,
   articleIds: ["KB-001"],
   paragraphs: [
@@ -175,50 +118,51 @@ const ANSWER: AutoReplyOutput = {
   steps: null,
 };
 
-/** The options the module handed the SDK on its most recent call. */
-function lastCall(): GenerateTextOptions {
-  const call = generateText.mock.calls.at(-1);
-  if (!call) throw new Error("generateText was never called");
-  return call[0];
+/** What the module sent the model on its most recent call. */
+function lastCall() {
+  return lastModelCall("auto-reply");
 }
 
-function answerWith(output: Partial<AutoReplyOutput> = {}): void {
-  respond = () => Promise.resolve({ output: { ...ANSWER, ...output } });
+/** The model answers `ANSWER`, with `output`'s fields in place of its own. */
+function answerWith(output: Partial<AutoReplyAnswer> = {}): void {
+  scriptModel("auto-reply", autoReplyAnswer({ ...ANSWER, ...output }));
 }
 
-function failWith(err: unknown): void {
-  respond = () => Promise.reject(err);
+function failWith(err: unknown, ...then: ModelAnswer[]): void {
+  scriptModel("auto-reply", { throws: err }, ...then);
 }
 
-/** An APICallError as the SDK would raise it, with only the fields `classify` reads. */
-function apiError(statusCode: number, responseBody = ""): APICallError {
-  return new APICallError({
-    message: "the provider said no",
-    url: "https://api.openai.com/v1/responses",
-    requestBodyValues: {},
-    statusCode,
-    responseBody,
-  });
-}
+/**
+ * An answer `Output.object` cannot parse — the budget went on reasoning — with
+ * the four thousand input tokens it still cost. The SDK raises
+ * `NoObjectGeneratedError` for it, carrying that usage.
+ */
+const NOTHING_PARSEABLE: ModelAnswer = {
+  text: "",
+  usage: {
+    inputTokens: { total: 4_000, noCache: 4_000, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 0, text: 0, reasoning: 0 },
+  },
+};
 
-/** What the SDK throws when nothing parseable came back — the budget went on reasoning. */
-function noObjectGenerated(): NoObjectGeneratedError {
-  return new NoObjectGeneratedError({
-    message: "No object generated",
-    response: { id: "res_test", timestamp: new Date(), modelId: "gpt-5-nano" },
-    usage: {
-      inputTokens: 4_000,
-      outputTokens: 0,
-      totalTokens: 4_000,
-      inputTokenDetails: {
-        noCacheTokens: 4_000,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-      },
-      outputTokenDetails: { textTokens: 0, reasoningTokens: 0 },
-    },
-    finishReason: "length",
-  });
+/**
+ * `autoReply`'s outcome without the call's `usage`, for the tests about what
+ * came back rather than what it cost. The real SDK reports usage on every
+ * answer, which the stubbed `generateText` this file used until #580 never
+ * did, so these compare the outcome alone; the tests about cost read
+ * `autoReply` itself.
+ */
+async function outcomeOf(
+  articles: KbArticle[],
+  context: AutoReplyContext,
+  signal?: AbortSignal,
+) {
+  const { usage: _usage, ...outcome } = await autoReply(
+    articles,
+    context,
+    signal,
+  );
+  return outcome;
 }
 
 // The module narrates every decision it makes: one usage line per call, a warn
@@ -236,7 +180,6 @@ function logged(): string {
 }
 
 beforeEach(() => {
-  generateText.mockClear();
   infoLog.mockClear();
   warnLog.mockClear();
   errorLog.mockClear();
@@ -307,14 +250,14 @@ describe("autoReply — the corpus it was handed", () => {
   });
 
   test("declines without calling the model when there is nothing to answer from", async () => {
-    const result = await autoReply([], CONTEXT);
+    const result = await outcomeOf([], CONTEXT);
 
     expect(result).toEqual({
       ok: false,
       reason: AUTO_REPLY_FAILURE.config,
       decline: AUTO_REPLY_DECLINE.unavailable,
     });
-    expect(generateText).not.toHaveBeenCalled();
+    expect(modelCalls("auto-reply")).toHaveLength(0);
   });
 
   test("tells the model a fault report is not a question — the near-miss rule", async () => {
@@ -458,27 +401,82 @@ describe("autoReply — the email it was asked about", () => {
     expect(lastCall().prompt).toBe(trimmed);
   });
 
-  test("bounds a call that holds a ticket invisible while it runs", async () => {
+  test("caps the answer and asks for the reasoning effort that writes one", async () => {
+    await autoReply(ARTICLES, CONTEXT);
+
+    const { maxOutputTokens, providerOptions } = lastCall();
+    expect(maxOutputTokens).toBe(3_000);
+    // Not "minimal". gpt-5-nano accepts it and hands a polish's input back
+    // unedited, with no failing status code to notice.
+    expect(providerOptions?.openai?.reasoningEffort).toBe("low");
+  });
+
+  // `maxRetries` and `timeout` never reach the model, so since #580 they are
+  // asserted by what they do rather than read off the options, as
+  // `polish.test.ts` does it.
+  test("asks once more after a failure worth retrying", async () => {
+    failWith(providerError(500, "internal error"), autoReplyAnswer(ANSWER));
+
+    const result = await outcomeOf(ARTICLES, CONTEXT);
+
+    expect(result.ok).toBe(true);
+    expect(modelCalls("auto-reply")).toHaveLength(2);
+  });
+
+  test("and only once: the queue above has the real retry ladder", async () => {
+    failWith(
+      providerError(500, "internal error"),
+      { throws: providerError(500, "internal error") },
+      autoReplyAnswer(ANSWER),
+    );
+
+    const result = await outcomeOf(ARTICLES, CONTEXT);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: AUTO_REPLY_FAILURE.provider,
+      decline: AUTO_REPLY_DECLINE.unavailable,
+    });
+    expect(modelCalls("auto-reply")).toHaveLength(2);
+  });
+
+  test("cuts off a model that is still thinking after 30 seconds", async () => {
+    // A ticket sits in `Processing` for the whole of this, and `Processing` is
+    // the one status the tickets list refuses to return. The SDK turns
+    // `timeout` into `AbortSignal.timeout(ms)`; the spy records the figure and
+    // shortens the wait to 1ms, so the slow answer below is cut off by the real
+    // timeout path without the test waiting 30s for it.
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() =>
+      realTimeout(1),
+    );
+    scriptModel("auto-reply", { hangs: true });
+
+    try {
+      const result = await outcomeOf(ARTICLES, CONTEXT);
+
+      expect(result).toEqual({
+        ok: false,
+        reason: AUTO_REPLY_FAILURE.provider,
+        decline: AUTO_REPLY_DECLINE.unavailable,
+      });
+      expect(timeout).toHaveBeenCalledWith(30_000);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  test("forwards the caller's abort signal", async () => {
+    // The model is handed the caller's signal merged with the timeout's, so
+    // what is asserted is that aborting the one aborts the other.
     const abort = new AbortController();
 
     await autoReply(ARTICLES, CONTEXT, abort.signal);
+    const signal = lastCall().abortSignal;
+    expect(signal?.aborted).toBe(false);
+    abort.abort();
 
-    const {
-      maxRetries,
-      timeout,
-      maxOutputTokens,
-      providerOptions,
-      abortSignal,
-    } = lastCall();
-    expect(maxRetries).toBe(1);
-    // A ticket sits in `Processing` for the whole of this, and `Processing` is
-    // the one status the tickets list refuses to return.
-    expect(timeout).toBe(30_000);
-    expect(maxOutputTokens).toBe(3_000);
-    expect(abortSignal).toBe(abort.signal);
-    // Not "minimal". gpt-5-nano accepts it and hands a polish's input back
-    // unedited, with no failing status code to notice.
-    expect(providerOptions.openai.reasoningEffort).toBe("low");
+    expect(signal?.aborted).toBe(true);
   });
 });
 
@@ -487,7 +485,7 @@ describe("autoReply — composing the reply", () => {
   // What stays here is the seam: the prompt, the declines, the length limit,
   // and one reply that shows the greeting coming from the ticket's own name.
   test("greets the customer by the ticket's name and signs off, end to end", async () => {
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -513,7 +511,7 @@ describe("autoReply — composing the reply", () => {
   test("declines when it said yes and then wrote nothing", async () => {
     answerWith({ paragraphs: [], steps: [] });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -525,7 +523,7 @@ describe("autoReply — composing the reply", () => {
   test("discards a reply longer than a message may be", async () => {
     answerWith({ paragraphs: ["x".repeat(MAX_MESSAGE_BODY_LENGTH)] });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -539,7 +537,7 @@ describe("autoReply — check 4: the citations must resolve", () => {
   test("throws the reply away when nothing it cited exists", async () => {
     answerWith({ articleIds: ["KB-404", "KB-999"] });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -552,7 +550,7 @@ describe("autoReply — check 4: the citations must resolve", () => {
   test("throws it away when it cited nothing at all", async () => {
     answerWith({ articleIds: [] });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -567,7 +565,7 @@ describe("autoReply — check 4: the citations must resolve", () => {
     // it is a guess that landed on a real id rather than a citation.
     answerWith({ articleIds: ["KB-014"] });
 
-    const result = await autoReply([ARTICLES[0]!], CONTEXT);
+    const result = await outcomeOf([ARTICLES[0]!], CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -579,7 +577,7 @@ describe("autoReply — check 4: the citations must resolve", () => {
   test("drops the citations that do not resolve and keeps the ones that do", async () => {
     answerWith({ articleIds: [" kb-001 ", "KB-404"] });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -602,7 +600,7 @@ describe("autoReply — check 5: no money it cannot point at", () => {
       ],
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -636,7 +634,7 @@ describe("autoReply — check 5: no money it cannot point at", () => {
       steps: null,
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result.ok).toBe(true);
   });
@@ -653,7 +651,7 @@ describe("autoReply — check 5: no money it cannot point at", () => {
       steps: null,
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -675,7 +673,7 @@ describe("autoReply — check 6: no link or address it cannot point at", () => {
       ],
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -693,7 +691,7 @@ describe("autoReply — check 6: no link or address it cannot point at", () => {
       ],
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -710,7 +708,7 @@ describe("autoReply — check 6: no link or address it cannot point at", () => {
       ],
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -729,7 +727,7 @@ describe("autoReply — check 6: no link or address it cannot point at", () => {
       steps: null,
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result.ok).toBe(true);
   });
@@ -741,7 +739,7 @@ describe("autoReply — check 6: no link or address it cannot point at", () => {
       steps: null,
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -757,7 +755,7 @@ describe("autoReply — check 6: no link or address it cannot point at", () => {
     // has not grown a support address or a help-centre link. If it ever does,
     // every reply this feature writes is discarded until an article backs it,
     // and this test is where that is noticed.
-    const result = await autoReply([ARTICLES[0]!], CONTEXT);
+    const result = await outcomeOf([ARTICLES[0]!], CONTEXT);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -775,7 +773,7 @@ describe("autoReply — declining and failing", () => {
       steps: null,
     });
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -785,7 +783,7 @@ describe("autoReply — declining and failing", () => {
   });
 
   test("reports a call that produced nothing parseable as empty", async () => {
-    failWith(noObjectGenerated());
+    scriptModel("auto-reply", NOTHING_PARSEABLE);
 
     const result = await autoReply(ARTICLES, CONTEXT);
 
@@ -810,7 +808,7 @@ describe("autoReply — declining and failing", () => {
     // only path through the module that logged no `[ai]` line at all and
     // recorded $0 against a call that burned four thousand input tokens, which
     // is precisely the understatement the note above `let usage` warns about.
-    failWith(noObjectGenerated());
+    scriptModel("auto-reply", NOTHING_PARSEABLE);
 
     const result = await autoReply(ARTICLES, CONTEXT);
 
@@ -823,18 +821,18 @@ describe("autoReply — declining and failing", () => {
     // who opens the ticket, and every provider fault reads the same way to them.
     const cases = [
       [
-        apiError(429, '{"error":{"code":"rate_limit_exceeded"}}'),
+        providerError(429, '{"error":{"code":"rate_limit_exceeded"}}'),
         AUTO_REPLY_FAILURE.busy,
       ],
-      [apiError(401), AUTO_REPLY_FAILURE.auth],
-      [apiError(400, "unsupported_value"), AUTO_REPLY_FAILURE.config],
-      [apiError(500, "internal error"), AUTO_REPLY_FAILURE.provider],
+      [providerError(401), AUTO_REPLY_FAILURE.auth],
+      [providerError(400, "unsupported_value"), AUTO_REPLY_FAILURE.config],
+      [providerError(500, "internal error"), AUTO_REPLY_FAILURE.provider],
       [new TypeError("fetch failed"), AUTO_REPLY_FAILURE.provider],
     ] as const;
 
     for (const [err, reason] of cases) {
       failWith(err);
-      const result = await autoReply(ARTICLES, CONTEXT);
+      const result = await outcomeOf(ARTICLES, CONTEXT);
       expect(result).toEqual({
         ok: false,
         reason,
@@ -846,28 +844,25 @@ describe("autoReply — declining and failing", () => {
   test("reads quota exhaustion out of the body, through the retry wrapper", async () => {
     // OpenAI marks quota exhaustion retryable, so by the time it surfaces the
     // real error is one level down and an `APICallError.isInstance` check on the
-    // outer error never matches.
-    failWith(
-      new RetryError({
-        message: "maximum retries exceeded",
-        reason: "maxRetriesExceeded",
-        errors: [apiError(429, '{"error":{"code":"insufficient_quota"}}')],
-      }),
-    );
+    // outer error never matches. The wrapper is the SDK's own since #580: a
+    // 429 is retryable, so the real retry asks twice and then wraps the second
+    // failure.
+    failWith(providerError(429, '{"error":{"code":"insufficient_quota"}}'));
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
       reason: AUTO_REPLY_FAILURE.quota,
       decline: AUTO_REPLY_DECLINE.unavailable,
     });
+    expect(modelCalls("auto-reply")).toHaveLength(2);
   });
 
   test("never throws at the caller, whatever came out of the SDK", async () => {
     failWith("a string, because someone threw one");
 
-    const result = await autoReply(ARTICLES, CONTEXT);
+    const result = await outcomeOf(ARTICLES, CONTEXT);
 
     expect(result).toEqual({
       ok: false,
@@ -901,14 +896,14 @@ describe("autoReply — the reason and the decline draw the same line", () => {
     [
       "a budget that went on reasoning",
       () => {
-        failWith(noObjectGenerated());
+        scriptModel("auto-reply", NOTHING_PARSEABLE);
         return autoReply(ARTICLES, CONTEXT);
       },
     ],
     [
       "a provider that could not be reached",
       () => {
-        failWith(apiError(500, "internal error"));
+        failWith(providerError(500, "internal error"));
         return autoReply(ARTICLES, CONTEXT);
       },
     ],

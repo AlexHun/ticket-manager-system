@@ -1,8 +1,7 @@
 /**
  * The scripted model's own promises (#578): what every test that scripts an
- * answer relies on without checking. `ai/polish.test.ts` and
- * `routes/ai.test.ts` are where the fake is used; this is where it is held to
- * its header.
+ * answer relies on without checking. The test files that script an answer
+ * are where the fake is used; this is where it is held to its header.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -13,7 +12,6 @@ import {
   providerError,
   resetModel,
   scriptModel,
-  scriptedFeature,
   unscripted,
 } from "./model";
 
@@ -88,7 +86,6 @@ describe("a call", () => {
         providerOptions: { openai: { reasoningEffort: "low" } },
       }),
     ]);
-    expect(scriptedFeature(openaiModel("polish", "gpt-5-nano"))).toBe("polish");
   });
 
   test("with nothing scripted fails, naming the feature and the model id", async () => {

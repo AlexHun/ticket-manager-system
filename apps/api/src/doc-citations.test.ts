@@ -253,6 +253,16 @@ const EXEMPTIONS: Exemption[] = [
       "polishReply",
       "a shim R5 deletes, and #578 deleted.",
     ],
+    [
+      "docs/prd/scripted-model.md",
+      "draftReply",
+      "a shim R5 deletes, and #580 deleted.",
+    ],
+    [
+      "docs/prd/scripted-model.md",
+      "evals/reply-to-case.ts",
+      "a shim R5 deletes, and #580 deleted.",
+    ],
   ].map(([doc, citation, why]) => ({
     doc: doc!,
     citation: citation!,

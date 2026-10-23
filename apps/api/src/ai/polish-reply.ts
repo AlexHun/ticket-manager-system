@@ -16,8 +16,8 @@ import { isPolishConfigured } from "./polish";
  *
  * A function, never `export { … } from "./polish"`: a re-export's binding is
  * the source module's own, so a factory that rewires this module once it has
- * been evaluated rewrites `./polish` with it. `evals/reply-to-case.ts` records
- * the run that measured it.
+ * been evaluated rewrites `./polish` with it. The registry bullets in
+ * `docs/standards/testing-api.md` record the run that measured it (#303).
  *
  * The route calls `polishDraft` from `./polish` directly since #578: the
  * model's answer is scripted on the preload's fake model (`src/test/model.ts`),

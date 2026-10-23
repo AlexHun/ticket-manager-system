@@ -289,6 +289,13 @@ const autoReplySchema = z.object({
 });
 
 /**
+ * What the model answers, once `Output.object` has parsed it. Exported for the
+ * tests that script the answer (`src/test/auto-reply-answer.ts`), so a field
+ * renamed here fails to compile there rather than surfacing as `empty`.
+ */
+export type AutoReplyAnswer = z.infer<typeof autoReplySchema>;
+
+/**
  * The corpus, as the prompt carries it.
  *
  * Built from the articles the caller supplies, which `autoReplyArticles()` has
@@ -455,7 +462,7 @@ export async function autoReply(
     };
   }
 
-  let output: z.infer<typeof autoReplySchema>;
+  let output: AutoReplyAnswer;
   /**
    * What the call cost, carried down to every verdict below.
    *
