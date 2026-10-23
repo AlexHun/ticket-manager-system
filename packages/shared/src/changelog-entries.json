@@ -1053,5 +1053,15 @@
     "version": "0.1.264",
     "date": "2026-10-23",
     "title": "Settle the #635 review findings"
+  },
+  {
+    "version": "0.1.270",
+    "date": "2026-10-23",
+    "title": "Run on Bun 1.4.4 so a hung-up browser aborts the model call"
+  },
+  {
+    "version": "0.1.270",
+    "date": "2026-10-23",
+    "title": "Settle the #651 review findings"
   }
 ]
