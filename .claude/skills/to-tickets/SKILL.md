@@ -30,7 +30,7 @@ then make the easy change."
 
 - Each slice cuts a narrow but COMPLETE path through every layer (schema, API, UI, tests).
 - A completed slice is demoable or verifiable on its own.
-- Each slice fits in a single fresh context window. Its forecast (below) is at most `L`.
+- Each slice fits in a single fresh context window: its implementing worker is forecast under 200k tokens of context, about 75 turns (below).
 - Prefactoring comes first.
 
 </vertical-slice-rules>
@@ -46,9 +46,12 @@ radius breaks every call site at once. Sequence it as **expand–contract**:
    batch is its own ticket, blocked by the expand.
 3. **Contract:** delete the old form, in a ticket blocked by every batch.
 
-**Forecast** each ticket's size in turns, then read its `forecast/S|M|L` band
-off the table in `docs/agents/issue-tracker.md`. If a ticket forecasts above
-`L`, split it.
+**Forecast** each ticket's size in turns, the API responses its worker will
+make, then size it twice from `docs/agents/issue-tracker.md` (Forecasting an
+issue's size). Its peak context is about 75k plus 1.7k per turn: if the
+worker is forecast past 75 turns, past 200k context, split the ticket, whatever
+its output band. Its `forecast/S|M|L` label is the output band, read off the
+same turns at ~500 output tokens each.
 
 **A ticket that grants an agent permissions is the user's to land.** Auto mode
 refuses an agent's edit to the `permissions` rules in `.claude/settings.json`
