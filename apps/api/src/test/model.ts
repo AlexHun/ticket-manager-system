@@ -53,7 +53,9 @@
 
 import { APICallError } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-import type { AiFeature } from "../ai/provider";
+// Types only, so nothing here links `../ai/provider`, which reads its key at
+// import: the preload sets that key after its own imports are evaluated.
+import type { AiFeature, openaiModel } from "../ai/provider";
 
 type CallOptions = Parameters<MockLanguageModelV4["doGenerate"]>[0];
 type GenerateResult = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>;
@@ -117,6 +119,13 @@ export function modelCalls(feature?: AiFeature): ModelCall[] {
   return feature
     ? calls.filter((call) => call.feature === feature)
     : [...calls];
+}
+
+/** What `feature`'s most recent call was sent. Throws when it made none. */
+export function lastModelCall(feature: AiFeature): ModelCall {
+  const call = modelCalls(feature).at(-1);
+  if (!call) throw new Error(`the model was never asked to ${feature}`);
+  return call;
 }
 
 /** Forget every script and every call. The preload runs it before each test. */
@@ -194,16 +203,14 @@ export const aiSwitch: { configured: boolean | undefined } = {
   configured: undefined,
 };
 
-/** `openaiModel`'s shape, as far as a test reads the model it returns. */
-type OpenaiModel = (
-  feature: AiFeature,
-  modelId: string,
-) => { provider: string; modelId: string };
+let realOpenaiModel: typeof openaiModel | undefined;
 
-let realOpenaiModel: OpenaiModel | undefined;
-
-/** The preload hands over the real `openaiModel` before it replaces it. */
-export function rememberRealOpenaiModel(real: OpenaiModel): void {
+/**
+ * The preload hands over the real `openaiModel` before it replaces it. Handed
+ * over rather than imported, because this module must not link the provider
+ * (see the import above).
+ */
+export function rememberRealOpenaiModel(real: typeof openaiModel): void {
   realOpenaiModel = real;
 }
 
@@ -235,13 +242,7 @@ export function scriptedFeature(model: unknown): AiFeature | undefined {
 
 /** What the preload puts in place of `openaiModel`. Same signature. */
 export function scriptedModel(feature: AiFeature, modelId: string) {
-  const model = scripted(feature, modelId);
-  featureOf.set(model, feature);
-  return model;
-}
-
-function scripted(feature: AiFeature, modelId: string) {
-  return new MockLanguageModelV4({
+  const model = new MockLanguageModelV4({
     provider: "scripted",
     modelId,
     doGenerate: async (options): Promise<GenerateResult> => {
@@ -271,4 +272,6 @@ function scripted(feature: AiFeature, modelId: string) {
       };
     },
   });
+  featureOf.set(model, feature);
+  return model;
 }

@@ -17,7 +17,7 @@
 import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   type ModelAnswer,
-  type ModelCall,
+  lastModelCall,
   type ModelUsage,
   modelCalls,
   providerError,
@@ -37,7 +37,7 @@ type PolishContext = Parameters<typeof polishDraft>[1];
  * answer, which a stubbed `generateText` never did, so these tests compare
  * the outcome alone and the "what the call cost" block below asserts usage.
  */
-async function polish(
+async function outcomeOf(
   draft: string,
   context: PolishContext,
   signal?: AbortSignal,
@@ -60,10 +60,8 @@ const CONTEXT: PolishContext = {
 const DRAFT = "shipped fri, ur parcel is on the way";
 
 /** What the module sent the model on its most recent call. */
-function lastCall(): ModelCall {
-  const call = modelCalls("polish").at(-1);
-  if (!call) throw new Error("the model was never called");
-  return call;
+function lastCall() {
+  return lastModelCall("polish");
 }
 
 function replyWith(text: string): void {
@@ -217,7 +215,7 @@ describe("polishDraft — what reaches the model", () => {
       text: "Hi Marta,\n\nYour parcel shipped on Friday.",
     });
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -235,7 +233,7 @@ describe("polishDraft — what reaches the model", () => {
       { text: "never reached" },
     );
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
     expect(modelCalls("polish")).toHaveLength(2);
@@ -252,7 +250,7 @@ describe("polishDraft — what reaches the model", () => {
     scriptModel("polish", { hangs: true });
 
     try {
-      const result = await polish(DRAFT, CONTEXT);
+      const result = await outcomeOf(DRAFT, CONTEXT);
 
       expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
       expect(timeout).toHaveBeenCalledWith(20_000);
@@ -279,7 +277,7 @@ describe("polishDraft — what comes back", () => {
   test("returns the rewrite, trimmed", async () => {
     replyWith("\n\nHi Marta,\n\nYour parcel shipped on Friday.\n");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -290,7 +288,7 @@ describe("polishDraft — what comes back", () => {
   test("unwraps a code fence the model was told not to emit", async () => {
     replyWith("```text\nHi Marta,\n\nYour parcel shipped on Friday.\n```");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -301,7 +299,7 @@ describe("polishDraft — what comes back", () => {
   test("replaces em and en dashes with commas", async () => {
     replyWith("Your order — the blue shoes — shipped on Friday.");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -312,7 +310,7 @@ describe("polishDraft — what comes back", () => {
   test("does not stack a comma on punctuation that is already there", async () => {
     replyWith("One thing, — your parcel shipped on Friday.");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -323,7 +321,7 @@ describe("polishDraft — what comes back", () => {
   test("drops a dash that opens a line, which is a bullet in disguise", async () => {
     replyWith("Hi Marta,\n\n— Your parcel shipped on Friday.");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({
       ok: true,
@@ -334,7 +332,7 @@ describe("polishDraft — what comes back", () => {
   test("reports a success that carried no text", async () => {
     replyWith("");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.empty });
   });
@@ -342,7 +340,7 @@ describe("polishDraft — what comes back", () => {
   test("counts whitespace as no text", async () => {
     replyWith("   \n\n  ");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.empty });
   });
@@ -354,7 +352,7 @@ describe("polishDraft — invented commitments", () => {
       "Hi Marta,\n\nAs a goodwill gesture we have credited 50 EUR to your account.\n\nThanks,\nAaron",
     );
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.invented });
   });
@@ -381,7 +379,7 @@ describe("polishDraft — invented commitments", () => {
       "Hi Marta,\n\nI can't refund this order: it is past the 30 day window.\n\nThanks,\nAaron",
     );
 
-    const result = await polish(draft, CONTEXT);
+    const result = await outcomeOf(draft, CONTEXT);
 
     expect(result.ok).toBe(true);
   });
@@ -401,7 +399,7 @@ describe("polishDraft — invented commitments", () => {
 
     for (const sample of samples) {
       replyWith(sample);
-      const result = await polish(DRAFT, CONTEXT);
+      const result = await outcomeOf(DRAFT, CONTEXT);
       expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.invented });
     }
   });
@@ -413,7 +411,7 @@ describe("polishDraft — invented commitments", () => {
       "Hi Marta,\n\nYour credit card was not charged.\n\nThanks,\nAaron",
     );
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result.ok).toBe(true);
   });
@@ -428,7 +426,7 @@ describe("polishDraft — classifying a failure", () => {
     // retry asks twice and then wraps the second failure.
     failWith(providerError(429, '{"error":{"code":"insufficient_quota"}}'));
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.quota });
     expect(modelCalls("polish")).toHaveLength(2);
@@ -437,7 +435,7 @@ describe("polishDraft — classifying a failure", () => {
   test("keeps a plain 429 as busy, which is worth retrying", async () => {
     failWith(providerError(429, '{"error":{"code":"rate_limit_exceeded"}}'));
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.busy });
   });
@@ -445,7 +443,7 @@ describe("polishDraft — classifying a failure", () => {
   test("reads billing wording as quota whatever the status says", async () => {
     failWith(providerError(400, "billing hard limit reached"));
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.quota });
   });
@@ -453,7 +451,7 @@ describe("polishDraft — classifying a failure", () => {
   test("treats a rejected key as auth", async () => {
     for (const status of [401, 403]) {
       failWith(providerError(status));
-      const result = await polish(DRAFT, CONTEXT);
+      const result = await outcomeOf(DRAFT, CONTEXT);
       expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.auth });
     }
   });
@@ -463,7 +461,7 @@ describe("polishDraft — classifying a failure", () => {
     // forever. gpt-5.4-mini rejecting reasoningEffort "minimal" landed here.
     for (const status of [400, 404]) {
       failWith(providerError(status, "unsupported_value"));
-      const result = await polish(DRAFT, CONTEXT);
+      const result = await outcomeOf(DRAFT, CONTEXT);
       expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.config });
     }
   });
@@ -471,7 +469,7 @@ describe("polishDraft — classifying a failure", () => {
   test("falls back to provider for a 500", async () => {
     failWith(providerError(500, "internal error"));
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
   });
@@ -479,7 +477,7 @@ describe("polishDraft — classifying a failure", () => {
   test("falls back to provider for something that is not an API error at all", async () => {
     failWith(new TypeError("fetch failed"));
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
   });
@@ -487,7 +485,7 @@ describe("polishDraft — classifying a failure", () => {
   test("never throws at the caller, whatever came out of the SDK", async () => {
     failWith("a string, because someone threw one");
 
-    const result = await polish(DRAFT, CONTEXT);
+    const result = await outcomeOf(DRAFT, CONTEXT);
 
     expect(result).toEqual({ ok: false, reason: POLISH_FAILURE.provider });
   });

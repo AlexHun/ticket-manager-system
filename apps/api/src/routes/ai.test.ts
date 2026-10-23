@@ -106,7 +106,7 @@ import { CUSTOMER, seedTicket } from "../test/fixtures";
 import { dbCalls, prisma, resetDb } from "../test/pg";
 import {
   type ModelAnswer,
-  type ModelCall,
+  lastModelCall,
   type ModelUsage,
   modelCalls,
   providerError,
@@ -320,13 +320,6 @@ function goodBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** What the model was sent on the most recent polish. */
-function lastPolishCall(): ModelCall {
-  const call = modelCalls("polish").at(-1);
-  if (!call) throw new Error("the model was never asked to polish");
-  return call;
-}
-
 /** The text inside one of the prompt's `<<<name … >>>` fences, or null. */
 function fencedText(prompt: string, name: string): string | null {
   const match = new RegExp(`<<<${name}\\n([\\s\\S]*?)\\n>>>`).exec(prompt);
@@ -352,7 +345,7 @@ function frameLine(prompt: string, label: string): string | undefined {
  * the only thing `polishDraft` does with one.
  */
 function lastContext(): PolishContext {
-  const { prompt } = lastPolishCall();
+  const { prompt } = lastModelCall("polish");
   return {
     subject: frameLine(prompt, "Ticket subject") ?? "",
     customerName: frameLine(prompt, "Address the customer by their name") ?? "",
@@ -628,17 +621,18 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
     // what it quotes as well, so the route's own trim is no longer what this
     // line distinguishes: it is green with the schema's `.trim()` removed.
     // Nothing downstream of the fence can see the difference either.
-    expect(fencedText(lastPolishCall().prompt, "draft")).toBe("shipped fri");
+    expect(fencedText(lastModelCall("polish").prompt, "draft")).toBe(
+      "shipped fri",
+    );
   });
 
-  test("hands the model a signal it can be abandoned with", async () => {
-    await post(goodBody());
-
-    // Only that one is handed over. The stronger test, that a browser hanging
-    // up fires it, was written under #578 and found it never does under Bun:
-    // `res` emits no `close` on a disconnect (#651).
-    expect(lastPolishCall().abortSignal).toBeInstanceOf(AbortSignal);
-  });
+  // "hands the model a signal it can be abandoned with" stood here until #578.
+  // It read the route's own signal off the stub's third argument. Under the
+  // real `polishDraft` the model is always handed one, the caller's merged
+  // with the 20s timeout, so the same assertion would pass with the route's
+  // signal gone. The test that can see the route's signal, a browser hanging
+  // up and the call aborting, found the route never fires it under Bun, and
+  // goes in with that fix (#651).
 });
 
 describe("POST /api/ai/polish-reply — answering", () => {

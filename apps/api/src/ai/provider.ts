@@ -250,7 +250,7 @@ export function wasCached(usage: AiUsage | undefined): boolean {
  * a log line — the caller already has the answer it asked for.
  */
 export function logUsage(
-  feature: string,
+  feature: AiFeature,
   model: string,
   usage: AiUsage | undefined,
 ): void {

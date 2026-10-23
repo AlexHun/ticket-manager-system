@@ -1,7 +1,8 @@
 /**
  * The scripted model's own promises (#578): what every test that scripts an
- * answer relies on without checking. `ai/polish.test.ts` is where the fake is
- * used; this is where it is held to its header.
+ * answer relies on without checking. `ai/polish.test.ts` and
+ * `routes/ai.test.ts` are where the fake is used; this is where it is held to
+ * its header.
  */
 
 import { describe, expect, test } from "bun:test";
