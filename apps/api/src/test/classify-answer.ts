@@ -1,8 +1,8 @@
 /**
  * The classifier's answer, scripted on the preload's fake model (#656).
  *
- * The model answers the JSON `Output.object` parses, and three test files
- * script it: `jobs/classify-ticket.test.ts`,
+ * The model answers the JSON `Output.object` parses, and four test files
+ * script it: `ai/classify.test.ts`, `jobs/classify-ticket.test.ts`,
  * `jobs/activity-before-publish.test.ts` and `evals/runner.test.ts`. Typed off
  * the module's own `ClassifyAnswer` rather than a local copy of its shape
  * (testing-api.md, `docs/adr/0018`), so a field renamed in the schema fails to

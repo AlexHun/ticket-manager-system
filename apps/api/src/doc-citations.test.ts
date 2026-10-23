@@ -149,12 +149,6 @@ const EXEMPTIONS: Exemption[] = [
     reason:
       "A path inside the installed better-auth package, under node_modules.",
   },
-  {
-    doc: "docs/adr/0017-assembling-a-prompts-input-is-not-a-module.md",
-    citation: "classify.test.ts",
-    reason:
-      "A test file the ADR names as not existing: the gap its argument is about.",
-  },
 
   // The skills' and agents' paths.
   ...[
