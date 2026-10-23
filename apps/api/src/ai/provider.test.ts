@@ -50,10 +50,31 @@ const {
   AI_FAILURE,
   isProviderFailure,
   logUsage,
+  openaiModel,
   toAiUsage,
   usdFor,
   wasCached,
 } = await import("./provider");
+const { realModel } = await import("../test/model");
+
+/**
+ * `openaiModel`, both of it (#578). Importing `./provider` gets the preload's
+ * registration, whose `openaiModel` is the scripted fake every other test
+ * talks to; the real one is the function the preload set aside before
+ * replacing it, which `realModel` calls.
+ */
+describe("openaiModel", () => {
+  test("the real one hands back OpenAI's model under the id it was asked for", () => {
+    const model = realModel("polish", "gpt-5-nano");
+
+    expect(model.modelId).toBe("gpt-5-nano");
+    expect(model.provider).toStartWith("openai");
+  });
+
+  test("what a feature gets in this suite is the scripted fake", () => {
+    expect(openaiModel("polish", "gpt-5-nano").provider).toBe("scripted");
+  });
+});
 
 /** What `@ai-sdk/openai` v4 actually hands back, via `convertOpenAIChatUsage`. */
 function sdkUsage(over: Partial<LanguageModelUsage> = {}): LanguageModelUsage {

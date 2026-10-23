@@ -182,7 +182,7 @@ export const LIFECYCLE_STEPS: readonly LifecycleStep[] = [
       "apps/web/src/pages/TicketReplyComposer.tsx",
       "apps/api/src/routes/tickets.ts",
       "apps/api/src/routes/ai.ts",
-      "apps/api/src/ai/polish-reply.ts",
+      "apps/api/src/ai/polish.ts",
       "apps/api/src/ai/summarize.ts",
     ],
     screen: ROUTE.tickets.path,

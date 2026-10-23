@@ -261,7 +261,7 @@ export async function classifyTicket(
 ): Promise<ClassifyResult> {
   try {
     const { output, usage } = await generateText({
-      model: openaiModel(CLASSIFY_MODEL),
+      model: openaiModel("classify", CLASSIFY_MODEL),
       // `Output.object` rather than `generateObject`, which omits `timeout` from
       // its options — see the note in `summarize.ts`. It matters more here, not
       // less: an unbounded call in a background queue has nobody to notice it.

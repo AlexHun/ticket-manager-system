@@ -248,6 +248,11 @@ const EXEMPTIONS: Exemption[] = [
       "mockGet",
       "the hand-rolled stub shape the shared API stub replaced.",
     ],
+    [
+      "docs/prd/scripted-model.md",
+      "polishReply",
+      "a shim R5 deletes, and #578 deleted.",
+    ],
   ].map(([doc, citation, why]) => ({
     doc: doc!,
     citation: citation!,
