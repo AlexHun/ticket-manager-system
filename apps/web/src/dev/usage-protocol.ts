@@ -24,10 +24,13 @@
  * Output-token bands — the vocabulary a `forecast/S|M|L` label and an actual
  * spend are both written in. `max` is exclusive.
  *
- * These are this repo's own measured per-issue distribution over 90
- * issue-numbered branches: p25 55k, median 90k, p75 154k. `XL` is the
- * open-ended top bucket and is a split signal rather than a size — nothing
- * should be forecast into it, and no `forecast/XL` label exists.
+ * They were cut from this repo's per-issue distribution over 90
+ * issue-numbered branches (p25 55k, median 90k, p75 154k), measured on
+ * transcript records before #413. Re-measured on responses in #627 (p25 25k,
+ * median 45k, p75 73k), they were kept, and a ticket is now split by its peak
+ * context rather than by its band (`docs/agents/issue-tracker.md`). `XL` is the
+ * open-ended top bucket: nothing should be forecast into it, and no
+ * `forecast/XL` label exists.
  *
  * It lives in the wire contract rather than beside the scan in
  * `apps/web/dev/transcripts.ts` because both ends spend it: the middleware

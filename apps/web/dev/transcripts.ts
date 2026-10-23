@@ -30,10 +30,11 @@
 //     reads as complete when it is not.
 //   - Sessions from any other machine. These transcripts are local.
 //
-// The cache-read per turn and the 28% on `main` above were measured before
-// #413, when a "turn" was a transcript record rather than an API response and
-// a response's usage was counted once per record, so they want re-measuring
-// on the corrected figures. #627 re-measured the output per turn.
+// The 28,095 turns, the cache-read per turn and the 28% on `main` above were
+// measured before #413, when a "turn" was a transcript record rather than an
+// API response and a response's usage was counted once per record, so they
+// want re-measuring on the corrected figures. #627 re-measured the output per
+// turn.
 //
 // Out of `./usage.ts` since #297, which had grown to hold both the scan and the
 // join. The split is the one `./issues.ts` already drew for the other source:

@@ -29,8 +29,9 @@ nobody has an intuition for.
   off the turns at ~500 output tokens per turn, so `S` is under ~120 turns
   and `M` ~120-300. There is no `forecast/XL`. The label forecasts what the
   issue costs, which `bun run tokens` and `/__dev/usage` score. It no longer
-  decides splitting: a ticket under the context ceiling is nearly always an
-  `S` or an `M`.
+  decides splitting. A worker under the ceiling writes at most ~40k output,
+  so a ticket cut to it is nearly always an `S`; the label tells tickets apart
+  less than it did, and is kept so the forecasts stay scored on one scale.
 
 ### Why context, not output (#627)
 
@@ -39,8 +40,10 @@ Measured 2026-10-23 over this machine's transcripts: 26,985 responses, and the
 a session, or one subagent. An issue's peak is the largest context (input,
 cache-creation, cache-read and output tokens of one response) in the window
 holding most of its turns. For 22 of the 27 tickets whose `/chain` worker
-has a `final_context_tokens` in a `Usage:` comment, the two agree within 2%;
-the other five differ by 11% or more.
+has a `final_context_tokens` in a `Usage:` comment, that figure and the
+issue's peak agree within 2%;
+the other five differ by 11% or more. Of the 34 tickets with a `Usage:`
+comment, 17 (50%) had a worker end past 150k by that figure.
 
 - **Most tickets already pass 150k.** 145 of 181 (80%) peaked past it, at
   quartiles of 156k, 201k and 259k. The old split rule, output at most `L`,
@@ -51,9 +54,10 @@ the other five differ by 11% or more.
   of 177k, and 78 of them passed 150k. A worker that re-reads a long standards
   file (#624) fills its window without writing much.
 - **Turns in one window predict it well.** Over the 414 windows of at least 10
-  turns on an issue branch, Pearson 0.87, and peak ≈ 75k + 1.7k per turn: a
-  median of 160k at ~50 turns, 201k at ~75, 259k at ~100. The 75k is what a
-  window holds before the work starts.
+  turns on an issue branch, Pearson 0.87, and the least-squares fit is peak ≈
+  75k + 1.7k per turn. The measured medians run close to it below 100 turns:
+  160k at ~50 turns, 201k at ~75, and 259k at ~100, where the fit gives 245k.
+  The 75k is what a window holds before the work starts.
 - **200k is where review starts finding more.** Of 163 issues with a merged
   branch, the share whose branch has a commit naming the review or its
   findings was 42% under 150k (33 issues) and 43% at 150-200k (51), then 66%
@@ -68,7 +72,9 @@ transcript record, which counted one response once per content block, and the
 old ~745 output tokens per turn and the band table's "median issue is 92k"
 came from that. On responses: 532 output tokens per turn overall, 506 on issue
 branches, and per issue a median of 486 (p25 354, p75 588), with output
-tracking turns at Pearson 0.84 across issues. The 182 issues with recorded
+tracking turns at Pearson 0.84 across issues. In `bun run tokens` the same
+day, which reads the usage history (transcripts Claude Code has since deleted
+included) and counts an issue with any spend, the 182 issues with recorded
 spend had output quartiles of 25k, 45k and 73k, and 69 of 132 forecasts (52%)
 landed in their band. The band edges are unchanged: the Usage page scores and
 charts against them, and moving them would re-score every past forecast.
