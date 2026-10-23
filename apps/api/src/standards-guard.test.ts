@@ -7,6 +7,7 @@ import {
   type Rule,
   ruleCode,
   ruleLabel,
+  underAny,
 } from "@ticket/repo-scan/rules";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
@@ -40,8 +41,8 @@ import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
  * this suite runs on pre-push as well as in CI, and the web suite only in CI:
  * a widened `better-auth` pin or a dropped `--redactNetworkHeaders` is caught
  * before it leaves the machine. So does the product-name rule (#545), which
- * reads raw text, comments included, across both apps, the packages but
- * `@ticket/shared` and the scripts, rather than one workspace's stripped
+ * reads raw text, comments included, across both apps, `packages/` but
+ * `packages/shared` and `scripts/`, rather than one workspace's stripped
  * source.
  *
  * Nothing is mocked, and nothing here touches the database.
@@ -57,12 +58,13 @@ const SELF = "apps/api/src/standards-guard.test.ts";
  *  `prisma.config.ts`. The generated client is not tracked, so it is not
  *  read. */
 const API = ["apps/api/src", "apps/api/prisma", "apps/api/prisma.config.ts"];
-/** The API's code and the code it shares a runtime with: the workspace
- *  packages and the repo's scripts (#568). The web guard's rules read the web
- *  workspace instead. */
-const ALL = [...API, "packages", "scripts"];
+/** The API's code, `packages/` and `scripts/` (#568). `packages/shared` is
+ *  read too: `USER_ROLE` is defined there as a map, which no role form
+ *  matches. `tools/` is the scanner itself, and the web guard's rules read the
+ *  web workspace. */
+const API_PACKAGES_SCRIPTS = [...API, "packages", "scripts"];
 
-const isTest = (file: string) => file.endsWith(".test.ts");
+const isTest = (file: string) => /\.test\.[cm]?[jt]sx?$/.test(file);
 /** Production code: neither a test nor the helpers under `src/test/`. */
 const isProduction = (file: string) =>
   !isTest(file) && !file.startsWith("apps/api/src/test/");
@@ -83,7 +85,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: 'Role values read USER_ROLE from @ticket/shared, in tests and fixtures too: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
-    roots: ALL,
+    roots: API_PACKAGES_SCRIPTS,
     // Where a role is meant, not the word: `asCaller("admin")` and
     // `seedColleagues("admin")` name a test fixture, and `REPLY_ORIGIN.agent`
     // is a different enum, so none of those match. The web guard's forms,
@@ -120,7 +122,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "Structured output goes through generateText + Output.object, never generateObject (it omits timeout)",
     standard: "ai-features.md",
-    roots: ALL,
+    roots: API_PACKAGES_SCRIPTS,
     // The identifier anywhere in code — the import, the call, an aliased
     // import. Comments are already blanked, and the name means nothing else.
     forms: [/\bgenerateObject\b/],
@@ -133,7 +135,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "The SDK's LanguageModelUsage and the usage fields are read only in ai/provider.ts: callers ask usdFor / wasCached (ADR-0018)",
     standard: "ai-features.md",
-    roots: ALL,
+    roots: API_PACKAGES_SCRIPTS,
     // Tests build SDK-shaped fixtures and assert the mapped fields, which is
     // what checking the seam takes; the rule is about production code.
     forms: [
@@ -159,7 +161,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "The generated Prisma client is imported only by ./db and the test Postgres module; everything else imports the singleton from ./db",
     standard: "backend.md",
-    roots: ALL,
+    roots: API_PACKAGES_SCRIPTS,
     forms: [new RegExp(String.raw`${SPECIFIER}[^"'\n]*generated/prisma\b`)],
     allowed: ["apps/api/src/db.ts", "apps/api/src/test/pg.ts"],
     catches: [
@@ -172,7 +174,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "postmark is imported only by mail/transport.ts: every email goes through the outbox (ADR-0009)",
     standard: "backend.md",
-    roots: ALL,
+    roots: API_PACKAGES_SCRIPTS,
     forms: [new RegExp(String.raw`${SPECIFIER}postmark(?:/[^"'\n]*)?["']`)],
     allowed: ["apps/api/src/mail/transport.ts"],
     catches: [
@@ -287,7 +289,7 @@ const AGENT = (name: string, extra = "") =>
   `---\nname: "${name}"\nmodel: haiku\ntools: Read, Glob, Grep\n${extra}---\n\nBody.\n`;
 
 /** The roots the product-name rule reads, repo-relative: both apps, and since
- *  #568 the other packages and the scripts. */
+ *  #568 `packages/` and `scripts/`. */
 const BRAND_SCOPE = ["apps/api", "apps/web", "packages", "scripts"];
 /** Where the name is typed, once, for everything else to read: never read. */
 const BRAND_HOME = "packages/shared";
@@ -343,8 +345,8 @@ function brandScopeFiles(): FileContents {
   return readRepo(
     ...TRACKED.filter(
       (file) =>
-        BRAND_SCOPE.some((dir) => file.startsWith(`${dir}/`)) &&
-        !file.startsWith(`${BRAND_HOME}/`) &&
+        underAny(BRAND_SCOPE, file) &&
+        !underAny([BRAND_HOME], file) &&
         BRAND_FILE.test(file.slice(file.lastIndexOf("/") + 1)),
     ),
   );
@@ -481,7 +483,7 @@ const CONFIG_RULES: ConfigRule[] = [
     },
   },
   {
-    name: "The product name is typed only in @ticket/shared: apps/api, apps/web, the other packages and scripts/ read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
+    name: "The product name is typed only in @ticket/shared: apps/api, apps/web, packages/ but packages/shared, and scripts/ read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
     standard: "copy.md",
     read: brandScopeFiles,
     problems: (files) => {

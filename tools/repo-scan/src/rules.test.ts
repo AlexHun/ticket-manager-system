@@ -6,6 +6,7 @@ import {
   type Rule,
   ruleCode,
   type TestRunner,
+  underAny,
 } from "./rules.ts";
 
 // The runner both standards guards hand their rule tables to (#567, R2). Each
@@ -185,6 +186,16 @@ describe("checkRules", () => {
     expect(
       failure(`${TITLE} > ignores a comment that only mentions the form`),
     ).toBeDefined();
+  });
+});
+
+describe("underAny", () => {
+  test("holds for a root itself and anything under it, not for a path that only shares its prefix", () => {
+    const roots = ["apps/web", "scripts/graph.ts"];
+    expect(underAny(roots, "apps/web/src/a.ts")).toBe(true);
+    expect(underAny(roots, "scripts/graph.ts")).toBe(true);
+    expect(underAny(roots, "apps/webhooks/b.ts")).toBe(false);
+    expect(underAny(roots, "scripts/graph.ts.bak")).toBe(false);
   });
 });
 

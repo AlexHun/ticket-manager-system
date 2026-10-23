@@ -71,11 +71,15 @@ export function offendingLines(
 const isUnder = (file: string, root: string) =>
   file === root || file.startsWith(`${root}/`);
 
+/** Whether `file` is one of `roots`, or under one: a repo-relative path, as a
+ *  rule's roots name it. */
+export const underAny = (roots: readonly string[], file: string): boolean =>
+  roots.some((root) => isUnder(file, root));
+
 /** Whether `rule` reads `file`: under one of its roots, and not turned away
  *  by its `applies`. */
 const reads = (rule: Rule, file: string) =>
-  rule.roots.some((root) => isUnder(file, root)) &&
-  rule.applies?.(file) !== false;
+  underAny(rule.roots, file) && rule.applies?.(file) !== false;
 
 /** The files a rule can read: TypeScript and JavaScript source. Nothing a
  *  root holds besides (`.sql` migrations, JSON fixtures) is code. */
@@ -106,7 +110,7 @@ export function ruleCode(
         (file) =>
           SOURCE.test(file) &&
           !skip.includes(file) &&
-          rules.some((rule) => rule.roots.some((dir) => isUnder(file, dir))),
+          rules.some((rule) => underAny(rule.roots, file)),
       )
       .map((file) => [
         file,
