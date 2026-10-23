@@ -1,9 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { readFileSync } from "node:fs";
 import path from "node:path";
-import { appliesTo, checkRules, type Rule } from "@ticket/repo-scan/rules";
-import { stripComments } from "@ticket/repo-scan/strip-comments";
-import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
+import { checkRules, type Rule, ruleCode } from "@ticket/repo-scan/rules";
 
 /**
  * The frontend standards a check can decide without judgement, enforced here
@@ -27,38 +24,36 @@ import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
  * and the runner that turns the table into those tests are
  * `@ticket/repo-scan/rules`, which the API guard hands its own table to (#567).
  *
- * Scope is the web workspace's own code — `src/` and `dev/` — and, for a rule
- * that sets `e2e`, the Playwright specs and helpers under `tests/e2e` too
- * (#393). Only the role-literal rule does: the others govern how the app is
- * built — its controls, its data fetching, its tokens — and a spec drives the
- * built app rather than being part of it. An e2e file is named by its path
- * from the repository root. Every file is one git tracks (`trackedFiles`,
- * #567), so a local run checks what CI checks.
+ * Each rule names its roots (#568): the web workspace's own code — `src/` and
+ * `dev/` — and, for the role-literal rule alone, the Playwright specs and
+ * helpers under `tests/e2e` too (#393). The others govern how the app is built
+ * — its controls, its data fetching, its tokens — and a spec drives the built
+ * app rather than being part of it. None reaches `packages/` or `scripts/`,
+ * which hold no UI; the API guard's rules are the ones that do. Every file is
+ * one git tracks (`trackedFiles`, #567), so a local run checks what CI checks.
  */
 
-const WEB_ROOT = path.resolve(import.meta.dirname, "..");
-const REPO_ROOT = path.resolve(WEB_ROOT, "../..");
-const E2E_DIR = "tests/e2e";
-const isE2e = (file: string) => file.startsWith(`${E2E_DIR}/`);
+/** The repository root, which every path here is relative to. */
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
+const SRC = "apps/web/src";
+const DEV = "apps/web/dev";
+/** The web workspace's own code, which every rule here reads. */
+const APP = [SRC, DEV];
+const E2E = "tests/e2e";
 
 /** This file holds every banned form as a fixture, so it is never scanned. */
-const SELF = "dev/standards-guard.test.ts";
-
-/** A rule's `applies` and `allowed` name paths relative to `apps/web`;
- *  `applies` absent is every `src/` and `dev/` file. */
-interface WebRule extends Rule {
-  /** Also read every `.ts` file under `tests/e2e`, all of them: `applies` is
-   *  asked only about the web workspace's own files. */
-  e2e?: true;
-}
+const SELF = `${DEV}/standards-guard.test.ts`;
 
 const isTest = (file: string) => /\.test\.tsx?$/.test(file);
 const ROLE = `["'](?:admin|agent)["']`;
 
-const RULES: WebRule[] = [
+/** The rules. Each one's `roots`, `applies` and `allowed` name paths from the
+ *  repository root. */
+const RULES: Rule[] = [
   {
     name: "A route's path is declared once, in ROUTE: navigate(), <Navigate to>, <Link to>, a pathname comparison, an assignment to location.href or window.location, and location.assign()/replace() read ROUTE.<name>.path or ticketDetailPath, never a path literal",
     standard: "frontend.md",
+    roots: [SRC],
     // A quoted literal, or a template that does not start by reading something
     // — `${ROUTE.tickets.path}?status=…` is the record plus a query.
     forms: [
@@ -80,7 +75,7 @@ const RULES: WebRule[] = [
     // Client routes live in `src/`; the node half under `dev/` answers server
     // paths (`/health`). `src/test/` exercises the router helper with synthetic
     // routes of its own, which by construction are not in the app's record.
-    applies: (file) => file.startsWith("src/") && !file.startsWith("src/test/"),
+    applies: (file) => !file.startsWith(`${SRC}/test/`),
     catches: [
       `navigate("/", { replace: true });`,
       `<Link onClick={() => track()} to="/tickets">`,
@@ -103,11 +98,12 @@ const RULES: WebRule[] = [
   {
     name: "UI controls come from shadcn/ui: no native <select>, checkbox or radio outside src/components/ui/",
     standard: "frontend.md",
+    roots: APP,
     forms: [
       /<select[\s>/]/,
       /<input\b[^<]*?\btype=\{?\s*["'](?:checkbox|radio)["']/,
     ],
-    applies: (file) => !file.startsWith("src/components/ui/"),
+    applies: (file) => !file.startsWith(`${SRC}/components/ui/`),
     catches: [
       `<select value={v}>`,
       `<input onChange={(e) => set(e.target.checked)} type="checkbox" />`,
@@ -117,14 +113,16 @@ const RULES: WebRule[] = [
   {
     name: "Never render email HTML: dangerouslySetInnerHTML appears only in the shadcn chart component",
     standard: "security.md",
+    roots: APP,
     forms: [/\bdangerouslySetInnerHTML\s*[=:]/],
-    allowed: ["src/components/ui/chart.tsx"],
+    allowed: [`${SRC}/components/ui/chart.tsx`],
     catches: [`<div dangerouslySetInnerHTML={{ __html: html }} />`],
     ignores: `{/* Plain text in a text node, never \`dangerouslySetInnerHTML={…}\`. */}`,
   },
   {
     name: "Data fetching goes through the shared axios instance in @/lib/api: no direct fetch(",
     standard: "frontend.md",
+    roots: APP,
     // Not `prefetch(` or `refetch(`, which are react-query's, and not
     // `fetchQuery(`, which is a different word.
     forms: [/(?<![\w$])fetch\s*\(/],
@@ -134,12 +132,12 @@ const RULES: WebRule[] = [
   {
     name: "Anything spawned from the dev server is asynchronous: no execFileSync, spawnSync or execSync under dev/",
     standard: "dev-tools.md",
+    roots: [DEV],
     // The identifier anywhere in code: the call, the import, an aliased import
     // (`execFileSync as run`, which a call-form match missed when planted), a
     // `child_process.spawnSync` member read. Comments are already blanked, and
     // the names mean nothing else.
     forms: [/\b(?:execFileSync|spawnSync|execSync)\b/],
-    applies: (file) => file.startsWith("dev/"),
     catches: [
       `import { execFileSync as run } from "node:child_process";`,
       `const out = child_process.spawnSync("gh", args);`,
@@ -149,6 +147,7 @@ const RULES: WebRule[] = [
   {
     name: "Temper blue as text is text-link, not text-primary (text-primary-foreground is fine)",
     standard: "frontend.md",
+    roots: APP,
     forms: [/(?<![\w-])text-primary(?![\w-])/],
     catches: [
       `<a className="text-primary hover:underline">`,
@@ -159,8 +158,9 @@ const RULES: WebRule[] = [
   {
     name: "Respect prefers-reduced-motion through useReducedMotion: the media query appears only in that hook and the test setup",
     standard: "frontend.md",
+    roots: APP,
     forms: [/prefers-reduced-motion/],
-    allowed: ["src/lib/use-reduced-motion.ts", "src/test/setup.ts"],
+    allowed: [`${SRC}/lib/use-reduced-motion.ts`, `${SRC}/test/setup.ts`],
     catches: [`window.matchMedia("(prefers-reduced-motion: reduce)")`],
     ignores: `/** The test setup answers \`matches: true\` to \`prefers-reduced-motion\`. */`,
   },
@@ -169,7 +169,7 @@ const RULES: WebRule[] = [
     standard: "conventions.md",
     // The Playwright specs drive the API and assert on its answers, so they
     // write role values as often as the app does (#393).
-    e2e: true,
+    roots: [...APP, E2E],
     forms: [
       new RegExp(`\\brole\\s*:\\s*${ROLE}`),
       new RegExp(`\\b(?:fromValue|toValue)\\s*:\\s*${ROLE}`),
@@ -205,45 +205,21 @@ const RULES: WebRule[] = [
   },
 ];
 
-/** The directory a scanned path is relative to. */
-const rootOf = (file: string) => (isE2e(file) ? REPO_ROOT : WEB_ROOT);
-
-/** Every `.ts`/`.tsx` file git tracks under `src/` and `dev/`, relative to
- *  `apps/web`, then every `.ts` file under `tests/e2e`, relative to the
- *  repository root. */
-const TRACKED = trackedFiles(REPO_ROOT);
-const FILES = [
-  ...filesUnder(TRACKED, "apps/web").filter((file) =>
-    /^(?:src|dev)\/.*\.tsx?$/.test(file),
-  ),
-  ...TRACKED.filter((file) => isE2e(file) && file.endsWith(".ts")),
-].filter((file) => file !== SELF);
-
-const CODE = new Map(
-  FILES.map((file) => [
-    file,
-    stripComments(readFileSync(path.join(rootOf(file), file), "utf8")).code,
-  ]),
-);
+const CODE = ruleCode(RULES, { root: REPO_ROOT, skip: [SELF] });
 
 test("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
-  // list is a green run that checked nothing.
-  expect(FILES.filter((file) => !isE2e(file)).length).toBeGreaterThan(100);
-  expect(FILES).toContain("src/App.tsx");
-  expect(FILES).toContain("dev/scan.ts");
-  expect(FILES.some(isTest)).toBe(true);
-  expect(FILES).toContain("tests/e2e/users-api.spec.ts");
-  expect(FILES).toContain("tests/e2e/helpers/auth.ts");
+  // list is a green run that checked nothing. Each rule's own roots check
+  // asks the same of every root it names.
+  const files = [...CODE.keys()];
+  expect(
+    files.filter((file) => !file.startsWith(`${E2E}/`)).length,
+  ).toBeGreaterThan(100);
+  expect(files).toContain(`${SRC}/App.tsx`);
+  expect(files).toContain(`${DEV}/scan.ts`);
+  expect(files.some(isTest)).toBe(true);
+  expect(files).toContain(`${E2E}/users-api.spec.ts`);
+  expect(files).toContain(`${E2E}/helpers/auth.ts`);
 });
 
-checkRules(
-  RULES,
-  {
-    code: CODE,
-    across: (rule) => `src/ and dev/${rule.e2e ? ", and tests/e2e" : ""}`,
-    reads: (rule, file) =>
-      isE2e(file) ? rule.e2e === true : appliesTo(rule, file),
-  },
-  { describe, test, expect },
-);
+checkRules(RULES, CODE, { describe, test, expect });

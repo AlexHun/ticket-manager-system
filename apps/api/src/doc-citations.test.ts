@@ -156,14 +156,6 @@ const EXEMPTIONS: Exemption[] = [
       "A test file the ADR names as not existing: the gap its argument is about.",
   },
 
-  // The open PRDs' paths.
-  {
-    doc: "docs/prd/one-repo-scanner.md",
-    citation: "apps/api/src/strip-comments.ts",
-    reason:
-      "History: the API's copy of the comment stripper, which #565 merged into `@ticket/repo-scan` and deleted.",
-  },
-
   // The skills' and agents' paths.
   ...[
     [".claude/agents/linkedin-fact-checker.md", "docs/linkedin/profile.md"],

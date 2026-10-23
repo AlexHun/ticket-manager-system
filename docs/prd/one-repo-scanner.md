@@ -1,6 +1,6 @@
 # PRD: One scanner for the repo's own tooling
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-16
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-16
 
 ## Problem
 

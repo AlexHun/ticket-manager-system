@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { BRAND_ATTRIBUTIVE, BRAND_NAME, BRAND_SHORT } from "@ticket/shared";
-import { checkRules, type Rule, ruleLabel } from "@ticket/repo-scan/rules";
-import { stripComments } from "@ticket/repo-scan/strip-comments";
+import {
+  checkRules,
+  type Rule,
+  ruleCode,
+  ruleLabel,
+  underAny,
+} from "@ticket/repo-scan/rules";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
@@ -28,30 +33,41 @@ import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
  *
  * **Every rule here reads the files git tracks** (`trackedFiles`, #567), the
  * config rules included, so a local run checks what CI checks, and nothing
- * generated or ignored needs excluding by name.
+ * generated or ignored needs excluding by name. Each source rule names the
+ * roots it reads (#568), and `ruleCode` reads every tracked source file under
+ * them.
  *
  * **The repo-wide config rules live here rather than in the web guard** because
  * this suite runs on pre-push as well as in CI, and the web suite only in CI:
  * a widened `better-auth` pin or a dropped `--redactNetworkHeaders` is caught
  * before it leaves the machine. So does the product-name rule (#545), which
- * reads both apps' raw text, comments included, rather than one workspace's
- * stripped source.
+ * reads raw text, comments included, across both apps, `packages/` but
+ * `packages/shared` and `scripts/`, rather than one workspace's stripped
+ * source.
  *
  * Nothing is mocked, and nothing here touches the database.
  */
 
-/** `apps/api`, which every scanned path is relative to. */
-const API_ROOT = path.resolve(import.meta.dir, "..");
-/** The repository root, which every config path is relative to. */
-const REPO_ROOT = path.resolve(API_ROOT, "../..");
+/** The repository root, which every path here is relative to. */
+const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
 /** This file holds every banned form as a fixture, so it is never scanned. */
-const SELF = "src/standards-guard.test.ts";
+const SELF = "apps/api/src/standards-guard.test.ts";
 
-const isTest = (file: string) => file.endsWith(".test.ts");
+/** The API's own code: `src/`, the seed scripts in `prisma/`, and
+ *  `prisma.config.ts`. The generated client is not tracked, so it is not
+ *  read. */
+const API = ["apps/api/src", "apps/api/prisma", "apps/api/prisma.config.ts"];
+/** The API's code, `packages/` and `scripts/` (#568). `packages/shared` is
+ *  read too: `USER_ROLE` is defined there as a map, which no role form
+ *  matches. `tools/` is the scanner itself, and the web guard's rules read the
+ *  web workspace. */
+const API_PACKAGES_SCRIPTS = [...API, "packages", "scripts"];
+
+const isTest = (file: string) => /\.test\.[cm]?[jt]sx?$/.test(file);
 /** Production code: neither a test nor the helpers under `src/test/`. */
 const isProduction = (file: string) =>
-  !isTest(file) && !file.startsWith("src/test/");
+  !isTest(file) && !file.startsWith("apps/api/src/test/");
 
 const ROLE = "[\"'`](?:admin|agent)[\"'`]";
 /** The fields a role is written into: the user's own, and the two sides of a
@@ -63,12 +79,13 @@ const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']`;
 /** A field of the SDK's usage object or of `AiUsage`, as a whole word. */
 const USAGE_FIELD = String.raw`(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b`;
 
-/** The source rules. Each rule's `applies` and `allowed` name paths relative
- *  to `apps/api`. */
+/** The source rules. Each rule's `roots`, `applies` and `allowed` name paths
+ *  from the repository root. */
 const SOURCE_RULES: Rule[] = [
   {
     name: 'Role values read USER_ROLE from @ticket/shared, in tests and fixtures too: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
+    roots: API_PACKAGES_SCRIPTS,
     // Where a role is meant, not the word: `asCaller("admin")` and
     // `seedColleagues("admin")` name a test fixture, and `REPLY_ORIGIN.agent`
     // is a different enum, so none of those match. The web guard's forms,
@@ -105,6 +122,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "Structured output goes through generateText + Output.object, never generateObject (it omits timeout)",
     standard: "ai-features.md",
+    roots: API_PACKAGES_SCRIPTS,
     // The identifier anywhere in code — the import, the call, an aliased
     // import. Comments are already blanked, and the name means nothing else.
     forms: [/\bgenerateObject\b/],
@@ -117,6 +135,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "The SDK's LanguageModelUsage and the usage fields are read only in ai/provider.ts: callers ask usdFor / wasCached (ADR-0018)",
     standard: "ai-features.md",
+    roots: API_PACKAGES_SCRIPTS,
     // Tests build SDK-shaped fixtures and assert the mapped fields, which is
     // what checking the seam takes; the rule is about production code.
     forms: [
@@ -129,7 +148,7 @@ const SOURCE_RULES: Rule[] = [
       ),
     ],
     applies: isProduction,
-    allowed: ["src/ai/provider.ts"],
+    allowed: ["apps/api/src/ai/provider.ts"],
     catches: [
       `import type { LanguageModelUsage } from "ai";`,
       `const hit = (result.usage?.cachedInputTokens ?? 0) > 0;`,
@@ -142,8 +161,9 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "The generated Prisma client is imported only by ./db and the test Postgres module; everything else imports the singleton from ./db",
     standard: "backend.md",
+    roots: API_PACKAGES_SCRIPTS,
     forms: [new RegExp(String.raw`${SPECIFIER}[^"'\n]*generated/prisma\b`)],
-    allowed: ["src/db.ts", "src/test/pg.ts"],
+    allowed: ["apps/api/src/db.ts", "apps/api/src/test/pg.ts"],
     catches: [
       `import { PrismaClient } from "../generated/prisma/client";`,
       `export type { User } from "./generated/prisma/models";`,
@@ -154,8 +174,9 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "postmark is imported only by mail/transport.ts: every email goes through the outbox (ADR-0009)",
     standard: "backend.md",
+    roots: API_PACKAGES_SCRIPTS,
     forms: [new RegExp(String.raw`${SPECIFIER}postmark(?:/[^"'\n]*)?["']`)],
-    allowed: ["src/mail/transport.ts"],
+    allowed: ["apps/api/src/mail/transport.ts"],
     catches: [
       `import { ServerClient } from "postmark";`,
       `const postmark = await import("postmark");`,
@@ -165,13 +186,16 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "No test file registers ../db, ../middleware/auth or the session seam ../middleware/session with mock.module: the preload binds the database and who is asking once",
     standard: "testing-api.md",
+    // The API's alone: `../db` and the middleware are its modules, and only
+    // its tests run under the preload.
+    roots: API,
     // `session` beside the two the bullet names: it is the specifier the
     // preload actually binds for the guards (#366), so a file re-registering
     // it is the per-file default the bullet warns about.
     forms: [
       /\bmock\.module\(\s*["'](?:\.{1,2}\/)+(?:db|middleware\/(?:auth|session))(?:\.ts|\/index(?:\.ts)?)?["']/,
     ],
-    allowed: ["src/test/preload.ts"],
+    allowed: ["apps/api/src/test/preload.ts"],
     catches: [
       `mock.module("../db", () => ({ Prisma, prisma }));`,
       `mock.module("../../middleware/auth", () => stub);`,
@@ -185,45 +209,26 @@ const SOURCE_RULES: Rule[] = [
 /** Every file git tracks, relative to the repository root. */
 const TRACKED = trackedFiles(REPO_ROOT);
 
-/** Every `.ts` file the source rules read, relative to `apps/api`: those git
- *  tracks under `src/`, the seed scripts directly in `prisma/`, and
- *  `prisma.config.ts`. The generated client is not tracked, so it is not
- *  read. */
-const FILES = filesUnder(TRACKED, "apps/api").filter(
-  (file) =>
-    (/^src\/.*\.ts$/.test(file) ||
-      /^prisma\/[^/]+\.ts$/.test(file) ||
-      file === "prisma.config.ts") &&
-    file !== SELF,
-);
-
-const CODE = new Map(
-  FILES.map((file) => [
-    file,
-    stripComments(readFileSync(path.join(API_ROOT, file), "utf8")).code,
-  ]),
-);
+const CODE = ruleCode(SOURCE_RULES, {
+  root: REPO_ROOT,
+  skip: [SELF],
+  tracked: TRACKED,
+});
 
 test("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
-  // list is a green run that checked nothing.
-  expect(FILES.length).toBeGreaterThan(100);
-  expect(FILES).toContain("src/index.ts");
-  expect(FILES).toContain("src/ai/provider.ts");
-  expect(FILES).toContain("prisma/seed.ts");
-  expect(FILES.some(isTest)).toBe(true);
-  expect(FILES.some((file) => file.startsWith("src/generated/"))).toBe(false);
+  // list is a green run that checked nothing. Each rule's own roots check
+  // asks the same of every root it names.
+  const files = [...CODE.keys()];
+  expect(files.length).toBeGreaterThan(100);
+  expect(files).toContain("apps/api/src/index.ts");
+  expect(files).toContain("apps/api/src/ai/provider.ts");
+  expect(files).toContain("apps/api/prisma/seed.ts");
+  expect(files.some(isTest)).toBe(true);
+  expect(files.some((file) => file.includes("/generated/"))).toBe(false);
 });
 
-checkRules(
-  SOURCE_RULES,
-  { code: CODE, across: "apps/api" },
-  {
-    describe,
-    test,
-    expect,
-  },
-);
+checkRules(SOURCE_RULES, CODE, { describe, test, expect });
 
 /* ── Repo config ─────────────────────────────────────────────────────────── */
 
@@ -283,8 +288,11 @@ const agentName = (markdown: string) =>
 const AGENT = (name: string, extra = "") =>
   `---\nname: "${name}"\nmodel: haiku\ntools: Read, Glob, Grep\n${extra}---\n\nBody.\n`;
 
-/** The workspaces the product-name rule reads, repo-relative. */
-const BRAND_SCOPE = ["apps/api", "apps/web"];
+/** The roots the product-name rule reads, repo-relative: both apps, and since
+ *  #568 `packages/` and `scripts/`. */
+const BRAND_SCOPE = ["apps/api", "apps/web", "packages", "scripts"];
+/** Where the name is typed, once, for everything else to read: never read. */
+const BRAND_HOME = "packages/shared";
 /** The text files a name could be typed into. Not `.env*`: a local env file
  *  holds live secrets, and nothing reads it here. */
 const BRAND_FILE =
@@ -326,7 +334,8 @@ const BRAND_ALLOWANCES: Record<string, { count: number; reason: string }> = {
 };
 
 /**
- * Every tracked text file under `BRAND_SCOPE`, keyed by repo-relative path.
+ * Every tracked text file under `BRAND_SCOPE` and outside `BRAND_HOME`, keyed
+ * by repo-relative path.
  * This file is read too: its fixtures build the name from the constants rather
  * than typing it. Tracked files, as the source rules read (#567), so installed,
  * built and generated output is never read and needs no exclusion; an
@@ -336,7 +345,8 @@ function brandScopeFiles(): FileContents {
   return readRepo(
     ...TRACKED.filter(
       (file) =>
-        BRAND_SCOPE.some((dir) => file.startsWith(`${dir}/`)) &&
+        underAny(BRAND_SCOPE, file) &&
+        !underAny([BRAND_HOME], file) &&
         BRAND_FILE.test(file.slice(file.lastIndexOf("/") + 1)),
     ),
   );
@@ -473,7 +483,7 @@ const CONFIG_RULES: ConfigRule[] = [
     },
   },
   {
-    name: "The product name is typed only in @ticket/shared: apps/api and apps/web read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
+    name: "The product name is typed only in @ticket/shared: apps/api, apps/web, packages/ but packages/shared, and scripts/ read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
     standard: "copy.md",
     read: brandScopeFiles,
     problems: (files) => {
@@ -549,8 +559,11 @@ test("the product-name rule reads the tree it means to", () => {
   expect(files).toContain("apps/api/src/auth.ts");
   expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
   expect(files).toContain("apps/web/index.html");
+  expect(files).toContain("packages/core/src/index.ts");
+  expect(files).toContain("scripts/graph.ts");
+  expect(files.some((file) => file.startsWith(`${BRAND_HOME}/`))).toBe(false);
   // No file is skipped by name: the guard itself is read like any other.
-  expect(files).toContain(`apps/api/${SELF}`);
+  expect(files).toContain(SELF);
   expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
 });
 
