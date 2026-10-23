@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
+import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 import {
   type Citation,
   checkCitations,
@@ -26,7 +27,6 @@ import {
   SymbolIndex,
   symbolSources,
   TrackedTree,
-  trackedFiles,
   unknownExclusions,
 } from "./doc-citations";
 
@@ -1059,7 +1059,10 @@ describe("a stale citation that git history shows was renamed", () => {
       const other = path.join(scratch, "other");
       mkdirSync(other);
       git(other, "init", "-q");
-      const module = path.join(import.meta.dir, "doc-citations.ts");
+      const module = Bun.resolveSync(
+        "@ticket/repo-scan/tracked-files",
+        import.meta.dir,
+      );
       const listed = execFileSync(
         process.execPath,
         [

@@ -36,9 +36,9 @@ import {
   SymbolIndex,
   symbolSources,
   TrackedTree,
-  trackedFiles,
 } from "../apps/api/src/doc-citations.ts";
 import { scanProject } from "../apps/web/dev/scan.ts";
+import { trackedFiles } from "../tools/repo-scan/src/tracked-files.ts";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 
