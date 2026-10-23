@@ -1,6 +1,6 @@
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY, type TicketCategory } from "@ticket/shared";
-import { classifyStub, stubClassify } from "../test/classify";
+import { providerError, scriptModel, type ModelAnswer } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 
 /**
@@ -20,19 +20,20 @@ import { prisma, resetDb } from "../test/pg";
  * hand-written fake would be asserting against its own re-implementation of that
  * clause.
  *
- * No model is called on any path below. Most cases are ones the guards settle
- * before `classifyTicket` is reached, which is exactly what makes them worth
- * pinning down; the ones about what a verdict records (#561) answer through the
- * shared stub in `../test/classify`, which every other case leaves at its real
- * default.
+ * Most cases are ones the guards settle before `classifyTicket` is reached,
+ * which is exactly what makes them worth pinning down, and they script no
+ * answer: a model call from one of them would be unscripted, which the preload
+ * fails the test for. The ones about what a verdict records (#561) script the
+ * classifier's answer on the shared fake model (`../test/model`), so the real
+ * `classifyTicket` parses it.
  */
 
-// The success and give-up paths are the two that reach the model, so they are
-// reached through the shared stub (`../test/classify`), set per test below.
-await stubClassify();
-
 const { CLASSIFY_WORKER } = await import("./classify-ticket");
-const { AI_FAILURE } = await import("../ai/provider");
+
+/** The classifier's answer, as the model sends it: the schema's JSON. */
+function filed(category: TicketCategory): ModelAnswer {
+  return { text: JSON.stringify({ category }) };
+}
 
 /** One ticket, as `ingest.ts` would have left it: no verdict, no category. */
 async function newTicket(
@@ -58,12 +59,7 @@ async function verdictOn(id: number) {
 }
 
 beforeEach(async () => {
-  classifyStub.answer = null;
   await resetDb();
-});
-
-afterAll(() => {
-  classifyStub.answer = null;
 });
 
 /** What the classifier recorded of its own decision (#561). */
@@ -77,7 +73,7 @@ async function classifierCategoryOf(id: number) {
 
 describe("handle — what the classifier records of its verdict (#561)", () => {
   test("filing a category records it beside `category`, in the same write", async () => {
-    classifyStub.answer = { ok: true, category: TICKET_CATEGORY.Refund };
+    scriptModel("classify", filed(TICKET_CATEGORY.Refund));
     const id = await newTicket();
 
     await CLASSIFY_WORKER.handle({ ticketId: id });
@@ -92,7 +88,7 @@ describe("handle — what the classifier records of its verdict (#561)", () => {
   });
 
   test("an agent clearing the category afterwards leaves the record alone", async () => {
-    classifyStub.answer = { ok: true, category: TICKET_CATEGORY.Technical };
+    scriptModel("classify", filed(TICKET_CATEGORY.Technical));
     const id = await newTicket();
     await CLASSIFY_WORKER.handle({ ticketId: id });
 
@@ -103,7 +99,8 @@ describe("handle — what the classifier records of its verdict (#561)", () => {
   });
 
   test("giving up records nothing, which is how it stays told apart", async () => {
-    classifyStub.answer = { ok: false, reason: AI_FAILURE.auth };
+    // A 401 is `auth`: terminal, so the handler stamps rather than throws.
+    scriptModel("classify", { throws: providerError(401) });
     const id = await newTicket();
 
     await CLASSIFY_WORKER.handle({ ticketId: id });

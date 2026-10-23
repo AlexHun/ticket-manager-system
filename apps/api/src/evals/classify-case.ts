@@ -20,14 +20,15 @@ import { usdFor } from "../ai/provider";
  * below. That is a judgement about the case set, not plumbing, and it belongs
  * somewhere it can be read and argued with.
  *
- * And it gives `runner.test.ts` a seam of its own. `../ai/classify` is already
- * mocked by `jobs/activity-before-publish.test.ts`, with a stub that answers
- * `Technical` and nothing else; the runner's tests need to script a sequence of
- * answers, and `mock.module`'s registry is one process wide, so two factories
- * on that specifier means one of the two files is running against the other's
- * stub (`testing.md`). The narrow-seam answer is a specifier neither file has
- * to know about, which is this one — the same move `isPolishConfigured()` makes
- * for `../ai/provider`.
+ * And it gave `runner.test.ts` a seam of its own. `../ai/classify` was mocked
+ * by the job tests' shared stub until #655; the runner's tests need to script a
+ * sequence of answers, and `mock.module`'s registry is one process wide, so two
+ * factories on that specifier meant one file running against the other's stub
+ * (`testing.md`). The narrow-seam answer was a specifier neither file had to
+ * know about, which is this one — the same move `isPolishConfigured()` makes
+ * for `../ai/provider`. The job tests now script the shared fake model
+ * (`src/test/model.ts`), and the runner's own slice of
+ * `docs/plans/scripted-model.md` moves it there too.
  */
 
 /** What one case's classification cost and came to. */

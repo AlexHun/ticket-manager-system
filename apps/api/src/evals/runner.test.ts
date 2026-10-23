@@ -145,13 +145,13 @@ function calls(): number {
 /* ── The classifier, on a seam of its own ────────────────────────────────── */
 
 /**
- * `./classify-case` rather than `../ai/classify`, and that is the whole reason
- * that module exists as a module. `jobs/activity-before-publish.test.ts`
- * already registers a factory on `../ai/classify` — one that answers
- * `Technical` and nothing else — and `mock.module`'s registry is one process
- * wide, so a second, scripted factory on that specifier would leave one of the
- * two files running against the other's stub (`testing.md`). This specifier is
- * owned by nothing else.
+ * `./classify-case` rather than `../ai/classify`. It was chosen while the job
+ * tests held a shared stub on `../ai/classify`, and `mock.module`'s registry is
+ * one process wide, so a second, scripted factory on that specifier would have
+ * left one of the files running against the other's stub (`testing.md`). Since
+ * #655 nothing registers `../ai/classify` — the job tests script the shared
+ * fake model instead — and this file follows them onto it in its own slice of
+ * `docs/plans/scripted-model.md`. This specifier is owned by nothing else.
  *
  * `isClassifiable` is deliberately **not** replaced: which cases can honestly
  * be scored is the rule under test, not a fixture.

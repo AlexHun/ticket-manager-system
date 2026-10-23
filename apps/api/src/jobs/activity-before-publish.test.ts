@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   TICKET_ACTIVITY_ACTION,
@@ -7,7 +7,7 @@ import {
   type TicketEventField,
   type TicketStatus,
 } from "@ticket/shared";
-import { classifyStub, stubClassify } from "../test/classify";
+import { scriptModel } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 
 /**
@@ -64,11 +64,6 @@ await mock.module("../events/ticket-events", () => ({
   },
 }));
 
-// The one path that reaches the classifier's activity write. Nothing here is
-// about the model, so it answers immediately and always the same way, set in
-// the `beforeEach` below.
-await stubClassify();
-
 const { CLASSIFY_WORKER } = await import("./classify-ticket");
 const { AUTO_REPLY_WORKER } = await import("./auto-reply-ticket");
 
@@ -87,19 +82,16 @@ async function newTicket(status?: TicketStatus): Promise<number> {
 
 beforeEach(async () => {
   trailAtPublish = [];
-  classifyStub.answer = { ok: true, category: TICKET_CATEGORY.Technical };
   await resetDb();
-});
-
-afterAll(() => {
-  // The stub is shared with every other file in the process, and defaults to
-  // the real model; leaving an answer set would hand it to whichever file ran
-  // next.
-  classifyStub.answer = null;
 });
 
 describe("the Activity row lands before ticket_updated", () => {
   test("classification: the category entry is on the trail when the event fires", async () => {
+    // The one path that reaches the classifier's activity write. Nothing here
+    // is about the model, so it answers at once, on the shared fake.
+    scriptModel("classify", {
+      text: JSON.stringify({ category: TICKET_CATEGORY.Technical }),
+    });
     const id = await newTicket();
 
     await CLASSIFY_WORKER.handle({ ticketId: id });

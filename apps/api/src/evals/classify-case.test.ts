@@ -7,11 +7,10 @@
  *
  * Nothing here mocks `../ai/classify`, deliberately. Both exports under test
  * are pure — one reads three declared fields, the other reads a result — so a
- * stub would only be asserting against itself, and registering one on that
- * specifier would put a second, differently-behaved factory on a module
- * `jobs/activity-before-publish.test.ts` already owns (`testing.md`'s registry
- * hazard). The thin call between them is exercised for real against the fake
- * provider in `tests/e2e/evals.spec.ts`.
+ * stub would only be asserting against itself, and a factory on that specifier
+ * is a registry entry every other file in the process would inherit
+ * (`testing.md`'s registry hazard). The thin call between them is exercised for
+ * real against the fake provider in `tests/e2e/evals.spec.ts`.
  */
 
 import { describe, expect, test } from "bun:test";
