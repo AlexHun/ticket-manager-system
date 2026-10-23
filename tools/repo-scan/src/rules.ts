@@ -1,12 +1,19 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { stripComments } from "./strip-comments.ts";
+import { trackedFiles } from "./tracked-files.ts";
 
 /**
  * The one rule shape and runner behind both standards guards (#567,
  * `docs/prd/one-repo-scanner.md` R2): `apps/api/src/standards-guard.test.ts`
  * (#391) and `apps/web/dev/standards-guard.test.ts` (#390) each hold a table of
- * rules and hand it to `checkRules`, with the files they read. Before, each
- * guard had its own copy of `offendingLines` and its own rule type, and only
- * the web one's rules could say what must pass.
+ * rules and hand it to `checkRules`, with the files `ruleCode` reads for it.
+ * Before, each guard had its own copy of `offendingLines` and its own rule
+ * type, and only the web one's rules could say what must pass.
+ *
+ * **Each rule names its own roots** (#568, R6), as paths from the repository
+ * root, so a rule can reach `packages/` and `scripts/` and a reader of the
+ * table sees where each one applies. The holds test is titled by them.
  *
  * **It takes the test runner as an argument.** The API suite is `bun test` and
  * the web suite is Vitest, and neither guard may depend on the other's runner,
@@ -22,12 +29,17 @@ export interface Rule {
   name: string;
   /** The standards file the bullet lives in, under `docs/standards/`. */
   standard: string;
+  /** Where the rule applies: repo-relative directories, or single files, each
+   *  of which it reads every tracked source file under (#568, R6). */
+  roots: string[];
   /** The banned forms. Each is matched against comment-stripped source. */
   forms: RegExp[];
-  /** Which of the guard's files the rule reads. Every one when absent. */
+  /** Which files under its roots the rule reads, by repo-relative path. Every
+   *  one when absent. */
   applies?: (file: string) => boolean;
-  /** Files where the form is the point rather than a violation. Each must be
-   *  a file the guard reads, or `checkRules`' allowlist test fails. */
+  /** Files where the form is the point rather than a violation, by
+   *  repo-relative path. Each must be a file the guard reads, or `checkRules`'
+   *  allowlist test fails. */
   allowed?: string[];
   /** Lines that break the rule, each of which must be caught. */
   catches: string[];
@@ -55,23 +67,53 @@ export function offendingLines(
   return [...lines].sort((a, b) => a - b);
 }
 
-/** What a guard reads, as `checkRules` needs it. */
-export interface RuleScan<R extends Rule = Rule> {
-  /** Every file the guard reads, comment-stripped, keyed by the path its
-   *  rules' `applies` and `allowed` name. */
-  code: ReadonlyMap<string, string>;
-  /** Where a rule's holds test says it reads: `holds across <across>`. */
-  across: string | ((rule: R) => string);
-  /** Whether `rule` reads `file`. When absent, the rule's own `applies`
-   *  decides; a guard whose files are not all alike (the web guard's
-   *  `tests/e2e`) answers here, and asks `applies` itself where it should. */
-  reads?: (rule: R, file: string) => boolean;
-}
+/** Whether `file` is `root`, or under it. */
+const isUnder = (file: string, root: string) =>
+  file === root || file.startsWith(`${root}/`);
 
-/** Whether `rule`'s own `applies` reads `file`: every file when it is absent.
- *  What `checkRules` asks when a scan has no `reads` of its own. */
-export const appliesTo = (rule: Rule, file: string): boolean =>
+/** Whether `rule` reads `file`: under one of its roots, and not turned away
+ *  by its `applies`. */
+const reads = (rule: Rule, file: string) =>
+  rule.roots.some((root) => isUnder(file, root)) &&
   rule.applies?.(file) !== false;
+
+/** The files a rule can read: TypeScript and JavaScript source. Nothing a
+ *  root holds besides (`.sql` migrations, JSON fixtures) is code. */
+const SOURCE = /\.(?:[cm]?[jt]sx?)$/;
+
+/**
+ * Every tracked source file under any of `rules`' roots, comment-stripped and
+ * keyed by its path from `root`, the repository: what `checkRules` matches
+ * the rules against. A file in `skip` is not read; a guard skips itself,
+ * since it holds every banned form as a fixture.
+ */
+export function ruleCode(
+  rules: readonly Rule[],
+  {
+    root,
+    skip = [],
+    tracked = trackedFiles(root),
+  }: {
+    root: string;
+    skip?: readonly string[];
+    /** `trackedFiles(root)`, for a guard that has listed it already. */
+    tracked?: readonly string[];
+  },
+): Map<string, string> {
+  return new Map(
+    tracked
+      .filter(
+        (file) =>
+          SOURCE.test(file) &&
+          !skip.includes(file) &&
+          rules.some((rule) => rule.roots.some((dir) => isUnder(file, dir))),
+      )
+      .map((file) => [
+        file,
+        stripComments(readFileSync(path.join(root, file), "utf8")).code,
+      ]),
+  );
+}
 
 /** The parts of `bun:test` and Vitest the runner registers its tests with. */
 export interface TestRunner {
@@ -87,37 +129,48 @@ export const ruleLabel = (rule: { name: string; standard: string }): string =>
   `${rule.name} (docs/standards/${rule.standard})`;
 
 /**
- * One `describe` per rule, holding five kinds of test: the rule holds across
- * every file it reads; every allowlisted file is one the guard reads, since a
- * renamed exemption would leave the rule guarding nothing there and failing
- * nothing, which reads exactly like a clean tree; and each `catches`, `passes`
- * and `ignores` example does what it says.
+ * One `describe` per rule, over `code` (`ruleCode`'s map), holding six kinds
+ * of test: the rule holds across every file it reads; it reads at least one
+ * file under each root, since a root that moved, or that `applies` turns
+ * wholly away, is the rule guarding nothing there and failing nothing, which
+ * reads exactly like a clean tree; every allowlisted file is one the guard
+ * reads, for the same reason; and each `catches`, `passes` and `ignores`
+ * example does what it says.
  */
-export function checkRules<R extends Rule>(
-  rules: readonly R[],
-  scan: RuleScan<R>,
+export function checkRules(
+  rules: readonly Rule[],
+  code: ReadonlyMap<string, string>,
   { describe, test, expect }: TestRunner,
 ): void {
-  const reads = scan.reads ?? appliesTo;
   for (const rule of rules) {
-    const across =
-      typeof scan.across === "string" ? scan.across : scan.across(rule);
     describe(`${rule.standard}: ${rule.name}`, () => {
-      test(`holds across ${across}`, () => {
+      test(`holds across ${rule.roots.join(", ")}`, () => {
         const offenders: string[] = [];
-        for (const [file, code] of scan.code) {
+        for (const [file, source] of code) {
           if (!reads(rule, file) || rule.allowed?.includes(file)) continue;
-          for (const line of offendingLines(rule, code)) {
+          for (const line of offendingLines(rule, source)) {
             offenders.push(`${file}:${line} breaks: ${ruleLabel(rule)}`);
           }
         }
         expect(offenders).toEqual([]);
       });
 
+      test("reads a file under each of its roots", () => {
+        const files = [...code.keys()].filter((file) => reads(rule, file));
+        expect(
+          rule.roots
+            .filter((root) => !files.some((file) => isUnder(file, root)))
+            .map(
+              (root) =>
+                `${root} is a root, and the rule reads no file under it: ${ruleLabel(rule)}`,
+            ),
+        ).toEqual([]);
+      });
+
       test("its allowlist names files that exist", () => {
         expect(
           (rule.allowed ?? [])
-            .filter((file) => !scan.code.has(file))
+            .filter((file) => !code.has(file))
             .map(
               (file) =>
                 `${file} is allowlisted, and the guard does not read it: ${ruleLabel(rule)}`,
