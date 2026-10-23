@@ -67,10 +67,10 @@ so quoting never reaches the text. Read `gh` JSON with
 `(gh … --json … | ConvertFrom-Json)`, not a quoted `--jq` filter. End a line
 on the hook-running or test command so its exit code is the one reported;
 `.claude/hooks/block-no-verify.mjs` refuses a trailing `; echo` or `|| true`.
-A command `.claude/settings.json` allows runs alone, its follow-up checks in
-the next call: chained, `gh pr merge` no longer matched its rule and auto mode
-refused it (#647). `.claude/hooks/block-env-read.mjs` refuses to read or write
-a local env file, which holds live secrets; read its committed example
+A command that `.claude/settings.json` allows runs in its own call, follow-up
+checks in the next: chained, `gh pr merge` did not match its rule and auto
+mode refused it (#647). `.claude/hooks/block-env-read.mjs` refuses to read or
+write a local env file, which holds live secrets; read its committed example
 template for the names.
 
 ## Agent skills
