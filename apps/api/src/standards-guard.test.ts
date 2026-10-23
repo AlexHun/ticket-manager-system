@@ -56,6 +56,10 @@ const SELF = "apps/api/src/standards-guard.test.ts";
  *  `prisma.config.ts`. The generated client is not tracked, so it is not
  *  read. */
 const API = ["apps/api/src", "apps/api/prisma", "apps/api/prisma.config.ts"];
+/** The API's code and the code it shares a runtime with: the workspace
+ *  packages and the repo's scripts (#568). The web guard's rules read the web
+ *  workspace instead. */
+const ALL = [...API, "packages", "scripts"];
 
 const isTest = (file: string) => file.endsWith(".test.ts");
 /** Production code: neither a test nor the helpers under `src/test/`. */
@@ -78,7 +82,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: 'Role values read USER_ROLE from @ticket/shared, in tests and fixtures too: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
-    roots: API,
+    roots: ALL,
     // Where a role is meant, not the word: `asCaller("admin")` and
     // `seedColleagues("admin")` name a test fixture, and `REPLY_ORIGIN.agent`
     // is a different enum, so none of those match. The web guard's forms,
