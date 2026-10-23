@@ -21,9 +21,9 @@ import { withoutDashes } from "./provider";
  * One exported function, so the order of the passes is this module's alone:
  * flatten, strip the bookends the model wrote anyway, in its paragraphs
  * (`withoutBookends`) and its steps (`withoutStepBookends`), add ours and number
- * the steps (`composeReply`), then take every em and en dash out
- * of the assembled text. It was inside `autoReply` until #572, where every test
- * of a string transform had to script a model call to reach it.
+ * the steps (`composeReply`), then take every em and en dash out of the
+ * assembled text. It was inside `autoReply` until #572, where every test of a
+ * string transform had to script a model call to reach it.
  *
  * Nothing here is a safety check. The length limit and checks 4-6 stay in
  * `autoReply`; the length limit and checks 5 and 6 run over exactly the string
@@ -273,15 +273,28 @@ function isSignOff(text: string): boolean {
 }
 
 /**
- * Whether `text` is a greeting and nothing else, a leading dash looked past:
- * closed and with nothing after it, or unclosed and short enough to be nothing
- * but a greeting.
+ * What follows the greeting `text` opens with, a leading dash looked past: ""
+ * when the greeting is the whole of it, null when there is no greeting.
+ *
+ * A greeting closed by `GREETING_PREFIX` leaves whatever came after it. One it
+ * cannot close is the whole line only while the line is short enough to be
+ * nothing but an unpunctuated greeting; past that the line only *starts* with
+ * a greeting word, and is no greeting at all.
  */
-function isGreeting(text: string): boolean {
+function afterGreeting(text: string): string | null {
   const line = text.replace(LEADING_DASH, "");
-  if (!GREETING_LINE.test(line)) return false;
+  if (!GREETING_LINE.test(line)) return null;
   const rest = line.replace(GREETING_PREFIX, "");
-  return rest.length === 0 || (rest === line && line.length <= GREETING_MAX);
+  if (rest !== line) return rest;
+  return line.length <= GREETING_MAX ? "" : null;
+}
+
+/**
+ * `text` with its first letter upper-cased, so the seam where a greeting was
+ * cut off does not show.
+ */
+function recapitalised(text: string): string {
+  return text[0]!.toUpperCase() + text.slice(1);
 }
 
 /**
@@ -301,19 +314,13 @@ function withoutBookends(paragraphs: string[]): string[] {
   const kept = [...paragraphs];
 
   // A leading dash is looked past to find the greeting, "— Hi Marta,", and kept
-  // when there is none, as `LEADING_DASH` says.
-  const first = kept[0]?.replace(LEADING_DASH, "");
-  if (first !== undefined && GREETING_LINE.test(first)) {
-    // Whatever follows the greeting on the same line is the start of the real
-    // paragraph and is kept, recapitalised — "Hi Marta,\n\nbuffering is usually…"
-    // is a worse sentence than the one the model wrote, and the seam should not
-    // show. When the prefix does not match, the paragraph only *starts* with a
-    // greeting word and is left exactly alone unless it is short enough to be
-    // nothing but an unpunctuated greeting.
-    const rest = first.replace(GREETING_PREFIX, "");
-    if (isGreeting(first)) kept.shift();
-    else if (rest !== first) kept[0] = rest[0]!.toUpperCase() + rest.slice(1);
-  }
+  // when there is none, as `LEADING_DASH` says. Whatever follows the greeting on
+  // the same line is the start of the real paragraph and is kept, recapitalised:
+  // "Hi Marta,\n\nbuffering is usually…" is a worse sentence than the one the
+  // model wrote, and the seam should not show.
+  const rest = kept.length > 0 ? afterGreeting(kept[0]!) : null;
+  if (rest === "") kept.shift();
+  else if (rest !== null) kept[0] = recapitalised(rest);
 
   while (kept.length > 0 && isSignOff(kept[kept.length - 1]!)) kept.pop();
 
@@ -333,17 +340,49 @@ function withoutBookends(paragraphs: string[]): string[] {
 }
 
 /**
- * Take out a greeting the model made its first step and a sign off it made its
- * last ones (#635).
+ * A signature that may follow a closer in a step: the support team, or the
+ * product's name.
+ */
+const STEP_SIGNATURE = /^(?:the\s+)?support\s+team$/i;
+
+/**
+ * Whether a step is a sign off and nothing else: a closer `SIGN_OFF_LINE`
+ * names, then nothing or a signature, or the product's name alone.
+ *
+ * Stricter than `isSignOff`, whose `SIGN_OFF_MAX` tells a closer from a
+ * sentence by length. A step is as short as a closer, so "Support team can
+ * reset it for you" passed that test and would have gone, taking with it the
+ * only thing the customer was told to do.
+ */
+function isStepSignOff(step: string): boolean {
+  const closer = SIGN_OFF_LINE.exec(step);
+  const after = (closer === null ? step : step.slice(closer[0].length))
+    .replace(/^[\s,.;:!?]+/, "")
+    .replace(TRAILING_PUNCTUATION, "");
+  if (closer === null) return BRAND_SIGN_OFF.test(after);
+  return (
+    after.length === 0 ||
+    STEP_SIGNATURE.test(after) ||
+    BRAND_SIGN_OFF.test(after)
+  );
+}
+
+/**
+ * Take out a greeting the model put in its first step and the sign offs it made
+ * its last ones (#635).
  *
  * Numbered, either one shipped as a step with ours beside it: two greetings or
- * two sign offs in one reply. Only a whole step is a bookend, by the tests the paragraphs use, so
- * "Hi-res video: set it to Auto" is a step and stays one.
+ * two sign offs in one reply. A greeting is cut from the first step as from the
+ * first paragraph, so "Hi Marta, set the quality to Auto" keeps its instruction
+ * and "Hi-res video: set it to Auto" is no greeting at all. A sign off goes
+ * only when it is the whole step, by `isStepSignOff`.
  */
 function withoutStepBookends(steps: string[]): string[] {
   const kept = [...steps];
-  if (kept.length > 0 && isGreeting(kept[0]!)) kept.shift();
-  while (kept.length > 0 && isSignOff(kept[kept.length - 1]!)) kept.pop();
+  const rest = kept.length > 0 ? afterGreeting(kept[0]!) : null;
+  if (rest === "") kept.shift();
+  else if (rest !== null) kept[0] = recapitalised(rest);
+  while (kept.length > 0 && isStepSignOff(kept[kept.length - 1]!)) kept.pop();
   return kept;
 }
 

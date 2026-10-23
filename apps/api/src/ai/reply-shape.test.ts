@@ -278,13 +278,15 @@ describe("shapeReply — the bookends it was told not to write", () => {
   });
 
   test("drops a greeting or a sign off the model put in the steps", () => {
-    // #635: numbered, it shipped as step 2 with our sign off after it. Led by
-    // a dash or not, the step is a bookend and goes before the numbering.
+    // #635: numbered, it shipped as step 2 with our sign off after it. The
+    // dash-led forms are the "as a step" rows of the table below.
     for (const steps of [
       ["Set the quality to Auto", "Best regards"],
       ["Set the quality to Auto", "Best regards,", BRAND_NAME],
+      ["Set the quality to Auto", "Best regards, Support Team"],
       ["Hi Marta,", "Set the quality to Auto"],
       ["Hello", "Set the quality to Auto", "Thanks!"],
+      ["Hi Marta, set the quality to Auto"],
     ]) {
       expect(
         shaped(["Buffering is almost always the quality setting."], steps),
@@ -305,6 +307,20 @@ describe("shapeReply — the bookends it was told not to write", () => {
         ["Hi-res video: set it to Auto"],
       ),
     ).toContain("1. Hi-res video: set it to Auto");
+  });
+
+  test("keeps a last step that merely opens with a closer", () => {
+    // A step is as short as a sign off, so `SIGN_OFF_MAX` cannot tell them
+    // apart there: under it, each of these was dropped as one.
+    for (const step of [
+      "Support team can reset it for you",
+      "Thanks to the cache, reload once",
+      "Cheers app: sign out and back in",
+    ]) {
+      expect(
+        shaped(["Buffering is almost always the quality setting."], [step]),
+      ).toContain(`1. ${step}`);
+    }
   });
 });
 
