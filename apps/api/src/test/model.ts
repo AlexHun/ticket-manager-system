@@ -226,23 +226,9 @@ export function realModel(feature: AiFeature, modelId: string) {
   return realOpenaiModel(feature, modelId);
 }
 
-const featureOf = new WeakMap<object, AiFeature>();
-
-/**
- * Which feature a model `scriptedModel` built is answering for, or undefined
- * for any other value. For a test that still stubs `generateText` itself and
- * must hand every other feature's call to the real one (`ai/auto-reply.test.ts`
- * until the auto-reply moves onto this fake).
- */
-export function scriptedFeature(model: unknown): AiFeature | undefined {
-  return typeof model === "object" && model !== null
-    ? featureOf.get(model)
-    : undefined;
-}
-
 /** What the preload puts in place of `openaiModel`. Same signature. */
 export function scriptedModel(feature: AiFeature, modelId: string) {
-  const model = new MockLanguageModelV4({
+  return new MockLanguageModelV4({
     provider: "scripted",
     modelId,
     doGenerate: async (options): Promise<GenerateResult> => {
@@ -272,6 +258,4 @@ export function scriptedModel(feature: AiFeature, modelId: string) {
       };
     },
   });
-  featureOf.set(model, feature);
-  return model;
 }
