@@ -7,6 +7,7 @@ import {
 } from "@ticket/shared";
 import type { Prisma } from "../db";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
+import { autoReplyAnswer } from "../test/auto-reply-answer";
 import { scriptModel } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 import { sendEmailStub, stubSendEmail } from "../test/send-email";
@@ -81,7 +82,7 @@ async function autoReplyArticle(): Promise<void> {
 }
 
 /** What the model answers: a reply built from that article, which every check passes. */
-const ANSWER = JSON.stringify({
+const ANSWER = autoReplyAnswer({
   answered: true,
   articleIds: ["KB-001"],
   paragraphs: ["Use the reset link on the sign-in page."],
@@ -164,7 +165,7 @@ function outboundCount(ticketId: number) {
 }
 
 beforeEach(async () => {
-  scriptModel("auto-reply", { text: ANSWER });
+  scriptModel("auto-reply", ANSWER);
   steps.afterRead = null;
   sendEmailStub.failAfterWriting = false;
   await resetDb();

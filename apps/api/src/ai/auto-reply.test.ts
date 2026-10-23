@@ -48,7 +48,7 @@ import {
 } from "@ticket/shared";
 // Type-only, so it is erased rather than hoisted above the key set below —
 // the module itself still comes in through the dynamic import.
-import type { AutoReplyResult } from "./auto-reply";
+import type { AutoReplyAnswer, AutoReplyResult } from "./auto-reply";
 import type { KbArticle } from "./knowledge-base";
 import {
   type ModelAnswer,
@@ -57,6 +57,7 @@ import {
   providerError,
   scriptModel,
 } from "../test/model";
+import { autoReplyAnswer } from "../test/auto-reply-answer";
 
 /** Set before `./auto-reply` is imported below — the provider reads it at import. */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
@@ -70,14 +71,6 @@ const { AUTO_REPLY_FAILURE, autoReply } = await import("./auto-reply");
  */
 const { isProviderFailure } = await import("./provider");
 type AutoReplyContext = Parameters<typeof autoReply>[1];
-
-/** What `Output.object` hands back, in the shape `autoReplySchema` describes. */
-interface AutoReplyOutput {
-  answered: boolean;
-  articleIds: string[];
-  paragraphs: string[] | null;
-  steps: string[] | null;
-}
 
 /**
  * A corpus small enough to reason about and pointed enough to test with.
@@ -115,7 +108,7 @@ const CONTEXT: AutoReplyContext = {
 };
 
 /** The reply a cooperative model writes for `CONTEXT`, before anything is added. */
-const ANSWER: AutoReplyOutput = {
+const ANSWER: AutoReplyAnswer = {
   answered: true,
   articleIds: ["KB-001"],
   paragraphs: [
@@ -131,10 +124,8 @@ function lastCall() {
 }
 
 /** The model answers `ANSWER`, with `output`'s fields in place of its own. */
-function answerWith(output: Partial<AutoReplyOutput> = {}): void {
-  scriptModel("auto-reply", {
-    text: JSON.stringify({ ...ANSWER, ...output }),
-  });
+function answerWith(output: Partial<AutoReplyAnswer> = {}): void {
+  scriptModel("auto-reply", autoReplyAnswer({ ...ANSWER, ...output }));
 }
 
 function failWith(err: unknown, ...then: ModelAnswer[]): void {
@@ -410,7 +401,7 @@ describe("autoReply — the email it was asked about", () => {
     expect(lastCall().prompt).toBe(trimmed);
   });
 
-  test("bounds a call that holds a ticket invisible while it runs", async () => {
+  test("caps the answer and asks for the reasoning effort that writes one", async () => {
     await autoReply(ARTICLES, CONTEXT);
 
     const { maxOutputTokens, providerOptions } = lastCall();
@@ -424,9 +415,7 @@ describe("autoReply — the email it was asked about", () => {
   // asserted by what they do rather than read off the options, as
   // `polish.test.ts` does it.
   test("asks once more after a failure worth retrying", async () => {
-    failWith(providerError(500, "internal error"), {
-      text: JSON.stringify(ANSWER),
-    });
+    failWith(providerError(500, "internal error"), autoReplyAnswer(ANSWER));
 
     const result = await outcomeOf(ARTICLES, CONTEXT);
 
@@ -438,7 +427,7 @@ describe("autoReply — the email it was asked about", () => {
     failWith(
       providerError(500, "internal error"),
       { throws: providerError(500, "internal error") },
-      { text: JSON.stringify(ANSWER) },
+      autoReplyAnswer(ANSWER),
     );
 
     const result = await outcomeOf(ARTICLES, CONTEXT);

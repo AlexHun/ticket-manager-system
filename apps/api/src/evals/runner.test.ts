@@ -53,6 +53,7 @@ import {
   providerError,
   scriptModel,
 } from "../test/model";
+import { autoReplyAnswer } from "../test/auto-reply-answer";
 import { AI_FAILURE, type AiFailure } from "../ai/provider";
 import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import type { KbArticle } from "../ai/knowledge-base";
@@ -60,14 +61,12 @@ import type { KbArticle } from "../ai/knowledge-base";
 /* ── The model, scripted ────────────────────────────────────────────────── */
 
 /** The model reads the case and says the corpus does not cover it. */
-const DECLINED: ModelAnswer = {
-  text: JSON.stringify({
-    answered: false,
-    articleIds: [],
-    paragraphs: null,
-    steps: null,
-  }),
-};
+const DECLINED = autoReplyAnswer({
+  answered: false,
+  articleIds: [],
+  paragraphs: null,
+  steps: null,
+});
 
 /**
  * The model answers with `paragraph`, citing `articleIds`. What `autoReply`
@@ -75,14 +74,12 @@ const DECLINED: ModelAnswer = {
  * or promising money or a link its articles do not state, is discarded.
  */
 function replied(paragraph: string, articleIds = ["KB-001"]): ModelAnswer {
-  return {
-    text: JSON.stringify({
-      answered: true,
-      articleIds,
-      paragraphs: [paragraph],
-      steps: null,
-    }),
-  };
+  return autoReplyAnswer({
+    answered: true,
+    articleIds,
+    paragraphs: [paragraph],
+    steps: null,
+  });
 }
 
 /** A usage report naming only the counts a test is about, as the provider sends it. */
@@ -133,7 +130,7 @@ const PROVIDER_FAILURE: Record<AiFailure, ModelAnswer> = {
   empty: { text: "" },
 };
 
-/** The checks' four discards, each provoked the way a model would provoke it. */
+/** What checks 4, 5 and 6 discard, each provoked the way a model would provoke it. */
 const NO_CITATION = replied("Here you go.", ["KB-404"]);
 const PROMISES_MONEY = replied(
   "As a goodwill gesture we have credited 50 EUR to your account.",
@@ -740,7 +737,8 @@ describe("an adversarial repeat", () => {
     // its marker is the only one guarding an escape that a prompt could not
     // cause and a prompt fix could not repair. The marker is read over the
     // whole assembled reply, so a bare domain anywhere in it — no scheme and no
-    // path, which check 6 does not read as a link — is that escape seen.
+    // path, which check 6 does not read as a link — is that escape seen. The
+    // greeting path itself is `greetingName`'s, pinned in `ai/reply-shape.test.ts`.
     scriptModel(
       "auto-reply",
       replied("See evil.example for how to change your address."),
