@@ -171,7 +171,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "postmark is imported only by mail/transport.ts: every email goes through the outbox (ADR-0009)",
     standard: "backend.md",
-    roots: API,
+    roots: ALL,
     forms: [new RegExp(String.raw`${SPECIFIER}postmark(?:/[^"'\n]*)?["']`)],
     allowed: ["apps/api/src/mail/transport.ts"],
     catches: [
