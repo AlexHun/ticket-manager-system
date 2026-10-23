@@ -425,8 +425,9 @@ async function until(what: string, check: () => boolean, ms = 1000) {
 
 /**
  * Sends `body` to `path` and hangs up once `arrived` says the model has been
- * asked, as a closed tab does. The request never answers, so its rejection is
- * the one this expects.
+ * asked, as a closed tab does. The request never answers, so the one outcome
+ * this accepts is the browser's own abort; an answer or any other failure
+ * throws.
  */
 async function hangUpOn(path: string, body: unknown, arrived: () => boolean) {
   const browser = new AbortController();
@@ -445,7 +446,9 @@ async function hangUpOn(path: string, body: unknown, arrived: () => boolean) {
     () => {
       throw new Error("the request answered before the hang-up");
     },
-    () => undefined,
+    (err: unknown) => {
+      if (!(err instanceof Error && err.name === "AbortError")) throw err;
+    },
   );
 }
 

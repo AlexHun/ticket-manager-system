@@ -264,6 +264,18 @@ const READ_ONLY_AGENTS = [
   "copy-reviewer",
 ];
 
+const CI_WORKFLOW = ".github/workflows/ci.yml";
+/** The three images, each built on Bun. */
+const DOCKERFILES = [
+  "apps/api/Dockerfile",
+  "apps/web/Dockerfile",
+  "apps/web/Dockerfile.dev",
+];
+/** Every Dockerfile opening with the same `FROM` line, for a planted set to
+ *  override one of. */
+const dockerfilesFrom = (image: string): FileContents =>
+  Object.fromEntries(DOCKERFILES.map((file) => [file, `FROM ${image}\n`]));
+
 /** `better-auth`'s declared range in a manifest, from whichever block has it. */
 function betterAuthRange(manifest: string): string | undefined {
   const json = JSON.parse(manifest) as Record<
@@ -402,6 +414,48 @@ const CONFIG_RULES: ConfigRule[] = [
       {
         [API_MANIFEST]: `{ "dependencies": { "better-auth": "1.6.13" } }`,
         [WEB_MANIFEST]: `{ "dependencies": { "better-auth": "1.6.22" } }`,
+      },
+    ],
+  },
+  {
+    name: "every Dockerfile's Bun image is oven/bun:<BUN_VERSION>-slim, the Bun CI runs, never a floating tag (#651)",
+    standard: "deployment.md",
+    read: () => readRepo(CI_WORKFLOW, ...DOCKERFILES),
+    problems: (files) => {
+      const version = /^\s*BUN_VERSION:\s*(\S+)\s*$/m.exec(
+        files[CI_WORKFLOW]!,
+      )?.[1];
+      if (!version) return [`${CI_WORKFLOW} sets no BUN_VERSION`];
+      const found: string[] = [];
+      for (const dockerfile of DOCKERFILES) {
+        const images = [
+          ...files[dockerfile]!.matchAll(/^FROM\s+(oven\/bun\S*)/gm),
+        ].map((match) => match[1]);
+        if (images.length === 0) found.push(`${dockerfile} has no Bun image`);
+        for (const image of images) {
+          if (image !== `oven/bun:${version}-slim`) {
+            found.push(
+              `${dockerfile} builds from ${image}, not oven/bun:${version}-slim`,
+            );
+          }
+        }
+      }
+      return found;
+    },
+    catches: [
+      {
+        [CI_WORKFLOW]: "env:\n  BUN_VERSION: 1.4.4\n",
+        ...dockerfilesFrom("oven/bun:1.4.4-slim"),
+        "apps/web/Dockerfile.dev": "FROM oven/bun:1-slim\n",
+      },
+      {
+        [CI_WORKFLOW]: "env:\n  BUN_VERSION: 1.4.5\n",
+        ...dockerfilesFrom("oven/bun:1.4.4-slim"),
+      },
+      {
+        [CI_WORKFLOW]: "env:\n  BUN_VERSION: 1.4.4\n",
+        ...dockerfilesFrom("oven/bun:1.4.4-slim AS build"),
+        "apps/api/Dockerfile": "FROM node:24-slim\n",
       },
     ],
   },

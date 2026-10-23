@@ -448,7 +448,7 @@ policy and the bundle are always produced together and cannot disagree.
   safe to run more than once — handlers are idempotent and `Processing` is a
   claim taken with a conditional `updateMany` — but nothing here has been
   measured at more than one.
-- **Digest-pinned base images.** The Bun image is pinned to a version,
+- **Base images pinned to a digest.** The Bun image is pinned to a version,
   `oven/bun:1.4.4-slim`, the one CI's `BUN_VERSION` names, and the two move
   together: while the Dockerfiles floated on `oven/bun:1-slim`, production and
   CI could run different Bun releases, and one of them dropped a hung-up

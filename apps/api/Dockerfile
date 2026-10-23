@@ -6,7 +6,6 @@
 #
 # A Dockerfile rather than Railway's automatic builder because Railpack does not
 # detect Bun projects — a Bun app on Railway has to bring its own image.
-
 #
 # Pinned to the Bun CI runs (`BUN_VERSION` in `.github/workflows/ci.yml`), and
 # moved with it, never left floating: the two disagreeing is how #651 happened.
