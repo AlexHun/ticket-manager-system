@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
-import { trackedFiles } from "./doc-citations";
+import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * Every `git` and `gh` process started from `apps/` or `scripts/` takes its

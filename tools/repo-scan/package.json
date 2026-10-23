@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     "./git-env": "./src/git-env.ts",
-    "./strip-comments": "./src/strip-comments.ts"
+    "./rules": "./src/rules.ts",
+    "./strip-comments": "./src/strip-comments.ts",
+    "./tracked-files": "./src/tracked-files.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

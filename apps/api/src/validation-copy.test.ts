@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { TICKET_INPUT_MESSAGE } from "@ticket/shared";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
+import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * Every validation message in `@ticket/core` that a person can see ends in a
@@ -17,11 +18,12 @@ import { stripComments } from "@ticket/repo-scan/strip-comments";
  * them all. A message is any string literal outside a comment that starts with
  * a capital letter or holds a space; the schemas' other literals are module
  * specifiers, issue codes and field paths ("zod", "custom", "userId"), which
- * are neither.
+ * are neither. The schema files are the ones git tracks (`trackedFiles`, #567),
+ * as the standards guards read theirs.
  */
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
-const SCHEMAS_DIR = path.join(REPO_ROOT, "packages/core/src/schemas");
+const SCHEMAS = "packages/core/src/schemas";
 
 /** A `"…"`, `'…'` or template literal, matched left to right so a quote of one
  *  kind inside a literal of another stays part of it. */
@@ -105,19 +107,32 @@ const EXEMPT: Record<string, Record<string, string>> = {
   },
 };
 
-const schemaFiles = readdirSync(SCHEMAS_DIR).filter((f) => f.endsWith(".ts"));
+/** Each tracked schema file directly in `SCHEMAS`, named as `EXEMPT` names it:
+ *  relative to that directory. */
+const schemaFiles = filesUnder(trackedFiles(REPO_ROOT), SCHEMAS).filter(
+  (file) => /^[^/]+\.ts$/.test(file),
+);
 const scanned = schemaFiles.map((file) => ({
   file,
-  messages: messagesIn(readFileSync(path.join(SCHEMAS_DIR, file), "utf8")),
+  messages: messagesIn(
+    readFileSync(path.join(REPO_ROOT, SCHEMAS, file), "utf8"),
+  ),
 }));
 
 describe("validation messages end in a full stop (copy.md, #518)", () => {
+  test("the check reads the schemas it means to", () => {
+    // An empty list would pass every message it did not read.
+    expect(schemaFiles).toContain("tickets.ts");
+    expect(schemaFiles).toContain("users.ts");
+    expect(scanned.some(({ messages }) => messages.length > 0)).toBe(true);
+  });
+
   test("every message in packages/core/src/schemas does, or is exempt", () => {
     const missing = scanned.flatMap(({ file, messages }) =>
       messages
         .filter((m) => !m.text.endsWith("."))
         .filter((m) => EXEMPT[file]?.[m.text] === undefined)
-        .map((m) => `packages/core/src/schemas/${file}:${m.line}  "${m.text}"`),
+        .map((m) => `${SCHEMAS}/${file}:${m.line}  "${m.text}"`),
     );
     expect(missing).toEqual([]);
   });
