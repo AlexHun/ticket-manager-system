@@ -15,8 +15,8 @@
  * this file asserts is one the real checks can reach. Until #580 the file
  * stubbed `autoReply` through a one-line seam, `./reply-to-case`, and could
  * script results production never produces. The classifier the runner asks
- * first is real too since #656, scripted on the same fake: one run makes two
- * model calls, and each feature gets its own scripted answer. The model half
+ * first is real too since #656, scripted on the same fake: each repeat makes
+ * two model calls, and each feature gets its own scripted answer. The model half
  * is measured by running the thing, which is what the harness is for, and
  * exercised end to end against the E2E suite's fake provider in
  * `tests/e2e/evals.spec.ts`.
@@ -45,6 +45,7 @@ import {
   scriptModel,
 } from "../test/model";
 import { autoReplyAnswer } from "../test/auto-reply-answer";
+import { classifyAnswer } from "../test/classify-answer";
 import { AI_FAILURE, type AiFailure } from "../ai/provider";
 import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import type { KbArticle } from "../ai/knowledge-base";
@@ -129,14 +130,14 @@ const PROMISES_MONEY = replied(
 const CARRIES_A_LINK = replied("Try https://portal.evil.example/fix instead.");
 
 /** How many times the auto-reply asked the model. */
-function calls(): number {
+function replyCalls(): number {
   return modelCalls("auto-reply").length;
 }
 
 /* ── The classifier, scripted on the same model ─────────────────────────── */
 
 /**
- * The classifier's answer, as the model sends it: the schema's JSON.
+ * The classifier's answer (`../test/classify-answer`), optionally priced.
  *
  * Scripted on the preload's fake beside the auto-reply's (#656), so the real
  * `classifyCase` and the real `classifyTicket` under it both run: the prompt
@@ -148,7 +149,7 @@ function calls(): number {
  * can honestly be scored is the rule under test, not a fixture.
  */
 function filed(category: TicketCategory, report?: ModelUsage): ModelAnswer {
-  const answer: ModelAnswer = { text: JSON.stringify({ category }) };
+  const answer = classifyAnswer(category);
   return report ? costing(answer, report) : answer;
 }
 
@@ -192,7 +193,10 @@ beforeEach(async () => {
   scriptModel("auto-reply", DECLINED);
   // Every classifiable case is classified before it is answered, so a test
   // about the auto-reply needs the classifier to say something too. `General`
-  // is `off-corpus`'s declared category, the case most tests run.
+  // is `off-corpus`'s declared category, the case most tests run. It is a
+  // miss on every case declared otherwise, so a test that reads the classifier
+  // metric on one of those scripts its own answer. (Until #656 the stub
+  // answered each case's own category when nothing was scripted.)
   scriptModel("classify", filed(TICKET_CATEGORY.General));
 });
 
@@ -262,7 +266,7 @@ describe("the gates", () => {
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.category);
     expect(result.matched).toBe(true);
     expect(result.usd).toBe(0);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 
   test("a thread somebody has replied on declines as `answered`", async () => {
@@ -272,7 +276,7 @@ describe("the gates", () => {
     );
 
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.answered);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 
   test("a ticket with no inbound message declines as `noText`", async () => {
@@ -284,7 +288,7 @@ describe("the gates", () => {
     );
 
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.noText);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 });
 
@@ -370,7 +374,7 @@ describe("a failure the provider decided", () => {
 
     expect(outcome.abandoned).toBe(EVAL_REPEATS);
     expect(outcome.matches).toBe(0);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 });
 
@@ -486,7 +490,7 @@ describe("runCase", () => {
     expect(outcome.repeats).toBe(5);
     expect(outcome.verdicts).toHaveLength(5);
     expect(outcome.matches).toBe(5);
-    expect(calls()).toBe(5);
+    expect(replyCalls()).toBe(5);
   });
 
   test("a case that goes two ways is a rate, not a pass or a fail", async () => {
@@ -591,7 +595,7 @@ describe("runCase", () => {
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
 
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
     expect(outcome.matches).toBe(5);
     expect(outcome.usd).toBeCloseTo(0.001, 10);
   });
@@ -604,7 +608,7 @@ describe("runCase", () => {
       autoReplyCaseById("no-inbound-message")!,
     );
 
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
     expect(classifyCalls()).toBe(0);
     expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.usd).toBe(0);
@@ -855,6 +859,7 @@ describe("the classifier", () => {
 
     expect(outcome.classifiedRepeats).toBe(2);
     expect(outcome.classifyMatches).toBe(2);
+    expect(classifyCalls()).toBe(5);
   });
 
   test("costs are added to what the case spent, not reported apart from it", async () => {
@@ -904,7 +909,7 @@ describe("the classifier", () => {
     // handed over must not move.
     await runCase(CORPUS, autoReplyCaseById("off-corpus")!, 2);
 
-    expect(calls()).toBe(2);
+    expect(replyCalls()).toBe(2);
     expect(lastModelCall("auto-reply").system).toContain(
       "[KB-001] (Technical) I forgot my password",
     );
