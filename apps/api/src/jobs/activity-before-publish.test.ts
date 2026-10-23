@@ -7,6 +7,7 @@ import {
   type TicketEventField,
   type TicketStatus,
 } from "@ticket/shared";
+import { classifyAnswer } from "../test/classify-answer";
 import { scriptModel } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 
@@ -89,9 +90,7 @@ describe("the Activity row lands before ticket_updated", () => {
   test("classification: the category entry is on the trail when the event fires", async () => {
     // The one path that reaches the classifier's activity write. Nothing here
     // is about the model, so it answers at once, on the shared fake.
-    scriptModel("classify", {
-      text: JSON.stringify({ category: TICKET_CATEGORY.Technical }),
-    });
+    scriptModel("classify", classifyAnswer(TICKET_CATEGORY.Technical));
     const id = await newTicket();
 
     await CLASSIFY_WORKER.handle({ ticketId: id });

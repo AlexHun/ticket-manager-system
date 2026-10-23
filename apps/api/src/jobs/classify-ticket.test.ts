@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY, type TicketCategory } from "@ticket/shared";
-import { providerError, scriptModel, type ModelAnswer } from "../test/model";
+import { classifyAnswer } from "../test/classify-answer";
+import { providerError, scriptModel } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 
 /**
@@ -29,11 +30,6 @@ import { prisma, resetDb } from "../test/pg";
  */
 
 const { CLASSIFY_WORKER } = await import("./classify-ticket");
-
-/** The classifier's answer, as the model sends it: the schema's JSON. */
-function filed(category: TicketCategory): ModelAnswer {
-  return { text: JSON.stringify({ category }) };
-}
 
 /** One ticket, as `ingest.ts` would have left it: no verdict, no category. */
 async function newTicket(
@@ -73,7 +69,7 @@ async function classifierCategoryOf(id: number) {
 
 describe("handle — what the classifier records of its verdict (#561)", () => {
   test("filing a category records it beside `category`, in the same write", async () => {
-    scriptModel("classify", filed(TICKET_CATEGORY.Refund));
+    scriptModel("classify", classifyAnswer(TICKET_CATEGORY.Refund));
     const id = await newTicket();
 
     await CLASSIFY_WORKER.handle({ ticketId: id });
@@ -88,7 +84,7 @@ describe("handle — what the classifier records of its verdict (#561)", () => {
   });
 
   test("an agent clearing the category afterwards leaves the record alone", async () => {
-    scriptModel("classify", filed(TICKET_CATEGORY.Technical));
+    scriptModel("classify", classifyAnswer(TICKET_CATEGORY.Technical));
     const id = await newTicket();
     await CLASSIFY_WORKER.handle({ ticketId: id });
 

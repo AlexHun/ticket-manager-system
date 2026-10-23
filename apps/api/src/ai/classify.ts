@@ -156,6 +156,13 @@ const classificationSchema = z.object({
 });
 
 /**
+ * What the model answers, once `Output.object` has parsed it. Exported for the
+ * tests that script the answer (`src/test/classify-answer.ts`), so a field
+ * renamed here fails to compile there rather than surfacing as `empty`.
+ */
+export type ClassifyAnswer = z.infer<typeof classificationSchema>;
+
+/**
  * The standing half of the prompt. The per-request half is built by `userPrompt`.
  *
  * Most of it is the taxonomy, because the taxonomy is the part that was never

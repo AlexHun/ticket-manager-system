@@ -14,9 +14,12 @@
  * is now one `autoReply` really returns for a scripted answer, so a verdict
  * this file asserts is one the real checks can reach. Until #580 the file
  * stubbed `autoReply` through a one-line seam, `./reply-to-case`, and could
- * script results production never produces. The model half is measured by
- * running the thing, which is what the harness is for, and exercised end to
- * end against the E2E suite's fake provider in `tests/e2e/evals.spec.ts`.
+ * script results production never produces. The classifier the runner asks
+ * first is real too since #656, scripted on the same fake: each repeat makes
+ * two model calls, and each feature gets its own scripted answer. The model half
+ * is measured by running the thing, which is what the harness is for, and
+ * exercised end to end against the E2E suite's fake provider in
+ * `tests/e2e/evals.spec.ts`.
  *
  * The R12 assertion is the interesting one and it is deliberately made against
  * a **real** database (`../test/pg`, ADR-0014) rather than a count of calls on
@@ -24,26 +27,14 @@
  * and a fake client could only tell us that this test did not ask it to.
  */
 
-import {
-  afterAll,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  spyOn,
-  test,
-} from "bun:test";
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
   type TicketCategory,
 } from "@ticket/shared";
-import {
-  autoReplyCaseById,
-  AUTO_REPLY_CASES,
-  type AutoReplyCase,
-} from "@ticket/core";
+import { autoReplyCaseById, AUTO_REPLY_CASES } from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
 import {
   type ModelAnswer,
@@ -54,6 +45,7 @@ import {
   scriptModel,
 } from "../test/model";
 import { autoReplyAnswer } from "../test/auto-reply-answer";
+import { classifyAnswer } from "../test/classify-answer";
 import { AI_FAILURE, type AiFailure } from "../ai/provider";
 import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import type { KbArticle } from "../ai/knowledge-base";
@@ -138,44 +130,39 @@ const PROMISES_MONEY = replied(
 const CARRIES_A_LINK = replied("Try https://portal.evil.example/fix instead.");
 
 /** How many times the auto-reply asked the model. */
-function calls(): number {
+function replyCalls(): number {
   return modelCalls("auto-reply").length;
 }
 
-/* ── The classifier, on a seam of its own ────────────────────────────────── */
+/* ── The classifier, scripted on the same model ─────────────────────────── */
 
 /**
- * `./classify-case` rather than `../ai/classify`. It was chosen while the job
- * tests held a shared stub on `../ai/classify`, and `mock.module`'s registry is
- * one process wide, so a second, scripted factory on that specifier would have
- * left one of the files running against the other's stub (`testing.md`). Since
- * #655 nothing registers `../ai/classify` — the job tests script the shared
- * fake model instead — and this file follows them onto it in its own slice of
- * `docs/plans/scripted-model.md`. This specifier is owned by nothing else.
+ * The classifier's answer (`../test/classify-answer`), optionally priced.
  *
- * `isClassifiable` is deliberately **not** replaced: which cases can honestly
- * be scored is the rule under test, not a fixture.
+ * Scripted on the preload's fake beside the auto-reply's (#656), so the real
+ * `classifyCase` and the real `classifyTicket` under it both run: the prompt
+ * is built, `Output.object` parses the answer, and `usdFor` prices the usage.
+ * Until #656 this file replaced `classifyCase` through
+ * `mock.module("./classify-case")`, the seam it had while the job tests owned
+ * a stub on `../ai/classify`; #655 moved them onto the fake and this file
+ * followed. `isClassifiable` was never replaced and still is not: which cases
+ * can honestly be scored is the rule under test, not a fixture.
  */
-let classifyScript: (TicketCategory | null)[] = [];
-let classifyCalls = 0;
-let classifyUsd = 0;
+function filed(category: TicketCategory, report?: ModelUsage): ModelAnswer {
+  const answer = classifyAnswer(category);
+  return report ? costing(answer, report) : answer;
+}
 
-const classifyActual = await import("./classify-case");
+/**
+ * What one classification costs when it reports 4,000 fresh input tokens at
+ * $0.05/Mtok: $0.0002, the figure the old seam handed back as a constant.
+ */
+const CLASSIFY_USAGE = usage({ inputTokens: 4_000, outputTokens: 0 });
 
-await mock.module("./classify-case", () => ({
-  ...classifyActual,
-  classifyCase: async (evalCase: AutoReplyCase) => {
-    if (!classifyActual.isClassifiable(evalCase)) {
-      return { category: null, usd: 0 };
-    }
-    const answer =
-      classifyScript.length === 0
-        ? evalCase.preflight.category
-        : classifyScript[Math.min(classifyCalls, classifyScript.length - 1)]!;
-    classifyCalls += 1;
-    return { category: answer, usd: classifyUsd };
-  },
-}));
+/** How many times the classifier asked the model. */
+function classifyCalls(): number {
+  return modelCalls("classify").length;
+}
 
 const { answerCase, runCase, EVAL_REPEATS } = await import("./runner");
 
@@ -188,9 +175,9 @@ const CORPUS: KbArticle[] = [
   },
 ];
 
-// The real `autoReply` narrates every decision: a usage line per call, an
-// error for a check that fired or a provider that failed. Wanted in
-// production, noise here.
+// The real `autoReply` and `classifyTicket` narrate every decision: a usage
+// line per call, an error for a check that fired or a provider that failed.
+// Wanted in production, noise here.
 const quiet = [
   spyOn(console, "log").mockImplementation(() => {}),
   spyOn(console, "warn").mockImplementation(() => {}),
@@ -204,9 +191,13 @@ afterAll(() => {
 beforeEach(async () => {
   await resetDb();
   scriptModel("auto-reply", DECLINED);
-  classifyScript = [];
-  classifyCalls = 0;
-  classifyUsd = 0;
+  // Every classifiable case is classified before it is answered, so a test
+  // about the auto-reply needs the classifier to say something too. `General`
+  // is `off-corpus`'s declared category, the case most tests run. It is a
+  // miss on every case declared otherwise, so a test that reads the classifier
+  // metric on one of those scripts its own answer. (Until #656 the stub
+  // answered each case's own category when nothing was scripted.)
+  scriptModel("classify", filed(TICKET_CATEGORY.General));
 });
 
 /* ── What the model is asked ─────────────────────────────────────────────── */
@@ -275,7 +266,7 @@ describe("the gates", () => {
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.category);
     expect(result.matched).toBe(true);
     expect(result.usd).toBe(0);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 
   test("a thread somebody has replied on declines as `answered`", async () => {
@@ -285,7 +276,7 @@ describe("the gates", () => {
     );
 
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.answered);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 
   test("a ticket with no inbound message declines as `noText`", async () => {
@@ -297,7 +288,7 @@ describe("the gates", () => {
     );
 
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.noText);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 });
 
@@ -383,7 +374,7 @@ describe("a failure the provider decided", () => {
 
     expect(outcome.abandoned).toBe(EVAL_REPEATS);
     expect(outcome.matches).toBe(0);
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 });
 
@@ -499,7 +490,7 @@ describe("runCase", () => {
     expect(outcome.repeats).toBe(5);
     expect(outcome.verdicts).toHaveLength(5);
     expect(outcome.matches).toBe(5);
-    expect(calls()).toBe(5);
+    expect(replyCalls()).toBe(5);
   });
 
   test("a case that goes two ways is a rate, not a pass or a fail", async () => {
@@ -600,24 +591,25 @@ describe("runCase", () => {
     // classifier said and a harness that skipped it here would be measuring the
     // classifier only where its answer does not matter. What the gate still
     // buys is the expensive call — the corpus never reaches a prompt.
-    classifyUsd = 0.0002;
+    scriptModel("classify", filed(TICKET_CATEGORY.Refund, CLASSIFY_USAGE));
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
 
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
     expect(outcome.matches).toBe(5);
     expect(outcome.usd).toBeCloseTo(0.001, 10);
   });
 
   test("a case the classifier cannot be scored on costs nothing at all", async () => {
-    classifyUsd = 0.0002;
+    scriptModel("classify", filed(TICKET_CATEGORY.General, CLASSIFY_USAGE));
 
     const outcome = await runCase(
       CORPUS,
       autoReplyCaseById("no-inbound-message")!,
     );
 
-    expect(calls()).toBe(0);
+    expect(replyCalls()).toBe(0);
+    expect(classifyCalls()).toBe(0);
     expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.usd).toBe(0);
   });
@@ -815,11 +807,11 @@ test("answering every case writes nothing a customer or agent would see", async 
 
 describe("the classifier", () => {
   test("is asked for every repeat, and its answer is on the verdict", async () => {
-    classifyScript = [TICKET_CATEGORY.General];
+    scriptModel("classify", filed(TICKET_CATEGORY.General));
 
     const verdict = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
-    expect(classifyCalls).toBe(1);
+    expect(classifyCalls()).toBe(1);
     expect(verdict.category).toBe(TICKET_CATEGORY.General);
     expect(verdict.classifyMatched).toBe(true);
   });
@@ -830,7 +822,7 @@ describe("the classifier", () => {
     // case's *declared* preflight — so decline accuracy is a clean 5/5 while
     // the classifier is 0/5. Two numbers, two findings; one blended score
     // would have shown neither.
-    classifyScript = [TICKET_CATEGORY.General];
+    scriptModel("classify", filed(TICKET_CATEGORY.General));
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
 
@@ -845,7 +837,7 @@ describe("the classifier", () => {
     // answer, so there is no call and no denominator.
     const outcome = await runCase(CORPUS, autoReplyCaseById("unclassified")!);
 
-    expect(classifyCalls).toBe(0);
+    expect(classifyCalls()).toBe(0);
     expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.classifyMatches).toBe(0);
     expect(outcome.verdicts.every((v) => v.category === null)).toBe(true);
@@ -853,31 +845,60 @@ describe("the classifier", () => {
 
   test("a repeat it could not answer shrinks the denominator, never the numerator", async () => {
     // An outage is not the model getting things wrong. Two answers, then the
-    // provider stops answering: 2 of 2, not 2 of 5.
-    classifyScript = [
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      null,
-      null,
-      null,
-    ];
+    // provider stops answering: 2 of 2, not 2 of 5. A 401 is `auth`, which is
+    // not retried, so each of the last three repeats is one refused call; the
+    // last scripted answer repeats.
+    scriptModel(
+      "classify",
+      filed(TICKET_CATEGORY.General),
+      filed(TICKET_CATEGORY.General),
+      { throws: providerError(401) },
+    );
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
     expect(outcome.classifiedRepeats).toBe(2);
     expect(outcome.classifyMatches).toBe(2);
+    expect(classifyCalls()).toBe(5);
   });
 
   test("costs are added to what the case spent, not reported apart from it", async () => {
     // R10 stays one number: an admin reading "what did this run cost" wants
     // everything the run spent, and the classifier's calls are now most of a
     // gated case's bill.
-    classifyUsd = 0.0002;
+    scriptModel("classify", filed(TICKET_CATEGORY.General, CLASSIFY_USAGE));
     scriptModel("auto-reply", replied("Here you go."));
 
     const verdict = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
     expect(verdict.usd).toBeCloseTo(0.0002, 10);
+  });
+
+  test("and the auto-reply each get their own answer from the one model", async () => {
+    // The flow the runner exists for, classify then reply, on one fake (#656).
+    // Each feature is scripted on its own and asked its own question; a fake
+    // that crossed the two would put a reply's JSON where a category is parsed,
+    // and the verdict would carry no category and no reply.
+    scriptModel("classify", filed(TICKET_CATEGORY.Technical));
+    scriptModel("auto-reply", replied("Here you go."));
+    const evalCase = autoReplyCaseById("off-corpus")!;
+
+    const verdict = await answerCase(CORPUS, evalCase);
+
+    expect(verdict.category).toBe(TICKET_CATEGORY.Technical);
+    expect(verdict.classifyMatched).toBe(false);
+    expect(verdict.outcome).toBe(PIPELINE_OUTCOME.resolved);
+    // Classified first, as on the real path, and each call carried its own
+    // feature's prompt: the email for the classifier, the corpus for the reply.
+    expect(modelCalls().map((call) => call.feature)).toEqual([
+      "classify",
+      "auto-reply",
+    ]);
+    expect(lastModelCall("classify").prompt).toContain(evalCase.values.subject);
+    expect(lastModelCall("classify").system).not.toContain("KB-001");
+    expect(lastModelCall("auto-reply").system).toContain(
+      "[KB-001] (Technical) I forgot my password",
+    );
   });
 
   test("does not disturb what the auto-reply is asked", async () => {
@@ -888,7 +909,7 @@ describe("the classifier", () => {
     // handed over must not move.
     await runCase(CORPUS, autoReplyCaseById("off-corpus")!, 2);
 
-    expect(calls()).toBe(2);
+    expect(replyCalls()).toBe(2);
     expect(lastModelCall("auto-reply").system).toContain(
       "[KB-001] (Technical) I forgot my password",
     );
