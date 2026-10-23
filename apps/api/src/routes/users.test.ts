@@ -86,7 +86,9 @@ import {
   test,
 } from "bun:test";
 import {
+  ADMIN_DELETE_REFUSED_MESSAGE,
   ADMIN_SCREEN,
+  DEMO_MODE_OFF_MESSAGE,
   DEMO_START_LIMIT_MESSAGE,
   OUTBOUND_EMAIL_KIND,
   TICKET_ACTOR_KIND,
@@ -434,6 +436,20 @@ function expectInviteLink(textBody: string | undefined) {
   );
 }
 
+/**
+ * Both auth emails name the product and sign off as it (`copy.md`, Outbound
+ * email): no "support desk" in the body and no "The Support Team" at the foot.
+ * The name is written out rather than read from `BRAND_NAME` on purpose: this
+ * pins what the recipient reads, which an import would follow anywhere. The
+ * product-name rule in `src/standards-guard.test.ts` (#545) allows this file
+ * an exact count of literals, so adding or removing one means updating it.
+ */
+function expectSignedByTheProduct(textBody: string | undefined) {
+  expect(textBody).toContain("The Great Forge Desk");
+  expect(textBody?.endsWith("Best regards,\nThe Great Forge Desk")).toBe(true);
+  expect(textBody).not.toMatch(/support desk|support team/i);
+}
+
 /* ── POST /api/users ─────────────────────────────────────────────────────── */
 
 describe("POST /api/users — the account", () => {
@@ -540,11 +556,12 @@ describe("POST /api/users — the invitation (ADR-0009)", () => {
       kind: OUTBOUND_EMAIL_KIND.invitation,
       toEmail: "nadia@example.com",
       toName: "Nadia New",
-      subject: "You have been given a support desk account",
+      subject: "Your Great Forge Desk account is ready",
       // Auth mail carries no thread message; only a reply does.
       messageId: null,
     });
     expectInviteLink(invitation?.textBody);
+    expectSignedByTheProduct(invitation?.textBody);
   });
 
   /**
@@ -811,9 +828,10 @@ describe("POST /api/users/:id/invite — user_invited, resend", () => {
       kind: OUTBOUND_EMAIL_KIND.invitation,
       toEmail: AGENT.email,
       toName: AGENT.name,
-      subject: "You have been given a support desk account",
+      subject: "Your Great Forge Desk account is ready",
     });
     expectInviteLink(invitation?.textBody);
+    expectSignedByTheProduct(invitation?.textBody);
   });
 
   /**
@@ -830,8 +848,9 @@ describe("POST /api/users/:id/invite — user_invited, resend", () => {
     expect(mail).toMatchObject({
       kind: OUTBOUND_EMAIL_KIND.passwordReset,
       toEmail: AGENT.email,
-      subject: "Reset your support desk password",
+      subject: "Reset your Great Forge Desk password",
     });
+    expectSignedByTheProduct(mail?.textBody);
   });
 
   // The assistant has no credential row and is not getting one; this link is
@@ -980,7 +999,7 @@ describe("DELETE /api/users/:id", () => {
     const sent = await del(`/${OTHER_ADMIN.id}`);
 
     expect(sent.status).toBe(403);
-    expect(sent.body.error).toBe("Admin users cannot be deleted");
+    expect(sent.body.error).toBe(ADMIN_DELETE_REFUSED_MESSAGE);
     expect(await userRow(OTHER_ADMIN.id)).toMatchObject({ deletedAt: null });
     expect(await adminActivityRows()).toEqual([]);
   });
@@ -1228,6 +1247,9 @@ describe("Demo sign-in — auth.ts", () => {
       const res = await startDemo();
 
       expect(res.status).toBe(403);
+      expect(((await res.json()) as { message: string }).message).toBe(
+        DEMO_MODE_OFF_MESSAGE,
+      );
       expect(res.headers.get("set-cookie")).toBeNull();
       expect(await demoRows()).toEqual([]);
     },
@@ -1675,9 +1697,9 @@ describe("Demo session lifetime — auth.ts", () => {
  * display time, so a demo visitor could rename "Demo visitor" to a colleague's
  * name and every trail they left would read as that colleague's (R11). Nobody
  * changes their own profile that way: a name is changed by an admin on the
- * Users screen, which writes a `user_edited` entry. So the `before` hook
+ * Team screen, which writes a `user_edited` entry. So the `before` hook
  * refuses the path for every caller, and these assert it for each kind of
- * session. The Users screen itself is `PATCH /api/users/:id` above, whose
+ * session. The Team screen itself is `PATCH /api/users/:id` above, whose
  * tests are unchanged.
  *
  * Through `auth.handler`, as a browser would reach it: a `before` hook's

@@ -1,16 +1,17 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+// The names under test come from `@ticket/shared`, the module the app reads
+// them from, rather than being restated here.
 import {
+  BRAND_NAME,
+  BRAND_SHORT,
   MESSAGE_DIRECTION,
   TICKET_STATUS,
   TUTORIAL_PAGE_KEY,
   type TutorialStatusResponse,
+  USER_ROLE,
 } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { testDb } from "./helpers/db";
-// The names under test, from the module the app reads them from — the same
-// reach into the web app's source `route-timing.spec.ts` makes. `brand.ts` is
-// import-free for exactly this.
-import { BRAND_NAME, BRAND_SHORT } from "../../apps/web/src/lib/brand";
 import { ROUTE } from "../../apps/web/src/lib/routes";
 
 /**
@@ -76,7 +77,7 @@ test.describe("brand", () => {
 
   test.describe("signed in", () => {
     test.beforeEach(async ({ page }) => {
-      await signIn(page, "admin");
+      await signIn(page, USER_ROLE.admin);
     });
 
     test("a page's tab reads `<page> · Forge Desk`", async ({ page }) => {
@@ -278,7 +279,7 @@ test.describe("Cold iron", () => {
     await page.route(`**/api/tutorials/${TUTORIAL_PAGE_KEY.tickets}`, (r) =>
       r.fulfill({ json: status }),
     );
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(ROUTE.tickets.path);
 
     // By markup rather than role: the callout is modal, so everything behind
@@ -298,7 +299,7 @@ test.describe("Cold iron", () => {
   });
 
   test("a resolved status badge is verdigris", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(
       `${ROUTE.tickets.path}?q=${encodeURIComponent(RESOLVED_SUBJECT)}`,
     );
@@ -312,7 +313,7 @@ test.describe("Cold iron", () => {
   });
 
   test("the ember ramp is the colour it was", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(ROUTE.tickets.path);
 
     const ramp: string[] = [];
@@ -329,7 +330,7 @@ test.describe("Cold iron", () => {
     test(`nothing clickable, counted or stated on ${screen} is bronze`, async ({
       page,
     }) => {
-      await signIn(page, "agent");
+      await signIn(page, USER_ROLE.agent);
       await page.goto(ROUTE[screen].path);
       if (screen === "tickets") {
         await expect(

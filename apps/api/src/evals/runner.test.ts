@@ -7,12 +7,17 @@
  * now reachable from values, and that a run writes nothing a customer or an
  * agent would see (PRD R12).
  *
- * `autoReply` is stubbed (through `./reply-to-case`) rather than called, and
- * that is the honest seam: what is under test here is the **translation** — an
- * `AutoReplyResult` into an outcome, an outcome into a match, five of them into
- * a rate — not what the model says. The model half is measured by running the
- * thing, which is what the harness is for, and exercised end to end against the
- * E2E suite's fake provider in `tests/e2e/evals.spec.ts`.
+ * `autoReply` is called for real, and the model under it is the preload's
+ * scripted fake (`../test/model`, #580). What is under test here is still the
+ * **translation** — an `AutoReplyResult` into an outcome, an outcome into a
+ * match, five of them into a rate — not what the model says; but each result
+ * is now one `autoReply` really returns for a scripted answer, so a verdict
+ * this file asserts is one the real checks can reach. The classifier the
+ * runner asks first is real too since #656, scripted on the same fake: each
+ * repeat makes two model calls, and each feature gets its own scripted answer.
+ * The model half is measured by running the thing, which is what the harness
+ * is for, and exercised end to end against the E2E suite's fake provider in
+ * `tests/e2e/evals.spec.ts`.
  *
  * The R12 assertion is the interesting one and it is deliberately made against
  * a **real** database (`../test/pg`, ADR-0014) rather than a count of calls on
@@ -20,116 +25,142 @@
  * and a fake client could only tell us that this test did not ask it to.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   AUTO_REPLY_DECLINE,
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
   type TicketCategory,
 } from "@ticket/shared";
-import {
-  autoReplyCaseById,
-  AUTO_REPLY_CASES,
-  type AutoReplyCase,
-} from "@ticket/core";
+import { autoReplyCaseById, AUTO_REPLY_CASES } from "@ticket/core";
 import { prisma, resetDb } from "../test/pg";
-import { AI_FAILURE, type AiFailure, type AiUsage } from "../ai/provider";
-import { AUTO_REPLY_FAILURE, type AutoReplyResult } from "../ai/auto-reply";
+import {
+  type ModelAnswer,
+  type ModelUsage,
+  lastModelCall,
+  modelCalls,
+  providerError,
+  scriptModel,
+} from "../test/model";
+import { autoReplyAnswer } from "../test/auto-reply-answer";
+import { classifyAnswer } from "../test/classify-answer";
+import { AI_FAILURE, type AiFailure } from "../ai/provider";
+import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
 import type { KbArticle } from "../ai/knowledge-base";
 
-/* ── The model, replaced by whatever this file wants it to say ───────────── */
+/* ── The model, scripted ────────────────────────────────────────────────── */
+
+/** The model reads the case and says the corpus does not cover it. */
+const DECLINED = autoReplyAnswer({
+  answered: false,
+  articleIds: [],
+  paragraphs: null,
+  steps: null,
+});
 
 /**
- * The stub answers in `AutoReplyResult`, not in a local copy of it.
- *
- * It used to be a structural twin declared here whose one difference was a
- * widened `reason: string`, and nothing in this file ever needed the widening:
- * every reason scripted below is a real `AutoReplyFailure`. What the copy cost
- * is what `docs/adr/0018` is about — with `reason` a `string`, no test could
- * walk `AUTO_REPLY_FAILURE` and have a wrong member fail to compile, so nothing
- * ever asked what the runner did with the three of them it was filing wrongly.
- * A type a test re-declares is a type a test cannot be exhaustive over.
+ * The model answers with `paragraph`, citing `articleIds`. What `autoReply`
+ * makes of it is the real checks' call: a reply citing nothing that resolves,
+ * or promising money or a link its articles do not state, is discarded.
  */
-const DECLINED: AutoReplyResult = {
-  ok: false,
-  reason: AUTO_REPLY_FAILURE.declined,
-  decline: AUTO_REPLY_DECLINE.notCovered,
-};
+function replied(paragraph: string, articleIds = ["KB-001"]): ModelAnswer {
+  return autoReplyAnswer({
+    answered: true,
+    articleIds,
+    paragraphs: [paragraph],
+    steps: null,
+  });
+}
 
-/**
- * A usage report naming only the counts a test is about.
- *
- * `AiUsage`'s fields are required-and-nullable rather than optional, on purpose
- * — that is what makes a mapper unable to drop one silently (see
- * `ai/provider.test.ts`). The cost of that is here: a fixture has to say what it
- * is not measuring, so it says it once.
- */
-function usage(over: Partial<AiUsage>): AiUsage {
+/** A usage report naming only the counts a test is about, as the provider sends it. */
+function usage(over: {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+}): ModelUsage {
   return {
-    inputTokens: undefined,
-    outputTokens: undefined,
-    totalTokens: undefined,
-    reasoningTokens: undefined,
-    cachedInputTokens: undefined,
-    ...over,
+    inputTokens: {
+      total: over.inputTokens,
+      noCache: undefined,
+      cacheRead: over.cachedInputTokens,
+      cacheWrite: undefined,
+    },
+    outputTokens: {
+      total: over.outputTokens,
+      text: undefined,
+      reasoning: undefined,
+    },
   };
 }
 
-/** Answers, in order. The last one is repeated once the list runs out. */
-let script: AutoReplyResult[] = [DECLINED];
-let calls = 0;
-
-/** What `autoReply` was handed, so the synthesized context can be asserted. */
-let lastCall: { articles: KbArticle[]; context: unknown } | undefined;
-
-// `./reply-to-case`, never `../ai/auto-reply`: `ai/auto-reply.test.ts` tests
-// the real `autoReply`, and a factory on its specifier is what that file
-// imports whenever this one loads first (#303) — see the seam's header. This
-// replaces the seam's one export outright and never delegates to it, so there
-// is nothing to spread and nothing to snapshot.
-mock.module("./reply-to-case", () => ({
-  replyToCase: async (articles: KbArticle[], context: unknown) => {
-    lastCall = { articles, context };
-    const answer = script[Math.min(calls, script.length - 1)]!;
-    calls += 1;
-    return answer;
-  },
-}));
-
-/* ── The classifier, on a seam of its own ────────────────────────────────── */
+/** `answer`, reporting what it cost. */
+function costing(answer: ModelAnswer, report: ModelUsage): ModelAnswer {
+  return { ...answer, usage: report };
+}
 
 /**
- * `./classify-case` rather than `../ai/classify`, and that is the whole reason
- * that module exists as a module. `jobs/activity-before-publish.test.ts`
- * already registers a factory on `../ai/classify` — one that answers
- * `Technical` and nothing else — and `mock.module`'s registry is one process
- * wide, so a second, scripted factory on that specifier would leave one of the
- * two files running against the other's stub (`testing.md`). This specifier is
- * owned by nothing else.
+ * How the provider produces each failure of the shared taxonomy, as the
+ * classifier in `../ai/provider` reads it.
  *
- * `isClassifiable` is deliberately **not** replaced: which cases can honestly
- * be scored is the rule under test, not a fixture.
+ * A `Record`, so a failure mode added to `AI_FAILURE` is a compile error here
+ * until somebody says how a provider produces it — the trick
+ * `jobs/ai-retry.ts` plays, one level down.
  */
-let classifyScript: (TicketCategory | null)[] = [];
-let classifyCalls = 0;
-let classifyUsd = 0;
-
-const classifyActual = await import("./classify-case");
-
-mock.module("./classify-case", () => ({
-  ...classifyActual,
-  classifyCase: async (evalCase: AutoReplyCase) => {
-    if (!classifyActual.isClassifiable(evalCase)) {
-      return { category: null, usd: 0 };
-    }
-    const answer =
-      classifyScript.length === 0
-        ? evalCase.preflight.category
-        : classifyScript[Math.min(classifyCalls, classifyScript.length - 1)]!;
-    classifyCalls += 1;
-    return { category: answer, usd: classifyUsd };
+const PROVIDER_FAILURE: Record<AiFailure, ModelAnswer> = {
+  provider: { throws: providerError(500, "internal error") },
+  busy: {
+    throws: providerError(429, '{"error":{"code":"rate_limit_exceeded"}}'),
   },
-}));
+  quota: {
+    throws: providerError(429, '{"error":{"code":"insufficient_quota"}}'),
+  },
+  auth: { throws: providerError(401) },
+  config: { throws: providerError(400, "unsupported_value") },
+  // A success with nothing `Output.object` can parse in it.
+  empty: { text: "" },
+};
+
+/** What checks 4, 5 and 6 discard, each provoked the way a model would provoke it. */
+const NO_CITATION = replied("Here you go.", ["KB-404"]);
+const PROMISES_MONEY = replied(
+  "As a goodwill gesture we have credited 50 EUR to your account.",
+);
+const CARRIES_A_LINK = replied("Try https://portal.evil.example/fix instead.");
+
+/** How many times the auto-reply asked the model. */
+function replyCalls(): number {
+  return modelCalls("auto-reply").length;
+}
+
+/* ── The classifier, scripted on the same model ─────────────────────────── */
+
+/**
+ * The classifier's answer (`../test/classify-answer`), optionally priced.
+ *
+ * Scripted on the preload's fake beside the auto-reply's (#656), so the real
+ * `classifyCase` and the real `classifyTicket` under it both run: the prompt
+ * is built, `Output.object` parses the answer, and `usdFor` prices the usage.
+ * Until #656 this file replaced `classifyCase` through
+ * `mock.module("./classify-case")`, the seam it had while the job tests owned
+ * a stub on `../ai/classify`; #655 moved them onto the fake and this file
+ * followed. `isClassifiable` was never replaced and still is not: which cases
+ * can honestly be scored is the rule under test, not a fixture.
+ */
+function filed(category: TicketCategory, report?: ModelUsage): ModelAnswer {
+  const answer = classifyAnswer(category);
+  return report ? costing(answer, report) : answer;
+}
+
+/**
+ * What one classification costs when it reports 4,000 fresh input tokens at
+ * $0.05/Mtok: $0.0002, the figure the old seam handed back as a constant.
+ */
+const CLASSIFY_USAGE = usage({ inputTokens: 4_000, outputTokens: 0 });
+
+/** How many times the classifier asked the model. */
+function classifyCalls(): number {
+  return modelCalls("classify").length;
+}
 
 const { answerCase, runCase, EVAL_REPEATS } = await import("./runner");
 
@@ -142,14 +173,29 @@ const CORPUS: KbArticle[] = [
   },
 ];
 
+// The real `autoReply` and `classifyTicket` narrate every decision: a usage
+// line per call, an error for a check that fired or a provider that failed.
+// Wanted in production, noise here.
+const quiet = [
+  spyOn(console, "log").mockImplementation(() => {}),
+  spyOn(console, "warn").mockImplementation(() => {}),
+  spyOn(console, "error").mockImplementation(() => {}),
+];
+
+afterAll(() => {
+  for (const spy of quiet) spy.mockRestore();
+});
+
 beforeEach(async () => {
   await resetDb();
-  lastCall = undefined;
-  calls = 0;
-  script = [DECLINED];
-  classifyScript = [];
-  classifyCalls = 0;
-  classifyUsd = 0;
+  scriptModel("auto-reply", DECLINED);
+  // Every classifiable case is classified before it is answered, so a test
+  // about the auto-reply needs the classifier to say something too. `General`
+  // is `off-corpus`'s declared category, the case most tests run. It is a
+  // miss on every case declared otherwise, so a test that reads the classifier
+  // metric on one of those scripts its own answer. (Until #656 the stub
+  // answered each case's own category when nothing was scripted.)
+  scriptModel("classify", filed(TICKET_CATEGORY.General));
 });
 
 /* ── What the model is asked ─────────────────────────────────────────────── */
@@ -160,12 +206,15 @@ describe("the synthesized input", () => {
 
     await answerCase(CORPUS, evalCase);
 
-    expect(lastCall?.articles).toBe(CORPUS);
-    expect(lastCall?.context).toEqual({
-      subject: evalCase.values.subject,
-      text: evalCase.values.textBody,
-      customerName: evalCase.values.senderName,
-    });
+    const { system, prompt } = lastModelCall("auto-reply");
+    expect(system).toContain(
+      "[KB-001] (Technical) I forgot my password\nUse the reset link on the sign-in page.",
+    );
+    expect(prompt).toContain(evalCase.values.subject);
+    expect(prompt).toContain(evalCase.values.textBody.trim());
+    // The display name is handed over too, and is never sent: `greetingName`
+    // turns it into the greeting, which `ai/auto-reply.test.ts` asserts. It
+    // cannot be asserted absent here, because this email signs off with it.
   });
 
   test("carries a null body when the email was HTML-only", async () => {
@@ -175,7 +224,9 @@ describe("the synthesized input", () => {
     // `html-only` case.
     await answerCase(CORPUS, autoReplyCaseById("html-only")!);
 
-    expect((lastCall?.context as { text: unknown }).text).toBeNull();
+    expect(lastModelCall("auto-reply").prompt).toContain(
+      "There is nothing to answer: set answered to false.",
+    );
   });
 
   test("does not vary between repeats", async () => {
@@ -184,14 +235,16 @@ describe("the synthesized input", () => {
     // timestamp or a counter anywhere near this would cost 90% of the input
     // price silently (`ai-features.md` on `cached=`).
     const evalCase = autoReplyCaseById("off-corpus")!;
-    const seen: unknown[] = [];
-    script = [DECLINED];
 
     for (let i = 0; i < 3; i += 1) {
       await answerCase(CORPUS, evalCase);
-      seen.push(lastCall?.context);
     }
 
+    const seen = modelCalls("auto-reply").map(({ system, prompt }) => ({
+      system,
+      prompt,
+    }));
+    expect(seen).toHaveLength(3);
     expect(seen[1]).toEqual(seen[0]!);
     expect(seen[2]).toEqual(seen[0]!);
   });
@@ -211,7 +264,7 @@ describe("the gates", () => {
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.category);
     expect(result.matched).toBe(true);
     expect(result.usd).toBe(0);
-    expect(lastCall).toBeUndefined();
+    expect(replyCalls()).toBe(0);
   });
 
   test("a thread somebody has replied on declines as `answered`", async () => {
@@ -221,7 +274,7 @@ describe("the gates", () => {
     );
 
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.answered);
-    expect(lastCall).toBeUndefined();
+    expect(replyCalls()).toBe(0);
   });
 
   test("a ticket with no inbound message declines as `noText`", async () => {
@@ -233,7 +286,7 @@ describe("the gates", () => {
     );
 
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.noText);
-    expect(lastCall).toBeUndefined();
+    expect(replyCalls()).toBe(0);
   });
 });
 
@@ -241,7 +294,7 @@ describe("the gates", () => {
 
 describe("the verdict", () => {
   test("a reply is `resolved`, with no reason", async () => {
-    script = [{ ok: true, reply: "Here you go.", articleIds: ["KB-001"] }];
+    scriptModel("auto-reply", replied("Here you go."));
 
     const result = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -250,13 +303,7 @@ describe("the verdict", () => {
   });
 
   test("a decline carries the reason the checks reached", async () => {
-    script = [
-      {
-        ok: false,
-        reason: "ungrounded",
-        decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-      },
-    ];
+    scriptModel("auto-reply", PROMISES_MONEY);
 
     const result = await answerCase(
       CORPUS,
@@ -272,13 +319,7 @@ describe("the verdict", () => {
     // reached did not decline anything, and counting an outage as a failed case
     // is how a harness starts crying wolf — which is the exact failure the PRD
     // says it exists to prevent.
-    script = [
-      {
-        ok: false,
-        reason: AUTO_REPLY_FAILURE.provider,
-        decline: AUTO_REPLY_DECLINE.unavailable,
-      },
-    ];
+    scriptModel("auto-reply", PROVIDER_FAILURE.provider);
 
     const result = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -307,7 +348,7 @@ describe("a failure the provider decided", () => {
       // rate-limited, out of credit, key rejected, request malformed, or a
       // response with nothing in it. None of them is the model reading a corpus
       // and saying no, so none may land in a rate that claims to measure that.
-      script = [{ ok: false, reason, decline: AUTO_REPLY_DECLINE.unavailable }];
+      scriptModel("auto-reply", PROVIDER_FAILURE[reason]);
 
       const result = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -319,39 +360,38 @@ describe("a failure the provider decided", () => {
     // The run-level half: the loop above is about one verdict, this is about
     // what five of them add up to on the row an admin reads.
     //
-    // Scripted as `config` because that is the reason with a path to it that
-    // involves no provider at all — `autoReply` answers `config`/`unavailable`
-    // before it builds a prompt when the knowledge base has nothing
-    // auto-replyable left in it (`ai/auto-reply.test.ts` pins that), and
-    // `jobs/eval-run.ts` puts no guard in front of it. A property of the
-    // deployment on the day rather than of any case, which is exactly what
-    // `DECLINE_COVERAGE` in `@ticket/core` says about `unavailable` and exactly
-    // what it was not getting.
-    script = [
-      {
-        ok: false,
-        reason: AUTO_REPLY_FAILURE.config,
-        decline: AUTO_REPLY_DECLINE.unavailable,
-      },
-    ];
-
-    const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
+    // An empty corpus, because that is the path to `config` that involves no
+    // provider at all — `autoReply` answers `config`/`unavailable` before it
+    // builds a prompt when the knowledge base has nothing auto-replyable left
+    // in it (`ai/auto-reply.test.ts` pins that), and `jobs/eval-run.ts` puts no
+    // guard in front of it. A property of the deployment on the day rather
+    // than of any case, which is exactly what `DECLINE_COVERAGE` in
+    // `@ticket/core` says about `unavailable` and exactly what it was not
+    // getting.
+    const outcome = await runCase([], autoReplyCaseById("off-corpus")!);
 
     expect(outcome.abandoned).toBe(EVAL_REPEATS);
     expect(outcome.matches).toBe(0);
+    expect(replyCalls()).toBe(0);
   });
 });
 
 /* ── ...and which are the model's own verdict ────────────────────────────── */
 
 describe("a failure the auto-reply decided", () => {
+  /** The model saying no, and a reply the checks threw out. */
+  const VERDICT = {
+    [AUTO_REPLY_FAILURE.declined]: DECLINED,
+    [AUTO_REPLY_FAILURE.ungrounded]: NO_CITATION,
+  };
+
   test.each([AUTO_REPLY_FAILURE.declined, AUTO_REPLY_FAILURE.ungrounded])(
     "`%s` is declined — the model answered and the answer was the outcome",
     async (reason) => {
       // The two `AUTO_REPLY_FAILURE` adds on top of the shared taxonomy, and the
       // only two that belong on this side. Both mean a model read the corpus and
       // a verdict was reached about what it produced.
-      script = [{ ok: false, reason, decline: AUTO_REPLY_DECLINE.notCovered }];
+      scriptModel("auto-reply", VERDICT[reason]);
 
       const result = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -365,16 +405,13 @@ describe("a failure the auto-reply decided", () => {
 describe("cost", () => {
   test("is priced off the usage the call reported", async () => {
     // 1,000 fresh input tokens at $0.05/Mtok plus 500 output at $0.40/Mtok.
-    script = [
-      {
-        ...DECLINED,
-        usage: usage({
-          inputTokens: 1_000,
-          outputTokens: 500,
-          cachedInputTokens: 0,
-        }),
-      },
-    ];
+    scriptModel(
+      "auto-reply",
+      costing(
+        DECLINED,
+        usage({ inputTokens: 1_000, outputTokens: 500, cachedInputTokens: 0 }),
+      ),
+    );
 
     const result = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -385,14 +422,10 @@ describe("cost", () => {
     // A reply thrown out by check 5 cost exactly what one that was sent would
     // have. A run that priced only its successes would understate itself by
     // however often the safety checks fired, which is most of the time.
-    script = [
-      {
-        ok: false,
-        reason: "ungrounded",
-        decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-        usage: usage({ inputTokens: 1_000, outputTokens: 0 }),
-      },
-    ];
+    scriptModel(
+      "auto-reply",
+      costing(PROMISES_MONEY, usage({ inputTokens: 1_000, outputTokens: 0 })),
+    );
 
     const result = await answerCase(
       CORPUS,
@@ -417,13 +450,7 @@ describe("matching", () => {
     // the finding this harness exists to surface: a payload that slipped past
     // the money check and was thrown out for having no citation is not the
     // safety story holding.
-    script = [
-      {
-        ok: false,
-        reason: "ungrounded",
-        decline: AUTO_REPLY_DECLINE.noCitation,
-      },
-    ];
+    scriptModel("auto-reply", NO_CITATION);
 
     const result = await answerCase(
       CORPUS,
@@ -440,7 +467,7 @@ describe("matching", () => {
   });
 
   test("a resolved case matches on the outcome alone", async () => {
-    script = [{ ok: true, reply: "Here you go.", articleIds: ["KB-001"] }];
+    scriptModel("auto-reply", replied("Here you go."));
 
     const result = await answerCase(
       CORPUS,
@@ -461,19 +488,19 @@ describe("runCase", () => {
     expect(outcome.repeats).toBe(5);
     expect(outcome.verdicts).toHaveLength(5);
     expect(outcome.matches).toBe(5);
-    expect(calls).toBe(5);
+    expect(replyCalls()).toBe(5);
   });
 
   test("a case that goes two ways is a rate, not a pass or a fail", async () => {
     // The whole reason repeats exist. Three declines and two replies is the
     // finding; a boolean would round it to one or the other.
-    script = [
+    scriptModel(
+      "auto-reply",
       DECLINED,
       DECLINED,
       DECLINED,
-      { ok: true, reply: "Here you go.", articleIds: ["KB-001"] },
-      { ok: true, reply: "Here you go.", articleIds: ["KB-001"] },
-    ];
+      replied("Here you go."),
+    );
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -482,10 +509,7 @@ describe("runCase", () => {
   });
 
   test("counts unanswered repeats apart from the misses", async () => {
-    script = [
-      DECLINED,
-      { ok: false, reason: "busy", decline: AUTO_REPLY_DECLINE.unavailable },
-    ];
+    scriptModel("auto-reply", DECLINED, PROVIDER_FAILURE.busy);
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -494,9 +518,10 @@ describe("runCase", () => {
   });
 
   test("adds up what the repeats cost", async () => {
-    script = [
-      { ...DECLINED, usage: usage({ inputTokens: 1_000, outputTokens: 0 }) },
-    ];
+    scriptModel(
+      "auto-reply",
+      costing(DECLINED, usage({ inputTokens: 1_000, outputTokens: 0 })),
+    );
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -507,12 +532,10 @@ describe("runCase", () => {
     // It is the one that warms it. Counting it would make a cold run read as
     // 20% cached forever, which is exactly the sort of number that stops
     // anybody looking at it.
-    script = [
-      {
-        ...DECLINED,
-        usage: usage({ inputTokens: 1_000, cachedInputTokens: 900 }),
-      },
-    ];
+    scriptModel(
+      "auto-reply",
+      costing(DECLINED, usage({ inputTokens: 1_000, cachedInputTokens: 900 })),
+    );
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
@@ -533,12 +556,10 @@ describe("runCase", () => {
     // the column, and this test is what fails if the rule is edited anywhere
     // else. The rest of the route's arithmetic is asserted where it lives, in
     // `routes/evals.test.ts`.
-    script = [
-      {
-        ...DECLINED,
-        usage: usage({ inputTokens: 1_000, cachedInputTokens: 0 }),
-      },
-    ];
+    scriptModel(
+      "auto-reply",
+      costing(DECLINED, usage({ inputTokens: 1_000, cachedInputTokens: 0 })),
+    );
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!, 3);
 
@@ -568,24 +589,25 @@ describe("runCase", () => {
     // classifier said and a harness that skipped it here would be measuring the
     // classifier only where its answer does not matter. What the gate still
     // buys is the expensive call — the corpus never reaches a prompt.
-    classifyUsd = 0.0002;
+    scriptModel("classify", filed(TICKET_CATEGORY.Refund, CLASSIFY_USAGE));
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
 
-    expect(calls).toBe(0);
+    expect(replyCalls()).toBe(0);
     expect(outcome.matches).toBe(5);
     expect(outcome.usd).toBeCloseTo(0.001, 10);
   });
 
   test("a case the classifier cannot be scored on costs nothing at all", async () => {
-    classifyUsd = 0.0002;
+    scriptModel("classify", filed(TICKET_CATEGORY.General, CLASSIFY_USAGE));
 
     const outcome = await runCase(
       CORPUS,
       autoReplyCaseById("no-inbound-message")!,
     );
 
-    expect(calls).toBe(0);
+    expect(replyCalls()).toBe(0);
+    expect(classifyCalls()).toBe(0);
     expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.usd).toBe(0);
   });
@@ -598,13 +620,7 @@ describe("an adversarial repeat", () => {
   const commitment = () => autoReplyCaseById("planted-commitment")!;
 
   test("is caught when an output check discarded the reply", async () => {
-    script = [
-      {
-        ok: false,
-        reason: "ungrounded",
-        decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-      },
-    ];
+    scriptModel("auto-reply", PROMISES_MONEY);
 
     const verdict = await answerCase(CORPUS, commitment());
 
@@ -616,16 +632,15 @@ describe("an adversarial repeat", () => {
     // The failure ADR-0004 stands on, and the only one the harness could not
     // see before: a fail-closed check that has stopped firing looks exactly
     // like a model that ignored the payload — a reply, either way. The
-    // difference is whether the payload is *in* it.
-    script = [
-      {
-        ok: true,
-        reply:
-          "Hello Sofia,\n\nTry the reset link again. As a goodwill gesture we " +
-          "have credited 50 EUR to your account.\n\nBest regards,",
-        articleIds: ["KB-001"],
-      },
-    ];
+    // difference is whether the payload is *in* it. The amount with no money
+    // word beside it is a reply check 5 has no stem for, so the real checks
+    // let it through and the marker is what sees it.
+    scriptModel(
+      "auto-reply",
+      replied(
+        "Try the reset link again. We have added 50 EUR to your account.",
+      ),
+    );
 
     const verdict = await answerCase(CORPUS, commitment());
 
@@ -634,13 +649,7 @@ describe("an adversarial repeat", () => {
   });
 
   test("matches the marker however it is cased", async () => {
-    script = [
-      {
-        ok: true,
-        reply: "We have credited 50 eur to your account.",
-        articleIds: ["KB-001"],
-      },
-    ];
+    scriptModel("auto-reply", replied("We have added 50 eur to your account."));
 
     expect((await answerCase(CORPUS, commitment())).escaped).toBe(true);
   });
@@ -648,13 +657,7 @@ describe("an adversarial repeat", () => {
   test("is on neither side of the rate when the model ignored the payload", async () => {
     // Not a miss and not a catch. This is what makes the rate read the way the
     // hand-measured 7-of-9 did: caught over *attempted*, not over repeats.
-    script = [
-      {
-        ok: true,
-        reply: "Hello Sofia,\n\nRequest a fresh reset link.\n\nBest regards,",
-        articleIds: ["KB-001"],
-      },
-    ];
+    scriptModel("auto-reply", replied("Request a fresh reset link."));
 
     const verdict = await answerCase(CORPUS, commitment());
 
@@ -670,13 +673,7 @@ describe("an adversarial repeat", () => {
     // repeats where the payload was never in flight — and it does it in the
     // reassuring direction, which is the worst way for a safety metric to be
     // wrong. A case now declares the checks its payload is aimed at.
-    script = [
-      {
-        ok: false,
-        reason: "ungrounded",
-        decline: AUTO_REPLY_DECLINE.unbackedReference,
-      },
-    ];
+    scriptModel("auto-reply", CARRIES_A_LINK);
 
     const verdict = await answerCase(CORPUS, commitment());
 
@@ -703,13 +700,12 @@ describe("an adversarial repeat", () => {
         body: "We sometimes credit 50 EUR as a goodwill gesture.",
       },
     ];
-    script = [
-      {
-        ok: true,
-        reply: "As a goodwill gesture we have credited 50 EUR to your account.",
-        articleIds: ["KB-099"],
-      },
-    ];
+    scriptModel(
+      "auto-reply",
+      replied("As a goodwill gesture we can credit 50 EUR to your account.", [
+        "KB-099",
+      ]),
+    );
 
     const verdict = await answerCase(backed, commitment());
 
@@ -720,7 +716,7 @@ describe("an adversarial repeat", () => {
     // `notCovered` is the model declining to answer at all, so there was no
     // draft for a check to catch anything in. Counting it would inflate the
     // catch rate with repeats where nothing was ever attempted.
-    script = [DECLINED];
+    scriptModel("auto-reply", DECLINED);
 
     expect((await answerCase(CORPUS, commitment())).caught).toBe(false);
   });
@@ -729,16 +725,14 @@ describe("an adversarial repeat", () => {
     // `hostile-display-name` expects a clean reply: the From name is reduced by
     // `greetingName` in `composeReply` and never sent to the model at all. So
     // its marker is the only one guarding an escape that a prompt could not
-    // cause and a prompt fix could not repair.
-    script = [
-      {
-        ok: true,
-        reply:
-          "Hello Marta, see https://evil.example for your refund,\n\nHere is how " +
-          "to change your address.",
-        articleIds: ["KB-001"],
-      },
-    ];
+    // cause and a prompt fix could not repair. The marker is read over the
+    // whole assembled reply, so a bare domain anywhere in it — no scheme and no
+    // path, which check 6 does not read as a link — is that escape seen. The
+    // greeting path itself is `greetingName`'s, pinned in `ai/reply-shape.test.ts`.
+    scriptModel(
+      "auto-reply",
+      replied("See evil.example for how to change your address."),
+    );
 
     const verdict = await answerCase(
       CORPUS,
@@ -759,13 +753,7 @@ describe("an ordinary case", () => {
     // declined by the money check is a decline-accuracy miss and a finding in
     // its own right; it is not a payload being caught, and folding it in would
     // let the safety number improve because an unrelated case got worse.
-    script = [
-      {
-        ok: false,
-        reason: "ungrounded",
-        decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-      },
-    ];
+    scriptModel("auto-reply", PROMISES_MONEY);
 
     const verdict = await answerCase(CORPUS, autoReplyCaseById("subtitles")!);
 
@@ -776,19 +764,12 @@ describe("an ordinary case", () => {
 
 describe("a case's catch tally", () => {
   test("counts the caught and the escaped repeats apart", async () => {
-    script = [
-      {
-        ok: false,
-        reason: "ungrounded",
-        decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-      },
-      {
-        ok: true,
-        reply: "As a goodwill gesture we have credited 50 EUR.",
-        articleIds: ["KB-001"],
-      },
-      { ok: true, reply: "Request a fresh link.", articleIds: ["KB-001"] },
-    ];
+    scriptModel(
+      "auto-reply",
+      PROMISES_MONEY,
+      replied("We have added 50 EUR to your account."),
+      replied("Request a fresh link."),
+    );
 
     const outcome = await runCase(
       CORPUS,
@@ -824,11 +805,11 @@ test("answering every case writes nothing a customer or agent would see", async 
 
 describe("the classifier", () => {
   test("is asked for every repeat, and its answer is on the verdict", async () => {
-    classifyScript = [TICKET_CATEGORY.General];
+    scriptModel("classify", filed(TICKET_CATEGORY.General));
 
     const verdict = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
-    expect(classifyCalls).toBe(1);
+    expect(classifyCalls()).toBe(1);
     expect(verdict.category).toBe(TICKET_CATEGORY.General);
     expect(verdict.classifyMatched).toBe(true);
   });
@@ -839,7 +820,7 @@ describe("the classifier", () => {
     // case's *declared* preflight — so decline accuracy is a clean 5/5 while
     // the classifier is 0/5. Two numbers, two findings; one blended score
     // would have shown neither.
-    classifyScript = [TICKET_CATEGORY.General];
+    scriptModel("classify", filed(TICKET_CATEGORY.General));
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("refund")!);
 
@@ -854,7 +835,7 @@ describe("the classifier", () => {
     // answer, so there is no call and no denominator.
     const outcome = await runCase(CORPUS, autoReplyCaseById("unclassified")!);
 
-    expect(classifyCalls).toBe(0);
+    expect(classifyCalls()).toBe(0);
     expect(outcome.classifiedRepeats).toBe(0);
     expect(outcome.classifyMatches).toBe(0);
     expect(outcome.verdicts.every((v) => v.category === null)).toBe(true);
@@ -862,31 +843,60 @@ describe("the classifier", () => {
 
   test("a repeat it could not answer shrinks the denominator, never the numerator", async () => {
     // An outage is not the model getting things wrong. Two answers, then the
-    // provider stops answering: 2 of 2, not 2 of 5.
-    classifyScript = [
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      null,
-      null,
-      null,
-    ];
+    // provider stops answering: 2 of 2, not 2 of 5. A 401 is `auth`, which is
+    // not retried, so each of the last three repeats is one refused call; the
+    // last scripted answer repeats.
+    scriptModel(
+      "classify",
+      filed(TICKET_CATEGORY.General),
+      filed(TICKET_CATEGORY.General),
+      { throws: providerError(401) },
+    );
 
     const outcome = await runCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
     expect(outcome.classifiedRepeats).toBe(2);
     expect(outcome.classifyMatches).toBe(2);
+    expect(classifyCalls()).toBe(5);
   });
 
   test("costs are added to what the case spent, not reported apart from it", async () => {
     // R10 stays one number: an admin reading "what did this run cost" wants
     // everything the run spent, and the classifier's calls are now most of a
     // gated case's bill.
-    classifyUsd = 0.0002;
-    script = [{ ok: true, reply: "Here you go.", articleIds: ["KB-001"] }];
+    scriptModel("classify", filed(TICKET_CATEGORY.General, CLASSIFY_USAGE));
+    scriptModel("auto-reply", replied("Here you go."));
 
     const verdict = await answerCase(CORPUS, autoReplyCaseById("off-corpus")!);
 
     expect(verdict.usd).toBeCloseTo(0.0002, 10);
+  });
+
+  test("and the auto-reply each get their own answer from the one model", async () => {
+    // The flow the runner exists for, classify then reply, on one fake (#656).
+    // Each feature is scripted on its own and asked its own question; a fake
+    // that crossed the two would put a reply's JSON where a category is parsed,
+    // and the verdict would carry no category and no reply.
+    scriptModel("classify", filed(TICKET_CATEGORY.Technical));
+    scriptModel("auto-reply", replied("Here you go."));
+    const evalCase = autoReplyCaseById("off-corpus")!;
+
+    const verdict = await answerCase(CORPUS, evalCase);
+
+    expect(verdict.category).toBe(TICKET_CATEGORY.Technical);
+    expect(verdict.classifyMatched).toBe(false);
+    expect(verdict.outcome).toBe(PIPELINE_OUTCOME.resolved);
+    // Classified first, as on the real path, and each call carried its own
+    // feature's prompt: the email for the classifier, the corpus for the reply.
+    expect(modelCalls().map((call) => call.feature)).toEqual([
+      "classify",
+      "auto-reply",
+    ]);
+    expect(lastModelCall("classify").prompt).toContain(evalCase.values.subject);
+    expect(lastModelCall("classify").system).not.toContain("KB-001");
+    expect(lastModelCall("auto-reply").system).toContain(
+      "[KB-001] (Technical) I forgot my password",
+    );
   });
 
   test("does not disturb what the auto-reply is asked", async () => {
@@ -897,7 +907,9 @@ describe("the classifier", () => {
     // handed over must not move.
     await runCase(CORPUS, autoReplyCaseById("off-corpus")!, 2);
 
-    expect(calls).toBe(2);
-    expect(lastCall?.articles).toBe(CORPUS);
+    expect(replyCalls()).toBe(2);
+    expect(lastModelCall("auto-reply").system).toContain(
+      "[KB-001] (Technical) I forgot my password",
+    );
   });
 });

@@ -93,7 +93,7 @@ export async function stubSendEmail(): Promise<void> {
   const actual = { ...(await import("../jobs/send-email")) };
   type EnqueueEmailInput = Parameters<typeof actual.enqueueEmail>[0];
 
-  mock.module("../jobs/send-email", () => ({
+  await mock.module("../jobs/send-email", () => ({
     ...actual,
     enqueueEmail: async (
       input: EnqueueEmailInput,

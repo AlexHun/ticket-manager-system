@@ -653,6 +653,41 @@ export interface CreateTicketMessageResponse {
 }
 
 /**
+ * The 404 the ticket and AI routes answer for a ticket that is not there. It
+ * reaches the reply box, the field selects and the summary panel as a toast or
+ * an alert, so it is copy (`docs/standards/copy.md`), and the E2E spec reads it
+ * from here rather than retyping it.
+ */
+export const TICKET_NOT_FOUND_MESSAGE = "Couldn't find this ticket.";
+
+/**
+ * What the ticket schemas in `@ticket/core` answer for a reply, a draft or a
+ * search they refuse. Each reaches an alert, so each is copy, and the API,
+ * web and E2E suites read them from here rather than retyping them.
+ */
+export const TICKET_INPUT_MESSAGE = {
+  replyEmpty: "Write a reply before sending.",
+  replyTooLong: `Keep the reply to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer.`,
+  draftEmpty: "Write a draft before polishing.",
+  draftTooLong: `Keep the draft to ${MAX_MESSAGE_BODY_LENGTH} characters or fewer.`,
+  searchTooLong: `Keep the search to ${TICKET_SEARCH_MAX_LENGTH} characters or fewer.`,
+} as const;
+
+/**
+ * The ticket list's empty state when no filter or view narrows it — which is
+ * the only time it can promise that arriving email will fill it.
+ */
+export const NO_TICKETS_YET =
+  "No tickets yet. They appear here as customer email arrives.";
+
+/**
+ * `PATCH /api/tickets/:id/assignee`'s 400 for an id that names nobody who can
+ * hold a ticket — someone removed from the Team since the picker loaded.
+ */
+export const ASSIGNEE_NOT_FOUND_MESSAGE =
+  "Couldn't find that assignee. Pick someone else.";
+
+/**
  * What happened to a ticket. The Postgres enum of the same name mirrors this.
  *
  * Seven and not more: each one is a change an agent reading the ticket has to be
@@ -1414,10 +1449,11 @@ export interface TicketStatsResponse {
  *
  * `classified` is the shared denominator for every rate below: tickets the
  * classifier reached a terminal, *successful* verdict on in the slice —
- * `classifiedAt` and `category` both set, the same definition `machineClassified`
- * uses on `/pipeline`. Kept identical on purpose: two definitions of "classified"
- * across the same dashboard would disagree on exactly the day someone compared
- * them.
+ * `classifierFiled` in the API's `assistant-decisions.ts`, the same statement
+ * `machineClassified` counts on `/pipeline` (#561). It reads the classifier's
+ * own record of the filing, so a ticket an agent un-categorised since still
+ * counts. One statement on purpose: two definitions of "classified" across the
+ * same dashboard would disagree on exactly the day someone compared them.
  */
 export interface AssistantEffectivenessResponse {
   range: DashboardRange;
@@ -1426,12 +1462,13 @@ export interface AssistantEffectivenessResponse {
   classified: number;
   autoReply: {
     /**
-     * Currently assigned to the assistant's own account — the durable signal a
-     * resolution was the machine's (see `docs/standards/domain.md`: "Resolved by
-     * the machine ⇒ assigned to the assistant's own account"). Not `autoResolvedAt`
-     * alone: a reopen clears that column just as it moves the assignee off the
-     * assistant, so the two never disagree, and reading the assignee is what the
-     * ticket asked for.
+     * Tickets in the slice carrying the auto-resolve stamp — `assistantResolved`
+     * in the API's `assistant-decisions.ts`, the same statement `autoResolved`
+     * counts on `/pipeline` (#562). A customer's reopen clears the stamp, so it
+     * withdraws the resolution here and there alike; an agent's reassignment or
+     * status change touches neither. Not the assignee: a resolved ticket is
+     * filed under the assistant's account, but that is who owns it, which an
+     * agent may change, and the two disagreed as soon as an agent reassigned one.
      */
     resolved: number;
     /** `resolved / classified`. Null, not 0, when nothing was classified — there is no rate to report. */
@@ -1448,10 +1485,12 @@ export interface AssistantEffectivenessResponse {
     /** `count / classified`. Null, not 0, when nothing was classified. */
     rate: number | null;
     /**
-     * Every reason, including the zeroes — a zero is information, same as on
-     * `/pipeline`. Unfiltered on purpose: this breaks the column down by reason,
-     * and a reason is what the column honestly holds, so `unavailable` keeps its
-     * own count here while staying out of `count` and `rate`.
+     * Every reason, including the zeroes — a zero is information. The same
+     * tally as `/pipeline`'s `declines`, both taken from `windowCounts` in the
+     * API's `assistant-decisions.ts` (#563). Unfiltered on purpose: this
+     * breaks the column down by reason, and a reason is what the column
+     * honestly holds, so `unavailable` keeps its own count here while staying
+     * out of `count` and `rate`.
      */
     reasons: Record<AutoReplyDecline, number>;
   };
@@ -1659,7 +1698,7 @@ export type AdminScreen = (typeof ADMIN_SCREEN)[keyof typeof ADMIN_SCREEN];
  * the read guard and this table disagree.
  *
  * `true` opens the screen's reads to a demo through `requireAdminView`; every
- * write stays `requireAdmin` either way. Users lists real colleagues and the
+ * write stays `requireAdmin` either way. Team lists real colleagues and the
  * outbox holds live single-use links, so both say `false`.
  */
 export const DEMO_SEES_ADMIN_SCREEN: Record<AdminScreen, boolean> = {
@@ -1791,7 +1830,7 @@ export const CLASSIFY_PENDING_LABEL = "Queued, or being classified now";
 export const CLASSIFY_NOT_OFFERED_LABEL: Record<ClassifyNotOffered, string> = {
   [CLASSIFY_NOT_OFFERED.noKey]: "Never offered — no API key on this deployment",
   [CLASSIFY_NOT_OFFERED.filedOrStale]:
-    "Not offered — filed by hand, or too old to reconcile",
+    "Never offered — filed by hand, or over a day old",
 };
 
 /**
@@ -1808,9 +1847,16 @@ export const AUTO_REPLY_NOT_OFFERED_LABEL = "Never offered to the auto-reply";
 export interface PipelineCounts {
   /** Tickets created inside the window. The top of the rail. */
   received: number;
-  /** Of those, filed by the classifier — `classifiedAt` and `category` both set. */
+  /**
+   * Of those, filed by the classifier — `classifiedAt` and `classifierCategory`
+   * both set (`classifierFiled`, #561), whatever an agent did to `category`
+   * since.
+   */
   machineClassified: number;
-  /** Attempted and given up on: `classifiedAt` set, `category` still null. */
+  /**
+   * Attempted and given up on: `classifiedAt` set and no `classifierCategory`
+   * (`classifierGaveUp`), whatever an agent filed since.
+   */
   classifyAbandoned: number;
   /**
    * Neither yet, and the classifier will still act on it: there is a key, no
@@ -1825,7 +1871,11 @@ export interface PipelineCounts {
    * `classifyPending`, every ticket in `received` is counted exactly once.
    */
   classifyNotOffered: Record<ClassifyNotOffered, number>;
-  /** Answered from the knowledge base and resolved. */
+  /**
+   * Answered from the knowledge base and resolved, and not reopened by the
+   * customer since: `assistantResolved`, the statement the dashboard's
+   * `autoReply.resolved` counts too (#562).
+   */
   autoResolved: number;
   /** Every decline reason, including the zeroes — a zero is information here. */
   declines: Record<AutoReplyDecline, number>;
@@ -2024,7 +2074,7 @@ export const PIPELINE_RECENT_LIMIT = 12;
  * constant is shared so the form can show the address it is going to get.
  *
  * The **display name** is deliberately not constrained — it is the one piece of
- * attacker-controlled text `ai/auto-reply.ts` has to neutralise (`greetingName`),
+ * attacker-controlled text `ai/reply-shape.ts` has to neutralise (`greetingName`),
  * and being able to type a hostile one is how you watch it work.
  */
 export const SIMULATED_SENDER_DOMAIN = "sim.example.com";
@@ -2674,7 +2724,7 @@ export const EVAL_RUN_LIMIT = 20;
  * to be attributable: a live-corpus run moves when an admin edits an article,
  * which is a fine thing to ask for on purpose (a planned run may name either
  * corpus) and a terrible thing to receive unasked. So there is no `corpus` here
- * to get wrong — see `CONTEXT.md`'s **Schedule**.
+ * to get wrong — see `GLOSSARY.md`'s **Schedule**.
  *
  * The time is an hour and a minute rather than a cron expression, on both
  * sides. A cron string an admin could type is five fields of which four have
@@ -3377,7 +3427,7 @@ export interface DemoStatusResponse {
 
 /**
  * `GET /api/demo/usage`: this week's demo figures, for an admin only (#327,
- * PRD R14). A demo session is refused them, like the Users page they sit on.
+ * PRD R14). A demo session is refused them, like the Team page they sit on.
  *
  * The week runs from 00:00 UTC on Monday, the same clock as the nightly reset.
  * A session counts toward the week it started in, so `sessionsOpenedTicket`
@@ -3398,7 +3448,7 @@ export interface DemoUsageResponse {
 }
 
 /**
- * The Users page's demo card: its accessible name and its three figures'
+ * The Team page's demo card: its accessible name and its three figures'
  * labels. Here so the E2E spec reads them rather than retyping them, like
  * `DEMO_READ_ONLY_NOTE`.
  */
@@ -3421,7 +3471,7 @@ export const DEMO_AI_LIMIT_REASON = "demo-ai-limit";
 
 /** What the panel shows in place of the result. One copy, for both apps. */
 export const DEMO_AI_LIMIT_MESSAGE =
-  "Demo AI limit reached, resets at 00:00 UTC";
+  "Demo AI limit reached — resets at 00:00 UTC.";
 
 /** The body of `POST /api/ai/*`'s 429 once the demo budget is spent. */
 export interface DemoAiLimitResponse {
@@ -3430,12 +3480,20 @@ export interface DemoAiLimitResponse {
 }
 
 /**
- * Why "Use demo session" started nothing: this address has started its
+ * Why "Start demo session" started nothing: this address has started its
  * `DEMO_SESSIONS_PER_IP_PER_HOUR` already (#322, PRD R9). The API's 429 carries
  * it and the login page shows it. One copy, for both apps.
  */
 export const DEMO_START_LIMIT_MESSAGE =
-  "Too many demo sessions from your network, try again later";
+  "Couldn't start a demo session — too many have started from your network. Try again later.";
+
+/**
+ * Why "Start demo session" started nothing: demo mode is off, switched off
+ * between the login page loading and the click (#319). The API's 403 carries
+ * it and the login page shows it. One copy, for both apps.
+ */
+export const DEMO_MODE_OFF_MESSAGE =
+  "Couldn't start a demo session — demo mode is off.";
 
 /**
  * The note beside every save or run control a demo session sees disabled
@@ -3443,3 +3501,60 @@ export const DEMO_START_LIMIT_MESSAGE =
  * reads the same copy the page renders; the API's 403 is the control.
  */
 export const DEMO_READ_ONLY_NOTE = "Read-only in the demo.";
+
+/**
+ * `DELETE /api/users/:id`'s 403 for an admin's account. Shown in the Team
+ * page's delete dialog, and read by the API and E2E suites, so it lives here
+ * rather than as a literal each of them restates.
+ */
+export const ADMIN_DELETE_REFUSED_MESSAGE =
+  "An admin cannot be deleted. Change their role to Agent first.";
+
+/**
+ * The product's name, in its two lengths.
+ *
+ * `BRAND_NAME` is what the lockup reads, what every sentence says and what the
+ * invitation, reset and auto-reply emails sign off as (an agent's own reply
+ * signs with the agent's name); `BRAND_SHORT` is for where space is
+ * tight, which today is only the browser tab. `apps/web/index.html` carries the
+ * short form as a literal, because the static shell is read before any module
+ * runs, and `tests/e2e/brand.spec.ts` holds the two together. Anywhere else in
+ * `apps/api` or `apps/web`, a typed name fails `apps/api/src/standards-guard.test.ts`
+ * (#545) unless its `BRAND_ALLOWANCES` names the file.
+ *
+ * Here rather than in the web app (#488): the API names the product too — the
+ * invitation and reset emails in `auth.ts`, the auto-reply's sign off — and it
+ * cannot import from `apps/web`. One literal, which both apps and the E2E suite
+ * read.
+ */
+export const BRAND_NAME = "The Great Forge Desk";
+export const BRAND_SHORT = "Forge Desk";
+
+/**
+ * `BRAND_NAME` without its article, for where the name stands before a noun:
+ * "Your Great Forge Desk account", not "Your The Great Forge Desk account".
+ * Derived rather than restated, so nothing that reads it can drift from the
+ * name. The invitation and reset emails in `auth.ts` use it, and so does the
+ * auto-reply's strip of a product-name sign off the model wrote itself (#513).
+ */
+export const BRAND_ATTRIBUTIVE = BRAND_NAME.replace(/^The /, "");
+
+/**
+ * A label as it reads after a dash mid-sentence: "Declined — not covered by
+ * the knowledge base".
+ *
+ * A label written to stand alone opens on a capital; run on after a dash it
+ * reads lower-case. The activity feed and the Evals verdict run `DECLINE_SHORT`
+ * through it, and the outbox's refusal to retry a withheld email runs
+ * `WITHHELD_REASON` through it. A label that opens on an acronym of two or
+ * more capitals ("AI …") keeps them, or it would read "aI …". A one-letter
+ * word that must stay capital ("I …") is not detected and would be lowered;
+ * no label opens on one.
+ *
+ * Here rather than in the web app (#531): the API builds a sentence the same
+ * way and cannot import from `apps/web`.
+ */
+export function midSentence(label: string): string {
+  if (/^[A-Z]{2}/.test(label)) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}

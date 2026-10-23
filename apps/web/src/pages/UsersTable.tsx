@@ -81,11 +81,15 @@ interface UsersTableProps {
 
 export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
   if (users.length === 0) {
-    return <p className="text-sm text-muted-foreground">No users found.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        Nobody on the Team yet. People you add with New team member appear here.
+      </p>
+    );
   }
 
   return (
-    <TableFrame label="Users">
+    <TableFrame label="Team">
       <table className={TABLE}>
         <UsersTableHead />
         <tbody>
@@ -162,7 +166,7 @@ export function UsersTable({ users, onEdit, onDelete }: UsersTableProps) {
 
 export function UsersTableSkeleton() {
   return (
-    <TableFrame label="Loading users" aria-busy="true">
+    <TableFrame label="Loading the team" aria-busy="true">
       <table className={TABLE}>
         <UsersTableHead />
         <tbody>

@@ -76,6 +76,8 @@ describe("AssistantEffectivenessCard", () => {
     expect(
       screen.getByText("No tickets were classified in this range."),
     ).toBeInTheDocument();
+    // Said once: the subtitle no longer repeats what the body already says.
+    expect(screen.queryByText(/nothing classified/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Auto-replied")).not.toBeInTheDocument();
   });
 
@@ -111,14 +113,16 @@ describe("AssistantEffectivenessCard", () => {
     expect(screen.queryByText("Decline reasons")).not.toBeInTheDocument();
   });
 
-  test("notes that edit distance isn't tracked yet when the slice has no pairs", () => {
+  test("says no polished draft was sent when the slice has no pairs", () => {
     render(
       <AssistantEffectivenessCard
         data={effectiveness({ avgEditDistance: null })}
       />,
     );
     expect(
-      screen.getByText("Draft-vs-sent edit distance isn't tracked yet."),
+      screen.getByText(
+        "No polished draft was sent in this range, so there's no edit distance yet.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -128,11 +132,20 @@ describe("AssistantEffectivenessCard", () => {
         data={effectiveness({ avgEditDistance: 12.5 })}
       />,
     );
-    expect(
-      screen.queryByText("Draft-vs-sent edit distance isn't tracked yet."),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/no edit distance yet/)).not.toBeInTheDocument();
     expect(
       screen.getByText("Average draft-vs-sent edit distance: 13 characters"),
+    ).toBeInTheDocument();
+  });
+
+  test("words an average of one character in the singular", () => {
+    render(
+      <AssistantEffectivenessCard
+        data={effectiveness({ avgEditDistance: 1.2 })}
+      />,
+    );
+    expect(
+      screen.getByText("Average draft-vs-sent edit distance: 1 character"),
     ).toBeInTheDocument();
   });
 });

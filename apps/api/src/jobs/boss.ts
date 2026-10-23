@@ -126,7 +126,22 @@ const NOTIFY_POLL_SECONDS = 5;
  */
 const DEAD_LETTER_SUFFIX = "-dead";
 
-let boss: PgBoss | undefined;
+/**
+ * The running instance, kept on `globalThis` so it survives `bun --hot` (#639).
+ *
+ * `--hot` re-evaluates this module and keeps `globalThis`. While the instance
+ * lived in a module-level `let`, every reload's `startBoss` began from nothing,
+ * built a second `PgBoss` with a pool of its own and left the first one
+ * running: two more Postgres connections a reload (measured 3, 5, 7, 9 across
+ * three), and another copy of every worker still polling with the code it was
+ * loaded with. A slot the reloads share is what lets the next `startBoss` find
+ * the last one and stop it. Same shape as the Prisma client in `db.ts` and the
+ * connection set in `events/hub.ts`; unlike those it is kept in production too,
+ * where nothing re-evaluates the module and the slot behaves as the `let` did.
+ */
+const globalForBoss = globalThis as unknown as {
+  pgBoss: PgBoss | undefined;
+};
 
 /**
  * The running instance, for code that needs to enqueue.
@@ -138,11 +153,14 @@ let boss: PgBoss | undefined;
  * paper over.
  */
 export function getBoss(): PgBoss {
+  const boss = globalForBoss.pgBoss;
   if (!boss) {
     throw new Error("Job queue used before startBoss() — check startup order");
   }
   return boss;
 }
+
+type BossOptions = ConstructorParameters<typeof PgBoss>[0];
 
 /**
  * Connect, provision the schema, and hand back the instance for registration.
@@ -154,14 +172,28 @@ export function getBoss(): PgBoss {
  * the hardest kind of broken to notice. It matters more with every consumer
  * added: an outbound email that appears sent and never leaves is worse than a
  * process that refused to start.
+ *
+ * **Stops whatever instance is already running first**, which only ever exists
+ * under `bun --hot`: a reload re-runs `index.ts`'s `start()`, and the instance
+ * the last evaluation started is still on the slot above (#639). Stopped before
+ * the new one starts rather than after, so there is never a moment with two
+ * sets of workers, and through the same graceful `stopBoss` a signal uses — an
+ * in-flight job finishes or goes back to the queue for the new workers.
+ *
+ * `create` exists for `boss.test.ts`, which has no Postgres to start a real
+ * instance against; the app never passes it.
  */
-export async function startBoss(): Promise<PgBoss> {
+export async function startBoss(
+  create: (options: BossOptions) => PgBoss = (options) => new PgBoss(options),
+): Promise<PgBoss> {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
   }
 
-  const instance = new PgBoss({
+  await stopBoss();
+
+  const instance = create({
     connectionString,
     schema: SCHEMA,
     max: MAX_CONNECTIONS,
@@ -181,7 +213,7 @@ export async function startBoss(): Promise<PgBoss> {
   });
 
   await instance.start();
-  boss = instance;
+  globalForBoss.pgBoss = instance;
   console.log(`[jobs] pg-boss started (schema "${SCHEMA}")`);
 
   return instance;
@@ -467,10 +499,10 @@ export async function applySweepSchedule(
 
 /** Stop polling, let in-flight work finish, and release the pool. */
 export async function stopBoss(): Promise<void> {
-  if (!boss) return;
+  const stopping = globalForBoss.pgBoss;
+  if (!stopping) return;
 
-  const stopping = boss;
-  boss = undefined;
+  globalForBoss.pgBoss = undefined;
   await stopping.stop({ graceful: true, timeout: STOP_TIMEOUT_MS });
   console.log("[jobs] pg-boss stopped");
 }

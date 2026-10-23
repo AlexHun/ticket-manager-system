@@ -150,6 +150,8 @@ const diagnostic = (warning: UsageWarning, report: UsageReport) => {
 /**
  * Send the history to a dev server (#428) and say what it kept. Failures set
  * the exit code rather than throwing, so the table this run printed stands.
+ * `.claude/hooks/push-usage.mjs` (#557) logs the `pushed …` line and the
+ * `Push …` errors by their first word, so reword them there too.
  */
 async function push(target: string, historyFile: string, meta: IssueMetadata) {
   try {

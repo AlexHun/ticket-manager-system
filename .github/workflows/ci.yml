@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 env:
-  BUN_VERSION: 1.3.13
+  BUN_VERSION: 1.4.4
 
 jobs:
   check:
@@ -91,8 +91,21 @@ jobs:
       - name: Check formatting
         run: bun run format:check
 
-      - name: Typecheck all workspaces
+      # Every workspace, then the root project that holds playwright.config.ts
+      # and tests/e2e (#553; docs/standards/conventions.md).
+      - name: Typecheck all workspaces and the E2E project
         run: bun run typecheck
+
+      # Type-aware ESLint over both apps and both packages:
+      # `no-floating-promises` and `no-misused-promises` (#534), plus the React
+      # hooks rules on apps/web (#535). A missing `await` on a Prisma call, an
+      # outbox write or a react-query mutation compiles cleanly and drops its
+      # error, and typecheck cannot see it. Here and in no hook: it is the slow
+      # kind of check, and the pre-commit hook is the fast gate
+      # (docs/standards/conventions.md has the measured cost). After the Prisma
+      # client is generated, because the rules read its types.
+      - name: Lint the apps and packages
+        run: bun run lint
 
       # The provider and the session are mocked; the database is real but runs
       # in process (PGLite, ADR-0014), so this still needs no OPENAI_API_KEY and
@@ -136,6 +149,12 @@ jobs:
           FILES=$(find ./src -name '*.test.ts' | LC_ALL=C sort -r)
           echo "$FILES"
           bun test --preload ./src/test/preload.ts $FILES
+
+      - name: Shared package tests
+        run: bun run --filter '@ticket/shared' test
+
+      - name: Repo scanner tests
+        run: bun run --filter '@ticket/repo-scan' test
 
       - name: Web component tests
         run: bun run --filter '@ticket/web' test

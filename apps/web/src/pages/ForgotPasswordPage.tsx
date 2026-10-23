@@ -65,7 +65,7 @@ export function ForgotPasswordPage() {
         <Card className="w-full">
           <CardHeader>
             <CardTitle>
-              {sent ? "Check your email" : "Forgot password"}
+              {sent ? "Check your email" : "Reset your password"}
             </CardTitle>
             <CardDescription>
               {sent
@@ -86,7 +86,7 @@ export function ForgotPasswordPage() {
               </div>
             ) : (
               <form
-                onSubmit={handleSubmit(onSubmit)}
+                onSubmit={(event) => void handleSubmit(onSubmit)(event)}
                 noValidate
                 className="flex flex-col gap-4"
               >

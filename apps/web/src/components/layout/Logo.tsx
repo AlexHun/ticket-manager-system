@@ -1,4 +1,4 @@
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME } from "@ticket/shared";
 import { cn } from "@/lib/utils";
 
 /**

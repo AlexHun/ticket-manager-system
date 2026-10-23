@@ -266,11 +266,11 @@ function AssigneeFilter({
         value === ANY
           ? ANY_ASSIGNEE_LABEL
           : (options.find((option) => option.value === value)?.label ??
-            (isLoading ? "Loading…" : "Unknown user"))
+            (isLoading ? "Loading…" : "Unknown team member"))
       }
       // A hint rather than a disabled item: a `SelectItem` is selectable, and
       // "Loading…" is not something anyone should be able to filter by.
-      hint={isLoading ? "Loading users…" : undefined}
+      hint={isLoading ? "Loading the team…" : undefined}
     />
   );
 }

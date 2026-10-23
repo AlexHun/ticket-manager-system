@@ -31,30 +31,39 @@ export const KPI_THRESHOLD = {
   goodSettledShare: 0.7,
 } as const;
 
+/**
+ * The Backlog's size in the slice: New and Open together. The Backlog tile's
+ * figure and its verdict both read this, so they cannot count different sets.
+ *
+ * New counts, and this is where forgetting that would do the most damage: on a
+ * deployment with no AI key every ticket sits in New, and a count scoped to
+ * Open alone would report a healthy Backlog in front of untouched mail.
+ * `Processing` is excluded — a worker is on it.
+ */
+export function backlogCount(summary: TicketStatsSummary): number {
+  return BACKLOG_STATUS.reduce(
+    (sum, status) => sum + summary.byStatus[status],
+    0,
+  );
+}
+
 export interface KpiVerdict {
   status: KpiStatus;
   label: string;
 }
 
 /**
- * Open backlog.
+ * The Backlog (New and Open).
  *
  * Judged as a *share* of the slice, not a raw count: 25 open out of 30 is a
  * problem and 25 out of 500 is a Tuesday, and a fixed count would call both the
  * same thing. Unassigned is folded in here rather than given its own tile
  * because "nobody owns it" is the actionable part of "it is open".
  */
-export function openVerdict(summary: TicketStatsSummary): KpiVerdict | null {
-  // New counts as backlog, and this is the line where forgetting that would do
-  // the most damage: on a deployment with no AI key every ticket sits in New,
-  // and a verdict scoped to Open alone would report a healthy queue in front of
-  // an untouched inbox. `Processing` is excluded — a worker is on it.
-  const open = BACKLOG_STATUS.reduce(
-    (sum, status) => sum + summary.byStatus[status],
-    0,
-  );
-  if (summary.total === 0 || open === 0) return null;
-  const share = open / summary.total;
+export function backlogVerdict(summary: TicketStatsSummary): KpiVerdict | null {
+  const backlog = backlogCount(summary);
+  if (summary.total === 0 || backlog === 0) return null;
+  const share = backlog / summary.total;
 
   if (
     share >= KPI_THRESHOLD.criticalOpenShare ||

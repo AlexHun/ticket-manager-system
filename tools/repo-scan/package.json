@@ -1,0 +1,20 @@
+{
+  "name": "@ticket/repo-scan",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./git-env": "./src/git-env.ts",
+    "./rules": "./src/rules.ts",
+    "./strip-comments": "./src/strip-comments.ts",
+    "./tracked-files": "./src/tracked-files.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
+  }
+}

@@ -13,6 +13,7 @@ import {
   PIPELINE_OUTCOME,
   TICKET_CATEGORY,
   type EvalCorpus,
+  USER_ROLE,
 } from "@ticket/shared";
 import { SMOKE_CASE_IDS } from "@ticket/core";
 import { CREDENTIALS, signIn } from "./helpers/auth";
@@ -84,7 +85,7 @@ test.describe("the evals screen", () => {
   test("an admin can reach it, and is told why no run can start", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     await page.getByRole("link", { name: "Evals" }).click();
     await page.waitForURL("/evals");
@@ -195,7 +196,7 @@ test.describe("the evals screen", () => {
     });
 
     try {
-      await signIn(page, "admin");
+      await signIn(page, USER_ROLE.admin);
       await page.goto("/evals");
 
       // Scoped to this run's card: the suite's other specs leave runs of their
@@ -311,7 +312,7 @@ test.describe("the evals screen", () => {
     const newer = await seed(EVAL_CORPUS.frozen, 3, 21);
 
     try {
-      await signIn(page, "admin");
+      await signIn(page, USER_ROLE.admin);
       await page.goto("/evals");
 
       // Matched on the title exactly, not on `hasText`: run ids are serial and
@@ -376,7 +377,7 @@ test.describe("the evals screen", () => {
     // The guard half matters as much as the happy path: this route spends
     // money. `AdminScreenRoute` is UX and the API guards are the control —
     // both are asserted, here and below.
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await expect(page.getByRole("link", { name: "Evals" })).toHaveCount(0);
 
@@ -396,7 +397,7 @@ test.describe("the evals API refuses an agent and a signed-out caller", () => {
   });
 
   test("an agent session -> 403", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect((await page.request.get(`${API_URL}/api/evals/runs`)).status()).toBe(
       403,
@@ -413,7 +414,7 @@ test.describe("the evals API refuses an agent and a signed-out caller", () => {
   }) => {
     // The refusal is before the row, so a deployment with no key never
     // accumulates runs that read as in flight and can never be answered.
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     const before = await testDb.evalRun.count();
 
     const res = await page.request.post(`${API_URL}/api/evals/runs`, {
@@ -659,7 +660,7 @@ test.describe("the eval schedule", () => {
   test("an admin retimes it, and the new time is what comes back", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/evals");
 
     try {
@@ -713,7 +714,7 @@ test.describe("the eval schedule", () => {
     });
 
     try {
-      await signIn(page, "admin");
+      await signIn(page, USER_ROLE.admin);
       await page.goto("/evals");
 
       const row = page.getByRole("listitem").filter({ hasText: "Ada Admin" });

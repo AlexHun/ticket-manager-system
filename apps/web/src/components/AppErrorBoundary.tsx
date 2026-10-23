@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ROUTE } from "@/lib/routes";
 import { Sentry } from "@/lib/sentry";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,10 +38,10 @@ export function AppErrorBoundary({ children }: { children: ReactNode }) {
         <div className="flex min-h-svh items-center justify-center p-6">
           <Card className="w-full max-w-md">
             <CardHeader>
-              <CardTitle>Something broke</CardTitle>
+              <CardTitle>Couldn't show this page</CardTitle>
               <CardDescription>
-                This page hit an error it could not recover from. The details
-                have been recorded.
+                The details have been recorded. Try again, or go back to the
+                dashboard.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex gap-2">
@@ -48,7 +49,10 @@ export function AppErrorBoundary({ children }: { children: ReactNode }) {
               <Button
                 variant="outline"
                 onClick={() => {
-                  window.location.href = "/";
+                  // A full page load rather than a router navigation, on
+                  // purpose: what threw may be the router or the query cache,
+                  // and only a reload starts both again from nothing.
+                  window.location.href = ROUTE.dashboard.path;
                 }}
               >
                 Back to dashboard

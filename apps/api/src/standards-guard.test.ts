@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
-import { stripComments } from "./strip-comments";
+import { BRAND_ATTRIBUTIVE, BRAND_NAME, BRAND_SHORT } from "@ticket/shared";
+import {
+  checkRules,
+  type Rule,
+  ruleCode,
+  ruleLabel,
+  underAny,
+} from "@ticket/repo-scan/rules";
+import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * The backend, AI, API-testing and repo-config standards a check can decide
@@ -17,47 +25,49 @@ import { stripComments } from "./strip-comments";
  * and `retryLimit:` rather than the bare names, and this file does the same for
  * the same reason: three AI modules already explain in a comment why they call
  * `generateText` and not `generateObject`. Matching runs over comment-stripped
- * source (`strip-comments.ts`), so an explanation never fails the build,
- * and each rule is shown a violation it must catch and a comment it must ignore.
+ * source (`stripComments`, from `@ticket/repo-scan`), so an explanation never
+ * fails the build, and each rule is shown a violation it must catch and a
+ * comment it must ignore. The rule shape and the runner that turns the table
+ * into tests are `@ticket/repo-scan/rules`, which the web guard hands its own
+ * table to (#567).
+ *
+ * **Every rule here reads the files git tracks** (`trackedFiles`, #567), the
+ * config rules included, so a local run checks what CI checks, and nothing
+ * generated or ignored needs excluding by name. Each source rule names the
+ * roots it reads (#568), and `ruleCode` reads every tracked source file under
+ * them.
  *
  * **The repo-wide config rules live here rather than in the web guard** because
  * this suite runs on pre-push as well as in CI, and the web suite only in CI:
  * a widened `better-auth` pin or a dropped `--redactNetworkHeaders` is caught
- * before it leaves the machine.
+ * before it leaves the machine. So does the product-name rule (#545), which
+ * reads raw text, comments included, across both apps, `packages/` but
+ * `packages/shared` and `scripts/`, rather than one workspace's stripped
+ * source.
  *
  * Nothing is mocked, and nothing here touches the database.
  */
 
-/** `apps/api`, which every scanned path is relative to. */
-const API_ROOT = path.resolve(import.meta.dir, "..");
-/** The repository root, which every config path is relative to. */
-const REPO_ROOT = path.resolve(API_ROOT, "../..");
+/** The repository root, which every path here is relative to. */
+const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
 /** This file holds every banned form as a fixture, so it is never scanned. */
-const SELF = "src/standards-guard.test.ts";
+const SELF = "apps/api/src/standards-guard.test.ts";
 
-interface SourceRule {
-  /** The bullet, in a sentence a failing run can be acted on from. */
-  name: string;
-  /** The standards file the bullet lives in, under `docs/standards/`. */
-  standard: string;
-  /** The banned forms. Each is matched against comment-stripped source. */
-  forms: RegExp[];
-  /** Which files the rule reads, as paths relative to `apps/api`. Every
-   *  scanned file when absent. */
-  applies?: (file: string) => boolean;
-  /** Files where the form is the point rather than a violation. */
-  allowed?: string[];
-  /** Lines that break the rule, each of which must be caught. */
-  catches: string[];
-  /** A comment that only mentions the form, and must be ignored. */
-  ignores: string;
-}
+/** The API's own code: `src/`, the seed scripts in `prisma/`, and
+ *  `prisma.config.ts`. The generated client is not tracked, so it is not
+ *  read. */
+const API = ["apps/api/src", "apps/api/prisma", "apps/api/prisma.config.ts"];
+/** The API's code, `packages/` and `scripts/` (#568). `packages/shared` is
+ *  read too: `USER_ROLE` is defined there as a map, which no role form
+ *  matches. `tools/` is the scanner itself, and the web guard's rules read the
+ *  web workspace. */
+const API_PACKAGES_SCRIPTS = [...API, "packages", "scripts"];
 
-const isTest = (file: string) => file.endsWith(".test.ts");
+const isTest = (file: string) => /\.test\.[cm]?[jt]sx?$/.test(file);
 /** Production code: neither a test nor the helpers under `src/test/`. */
 const isProduction = (file: string) =>
-  !isTest(file) && !file.startsWith("src/test/");
+  !isTest(file) && !file.startsWith("apps/api/src/test/");
 
 const ROLE = "[\"'`](?:admin|agent)[\"'`]";
 /** The fields a role is written into: the user's own, and the two sides of a
@@ -69,10 +79,13 @@ const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']`;
 /** A field of the SDK's usage object or of `AiUsage`, as a whole word. */
 const USAGE_FIELD = String.raw`(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b`;
 
-const SOURCE_RULES: SourceRule[] = [
+/** The source rules. Each rule's `roots`, `applies` and `allowed` name paths
+ *  from the repository root. */
+const SOURCE_RULES: Rule[] = [
   {
     name: 'Role values read USER_ROLE from @ticket/shared, in tests and fixtures too: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
+    roots: API_PACKAGES_SCRIPTS,
     // Where a role is meant, not the word: `asCaller("admin")` and
     // `seedColleagues("admin")` name a test fixture, and `REPLY_ORIGIN.agent`
     // is a different enum, so none of those match. The web guard's forms,
@@ -109,6 +122,7 @@ const SOURCE_RULES: SourceRule[] = [
   {
     name: "Structured output goes through generateText + Output.object, never generateObject (it omits timeout)",
     standard: "ai-features.md",
+    roots: API_PACKAGES_SCRIPTS,
     // The identifier anywhere in code — the import, the call, an aliased
     // import. Comments are already blanked, and the name means nothing else.
     forms: [/\bgenerateObject\b/],
@@ -121,6 +135,7 @@ const SOURCE_RULES: SourceRule[] = [
   {
     name: "The SDK's LanguageModelUsage and the usage fields are read only in ai/provider.ts: callers ask usdFor / wasCached (ADR-0018)",
     standard: "ai-features.md",
+    roots: API_PACKAGES_SCRIPTS,
     // Tests build SDK-shaped fixtures and assert the mapped fields, which is
     // what checking the seam takes; the rule is about production code.
     forms: [
@@ -133,7 +148,7 @@ const SOURCE_RULES: SourceRule[] = [
       ),
     ],
     applies: isProduction,
-    allowed: ["src/ai/provider.ts"],
+    allowed: ["apps/api/src/ai/provider.ts"],
     catches: [
       `import type { LanguageModelUsage } from "ai";`,
       `const hit = (result.usage?.cachedInputTokens ?? 0) > 0;`,
@@ -146,8 +161,9 @@ const SOURCE_RULES: SourceRule[] = [
   {
     name: "The generated Prisma client is imported only by ./db and the test Postgres module; everything else imports the singleton from ./db",
     standard: "backend.md",
+    roots: API_PACKAGES_SCRIPTS,
     forms: [new RegExp(String.raw`${SPECIFIER}[^"'\n]*generated/prisma\b`)],
-    allowed: ["src/db.ts", "src/test/pg.ts"],
+    allowed: ["apps/api/src/db.ts", "apps/api/src/test/pg.ts"],
     catches: [
       `import { PrismaClient } from "../generated/prisma/client";`,
       `export type { User } from "./generated/prisma/models";`,
@@ -158,8 +174,9 @@ const SOURCE_RULES: SourceRule[] = [
   {
     name: "postmark is imported only by mail/transport.ts: every email goes through the outbox (ADR-0009)",
     standard: "backend.md",
+    roots: API_PACKAGES_SCRIPTS,
     forms: [new RegExp(String.raw`${SPECIFIER}postmark(?:/[^"'\n]*)?["']`)],
-    allowed: ["src/mail/transport.ts"],
+    allowed: ["apps/api/src/mail/transport.ts"],
     catches: [
       `import { ServerClient } from "postmark";`,
       `const postmark = await import("postmark");`,
@@ -169,13 +186,16 @@ const SOURCE_RULES: SourceRule[] = [
   {
     name: "No test file registers ../db, ../middleware/auth or the session seam ../middleware/session with mock.module: the preload binds the database and who is asking once",
     standard: "testing-api.md",
+    // The API's alone: `../db` and the middleware are its modules, and only
+    // its tests run under the preload.
+    roots: API,
     // `session` beside the two the bullet names: it is the specifier the
     // preload actually binds for the guards (#366), so a file re-registering
     // it is the per-file default the bullet warns about.
     forms: [
       /\bmock\.module\(\s*["'](?:\.{1,2}\/)+(?:db|middleware\/(?:auth|session))(?:\.ts|\/index(?:\.ts)?)?["']/,
     ],
-    allowed: ["src/test/preload.ts"],
+    allowed: ["apps/api/src/test/preload.ts"],
     catches: [
       `mock.module("../db", () => ({ Prisma, prisma }));`,
       `mock.module("../../middleware/auth", () => stub);`,
@@ -186,94 +206,29 @@ const SOURCE_RULES: SourceRule[] = [
   },
 ];
 
-/** Every `.ts` file the guard reads, relative to `apps/api`: `src/` less the
- *  generated client, the seed scripts under `prisma/`, and `prisma.config.ts`. */
-function sourceFiles(): string[] {
-  const files: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(path.join(API_ROOT, dir), {
-      withFileTypes: true,
-    })) {
-      const rel = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) {
-        if (rel !== "src/generated") walk(rel);
-      } else if (entry.name.endsWith(".ts")) files.push(rel);
-    }
-  };
-  walk("src");
-  for (const entry of readdirSync(path.join(API_ROOT, "prisma"))) {
-    if (entry.endsWith(".ts")) files.push(`prisma/${entry}`);
-  }
-  files.push("prisma.config.ts");
-  return files.filter((file) => file !== SELF);
-}
+/** Every file git tracks, relative to the repository root. */
+const TRACKED = trackedFiles(REPO_ROOT);
 
-/** The 1-based line numbers in `code` where any of the rule's forms matches,
- *  each once however many forms match it. */
-function offendingLines(rule: SourceRule, code: string): number[] {
-  const lines = new Set<number>();
-  for (const form of rule.forms) {
-    // The form's own flags kept: a `/u` or `/i` form must not lose them here.
-    const global = new RegExp(form.source, `${form.flags.replace("g", "")}g`);
-    for (const match of code.matchAll(global)) {
-      lines.add(code.slice(0, match.index).split("\n").length);
-    }
-  }
-  return [...lines].sort((a, b) => a - b);
-}
-
-const label = (rule: { name: string; standard: string }) =>
-  `${rule.name} (docs/standards/${rule.standard})`;
-
-const FILES = sourceFiles();
-const CODE = new Map(
-  FILES.map((file) => [
-    file,
-    stripComments(readFileSync(path.join(API_ROOT, file), "utf8")),
-  ]),
-);
+const CODE = ruleCode(SOURCE_RULES, {
+  root: REPO_ROOT,
+  skip: [SELF],
+  tracked: TRACKED,
+});
 
 test("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
-  // walk is a green run that checked nothing.
-  expect(FILES.length).toBeGreaterThan(100);
-  expect(FILES).toContain("src/index.ts");
-  expect(FILES).toContain("src/ai/provider.ts");
-  expect(FILES).toContain("prisma/seed.ts");
-  expect(FILES.some(isTest)).toBe(true);
-  expect(FILES.some((file) => file.startsWith("src/generated/"))).toBe(false);
+  // list is a green run that checked nothing. Each rule's own roots check
+  // asks the same of every root it names.
+  const files = [...CODE.keys()];
+  expect(files.length).toBeGreaterThan(100);
+  expect(files).toContain("apps/api/src/index.ts");
+  expect(files).toContain("apps/api/src/ai/provider.ts");
+  expect(files).toContain("apps/api/prisma/seed.ts");
+  expect(files.some(isTest)).toBe(true);
+  expect(files.some((file) => file.includes("/generated/"))).toBe(false);
 });
 
-for (const rule of SOURCE_RULES) {
-  describe(`${rule.standard}: ${rule.name}`, () => {
-    test("holds across apps/api", () => {
-      const offenders: string[] = [];
-      for (const file of FILES) {
-        if (rule.applies?.(file) === false || rule.allowed?.includes(file)) {
-          continue;
-        }
-        for (const line of offendingLines(rule, CODE.get(file)!)) {
-          offenders.push(`${file}:${line} breaks: ${label(rule)}`);
-        }
-      }
-      expect(offenders).toEqual([]);
-    });
-
-    test("its allowlist names files that exist", () => {
-      // A renamed exemption would leave the rule guarding nothing there and
-      // failing nothing, which reads exactly like a clean tree.
-      for (const file of rule.allowed ?? []) expect(FILES).toContain(file);
-    });
-
-    test.each(rule.catches)("catches %s", (line) => {
-      expect(offendingLines(rule, stripComments(line))).toEqual([1]);
-    });
-
-    test("ignores a comment that only mentions the form", () => {
-      expect(offendingLines(rule, stripComments(rule.ignores))).toEqual([]);
-    });
-  });
-}
+checkRules(SOURCE_RULES, CODE, { describe, test, expect });
 
 /* ── Repo config ─────────────────────────────────────────────────────────── */
 
@@ -306,7 +261,20 @@ const READ_ONLY_AGENTS = [
   "bulk-reader",
   "boilerplate-scribe",
   "security-reviewer",
+  "copy-reviewer",
 ];
+
+const CI_WORKFLOW = ".github/workflows/ci.yml";
+/** The three images, each built on Bun. */
+const DOCKERFILES = [
+  "apps/api/Dockerfile",
+  "apps/web/Dockerfile",
+  "apps/web/Dockerfile.dev",
+];
+/** Every Dockerfile opening with the same `FROM` line, for a planted set to
+ *  override one of. */
+const dockerfilesFrom = (image: string): FileContents =>
+  Object.fromEntries(DOCKERFILES.map((file) => [file, `FROM ${image}\n`]));
 
 /** `better-auth`'s declared range in a manifest, from whichever block has it. */
 function betterAuthRange(manifest: string): string | undefined {
@@ -331,6 +299,85 @@ const agentName = (markdown: string) =>
 
 const AGENT = (name: string, extra = "") =>
   `---\nname: "${name}"\nmodel: haiku\ntools: Read, Glob, Grep\n${extra}---\n\nBody.\n`;
+
+/** The roots the product-name rule reads, repo-relative: both apps, and since
+ *  #568 `packages/` and `scripts/`. */
+const BRAND_SCOPE = ["apps/api", "apps/web", "packages", "scripts"];
+/** Where the name is typed, once, for everything else to read: never read. */
+const BRAND_HOME = "packages/shared";
+/** The text files a name could be typed into. Not `.env*`: a local env file
+ *  holds live secrets, and nothing reads it here. */
+const BRAND_FILE =
+  /(?:\.(?:ts|tsx|js|mjs|cjs|html|css|json|md|sql|prisma|toml|svg|ya?ml)|^Dockerfile(?:\.\w+)?|^Caddyfile)$/;
+/**
+ * The product name in any of its lengths, matched over raw text — comments
+ * included, unlike the source rules above, because a comment restating the
+ * name is how #513's first draft carried it (#545). Built from the words of
+ * `BRAND_ATTRIBUTIVE`, so this file never types the name: the last two are
+ * `BRAND_SHORT` and in all three constants, the first two in the two longer
+ * ones. Case is loose, and so is what joins the words — a
+ * space, a line break, a hyphen, an underscore or nothing — so a slug or an
+ * identifier that starts with it is still the name. Only the start is a word
+ * boundary: one at the end would let `…DeskSignOff` through.
+ */
+const [BRAND_W1, BRAND_W2, BRAND_W3] = BRAND_ATTRIBUTIVE.split(" ");
+const BRAND_FORM = new RegExp(
+  String.raw`\b(?:${BRAND_W1}[\s_-]*${BRAND_W2}|${BRAND_W2}[\s_-]*${BRAND_W3})`,
+  "gi",
+);
+
+/**
+ * The files that may type the name, each with how many times and why. A file
+ * here is held to exactly that count, so a literal added to it fails as one
+ * anywhere else would, and so does one removed, or an allowance whose file
+ * moved, rather than guarding nothing.
+ */
+const BRAND_ALLOWANCES: Record<string, { count: number; reason: string }> = {
+  "apps/web/index.html": {
+    count: 1,
+    reason:
+      "the tab title in the static shell is read before any module runs, so it cannot import BRAND_SHORT; tests/e2e/brand.spec.ts holds the two together",
+  },
+  "apps/api/src/routes/users.test.ts": {
+    count: 5,
+    reason:
+      "pins the invitation and reset emails as the recipient reads them, which an import of the constant would follow anywhere",
+  },
+};
+
+/**
+ * Every tracked text file under `BRAND_SCOPE` and outside `BRAND_HOME`, keyed
+ * by repo-relative path.
+ * This file is read too: its fixtures build the name from the constants rather
+ * than typing it. Tracked files, as the source rules read (#567), so installed,
+ * built and generated output is never read and needs no exclusion; an
+ * untracked file is read once it is added.
+ */
+function brandScopeFiles(): FileContents {
+  return readRepo(
+    ...TRACKED.filter(
+      (file) =>
+        underAny(BRAND_SCOPE, file) &&
+        !underAny([BRAND_HOME], file) &&
+        BRAND_FILE.test(file.slice(file.lastIndexOf("/") + 1)),
+    ),
+  );
+}
+
+/** The 1-based line of each place `text` names the product. */
+const brandLines = (text: string) =>
+  [...text.matchAll(BRAND_FORM)].map(
+    (match) => text.slice(0, match.index).split("\n").length,
+  );
+
+/** Every allowed file holding exactly its count, which each planted set
+ *  starts from so it is caught for the one thing it plants. */
+const BRAND_SHELL: FileContents = Object.fromEntries(
+  Object.entries(BRAND_ALLOWANCES).map(([file, { count }]) => [
+    file,
+    `${BRAND_NAME}\n`.repeat(count),
+  ]),
+);
 
 const CONFIG_RULES: ConfigRule[] = [
   {
@@ -371,6 +418,48 @@ const CONFIG_RULES: ConfigRule[] = [
     ],
   },
   {
+    name: "every Dockerfile's Bun image is oven/bun:<BUN_VERSION>-slim, the Bun CI runs, never a floating tag (#651)",
+    standard: "deployment.md",
+    read: () => readRepo(CI_WORKFLOW, ...DOCKERFILES),
+    problems: (files) => {
+      const version = /^\s*BUN_VERSION:\s*(\S+)\s*$/m.exec(
+        files[CI_WORKFLOW]!,
+      )?.[1];
+      if (!version) return [`${CI_WORKFLOW} sets no BUN_VERSION`];
+      const found: string[] = [];
+      for (const dockerfile of DOCKERFILES) {
+        const images = [
+          ...files[dockerfile]!.matchAll(/^FROM\s+(oven\/bun\S*)/gm),
+        ].map((match) => match[1]);
+        if (images.length === 0) found.push(`${dockerfile} has no Bun image`);
+        for (const image of images) {
+          if (image !== `oven/bun:${version}-slim`) {
+            found.push(
+              `${dockerfile} builds from ${image}, not oven/bun:${version}-slim`,
+            );
+          }
+        }
+      }
+      return found;
+    },
+    catches: [
+      {
+        [CI_WORKFLOW]: "env:\n  BUN_VERSION: 1.4.4\n",
+        ...dockerfilesFrom("oven/bun:1.4.4-slim"),
+        "apps/web/Dockerfile.dev": "FROM oven/bun:1-slim\n",
+      },
+      {
+        [CI_WORKFLOW]: "env:\n  BUN_VERSION: 1.4.5\n",
+        ...dockerfilesFrom("oven/bun:1.4.4-slim"),
+      },
+      {
+        [CI_WORKFLOW]: "env:\n  BUN_VERSION: 1.4.4\n",
+        ...dockerfilesFrom("oven/bun:1.4.4-slim AS build"),
+        "apps/api/Dockerfile": "FROM node:24-slim\n",
+      },
+    ],
+  },
+  {
     name: ".mcp.json keeps --redactNetworkHeaders on the chrome-devtools server: sessions are cookies, and the network tools would otherwise pull one into the transcript",
     standard: "conventions.md",
     read: () => readRepo(".mcp.json"),
@@ -402,12 +491,12 @@ const CONFIG_RULES: ConfigRule[] = [
     ],
   },
   {
-    name: "The read-only agents (bulk-reader, boilerplate-scribe, security-reviewer) declare no memory: — a memory scope silently re-adds Read, Write and Edit",
+    name: "The read-only agents (bulk-reader, boilerplate-scribe, security-reviewer, copy-reviewer) declare no memory: — a memory scope silently re-adds Read, Write and Edit",
     standard: "conventions.md",
     read: () =>
       readRepo(
-        ...readdirSync(path.join(REPO_ROOT, AGENTS_DIR))
-          .filter((entry) => entry.endsWith(".md"))
+        ...filesUnder(TRACKED, AGENTS_DIR)
+          .filter((entry) => /^[^/]+\.md$/.test(entry))
           .map((entry) => `${AGENTS_DIR}/${entry}`),
       ),
     problems: (files) => {
@@ -430,6 +519,7 @@ const CONFIG_RULES: ConfigRule[] = [
         "a.md": AGENT("bulk-reader", "memory: project\n"),
         "b.md": AGENT("boilerplate-scribe"),
         "c.md": AGENT("security-reviewer"),
+        "e.md": AGENT("copy-reviewer"),
       },
       {
         // An agent renamed away is the rule guarding nothing.
@@ -442,10 +532,94 @@ const CONFIG_RULES: ConfigRule[] = [
       "a.md": `${AGENT("bulk-reader")}memory: project is what not to add.\n`,
       "b.md": AGENT("boilerplate-scribe"),
       "c.md": AGENT("security-reviewer"),
+      "e.md": AGENT("copy-reviewer"),
       "d.md": AGENT("playwright-e2e-author", "memory: project\n"),
     },
   },
+  {
+    name: "The product name is typed only in @ticket/shared: apps/api, apps/web, packages/ but packages/shared, and scripts/ read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
+    standard: "copy.md",
+    read: brandScopeFiles,
+    problems: (files) => {
+      const found: string[] = [];
+      for (const [file, text] of Object.entries(files)) {
+        if (file in BRAND_ALLOWANCES) continue;
+        for (const line of brandLines(text)) {
+          found.push(`${file}:${line} types the product name`);
+        }
+      }
+      for (const [file, { count, reason }] of Object.entries(
+        BRAND_ALLOWANCES,
+      )) {
+        const lines = brandLines(files[file] ?? "");
+        if (lines.length !== count) {
+          found.push(
+            `${file} is allowed the product name ${count} times (${reason}) and has it ${lines.length} (lines ${lines.join(", ") || "none"})`,
+          );
+        }
+      }
+      return found;
+    },
+    catches: [
+      // A comment — the case the source rules' stripping would have missed.
+      {
+        ...BRAND_SHELL,
+        "apps/web/src/components/layout/Lockup.tsx": `/** Reads "${BRAND_NAME}". */\nexport const x = 1;\n`,
+      },
+      // The short form, broken over a line, in lower case.
+      {
+        ...BRAND_SHELL,
+        "apps/api/src/auth.ts": `const slug = \`${BRAND_SHORT.toLowerCase().replace(" ", "\n  ")}\`;\n`,
+      },
+      // A hyphenated slug, and an identifier.
+      {
+        ...BRAND_SHELL,
+        "apps/web/src/lib/storage.ts": `const KEY = "${BRAND_SHORT.toLowerCase().replace(" ", "-")}:density";\n`,
+      },
+      {
+        ...BRAND_SHELL,
+        "apps/api/src/mail/sign-off.ts": `export const ${BRAND_SHORT.replace(" ", "")}SignOff = 1;\n`,
+      },
+      // The attributive form, in a test that has no allowance.
+      {
+        ...BRAND_SHELL,
+        "apps/web/src/pages/LoginPage.test.tsx": `expect(subject).toBe("Your ${BRAND_ATTRIBUTIVE} account is ready");\n`,
+      },
+      // A second literal in an allowed file is over its count.
+      {
+        ...BRAND_SHELL,
+        "apps/web/index.html": `<title>${BRAND_SHORT}</title>\n<meta content="${BRAND_SHORT}" />\n`,
+      },
+      // An allowance whose file is gone guards nothing.
+      {
+        "apps/api/src/routes/users.test.ts":
+          BRAND_SHELL["apps/api/src/routes/users.test.ts"]!,
+      },
+    ],
+    ignores: {
+      ...BRAND_SHELL,
+      // Reading the constant is the rule kept; the words apart, or with
+      // another word between, are ordinary words.
+      "apps/web/src/components/layout/LoginLockup.tsx":
+        '// The lockup reads BRAND_NAME; at the desk the agents forge replies.\n<span className="sr-only">{BRAND_NAME}</span>\n',
+    },
+  },
 ];
+
+test("the product-name rule reads the tree it means to", () => {
+  // An empty list would pass every file it did not read.
+  const files = Object.keys(brandScopeFiles());
+  expect(files.length).toBeGreaterThan(400);
+  expect(files).toContain("apps/api/src/auth.ts");
+  expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
+  expect(files).toContain("apps/web/index.html");
+  expect(files).toContain("packages/core/src/index.ts");
+  expect(files).toContain("scripts/graph.ts");
+  expect(files.some((file) => file.startsWith(`${BRAND_HOME}/`))).toBe(false);
+  // No file is skipped by name: the guard itself is read like any other.
+  expect(files).toContain(SELF);
+  expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
+});
 
 for (const rule of CONFIG_RULES) {
   describe(`${rule.standard}: ${rule.name}`, () => {
@@ -453,7 +627,7 @@ for (const rule of CONFIG_RULES) {
       expect(
         rule
           .problems(rule.read())
-          .map((problem) => `${problem} breaks: ${label(rule)}`),
+          .map((problem) => `${problem} breaks: ${ruleLabel(rule)}`),
       ).toEqual([]);
     });
 

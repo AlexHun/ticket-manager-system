@@ -259,7 +259,8 @@ export function TicketMessageThread({
       // composer pinned underneath rides up under this sentence instead of
       // sitting at the bottom of the pane.
       <p className={cn("text-sm text-muted-foreground", className)}>
-        No messages on this ticket yet.
+        No messages on this ticket yet. Messages to and from the customer appear
+        here.
       </p>
     );
   }

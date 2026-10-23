@@ -14,8 +14,8 @@ Feature work runs in this order, unbroken in one context up to the tickets:
 `/write-a-prd` → `/prd-to-plan` → `/to-tickets`, then one `/implement` per
 ticket — or `/chain` to run them all in sequence, each ticket in a fresh
 subagent, merged before the next starts. `write-a-prd` and `prd-to-plan` are this repo's tuned spec pair and
-fill the slot `/mattpocock-skills:to-spec` holds elsewhere. `to-tickets` and
-`implement` are local copies of the plugin skills, adapted to this repo, and
+fill the slot `/mattpocock-skills:to-spec` holds elsewhere. `to-tickets`,
+`implement` and `retro` are local copies of the plugin skills, adapted to this repo, and
 unlike the plugin versions they can be invoked by the agent; use them rather
 than the `mattpocock-skills:` versions.
 
@@ -44,12 +44,15 @@ background. A red job whose test has an open `Flake:` issue gets one
 session, and one that goes green on re-run is filed as `Flake: <test>`. Report
 it done and stop there rather than opening the next one, so the next ticket
 starts in a fresh context. Context cost per turn climbs steeply with session
-length, and past roughly 150k tokens reasoning degrades — a ticket that
-outgrows its window wants splitting, not compacting.
+length, and past roughly 200k tokens of context review starts finding more —
+a ticket forecast past that, about 75 turns in one window, wants splitting,
+not compacting (`docs/agents/issue-tracker.md`, #627).
 
 **Resume from the repo, not from memory.** After an API error, a restore or a
 `Continue`, read `git status`, the current branch and `gh pr view` before the
-next action, and tell the user where things stand.
+next action, and tell the user where things stand. On a resume or after
+compaction, `.claude/hooks/print-resume-state.mjs` prints all three into context
+at session start; after an API error mid-session, read them yourself.
 
 A bug, a flake, or a regression starts at `/mattpocock-skills:diagnosing-bugs`,
 which earns a red feedback loop before it theorises.
@@ -58,10 +61,17 @@ which earns a red feedback loop before it theorises.
 
 Run `git`, `gh` and `bun` through PowerShell: on this Windows machine the Bash
 tool has none of them on its path. Write every multi-line message to a file in
-the scratchpad and pass the file — `git commit -F`, `gh pr create --body-file`,
-`gh issue comment --body-file` — so quoting never reaches the text. End a line
+the scratchpad with the Write tool (`Out-File` adds a BOM) and pass the file —
+`git commit -F`, `gh pr create --body-file`, `gh issue comment --body-file` —
+so quoting never reaches the text. Read `gh` JSON with
+`(gh … --json … | ConvertFrom-Json)`, not a quoted `--jq` filter. End a line
 on the hook-running or test command so its exit code is the one reported;
 `.claude/hooks/block-no-verify.mjs` refuses a trailing `; echo` or `|| true`.
+A command that `.claude/settings.json` allows runs in its own call, follow-up
+checks in the next: chained, `gh pr merge` did not match its rule and auto
+mode refused it (#647). `.claude/hooks/block-env-read.mjs` refuses to read or
+write a local env file, which holds live secrets; read its committed example
+template for the names.
 
 ## Agent skills
 
@@ -78,4 +88,4 @@ The five canonical roles, label strings unchanged. See `docs/agents/triage-label
 
 ### Domain docs
 
-Single-context — `CONTEXT.md` + `docs/adr/` at the repo root, created lazily by `/domain-modeling`. See `docs/agents/domain.md`.
+Single-context — `GLOSSARY.md` + `docs/adr/` at the repo root, created lazily by `/domain-modeling`. See `docs/agents/domain.md`.

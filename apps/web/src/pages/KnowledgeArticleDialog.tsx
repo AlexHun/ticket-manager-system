@@ -145,7 +145,9 @@ export function KnowledgeArticleDialog({
     onError: (err) => {
       const message = extractErrorMessage(
         err,
-        isEdit ? "Failed to save the article" : "Failed to create the article",
+        isEdit
+          ? "Couldn't save the article. Try again."
+          : "Couldn't create the article. Try again.",
       );
       setServerError(message);
       toast.error(message);
@@ -176,10 +178,12 @@ export function KnowledgeArticleDialog({
         </DialogHeader>
 
         <form
-          onSubmit={handleSubmit((values) => {
-            setServerError(null);
-            mutation.mutate(values);
-          })}
+          onSubmit={(event) =>
+            void handleSubmit((values) => {
+              setServerError(null);
+              mutation.mutate(values);
+            })(event)
+          }
           noValidate
           className="flex flex-col gap-5"
         >
@@ -276,7 +280,7 @@ export function KnowledgeArticleDialog({
                 rows={3}
                 aria-invalid={Boolean(errors.internalNote)}
                 disabled={isSubmitting}
-                placeholder="What not to promise, when to escalate, which figure to check first."
+                placeholder="What not to promise, when to hand off, which figure to check first."
                 {...register("internalNote")}
               />
               <p className="text-xs text-muted-foreground">
@@ -305,8 +309,9 @@ export function KnowledgeArticleDialog({
                     <p className="mt-1 text-xs text-muted-foreground">
                       On, this article goes into the prompt that answers newly
                       arrived tickets and sends the reply without anyone reading
-                      it. Off, it is only ever read by an agent. Say no whenever
-                      the honest answer needs a fact a person has to look up.
+                      it. Off, it is only ever read by an agent. Leave it off
+                      whenever the honest answer needs a fact a person has to
+                      look up.
                     </p>
                   </div>
                   <Switch

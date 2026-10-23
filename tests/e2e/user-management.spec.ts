@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { USER_ROLE } from "@ticket/shared";
 import { acceptInvitation, CREDENTIALS, signIn } from "./helpers/auth";
 import { resetE2eEmails, resetE2eUsers } from "./helpers/db";
 
@@ -23,9 +24,11 @@ const RENAMED_USER_NAME = "E2E Renamed User";
 // serial so create/edit/delete each build on the previous test's state.
 test.describe.serial("User management (admin)", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
-    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Team", exact: true }),
+    ).toBeVisible();
   });
 
   test("lists the seeded admin and agent users with correct role badges", async ({
@@ -34,20 +37,24 @@ test.describe.serial("User management (admin)", () => {
     const adminRow = page.getByRole("row", { name: ADMIN.email });
     await expect(adminRow).toBeVisible();
     await expect(adminRow.getByText("Admin", { exact: true })).toBeVisible();
-    await expect(adminRow.getByText("admin", { exact: true })).toBeVisible();
+    await expect(
+      adminRow.getByText(USER_ROLE.admin, { exact: true }),
+    ).toBeVisible();
 
     const agentRow = page.getByRole("row", { name: AGENT.email });
     await expect(agentRow).toBeVisible();
     await expect(agentRow.getByText("Agent", { exact: true })).toBeVisible();
-    await expect(agentRow.getByText("agent", { exact: true })).toBeVisible();
+    await expect(
+      agentRow.getByText(USER_ROLE.agent, { exact: true }),
+    ).toBeVisible();
   });
 
   test("creates a new user without setting a password", async ({ page }) => {
-    await page.getByRole("button", { name: "New user" }).click();
+    await page.getByRole("button", { name: "New team member" }).click();
 
     const dialog = page.getByRole("dialog");
     await expect(
-      dialog.getByRole("heading", { name: "Create user" }),
+      dialog.getByRole("heading", { name: "Add team member" }),
     ).toBeVisible();
 
     await dialog.getByLabel("Name").fill(NEW_USER_NAME);
@@ -59,14 +66,16 @@ test.describe.serial("User management (admin)", () => {
     // docs/adr/0011-nobody-types-somebody-elses-password.md.
     await expect(dialog.getByLabel("Password")).toHaveCount(0);
 
-    await dialog.getByRole("button", { name: "Create user" }).click();
+    await dialog.getByRole("button", { name: "Add team member" }).click();
 
     await expect(dialog).toBeHidden();
 
     const newRow = page.getByRole("row", { name: NEW_USER_EMAIL });
     await expect(newRow).toBeVisible();
     await expect(newRow.getByText(NEW_USER_NAME)).toBeVisible();
-    await expect(newRow.getByText("agent", { exact: true })).toBeVisible();
+    await expect(
+      newRow.getByText(USER_ROLE.agent, { exact: true }),
+    ).toBeVisible();
   });
 
   test("edits the created user", async ({ page }) => {
@@ -75,7 +84,7 @@ test.describe.serial("User management (admin)", () => {
 
     const dialog = page.getByRole("dialog");
     await expect(
-      dialog.getByRole("heading", { name: "Edit user" }),
+      dialog.getByRole("heading", { name: "Edit team member" }),
     ).toBeVisible();
 
     const nameInput = dialog.getByLabel("Name");
@@ -117,7 +126,9 @@ test.describe.serial("User management (admin)", () => {
     await expect(dialog).toBeHidden();
 
     const promoted = page.getByRole("row", { name: NEW_USER_EMAIL });
-    await expect(promoted.getByText("admin", { exact: true })).toBeVisible();
+    await expect(
+      promoted.getByText(USER_ROLE.admin, { exact: true }),
+    ).toBeVisible();
     // An admin cannot be deleted, so the row's third slot is now a spacer.
     await expect(promoted.getByRole("button", { name: /Delete/ })).toHaveCount(
       0,
@@ -133,7 +144,9 @@ test.describe.serial("User management (admin)", () => {
     await expect(dialog).toBeHidden();
 
     const demoted = page.getByRole("row", { name: NEW_USER_EMAIL });
-    await expect(demoted.getByText("agent", { exact: true })).toBeVisible();
+    await expect(
+      demoted.getByText(USER_ROLE.agent, { exact: true }),
+    ).toBeVisible();
   });
 
   // The UI half of the rule that keeps at least one admin on the desk. The
@@ -162,10 +175,10 @@ test.describe.serial("User management (admin)", () => {
 
     const dialog = page.getByRole("dialog");
     await expect(
-      dialog.getByRole("heading", { name: "Delete user" }),
+      dialog.getByRole("heading", { name: "Delete team member" }),
     ).toBeVisible();
 
-    await dialog.getByRole("button", { name: "Delete user" }).click();
+    await dialog.getByRole("button", { name: "Delete team member" }).click();
 
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("row", { name: NEW_USER_EMAIL })).toHaveCount(
@@ -180,9 +193,11 @@ test.describe.serial("User management (admin)", () => {
 
 test.describe("Admin row protections", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
-    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Team", exact: true }),
+    ).toBeVisible();
   });
 
   test("admin row has no delete button but does have an edit button", async ({
@@ -209,9 +224,11 @@ test.describe("Admin row protections", () => {
 
 test.describe("User lifecycle — sign-in consequences", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/users");
-    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Team", exact: true }),
+    ).toBeVisible();
   });
 
   test("a deleted user cannot sign in afterward", async ({ page }) => {
@@ -220,11 +237,11 @@ test.describe("User lifecycle — sign-in consequences", () => {
     const password = "password123";
 
     // Create the throwaway agent via the UI.
-    await page.getByRole("button", { name: "New user" }).click();
+    await page.getByRole("button", { name: "New team member" }).click();
     const createDialog = page.getByRole("dialog");
     await createDialog.getByLabel("Name").fill(name);
     await createDialog.getByLabel("Email").fill(email);
-    await createDialog.getByRole("button", { name: "Create user" }).click();
+    await createDialog.getByRole("button", { name: "Add team member" }).click();
     await expect(createDialog).toBeHidden();
 
     await expect(page.getByRole("row", { name: email })).toBeVisible();
@@ -236,16 +253,20 @@ test.describe("User lifecycle — sign-in consequences", () => {
     await acceptInvitation(page, email, password);
 
     await page.goto("/users");
-    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Team", exact: true }),
+    ).toBeVisible();
 
     // Delete them via the UI.
     const row = page.getByRole("row", { name: email });
     await row.getByRole("button", { name: `Delete ${name}` }).click();
     const deleteDialog = page.getByRole("dialog");
     await expect(
-      deleteDialog.getByRole("heading", { name: "Delete user" }),
+      deleteDialog.getByRole("heading", { name: "Delete team member" }),
     ).toBeVisible();
-    await deleteDialog.getByRole("button", { name: "Delete user" }).click();
+    await deleteDialog
+      .getByRole("button", { name: "Delete team member" })
+      .click();
     await expect(deleteDialog).toBeHidden();
     await expect(page.getByRole("row", { name: email })).toHaveCount(0);
 
@@ -272,11 +293,11 @@ test.describe("User lifecycle — sign-in consequences", () => {
     const name = "E2E New Login User";
     const password = "password123";
 
-    await page.getByRole("button", { name: "New user" }).click();
+    await page.getByRole("button", { name: "New team member" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("Name").fill(name);
     await dialog.getByLabel("Email").fill(email);
-    await dialog.getByRole("button", { name: "Create user" }).click();
+    await dialog.getByRole("button", { name: "Add team member" }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("row", { name: email })).toBeVisible();
 
@@ -294,7 +315,9 @@ test.describe("User lifecycle — sign-in consequences", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page).toHaveURL("/");
-    // Fresh user was created as an agent (default role) — no Users link.
-    await expect(page.getByRole("link", { name: "Users" })).not.toBeVisible();
+    // Fresh user was created as an agent (default role) — no Team link.
+    await expect(
+      page.getByRole("link", { name: "Team", exact: true }),
+    ).not.toBeVisible();
   });
 });

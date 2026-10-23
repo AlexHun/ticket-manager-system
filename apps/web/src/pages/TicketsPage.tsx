@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Rows3 } from "lucide-react";
@@ -10,6 +10,7 @@ import {
   TUTORIAL_PAGE_KEY,
   type SortOrder,
   type TicketSortField,
+  NO_TICKETS_YET,
 } from "@ticket/shared";
 import { Tutorial } from "@/components/Tutorial";
 import { extractErrorMessage } from "@/lib/errors";
@@ -128,6 +129,13 @@ export function TicketsPage() {
     setSearchParams((prev) => writeTicketListParams(prev, patch), { replace });
   };
 
+  // The effect below writes the settled search through this, reading the
+  // latest `update` without watching it: `update` is a new function on every
+  // render, and the effect must run only when the search or `q` moves.
+  const writeSearch = useEffectEvent((q: string) => {
+    update({ q: q || undefined }, true);
+  });
+
   // The `q` this component last agreed with, so the effect below can tell which
   // side moved. Without it the two directions are indistinguishable, and the
   // input wins a fight it should lose — see the effect.
@@ -181,7 +189,7 @@ export function TicketsPage() {
     // The settled search lands in the URL. `replace`, because every pause in
     // typing would otherwise leave a history entry to click back through.
     settledSearch.current = debouncedSearch;
-    update({ q: debouncedSearch || undefined }, true);
+    writeSearch(debouncedSearch);
   }, [debouncedSearch, searchInput, urlSearch]);
 
   const sorting = useMemo<SortingState>(
@@ -312,7 +320,7 @@ export function TicketsPage() {
 
       {error && (
         <p className="text-sm text-destructive" role="alert">
-          {extractErrorMessage(error, "Failed to load tickets")}
+          {extractErrorMessage(error, "Couldn't load tickets. Try again.")}
         </p>
       )}
 
@@ -334,7 +342,7 @@ export function TicketsPage() {
             onSortingChange={handleSortingChange}
             density={density}
             emptyMessage={
-              filtered ? "No tickets match these filters." : "No tickets found."
+              filtered ? "No tickets match these filters." : NO_TICKETS_YET
             }
           />
           {data.total > 0 && (

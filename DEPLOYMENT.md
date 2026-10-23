@@ -59,21 +59,21 @@ policy, and — for `api` — the pre-deploy migration command. They also set
 
 ### `api`
 
-| Variable                                       | Value                        | Notes                                                                                                                                                                                                                  |
-| ---------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                 | `${{Postgres.DATABASE_URL}}` | Reference variable. pg-boss opens its own small pool against the same string, in its own `pgboss` schema.                                                                                                              |
-| `BETTER_AUTH_SECRET`                           | `openssl rand -base64 32`    | Validated at boot: ≥32 chars or the process refuses to start.                                                                                                                                                          |
-| `BETTER_AUTH_URL`                              | `https://<web-domain>`       | The origin the **browser** reaches this API on. Behind the `/api/*` proxy that is the _web_ service's domain, not this one's — and it is what tells the API it is same-origin and may keep `SameSite=Lax`.             |
-| `TRUSTED_ORIGINS`                              | `https://<web-domain>`       | The web service's public URL. Drives both CORS and Better Auth's origin check; an origin missing here cannot sign in.                                                                                                  |
-| `COOKIE_DOMAIN`                                | _(empty)_                    | See [Cookies](#cookies-read-this-before-the-first-login) below. Empty is correct behind the proxy.                                                                                                                     |
-| `INBOUND_EMAIL_WEBHOOK_USERNAME` / `_PASSWORD` | your choice                  | Empty values reject every webhook request.                                                                                                                                                                             |
-| `OPENAI_API_KEY`                               | your key                     | Optional. Empty ⇒ the two AI endpoints answer 503 and new tickets stay uncategorised in `New`.                                                                                                                         |
-| `AUTO_REPLY_ENABLED`                           | `true` / `false`             | The kill switch for the one feature that writes to customers unattended.                                                                                                                                               |
-| `PIPELINE_SIMULATOR_ENABLED`                   | `false` unless wanted        | Default off; only the literal `"true"` turns it on.                                                                                                                                                                    |
-| `DEMO_MODE_ENABLED`                            | `false` unless wanted        | "Use demo session" on `/login`: a password-free way in. Default off; only `"true"` turns it on. Only while production takes no real customer mail ([ADR-0022](docs/adr/0022-a-demo-session-is-an-anonymous-agent.md)). |
-| `DEMO_AI_DAILY_USD`                            | `1.00`                       | What all demo sessions together may spend on AI per UTC day (estimated). Once reached, demo polish and summarise make no call until 00:00 UTC; only demo sessions are counted.                                         |
-| `DEMO_SESSIONS_PER_IP_PER_HOUR`                | `5`                          | Demo sessions one client address may start per hour, keyed like the sign-in rate limit. One more is refused and creates nobody. In memory: a restart forgets the hour.                                                 |
-| `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`      | optional                     | Unset ⇒ the SDK never initialises.                                                                                                                                                                                     |
+| Variable                                       | Value                        | Notes                                                                                                                                                                                                                    |
+| ---------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                                 | `${{Postgres.DATABASE_URL}}` | Reference variable. pg-boss opens its own small pool against the same string, in its own `pgboss` schema.                                                                                                                |
+| `BETTER_AUTH_SECRET`                           | `openssl rand -base64 32`    | Validated at boot: ≥32 chars or the process refuses to start.                                                                                                                                                            |
+| `BETTER_AUTH_URL`                              | `https://<web-domain>`       | The origin the **browser** reaches this API on. Behind the `/api/*` proxy that is the _web_ service's domain, not this one's — and it is what tells the API it is same-origin and may keep `SameSite=Lax`.               |
+| `TRUSTED_ORIGINS`                              | `https://<web-domain>`       | The web service's public URL. Drives both CORS and Better Auth's origin check; an origin missing here cannot sign in.                                                                                                    |
+| `COOKIE_DOMAIN`                                | _(empty)_                    | See [Cookies](#cookies-read-this-before-the-first-login) below. Empty is correct behind the proxy.                                                                                                                       |
+| `INBOUND_EMAIL_WEBHOOK_USERNAME` / `_PASSWORD` | your choice                  | Empty values reject every webhook request.                                                                                                                                                                               |
+| `OPENAI_API_KEY`                               | your key                     | Optional. Empty ⇒ the two AI endpoints answer 503 and new tickets stay uncategorised in `New`.                                                                                                                           |
+| `AUTO_REPLY_ENABLED`                           | `true` / `false`             | The kill switch for the one feature that writes to customers unattended.                                                                                                                                                 |
+| `PIPELINE_SIMULATOR_ENABLED`                   | `false` unless wanted        | Default off; only the literal `"true"` turns it on.                                                                                                                                                                      |
+| `DEMO_MODE_ENABLED`                            | `false` unless wanted        | "Start demo session" on `/login`: a password-free way in. Default off; only `"true"` turns it on. Only while production takes no real customer mail ([ADR-0022](docs/adr/0022-a-demo-session-is-an-anonymous-agent.md)). |
+| `DEMO_AI_DAILY_USD`                            | `1.00`                       | What all demo sessions together may spend on AI per UTC day (estimated). Once reached, demo polish and summarise make no call until 00:00 UTC; only demo sessions are counted.                                           |
+| `DEMO_SESSIONS_PER_IP_PER_HOUR`                | `5`                          | Demo sessions one client address may start per hour, keyed like the sign-in rate limit. One more is refused and creates nobody. In memory: a restart forgets the hour.                                                   |
+| `SENTRY_DSN`, `SENTRY_TRACES_SAMPLE_RATE`      | optional                     | Unset ⇒ the SDK never initialises.                                                                                                                                                                                       |
 
 `PORT` and `NODE_ENV` are **not** set here: Railway injects `PORT`, and the
 Dockerfile pins `NODE_ENV=production` so that secure cookies, the rate limiter
@@ -175,12 +175,12 @@ variables afterwards; nothing reads them again.
 one has its role reconciled and its credentials left alone, deliberately, so
 that re-running the seed on a live database cannot reset a real person's
 password. To change the admin password after the fact, use the app: sign in and
-change it, or have another admin do it from the Users screen.
+change it, or have another admin do it from the Team screen.
 
 The seed **skips the demo `agent@example.com` / `password123` account when
 `NODE_ENV=production`** — which the image sets — so this cannot quietly leave a
 published-password account on a deployed database. Real agents are created by the
-admin through the Users screen.
+admin through the Team screen.
 
 It does create the **assistant's account** (`assistant@automation.invalid`,
 `user.automated = true`) in production as well, and that one is safe there
@@ -321,8 +321,18 @@ listing, and develop's scans tally those exactly as the laptop's do.
    which `Dockerfile.dev` sets and which marks this server's history as fed by
    pushes; nothing on the dashboard sets it.
 
-3. **Push**, from the repo root on the laptop, after any session whose spend
-   should show:
+3. **Push.** Since #557 this runs by itself when a Claude Code session in
+   this repo ends: the `SessionEnd` hook `.claude/hooks/push-usage.mjs` starts
+   the command below in the background and returns, provided
+   `DEV_BASIC_AUTH_USERNAME` and `DEV_BASIC_AUTH_PASSWORD` are set in the
+   environment Claude Code runs in (on Windows, as user-scope variables).
+   Claude Code reads them when it starts, so a session started before they
+   were set does not push. Without both it does nothing. Each push appends one line to
+   `~/.claude-usage-history/push.log`, the time and then the rows added or the
+   error, with the credentials redacted; read it when the page looks stale,
+   since nothing else reports a failed push. A session that crashes or stops on
+   the usage limit may not fire the hook, and the next push catches up. To push
+   by hand, from the repo root on the laptop:
 
    ```bash
    DEV_BASIC_AUTH_USERNAME=… DEV_BASIC_AUTH_PASSWORD=… \
@@ -438,9 +448,12 @@ policy and the bundle are always produced together and cannot disagree.
   safe to run more than once — handlers are idempotent and `Processing` is a
   claim taken with a conditional `updateMany` — but nothing here has been
   measured at more than one.
-- **Pinned base images.** The Dockerfiles use `oven/bun:1-slim` and
-  `caddy:2-alpine` — both confirmed to exist and be active on Docker Hub, both
-  floating within a major. Pin to a digest for reproducible builds.
+- **Base images pinned to a digest.** The Bun image is pinned to a version,
+  `oven/bun:1.4.4-slim`, the one CI's `BUN_VERSION` names, and the two move
+  together: while the Dockerfiles floated on `oven/bun:1-slim`, production and
+  CI could run different Bun releases, and one of them dropped a hung-up
+  browser's `close` (#651). `caddy:2-alpine` still floats within its major.
+  Neither is pinned to a digest; do that for byte-reproducible builds.
 
 ## Local rehearsal
 

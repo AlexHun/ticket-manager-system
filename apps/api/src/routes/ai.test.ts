@@ -5,8 +5,10 @@
  * The router on a real Express app over a real socket, over a real database
  * (#174 — the last file ADR-0014 had left) and a stubbed provider. That last
  * one is not a seam ADR-0014 moves: an AI feature test must not spend money or
- * depend on the network, so `../ai/polish-reply` and `../ai/summarize` stay
- * mocked, and `polishDraft` itself is covered next door in
+ * depend on the network. Both halves run the real feature, `polishDraft` and
+ * `summarizeTicket`, over the preload's scripted model (`../test/model`, #578,
+ * #654), so `../ai/polish-reply` and `../ai/summarize` are each registered only
+ * for their config guard. `polishDraft` itself is covered next door in
  * `../ai/polish.test.ts`.
  * What is under test is the order each route does things in — configured,
  * valid, found, within budget, only then paid for — the context it assembles
@@ -72,25 +74,44 @@
  * reading the row; otherwise what converted here is the read.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import {
   DEMO_AI_LIMIT_MESSAGE,
   DEMO_AI_LIMIT_REASON,
   MESSAGE_DIRECTION,
   SUMMARY_SENTIMENT,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
+  TICKET_NOT_FOUND_MESSAGE,
   TICKET_STATUS,
   USER_ROLE,
   type MessageDirection,
   type TicketSummary,
 } from "@ticket/shared";
 import * as polishModule from "../ai/polish";
-import { AI_FAILURE, type AiUsage } from "../ai/provider";
+import { AI_FAILURE } from "../ai/provider";
 import * as summarizeModule from "../ai/summarize";
 import { chargeDemoAi } from "../demo/ai-budget";
 import { asCaller } from "../test/caller";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
 import { dbCalls, prisma, resetDb } from "../test/pg";
+import {
+  type ModelAnswer,
+  lastModelCall,
+  type ModelUsage,
+  modelCalls,
+  providerError,
+  scriptModel,
+} from "../test/model";
 import { serveRouter } from "../test/route-app";
 
 const { POLISH_FAILURE } = polishModule;
@@ -106,54 +127,61 @@ type AiFailureValue = Extract<SummarizeResult, { ok: false }>["reason"];
 
 /* ── The world behind the route ──────────────────────────────────────────── */
 
-/** What the model does, swapped per test. */
-let polishResult: PolishResult;
+/**
+ * Whether the deployment can polish, swapped per test. What the model answers
+ * is scripted on the preload's fake (`../test/model`, #578), and the real
+ * `polishDraft` runs between it and the route.
+ */
 let configured: boolean;
 
-const polishReply = mock(
-  (_draft: string, _context: PolishContext, _signal?: AbortSignal) =>
-    Promise.resolve(polishResult),
-);
-
-/** The same two, for the other endpoint. */
-let summaryResult: SummarizeResult;
+/**
+ * Whether the deployment can summarise, for the other endpoint. What the model
+ * answers is scripted on the same fake, under the real `summarizeTicket`.
+ */
 let summaryConfigured: boolean;
 
-const summarizeTicket = mock(
-  (_context: SummarizeContext, _signal?: AbortSignal) =>
-    Promise.resolve(summaryResult),
-);
+// Copied out before the registration below, so the factory spreads the real
+// exports and never the namespace it is replacing (`testing-api.md`).
+const realSummarize = { ...summarizeModule };
 
 // `../ai/polish-reply`, never `../ai/polish`: `ai/polish.test.ts` tests the
-// real `polishDraft`, and a factory on its specifier is what that file imports
-// whenever this one loads first (#303) — see the seam's header. This replaces
-// the seam's two exports outright and never delegates to them, so there is
-// nothing to spread. `POLISH_FAILURE` needs no spreading either: the route
-// reads it from `../ai/polish`, which nothing replaces, so the real values
-// travel.
-mock.module("../ai/polish-reply", () => ({
+// real `isPolishConfigured`, and a factory on its specifier is what that file
+// imports whenever this one loads first (#303) — see the seam's header. This
+// replaces the seam's one export outright and never delegates to it, so there
+// is nothing to spread. The route calls the real `polishDraft`, and the model
+// under it is scripted instead.
+await mock.module("../ai/polish-reply", () => ({
   isPolishReplyConfigured: () => configured,
-  polishReply,
 }));
 
 // The summary endpoint's twin, and the reason `../ai/summarize` grew an
 // `isSummarizeConfigured` in #174 rather than this file replacing the
-// provider's `isAiConfigured` directly: `jobs/sweeps.test.ts` already registers
-// a `../ai/provider` factory, and that stub holds **state** — a switch its own
-// reconcile tests flip. Two stateful copies on one specifier are two boxes, of
+// provider's `isAiConfigured` directly: the preload registers a
+// `../ai/provider` factory (`jobs/sweeps.test.ts` did until #578), and that
+// stub holds **state** — the scripted model, and a switch the sweeps' reconcile
+// tests flip. Two stateful copies on one specifier are two boxes, of
 // which the process-wide registry keeps one, leaving the other file's switch
-// inert (`docs/standards/testing.md` says so about `../test/send-email`, for
+// inert (`docs/standards/testing-api.md` says so about `../test/send-email`, for
 // exactly this reason). A per-feature guard gives this route's test a specifier
 // nothing else touches — while its module has no test of its own. `summarize`
 // has none; `polish` has one, which is why that half goes through
-// `../ai/polish-reply` above (#303).
-mock.module("../ai/summarize", () => ({
-  ...summarizeModule,
+// `../ai/polish-reply` above (#303). Until #654 it replaced `summarizeTicket`
+// beside the guard; the route now calls the real one, and the model under it
+// is scripted instead.
+await mock.module("../ai/summarize", () => ({
+  ...realSummarize,
   isSummarizeConfigured: () => summaryConfigured,
-  summarizeTicket,
 }));
 
 const { aiRouter } = await import("./ai");
+
+// The real `polishDraft` and `summarizeTicket` log the cause of every failure
+// they report, which the failure tests below provoke on purpose. Wanted in
+// production, noise here.
+const errorLog = spyOn(console, "error").mockImplementation(() => {});
+afterAll(() => {
+  errorLog.mockRestore();
+});
 
 /* ── The thread ──────────────────────────────────────────────────────────── */
 
@@ -214,7 +242,11 @@ function seedMessage(
 const AGENT_NAME = "Aaron Agent";
 const AGENT_EMAIL = "agent@example.com";
 
-/** What the summariser returns when a test is not about the failure path. */
+/**
+ * What the summariser returns when a test is not about the failure path. The
+ * model answers it as JSON, and `summarizeTicket`'s tidying leaves every field
+ * as it is: no dashes, no `MSG` citations, and a highlight found in the text.
+ */
 const SUMMARY: TicketSummary = {
   overview:
     "A parcel from order TR-99182 has not arrived and tracking is stuck.",
@@ -222,6 +254,27 @@ const SUMMARY: TicketSummary = {
   nextStep: "Chase the courier for a scan event.",
   sentiment: SUMMARY_SENTIMENT.frustrated,
   highlights: ["TR-99182"],
+};
+
+/** `SUMMARY`, as the model answers it under the real `summarizeTicket`. */
+const SUMMARY_ANSWER = { text: JSON.stringify(SUMMARY) } satisfies ModelAnswer;
+
+/**
+ * What the model answers on the way to each provider failure, for both
+ * endpoints: the summary route reports these six, and `POLISH_ANSWER` adds
+ * polish's own `invented`. `empty` is blank text, which a polish reports as
+ * empty and the summariser's structured output throws as
+ * `NoObjectGeneratedError`, which it reports as empty too.
+ */
+const AI_FAILURE_ANSWER: Record<AiFailureValue, ModelAnswer> = {
+  provider: { throws: providerError(500, "internal error") },
+  busy: { throws: providerError(429, '{"error":{"code":"rate_limit"}}') },
+  quota: {
+    throws: providerError(429, '{"error":{"code":"insufficient_quota"}}'),
+  },
+  auth: { throws: providerError(401) },
+  config: { throws: providerError(400, "unsupported_value") },
+  empty: { text: "   " },
 };
 
 /* ── The app ─────────────────────────────────────────────────────────────── */
@@ -294,12 +347,48 @@ function goodBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** The context the route handed the model on its most recent call. */
-function lastContext(): PolishContext {
-  const call = polishReply.mock.calls.at(-1);
-  if (!call) throw new Error("polishReply was never called");
-  return call[1];
+/** The text inside one of the prompt's `<<<name … >>>` fences, or null. */
+function fencedText(prompt: string, name: string): string | null {
+  const match = new RegExp(`<<<${name}\\n([\\s\\S]*?)\\n>>>`).exec(prompt);
+  return match ? match[1] : null;
 }
+
+/** One `Label: value` line of the prompt's frame. */
+function frameLine(prompt: string, label: string): string | undefined {
+  return prompt
+    .split("\n")
+    .find((line) => line.startsWith(`${label}: `))
+    ?.slice(label.length + 2);
+}
+
+/**
+ * The context the route handed `polishDraft` on its most recent call, read
+ * back out of the prompt the model was sent.
+ *
+ * Until #578 the route called a stub that recorded this object directly. Now
+ * the real `polishDraft` builds the prompt from it, so each field is read from
+ * the line `polishDraft` writes it into; `ai/polish.test.ts` pins those lines.
+ * A null `customerMessage` is the prompt's "not available" branch, which is
+ * the only thing `polishDraft` does with one.
+ */
+function lastContext(): PolishContext {
+  const { prompt } = lastModelCall("polish");
+  return {
+    subject: frameLine(prompt, "Ticket subject") ?? "",
+    customerName: frameLine(prompt, "Address the customer by their name") ?? "",
+    customerMessage: fencedText(prompt, "customer_message"),
+    agentName: frameLine(prompt, "Sign off with the agent's name") ?? "",
+  };
+}
+
+/** What the model answers on the way to each failure the route reports. */
+const POLISH_ANSWER: Record<PolishFailureValue, ModelAnswer> = {
+  ...AI_FAILURE_ANSWER,
+  invented: { text: "We have refunded your order in full." },
+};
+
+/** The rewrite every test gets unless it is about something else. */
+const POLISHED = "Hi Marta,\n\nYour parcel shipped on Friday.";
 
 interface Summarised {
   status: number;
@@ -340,24 +429,110 @@ async function postSummary(
   };
 }
 
-/** The thread the summariser was handed on its most recent call. */
+/**
+ * Resolves once `check` holds, or throws naming `what` after `ms`.
+ *
+ * For the hang-up tests below, which wait on things that happen on the
+ * server's side of a socket the test has just walked away from.
+ */
+async function until(what: string, check: () => boolean, ms = 1000) {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error(`never happened: ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/**
+ * Sends `body` to `path` and hangs up once `arrived` says the model has been
+ * asked, as a closed tab does. The request never answers, so the one outcome
+ * this accepts is the browser's own abort; an answer or any other failure
+ * throws.
+ */
+async function hangUpOn(path: string, body: unknown, arrived: () => boolean) {
+  const browser = new AbortController();
+  const sent = fetch(url(path), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...asCaller({ id: await freshUser() }),
+    },
+    body: JSON.stringify(body),
+    signal: browser.signal,
+  });
+  await until("the model was asked", arrived);
+  browser.abort();
+  await sent.then(
+    () => {
+      throw new Error("the request answered before the hang-up");
+    },
+    (err: unknown) => {
+      if (!(err instanceof Error && err.name === "AbortError")) throw err;
+    },
+  );
+}
+
+/**
+ * The context the route handed `summarizeTicket` on its most recent call, read
+ * back out of the prompt the model was sent.
+ *
+ * Until #654 the route called a stub that recorded this object directly. Now
+ * the real `summarizeTicket` builds the prompt from it: the ticket's fields as
+ * `Label: value` lines, and each message as a `##MSG n | side | sender | sentAt`
+ * header over its text, inside the `ticket_thread` fence. A thread with no
+ * readable message gets no fence at all, and a null category is written as
+ * "not yet categorised".
+ */
 function lastSummaryContext(): SummarizeContext {
-  const call = summarizeTicket.mock.calls.at(-1);
-  if (!call) throw new Error("summarizeTicket was never called");
-  return call[0];
+  const { prompt } = lastModelCall("summarize");
+  const statusLine = frameLine(prompt, "Status");
+  const status = Object.values(TICKET_STATUS).find((s) => s === statusLine);
+  if (!status) throw new Error(`the prompt names no status: ${statusLine}`);
+  const categoryLine = frameLine(prompt, "Category");
+  const category =
+    categoryLine === "not yet categorised"
+      ? null
+      : Object.values(TICKET_CATEGORY).find((c) => c === categoryLine);
+  if (category === undefined) {
+    throw new Error(`the prompt names no category: ${categoryLine}`);
+  }
+  const thread = fencedText(prompt, "ticket_thread");
+  // A thread over the budget has a `##MSG […n message(s) omitted…]` line in
+  // its middle, which this would read as part of a message. No test here
+  // seeds one, so it refuses rather than misreads.
+  if (thread?.includes("##MSG […")) {
+    throw new Error("lastSummaryContext cannot read a trimmed thread");
+  }
+  return {
+    subject: frameLine(prompt, "Subject") ?? "",
+    customerName: frameLine(prompt, "Customer") ?? "",
+    status,
+    category,
+    messages:
+      thread === null
+        ? []
+        : thread.split(/\n\n(?=##MSG \d+ \| )/).map((block) => {
+            const [header = "", ...text] = block.split("\n");
+            const [, side = "", senderName = "", sentAt = ""] =
+              header.split(" | ");
+            return {
+              direction: side.startsWith("inbound")
+                ? MESSAGE_DIRECTION.inbound
+                : MESSAGE_DIRECTION.outbound,
+              senderName,
+              sentAt,
+              text: text.join("\n"),
+            };
+          }),
+  };
 }
 
 beforeEach(async () => {
   await resetDb();
-  polishReply.mockClear();
-  summarizeTicket.mockClear();
   configured = true;
   summaryConfigured = true;
-  polishResult = {
-    ok: true,
-    text: "Hi Marta,\n\nYour parcel shipped on Friday.",
-  };
-  summaryResult = { ok: true, summary: SUMMARY };
+  scriptModel("polish", { text: POLISHED });
+  scriptModel("summarize", SUMMARY_ANSWER);
   await seedTicket({ id: TICKET, subject: SUBJECT, createdAt: AT.opened });
   await seedMessage();
 });
@@ -375,29 +550,29 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     // Checked first, before the body is even parsed: the answer is the same for
     // every request, so nothing else should run.
     expect(dbCalls("ticket.findUnique")).toBe(0);
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 
   test("rejects an empty draft with the composer's own sentence", async () => {
     const sent = await post(goodBody({ draft: "   " }));
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("Write a draft before polishing");
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(sent.body.error).toBe(TICKET_INPUT_MESSAGE.draftEmpty);
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 
   test("rejects a draft over the shared cap", async () => {
     const sent = await post(goodBody({ draft: "x".repeat(10_001) }));
 
     expect(sent.status).toBe(400);
-    expect(sent.body.error).toBe("A draft is limited to 10000 characters");
+    expect(sent.body.error).toBe(TICKET_INPUT_MESSAGE.draftTooLong);
   });
 
   test("rejects a request with no ticket to answer", async () => {
     const sent = await post({ draft: "shipped fri" });
 
     expect(sent.status).toBe(400);
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 
   test("rejects a ticket id that is not one", async () => {
@@ -415,8 +590,8 @@ describe("POST /api/ai/polish-reply — refusing before it costs anything", () =
     const sent = await post(goodBody({ ticketId: TICKET + 1 }));
 
     expect(sent.status).toBe(404);
-    expect(sent.body.error).toBe("Ticket not found");
-    expect(polishReply).not.toHaveBeenCalled();
+    expect(sent.body.error).toBe(TICKET_NOT_FOUND_MESSAGE);
+    expect(modelCalls("polish")).toHaveLength(0);
   });
 });
 
@@ -552,13 +727,33 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
   test("passes the draft trimmed, as the schema left it", async () => {
     await post(goodBody({ draft: "  shipped fri  " }));
 
-    expect(polishReply.mock.calls.at(-1)![0]).toBe("shipped fri");
+    // Since #578 this reads the draft out of the prompt, and `fenced` trims
+    // what it quotes as well, so the route's own trim is no longer what this
+    // line distinguishes: it is green with the schema's `.trim()` removed.
+    // Nothing downstream of the fence can see the difference either.
+    expect(fencedText(lastModelCall("polish").prompt, "draft")).toBe(
+      "shipped fri",
+    );
   });
 
-  test("hands the model a signal it can be abandoned with", async () => {
-    await post(goodBody());
+  test("abandons the model call when the browser hangs up", async () => {
+    // A model that never answers, so the only way the call ends inside the
+    // test is the route's own signal: the 20s timeout merged into the same
+    // signal is far past `until`'s second. Bun 1.3.13 never fired `res`
+    // `close` for a hang-up once the body had been read (#651), so this was
+    // red until CI and the images moved to 1.4.4.
+    scriptModel("polish", { hangs: true });
 
-    expect(polishReply.mock.calls.at(-1)![2]).toBeInstanceOf(AbortSignal);
+    await hangUpOn(
+      "/polish-reply",
+      goodBody(),
+      () => modelCalls("polish").length === 1,
+    );
+
+    await until(
+      "the model's signal aborted",
+      () => lastModelCall("polish").abortSignal?.aborted === true,
+    );
   });
 });
 
@@ -599,7 +794,7 @@ describe("POST /api/ai/polish-reply — answering", () => {
     ];
 
     for (const { reason, status, says } of cases) {
-      polishResult = { ok: false, reason };
+      scriptModel("polish", POLISH_ANSWER[reason]);
       const sent = await post(goodBody());
       expect(sent.status).toBe(status);
       expect(sent.body.error).toContain(says);
@@ -609,8 +804,22 @@ describe("POST /api/ai/polish-reply — answering", () => {
     }
   });
 
+  test("names the way round a failure that will not clear on its own", async () => {
+    // Quota, auth and config fail identically on every retry, so each one
+    // tells the agent what to do instead of asking again.
+    for (const reason of [
+      POLISH_FAILURE.quota,
+      POLISH_FAILURE.auth,
+      POLISH_FAILURE.config,
+    ]) {
+      scriptModel("polish", POLISH_ANSWER[reason]);
+      const sent = await post(goodBody());
+      expect(sent.body.error).toEndWith("Send your draft as it is.");
+    }
+  });
+
   test("does not tell an agent to retry an empty balance", async () => {
-    polishResult = { ok: false, reason: POLISH_FAILURE.quota };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.quota]);
 
     const sent = await post(goodBody());
 
@@ -619,10 +828,10 @@ describe("POST /api/ai/polish-reply — answering", () => {
   });
 
   test("says when to come back, but only when coming back would help", async () => {
-    polishResult = { ok: false, reason: POLISH_FAILURE.busy };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.busy]);
     expect((await post(goodBody())).retryAfter).toBe("10");
 
-    polishResult = { ok: false, reason: POLISH_FAILURE.config };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.config]);
     expect((await post(goodBody())).retryAfter).toBeNull();
   });
 });
@@ -640,7 +849,7 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
     expect(refused.body.error).toContain("try again in a minute");
     expect(Number(refused.retryAfter)).toBeGreaterThan(0);
     // The refusal is free: it never reaches the provider.
-    expect(polishReply).toHaveBeenCalledTimes(10);
+    expect(modelCalls("polish")).toHaveLength(10);
   });
 
   test("counts per user, not per process", async () => {
@@ -670,7 +879,7 @@ describe("POST /api/ai/polish-reply — the per-user budget", () => {
 
   test("does not refund a slot when the provider fails", async () => {
     const user = await freshUser();
-    polishResult = { ok: false, reason: POLISH_FAILURE.provider };
+    scriptModel("polish", POLISH_ANSWER[POLISH_FAILURE.provider]);
 
     for (let i = 0; i < 10; i++) {
       expect((await post(goodBody(), { user })).status).toBe(502);
@@ -708,14 +917,14 @@ describe("POST /api/ai/summarize-ticket — refusing before it costs anything", 
       "Summarising isn't configured on this server.",
     );
     expect(dbCalls("ticket.findUnique")).toBe(0);
-    expect(summarizeTicket).not.toHaveBeenCalled();
+    expect(modelCalls("summarize")).toHaveLength(0);
   });
 
   test("rejects a request with no ticket to summarise", async () => {
     const sent = await postSummary({});
 
     expect(sent.status).toBe(400);
-    expect(summarizeTicket).not.toHaveBeenCalled();
+    expect(modelCalls("summarize")).toHaveLength(0);
   });
 
   test("rejects a ticket id that is not one", async () => {
@@ -729,8 +938,8 @@ describe("POST /api/ai/summarize-ticket — refusing before it costs anything", 
     const sent = await postSummary({ ticketId: TICKET + 1 });
 
     expect(sent.status).toBe(404);
-    expect(sent.body.error).toBe("Ticket not found");
-    expect(summarizeTicket).not.toHaveBeenCalled();
+    expect(sent.body.error).toBe(TICKET_NOT_FOUND_MESSAGE);
+    expect(modelCalls("summarize")).toHaveLength(0);
   });
 });
 
@@ -866,10 +1075,24 @@ describe("POST /api/ai/summarize-ticket — the thread it assembles", () => {
     expect(sent.body.messageCount).toBe(1);
   });
 
-  test("hands the model a signal it can be abandoned with", async () => {
-    await postSummary({ ticketId: TICKET });
+  test("abandons the model call when the browser hangs up", async () => {
+    // A model that never answers, so the only way the call ends inside the
+    // test is the route's own signal: the 30s timeout merged into the same
+    // signal is far past `until`'s second. Until #654 a stub summariser stood
+    // in for the model and was handed the route's signal directly; now the
+    // signal is the one the real `summarizeTicket` hands the model (#651).
+    scriptModel("summarize", { hangs: true });
 
-    expect(summarizeTicket.mock.calls.at(-1)![1]).toBeInstanceOf(AbortSignal);
+    await hangUpOn(
+      "/summarize-ticket",
+      { ticketId: TICKET },
+      () => modelCalls("summarize").length === 1,
+    );
+
+    await until(
+      "the model's signal aborted",
+      () => lastModelCall("summarize").abortSignal?.aborted === true,
+    );
   });
 });
 
@@ -905,7 +1128,7 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
     ];
 
     for (const { reason, status, says } of cases) {
-      summaryResult = { ok: false, reason };
+      scriptModel("summarize", AI_FAILURE_ANSWER[reason]);
       const sent = await postSummary({ ticketId: TICKET });
       expect(sent.status).toBe(status);
       expect(sent.body.error).toContain(says);
@@ -916,7 +1139,7 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
   });
 
   test("does not tell an agent to retry an empty balance", async () => {
-    summaryResult = { ok: false, reason: AI_FAILURE.quota };
+    scriptModel("summarize", AI_FAILURE_ANSWER[AI_FAILURE.quota]);
 
     const sent = await postSummary({ ticketId: TICKET });
 
@@ -925,10 +1148,10 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
   });
 
   test("says when to come back, but only when coming back would help", async () => {
-    summaryResult = { ok: false, reason: AI_FAILURE.busy };
+    scriptModel("summarize", AI_FAILURE_ANSWER[AI_FAILURE.busy]);
     expect((await postSummary({ ticketId: TICKET })).retryAfter).toBe("10");
 
-    summaryResult = { ok: false, reason: AI_FAILURE.config };
+    scriptModel("summarize", AI_FAILURE_ANSWER[AI_FAILURE.config]);
     expect((await postSummary({ ticketId: TICKET })).retryAfter).toBeNull();
   });
 });
@@ -947,7 +1170,7 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
     expect(refused.status).toBe(429);
     expect(refused.body.error).toContain("try again in a minute");
     expect(Number(refused.retryAfter)).toBeGreaterThan(0);
-    expect(summarizeTicket).toHaveBeenCalledTimes(10);
+    expect(modelCalls("summarize")).toHaveLength(10);
   });
 
   test("its own budget: polishing all morning does not cost a summary", async () => {
@@ -998,21 +1221,20 @@ describe("POST /api/ai/summarize-ticket — the per-user budget", () => {
 
 /**
  * 2,500 output tokens at the published $0.40 per million: $0.001 exactly, so a
- * limit of `"0.001"` is spent by one call and by nothing less.
+ * limit of `"0.001"` is spent by one call and by nothing less. In the
+ * provider's own shape, since the model reports it to the SDK under the real
+ * `polishDraft` and `summarizeTicket`.
  */
-const COSTLY: AiUsage = {
-  inputTokens: 0,
-  outputTokens: 2_500,
-  totalTokens: 2_500,
-  reasoningTokens: 0,
-  cachedInputTokens: 0,
+const COSTLY_ANSWERED: ModelUsage = {
+  inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 2_500, text: 2_500, reasoning: 0 },
 };
 
 describe("the demo AI budget", () => {
   beforeEach(() => {
     process.env.DEMO_AI_DAILY_USD = "0.001";
-    polishResult = { ok: true, text: "Hi Marta,", usage: COSTLY };
-    summaryResult = { ok: true, summary: SUMMARY, usage: COSTLY };
+    scriptModel("polish", { text: "Hi Marta,", usage: COSTLY_ANSWERED });
+    scriptModel("summarize", { ...SUMMARY_ANSWER, usage: COSTLY_ANSWERED });
   });
 
   afterEach(() => {
@@ -1029,7 +1251,7 @@ describe("the demo AI budget", () => {
       error: DEMO_AI_LIMIT_MESSAGE,
       reason: DEMO_AI_LIMIT_REASON,
     });
-    expect(polishReply).toHaveBeenCalledTimes(1);
+    expect(modelCalls("polish")).toHaveLength(1);
   });
 
   test("so is a demo's summary", async () => {
@@ -1044,7 +1266,7 @@ describe("the demo AI budget", () => {
       error: DEMO_AI_LIMIT_MESSAGE,
       reason: DEMO_AI_LIMIT_REASON,
     });
-    expect(summarizeTicket).toHaveBeenCalledTimes(1);
+    expect(modelCalls("summarize")).toHaveLength(1);
   });
 
   // One budget for both features and every demo identity: each visitor is a
@@ -1055,16 +1277,16 @@ describe("the demo AI budget", () => {
     const refused = await postSummary({ ticketId: TICKET }, { demo: true });
 
     expect(refused.status).toBe(429);
-    expect(summarizeTicket).not.toHaveBeenCalled();
+    expect(modelCalls("summarize")).toHaveLength(0);
   });
 
   // A rewrite the route discards was still paid for.
   test("a demo polish that failed after the model answered is charged too", async () => {
-    polishResult = {
-      ok: false,
-      reason: POLISH_FAILURE.invented,
-      usage: COSTLY,
-    };
+    // The answer `POLISH_ANSWER` turns into `invented`, now carrying a cost.
+    scriptModel("polish", {
+      text: "We have refunded your order in full.",
+      usage: COSTLY_ANSWERED,
+    });
     expect((await post(goodBody(), { demo: true })).status).toBe(502);
 
     expect((await post(goodBody(), { demo: true })).status).toBe(429);

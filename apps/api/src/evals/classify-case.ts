@@ -14,20 +14,19 @@ import { usdFor } from "../ai/provider";
  *
  * ## Why this is a module of its own
  *
- * Two reasons, and the second is the one that would be annoying to rediscover.
+ * There were two reasons, and one is left.
  *
  * It holds a rule with real content: **which cases can honestly be scored**,
  * below. That is a judgement about the case set, not plumbing, and it belongs
  * somewhere it can be read and argued with.
  *
- * And it gives `runner.test.ts` a seam of its own. `../ai/classify` is already
- * mocked by `jobs/activity-before-publish.test.ts`, with a stub that answers
- * `Technical` and nothing else; the runner's tests need to script a sequence of
- * answers, and `mock.module`'s registry is one process wide, so two factories
- * on that specifier means one of the two files is running against the other's
- * stub (`testing.md`). The narrow-seam answer is a specifier neither file has
- * to know about, which is this one — the same move `isPolishConfigured()` makes
- * for `../ai/provider`.
+ * The other is history: it gave `runner.test.ts` a seam of its own.
+ * `../ai/classify` was mocked by the job tests' shared stub until #655, and
+ * `mock.module`'s registry is one process wide, so the runner's tests replaced
+ * `classifyCase` here instead. Since #656 nothing replaces this module: the
+ * runner's tests, like the job tests, script the classifier's answer on the
+ * shared fake model (`src/test/model.ts`), and this module runs for real under
+ * them.
  */
 
 /** What one case's classification cost and came to. */

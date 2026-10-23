@@ -1,6 +1,6 @@
 /**
  * Unit tests for `./demo` — the public presence boolean the login page reads
- * to decide whether to offer "Use demo session" (#319), and the welcome-step
+ * to decide whether to offer "Start demo session" (#319), and the welcome-step
  * mark a demo session's click sends (#464).
  *
  * The boolean has no guard and no caller: it is public on purpose, because

@@ -60,7 +60,7 @@ export function useAssignmentToasts(): void {
         toast.message(`Assigned to you: ${ticket.subject}`, {
           action: {
             label: "Open",
-            onClick: () => navigate(ticketDetailPath(ticket.id)),
+            onClick: () => void navigate(ticketDetailPath(ticket.id)),
           },
         });
       }

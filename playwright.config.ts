@@ -1,10 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { GH_ISSUES_FIXTURE_PATH } from "./tests/e2e/fixtures/gh-issues";
+import {
+  GH_CHAIN_ISSUES_FIXTURE_PATH,
+  GH_ISSUES_FIXTURE_PATH,
+} from "./tests/e2e/fixtures/gh-issues";
 import {
   TRANSCRIPT_WORKING_DIR,
   USAGE_HISTORY_PATH,
+  WAITING_WORKING_DIR,
 } from "./tests/e2e/fixtures/transcript-fixture";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -119,8 +123,13 @@ export default defineConfig({
       // fixture issue listing instead of spawning `gh` (see
       // `apps/web/dev/issues.ts`), and `USAGE_HISTORY_FILE` points the usage
       // history (#417) at a gitignored file the specs remove before they scan,
-      // instead of the developer's real `~/.claude-usage-history/<slug>.sqlite`.
-      // All three belong here rather than in the spec because the middleware that
+      // instead of the developer's real `~/.claude-usage-history/<slug>.sqlite`,
+      // and `CLAUDE_WAITING_DIR` points the Sessions page at a directory of
+      // waiting records the spec writes (#592), instead of the
+      // `~/.claude-sessions-waiting` this machine's own sessions fill, and
+      // `GH_CHAIN_ISSUES_FILE` points a running chain's listing at a file the
+      // Sessions spec writes (#594), instead of `gh`.
+      // All five belong here rather than in the spec because the middleware that
       // reads them runs inside *this* process, not in the browser — which is
       // also the one thing to check first when `dev-usage.spec.ts` fails:
       // `reuseExistingServer` will happily adopt a leftover Vite on 4001 that
@@ -134,11 +143,23 @@ export default defineConfig({
       // path is reached through the real middleware. The transcripts are a
       // copy for the same kind of reason: a spec may delete or append to one,
       // which must never reach the checked-in fixtures.
+      //
+      // The two Basic Auth credentials are blanked because `env` is merged over
+      // the shell's, and a developer who pushes usage to `develop` (DEPLOYMENT.md
+      // §7) carries both: `apps/web/dev/basic-auth.ts` then gated every request
+      // and every page read "Authentication required" (#619). Empty is the
+      // gate's "off", the state CI runs in. A leftover Vite on this port that
+      // was started from such a shell keeps the gate, since `env` never reaches
+      // a reused server: stop it.
       env: {
+        DEV_BASIC_AUTH_USERNAME: "",
+        DEV_BASIC_AUTH_PASSWORD: "",
         VITE_API_URL: API_URL,
         CLAUDE_TRANSCRIPT_DIR: TRANSCRIPT_WORKING_DIR,
         GH_ISSUES_FILE: GH_ISSUES_FIXTURE_PATH,
+        GH_CHAIN_ISSUES_FILE: GH_CHAIN_ISSUES_FIXTURE_PATH,
         USAGE_HISTORY_FILE: USAGE_HISTORY_PATH,
+        CLAUDE_WAITING_DIR: WAITING_WORKING_DIR,
       },
       url: WEB_URL,
       reuseExistingServer: !process.env.CI,

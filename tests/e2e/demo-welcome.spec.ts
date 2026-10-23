@@ -15,7 +15,7 @@ import { runDemoReset } from "./helpers/demo-reset";
 
 /**
  * The demo welcome (demo-welcome PRD, slices 1 to 3, with slice 4 folded
- * into 2): "Use demo session" lands on a welcome page, Start exploring goes on
+ * into 2): "Start demo session" lands on a welcome page, Start exploring goes on
  * to the Dashboard and its Tutorial, nothing brings the visitor back but the
  * banner's link, and nobody but a demo session can open it. Its suggested
  * steps, How it works first, each open a screen, and following them moves the
@@ -53,7 +53,7 @@ function welcomeHeading(page: Page) {
   return page.getByRole("heading", { level: 1, name: WELCOME_LABEL.title });
 }
 
-/** The admin's "Followed a step" figure on the Users page's demo card. */
+/** The admin's "Followed a step" figure on the Team page's demo card. */
 async function followedStepFigure(admin: Page): Promise<number> {
   await admin.goto(ROUTE.users.path);
   const card = admin.getByRole("region", { name: DEMO_USAGE_LABEL.title });

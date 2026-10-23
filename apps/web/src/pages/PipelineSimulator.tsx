@@ -125,7 +125,10 @@ export function PipelineSimulator({
       onSent(data.ticketId, scenario);
     },
     onError: (err) => {
-      const message = extractErrorMessage(err, "Could not send the email");
+      const message = extractErrorMessage(
+        err,
+        "Couldn't send the email. Try again.",
+      );
       setServerError(message);
       toast.error(message);
     },
@@ -175,7 +178,10 @@ export function PipelineSimulator({
         </p>
       )}
 
-      <form onSubmit={onSubmit} className="mt-4 space-y-4">
+      <form
+        onSubmit={(event) => void onSubmit(event)}
+        className="mt-4 space-y-4"
+      >
         <fieldset disabled={disabled || busy} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="scenario">Scenario</Label>
@@ -304,7 +310,7 @@ export function PipelineSimulator({
                 onClick={() => setValue("inReplyTo", lastSend.messageId)}
               >
                 Reply to ticket #{lastSend.ticketId} — threads onto it, and
-                reopens it if the machine had resolved it
+                reopens it if the assistant had resolved it
               </button>
             )}
           </div>

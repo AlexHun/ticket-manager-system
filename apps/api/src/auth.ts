@@ -4,7 +4,13 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError, createAuthMiddleware, getIp } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { admin, anonymous } from "better-auth/plugins";
-import { DEMO_START_LIMIT_MESSAGE, USER_ROLE } from "@ticket/shared";
+import {
+  BRAND_ATTRIBUTIVE,
+  BRAND_NAME,
+  DEMO_MODE_OFF_MESSAGE,
+  DEMO_START_LIMIT_MESSAGE,
+  USER_ROLE,
+} from "@ticket/shared";
 // A leaf module rather than a constant declared here, and the note on it says
 // why: this file cannot be loaded by a unit test, so anything else that needs
 // the number cannot reach it through this file.
@@ -251,32 +257,32 @@ export const auth = betterAuth({
           toEmail: user.email,
           toName: user.name,
           subject: invited
-            ? "You have been given a support desk account"
-            : "Reset your support desk password",
+            ? `Your ${BRAND_ATTRIBUTIVE} account is ready`
+            : `Reset your ${BRAND_ATTRIBUTIVE} password`,
           textBody: invited
             ? [
                 `Hello ${user.name},`,
                 "",
-                "An account has been created for you on the support desk. Choose a password to finish setting it up:",
+                `An account has been created for you on ${BRAND_NAME}. Choose a password to finish setting it up:`,
                 "",
                 url,
                 "",
                 "The link is good for 24 hours. If it has expired, ask an admin to send you another.",
                 "",
                 "Best regards,",
-                "The Support Team",
+                BRAND_NAME,
               ].join("\n")
             : [
                 `Hello ${user.name},`,
                 "",
-                "Someone asked to reset the password on your support desk account. Choose a new one here:",
+                `Someone asked to reset the password on your ${BRAND_ATTRIBUTIVE} account. Choose a new one here:`,
                 "",
                 url,
                 "",
                 "The link is good for 24 hours. If this was not you, no action is needed — your current password still works.",
                 "",
                 "Best regards,",
-                "The Support Team",
+                BRAND_NAME,
               ].join("\n"),
         });
       })().catch((err) => {
@@ -422,7 +428,7 @@ export const auth = betterAuth({
    * `image`. Ticket history and replies read the name at display time, so a
    * demo visitor could rename "Demo visitor" to a colleague and every trail
    * they left would read as that colleague's. Nobody changes their own profile
-   * this way, demo or not: a name is changed by an admin on the Users screen
+   * this way, demo or not: a name is changed by an admin on the Team screen
    * (`PATCH /api/users/:id`, through the admin plugin's `/admin/update-user`),
    * which writes a `user_edited` entry. Outside the admin plugin's own
    * `/admin/*` routes, which answer only `adminRoles`, it is the only
@@ -433,12 +439,12 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/update-user") {
         throw new APIError("FORBIDDEN", {
-          message: "Profiles are changed by an admin on the Users screen",
+          message: "Profiles are changed by an admin on the Team screen.",
         });
       }
       if (ctx.path !== "/sign-in/anonymous") return;
       if (!isDemoModeEnabled()) {
-        throw new APIError("FORBIDDEN", { message: "Demo mode is off" });
+        throw new APIError("FORBIDDEN", { message: DEMO_MODE_OFF_MESSAGE });
       }
       const requestOrHeaders = ctx.request ?? ctx.headers;
       const address = requestOrHeaders
@@ -538,7 +544,7 @@ export const auth = betterAuth({
       adminRoles: [USER_ROLE.admin],
     }),
     /**
-     * "Use demo session": one click, a fresh identity, no password (#319,
+     * "Start demo session": one click, a fresh identity, no password (#319,
      * ADR-0022). Refused while demo mode is off by the `before` hook above.
      *
      * - **The role is the admin plugin's `defaultRole`, `agent`, and must

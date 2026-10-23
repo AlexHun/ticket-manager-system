@@ -25,10 +25,15 @@ The non-human identity that machine-written work is filed under. It is an
 account nobody can sign in as, not a kind of agent.
 _Avoid_: bot, AI user, system user, robot
 
+**Team**:
+Every agent and admin who can sign in, and the admin screen that lists them.
+One of them is a team member; what they sign in with is their account.
+_Avoid_: users, staff, members list
+
 **Demo visitor**:
 A stranger looking around the showcase through a demo session. Signed in as an
 agent with no password, a new identity on every visit, and never offered as
-anyone a ticket could be handed to. Sees the admin screens except Users and
+anyone a ticket could be handed to. Sees the admin screens except Team and
 Outbox, and may look at them but not change them.
 _Avoid_: guest, anonymous user, trial user, demo account
 

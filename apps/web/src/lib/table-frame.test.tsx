@@ -18,23 +18,23 @@ function renderAtRoot(ui: ReactNode) {
 describe("TableFrame", () => {
   it("is a named region", () => {
     renderAtRoot(
-      <TableFrame label="Users">
+      <TableFrame label="Team">
         <p>body</p>
       </TableFrame>,
     );
 
-    expect(screen.getByRole("region", { name: "Users" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Team" })).toBeInTheDocument();
   });
 
   it("takes keyboard focus, so the scroller can be operated without a mouse", async () => {
     const user = userEvent.setup();
     renderAtRoot(
-      <TableFrame label="Users">
+      <TableFrame label="Team">
         <p>body</p>
       </TableFrame>,
     );
 
-    const frame = screen.getByRole("region", { name: "Users" });
+    const frame = screen.getByRole("region", { name: "Team" });
     expect(frame).toHaveAttribute("tabindex", "0");
 
     await user.tab();
@@ -55,7 +55,7 @@ describe("TableFrame", () => {
   it("passes the remaining props through, which is how the skeletons stay busy", () => {
     renderAtRoot(
       <TableFrame
-        label="Loading users"
+        label="Loading the team"
         aria-busy="true"
         data-tutorial-anchor="feed"
       >
@@ -63,7 +63,7 @@ describe("TableFrame", () => {
       </TableFrame>,
     );
 
-    const frame = screen.getByRole("region", { name: "Loading users" });
+    const frame = screen.getByRole("region", { name: "Loading the team" });
     expect(frame).toHaveAttribute("aria-busy", "true");
     expect(frame).toHaveAttribute("data-tutorial-anchor", "feed");
   });

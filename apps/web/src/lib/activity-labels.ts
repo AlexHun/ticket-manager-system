@@ -1,5 +1,6 @@
 import {
   asAutoReplyDecline,
+  midSentence,
   TICKET_ACTIVITY_ACTION,
   TICKET_ACTOR_KIND,
   type TicketActivity,
@@ -73,10 +74,11 @@ export const ACTIVITY_PHRASING: Record<
   // said which one it hit. Narrowed on the way in like every other stored
   // decline reason: `toValue` is a free-text column, so a reason written by an
   // older build or since renamed reads as no reason rather than as a raw key.
+  // `DECLINE_SHORT` is written to stand alone as a label, capital first;
+  // here it follows a dash mid-sentence, so it goes through `midSentence`.
   [TICKET_ACTIVITY_ACTION.auto_declined]: (entry) => {
     const decline = asAutoReplyDecline(entry.toValue);
-    return decline
-      ? `left this for a human — ${DECLINE_SHORT[decline]}`
-      : "left this for a human";
+    if (!decline) return "left this for a person";
+    return `left this for a person — ${midSentence(DECLINE_SHORT[decline])}`;
   },
 };

@@ -109,5 +109,5 @@ export const STAGE_DESCRIPTION: Record<PipelineStage, string> = {
   [PIPELINE_STAGE.checked]:
     "Four checks run over the finished text, where nothing the customer wrote can argue with them. Every one fails closed.",
   [PIPELINE_STAGE.resolved]:
-    "The reply is appended to the thread and the ticket is resolved. The only exit where the machine finished the job.",
+    "The reply is appended to the thread and the ticket is resolved. The only exit where the assistant finished the job.",
 };

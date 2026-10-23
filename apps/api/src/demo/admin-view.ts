@@ -4,7 +4,7 @@ import type { Session } from "../middleware/auth";
 /**
  * Who may look at the admin screens, and who may only look (#320, R3).
  *
- * A demo visitor sees every admin screen except Users and Outbox, and that
+ * A demo visitor sees every admin screen except Team and Outbox, and that
  * access comes from **this** check, keyed on `isAnonymous` — never from the
  * `admin` role. The admin plugin serves `/api/auth/admin/*` (set role, remove
  * user, impersonate) to `adminRoles` without passing through any guard of this

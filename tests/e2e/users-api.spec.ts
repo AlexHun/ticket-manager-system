@@ -1,4 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
+import { ADMIN_DELETE_REFUSED_MESSAGE, USER_ROLE } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
 import { API_URL } from "./helpers/env";
 
@@ -22,7 +23,7 @@ async function getSeededUsers(
 ): Promise<{ admin: ApiUser; agent: ApiUser }> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await signIn(page, "admin");
+  await signIn(page, USER_ROLE.admin);
 
   const res = await page.request.get(`${API_URL}/api/users`);
   const body = (await res.json()) as { users: ApiUser[] };
@@ -90,7 +91,7 @@ test.describe("Users API — unauthenticated", () => {
 
 test.describe("Users API — agent session (forbidden)", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
   });
 
   test("GET /api/users -> 403", async ({ page }) => {
@@ -135,14 +136,14 @@ test.describe("Users API — admin-delete guard", () => {
   test("DELETE /api/users/:id on an admin user -> 403 with explicit message", async ({
     page,
   }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     const res = await page.request.delete(
       `${API_URL}/api/users/${adminUserId}`,
     );
     expect(res.status()).toBe(403);
     await expect(res.json()).resolves.toEqual({
-      error: "Admin users cannot be deleted",
+      error: ADMIN_DELETE_REFUSED_MESSAGE,
     });
   });
 });
@@ -155,7 +156,7 @@ test.describe("Users API — admin-delete guard", () => {
 
 test.describe("Users API — self role-change guard", () => {
   test.beforeEach(async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
   });
 
   test("PATCH /api/users/:id demoting yourself -> 403, and no change", async ({
@@ -164,7 +165,11 @@ test.describe("Users API — self role-change guard", () => {
     const res = await page.request.patch(
       `${API_URL}/api/users/${adminUserId}`,
       {
-        data: { name: adminUser.name, email: ADMIN.email, role: "agent" },
+        data: {
+          name: adminUser.name,
+          email: ADMIN.email,
+          role: USER_ROLE.agent,
+        },
       },
     );
 
@@ -177,7 +182,9 @@ test.describe("Users API — self role-change guard", () => {
     // demotion had landed and taken this session's own access with it.
     const after = await page.request.get(`${API_URL}/api/users`);
     const body = (await after.json()) as { users: ApiUser[] };
-    expect(body.users.find((u) => u.id === adminUserId)?.role).toBe("admin");
+    expect(body.users.find((u) => u.id === adminUserId)?.role).toBe(
+      USER_ROLE.admin,
+    );
   });
 
   test("PATCH /api/users/:id on yourself with the role unchanged -> 200", async ({
@@ -186,7 +193,11 @@ test.describe("Users API — self role-change guard", () => {
     const res = await page.request.patch(
       `${API_URL}/api/users/${adminUserId}`,
       {
-        data: { name: adminUser.name, email: ADMIN.email, role: "admin" },
+        data: {
+          name: adminUser.name,
+          email: ADMIN.email,
+          role: USER_ROLE.admin,
+        },
       },
     );
 

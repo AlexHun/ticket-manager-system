@@ -240,7 +240,7 @@ knowledgeRouter.get(
       select: { id: true },
     });
     if (!article) {
-      res.status(404).json({ error: "Article not found" });
+      res.status(404).json({ error: "Couldn't find that article." });
       return;
     }
 
@@ -361,7 +361,7 @@ knowledgeRouter.patch(
       select: ARTICLE_SELECT,
     });
     if (!existing) {
-      res.status(404).json({ error: "Article not found" });
+      res.status(404).json({ error: "Couldn't find that article." });
       return;
     }
 
@@ -456,7 +456,7 @@ async function pendingRevisionOf(
     select: { id: true, articleId: true, editorId: true },
   });
   if (!revision || revision.articleId !== articleId) {
-    res.status(404).json({ error: "Revision not found" });
+    res.status(404).json({ error: "Couldn't find that revision." });
     return null;
   }
 
@@ -608,7 +608,7 @@ knowledgeRouter.post(
       select: ARTICLE_SELECT,
     });
     if (!existing) {
-      res.status(404).json({ error: "Article not found" });
+      res.status(404).json({ error: "Couldn't find that article." });
       return;
     }
 

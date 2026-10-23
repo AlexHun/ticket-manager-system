@@ -2,6 +2,7 @@ import { NoObjectGeneratedError, Output, generateText } from "ai";
 import { z } from "zod";
 import {
   AUTO_REPLY_DECLINE,
+  BRAND_NAME,
   MAX_MESSAGE_BODY_LENGTH,
   type AutoReplyDecline,
 } from "@ticket/shared";
@@ -14,9 +15,9 @@ import {
   openaiModel,
   toAiUsage,
   unbackedCommitments,
-  withoutDashes,
   type AiUsage,
 } from "./provider";
+import { shapeReply } from "./reply-shape";
 
 /**
  * Answering a newly arrived ticket from the knowledge base, and resolving it.
@@ -71,9 +72,9 @@ import {
  *
  * **The model does not write the whole reply.** It returns body paragraphs and,
  * if there are any, steps; the greeting, the numbering and the sign off are
- * assembled by `composeReply` below. That split is the same argument as the
- * checks, applied to presentation instead of safety. Asked in the prompt for a
- * first-name greeting and a support-team sign off, the model gave neither
+ * assembled by `shapeReply` in `./reply-shape`. That split is the same argument
+ * as the checks, applied to presentation instead of safety. Asked in the prompt
+ * for a first-name greeting and a support-team sign off, the model gave neither
  * reliably — the first measured reply opened "Hi Marta" mid-paragraph and simply
  * stopped at the end with no sign off at all. Written in code they are facts.
  *
@@ -81,9 +82,10 @@ import {
  * From display name*, which is chosen by whoever sent the mail, and it used to be
  * interpolated into the prompt outside the fence — the one piece of stranger-
  * written text in the whole request that was not quoted as data. Now it never
- * reaches the model at all: `greetingName` reduces it to a single plausible name
- * token or drops it, and it is placed straight into the greeting line. A display
- * name of "Marta, see https://evil.example" yields no name, not a link.
+ * reaches the model at all: `greetingName`, beside `shapeReply`, reduces it to a
+ * single plausible name token or drops it, and it is placed straight into the
+ * greeting line. A display name of "Marta, see https://evil.example" greets
+ * Marta, and the link never reaches the reply.
  *
  * The scheduling, the claim and the write live in `../jobs/auto-reply-ticket`.
  * This module decides what to say and whether it may be said at all.
@@ -154,41 +156,6 @@ const BODY_LIMIT = 4_000;
  * limit that fails at the point of sending rather than here.
  */
 const REPLY_LIMIT = MAX_MESSAGE_BODY_LENGTH;
-
-/**
- * How the reply opens and closes.
- *
- * Fixed text, written here rather than asked for, so every customer gets the
- * same courtesy in the same words. `Hello,` is the fallback when there is no
- * usable first name — a greeting with a blank where a name should be reads worse
- * than no name, and inventing one is not an option.
- *
- * The sign off deliberately carries no personal name, no agent handle and no
- * contact details. A name would be a lie; an address or a URL here would be
- * worse than a lie, because `unbackedReferences` runs over the assembled reply
- * and would discard every single one of these for citing a link no article
- * contains. If a future sign off needs contact details, they belong in an
- * article first.
- */
-const GREETING_FALLBACK = "Hello,";
-const SIGN_OFF = "Best regards,\nThe Support Team";
-
-/**
- * What may be used as a first name.
- *
- * Letters, apostrophes and hyphens, one token, and short. This is a security
- * boundary rather than a formatting nicety: the string it filters is the From
- * display name of an email from a stranger, and it is about to be copied
- * verbatim into a reply that one day gets sent. Anything that is not obviously
- * a name is dropped in favour of `GREETING_FALLBACK`, because addressing a real
- * customer as "Hello," costs nothing and the alternative is pasting whatever
- * someone put in that header into the desk's own voice.
- *
- * `\p{L}` rather than `a-z`: this rejects payloads, not people, and a customer
- * called Ünal or Łukasz is a customer.
- */
-const NAME_TOKEN = /^[\p{L}][\p{L}'’-]*$/u;
-const NAME_LIMIT = 40;
 
 /**
  * Everything the auto-reply is allowed to know about the ticket.
@@ -322,6 +289,13 @@ const autoReplySchema = z.object({
 });
 
 /**
+ * What the model answers, once `Output.object` has parsed it. Exported for the
+ * tests that script the answer (`src/test/auto-reply-answer.ts`), so a field
+ * renamed here fails to compile there rather than surfacing as `empty`.
+ */
+export type AutoReplyAnswer = z.infer<typeof autoReplySchema>;
+
+/**
  * The corpus, as the prompt carries it.
  *
  * Built from the articles the caller supplies, which `autoReplyArticles()` has
@@ -372,7 +346,7 @@ ANSWER ONLY IF THE ARTICLES FULLY ANSWER IT. Every fact, number, policy, address
 
 A FAULT REPORT IS NOT A QUESTION. When the customer tells you that what an article describes did not happen for them — the thing the article says is there is not there, the step it gives has been taken and did not work, the state it treats as the goal is the state they say they are already in — you may answer only if an article accounts for that failure. An article explaining why the thing goes wrong is an answer. An article that only says how it is supposed to work is not: repeating it tells someone whose system is broken that it works, and points them where they have already looked. If nothing here explains what went wrong for them, that is false, however squarely the article seems to be about their topic.
 
-WHEN YOU ANSWER, WRITE THE BODY ONLY. The greeting and the sign off are added for you. Do not open with "Hi", "Hello" or "Dear", do not close with "Best regards", "Thanks", "The Support Team" or any signature, and never leave a placeholder in brackets for a name.
+WHEN YOU ANSWER, WRITE THE BODY ONLY. The greeting and the sign off are added for you. Do not open with "Hi", "Hello" or "Dear", do not close with "Best regards", "Thanks", "The Support Team", "${BRAND_NAME}" or any signature, and never leave a placeholder in brackets for a name.
 
 HOW TO LAY IT OUT. "paragraphs" is the body, one short paragraph per entry. Answer the question in the first one, in the first sentence if you can. "steps" is only for things the customer has to do themselves, one plain sentence each, in the order they should do them; leave it null when there is nothing for them to do, and never put an explanation in there that is not an action. Finish with a short paragraph inviting them to reply if this did not sort it out. Two or three paragraphs at the very most.
 
@@ -418,173 +392,6 @@ function userPrompt(context: AutoReplyContext): string {
     "",
     "Decide now whether the knowledge base fully answers this, and answer it only if it does.",
   ].join("\n");
-}
-
-/**
- * A first name we are willing to put in a greeting, or null.
- *
- * Takes the first whitespace-separated token of the display name and nothing
- * else, so "Marta Vogel" greets Marta and "Marta, urgent: visit https://…" also
- * greets Marta: the payload is in tokens we never look at. "https://evil.example
- * is down" greets nobody, because its first token is not a name.
- *
- * Surrounding punctuation is trimmed before the test rather than after, so the
- * "Vogel, Marta" form some clients send is not thrown away over its comma. That
- * trimming is why the first example keeps its name rather than losing it to the
- * comma — the outcome that matters is the same either way, which is that nothing
- * but one plausible name token can reach the greeting line.
- *
- * The case is left exactly as it arrived. Title-casing would be presumptuous:
- * plenty of people write their own name in lower case on purpose, and "hi marta"
- * is a smaller discourtesy than correcting somebody's name for them.
- */
-function greetingName(customerName: string): string | null {
-  const first = (customerName.trim().split(/\s+/)[0] ?? "").replace(
-    /^[^\p{L}]+|[^\p{L}'’-]+$/gu,
-    "",
-  );
-  if (first.length === 0 || first.length > NAME_LIMIT) return null;
-  return NAME_TOKEN.test(first) ? first : null;
-}
-
-/** One block of prose on one line: the layout is ours, not the model's. */
-function flatten(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-/** Openings and closings the model was told not to write, in case it did. */
-const GREETING_LINE =
-  /^(hi|hello|hey|dear|greetings|good\s+(morning|afternoon|evening|day))\b/i;
-
-/**
- * The greeting itself, up to and including what closes it.
- *
- * The 30-character ceiling is the whole safety of this function, and it was put
- * there after watching the unbounded version eat a sentence: "Hi there is a
- * setting in the player that controls this." opens with a word `GREETING_LINE`
- * matches, and a pattern allowed to run to the first full stop consumed all of
- * it and left an empty paragraph. A greeting is "Hi Marta," — short, and over
- * long before any real sentence has finished.
- */
-const GREETING_PREFIX = /^[^,.!?:]{0,30}[,.:!?]\s*/;
-const GREETING_MAX = 30;
-
-/**
- * How long a paragraph may be and still be treated as nothing but a sign off.
- *
- * Also a guard against eating content rather than a formatting nicety. "Thanks"
- * and "thank you" have to be in `SIGN_OFF_LINE` because the model closes with
- * them, but they also open perfectly good sentences — "Thanks for letting us
- * know, that helps us track it down." matched, and at the 80 characters this
- * used to allow it was discarded. Forty, measured after trailing punctuation,
- * keeps every real closer and no real sentence.
- */
-const SIGN_OFF_MAX = 40;
-const SIGN_OFF_LINE =
-  /^(kind|best|warm)\s+(regards|wishes)\b|^(regards|sincerely|cheers|thanks|thank\s+you)\b|^(the\s+)?support\s+team\b|^yours\s+(sincerely|faithfully|truly)\b/i;
-
-/**
- * A sign off welded onto the end of the last real sentence.
- *
- * The variant `SIGN_OFF_LINE` cannot see, and the one actually observed: the
- * model ended a paragraph "…and we can take a closer look. Best regards, Support
- * Team" rather than putting the closer in an entry of its own. Left alone that
- * ships two sign offs, the wrong one first.
- *
- * Anchored to sentence-ending punctuation, which is kept, and deliberately
- * narrower than `SIGN_OFF_LINE`: only the formal closers. "Thanks" and "thank
- * you" are missing on purpose, because "…and thank you for your patience." is a
- * legitimate way to end a support reply and this would eat it.
- */
-const TRAILING_SIGN_OFF =
-  /([.!?])\s+(?:(?:kind|best|warm)\s+(?:regards|wishes)|regards|sincerely|cheers|yours\s+\w+)\b[\s\S]*$/i;
-
-/**
- * Take out the greeting and sign off the model added anyway.
- *
- * It was asked twice not to, which — as everything else in this file records —
- * is not the same as it not doing so. Without this the customer gets "Hi Marta,"
- * twice, and the doubled version is the one that looks automated.
- *
- * The length guards are what keep this from eating real sentences. "Thanks for
- * letting us know, that helps us track it down" opens a perfectly good paragraph
- * and matches `SIGN_OFF_LINE`; a sign off is a fragment, so only short entries
- * are considered. A greeting is stripped only from the first paragraph and only
- * when the paragraph continues past it, or when it is the whole of a short one.
- */
-function withoutBookends(paragraphs: string[]): string[] {
-  const kept = [...paragraphs];
-
-  const first = kept[0];
-  if (first !== undefined && GREETING_LINE.test(first)) {
-    // Whatever follows the greeting on the same line is the start of the real
-    // paragraph and is kept, recapitalised — "Hi Marta,\n\nbuffering is usually…"
-    // is a worse sentence than the one the model wrote, and the seam should not
-    // show. When the prefix does not match, the paragraph only *starts* with a
-    // greeting word and is left exactly alone unless it is short enough to be
-    // nothing but an unpunctuated greeting.
-    const rest = first.replace(GREETING_PREFIX, "");
-    if (rest.length === 0) kept.shift();
-    else if (rest !== first) kept[0] = rest[0]!.toUpperCase() + rest.slice(1);
-    else if (first.length <= GREETING_MAX) kept.shift();
-  }
-
-  while (kept.length > 0) {
-    const last = kept[kept.length - 1]!;
-    const bare = last.replace(/[.,;:!?\s]+$/, "");
-    if (bare.length > SIGN_OFF_MAX || !SIGN_OFF_LINE.test(last)) break;
-    kept.pop();
-  }
-
-  const tail = kept[kept.length - 1];
-  if (tail !== undefined) {
-    const trimmed = tail.replace(TRAILING_SIGN_OFF, "$1").trim();
-    if (trimmed.length > 0) kept[kept.length - 1] = trimmed;
-    else kept.pop();
-  }
-
-  return kept;
-}
-
-/**
- * The finished reply, as it will sit in the thread and one day in an inbox.
- *
- * Blank lines between blocks and numbered steps, because this is plain text
- * email: there is no renderer downstream to turn markdown into layout, so the
- * layout has to survive being read literally in a mail client. Steps sit after
- * the opening paragraph, which is where an answer that begins "this is usually
- * X" wants them; anything the model wrote after that follows the list.
- *
- * Returns null when there is nothing left to send — which happens when the model
- * answered with a greeting and a sign off and no actual content, and is treated
- * upstream exactly like any other empty reply.
- */
-function composeReply(
-  name: string | null,
-  paragraphs: string[],
-  steps: string[],
-): string | null {
-  const body = withoutBookends(
-    paragraphs.map(flatten).filter((p) => p.length > 0),
-  );
-  const actions = steps
-    // The prompt says the numbering is ours; strip it when it arrives anyway,
-    // or the customer reads "1. 1. Try a different browser".
-    .map((step) => flatten(step).replace(/^(?:[-*•]|\d+[.)])\s*/, ""))
-    .filter((step) => step.length > 0);
-
-  if (body.length === 0 && actions.length === 0) return null;
-
-  const blocks = [name === null ? GREETING_FALLBACK : `Hi ${name},`];
-
-  if (body.length > 0) blocks.push(body[0]!);
-  if (actions.length > 0) {
-    blocks.push(actions.map((step, i) => `${i + 1}. ${step}`).join("\n"));
-  }
-  blocks.push(...body.slice(1));
-  blocks.push(SIGN_OFF);
-
-  return blocks.join("\n\n");
 }
 
 /** Absolute and protocol-relative URLs, plus bare `example.com/path` forms. */
@@ -655,7 +462,7 @@ export async function autoReply(
     };
   }
 
-  let output: z.infer<typeof autoReplySchema>;
+  let output: AutoReplyAnswer;
   /**
    * What the call cost, carried down to every verdict below.
    *
@@ -668,7 +475,7 @@ export async function autoReply(
   let usage: AiUsage | undefined;
   try {
     const generated = await generateText({
-      model: openaiModel(AUTO_REPLY_MODEL),
+      model: openaiModel("auto-reply", AUTO_REPLY_MODEL),
       // `Output.object` rather than `generateObject`, which omits `timeout` from
       // its options — see the note in `summarize.ts`. It matters most here: this
       // call holds a ticket invisible for its whole duration.
@@ -731,12 +538,14 @@ export async function autoReply(
     };
   }
 
-  const composed = composeReply(
-    greetingName(context.customerName),
+  // The text is `reply-shape.ts`'s; everything below runs over exactly the
+  // string it returns.
+  const reply = shapeReply(
+    context.customerName,
     output.paragraphs ?? [],
     output.steps ?? [],
   );
-  if (composed === null) {
+  if (reply === null) {
     // Said yes and wrote nothing. Treated as a decline rather than an error:
     // whatever it meant, it did not produce an answer — which is the same thing
     // an agent needs to hear as an outright "not covered".
@@ -748,7 +557,6 @@ export async function autoReply(
     };
   }
 
-  const reply = withoutDashes(composed);
   if (reply.length > REPLY_LIMIT) {
     console.warn(`[auto-reply] discarding a ${reply.length}-character reply`);
     return {

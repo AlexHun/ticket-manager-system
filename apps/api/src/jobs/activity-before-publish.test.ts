@@ -7,6 +7,8 @@ import {
   type TicketEventField,
   type TicketStatus,
 } from "@ticket/shared";
+import { classifyAnswer } from "../test/classify-answer";
+import { scriptModel } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 
 /**
@@ -49,7 +51,7 @@ let trailAtPublish: Promise<{ action: string }[]>[] = [];
 // a wrapper that calls through it — is spreading and calling itself. The real
 // function has to be held by value.
 const events = { ...(await import("../events/ticket-events")) };
-mock.module("../events/ticket-events", () => ({
+await mock.module("../events/ticket-events", () => ({
   ...events,
   publishTicketUpdated: (ticketId: number, fields: TicketEventField[]) => {
     // `.then` rather than a bare call: this has to run now, not when the test
@@ -61,17 +63,6 @@ mock.module("../events/ticket-events", () => ({
     );
     events.publishTicketUpdated(ticketId, fields);
   },
-}));
-
-const classify = { ...(await import("../ai/classify")) };
-mock.module("../ai/classify", () => ({
-  ...classify,
-  // The one path that reaches the classifier's activity write. Nothing here is
-  // about the model, so it answers immediately and always the same way.
-  classifyTicket: async () => ({
-    ok: true as const,
-    category: TICKET_CATEGORY.Technical,
-  }),
 }));
 
 const { CLASSIFY_WORKER } = await import("./classify-ticket");
@@ -97,6 +88,9 @@ beforeEach(async () => {
 
 describe("the Activity row lands before ticket_updated", () => {
   test("classification: the category entry is on the trail when the event fires", async () => {
+    // The one path that reaches the classifier's activity write. Nothing here
+    // is about the model, so it answers at once, on the shared fake.
+    scriptModel("classify", classifyAnswer(TICKET_CATEGORY.Technical));
     const id = await newTicket();
 
     await CLASSIFY_WORKER.handle({ ticketId: id });

@@ -18,10 +18,9 @@ import {
   type TicketCategoryCount,
   type TicketStatsResponse,
 } from "@ticket/shared";
+import { DAY_MS } from "../assistant-decisions";
 import { Prisma, prisma } from "../db";
 import { sessionOf } from "../middleware/auth";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * `generate_series` step per bucket width. Like `ORDER_BY` in `tickets.ts`, the
@@ -328,7 +327,7 @@ export async function ticketStatsHandler(
   `;
 
   // The whole desk leaves demo visitors out (#319). The panel lists every
-  // account, zero-ticket ones included, so every click of "Use demo session"
+  // account, zero-ticket ones included, so every click of "Start demo session"
   // would add a "Demo visitor" row beside the people, though no ticket can be
   // filed under a visitor (`ASSIGNABLE_USER`). "Mine" is the caller's own row
   // whoever they are, so a visitor still sees their empty workload.

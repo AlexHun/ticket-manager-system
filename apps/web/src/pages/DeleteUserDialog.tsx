@@ -55,10 +55,13 @@ export function DeleteUserDialog({
       void queryClient.invalidateQueries({ queryKey: activityKeys.all });
       setServerError(null);
       onOpenChange(false);
-      if (user) toast.success(`User "${user.name}" deleted`);
+      if (user) toast.success(`Team member "${user.name}" deleted`);
     },
     onError: (err) => {
-      const message = extractErrorMessage(err, "Failed to delete user");
+      const message = extractErrorMessage(
+        err,
+        "Couldn't delete the team member. Try again.",
+      );
       setServerError(message);
       toast.error(message);
     },
@@ -76,10 +79,10 @@ export function DeleteUserDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete user</DialogTitle>
+          <DialogTitle>Delete team member</DialogTitle>
           <DialogDescription>
             {user
-              ? `Are you sure you want to delete "${user.name}" (${user.email})? This will revoke their sessions and hide them from the users list.`
+              ? `Delete ${user.name} (${user.email})? Their sessions end and they leave the Team list.`
               : ""}
           </DialogDescription>
         </DialogHeader>
@@ -100,7 +103,7 @@ export function DeleteUserDialog({
             disabled={isSubmitting || !user}
           >
             {isSubmitting && <Loader2 className="size-4 animate-spin" />}
-            {isSubmitting ? "Deleting…" : "Delete user"}
+            {isSubmitting ? "Deleting…" : "Delete team member"}
           </Button>
         </DialogFooter>
       </DialogContent>

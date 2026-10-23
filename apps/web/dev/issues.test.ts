@@ -3,8 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  CHAIN_ISSUES_FILE_ENV,
   ISSUES_FILE_ENV,
+  fetchChainListing,
   fetchIssueMetadata,
+  listChainIssues,
   listIssues,
   type Spawn,
 } from "./issues.ts";
@@ -108,6 +111,18 @@ describe("listIssues", () => {
     // Still an environment, not an empty one — `gh` reads PATH and the OS
     // credential store's own variables out of it.
     expect(env.PATH ?? env.Path).toBeTruthy();
+  });
+
+  it("drops the variables that name a repository, since gh finds its repo through git (#566)", async () => {
+    const { calls, spawn } = capture();
+    vi.stubEnv("GIT_DIR", "C:/elsewhere/.git");
+    vi.stubEnv("GIT_INDEX_FILE", "C:/elsewhere/.git/index");
+
+    await listIssues(spawn);
+
+    const { env } = calls[0]![2];
+    expect(env.GIT_DIR).toBeUndefined();
+    expect(env.GIT_INDEX_FILE).toBeUndefined();
   });
 
   it("gives gh a deadline, so a hung child cannot be a Scan that never ends", async () => {
@@ -239,5 +254,120 @@ describe("fetchIssueMetadata", () => {
 
       expect(meta.byIssue?.size).toBe(1);
     });
+  });
+});
+
+/**
+ * A chain's listing (#594): the call `chain` step 1 makes, one plan's issues
+ * with their blocking edges, which the Sessions page orders a chain by.
+ */
+describe("listChainIssues", () => {
+  const capture = () => {
+    const calls: Parameters<Spawn>[] = [];
+    const spawn: Spawn = (...args) => {
+      calls.push(args);
+      return Promise.resolve({ stdout: "[]" });
+    };
+    return { calls, spawn };
+  };
+
+  it("asks gh once for the issues that name the plan, closed ones and blockers included", async () => {
+    const { calls, spawn } = capture();
+
+    await listChainIssues("docs/plans/x.md", spawn);
+
+    expect(calls).toHaveLength(1);
+    const [file, args] = calls[0]!;
+    expect(file).toBe("gh");
+    expect(args.slice(0, 2)).toEqual(["issue", "list"]);
+    // A merged issue is a closed one, and the page shows it.
+    expect(args).toContain("all");
+    // The whole path, quoted: a bare slug matches passing mentions.
+    expect(args).toContain('"docs/plans/x.md" in:body');
+    expect(args).toContain("number,title,state,blockedBy");
+  });
+
+  it("runs from the repo root, through gitEnv, with a deadline (#249, #566)", async () => {
+    const { calls, spawn } = capture();
+    vi.stubEnv("GIT_DIR", "C:/elsewhere/.git");
+    vi.stubEnv("NODE", "C:/bun/node.exe");
+
+    await listChainIssues("docs/plans/x.md", spawn);
+
+    const options = calls[0]![2];
+    expect(options.cwd).toBe(REPO_ROOT);
+    expect(options.env.GIT_DIR).toBeUndefined();
+    expect(options.env.NODE).toBeUndefined();
+    expect(options.timeout).toBeGreaterThan(0);
+  });
+});
+
+describe("fetchChainListing", () => {
+  /** What `gh` prints for one issue of the call above. */
+  const printed = (
+    number: number,
+    state: string,
+    blockedBy: [number, string][] = [],
+  ) => ({
+    number,
+    title: `Fixture #${number}`,
+    state,
+    blockedBy: {
+      nodes: blockedBy.map(([n, s]) => ({ id: `I_${n}`, number: n, state: s })),
+      totalCount: blockedBy.length,
+    },
+  });
+
+  it("reads each issue's state and its blockers' off gh's blockedBy nodes", async () => {
+    const raw = JSON.stringify([
+      printed(201, "CLOSED"),
+      printed(202, "OPEN", [[201, "CLOSED"]]),
+    ]);
+
+    const listing = await fetchChainListing("docs/plans/x.md", {}, () =>
+      Promise.resolve(raw),
+    );
+
+    expect(listing.warning).toBeNull();
+    expect(listing.issues).toEqual([
+      { number: 201, title: "Fixture #201", state: "CLOSED", blockedBy: [] },
+      {
+        number: 202,
+        title: "Fixture #202",
+        state: "OPEN",
+        blockedBy: [{ number: 201, state: "CLOSED" }],
+      },
+    ]);
+  });
+
+  it("reads the override file rather than asking gh", async () => {
+    const file = fixture(JSON.stringify([printed(301, "OPEN")]));
+    const run = vi.fn(() => Promise.resolve("[]"));
+
+    const listing = await fetchChainListing(
+      "docs/plans/x.md",
+      { [CHAIN_ISSUES_FILE_ENV]: file },
+      run,
+    );
+
+    expect(run).not.toHaveBeenCalled();
+    expect(listing.issues?.map((i) => i.number)).toEqual([301]);
+  });
+
+  it("degrades to no listing, and says what it costs, when the file is missing or gh fails", async () => {
+    const missing = await fetchChainListing(
+      "docs/plans/x.md",
+      { [CHAIN_ISSUES_FILE_ENV]: join(dir, "gone.json") },
+      () => Promise.resolve("[]"),
+    );
+    expect(missing.issues).toBeNull();
+    expect(missing.warning).toContain(CHAIN_ISSUES_FILE_ENV);
+    expect(missing.warning).toContain("order is unknown");
+
+    const noGh = await fetchChainListing("docs/plans/x.md", {}, () =>
+      Promise.reject(new Error("gh: command not found")),
+    );
+    expect(noGh.issues).toBeNull();
+    expect(noGh.warning).toContain("gh: command not found");
   });
 });

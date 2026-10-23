@@ -17,7 +17,7 @@ const AGENT = { id: "agent-1", role: USER_ROLE.agent, isAnonymous: false };
 const DEMO = { id: "demo-1", role: USER_ROLE.agent, isAnonymous: true };
 
 /**
- * The gate as `App.tsx` mounts it: Users, which `DEMO_SEES_ADMIN_SCREEN` keeps
+ * The gate as `App.tsx` mounts it: Team, which `DEMO_SEES_ADMIN_SCREEN` keeps
  * from a demo, the knowledge base, which it opens, and one route that names no
  * screen at all. The dashboard is here so a redirect has somewhere visible to
  * land.
@@ -62,7 +62,7 @@ describe("AdminScreenRoute", () => {
     expect(screen.getByText("knowledge page")).toBeInTheDocument();
   });
 
-  // R3: a typed URL to Users or Outbox is not found, not a redirect that
+  // R3: a typed URL to Team or Outbox is not found, not a redirect that
   // would hint the page exists.
   test("a demo session gets the not-found page on a screen it is kept from", () => {
     session.user = DEMO;

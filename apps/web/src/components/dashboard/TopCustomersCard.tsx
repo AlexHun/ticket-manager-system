@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { NO_TICKETS_CREATED } from "./chart-tokens";
 
 /**
  * Who is writing in most, and how much of it is still waiting.
@@ -41,12 +42,12 @@ export function TopCustomersCard({
     <Card className={className}>
       <CardHeader>
         <CardTitle>Top customers</CardTitle>
-        <CardDescription>By tickets opened in this range</CardDescription>
+        <CardDescription>By tickets created in this range</CardDescription>
       </CardHeader>
       <CardContent>
         {customers.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Nothing in this range.
+            {NO_TICKETS_CREATED}
           </p>
         ) : (
           <table className="w-full text-sm">

@@ -26,7 +26,7 @@ type SessionViewer = Pick<
  */
 export interface Viewer {
   role: UserRole | undefined;
-  /** Signed in through "Use demo session" — Better Auth's `isAnonymous`. */
+  /** Signed in through "Start demo session" — Better Auth's `isAnonymous`. */
   demo: boolean;
 }
 

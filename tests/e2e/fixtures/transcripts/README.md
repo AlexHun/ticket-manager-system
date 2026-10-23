@@ -1,19 +1,23 @@
 # Transcript fixture
 
-Two Claude Code transcripts, in the JSONL shape `apps/web/dev/transcripts.ts`
-reads. `tests/e2e/dev-usage.spec.ts` points `CLAUDE_TRANSCRIPT_DIR` at a copy
-of this directory (`transcripts.local`, via `playwright.config.ts`) so the Usage
+Two Claude Code sessions, in the JSONL shape `apps/web/dev/transcripts.ts`
+reads, and three subagent transcripts one of them started (#589).
+`tests/e2e/dev-usage.spec.ts` points `CLAUDE_TRANSCRIPT_DIR` at a copy of this
+directory (`transcripts.local`, via `playwright.config.ts`) so the Usage
 page has figures an assertion can be written against — a real machine's spend
 is not something a test can name. The specs remake that copy before they scan,
 and are free to change it; these files are never written to.
 
-What the two files add up to, and why each line is here:
+What the five transcripts add up to, and why each line is here:
 
-| Issue  | Output tokens               | Turns | Sessions | Cache read                      |
-| ------ | --------------------------- | ----- | -------- | ------------------------------- |
-| `#101` | 12,000 + 8,000 = **20,000** | 2     | 1        | 300,000 + 100,000 = **400,000** |
-| `#102` | **3,000**                   | 1     | 1        | **20,000**                      |
-| `#105` | **90,000**                  | 1     | 1        | **250,000**                     |
+| Issue  | Output tokens                                       | Turns | Sessions | Cache read                                                 |
+| ------ | --------------------------------------------------- | ----- | -------- | ---------------------------------------------------------- |
+| `#101` | 12,000 + 8,000 + 5,000 + 3,000 + 4,000 = **32,000** | 5     | 1        | 300,000 + 100,000 + 60,000 + 70,000 + 30,000 = **560,000** |
+| `#102` | **3,000**                                           | 1     | 1        | **20,000**                                                 |
+| `#105` | **90,000**                                          | 1     | 1        | **250,000**                                                |
+
+The last three terms of `#101` are its subagents', below. They stay one
+session because a subagent's records carry its parent's `sessionId`.
 
 Three lines are in `session-a.jsonl` to be kept out of every row above, and each
 one is a rule worth holding:
@@ -29,20 +33,54 @@ one is a rule worth holding:
 - a truncated final line — the ordinary shape of an append-only JSONL file that
   is still being written, and skipping it must not lose the lines above it.
 
-No line carries a `message.id`, so each counts as one turn on its own. Since
-#413 the scan collapses records sharing an id — Claude Code writes one API
-response as one record per content block — onto one turn; that rule is held by
-`apps/web/dev/usage.test.ts`, not here, so none of the figures above depend on
-it.
+No line of the two sessions carries a `message.id`, so each counts as one turn
+on its own. Since #413 the scan collapses records sharing an id — Claude Code
+writes one API response as one record per content block — onto one turn; that
+rule is held by `apps/web/dev/usage.test.ts`, and the subagent transcripts
+below are the one place these figures depend on it.
+
+## The subagent tree
+
+`session-a/subagents/` is where Claude Code keeps the subagents session `a`
+started, each an `agent-<id>.jsonl` transcript beside an `agent-<id>.meta.json`
+in the shape a real one has (read off this machine's transcripts, 2026-10-20).
+Every record is on `feat/101-a`, so all of it is `#101`'s:
+
+| Agent               | Started by                                          | Meta file                                                             | Output tokens                        |
+| ------------------- | --------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------ |
+| `a1111111111111111` | session `a`, `toolu_fixture_review` on its 4th line | `general-purpose`, "Review the fixture", depth 1, `finished`          | 5,000 + 3,000 = **8,000**, two turns |
+| `a2222222222222222` | `a1111…`, `toolu_fixture_nested` on its 4th line    | `Explore`, "Find the fixture's specs", depth 2, `parentAgentId` named | **4,000**, one turn                  |
+| `a3333333333333333` | —                                                   | **unparseable**: cut off mid-key, on purpose                          | none: a prompt, no response          |
+
+The first agent's first response, `msg_fixture_review_1`, is written twice: a
+partial **25** output tokens on its text block, then the final **5,000** on its
+tool call, as real subagent transcripts write them (#431). The scan keeps the
+largest count per id, so it reads 5,000. Keeping the first would read `#101` as
+27,025, and summing both as 32,025.
+
+The second agent's meta has no `finished`, so it reads as still running beside
+a finished parent, as the one nested meta on this machine did. The third
+agent's meta is the file a reader must warn about rather than drop silently;
+its transcript holds only the prompt, so it moves no figure.
+
+The scan counts all three subagent transcripts, which is why the page reads
+**5 transcripts**. A spec that deletes session `a` deletes `session-a/` with
+it, as Claude Code's cleanup would, or `#101` keeps the subagents' 12,000.
 
 Every complete line carries a `timestamp`, which no figure above reads: it is
 what the usage history's start date is taken from (#417). The earliest is
-**2026-09-02T09:00:00.000Z**, the first line of `session-a.jsonl`, and
+**2026-09-02T09:00:00.000Z**, on the first two lines of `session-a.jsonl`, and
 `dev-usage-history.spec.ts` asserts the page names it.
 
 `#105` shares `session-b.jsonl` with `#102`, on its own branch. That is the
 mirror of the `main` turn above: two branches in one session must land in two
 rows, the same way one session's `main` turn must land in none.
+
+Between them sits a turn on `develop`, **1,000** output tokens (#593). The
+scan drops it, as it drops `chore/no-issue-here`: `develop` names no issue and
+is not `main`, so it is neither a row nor unattributed, and no figure above
+moves. It is there for the Sessions page, which counts `develop` with `main`
+(below).
 
 ## What the bands and the listing make of these figures
 
@@ -73,12 +111,12 @@ commit as this file:
   and spend to read against it is scored, so `#102` (figures, no band) and
   `#103` (band, no figures) are still out of it. `#105` is the second row that
   qualifies, and it missed.
-- **The quartiles are p25 3,000 · median 20,000 · p75 90,000.** Nearest-rank
-  over the three recorded totals sorted — 3,000, 20,000, 90,000 — puts p25 on
-  the first, the median on the second and p75 on the third. Only p75 moved: with
-  two values it sat on 20,000 alongside the median. The two lower marks still
-  share band `S`, which keeps the grouped-label case the chart draws them with;
-  p75 now sits alone in `M`, so the fixture exercises both arrangements.
+- **The quartiles are p25 3,000 · median 32,000 · p75 90,000.** Nearest-rank
+  over the three recorded totals sorted — 3,000, 32,000, 90,000 — puts p25 on
+  the first, the median on the second and p75 on the third. #274 moved only p75:
+  with two values it sat on 20,000 alongside the median. The two lower marks
+  still share band `S`, which keeps the grouped-label case the chart draws them
+  with; p75 sits alone in `M`, so the fixture exercises both arrangements.
 - **Three issues with recorded spend**, where it was two.
 
 An over-budget row cannot be anything but the largest figure here — `over`
@@ -86,6 +124,70 @@ against `forecast/S` means at least 60,000 output tokens — so `#105` also sort
 _first_ under the table's default ranking. Every ordering assertion in the spec
 counts it.
 
+**The subagent tree (#589) moved `#101`'s row and the median, and nothing
+else.** `#101` went from 20,000 to 32,000 output tokens, 2 to 5 turns and
+400,000 to 560,000 cache read, and the median with it from 20,000 to 32,000.
+32,000 is still under `S`'s 60,000, so the verdict, the 1/2 accuracy, the band
+the two lower quartiles share and every ordering by output tokens stand; `#101`
+already had the most turns, so the ordering by turns stands too. The transcript
+count went from 2 to 5. The specs' literals moved in the same commit as this
+file.
+
 Change a number here and `dev-usage.spec.ts` goes red, which is the point: the
 spec states these totals as literals rather than recomputing them with the code
 under test.
+
+## What the Sessions page makes of them
+
+`tests/e2e/dev-sessions.spec.ts` reads the same working copy through
+`/__dev/sessions` (#590). Three lines are here for it alone, and none moves a
+figure above: the `develop` turn in `session-b.jsonl` (#593), and these two:
+
+- the first line of `session-a.jsonl` is its prompt, "Implement issue #101.",
+  which is the session's task. It carries no `usage`, so the Usage scan skips
+  it, and the same timestamp as the line after it, so the history's start date
+  stands;
+- the last line of `session-b.jsonl` ends its turn (`stop_reason: "end_turn"`),
+  so session `b` reads Done. Session `a` ends on no such line, and its nested
+  subagent is still running, so it reads Running.
+
+A session's card is named for its transcript (`session-a`), a subagent's for
+its `agentId`. Its elapsed time runs from its transcript's first timestamp to
+its latest. Its tools are those its own transcript called, in the order it
+first called each (#595); none of them runs `implement`, so none shows a step:
+
+| Card                | Type              | Model              | State   | Elapsed  | Tools           |
+| ------------------- | ----------------- | ------------------ | ------- | -------- | --------------- |
+| `session-b`         | Session           | unknown            | Done    | `5m 0s`  | none            |
+| `session-a`         | Session           | `claude-opus-5-5`  | Running | `15m 0s` | `Agent`         |
+| `a1111111111111111` | `general-purpose` | `claude-opus-5-5`  | Done    | `1m 55s` | `Read`, `Agent` |
+| `a2222222222222222` | `Explore`         | `claude-haiku-5-5` | Running | `55s`    | `Grep`          |
+
+Session `b` has no prompt, so its task reads "No prompt recorded".
+`a3333333333333333`'s meta file is the warning, and it has no card.
+
+The cards are grouped by the branch each response ran on (#593): one group per
+issue, one for `develop` and `main`, and one for the rest. A session that ran on
+several branches is in each of their groups with its share of each, so a card's
+output tokens are those of its own responses on the group's branches, and
+"with its subagents" adds every card under it. Issue groups come first, by
+their most recently started session (session `b` before `a`), then by number:
+
+| Group                | Total                               | Cards: own (with its subagents)                                                       |
+| -------------------- | ----------------------------------- | ------------------------------------------------------------------------------------- |
+| `#102`               | **3,000**                           | `session-b` 3,000                                                                     |
+| `#105`               | **90,000**                          | `session-b` 90,000                                                                    |
+| `#101`               | **32,000**, the Usage page's `#101` | `session-a` 12,000 + 8,000 = 20,000 (32,000); `a1111…` 8,000 (12,000); `a2222…` 4,000 |
+| `develop` and `main` | 1,000 + 5,000 = **6,000**           | `session-b` 1,000, then `session-a` 5,000                                             |
+| other branches       | **7,000**                           | `session-a` 7,000, on `chore/no-issue-here`                                           |
+
+The subagents ran on `feat/101-a` alone, so only `#101`'s group draws them.
+
+The Running states above hold only while the working copy's files are fresh:
+a card that is not Done reads Stopped once its files have gone unwritten for
+`SESSION_IDLE_MS` (#591). `resetTranscriptWorkingCopy` stamps every copied
+file with the current time for that reason. The spec's live cases (#591)
+write to the working copy at run time and never to these files: a response
+of 1,000 output tokens appended to `session-a.jsonl` (its share of `#101`
+20,000 → 21,000), one of 500 whose call starts a new subagent (21,500), and
+that subagent's own 600, all on `feat/101-a` (`#101` 32,000 → 34,100).

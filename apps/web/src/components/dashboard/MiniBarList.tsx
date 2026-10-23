@@ -41,13 +41,15 @@ export function MiniBarList({
   title,
   subtitle,
   rows,
-  emptyMessage = "Nothing in this range.",
+  emptyMessage,
   className,
 }: {
   title: string;
   subtitle?: string;
   rows: MiniBarRow[];
-  emptyMessage?: string;
+  /** Required: an empty state names what would fill the panel, which only the
+   *  panel knows — a shared "Nothing in this range." said nothing. */
+  emptyMessage: string;
   className?: string;
 }) {
   const max = Math.max(1, ...rows.map((r) => r.value));

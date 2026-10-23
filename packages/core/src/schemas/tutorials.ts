@@ -19,18 +19,18 @@ export const tutorialStepSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Give the step a title")
+    .min(1, "Give the step a title.")
     .max(
       TUTORIAL_STEP_TITLE_MAX_LENGTH,
-      `Step title must be ${TUTORIAL_STEP_TITLE_MAX_LENGTH} characters or fewer`,
+      `Step title must be ${TUTORIAL_STEP_TITLE_MAX_LENGTH} characters or fewer.`,
     ),
   body: z
     .string()
     .trim()
-    .min(1, "A step with nothing to say isn't a step")
+    .min(1, "A step with nothing to say isn't a step.")
     .max(
       TUTORIAL_STEP_BODY_MAX_LENGTH,
-      `Step body must be ${TUTORIAL_STEP_BODY_MAX_LENGTH} characters or fewer`,
+      `Step body must be ${TUTORIAL_STEP_BODY_MAX_LENGTH} characters or fewer.`,
     ),
   // Whatever the admin picked from that page's anchor dropdown, or omitted
   // for a centered step — see `TutorialStep.anchor` in `@ticket/shared` for
@@ -40,7 +40,7 @@ export const tutorialStepSchema = z.object({
     .trim()
     .max(
       TUTORIAL_STEP_ANCHOR_MAX_LENGTH,
-      `Anchor id must be ${TUTORIAL_STEP_ANCHOR_MAX_LENGTH} characters or fewer`,
+      `Anchor id must be ${TUTORIAL_STEP_ANCHOR_MAX_LENGTH} characters or fewer.`,
     )
     .optional(),
 });
@@ -58,17 +58,17 @@ export const tutorialContentSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Give the tutorial a title")
+    .min(1, "Give the tutorial a title.")
     .max(
       TUTORIAL_TITLE_MAX_LENGTH,
-      `Title must be ${TUTORIAL_TITLE_MAX_LENGTH} characters or fewer`,
+      `Title must be ${TUTORIAL_TITLE_MAX_LENGTH} characters or fewer.`,
     ),
   steps: z
     .array(tutorialStepSchema)
-    .min(1, "A tutorial needs at least one step")
+    .min(1, "A tutorial needs at least one step.")
     .max(
       TUTORIAL_MAX_STEPS,
-      `A tutorial can have at most ${TUTORIAL_MAX_STEPS} steps`,
+      `A tutorial can have at most ${TUTORIAL_MAX_STEPS} steps.`,
     ),
 });
 

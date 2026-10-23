@@ -117,7 +117,7 @@ describe("TutorialsPage", () => {
     expect(await screen.findByText("Not written yet")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Nothing is shown to users on this page until it is written.",
+        "Nothing is shown to the team on this page until it is written.",
       ),
     ).toBeInTheDocument();
   });
@@ -137,12 +137,26 @@ describe("TutorialsPage", () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
-  test("renders an alert when the request fails", async () => {
+  test("renders an alert when the request fails, without the raw error", async () => {
     tutorialsGet.mockRejectedValue(new Error("boom"));
     renderTutorialsPage();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("boom");
+    expect(alert).toHaveTextContent("Couldn't load the tutorials. Try again.");
+    expect(alert).not.toHaveTextContent("boom");
+  });
+
+  test("falls back to a Couldn't sentence when the API sends no message", async () => {
+    tutorialsGet.mockRejectedValue(
+      Object.assign(new Error("Request failed with status code 500"), {
+        isAxiosError: true,
+        response: { status: 500, data: {} },
+      }),
+    );
+    renderTutorialsPage();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load the tutorials. Try again.");
   });
 });
 
@@ -237,7 +251,7 @@ describe("TutorialsPage — editing", () => {
     expect(within(dialog).getAllByText(/^Step \d$/)).toHaveLength(2);
   });
 
-  test("Remove is disabled with only one step, and removes otherwise", async () => {
+  test("Remove step is disabled with only one step, and removes otherwise", async () => {
     tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     renderTutorialsPage();
     await screen.findByText("Dashboard");
@@ -247,13 +261,13 @@ describe("TutorialsPage — editing", () => {
 
     expect(within(dialog).getAllByText(/^Step \d$/)).toHaveLength(2);
     const removeButtons = within(dialog).getAllByRole("button", {
-      name: "Remove",
+      name: "Remove step",
     });
     await user.click(removeButtons[0]!);
 
     expect(within(dialog).getAllByText(/^Step \d$/)).toHaveLength(1);
     expect(
-      within(dialog).getByRole("button", { name: "Remove" }),
+      within(dialog).getByRole("button", { name: "Remove step" }),
     ).toBeDisabled();
   });
 
@@ -272,7 +286,7 @@ describe("TutorialsPage — editing", () => {
     );
 
     expect(
-      await within(dialog).findByText("Give the tutorial a title"),
+      await within(dialog).findByText("Give the tutorial a title."),
     ).toBeInTheDocument();
     expect(tutorialPut).not.toHaveBeenCalled();
   });
@@ -324,7 +338,7 @@ describe("TutorialsPage — editing", () => {
     tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
     const axiosError = Object.assign(new Error("Request failed"), {
       isAxiosError: true,
-      response: { status: 400, data: { error: "Give the tutorial a title" } },
+      response: { status: 400, data: { error: "Give the tutorial a title." } },
     });
     tutorialPut.mockRejectedValue(axiosError);
 
@@ -338,15 +352,38 @@ describe("TutorialsPage — editing", () => {
     );
 
     expect(
-      await within(dialog).findByText("Give the tutorial a title"),
+      await within(dialog).findByText("Give the tutorial a title."),
     ).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(tutorialsGet).toHaveBeenCalledTimes(1);
   });
+
+  test("falls back to a Couldn't sentence when a failed save carries no message", async () => {
+    tutorialsGet.mockResolvedValue({ data: { tutorials: [written] } });
+    tutorialPut.mockRejectedValue(
+      Object.assign(new Error("Request failed with status code 500"), {
+        isAxiosError: true,
+        response: { status: 500, data: {} },
+      }),
+    );
+
+    renderTutorialsPage();
+    await screen.findByText("Dashboard");
+
+    const user = await openEditDialog("Edit");
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
+
+    expect(
+      await within(dialog).findByText("Couldn't save the tutorial. Try again."),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("TutorialsPage — step anchors", () => {
-  test("a step's anchor picker defaults to centered, with that page's own options", async () => {
+  test("a step's anchor picker defaults to centred, with that page's own options", async () => {
     tutorialsGet.mockResolvedValue({ data: { tutorials: [unwritten] } });
     renderTutorialsPage();
     await screen.findByText("Outbox");
@@ -357,7 +394,7 @@ describe("TutorialsPage — step anchors", () => {
     const trigger = within(dialog).getByRole("combobox", {
       name: "Step 1 points at",
     });
-    expect(trigger).toHaveTextContent("No target (centered)");
+    expect(trigger).toHaveTextContent("No target (centred)");
 
     await user.click(trigger);
     expect(

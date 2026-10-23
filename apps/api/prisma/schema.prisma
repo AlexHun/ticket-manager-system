@@ -35,7 +35,7 @@ model User {
   /// this" for every ticket instead of going blank on the automated ones.
   automated            Boolean                      @default(false)
   /// This row is a demo visitor: minted by Better Auth's `anonymous` plugin on
-  /// one click of "Use demo session", with no password and no `Account` row.
+  /// one click of "Start demo session", with no password and no `Account` row.
   ///
   /// The plugin owns the name and writes it, which is why it is spelled the
   /// plugin's way rather than this schema's. Written `true` only by
@@ -256,6 +256,20 @@ model Ticket {
   // lands in the dead-letter queue, which is what stops that sweep re-queueing
   // a ticket forever.
   classifiedAt        DateTime?
+  // The category the classifier filed, written by `handle` in
+  // `jobs/classify-ticket.ts` in the same conditional write that files
+  // `category` and stamps `classifiedAt`, and by nothing else in the app
+  // (#561). Its migration backfilled the tickets from before it, from the
+  // classifier's own activity trail.
+  //
+  // `category` is the agent's column as much as the machine's, so it cannot
+  // say what the classifier decided: an agent who clears a category the
+  // classifier filed leaves `classifiedAt` set and `category` null, which is
+  // exactly what the terminal path leaves. This one no agent write touches, so
+  // "the classifier filed it" and "the classifier gave up" are read off it
+  // (`assistant-decisions.ts`). Null with `classifiedAt` set is the classifier
+  // giving up; null with `classifiedAt` null is no verdict yet.
+  classifierCategory  TicketCategory?
   // When the knowledge-base auto-reply answered this ticket and resolved it.
   //
   // The classifier's `classifiedAt` records a verdict either way; this one only
@@ -1372,7 +1386,7 @@ model DemoAiSpend {
 /// The nightly reset (`jobs/demo-reset.ts`) deletes finished demo identities,
 /// and a foreign key would take their tally with them (cascade) or refuse the
 /// delete (restrict). So `userId` is a copy, and the row outlives the user it
-/// names. Each click on "Use demo session" mints a fresh identity with one
+/// names. Each click on "Start demo session" mints a fresh identity with one
 /// session, so an identity and a session are the same count.
 ///
 /// Written by `demo/usage.ts` only: created by the `user.create.after` hook in

@@ -1,19 +1,10 @@
 import {
-  DASHBOARD_RANGE,
   DASHBOARD_SCOPE,
   type DashboardRange,
   type DashboardScope,
 } from "@ticket/shared";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-
-/** Shortest first, so the group reads as a scale. The labels are the API's own
- *  preset values — there is nothing to translate. */
-const RANGES: { value: DashboardRange; label: string }[] = [
-  { value: DASHBOARD_RANGE.d7, label: "7d" },
-  { value: DASHBOARD_RANGE.d30, label: "30d" },
-  { value: DASHBOARD_RANGE.d90, label: "90d" },
-  { value: DASHBOARD_RANGE.m12, label: "12m" },
-];
+import { DASHBOARD_RANGE_OPTIONS } from "@/lib/dashboard-ranges";
 
 const SCOPES: { value: DashboardScope; label: string }[] = [
   { value: DASHBOARD_SCOPE.all, label: "Everyone" },
@@ -59,11 +50,11 @@ export function DashboardFilters({
         }}
         aria-label="Time range"
       >
-        {RANGES.map(({ value, label }) => (
+        {DASHBOARD_RANGE_OPTIONS.map(({ value, label, span }) => (
           <ToggleGroupItem
             key={value}
             value={value}
-            aria-label={`Last ${label}`}
+            aria-label={`Last ${span}`}
           >
             {label}
           </ToggleGroupItem>

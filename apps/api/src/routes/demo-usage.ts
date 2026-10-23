@@ -9,7 +9,7 @@ import { requireAdmin } from "../middleware/auth";
  * of the welcome's suggested steps.
  *
  * **`requireAdmin`, never `requireAdminView`.** These are figures about the
- * visitors, and a visitor is not shown them; the Users page they sit on is
+ * visitors, and a visitor is not shown them; the Team page they sit on is
  * shut to a demo session for the same reason. A router of its own rather than
  * a route on `routes/demo.ts`, whose one endpoint is public and says so.
  */

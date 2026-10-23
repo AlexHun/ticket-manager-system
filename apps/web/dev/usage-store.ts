@@ -50,7 +50,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { REPO_ROOT, childEnv } from "./child-env.ts";
+import { gitEnv } from "./child-env.ts";
 import {
   projectSlug,
   type TranscriptCursor,
@@ -76,27 +76,12 @@ export const HISTORY_FILE_ENV = "USAGE_HISTORY_FILE";
 const GIT_TIMEOUT_MS = 5_000;
 
 /**
- * The environment a `git` asked about `cwd` runs in: `childEnv`'s, because
- * anything spawned from the dev server sanitises first, minus `GIT_DIR` and its
- * siblings — inherited from a git hook they would make git answer for the
- * hook's repository rather than for `cwd`'s. Exported so the tests' own `git`
- * calls build their throwaway clone under the same rule.
- */
-export function gitEnv(): NodeJS.ProcessEnv {
-  const env = childEnv(REPO_ROOT);
-  for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"]) {
-    delete env[key];
-  }
-  return env;
-}
-
-/**
  * The main worktree's root for whatever checkout `cwd` is in: the parent of
  * `git rev-parse --git-common-dir`, which every linked worktree of a clone
  * shares. `null` when git cannot answer — not installed, older than 2.31 (no
  * `--path-format`), or `cwd` is outside any checkout or does not exist.
  *
- * Asynchronous because a spawn under `dev/` is (frontend.md).
+ * Asynchronous because a spawn under `dev/` is (dev-tools.md).
  */
 async function mainWorktreeRoot(cwd: string): Promise<string | null> {
   try {

@@ -82,7 +82,12 @@ export function useSaveDashboardLayout() {
       if (context?.previous) {
         queryClient.setQueryData(dashboardLayoutKeys.all, context.previous);
       }
-      toast.error(extractErrorMessage(err, "Failed to save dashboard layout"));
+      toast.error(
+        extractErrorMessage(
+          err,
+          "Couldn't save the dashboard layout. Try again.",
+        ),
+      );
     },
     onSuccess: (data) => {
       queryClient.setQueryData(dashboardLayoutKeys.all, data);
@@ -113,7 +118,12 @@ export function useResetDashboardLayout() {
       if (context?.previous) {
         queryClient.setQueryData(dashboardLayoutKeys.all, context.previous);
       }
-      toast.error(extractErrorMessage(err, "Failed to reset dashboard layout"));
+      toast.error(
+        extractErrorMessage(
+          err,
+          "Couldn't reset the dashboard layout. Try again.",
+        ),
+      );
     },
     onSuccess: (data) => {
       queryClient.setQueryData(dashboardLayoutKeys.all, data);

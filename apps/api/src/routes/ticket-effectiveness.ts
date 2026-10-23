@@ -1,29 +1,22 @@
 import type { Request, Response } from "express";
 import { ticketEffectivenessQuerySchema } from "@ticket/core";
 import {
-  asAutoReplyDecline,
   AUTO_REPLY_DECLINES,
-  DASHBOARD_RANGE_DAYS,
   DECLINE_OUTCOME,
   MESSAGE_DIRECTION,
   PIPELINE_OUTCOME,
   TICKET_ACTIVITY_ACTION,
   TICKET_ACTOR_KIND,
   type AssistantEffectivenessResponse,
-  type AutoReplyDecline,
 } from "@ticket/shared";
-import { Prisma, prisma } from "../db";
+import {
+  countCategoryOverrides,
+  inWindow,
+  windowCounts,
+  windowFor,
+} from "../assistant-decisions";
+import { prisma } from "../db";
 import { averageEditDistance } from "./ticket-effectiveness-edit-distance";
-import { countCategoryOverrides } from "./ticket-effectiveness-override";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Same UTC-safe cast `ticket-stats.ts` uses — see the comment there for why a
- *  plain bind parameter would silently shift every number by the API host's
- *  local offset. Duplicated rather than imported: route files here don't reach
- *  into one another, and this is three lines. */
-const ts = (d: Date) =>
-  Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
 
 /**
  * The decline reasons that are a verdict about the ticket.
@@ -36,28 +29,32 @@ const ts = (d: Date) =>
  * number an admin reads to decide whether the knowledge base needs work
  * (`docs/adr/0019`).
  *
- * The `groupBy` below is deliberately not filtered this way: it breaks the
- * column down by reason, and a reason is what the column honestly holds.
+ * The tally by reason it is summed from is deliberately not filtered this way:
+ * it breaks the column down by reason, and a reason is what the column
+ * honestly holds.
  */
 const VERDICT_DECLINES = AUTO_REPLY_DECLINES.filter(
   (d) => DECLINE_OUTCOME[d] === PIPELINE_OUTCOME.declined,
 );
 
-interface FactsRow {
-  classified: number;
-  resolvedByAssistant: number;
-  declined: number;
-}
-
 /**
  * GET /api/tickets/effectiveness
  *
- * The assistant's numbers, aggregated the way `ticket-stats.ts` already does
- * it — raw SQL for the facts a single scan answers, `groupBy`/`findMany` for
- * the counts that are more naturally a Prisma query, all four run inside one
- * transaction so the whole response describes the same slice. Part of #16;
- * see `ticket-effectiveness-edit-distance.ts` for how `avgEditDistance` is
- * computed and why it no longer has to stay null.
+ * The assistant's numbers over one window, pinned once so every figure in the
+ * response is taken over the same `[from, to)`. The reads run side by side
+ * rather than in one array `$transaction`, as `/pipeline`'s always have: under
+ * Postgres' default READ COMMITTED that transaction gave each statement its own
+ * snapshot anyway, so a write landing mid-request could move one count and not
+ * another either way, and `windowCounts`, being a function, cannot join a
+ * batch. The window and its classified, resolved and
+ * per-reason decline counts are `windowFor` and `windowCounts` from
+ * `assistant-decisions.ts`, the same calls `/pipeline` makes, so for the same
+ * range the two screens cannot disagree (#563). What only this screen
+ * publishes, the category overrides and the edit distance, is read here over
+ * the same window. No raw SQL since #562: its one reason was the join to
+ * `user` that counted the assistant's assignments as its resolutions. Part of
+ * #16; see `ticket-effectiveness-edit-distance.ts` for how `avgEditDistance`
+ * is computed and why it no longer has to stay null.
  */
 export async function ticketEffectivenessHandler(
   req: Request,
@@ -70,95 +67,57 @@ export async function ticketEffectivenessHandler(
   }
 
   const { range } = parsed.data;
-  const days = DASHBOARD_RANGE_DAYS[range];
+  const window = windowFor(range);
+  const slice = inWindow(window);
 
-  const to = new Date();
-  const from = new Date(to.getTime() - days * DAY_MS);
-  const window = { createdAt: { gte: from, lt: to } };
-
-  const slice = Prisma.sql`t."createdAt" >= ${ts(from)} AND t."createdAt" < ${ts(to)}`;
-
-  // `classified`, `resolvedByAssistant` and `declined` all fall out of one scan
-  // of `ticket`, so they are one query rather than three. `resolvedByAssistant`
-  // reads the assignee (`u.automated`) rather than `autoResolvedAt` — see the
-  // field comment in `@ticket/shared` for why the two never disagree and the
-  // assignee is the one the ticket asked for.
-  const factsSql = Prisma.sql`
-    SELECT
-      COUNT(*) FILTER (
-        WHERE t."classifiedAt" IS NOT NULL AND t.category IS NOT NULL
-      )::int AS classified,
-      COUNT(*) FILTER (WHERE u.automated = true)::int AS "resolvedByAssistant",
-      COUNT(*) FILTER (
-        WHERE t."autoReplyDecline" IN (${Prisma.join(VERDICT_DECLINES)})
-      )::int AS declined
-    FROM "ticket" t
-    LEFT JOIN "user" u ON u.id = t."assignedToId"
-    WHERE ${slice}
-  `;
-
-  const [facts, declineGroups, overrideRows, editDistancePairs] =
-    await prisma.$transaction([
-      prisma.$queryRaw<FactsRow[]>(factsSql),
-      // Every reason, including the zeroes — same pattern `routes/pipeline.ts`
-      // uses for the identical column.
-      prisma.ticket.groupBy({
-        by: ["autoReplyDecline"],
-        where: { ...window, autoReplyDecline: { not: null } },
-        _count: { _all: true },
-      }),
-      // Bounded by "tickets classified or re-categorised in the slice", not by
-      // ticket volume — most tickets never generate a second `category_changed`
-      // row at all.
-      prisma.ticketActivity.findMany({
-        where: {
-          action: TICKET_ACTIVITY_ACTION.category_changed,
-          actorKind: {
-            in: [TICKET_ACTOR_KIND.assistant, TICKET_ACTOR_KIND.agent],
-          },
-          ticket: window,
+  // `classified` and `resolved` read the statements `/pipeline` counts with,
+  // `classifierFiled` and `assistantResolved` (#561, #562): the auto-resolve
+  // stamp, never the assignee, which records who owns the ticket and is the
+  // column an agent changes.
+  const [counts, overrideRows, editDistancePairs] = await Promise.all([
+    windowCounts(window),
+    // Bounded by "tickets classified or re-categorised in the slice", not by
+    // ticket volume — most tickets never generate a second `category_changed`
+    // row at all.
+    prisma.ticketActivity.findMany({
+      where: {
+        action: TICKET_ACTIVITY_ACTION.category_changed,
+        actorKind: {
+          in: [TICKET_ACTOR_KIND.assistant, TICKET_ACTOR_KIND.agent],
         },
-        select: { ticketId: true, actorKind: true },
-      }),
-      // Scoped through the `ticket` relation rather than the message's own
-      // `createdAt`, so this reads "sent-and-polished pairs on tickets in the
-      // slice" — the same slice every other field on this response uses,
-      // `ticket.createdAt`, not "replies sent in the slice" (a ticket opened
-      // just inside the window can be answered just after it). `automated`
-      // replies are excluded implicitly: the auto-reply never touches Polish,
-      // so `polishedDraft` is always null on one.
-      prisma.message.findMany({
-        where: {
-          direction: MESSAGE_DIRECTION.outbound,
-          polishedDraft: { not: null },
-          textBody: { not: null },
-          ticket: window,
-        },
-        select: { polishedDraft: true, textBody: true },
-      }),
-    ]);
+        ticket: slice,
+      },
+      select: { ticketId: true, actorKind: true },
+    }),
+    // Scoped through the `ticket` relation rather than the message's own
+    // `createdAt`, so this reads "sent-and-polished pairs on tickets in the
+    // slice" — the same slice every other field on this response uses,
+    // `ticket.createdAt`, not "replies sent in the slice" (a ticket opened
+    // just inside the window can be answered just after it). `automated`
+    // replies are excluded implicitly: the auto-reply never touches Polish,
+    // so `polishedDraft` is always null on one.
+    prisma.message.findMany({
+      where: {
+        direction: MESSAGE_DIRECTION.outbound,
+        polishedDraft: { not: null },
+        textBody: { not: null },
+        ticket: slice,
+      },
+      select: { polishedDraft: true, textBody: true },
+    }),
+  ]);
 
-  const f = facts[0];
-  const classified = f?.classified ?? 0;
-  const resolved = f?.resolvedByAssistant ?? 0;
-  const declined = f?.declined ?? 0;
+  const { classified, resolved, declines: reasons } = counts;
+  const declined = VERDICT_DECLINES.reduce((n, d) => n + reasons[d], 0);
   const overridden = countCategoryOverrides(overrideRows);
-
-  const reasons = Object.fromEntries(
-    AUTO_REPLY_DECLINES.map((d) => [d, 0]),
-  ) as Record<AutoReplyDecline, number>;
-  for (const group of declineGroups) {
-    const reason = asAutoReplyDecline(group.autoReplyDecline);
-    if (reason) reasons[reason] += group._count._all;
-  }
 
   const rate = (n: number): number | null =>
     classified === 0 ? null : n / classified;
 
   res.json({
     range,
-    from: from.toISOString(),
-    to: to.toISOString(),
+    from: window.from.toISOString(),
+    to: window.to.toISOString(),
     classified,
     autoReply: { resolved, rate: rate(resolved) },
     decline: { count: declined, rate: rate(declined), reasons },

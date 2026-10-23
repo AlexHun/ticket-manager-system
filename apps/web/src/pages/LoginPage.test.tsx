@@ -2,6 +2,8 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  BRAND_NAME,
+  DEMO_MODE_OFF_MESSAGE,
   DEMO_START_LIMIT_MESSAGE,
   USER_ROLE,
   type DemoStatusResponse,
@@ -55,13 +57,14 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const FORM_DESCRIPTION =
-  "Use your email and password to access The Great Forge Desk.";
+const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
+
+const FORM_DESCRIPTION = `Use your email and password to access ${BRAND_NAME}.`;
 
 describe("LoginPage — rendering", () => {
   test("renders the sign-in form with both fields and submit button", () => {
     renderLogin();
-    expect(screen.getByText("The Great Forge Desk")).toBeInTheDocument();
+    expect(screen.getByText(BRAND_NAME)).toBeInTheDocument();
     expect(screen.getByText(FORM_DESCRIPTION)).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
@@ -72,7 +75,7 @@ describe("LoginPage — rendering", () => {
   test("heads the page with the product's name and labels the form's panel", () => {
     renderLogin();
     expect(
-      screen.getByRole("heading", { level: 1, name: "The Great Forge Desk" }),
+      screen.getByRole("heading", { level: 1, name: BRAND_NAME }),
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Sign in" })).toContainElement(
       screen.getByLabelText("Email"),
@@ -115,7 +118,7 @@ describe("LoginPage — validation", () => {
     await user.type(emailInput, "not-an-email");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByText("Enter a valid email")).toBeInTheDocument();
+    expect(await screen.findByText("Enter a valid email.")).toBeInTheDocument();
     expect(mockSignInEmail).not.toHaveBeenCalled();
   });
 
@@ -126,7 +129,7 @@ describe("LoginPage — validation", () => {
     await user.clear(screen.getByLabelText("Password"));
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(await screen.findByText("Password is required")).toBeInTheDocument();
+    expect(await screen.findByText("Enter your password.")).toBeInTheDocument();
     expect(mockSignInEmail).not.toHaveBeenCalled();
   });
 });
@@ -149,9 +152,15 @@ describe("LoginPage — submit", () => {
     expect(await screen.findByText("HOME")).toBeInTheDocument();
   });
 
-  test("shows the server error message when signIn.email returns an error", async () => {
+  // Better Auth's own wording for a rejected credential is not the copy
+  // standard's, so the page answers the refusal in its own words.
+  test("says it couldn't sign you in when the credential is refused", async () => {
     mockSignInEmail.mockResolvedValue({
-      error: { message: "Invalid email or password" },
+      error: {
+        status: 401,
+        code: "INVALID_EMAIL_OR_PASSWORD",
+        message: "Invalid email or password",
+      },
     });
     renderLogin();
     const user = userEvent.setup();
@@ -159,9 +168,26 @@ describe("LoginPage — submit", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Invalid email or password");
+    expect(alert).toHaveTextContent(SIGN_IN_REFUSED);
     // Stayed on /login — no redirect happened
     expect(screen.queryByText("HOME")).not.toBeInTheDocument();
+  });
+
+  test("says to try later when sign-in is rate limited", async () => {
+    mockSignInEmail.mockResolvedValue({
+      error: {
+        status: 429,
+        message: "Too many requests. Please try again later.",
+      },
+    });
+    renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't sign you in — too many attempts. Try again later.",
+    );
   });
 
   test("falls back to a generic message when the error has no message", async () => {
@@ -171,9 +197,7 @@ describe("LoginPage — submit", () => {
 
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-    expect(
-      await screen.findByText("Invalid email or password"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(SIGN_IN_REFUSED)).toBeInTheDocument();
   });
 
   test("disables inputs and shows the loading label while submitting", async () => {
@@ -197,13 +221,13 @@ describe("LoginPage — submit", () => {
 });
 
 /**
- * "Use demo session" (#319). The API's refusal is the real switch: `auth.ts`
+ * "Start demo session" (#319). The API's refusal is the real switch: `auth.ts`
  * turns `/sign-in/anonymous` away while demo mode is off. What is tested here
  * is the half no E2E can reach, because no web server in the suite fronts a
  * demo-off API: the button is absent unless the API says demo mode is on.
  */
 describe("LoginPage — demo session", () => {
-  const DEMO = { name: "Use demo session" };
+  const DEMO = { name: "Start demo session" };
 
   test("offers no demo button while demo mode is off", async () => {
     renderLogin();
@@ -251,7 +275,7 @@ describe("LoginPage — demo session", () => {
     demoMode(true);
     let resolve!: (v: { error: null }) => void;
     // The session is there from the moment the start is sent, so the render
-    // that "Starting demo…" causes already reads it signed in.
+    // that "Starting demo session…" causes already reads it signed in.
     mockSignInAnonymous.mockImplementation(() => {
       mockUseSession.mockReturnValue({
         data: {
@@ -286,7 +310,7 @@ describe("LoginPage — demo session", () => {
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(
-      await screen.findByRole("button", { name: /Starting demo/i }),
+      await screen.findByRole("button", { name: "Starting demo session…" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
     expect(screen.getByLabelText("Email")).toBeDisabled();
@@ -296,11 +320,11 @@ describe("LoginPage — demo session", () => {
 
   // Demo mode turned off between the page loading and the click: the button
   // was honest when drawn, and the refusal needs its own words rather than
-  // "Invalid email or password" about a form nobody filled in.
+  // "Couldn't sign you in" about a form nobody filled in.
   test("says so when the start is refused, and stays", async () => {
     demoMode(true);
     mockSignInAnonymous.mockResolvedValue({
-      error: { status: 403, message: "Demo mode is off" },
+      error: { status: 403, message: DEMO_MODE_OFF_MESSAGE },
     });
     renderLogin();
     const user = userEvent.setup();
@@ -308,7 +332,7 @@ describe("LoginPage — demo session", () => {
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Demo sessions are not available right now.",
+      DEMO_MODE_OFF_MESSAGE,
     );
     expect(screen.queryByText("HOME")).not.toBeInTheDocument();
   });
@@ -335,6 +359,24 @@ describe("LoginPage — demo session", () => {
     expect(screen.queryByText("HOME")).not.toBeInTheDocument();
   });
 
+  test("says to try again when the start fails for no stated reason", async () => {
+    demoMode(true);
+    mockSignInAnonymous.mockResolvedValue({
+      error: {
+        status: 400,
+        message: "Anonymous users cannot sign in again anonymously",
+      },
+    });
+    renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", DEMO));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't start a demo session. Try again.",
+    );
+  });
+
   test("blames the connection, not the visitor, when the API is down", async () => {
     demoMode(true);
     mockSignInAnonymous.mockResolvedValue({
@@ -346,7 +388,7 @@ describe("LoginPage — demo session", () => {
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Can't reach The Great Forge Desk.",
+      `Couldn't reach ${BRAND_NAME}.`,
     );
   });
 });

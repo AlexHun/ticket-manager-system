@@ -62,16 +62,18 @@ export function ResetPasswordPage() {
       token,
     });
 
+    // Better Auth's own `message` is never shown, and `LoginPage` does not show
+    // it either: it is worded its own way ("Invalid token"), not the copy
+    // standard's (#502).
     if (error) {
       setServerError(
-        error.message ??
-          "That link is no longer valid. Ask an admin to send you another.",
+        "That link is no longer valid. Ask an admin to send you another.",
       );
       return;
     }
 
     toast.success("Password set — you can sign in now");
-    navigate(ROUTE.login.path, { replace: true });
+    void navigate(ROUTE.login.path, { replace: true });
   };
 
   const unusable = !token || linkError !== null;
@@ -95,10 +97,10 @@ export function ResetPasswordPage() {
             </CardTitle>
             <CardDescription>
               {unusable
-                ? "Reset links are good for 24 hours and can only be used once. Ask an admin to send you a new one, or request one yourself."
+                ? `${inviting ? "Invitation" : "Reset"} links are good for 24 hours and can only be used once. Ask an admin to send you a new one, or request one yourself.`
                 : inviting
-                  ? "Your account is ready. Pick a password and you are in."
-                  : "Pick a new password for your account."}
+                  ? "Your account is ready. Choose a password and you are in."
+                  : "Choose a new password for your account."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -113,7 +115,7 @@ export function ResetPasswordPage() {
               </div>
             ) : (
               <form
-                onSubmit={handleSubmit(onSubmit)}
+                onSubmit={(event) => void handleSubmit(onSubmit)(event)}
                 noValidate
                 className="flex flex-col gap-4"
               >

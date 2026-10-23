@@ -768,5 +768,300 @@
     "version": "0.1.190",
     "date": "2026-10-09",
     "title": "Demo welcome introduces the owner and names the stack"
+  },
+  {
+    "version": "0.1.198",
+    "date": "2026-10-14",
+    "title": "Name the people who sign in the Team (#481)"
+  },
+  {
+    "version": "0.1.199",
+    "date": "2026-10-14",
+    "title": "Word the ticket list and ticket detail to the copy standard (#482)"
+  },
+  {
+    "version": "0.1.200",
+    "date": "2026-10-14",
+    "title": "Word the dashboard to the copy standard (#483)"
+  },
+  {
+    "version": "0.1.200",
+    "date": "2026-10-14",
+    "title": "Word an empty Needs attention for the Mine scope (#483)"
+  },
+  {
+    "version": "0.1.201",
+    "date": "2026-10-14",
+    "title": "Word the knowledge base to the copy standard (#484)"
+  },
+  {
+    "version": "0.1.201",
+    "date": "2026-10-14",
+    "title": "Name the article's question one way in its validation (#484)"
+  },
+  {
+    "version": "0.1.202",
+    "date": "2026-10-14",
+    "title": "Word the pipeline to the copy standard (#485)"
+  },
+  {
+    "version": "0.1.203",
+    "date": "2026-10-14",
+    "title": "Word the evals screen to the copy standard (#486)"
+  },
+  {
+    "version": "0.1.203",
+    "date": "2026-10-14",
+    "title": "Name unanswered eval repeats the way the case table does (#486)"
+  },
+  {
+    "version": "0.1.204",
+    "date": "2026-10-14",
+    "title": "Show the Outbox's retry refusals and word its statuses (#487)"
+  },
+  {
+    "version": "0.1.204",
+    "date": "2026-10-14",
+    "title": "Keep the Outbox's no-provider sentence off the avoided words (#487)"
+  },
+  {
+    "version": "0.1.205",
+    "date": "2026-10-14",
+    "title": "Sign the desk's outbound emails as the product (#488)"
+  },
+  {
+    "version": "0.1.205",
+    "date": "2026-10-14",
+    "title": "Address review on the outbound brand change (#488)"
+  },
+  {
+    "version": "0.1.206",
+    "date": "2026-10-14",
+    "title": "Reword the tutorials, seeded and already deployed (#489)"
+  },
+  {
+    "version": "0.1.207",
+    "date": "2026-10-14",
+    "title": "Name the product in the welcome page's steps (#490)"
+  },
+  {
+    "version": "0.1.210",
+    "date": "2026-10-14",
+    "title": "Word How it works to the copy standard (#491)"
+  },
+  {
+    "version": "0.1.211",
+    "date": "2026-10-14",
+    "title": "Word sign-in, password and demo entry to the copy standard (#492)"
+  },
+  {
+    "version": "0.1.212",
+    "date": "2026-10-14",
+    "title": "Word the activity feed and app chrome to the copy standard (#493)"
+  },
+  {
+    "version": "0.1.215",
+    "date": "2026-10-14",
+    "title": "End validation messages in a full stop (#518)"
+  },
+  {
+    "version": "0.1.216",
+    "date": "2026-10-14",
+    "title": "Lower-case the decline reason in an Evals verdict (#520)"
+  },
+  {
+    "version": "0.1.217",
+    "date": "2026-10-14",
+    "title": "Keep doc-citations' git calls off a hook's repository (#531)"
+  },
+  {
+    "version": "0.1.219",
+    "date": "2026-10-15",
+    "title": "Say what failed in a plain sentence, never the raw error text"
+  },
+  {
+    "version": "0.1.220",
+    "date": "2026-10-15",
+    "title": "Strip an auto-reply sign off that names the product"
+  },
+  {
+    "version": "0.1.221",
+    "date": "2026-10-15",
+    "title": "Send the error boundary's dashboard button to ROUTE"
+  },
+  {
+    "version": "0.1.223",
+    "date": "2026-10-15",
+    "title": "Bare-vitest hook catches indented lines and bunx.exe (#525)"
+  },
+  {
+    "version": "0.1.229",
+    "date": "2026-10-15",
+    "title": "Strip an auto-reply sign off led by a dash"
+  },
+  {
+    "version": "0.1.229",
+    "date": "2026-10-15",
+    "title": "Review fixes for the dash-led sign off strip"
+  },
+  {
+    "version": "0.1.234",
+    "date": "2026-10-16",
+    "title": "Push usage history to develop at session end"
+  },
+  {
+    "version": "0.1.234",
+    "date": "2026-10-16",
+    "title": "End a timed-out push's whole tree, redact the auth header"
+  },
+  {
+    "version": "0.1.240",
+    "date": "2026-10-20",
+    "title": "Typecheck the root E2E project, and let it pass"
+  },
+  {
+    "version": "0.1.245",
+    "date": "2026-10-21",
+    "title": "A dev-tools Sessions page drawing each session's subagent tree"
+  },
+  {
+    "version": "0.1.246",
+    "date": "2026-10-21",
+    "title": "The Sessions page follows a running session, and a dead one reads Stopped"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "A hook records each session or subagent waiting on the developer"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "The Sessions reader reads a card a waiting record names Waiting for you"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "The Sessions page reads Waiting for you, and its header counts the waiting"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "A permission prompt that names no subagent clears when any card moves on"
+  },
+  {
+    "version": "0.1.247",
+    "date": "2026-10-21",
+    "title": "A subagent's event never ends the session's own wait"
+  },
+  {
+    "version": "0.1.248",
+    "date": "2026-10-21",
+    "title": "The Sessions page groups cards by issue, each with its own and its subtree's output tokens"
+  },
+  {
+    "version": "0.1.249",
+    "date": "2026-10-21",
+    "title": "The Sessions page lists a running chain's issues in order, merged, in progress, next"
+  },
+  {
+    "version": "0.1.250",
+    "date": "2026-10-22",
+    "title": "A Sessions card shows its implement step and the tools it called"
+  },
+  {
+    "version": "0.1.251",
+    "date": "2026-10-22",
+    "title": "A Sessions fold lays out its own session, not the whole page"
+  },
+  {
+    "version": "0.1.251",
+    "date": "2026-10-22",
+    "title": "Settle the #611 review findings"
+  },
+  {
+    "version": "0.1.252",
+    "date": "2026-10-22",
+    "title": "The Sessions page ranks its statistics and folds what you have read"
+  },
+  {
+    "version": "0.1.252",
+    "date": "2026-10-22",
+    "title": "Settle the #613 review findings"
+  },
+  {
+    "version": "0.1.253",
+    "date": "2026-10-22",
+    "title": "Blank the dev Basic Auth credentials for the E2E web server"
+  },
+  {
+    "version": "0.1.257",
+    "date": "2026-10-22",
+    "title": "The reply strips learn the dash for greetings and steps"
+  },
+  {
+    "version": "0.1.257",
+    "date": "2026-10-22",
+    "title": "Settle the #573 review findings"
+  },
+  {
+    "version": "0.1.258",
+    "date": "2026-10-22",
+    "title": "The classifier records the category it filed (#561)"
+  },
+  {
+    "version": "0.1.258",
+    "date": "2026-10-22",
+    "title": "Settle the #561 review findings"
+  },
+  {
+    "version": "0.1.259",
+    "date": "2026-10-22",
+    "title": "Resolved by the assistant reads the stamp on both screens (#562)"
+  },
+  {
+    "version": "0.1.259",
+    "date": "2026-10-22",
+    "title": "Settle the #562 review findings"
+  },
+  {
+    "version": "0.1.260",
+    "date": "2026-10-22",
+    "title": "Settle the #563 review findings"
+  },
+  {
+    "version": "0.1.261",
+    "date": "2026-10-23",
+    "title": "Stop the last pg-boss and server on a hot reload (#639)"
+  },
+  {
+    "version": "0.1.261",
+    "date": "2026-10-23",
+    "title": "Settle the #639 review findings"
+  },
+  {
+    "version": "0.1.262",
+    "date": "2026-10-23",
+    "title": "Dev:stop spares MCP servers and names what it could not stop"
+  },
+  {
+    "version": "0.1.264",
+    "date": "2026-10-23",
+    "title": "Drop a greeting or sign off the model put in the steps"
+  },
+  {
+    "version": "0.1.264",
+    "date": "2026-10-23",
+    "title": "Settle the #635 review findings"
+  },
+  {
+    "version": "0.1.270",
+    "date": "2026-10-23",
+    "title": "Run on Bun 1.4.4 so a hung-up browser aborts the model call"
+  },
+  {
+    "version": "0.1.270",
+    "date": "2026-10-23",
+    "title": "Settle the #651 review findings"
   }
 ]

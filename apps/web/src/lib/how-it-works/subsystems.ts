@@ -12,7 +12,7 @@ import { ROUTE } from "../routes";
  * those subsystems talks to (R3).
  *
  * A subsystem is a part of the system someone would name, never one file: the
- * lists were settled in the 2026-10-08 grilling. The words follow `CONTEXT.md`.
+ * lists were settled in the 2026-10-08 grilling. The words follow `GLOSSARY.md`.
  * Where each one sits is not said here; `layOutSubsystems` in
  * `./subsystem-layout` works it out from the order below and from the links,
  * with nothing simulated.
@@ -90,7 +90,7 @@ export interface Subsystem extends InTheCode {
   readonly id: SubsystemId;
   readonly box: DrillableBoxId;
   readonly title: string;
-  /** Plain language, in `CONTEXT.md`'s words. Shown in the side panel. */
+  /** Plain language, in `GLOSSARY.md`'s words. Shown in the side panel. */
   readonly explanation: string;
   readonly links: readonly SubsystemLink[];
 }
@@ -118,7 +118,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Ingestion",
     explanation:
-      "Turns each email the inbound mail provider passes on into a new ticket, or into a message on the thread it replies to. A reply to a ticket the assistant had resolved Reopens it; a new ticket is queued for Classification.",
+      "Turns each email the inbound mail provider passes on into a new ticket, or into a message on the thread it replies to. A reply to a ticket the assistant had resolved reopens it; a new ticket is queued for classification.",
     code: [
       "apps/api/src/ingest.ts",
       "apps/api/src/routes/webhooks/inbound-email.ts",
@@ -132,9 +132,9 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.ticketsActivity,
     box: N.api,
-    title: "Tickets & Activity",
+    title: "Tickets & activity",
     explanation:
-      "Everything an agent does to a ticket: the queue and its filters, the thread, replies, Status and Assignee changes, and the Activity that records each one. It also asks the model for a Polish of a draft reply or a Summary of a long thread.",
+      "Everything an agent does to a ticket: the ticket list and its filters, the thread, replies, status and assignee changes, and the activity that records each one. It also asks the model for a polish of a draft reply or a summary of a long thread.",
     code: [
       "apps/api/src/routes/tickets.ts",
       "apps/api/src/ticket-activity.ts",
@@ -153,7 +153,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Knowledge base",
     explanation:
-      "The knowledge articles the auto-reply answers from, each change kept as a Revision. Admins write and archive them; the auto-reply reads only what is published.",
+      "The knowledge articles the auto-reply answers from, each change kept as a revision. Admins write and archive them; the auto-reply reads only what is published.",
     code: [
       "apps/api/src/routes/knowledge.ts",
       "apps/api/src/ai/knowledge-base.ts",
@@ -164,9 +164,9 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.pipelineAutomation,
     box: N.api,
-    title: "Pipeline & Automation",
+    title: "Pipeline & automation",
     explanation:
-      "The unattended part of a ticket's life, counted Stage by Stage, and who a Handoff goes to. A Simulated ticket sent from here takes the same path as real mail.",
+      "The unattended part of a ticket's life, counted stage by stage, and who a handoff goes to. A simulated ticket sent from here takes the same path as real mail.",
     code: [
       "apps/api/src/routes/pipeline.ts",
       "apps/api/src/routes/automation.ts",
@@ -180,7 +180,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Outbox",
     explanation:
-      "Every email the desk sends, whether a reply, an Invitation or a Reset, is written here first and then handed to a job to send. An admin sees each one's Delivery, or why it was Undeliverable.",
+      "Every email the desk sends, whether a reply, an invitation or a reset, is written here first and then handed to a job to send. An admin sees each one's delivery, or why it was Undeliverable.",
     code: ["apps/api/src/outbound.ts", "apps/api/src/routes/outbox.ts"],
     screen: ROUTE.outbox.path,
     links: [
@@ -192,9 +192,9 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.authUsers,
     box: N.api,
-    title: "Auth & Users",
+    title: "Auth & Team",
     explanation:
-      "Signing in, sessions, Invitations and password Resets, and the accounts admins manage. It also keeps what each person has seen: the tutorials, the New badges and their dashboard's layout.",
+      "Signing in, sessions, invitations and password resets, and the accounts admins manage. It also keeps what each person has seen: the tutorials, the new-feature badges and their dashboard's layout.",
     code: [
       "apps/api/src/auth.ts",
       "apps/api/src/routes/users.ts",
@@ -208,7 +208,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Realtime",
     explanation:
-      "Tells every open browser the moment a ticket changes, whoever or whatever changed it, so a queue or a thread never needs reloading.",
+      "Tells every open browser the moment a ticket changes, whoever or whatever changed it, so the ticket list or a thread never needs reloading.",
     code: [
       "apps/api/src/events/hub.ts",
       "apps/api/src/routes/events.ts",
@@ -219,9 +219,9 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.evalsSchedule,
     box: N.api,
-    title: "Evals & Schedule",
+    title: "Evals & schedule",
     explanation:
-      "Measures the classifier and the auto-reply against a fixed Corpus of Cases, each Run scored against its Threshold. Runs start by hand, on a Planned run or on the nightly Schedule.",
+      "Measures the classifier and the auto-reply against a fixed corpus of cases, each run scored against its threshold. Runs start by hand, on a planned run or on the nightly schedule.",
     code: [
       "apps/api/src/routes/evals.ts",
       "apps/api/src/routes/eval-schedule.ts",
@@ -239,7 +239,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.api,
     title: "Demo",
     explanation:
-      "Lets a Demo visitor in without an account, for a limited session that sees the admin screens apart from Users and the Outbox and can change none of them, and caps how much model work a day of demos may spend.",
+      "Lets a demo visitor in without an account, for a limited session that sees the admin screens apart from Team and the Outbox and can change none of them, and caps how much model work a day of demos may spend.",
     code: [
       "apps/api/src/routes/demo.ts",
       "apps/api/src/demo/admin-view.ts",
@@ -253,7 +253,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Classify ticket",
     explanation:
-      "Gives a new ticket its Category. The ticket stays in New and is passed on to the auto-reply. An outage is tried again rather than counted as a Decline.",
+      "Gives a new ticket its category. The ticket stays in New and is passed on to the auto-reply. An outage is tried again rather than counted as a decline.",
     code: [
       "apps/api/src/jobs/classify-ticket.ts",
       "apps/api/src/ai/classify.ts",
@@ -271,7 +271,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Auto-reply",
     explanation:
-      "Claims the ticket, which puts it in Processing, and drafts a reply from the knowledge base. A reply that passes every check goes to the outbox and the ticket is Resolved under the assistant; one that does not is a Decline and a Handoff, in Open. An outage is not a Decline: the ticket goes back to New to be tried again.",
+      "Claims the ticket, which puts it in Processing, and drafts a reply from the knowledge base. A reply that passes every check goes to the outbox and the ticket is Resolved under the assistant; one that does not is a decline and a handoff, in Open. An outage is not a decline: the ticket goes back to New to be tried again.",
     code: [
       "apps/api/src/jobs/auto-reply-ticket.ts",
       "apps/api/src/ai/auto-reply.ts",
@@ -290,7 +290,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Send email",
     explanation:
-      "Takes one email from the outbox and hands it to the outbound mail provider, recording the Delivery. A provider outage is tried again; with no provider configured, the email is marked Undeliverable.",
+      "Takes one email from the outbox and hands it to the outbound mail provider, recording the delivery. A provider outage is tried again; with no provider configured, the email is marked Undeliverable.",
     code: ["apps/api/src/jobs/send-email.ts", "apps/api/src/mail/transport.ts"],
     screen: ROUTE.outbox.path,
     links: [
@@ -304,7 +304,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Eval runs",
     explanation:
-      "Works through a Run's Cases with the model and stores each Verdict: a Run started by hand, a Planned run when its time comes, and the nightly one.",
+      "Works through a run's cases with the model and stores each verdict: a run started by hand, a planned run when its time comes, and the nightly one.",
     code: [
       "apps/api/src/jobs/eval-run.ts",
       "apps/api/src/jobs/eval-planned-run.ts",
@@ -323,7 +323,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Demo reset",
     explanation:
-      "The Nightly reset: puts the demo's tickets back as they were, so each day's visitors start from the same desk. It does nothing where demo mode is off.",
+      "The nightly reset: puts the demo's tickets back as they were, so each day's visitors start from the same desk. It does nothing where demo mode is off.",
     code: ["apps/api/src/jobs/demo-reset.ts", "apps/api/src/demo/showcase.ts"],
     links: [out(N.postgres, "SQL")],
   },
@@ -332,7 +332,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.jobWorkers,
     title: "Housekeeping",
     explanation:
-      "Regular sweeps that keep the database from growing without end: old outbox rows and old Activity trails are pruned once they are past keeping.",
+      "Regular sweeps that keep the database from growing without end: old outbox rows and old activity trails are pruned once they are past keeping.",
     code: [
       "apps/api/src/jobs/prune-outbox.ts",
       "apps/api/src/jobs/prune-activity-trails.ts",
@@ -345,7 +345,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.browserApp,
     title: "Sign in",
     explanation:
-      "Where an agent or admin signs in, accepts an Invitation or asks for a Reset, and where a Demo visitor starts a demo session.",
+      "Where an agent or admin signs in, accepts an invitation or asks for a reset, and where a demo visitor starts a demo session.",
     code: [
       "apps/web/src/pages/LoginPage.tsx",
       "apps/web/src/pages/ForgotPasswordPage.tsx",
@@ -358,7 +358,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.browserApp,
     title: "Dashboard",
     explanation:
-      "The desk at a glance: how many tickets are in each Status, how fast they are answered, and how much the assistant resolved on its own.",
+      "The desk at a glance: how many tickets are in each status, how fast they are answered, and how much the assistant resolved on its own.",
     code: [
       "apps/web/src/pages/DashboardPage.tsx",
       "apps/web/src/components/dashboard",
@@ -375,7 +375,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.browserApp,
     title: "Tickets",
     explanation:
-      "The queue: every ticket, filtered, sorted and saved as views, kept current as tickets arrive and change.",
+      "The ticket list: every ticket, filtered, sorted and saved as views, kept current as tickets arrive and change.",
     code: [
       "apps/web/src/pages/TicketsPage.tsx",
       "apps/web/src/pages/TicketsTable.tsx",
@@ -388,7 +388,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.browserApp,
     title: "Ticket thread",
     explanation:
-      "One ticket's thread, where an agent replies, asks for a Polish or a Summary, and changes the Status or the Assignee.",
+      "One ticket's thread, where an agent replies, asks for a polish or a summary, and changes the status or the assignee.",
     code: [
       "apps/web/src/pages/TicketDetailPage.tsx",
       "apps/web/src/pages/TicketMessageThread.tsx",
@@ -409,7 +409,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.knowledgeScreen,
     box: N.browserApp,
-    title: "Knowledge",
+    title: "Knowledge base",
     explanation:
       "Where admins write, revise and archive the knowledge articles the auto-reply answers from.",
     code: ["apps/web/src/pages/KnowledgePage.tsx"],
@@ -421,7 +421,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.browserApp,
     title: "Pipeline",
     explanation:
-      "The unattended path drawn as a rail, with how many tickets each Stage holds, where Handoffs go, and a form to send a Simulated ticket through.",
+      "The unattended path drawn as a rail, with how many tickets each stage holds, where handoffs go, and a form to send a simulated ticket through.",
     code: [
       "apps/web/src/pages/PipelinePage.tsx",
       "apps/web/src/pages/PipelineRail.tsx",
@@ -437,7 +437,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.browserApp,
     title: "Evals",
     explanation:
-      "Each Run's Verdicts against its Threshold, and the Schedule that starts them.",
+      "Each run's verdicts against its threshold, and the schedule that starts them.",
     code: ["apps/web/src/pages/EvalsPage.tsx"],
     screen: ROUTE.evals.path,
     links: [out(S.evalsSchedule, "HTTP"), from(S.realtime, "live updates")],
@@ -447,7 +447,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
     box: N.browserApp,
     title: "Outbox",
     explanation:
-      "Every email the desk has sent or tried to send, with its Delivery.",
+      "Every email the desk has sent or tried to send, with its delivery.",
     code: ["apps/web/src/pages/OutboxPage.tsx"],
     screen: ROUTE.outbox.path,
     links: [out(S.outbox, "HTTP")],
@@ -455,7 +455,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
   {
     id: S.usersScreen,
     box: N.browserApp,
-    title: "Users",
+    title: "Team",
     explanation:
       "Where admins invite agents, change roles and remove accounts.",
     code: ["apps/web/src/pages/UsersPage.tsx"],

@@ -132,7 +132,7 @@ app.get("/api/health", (_req: Request, res: Response<HealthResponse>) => {
 app.use("/api/demo/usage", demoUsageRouter);
 
 // Its GET is public, like health above: the login page asks it before anyone
-// has signed in, to decide whether to offer "Use demo session". One boolean —
+// has signed in, to decide whether to offer "Start demo session". One boolean —
 // see the router. The sign-in it advertises is refused on the same switch in
 // auth.ts. Its one write, the welcome's step mark (#464), is a demo session's
 // only.
@@ -204,22 +204,46 @@ Sentry.setupExpressErrorHandler(app);
 
 const port = Number(process.env.PORT ?? 3001);
 
-// Captured rather than discarded, so `shutdown` can stop taking connections
-// before it starts ending the open ones. Only matters since `/api/events` — a
-// process whose responses all complete in milliseconds has nothing to close.
-let server: Server | undefined;
+/**
+ * What one evaluation of this file left running, kept on `globalThis` so the
+ * next one can take it down (#639).
+ *
+ * `bun --hot` re-runs this whole file on every reload and keeps `globalThis`,
+ * so anything held in a module-level `let` is forgotten while it goes on
+ * running: the last evaluation's server, which nothing would ever close, and
+ * its signal handlers, one more `shutdown` per reload. The queue has the same
+ * problem and the same fix, in `jobs/boss.ts`. In production this file is
+ * evaluated once and both slots start empty.
+ *
+ * `apiServer` is captured rather than discarded for a second reason too: so
+ * `shutdown` can stop taking connections before it starts ending the open
+ * ones. Only matters since `/api/events` — a process whose responses all
+ * complete in milliseconds has nothing to close.
+ */
+const globalForApi = globalThis as unknown as {
+  apiServer: Server | undefined;
+  apiSignalHandler: ((signal: NodeJS.Signals) => void) | undefined;
+};
 
 async function start() {
+  // First, before anything below can stop the queue the last evaluation
+  // started: an old server still accepting while that happens would answer an
+  // enqueueing request with `getBoss()`'s throw. Stops accepting and leaves its
+  // open responses alone — an event stream on it stays subscribed through
+  // `events/hub.ts`, whose set survives the reload, and ends on its own.
+  globalForApi.apiServer?.close();
+
   await prisma.$queryRaw`SELECT 1`;
   console.log("Connected to Postgres");
 
   // Before `listen`, so no request can enqueue onto a queue nobody is working
   // yet. A failure here takes the boot with it on purpose — see the note in
   // `jobs/boss.ts`: an API that is up but silently running no background work is
-  // the hardest kind of broken to notice.
+  // the hardest kind of broken to notice. On a reload this also stops the
+  // queue the last evaluation started.
   await startJobs();
 
-  server = app.listen(port, () => {
+  globalForApi.apiServer = app.listen(port, () => {
     console.log(`API listening on http://localhost:${port}`);
   });
 }
@@ -230,7 +254,7 @@ async function shutdown(signal: string) {
   // Stop accepting, then end what is open. Both are needed and neither replaces
   // the other: `close()` waits for in-flight responses, and an event stream is
   // in-flight forever by definition, so on its own it would simply hang.
-  server?.close();
+  globalForApi.apiServer?.close();
 
   // Before `stopJobs`, which waits up to 30s for a graceful pg-boss stop. A slow
   // job must not hold every open tab's stream for half a minute — the browser
@@ -246,8 +270,17 @@ async function shutdown(signal: string) {
   process.exit(0);
 }
 
-process.on("SIGINT", () => void shutdown("SIGINT"));
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
+// One handler per process, not one per evaluation: the last reload's is taken
+// off before this one goes on, or a Ctrl-C after N reloads would run N+1
+// shutdowns, each on the code it was loaded with.
+const onSignal = (signal: NodeJS.Signals) => void shutdown(signal);
+if (globalForApi.apiSignalHandler) {
+  process.off("SIGINT", globalForApi.apiSignalHandler);
+  process.off("SIGTERM", globalForApi.apiSignalHandler);
+}
+globalForApi.apiSignalHandler = onSignal;
+process.on("SIGINT", onSignal);
+process.on("SIGTERM", onSignal);
 
 start().catch(async (err) => {
   console.error("Failed to start API:", err);

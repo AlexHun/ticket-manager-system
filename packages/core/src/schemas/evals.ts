@@ -332,7 +332,7 @@ export const planEvalRunSchema = z.object({
   runAt: z.coerce
     .date({ error: "Invalid time" })
     .refine((value) => value.getTime() > Date.now(), {
-      error: "A planned run has to be in the future",
+      error: "Couldn't plan the run — pick a time in the future.",
     }),
 });
 

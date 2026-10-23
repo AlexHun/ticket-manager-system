@@ -151,7 +151,7 @@ export const router = createBrowserRouter([
                 // `requireAdminView`; every write keeps `requireAdmin`.
                 Component: AdminScreenRoute,
                 children: [
-                  // Users lists real colleagues; `requireAdmin` on its router
+                  // Team lists real colleagues; `requireAdmin` on its router
                   // is the control.
                   {
                     path: ROUTE.users.path,
@@ -249,7 +249,7 @@ export const router = createBrowserRouter([
                     Component: m.HowItWorksPage,
                   })),
               },
-              // Where "Use demo session" lands (demo-welcome PRD). A demo's
+              // Where "Start demo session" lands (demo-welcome PRD). A demo's
               // page only: anybody else gets the not-found page (R10). UX
               // only — the page reads no data, so there is no API to guard.
               {

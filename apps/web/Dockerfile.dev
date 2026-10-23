@@ -9,7 +9,8 @@
 #
 # Build context is the **repository root**, like the other two images.
 
-FROM oven/bun:1-slim
+# Bun pinned to CI's `BUN_VERSION`, as in apps/api/Dockerfile.
+FROM oven/bun:1.4.4-slim
 
 # The API-unit suite on `/__dev/tests` loads the Prisma client, and Prisma's
 # engines look for OpenSSL, which the slim image lacks (see apps/api/Dockerfile).
@@ -27,6 +28,8 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
 COPY packages/shared/package.json packages/shared/
+COPY tools/lint/package.json tools/lint/
+COPY tools/repo-scan/package.json tools/repo-scan/
 
 RUN bun install --frozen-lockfile
 
@@ -36,8 +39,10 @@ COPY tsconfig.base.json ./
 # and the Prisma schema, and the typecheck and API-unit suites run against it.
 # The root `.dockerignore` still applies, so `tests/`, `scripts/`, `*.md` and
 # `playwright.config.ts` are absent — the map does not see them and the E2E
-# suite cannot run here.
+# suite cannot run here. `tools/repo-scan` is the comment stripper the project
+# map and both standards guards import (#565).
 COPY packages packages
+COPY tools/repo-scan tools/repo-scan
 COPY apps apps
 
 # The generated client is gitignored; the typecheck and API-unit suites need it.

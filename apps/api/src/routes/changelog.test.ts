@@ -30,7 +30,7 @@ const LATEST_VERSION = "0.5.10";
 const NOW = new Date("2026-08-29T12:00:00.000Z");
 
 const actualShared = await import("@ticket/shared");
-mock.module("@ticket/shared", () => ({
+await mock.module("@ticket/shared", () => ({
   ...actualShared,
   CHANGELOG_LATEST_VERSION: LATEST_VERSION,
 }));

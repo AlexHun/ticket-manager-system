@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, CircleSlash, RotateCcw } from "lucide-react";
 import type { AutoReplyCase } from "@ticket/core";
 import {
-  DASHBOARD_RANGE,
   DEFAULT_DASHBOARD_RANGE,
   PIPELINE_OUTCOME,
   TUTORIAL_PAGE_KEY,
@@ -23,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
+import { DASHBOARD_RANGE_OPTIONS } from "@/lib/dashboard-ranges";
 import { extractErrorMessage } from "@/lib/errors";
 import { DECLINE_LABEL } from "@/lib/pipeline-labels";
 import {
@@ -58,13 +58,6 @@ import { PipelineSimulator } from "./PipelineSimulator";
  * `apps/api/src/routes/pipeline.ts` are the control — the simulator is
  * `requireAdmin` — and the `AdminScreenRoute` wrapper around this is UX.
  */
-
-const RANGES: { value: DashboardRange; label: string }[] = [
-  { value: DASHBOARD_RANGE.d7, label: "7d" },
-  { value: DASHBOARD_RANGE.d30, label: "30d" },
-  { value: DASHBOARD_RANGE.d90, label: "90d" },
-  { value: DASHBOARD_RANGE.m12, label: "12m" },
-];
 
 function useOverview(range: DashboardRange) {
   return useQuery({
@@ -197,11 +190,11 @@ export function PipelinePage() {
           }}
           aria-label="Time range"
         >
-          {RANGES.map(({ value, label }) => (
+          {DASHBOARD_RANGE_OPTIONS.map(({ value, label, span }) => (
             <ToggleGroupItem
               key={value}
               value={value}
-              aria-label={`Last ${label}`}
+              aria-label={`Last ${span}`}
             >
               {label}
             </ToggleGroupItem>
@@ -211,7 +204,10 @@ export function PipelinePage() {
 
       {overview.error && (
         <p role="alert" className="text-sm text-destructive">
-          {extractErrorMessage(overview.error, "Failed to load the pipeline")}
+          {extractErrorMessage(
+            overview.error,
+            "Couldn't load the pipeline. Try again.",
+          )}
         </p>
       )}
 
@@ -260,8 +256,11 @@ export function PipelinePage() {
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Tickets that arrived in the last{" "}
-                    {RANGES.find((r) => r.value === range)?.label}. Each stop
-                    shows how many were still on the line.
+                    {
+                      DASHBOARD_RANGE_OPTIONS.find((r) => r.value === range)
+                        ?.span
+                    }
+                    . Each stop shows how many were still on the line.
                   </p>
                 )}
               </div>
@@ -577,7 +576,8 @@ function RecentRuns({
 
       {runs.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nothing arrived in this window.
+          Nothing arrived in this window. Each email the desk receives appears
+          here.
         </p>
       ) : (
         <ul className="divide-y">
@@ -594,7 +594,7 @@ function RecentRuns({
                 <span className="min-w-0 flex-1 truncate">{item.subject}</span>
                 <span
                   className={cn(
-                    "shrink-0 text-xs",
+                    "shrink-0 font-mono text-xs",
                     item.outcome === PIPELINE_OUTCOME.resolved
                       ? "text-calm"
                       : item.outcome === PIPELINE_OUTCOME.declined

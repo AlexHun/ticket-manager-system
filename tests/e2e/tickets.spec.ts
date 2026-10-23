@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
+  ASSIGNEE_NOT_FOUND_MESSAGE,
   CATEGORY_NONE,
   DEFAULT_PAGE_SIZE,
   FIRST_PAGE,
@@ -7,8 +8,11 @@ import {
   MAX_PAGE_SIZE,
   MAX_TICKET_ID,
   MESSAGE_DIRECTION,
+  NO_TICKETS_YET,
   SORT_ORDER,
   TICKET_CATEGORY,
+  TICKET_INPUT_MESSAGE,
+  TICKET_NOT_FOUND_MESSAGE,
   TICKET_SEARCH_MAX_LENGTH,
   TICKET_SORT_FIELD,
   TICKET_STATUS,
@@ -601,13 +605,13 @@ test.describe("Tickets API — access control", () => {
   test("GET /api/tickets -> 200 for an agent (not admin-only)", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     const res = await page.request.get(TICKETS_ENDPOINT);
     expect(res.status()).toBe(200);
   });
 
   test("GET /api/tickets -> 200 for an admin", async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     const res = await page.request.get(TICKETS_ENDPOINT);
     expect(res.status()).toBe(200);
   });
@@ -623,13 +627,13 @@ test.describe("Tickets API — list", () => {
   });
 
   test("returns an empty array when there are no tickets", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     expect(await fetchTickets(page)).toEqual([]);
   });
 
   test("sorts tickets newest first", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const tickets = await fetchTickets(page);
     expect(tickets.map((t) => t.subject)).toEqual([
@@ -652,7 +656,7 @@ test.describe("Tickets API — list", () => {
         }),
       ),
     });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const tickets = await fetchTickets(page);
     expect(tickets.map((t) => t.subject)).toEqual([
@@ -670,7 +674,7 @@ test.describe("Tickets API — list", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const [newest] = await fetchTickets(page);
     expect(newest).toMatchObject({
@@ -699,7 +703,7 @@ test.describe("Tickets API — sorting", () => {
 
   test("sorts by subject in both directions", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(
       await fetchSubjects(page, TICKET_SORT_FIELD.subject, SORT_ORDER.asc),
@@ -711,7 +715,7 @@ test.describe("Tickets API — sorting", () => {
 
   test("sorts by customer name in both directions", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(
       await fetchSubjects(page, TICKET_SORT_FIELD.customerName, SORT_ORDER.asc),
@@ -727,7 +731,7 @@ test.describe("Tickets API — sorting", () => {
 
   test("sorts by createdAt in both directions", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(
       await fetchSubjects(page, TICKET_SORT_FIELD.createdAt, SORT_ORDER.asc),
@@ -741,7 +745,7 @@ test.describe("Tickets API — sorting", () => {
     page,
   }) => {
     await seedForStatusSort();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // Open -> Resolved -> Closed. Alphabetical would give Alpha, Bravo, Charlie.
     expect(
@@ -756,7 +760,7 @@ test.describe("Tickets API — sorting", () => {
     page,
   }) => {
     await seedForCategorySort();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // General -> Technical -> Refund, uncategorised last despite being newest.
     expect(
@@ -779,7 +783,7 @@ test.describe("Tickets API — sorting", () => {
         lastMessageAt: new Date(`2025-08-0${n}T12:00:00.000Z`),
       })),
     });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const tickets = await fetchTickets(page, {
       sort: TICKET_SORT_FIELD.subject,
@@ -790,7 +794,7 @@ test.describe("Tickets API — sorting", () => {
   });
 
   test("rejects an unknown sort field", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     const res = await page.request.get(TICKETS_ENDPOINT, {
       params: { sort: "customerEmail; drop table ticket", order: "asc" },
     });
@@ -800,7 +804,7 @@ test.describe("Tickets API — sorting", () => {
   });
 
   test("rejects an unknown sort order", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     const res = await page.request.get(TICKETS_ENDPOINT, {
       params: { sort: TICKET_SORT_FIELD.subject, order: "sideways" },
     });
@@ -813,7 +817,7 @@ test.describe("Tickets API — sorting", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const tickets = await fetchTickets(page);
     expect(tickets.map((t) => t.subject)).toEqual([
@@ -835,7 +839,7 @@ test.describe("Tickets API — filtering", () => {
 
   test("filters by status", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(await filterSubjects(page, { status: TICKET_STATUS.Open })).toEqual([
       "Newest ticket",
@@ -850,7 +854,7 @@ test.describe("Tickets API — filtering", () => {
 
   test("filters by category", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(
       await filterSubjects(page, { category: TICKET_CATEGORY.Technical }),
@@ -864,7 +868,7 @@ test.describe("Tickets API — filtering", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // Only "Middle ticket" has a category, so the other two come back.
     expect(await filterSubjects(page, { category: CATEGORY_NONE })).toEqual([
@@ -877,7 +881,7 @@ test.describe("Tickets API — filtering", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(await filterSubjects(page, { q: "Oldest ticket" })).toEqual([
       "Oldest ticket",
@@ -898,7 +902,7 @@ test.describe("Tickets API — filtering", () => {
 
   test("search is case-insensitive", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(await filterSubjects(page, { q: "OLDEST TICKET" })).toEqual([
       "Oldest ticket",
@@ -910,7 +914,7 @@ test.describe("Tickets API — filtering", () => {
 
   test("returns an empty list when nothing matches", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(
       await filterSubjects(page, { q: "no-such-ticket-anywhere" }),
@@ -919,7 +923,7 @@ test.describe("Tickets API — filtering", () => {
 
   test("combines filters as AND", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(
       await filterSubjects(page, {
@@ -938,7 +942,7 @@ test.describe("Tickets API — filtering", () => {
 
   test("applies filters and sorting together", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(
       await filterSubjects(page, {
@@ -958,13 +962,13 @@ test.describe("Tickets API — filtering", () => {
 
   test("treats a blank search as no filter", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect((await filterSubjects(page, { q: "   " })).length).toBe(3);
   });
 
   test("rejects an unknown status filter", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     const res = await page.request.get(TICKETS_ENDPOINT, {
       params: { status: "Escalated" },
     });
@@ -974,7 +978,7 @@ test.describe("Tickets API — filtering", () => {
   });
 
   test("rejects an unknown category filter", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     const res = await page.request.get(TICKETS_ENDPOINT, {
       params: { category: "Billing" },
     });
@@ -984,7 +988,7 @@ test.describe("Tickets API — filtering", () => {
   });
 
   test("rejects an over-long search", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     const res = await page.request.get(TICKETS_ENDPOINT, {
       params: { q: "x".repeat(TICKET_SEARCH_MAX_LENGTH + 1) },
     });
@@ -1007,7 +1011,7 @@ test.describe("Tickets API — pagination", () => {
     page,
   }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const body = await fetchPage(page);
     expect(body.page).toBe(FIRST_PAGE);
@@ -1018,7 +1022,7 @@ test.describe("Tickets API — pagination", () => {
 
   test("total counts every match, not just the page", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const body = await fetchPage(page, { pageSize: 10 });
     expect(body.tickets).toHaveLength(10);
@@ -1029,7 +1033,7 @@ test.describe("Tickets API — pagination", () => {
     page,
   }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const seen: string[] = [];
     for (const n of [1, 2, 3]) {
@@ -1044,7 +1048,7 @@ test.describe("Tickets API — pagination", () => {
 
   test("returns the last partial page", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // 30 tickets at 25 per page: page 2 is the last and holds the remaining 5.
     const body = await fetchPage(page, { page: 2, pageSize: 25 });
@@ -1054,7 +1058,7 @@ test.describe("Tickets API — pagination", () => {
 
   test("returns an empty page past the end", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const body = await fetchPage(page, { page: 99, pageSize: 10 });
     expect(body.tickets).toEqual([]);
@@ -1064,7 +1068,7 @@ test.describe("Tickets API — pagination", () => {
 
   test("pages within the requested sort", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const body = await fetchPage(page, {
       sort: TICKET_SORT_FIELD.subject,
@@ -1080,7 +1084,7 @@ test.describe("Tickets API — pagination", () => {
   test("counts only filtered tickets", async ({ page }) => {
     await seedNumberedTickets(30);
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const body = await fetchPage(page, { q: "Ticket 1", pageSize: 5 });
     // Subjects are zero-padded, so "Ticket 1" matches "Ticket 10".."Ticket 19"
@@ -1090,7 +1094,7 @@ test.describe("Tickets API — pagination", () => {
   });
 
   test("rejects a non-numeric or out-of-range page", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     for (const value of ["abc", "0", "-1", "1.5"]) {
       const res = await page.request.get(TICKETS_ENDPOINT, {
@@ -1102,7 +1106,7 @@ test.describe("Tickets API — pagination", () => {
   });
 
   test("rejects a page size above the cap", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await page.request.get(TICKETS_ENDPOINT, {
       params: { pageSize: MAX_PAGE_SIZE + 1 },
@@ -1139,7 +1143,7 @@ test.describe("Ticket detail API", () => {
   // already-authenticated visitor away.
   test("-> 200 for an agent (not admin-only)", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await page.request.get(detailEndpoint(id));
     expect(res.status()).toBe(200);
@@ -1147,7 +1151,7 @@ test.describe("Ticket detail API", () => {
 
   test("-> 200 for an admin", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     const res = await page.request.get(detailEndpoint(id));
     expect(res.status()).toBe(200);
@@ -1157,7 +1161,7 @@ test.describe("Ticket detail API", () => {
     page,
   }) => {
     const id = await seedTicketWithThread({ subject: "Serialised ticket" });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     expect(await fetchDetail(page, id)).toMatchObject({
       id,
@@ -1175,7 +1179,7 @@ test.describe("Ticket detail API", () => {
 
   test("returns the thread oldest first", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const { messages } = await fetchDetail(page, id);
     // Seeded middle-first, so insertion order would put "Second" at the top.
@@ -1213,7 +1217,7 @@ test.describe("Ticket detail API", () => {
       },
       select: { id: true },
     });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const { messages } = await fetchDetail(page, ticket.id);
     expect(messages.map((m) => m.textBody)).toEqual([
@@ -1230,7 +1234,7 @@ test.describe("Ticket detail API", () => {
     const id = await seedTicketWithThread({
       htmlBody: '<img src="x" onerror="alert(1)">',
     });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const { messages } = await fetchDetail(page, id);
     for (const message of messages) {
@@ -1243,7 +1247,7 @@ test.describe("Ticket detail API", () => {
   }) => {
     const assignedToId = await agentUserId();
     const id = await seedTicketWithThread({ assignedToId });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const { assignedTo } = await fetchDetail(page, id);
     expect(assignedTo).toMatchObject({
@@ -1256,15 +1260,15 @@ test.describe("Ticket detail API", () => {
   });
 
   test("-> 404 for a well-formed id with no row", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await page.request.get(detailEndpoint(MAX_TICKET_ID));
     expect(res.status()).toBe(404);
-    expect((await res.json()).error).toBe("Ticket not found");
+    expect((await res.json()).error).toBe(TICKET_NOT_FOUND_MESSAGE);
   });
 
   test("-> 400 for a malformed id", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // The last one is the regression guard: an id past int4 used to reach
     // Prisma and come back as a 500.
@@ -1295,7 +1299,7 @@ test.describe("Ticket assignees API", () => {
   });
 
   test("lists the users, in name order", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const assignees = await fetchAssignees(page);
     const names = assignees.map((a) => a.name);
@@ -1306,7 +1310,7 @@ test.describe("Ticket assignees API", () => {
   });
 
   test("offers admins too — every role works tickets", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const emails = (await fetchAssignees(page)).map((a) => a.email);
     expect(emails).toContain(EXTRA_ADMIN.email);
@@ -1314,7 +1318,7 @@ test.describe("Ticket assignees API", () => {
   });
 
   test("drops a user who has been deleted", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const emails = (await fetchAssignees(page)).map((a) => a.email);
     expect(emails).toContain(ZOE.email);
@@ -1322,7 +1326,7 @@ test.describe("Ticket assignees API", () => {
   });
 
   test("sends only the three columns a picker shows", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     for (const assignee of await fetchAssignees(page)) {
       expect(Object.keys(assignee).sort()).toEqual(["email", "id", "name"]);
@@ -1356,7 +1360,7 @@ test.describe("Ticket assignment API", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await assign(page, id, ZOE.id);
 
@@ -1377,7 +1381,7 @@ test.describe("Ticket assignment API", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await assign(page, id, YURI.id);
 
@@ -1390,7 +1394,7 @@ test.describe("Ticket assignment API", () => {
 
   test("hands a ticket from one agent to another", async ({ page }) => {
     const id = await seedTicketWithThread({ assignedToId: ZOE.id });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await assign(page, id, YURI.id);
 
@@ -1402,7 +1406,7 @@ test.describe("Ticket assignment API", () => {
 
   test("unassigns on null", async ({ page }) => {
     const id = await seedTicketWithThread({ assignedToId: ZOE.id });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await assign(page, id, null);
 
@@ -1414,7 +1418,7 @@ test.describe("Ticket assignment API", () => {
 
   test("an admin can assign too", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     const res = await assign(page, id, ZOE.id);
     expect(res.status()).toBe(200);
@@ -1422,7 +1426,7 @@ test.describe("Ticket assignment API", () => {
 
   test("hands a ticket to an admin", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // The other side of the test above: there the admin was the caller, here
     // they are the target. It gets its own test because the write path checks
@@ -1438,14 +1442,16 @@ test.describe("Ticket assignment API", () => {
 
   test("-> 400 for someone who cannot be assigned", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // The FK would happily accept the deleted row — being in the user table is
     // not the same as being assignable.
     for (const candidate of ["no-such-user", DELETED_USER.id]) {
       const res = await assign(page, id, candidate);
       expect(res.status(), candidate).toBe(400);
-      expect((await res.json()).error, candidate).toBe("Assignee not found");
+      expect((await res.json()).error, candidate).toBe(
+        ASSIGNEE_NOT_FOUND_MESSAGE,
+      );
     }
 
     // …and the ticket is untouched by any of them.
@@ -1454,7 +1460,7 @@ test.describe("Ticket assignment API", () => {
 
   test("-> 400 for a malformed body", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     for (const value of ["", "   ", 42, ["x"], undefined]) {
       const res = await assign(page, id, value);
@@ -1464,15 +1470,15 @@ test.describe("Ticket assignment API", () => {
   });
 
   test("-> 404 for a ticket that doesn't exist", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await assign(page, MAX_TICKET_ID, ZOE.id);
     expect(res.status()).toBe(404);
-    expect((await res.json()).error).toBe("Ticket not found");
+    expect((await res.json()).error).toBe(TICKET_NOT_FOUND_MESSAGE);
   });
 
   test("-> 400 for a malformed ticket id", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     for (const value of ["abc", "0", "-1", String(MAX_TICKET_ID + 1)]) {
       const res = await assign(page, value, ZOE.id);
@@ -1500,7 +1506,7 @@ test.describe("Ticket reply API", () => {
 
   test("appends an outbound message and answers with it", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, id, "Have you tried the reset link?");
 
@@ -1519,7 +1525,7 @@ test.describe("Ticket reply API", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     const before = await fetchDetail(page, id);
     const last = before.messages[before.messages.length - 1];
 
@@ -1533,7 +1539,7 @@ test.describe("Ticket reply API", () => {
 
   test("a first reply on an empty thread has no parent", async ({ page }) => {
     const id = await seedEmptyTicket();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, id, "Reaching out first.");
 
@@ -1546,7 +1552,7 @@ test.describe("Ticket reply API", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await reply(page, id, "Signed by whoever is logged in.");
 
@@ -1561,7 +1567,7 @@ test.describe("Ticket reply API", () => {
 
   test("never sends htmlBody or authorId to the client", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, id, "Nothing internal in this reply.");
 
@@ -1576,7 +1582,7 @@ test.describe("Ticket reply API", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, id, "Last word.");
     const { message } = (await res.json()) as CreateTicketMessageResponse;
@@ -1595,7 +1601,7 @@ test.describe("Ticket reply API", () => {
 
   test("leaves the ticket's status alone", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await reply(page, id, "Answered, but not necessarily resolved.");
 
@@ -1606,7 +1612,7 @@ test.describe("Ticket reply API", () => {
 
   test("an admin can reply too", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
 
     const res = await reply(page, id, "Admins work tickets as well.");
 
@@ -1620,7 +1626,7 @@ test.describe("Ticket reply API", () => {
     request,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, id, "Here is a fresh link.");
     const { message } = (await res.json()) as CreateTicketMessageResponse;
@@ -1653,13 +1659,13 @@ test.describe("Ticket reply API", () => {
 
   test("-> 400 for an empty, blank or non-string reply", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     for (const value of ["", "   ", "\n\t ", 42, ["x"], null, undefined]) {
       const res = await reply(page, id, value);
       expect(res.status(), JSON.stringify(value ?? null)).toBe(400);
       expect((await res.json()).error, JSON.stringify(value ?? null)).toBe(
-        "Write a reply before sending",
+        TICKET_INPUT_MESSAGE.replyEmpty,
       );
     }
 
@@ -1669,14 +1675,12 @@ test.describe("Ticket reply API", () => {
 
   test("-> 400 for a reply past the length cap", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, id, "x".repeat(MAX_MESSAGE_BODY_LENGTH + 1));
 
     expect(res.status()).toBe(400);
-    expect((await res.json()).error).toBe(
-      `A reply is limited to ${MAX_MESSAGE_BODY_LENGTH} characters`,
-    );
+    expect((await res.json()).error).toBe(TICKET_INPUT_MESSAGE.replyTooLong);
     // The cap is on the trimmed value, so one right at it still goes through.
     expect(
       (await reply(page, id, "x".repeat(MAX_MESSAGE_BODY_LENGTH))).status(),
@@ -1687,7 +1691,7 @@ test.describe("Ticket reply API", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, id, "  Padded on both sides.\n\n");
 
@@ -1696,16 +1700,16 @@ test.describe("Ticket reply API", () => {
   });
 
   test("-> 404 for a ticket that doesn't exist", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     const res = await reply(page, MAX_TICKET_ID, "Into the void.");
 
     expect(res.status()).toBe(404);
-    expect((await res.json()).error).toBe("Ticket not found");
+    expect((await res.json()).error).toBe(TICKET_NOT_FOUND_MESSAGE);
   });
 
   test("-> 400 for a malformed ticket id", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     for (const value of ["abc", "0", "-1", String(MAX_TICKET_ID + 1)]) {
       const res = await reply(page, value, "Bad address.");
@@ -1730,7 +1734,7 @@ test.describe("Tickets page", () => {
   });
 
   test("agent can reach /tickets from the sidebar link", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.getByRole("link", { name: "Tickets" }).click();
 
     await expect(page).toHaveURL("/tickets");
@@ -1740,7 +1744,7 @@ test.describe("Tickets page", () => {
   });
 
   test("admin can reach /tickets too", async ({ page }) => {
-    await signIn(page, "admin");
+    await signIn(page, USER_ROLE.admin);
     await page.goto("/tickets");
 
     await expect(
@@ -1749,10 +1753,10 @@ test.describe("Tickets page", () => {
   });
 
   test("shows the empty state when there are no tickets", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
-    await expect(page.getByText("No tickets found.")).toBeVisible();
+    await expect(page.getByText(NO_TICKETS_YET)).toBeVisible();
     await expect(page.getByRole("table")).toHaveCount(0);
   });
 
@@ -1760,7 +1764,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const rows = page.getByRole("row");
@@ -1780,7 +1784,7 @@ test.describe("Tickets page", () => {
 
   test("shows a dash for an uncategorised ticket", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const newestRow = page.getByRole("row").nth(1);
@@ -1791,7 +1795,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const rows = page.getByRole("row");
@@ -1815,7 +1819,7 @@ test.describe("Tickets page", () => {
   test("renders filter dropdowns as themed in-page popovers", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     await filterControl(page, "Status").waitFor();
 
@@ -1842,7 +1846,7 @@ test.describe("Tickets page", () => {
   });
 
   test("opens dropdowns at least as wide as the control", async ({ page }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     for (const label of ["Status", "Category"]) {
@@ -1871,7 +1875,7 @@ test.describe("Tickets page", () => {
 
   test("narrows the list with the status filter", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     await expect(page.getByRole("row")).toHaveCount(4); // header + 3
 
@@ -1885,7 +1889,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await chooseFilter(page, "Category", TICKET_CATEGORY.Technical);
@@ -1899,7 +1903,7 @@ test.describe("Tickets page", () => {
 
   test("searches across subject and customer", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await page.getByLabel("Search").fill("oldest@example.com");
@@ -1912,7 +1916,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await page.getByLabel("Search").fill("no-such-ticket-anywhere");
@@ -1930,7 +1934,7 @@ test.describe("Tickets page", () => {
 
   test("keeps the filter applied while re-sorting", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await chooseFilter(page, "Category", "Uncategorised");
@@ -1946,7 +1950,7 @@ test.describe("Tickets page", () => {
 
   test("pages through the list and back", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     // Default order is newest-first, so page 1 starts at Ticket 30.
@@ -1973,7 +1977,7 @@ test.describe("Tickets page", () => {
 
   test("changing the page size returns to the first page", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await page.getByRole("button", { name: "Next page" }).click();
@@ -1988,7 +1992,7 @@ test.describe("Tickets page", () => {
 
   test("filtering resets paging and recounts", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await page.getByRole("button", { name: "Next page" }).click();
@@ -2003,7 +2007,7 @@ test.describe("Tickets page", () => {
 
   test("hides pagination when nothing matches", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await page.getByLabel("Search").fill("no-such-ticket-anywhere");
@@ -2030,7 +2034,7 @@ test.describe("Tickets page", () => {
         lastMessageAt: new Date(Date.UTC(2024, 0, 1, 12)),
       },
     });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const widths = () =>
@@ -2051,7 +2055,7 @@ test.describe("Tickets page", () => {
 
   test("stretches the columns to fill the frame", async ({ page }) => {
     await seedNumberedTickets(5);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     await page.getByRole("columnheader", { name: "Subject" }).waitFor();
 
@@ -2098,7 +2102,7 @@ test.describe("Tickets page", () => {
         lastMessageAt: new Date(Date.UTC(2025, 5, i + 1, 12)),
       })),
     });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     await expect(page.getByRole("table")).toBeVisible();
 
@@ -2175,7 +2179,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedNumberedTickets(5);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const cursorOf = (locator: ReturnType<typeof page.locator>) =>
@@ -2203,7 +2207,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedNumberedTickets(5);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const before = await columnWidths(page);
@@ -2224,7 +2228,7 @@ test.describe("Tickets page", () => {
 
   test("honours the minimum width when dragged far left", async ({ page }) => {
     await seedNumberedTickets(5);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const before = await columnWidths(page);
@@ -2247,7 +2251,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedNumberedTickets(5);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const before = await columnWidths(page);
@@ -2262,7 +2266,7 @@ test.describe("Tickets page", () => {
 
   test("resizes from the keyboard", async ({ page }) => {
     await seedNumberedTickets(5);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const before = await columnWidths(page);
@@ -2277,7 +2281,7 @@ test.describe("Tickets page", () => {
 
   test("keeps a resized width when the page changes", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     const before = await columnWidths(page);
@@ -2292,7 +2296,7 @@ test.describe("Tickets page", () => {
 
   test("fits the viewport: the window never scrolls", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     await expect(page.getByText("1–25 of 30")).toBeVisible();
 
@@ -2310,7 +2314,7 @@ test.describe("Tickets page", () => {
 
   test("keeps the header visible while the rows scroll", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     // Wait for the real rows, or there is nothing yet to overflow the frame.
@@ -2349,7 +2353,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     // Wait for the real rows, or there is nothing yet to overflow the frame.
@@ -2388,7 +2392,7 @@ test.describe("Tickets page", () => {
 
   test("moves the aria-sort marker to the clicked column", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     // The default sort is `lastMessageAt` desc, whose column is labelled
@@ -2411,7 +2415,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // Hold the list response open, which widens the gap between "navigation
     // started" and "data arrived" to something observable. Everything down to
@@ -2453,7 +2457,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     // The cold-entry half of the claim above, and the one that exercises the
     // loader's own reading of the URL: `?category=…` reaches it through
@@ -2470,7 +2474,7 @@ test.describe("Tickets page", () => {
 
   test("a filter change costs exactly one list request", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     await expect(page.getByRole("row")).toHaveCount(4);
 
@@ -2498,7 +2502,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     await expect(page.getByRole("row")).toHaveCount(4);
 
@@ -2561,7 +2565,7 @@ test.describe("Ticket detail page", () => {
     page,
   }) => {
     const id = await seedTicketWithThread({ subject: "Clickable subject" });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await page.getByRole("link", { name: "Clickable subject" }).click();
@@ -2583,7 +2587,7 @@ test.describe("Ticket detail page", () => {
     page,
   }) => {
     const id = await seedTicketWithThread({ subject: "Prefetched subject" });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
     const row = page.getByRole("link", { name: "Prefetched subject" });
     await expect(row).toBeVisible();
@@ -2644,7 +2648,7 @@ test.describe("Ticket detail page", () => {
 
   test("renders the whole thread oldest first", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
 
     await expect(page.getByText("Messages (3)")).toBeVisible();
@@ -2666,7 +2670,7 @@ test.describe("Ticket detail page", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
 
     const box = page.getByRole("textbox", { name: "Reply" });
@@ -2686,7 +2690,7 @@ test.describe("Ticket detail page", () => {
 
   test("a rejected reply keeps the draft in the box", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
     // The thread is on screen; the ticket is gone by the time Send is pressed.
     // Longer than the default 5000ms: under a full-suite run this page's first
@@ -2701,13 +2705,15 @@ test.describe("Ticket detail page", () => {
     await box.fill("Worth not losing.");
     await page.getByRole("button", { name: "Send reply" }).click();
 
-    await expect(page.getByRole("alert")).toContainText("Ticket not found");
+    await expect(page.getByRole("alert")).toContainText(
+      TICKET_NOT_FOUND_MESSAGE,
+    );
     await expect(box).toHaveValue("Worth not losing.");
   });
 
   test("refuses to send an empty reply", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
 
     // An empty box disables Send, so the click never happens; the keyboard
@@ -2720,14 +2726,14 @@ test.describe("Ticket detail page", () => {
     await page.keyboard.press("Control+Enter");
 
     await expect(page.getByRole("alert")).toContainText(
-      "Write a reply before sending",
+      TICKET_INPUT_MESSAGE.replyEmpty,
     );
     await expect(page.getByText("Messages (3)")).toBeVisible();
   });
 
   test("works as a deep link, without the list state", async ({ page }) => {
     const id = await seedTicketWithThread({ subject: "Deep linked" });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await page.goto(`/tickets/${id}`);
 
@@ -2743,7 +2749,7 @@ test.describe("Ticket detail page", () => {
   test("explains an unknown ticket instead of rendering a blank page", async ({
     page,
   }) => {
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await page.goto(`/tickets/${MAX_TICKET_ID}`);
 
@@ -2759,7 +2765,7 @@ test.describe("Ticket detail page", () => {
     const id = await seedTicketWithThread({
       htmlBody: '<img src="x" onerror="window.__xss = true">',
     });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
 
     await expect(page.getByText("Second message, from support.")).toBeVisible();
@@ -2773,7 +2779,7 @@ test.describe("Ticket detail page", () => {
     page,
   }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     // Build a view that is not the default in three ways at once.
@@ -2819,7 +2825,7 @@ test.describe("Ticket detail page", () => {
 
   test("the back link returns to the same list view", async ({ page }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     // `New`, for the reason spelled out in the test above: these thirty take the
@@ -2861,7 +2867,7 @@ test.describe("Ticket assignment (detail page)", () => {
 
   test("assigns a ticket, and it stays assigned", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
 
     await expect(picker(page)).toContainText("Unassigned");
@@ -2880,7 +2886,7 @@ test.describe("Ticket assignment (detail page)", () => {
 
   test("hands the ticket back to nobody", async ({ page }) => {
     const id = await seedTicketWithThread({ assignedToId: ZOE.id });
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
 
     await expect(picker(page)).toContainText(ZOE.name);
@@ -2895,7 +2901,7 @@ test.describe("Ticket assignment (detail page)", () => {
 
   test("offers every active user, whatever their role", async ({ page }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
 
     await expect(picker(page)).toBeEnabled();
@@ -2912,7 +2918,7 @@ test.describe("Ticket assignment (detail page)", () => {
     page,
   }) => {
     const id = await seedTicketWithThread();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(`/tickets/${id}`);
     await expect(picker(page)).toBeEnabled();
 
@@ -2939,7 +2945,7 @@ test.describe("Tickets list URL state", () => {
 
   test("restores filters and sort from a shared link", async ({ page }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
 
     await page.goto(
       `/tickets?status=${TICKET_STATUS.Resolved}&sort=${TICKET_SORT_FIELD.subject}&order=${SORT_ORDER.asc}`,
@@ -2959,7 +2965,7 @@ test.describe("Tickets list URL state", () => {
     page,
   }) => {
     await seedNumberedTickets(30);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await page.getByRole("button", { name: "Next page" }).click();
@@ -2976,7 +2982,7 @@ test.describe("Tickets list URL state", () => {
     page,
   }) => {
     await seedTickets();
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto("/tickets");
 
     await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");

@@ -1,4 +1,4 @@
-import { cpSync, rmSync } from "node:fs";
+import { cpSync, readdirSync, rmSync, utimesSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,8 +58,25 @@ export const TRANSCRIPT_WORKING_DIR = path.join(HERE, "transcripts.local");
 export const USAGE_HISTORY_PATH = path.join(HERE, "usage-history.local.sqlite");
 
 /**
+ * The directory of waiting records the dev server reads under the E2E, in
+ * place of `~/.claude-sessions-waiting` (#592): what
+ * `.claude/hooks/record-waiting.mjs` writes while a session or subagent waits
+ * on the developer.
+ *
+ * Shared the way `TRANSCRIPT_WORKING_DIR` is: `playwright.config.ts` puts it in
+ * the web server's environment as `CLAUDE_WAITING_DIR`, and
+ * `dev-sessions.spec.ts` writes records into it. Without the override the page
+ * would read the developer's own, and a session of this repository waiting
+ * while the suite ran would be counted in the header. Gitignored as a
+ * `.local` directory, and removed with the working copy so a record one spec
+ * wrote never reaches the next.
+ */
+export const WAITING_WORKING_DIR = path.join(HERE, "waiting.local");
+
+/**
  * Replaces the working copy with a fresh one of the checked-in fixtures, and
- * removes the usage history the last reading left behind.
+ * removes the usage history and the waiting records the last reading left
+ * behind.
  *
  * Removed first rather than copied over, so a file an earlier test (or an
  * earlier run that died part-way) added, grew or deleted cannot survive into
@@ -76,5 +93,27 @@ export const USAGE_HISTORY_PATH = path.join(HERE, "usage-history.local.sqlite");
 export function resetTranscriptWorkingCopy(): void {
   rmSync(TRANSCRIPT_WORKING_DIR, { recursive: true, force: true });
   cpSync(TRANSCRIPT_FIXTURE_DIR, TRANSCRIPT_WORKING_DIR, { recursive: true });
+  stampNow(TRANSCRIPT_WORKING_DIR);
   rmSync(USAGE_HISTORY_PATH, { force: true });
+  rmSync(WAITING_WORKING_DIR, { recursive: true, force: true });
+}
+
+/**
+ * Every file under `dir` last written now, as a copy just made is.
+ *
+ * The Sessions page reads a card Stopped once its files have gone unwritten
+ * for `SESSION_IDLE_MS` (#591), and on Windows `cpSync` keeps the source's
+ * modification time, the OS's file copy carrying it over. Without this the
+ * working copy there is as old as the checkout, and every card that is not
+ * Done reads Stopped once the checkout is older than the idle time.
+ */
+function stampNow(dir: string): void {
+  const now = new Date();
+  for (const entry of readdirSync(dir, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (entry.isFile())
+      utimesSync(path.join(entry.parentPath, entry.name), now, now);
+  }
 }

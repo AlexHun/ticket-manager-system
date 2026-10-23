@@ -36,7 +36,7 @@ Dashboard without breaking the `session ⇒ Dashboard` redirect on `/login`.
 **Covers:** R1, R2, R6, R7, R8, R9, R10
 
 - A visitor clicks "Use demo session" and lands on a welcome page saying what
-  the product does, in `CONTEXT.md`'s words. "Start exploring" takes them to
+  the product does, in `GLOSSARY.md`'s words. "Start exploring" takes them to
   the Dashboard, where the Dashboard's Tutorial pops up as it does today. The
   demo banner links back to the welcome from any page. An admin or agent who
   types the welcome address gets the not-found page.

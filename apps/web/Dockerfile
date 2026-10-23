@@ -3,7 +3,8 @@
 # Build context is the **repository root** (see the note in apps/api/Dockerfile);
 # Railway is pointed at this file by `dockerfilePath` in apps/web/railway.json.
 
-FROM oven/bun:1-slim AS build
+# Bun pinned to CI's `BUN_VERSION`, as in apps/api/Dockerfile.
+FROM oven/bun:1.4.4-slim AS build
 
 WORKDIR /app
 
@@ -15,6 +16,8 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
 COPY packages/shared/package.json packages/shared/
+COPY tools/lint/package.json tools/lint/
+COPY tools/repo-scan/package.json tools/repo-scan/
 
 RUN bun install --frozen-lockfile
 
@@ -24,6 +27,10 @@ RUN bun install --frozen-lockfile
 COPY tsconfig.base.json ./
 
 COPY packages packages
+# `vite.config.ts` loads the dev-tools plugin even for a build, and its project
+# map imports the comment stripper from this workspace, so the build needs its
+# source, not only its manifest (#565).
+COPY tools/repo-scan tools/repo-scan
 COPY apps/web apps/web
 
 # --- Build-time configuration -----------------------------------------------

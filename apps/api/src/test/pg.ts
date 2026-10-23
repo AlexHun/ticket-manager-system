@@ -49,8 +49,8 @@ import { scopeTransactions } from "../transaction-scope";
 
 // Re-exported so `./preload.ts`'s `../db` factory can hand the modules under
 // test the same `Prisma` namespace the real `../db` exports — it is a *value*
-// export (`Prisma.sql`), which `routes/activity.ts`, `routes/ticket-stats.ts`
-// and `routes/ticket-effectiveness.ts` import as one. A test file needs it only
+// export (`Prisma.sql`), which `routes/activity.ts` and `routes/ticket-stats.ts`
+// import as one. A test file needs it only
 // if it composes raw SQL of its own; `routes/users.test.ts` is the one that
 // does.
 export { Prisma } from "../generated/prisma/client";
@@ -292,4 +292,18 @@ const RESET_SQL = await (async () => {
 export async function resetDb(): Promise<void> {
   calls.clear();
   await db.exec(RESET_SQL);
+}
+
+/**
+ * Run a batch of SQL statements, for a test that replays one migration's
+ * `migration.sql` against rows it seeded itself.
+ *
+ * Every migration has already run once by the time a test file loads, against
+ * an empty database, so a *data* migration's effect is otherwise unobservable:
+ * the rows it rewrites did not exist yet. Prisma's raw queries are prepared
+ * statements and refuse a file of several, which is why this goes to PGLite
+ * directly. `tutorial-wording-migration.test.ts` is the worked example.
+ */
+export async function execSql(sql: string): Promise<void> {
+  await db.exec(sql);
 }

@@ -1,21 +1,23 @@
 /**
- * Unit tests for `ticketEffectivenessHandler`'s facts scan — the raw SQL half of
+ * Unit tests for `ticketEffectivenessHandler`'s counts — the database half of
  * `apps/api/src/routes/ticket-effectiveness.ts`.
  *
  * A second file rather than an extension of `ticket-effectiveness.test.ts`,
- * which says so itself: that one is about the two pure functions over plain rows
+ * which says so itself: that one is about pure functions over plain strings
  * and deliberately imports neither `../db` nor the handler. This one is the
- * opposite half — a `COUNT(*) FILTER` against a real Postgres (`../test/pg`,
- * ADR-0014), which is the only seam that can tell a `WHERE` clause apart from an
- * assertion about the string it was written into.
+ * opposite half — the handler against a real Postgres (`../test/pg`,
+ * ADR-0014), which is the only seam that can tell a query apart from an
+ * assertion about the arguments it was written with.
  *
  * What it is here for is `decline.count` and the rate over it. Both used to read
  * `autoReplyDecline IS NOT NULL`, which folded outages in with verdicts and
  * **inflated a published number** — the one an admin reads to decide whether the
  * knowledge base needs work (`docs/adr/0019`). The aggregate now counts
- * `DECLINE_OUTCOME`'s nine verdicts and the per-reason breakdown beside it still
- * counts all ten, because a reason is what the column honestly holds; a test
- * that only watched the first would let the second quietly follow it.
+ * `DECLINE_OUTCOME`'s nine verdicts, summed from the per-reason tally that
+ * still counts all ten, because a reason is what the column honestly holds.
+ * What counts as classified and as resolved, and that tally itself, are the
+ * counts this route shares with `/pipeline`, and are tested where they are
+ * stated: `../assistant-decisions.test.ts` (#563).
  *
  * The router is stood up around the bare handler rather than importing
  * `./tickets`, which mounts it behind `requireAuth`: the guard is not what is
@@ -65,6 +67,7 @@ function seedDeclined(decline: AutoReplyDecline) {
   return seedTicket({
     status: TICKET_STATUS.Open,
     category: TICKET_CATEGORY.Technical,
+    classifierCategory: TICKET_CATEGORY.Technical,
     createdAt: SEEDED_AT,
     classifiedAt: SEEDED_AT,
     autoReplyDecline: decline,
@@ -100,19 +103,6 @@ describe("GET /api/tickets/effectiveness — the decline aggregate", () => {
 
     expect(body.decline.count).toBe(0);
     expect(body.decline.rate).toBe(0);
-  });
-
-  test("the per-reason breakdown still reports it under its own key", async () => {
-    await seedDeclined(AUTO_REPLY_DECLINE.unavailable);
-    await seedDeclined(AUTO_REPLY_DECLINE.notCovered);
-
-    const body = await read();
-
-    // Unchanged, deliberately: this breaks the column down by reason, and every
-    // reason including the zeroes is information — same as on `/pipeline`.
-    expect(body.decline.reasons[AUTO_REPLY_DECLINE.unavailable]).toBe(1);
-    expect(body.decline.reasons[AUTO_REPLY_DECLINE.notCovered]).toBe(1);
-    expect(body.decline.reasons[AUTO_REPLY_DECLINE.tooLong]).toBe(0);
   });
 
   test("every verdict reason counts, not just the one the model reached", async () => {

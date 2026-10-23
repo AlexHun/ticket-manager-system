@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { TICKET_CATEGORY, type TicketCategory } from "@ticket/shared";
+import { classifyAnswer } from "../test/classify-answer";
+import { providerError, scriptModel } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 
 /**
@@ -19,9 +21,12 @@ import { prisma, resetDb } from "../test/pg";
  * hand-written fake would be asserting against its own re-implementation of that
  * clause.
  *
- * No model is called on any path below, and none is mocked: every case here is
- * one the guards settle before `classifyTicket` is reached, which is exactly
- * what makes them worth pinning down.
+ * Most cases are ones the guards settle before `classifyTicket` is reached,
+ * which is exactly what makes them worth pinning down, and they script no
+ * answer: a model call from one of them would be unscripted, which the preload
+ * fails the test for. The ones about what a verdict records (#561) script the
+ * classifier's answer on the shared fake model (`../test/model`), so the real
+ * `classifyTicket` parses it.
  */
 
 const { CLASSIFY_WORKER } = await import("./classify-ticket");
@@ -51,6 +56,55 @@ async function verdictOn(id: number) {
 
 beforeEach(async () => {
   await resetDb();
+});
+
+/** What the classifier recorded of its own decision (#561). */
+async function classifierCategoryOf(id: number) {
+  const row = await prisma.ticket.findUniqueOrThrow({
+    where: { id },
+    select: { classifierCategory: true },
+  });
+  return row.classifierCategory;
+}
+
+describe("handle — what the classifier records of its verdict (#561)", () => {
+  test("filing a category records it beside `category`, in the same write", async () => {
+    scriptModel("classify", classifyAnswer(TICKET_CATEGORY.Refund));
+    const id = await newTicket();
+
+    await CLASSIFY_WORKER.handle({ ticketId: id });
+
+    const row = await prisma.ticket.findUniqueOrThrow({
+      where: { id },
+      select: { category: true, classifierCategory: true, classifiedAt: true },
+    });
+    expect(row.category).toBe(TICKET_CATEGORY.Refund);
+    expect(row.classifierCategory).toBe(TICKET_CATEGORY.Refund);
+    expect(row.classifiedAt).toBeInstanceOf(Date);
+  });
+
+  test("an agent clearing the category afterwards leaves the record alone", async () => {
+    scriptModel("classify", classifyAnswer(TICKET_CATEGORY.Technical));
+    const id = await newTicket();
+    await CLASSIFY_WORKER.handle({ ticketId: id });
+
+    // The agent's write, as `PATCH /:id/category` makes it: `category` alone.
+    await prisma.ticket.update({ where: { id }, data: { category: null } });
+
+    expect(await classifierCategoryOf(id)).toBe(TICKET_CATEGORY.Technical);
+  });
+
+  test("giving up records nothing, which is how it stays told apart", async () => {
+    // A 401 is `auth`: terminal, so the handler stamps rather than throws.
+    scriptModel("classify", { throws: providerError(401) });
+    const id = await newTicket();
+
+    await CLASSIFY_WORKER.handle({ ticketId: id });
+
+    expect(await verdictOn(id)).toMatchObject({ category: null });
+    expect((await verdictOn(id))?.classifiedAt).toBeInstanceOf(Date);
+    expect(await classifierCategoryOf(id)).toBeNull();
+  });
 });
 
 describe("handle", () => {

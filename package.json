@@ -5,7 +5,8 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tools/*"
   ],
   "scripts": {
     "prepare": "husky",
@@ -15,8 +16,9 @@
     "dev:web:develop": "DEV_API_PROXY=https://api-ticket-manager-develop.up.railway.app bun --filter '@ticket/web' dev",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-stop.ps1",
     "build": "bun --filter '*' build",
-    "typecheck": "bun --filter '*' typecheck",
-    "test": "bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
+    "typecheck": "bun --filter '*' typecheck && tsc -p tsconfig.json",
+    "test": "bun run --filter '@ticket/shared' test && bun run --filter '@ticket/repo-scan' test && bun run --filter '@ticket/api' test && bun run --filter '@ticket/web' test",
+    "lint": "bun run --filter @ticket/lint lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "tokens": "bun scripts/issue-tokens.ts",

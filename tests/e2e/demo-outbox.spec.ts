@@ -3,6 +3,7 @@ import {
   MESSAGE_DIRECTION,
   OUTBOUND_EMAIL_STATUS,
   TICKET_STATUS,
+  USER_ROLE,
 } from "@ticket/shared";
 import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { signIn } from "./helpers/auth";
@@ -13,7 +14,7 @@ import { startDemo } from "./helpers/demo";
  * A demo visitor's email is never delivered (#325, PRD R10).
  *
  * A demo replies through the real composer, and an admin then finds the reply
- * on `/outbox` reading as not sent — recorded, so the admin can see what a
+ * on `/outbox` reading as withheld — recorded, so the admin can see what a
  * visitor wrote, and settled from birth, so nothing will send it. No E2E server
  * binds a mail provider, so the half that holds with one bound is the API's
  * (`jobs/send-email.test.ts`, `routes/outbox.test.ts`).
@@ -55,7 +56,7 @@ test.afterEach(async () => {
   await resetDemoUsers();
 });
 
-test("a demo's reply reaches the outbox as not sent, and is never queued", async ({
+test("a demo's reply reaches the outbox as withheld, and is never queued", async ({
   page,
   browser,
 }) => {
@@ -80,13 +81,13 @@ test("a demo's reply reaches the outbox as not sent, and is never queued", async
   // An admin, in a browser of their own, sees it on the outbox.
   const context = await browser.newContext();
   const admin = await context.newPage();
-  await signIn(admin, "admin");
+  await signIn(admin, USER_ROLE.admin);
   await admin.goto(ROUTE.outbox.path);
 
   const card = admin.locator('[data-slot="card"]', {
     hasText: `Re: ${SUBJECT}`,
   });
-  await expect(card).toContainText("Not sent (demo)");
+  await expect(card).toContainText("Withheld (demo)");
   await expect(card).toContainText("a demo session's email is never sent");
   await expect(card.getByRole("button", { name: "Try again" })).toHaveCount(0);
 

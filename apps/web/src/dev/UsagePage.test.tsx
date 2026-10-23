@@ -132,6 +132,15 @@ function makeReport(over: Partial<UsageReport> = {}): UsageReport {
   };
 }
 
+/** A failure as the dev middleware answers one: a 500 carrying the cause as
+ *  `{ error }` (`only()` in `dev/plugin.ts`). */
+function middlewareFailure(cause: string) {
+  return Object.assign(new Error("Request failed with status code 500"), {
+    isAxiosError: true,
+    response: { status: 500, data: { error: cause } },
+  });
+}
+
 const renderPage = () => renderRoutes([{ path: "/", element: <UsagePage /> }]);
 
 const scanButton = () => screen.getByRole("button", { name: "Scan" });
@@ -752,7 +761,7 @@ describe("UsagePage", () => {
 
   test("surfaces a failed scan and leaves the page usable", async () => {
     const user = userEvent.setup();
-    post.mockRejectedValue(new Error("EPERM: operation not permitted"));
+    post.mockRejectedValue(middlewareFailure("EPERM: operation not permitted"));
     renderPage();
 
     await user.click(scanButton());
@@ -901,7 +910,9 @@ describe("UsagePage stored reading", () => {
     // The global mock is never cleared, and an earlier test's failed scan
     // toasts on purpose.
     vi.mocked(toast.error).mockClear();
-    get.mockRejectedValue(new Error("SQLITE_CORRUPT: file is not a database"));
+    get.mockRejectedValue(
+      middlewareFailure("SQLITE_CORRUPT: file is not a database"),
+    );
     const user = userEvent.setup();
     renderPage();
 

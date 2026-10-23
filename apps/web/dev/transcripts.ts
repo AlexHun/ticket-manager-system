@@ -14,8 +14,10 @@
 // when the issue took several sittings (the median issue took 2).
 //
 // **Forecast in output tokens, not total.** Output is the honest unit: it runs
-// at a near-constant ~745 tokens per turn (r=0.98 across 125 sessions), so it
-// tracks how much work an issue was and nothing else. Cache-read is ~100x
+// at ~500 tokens per turn and follows turns at r=0.84 across issues
+// (re-measured on responses in #627), so it tracks how much work an issue was
+// and nothing else. A ticket is split by peak context instead, which output
+// predicts poorly (`docs/agents/issue-tracker.md`). Cache-read is ~100x
 // larger and scales superlinearly with session length (~43k/turn at 12 turns,
 // ~218k at 1343), which makes it a measure of session hygiene rather than of
 // the issue — so it is carried beside the forecast, never inside it.
@@ -28,10 +30,11 @@
 //     reads as complete when it is not.
 //   - Sessions from any other machine. These transcripts are local.
 //
-// Every turn count, per-turn rate and share of turns above was measured before
-// #413, when a "turn" was a transcript record rather than an API response and a
-// response's usage was counted once per record, so they want re-measuring on
-// the corrected figures — a separate decision from the fix itself.
+// The 28,095 turns, the cache-read per turn and the 28% on `main` above were
+// measured before #413, when a "turn" was a transcript record rather than an
+// API response and a response's usage was counted once per record, so they
+// want re-measuring on the corrected figures. #627 re-measured the output per
+// turn.
 //
 // Out of `./usage.ts` since #297, which had grown to hold both the scan and the
 // join. The split is the one `./issues.ts` already drew for the other source:
@@ -282,7 +285,33 @@ function listTranscripts(dir: string): string[] {
   return files;
 }
 
-const identityOf = (rec: TranscriptRecord, file: string, line: number) =>
+/**
+ * Two copies of one response's counts folded into one: the larger of each,
+ * since a subagent transcript writes a partial count on a response's first
+ * record and the final one on its last (#431). The one rule every reader that
+ * collapses a response uses — `readTranscripts` here, and the Sessions reader
+ * (`./sessions.ts`, `./session-groups.ts`), whose totals must equal these (R7).
+ */
+export const largerCounts = (
+  a: Pick<TranscriptResponse, "out" | "cacheRead">,
+  b: Pick<TranscriptResponse, "out" | "cacheRead">,
+) => ({
+  out: Math.max(a.out, b.out),
+  cacheRead: Math.max(a.cacheRead, b.cacheRead),
+});
+
+/**
+ * The key a record's response is counted once under (`TranscriptResponse.id`):
+ * its `message.id`, then its `uuid`, then `file` (as `listTranscripts` names
+ * it) and its one-based `line`. Exported for the Sessions reader
+ * (`./sessions.ts`, #593), which credits each response to the card whose file
+ * holds it and must count the same responses this does (R7).
+ */
+export const identityOf = (
+  rec: Pick<TranscriptRecord, "uuid" | "message">,
+  file: string,
+  line: number,
+) =>
   rec.message?.id
     ? `message:${rec.message.id}`
     : rec.uuid
@@ -392,8 +421,7 @@ export function readTranscripts(
         if (kept) {
           // A later block of a response already kept: only its counts can say
           // more, and in a subagent transcript the first block's are partial.
-          kept.out = Math.max(kept.out, out);
-          kept.cacheRead = Math.max(kept.cacheRead, cacheRead);
+          Object.assign(kept, largerCounts(kept, { out, cacheRead }));
           return;
         }
         const response: TranscriptResponse = {

@@ -31,6 +31,10 @@ import {
 } from "./suites.ts";
 import { gatherUsage, readStoredUsage } from "./usage.ts";
 import { resolveTranscriptDir } from "./transcripts.ts";
+import { createSessionsReader } from "./sessions.ts";
+import { createChainLister } from "./chains.ts";
+import { sessionsStream } from "./sessions-stream.ts";
+import { resolveWaitingDir } from "./waiting.ts";
 import { resolveHistoryFile } from "./usage-store.ts";
 import { historyIsPushed, pushHistoryFile, receivePush } from "./usage-push.ts";
 import { ISSUES_FILE_ENV } from "./issues.ts";
@@ -39,6 +43,7 @@ import type {
   DevStreamMessage,
   RunEvent,
 } from "../src/dev/test-run-protocol.ts";
+import type { SessionsStreamMessage } from "../src/dev/sessions-protocol.ts";
 
 /**
  * Events retained per suite for replay.
@@ -67,6 +72,22 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
     "Content-Length": Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+/**
+ * Answers with a server-sent-event stream, and returns what sends one event:
+ * a `data:` line holding the message as JSON. The test runner's stream and
+ * the Sessions page's share the shape.
+ */
+function openEventStream<T>(res: ServerResponse): (message: T) => void {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+  return (message) => {
+    res.write(`data: ${JSON.stringify(message)}\n\n`);
+  };
 }
 
 /** Wraps a handler so it answers one method only, and never takes the dev server
@@ -119,6 +140,24 @@ export function devToolsPlugin(): Plugin {
    */
   let active: string | null = null;
   let queue: string[] = [];
+
+  /**
+   * The Sessions stream, one for every page that opens it. Its reader keeps
+   * a cursor per transcript between readings, so it is held here, for the
+   * dev server's life, rather than made per request.
+   */
+  const sessionsReader = createSessionsReader();
+  /** A running chain's issue listing, kept a minute per plan (#594), so the
+   *  stream's reading every 2 seconds is not a `gh` call every 2 seconds. */
+  const listChain = createChainLister();
+  const sessions = sessionsStream(() =>
+    sessionsReader.read(
+      resolveTranscriptDir(process.env, { cwd: REPO_ROOT }),
+      Date.now(),
+      resolveWaitingDir(process.env),
+      listChain,
+    ),
+  );
 
   const broadcast = (message: DevStreamMessage): void => {
     for (const listener of listeners) listener(message);
@@ -197,15 +236,7 @@ export function devToolsPlugin(): Plugin {
       server.middlewares.use(
         DEVTOOLS_API.events,
         only("GET", (req, res) => {
-          res.writeHead(200, {
-            "Content-Type": "text/event-stream; charset=utf-8",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-          });
-
-          const send = (message: DevStreamMessage): void => {
-            res.write(`data: ${JSON.stringify(message)}\n\n`);
-          };
+          const send = openEventStream<DevStreamMessage>(res);
 
           // Backlog first, then live. Both happen in this one tick, so no event
           // can slip between the replay and the subscription.
@@ -370,17 +401,39 @@ export function devToolsPlugin(): Plugin {
         }),
       );
 
+      server.middlewares.use(
+        DEVTOOLS_API.sessions,
+        // The Sessions page (#590, #591): every session's tree as a stream,
+        // in the test runner's SSE shape above, read again while any page
+        // listens (`./sessions-stream.ts`). The same transcript directory the
+        // Usage scan reads — `REPO_ROOT` for the reason the scan's comment
+        // above gives, and resolved on every reading so
+        // `CLAUDE_TRANSCRIPT_DIR` points it at the E2E fixture. The waiting
+        // records the hook writes (#592) are read beside them, from
+        // `CLAUDE_WAITING_DIR` when it is set (`./waiting.ts`), and a running
+        // chain's issues are one `gh issue list`, or `GH_CHAIN_ISSUES_FILE`
+        // (#594, `./chains.ts`). Reads only.
+        only("GET", (req, res) => {
+          const leave = sessions.subscribe(
+            openEventStream<SessionsStreamMessage>(res),
+          );
+          req.on("close", leave);
+        }),
+      );
+
       // A dev-server restart (editing this file, or vite.config.ts) must not
-      // leave a Playwright run holding ports 3002 and 4001.
+      // leave a Playwright run holding ports 3002 and 4001, nor a clock
+      // reading transcripts for pages that are gone.
       server.httpServer?.once("close", () => {
         queue = [];
         for (const stored of runs.values()) stored.handle?.cancel();
+        sessions.close();
       });
 
       // Printed plainly rather than dressed up in Vite's colours: this is the
-      // only hint the two pages exist, so it should survive a piped log.
+      // only hint the pages exist, so it should survive a piped log.
       server.config.logger.info(
-        "  dev tools:  /__dev/map  /__dev/tests  /__dev/usage",
+        "  dev tools:  /__dev/map  /__dev/tests  /__dev/usage  /__dev/sessions",
       );
     },
   };

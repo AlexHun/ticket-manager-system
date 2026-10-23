@@ -109,8 +109,8 @@ export interface ClassifyContext {
    * anything is `userPrompt`'s below: an empty string, a blank one and null
    * build the identical prompt, which is what `jobs/classify-ticket.ts` and
    * `evals/classify-case.ts` cannot drift apart on. The same two lines as
-   * `auto-reply.ts`'s, where the assertion lives — this module has no test
-   * file, for the registry reason `docs/adr/0017` gives. Argued there too.
+   * `auto-reply.ts`'s; `docs/adr/0017` argues the rule, and `classify.test.ts`
+   * asserts it (#657).
    */
   text: string | null;
 }
@@ -154,6 +154,13 @@ const classificationSchema = z.object({
       "The single category this ticket belongs to, chosen by what the customer wants.",
     ),
 });
+
+/**
+ * What the model answers, once `Output.object` has parsed it. Exported for the
+ * tests that script the answer (`src/test/classify-answer.ts`), so a field
+ * renamed here fails to compile there rather than surfacing as `empty`.
+ */
+export type ClassifyAnswer = z.infer<typeof classificationSchema>;
 
 /**
  * The standing half of the prompt. The per-request half is built by `userPrompt`.
@@ -261,7 +268,7 @@ export async function classifyTicket(
 ): Promise<ClassifyResult> {
   try {
     const { output, usage } = await generateText({
-      model: openaiModel(CLASSIFY_MODEL),
+      model: openaiModel("classify", CLASSIFY_MODEL),
       // `Output.object` rather than `generateObject`, which omits `timeout` from
       // its options — see the note in `summarize.ts`. It matters more here, not
       // less: an unbounded call in a background queue has nobody to notice it.

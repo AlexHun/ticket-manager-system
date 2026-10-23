@@ -20,7 +20,7 @@ comments.
 ## 2. Explore the codebase
 
 If you haven't already, explore the code the work touches. Ticket titles and
-descriptions use the glossary in `CONTEXT.md` and respect the ADRs in that
+descriptions use the glossary in `GLOSSARY.md` and respect the ADRs in that
 area. Look for prefactoring that makes the rest easy: "make the change easy,
 then make the easy change."
 
@@ -30,7 +30,7 @@ then make the easy change."
 
 - Each slice cuts a narrow but COMPLETE path through every layer (schema, API, UI, tests).
 - A completed slice is demoable or verifiable on its own.
-- Each slice fits in a single fresh context window. Its forecast (below) is at most `L`.
+- Each slice fits in a single fresh context window: its implementing worker is forecast under 200k tokens of context (below).
 - Prefactoring comes first.
 
 </vertical-slice-rules>
@@ -46,9 +46,18 @@ radius breaks every call site at once. Sequence it as **expand–contract**:
    batch is its own ticket, blocked by the expand.
 3. **Contract:** delete the old form, in a ticket blocked by every batch.
 
-**Forecast** each ticket's size in turns, then read its `forecast/S|M|L` band
-off the table in `docs/agents/issue-tracker.md`. If a ticket forecasts above
-`L`, split it.
+**Forecast** each ticket's size in turns, the API responses its worker will
+make, then size it twice from `docs/agents/issue-tracker.md` (Forecasting an
+issue's size): read its peak context off the turns, and split the ticket if
+that passes the ceiling, whatever its output band; then read its
+`forecast/S|M|L` label off the same turns.
+
+**A ticket that grants an agent permissions is the user's to land.** Auto mode
+refuses an agent's edit to the `permissions` rules in `.claude/settings.json`
+as self-modification: in #524 the worker's edit and the conductor's were both
+refused, while a hook registration in the same file went through. Mark such a
+ticket `ready-for-human`, and put the exact rules in its body, so the user can
+paste them.
 
 ## 4. Quiz the user
 
@@ -68,14 +77,18 @@ Publish in dependency order, blockers first, so every edge can name a real
 issue:
 
 1. Write each body to a file from the template below. Create the issue with
-   `gh issue create --title "..." --body-file <file> --label ready-for-agent --label forecast/<S|M|L>`.
+   `gh issue create --title "..." --body-file <file> --label ready-for-agent --label forecast/<S|M|L>`,
+   with `ready-for-human` in place of `ready-for-agent` for a ticket that
+   grants an agent permissions.
 2. Add each blocking edge as a native dependency, using the command in
    `docs/agents/issue-tracker.md` (Blocking). The id it takes is the blocker's
    numeric database id, not its `#number`.
 3. Read the edges back with
-   `gh issue list --json number,blockedBy --jq '.[] | {number, blockers: (.blockedBy.nodes | map(.number))}'`.
+   `(gh issue list --json number,blockedBy | ConvertFrom-Json) | Select-Object number, @{n='blockers';e={$_.blockedBy.nodes.number}}`.
 
-Leave any parent issue as it is.
+If the source was an existing issue, attach each ticket to it as a sub-issue
+(`docs/agents/issue-tracker.md`, Make an issue a sub-issue of a parent), and
+otherwise leave that issue as it is.
 
 Done when every approved ticket exists with both labels and a body that is not
 `@-`, and its blockers read back exactly as the approved list. Report the
@@ -103,7 +116,8 @@ not layer by layer.
 
 </issue-template>
 
-Leave out file paths and code snippets, which go stale fast. One exception: a
+Leave out file paths and code snippets, which go stale fast. Two exceptions: a
 snippet from a prototype that encodes a decision (a state machine, a schema, a
-type shape) more precisely than prose can. Inline only the parts that carry the
-decision, and note that it came from a prototype.
+type shape) more precisely than prose can, and the rules a `ready-for-human`
+ticket asks the user to paste. Inline only the parts that carry the decision,
+and note where a prototype snippet came from.

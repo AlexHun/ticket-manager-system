@@ -1009,7 +1009,7 @@ export const DECLINE_COVERAGE: Record<
   [AUTO_REPLY_DECLINE.noCitation]: {
     caseIds: [],
     unreachable:
-      "The model would have to answer and then cite an id it was never given, having been told not to in the schema description it reads. Nothing an email can say makes that happen on demand, so a case expecting it would report a failure every run and mean nothing by it. It is exercised in `ai/auto-reply.test.ts` against a stubbed generation instead, which is where a check on the model's output belongs.",
+      "The model would have to answer and then cite an id it was never given, having been told not to in the schema description it reads. Nothing an email can say makes that happen on demand, so a case expecting it would report a failure every run and mean nothing by it. It is exercised in `ai/auto-reply.test.ts` against a scripted model answer instead, which is where a check on the model's output belongs.",
   },
   [AUTO_REPLY_DECLINE.tooLong]: {
     caseIds: [],

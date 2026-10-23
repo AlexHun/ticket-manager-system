@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME } from "@ticket/shared";
 import { useFollowWelcomeStep } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
 import {
@@ -21,8 +21,8 @@ import { WELCOME_STEPS } from "@/lib/welcome-steps";
 const LINK_CLASS = "text-link underline-offset-4 hover:underline";
 
 /**
- * Where "Use demo session" lands (demo-welcome PRD, R1): what the product does,
- * in `CONTEXT.md`'s words (R2), where to start (R4, R13), who built it (R3),
+ * Where "Start demo session" lands (demo-welcome PRD, R1): what the product does,
+ * in `GLOSSARY.md`'s words (R2), where to start (R4, R13), who built it (R3),
  * what it is built with (R5), and the way on to the Dashboard (R6). Each
  * section is under its own heading, in the order a screen reader reads it and
  * Tab reaches its links, with Start exploring last (R12).

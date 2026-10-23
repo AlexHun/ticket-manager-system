@@ -107,7 +107,10 @@ automationRouter.patch(
         select: { id: true, name: true },
       });
       if (!candidate) {
-        res.status(400).json({ error: "Assignee not found" });
+        res.status(400).json({
+          error:
+            "Couldn't hand tickets to that person. Pick someone from the list.",
+        });
         return;
       }
     }

@@ -1,11 +1,9 @@
 import { useState } from "react";
-import axios from "axios";
-import { TUTORIAL_PAGE_KEY, type User } from "@ticket/shared";
+import { BRAND_NAME, TUTORIAL_PAGE_KEY, type User } from "@ticket/shared";
 import { Button } from "@/components/ui/button";
 import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { BRAND_NAME } from "@/lib/brand";
-import { useUsersQuery } from "@/lib/use-users";
+import { TEAM_LOAD_ERROR, useUsersQuery } from "@/lib/use-users";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DemoUsageCard } from "./DemoUsageCard";
 import { UserDialog } from "./UserDialog";
@@ -51,11 +49,11 @@ export function UsersPage() {
           it. */}
       <div className="max-w-5xl">
         <PageHeader
-          title="Users"
+          title="Team"
           description={`Everyone who can sign in to ${BRAND_NAME}.`}
         >
           <div data-tutorial-anchor="new" className="contents">
-            <Button onClick={openCreate}>New user</Button>
+            <Button onClick={openCreate}>New team member</Button>
           </div>
         </PageHeader>
 
@@ -65,7 +63,7 @@ export function UsersPage() {
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
-            {formatError(error)}
+            {TEAM_LOAD_ERROR}
           </p>
         )}
 
@@ -88,12 +86,4 @@ export function UsersPage() {
       />
     </div>
   );
-}
-
-function formatError(err: unknown): string {
-  if (axios.isAxiosError(err)) {
-    return `Failed to load users (${err.response?.status ?? err.message})`;
-  }
-  if (err instanceof Error) return err.message;
-  return "Failed to load users";
 }

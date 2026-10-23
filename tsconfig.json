@@ -5,7 +5,13 @@
     // page.evaluate() callbacks are serialised and run in the browser, so specs
     // legitimately reference DOM globals. Scoped to the E2E project only.
     "lib": ["ES2022", "DOM"],
-    "noEmit": true
+    "noEmit": true,
+    // Specs reach apps/web/src/dev, where usage-readings.ts and usage-sort.ts
+    // import with a `.ts` extension because the node half loads them through
+    // Vite's config loader, which resolves nothing extensionless
+    // (docs/standards/dev-tools.md). Both web configs allow it; without it
+    // here, root tsc fails TS5097 on those imports (#553).
+    "allowImportingTsExtensions": true
   },
   "include": ["playwright.config.ts", "tests/**/*.ts"]
 }

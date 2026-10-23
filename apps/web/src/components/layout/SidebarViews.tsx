@@ -114,7 +114,7 @@ export function SidebarViews() {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Queues</SidebarGroupLabel>
+      <SidebarGroupLabel>Views</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu className="gap-1">
           {TICKET_VIEWS.map((view) => {

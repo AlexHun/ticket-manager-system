@@ -53,7 +53,7 @@ export const ROUTE = {
   tutorials: { path: "/tutorials" },
   howItWorks: { path: "/how-it-works" },
   /**
-   * Where "Use demo session" lands (demo-welcome PRD). A demo session's page
+   * Where "Start demo session" lands (demo-welcome PRD). A demo session's page
    * only; nothing redirects here, so the login click is the one way in.
    */
   welcome: { path: "/welcome" },
@@ -67,6 +67,7 @@ export const ROUTE = {
   devMap: { path: "/__dev/map" },
   devTests: { path: "/__dev/tests" },
   devUsage: { path: "/__dev/usage" },
+  devSessions: { path: "/__dev/sessions" },
   dev: { path: "/__dev/*" },
 
   /** The 404, which matches whatever nothing above did. */

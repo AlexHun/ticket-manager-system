@@ -137,7 +137,7 @@ reached by the same test — and the answer to "why is this different" is that
 case, because there is no guard, no write and no event left to argue about.
 
 _The glossary has no noun for it._ ADR-0015's fifth signal, applied.
-`CONTEXT.md` names **Ingestion** — "turning an arriving email into either a new
+`GLOSSARY.md` names **Ingestion** — "turning an arriving email into either a new
 ticket or a message on an existing thread" — because that turn is something the
 desk does. There is no term for the turn from a ticket into a prompt's input, and
 none of _Classification_, _Auto-reply_, _Polish_ or _Summary_ is defined in terms
@@ -236,6 +236,11 @@ pull request rather than in the suite; the builder is four lines from
 `auto-reply.ts`'s and a change to one is a change a reviewer reads against the
 other. If a `classify.test.ts` is ever wanted, the seam to give it is its own, not
 `"ai"`.
+
+_Since #657 it exists, and not on `"ai"`: the preload's scripted model
+(`apps/api/src/test/model.ts`, #578) answers every feature without a
+`mock.module("ai", ...)`, and `ai/classify.test.ts` asserts the classify half
+of the rule beside the auto-reply's and polish's._
 
 **Nothing is extracted, and reversing this costs one function.** If a third
 gate-reading path ever appears — a second harness, a replay tool, a "what would the

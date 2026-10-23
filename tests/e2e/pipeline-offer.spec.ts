@@ -75,6 +75,8 @@ async function seedClassified(
       customerName: "E2E Offer Customer",
       status: TICKET_STATUS.New,
       category: TICKET_CATEGORY.General,
+      // The classifier's own record of the filing, written with it (#561).
+      classifierCategory: TICKET_CATEGORY.General,
       classifiedAt: createdAt,
       autoReplyOfferedAt,
       createdAt,
@@ -215,6 +217,9 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
 
     const ticket = await waitForVerdict(ticketId);
     expect(ticket.autoReplyOfferedAt).not.toBeNull();
+    // #561: the real classifier recorded what it filed, in the same write.
+    expect(ticket.classifierCategory).not.toBeNull();
+    expect(ticket.classifierCategory).toBe(ticket.category);
 
     expect([PIPELINE_OUTCOME.resolved, PIPELINE_OUTCOME.declined]).toContain(
       (await runOf(ctx, ticketId)).outcome,
@@ -233,6 +238,7 @@ test.describe.serial("Pipeline: the auto-reply offer is recorded", () => {
     const DAY = 24 * HOUR;
     const classified = {
       category: TICKET_CATEGORY.General,
+      classifierCategory: TICKET_CATEGORY.General,
       classifiedAt: at(HOUR),
       createdAt: at(HOUR),
     };

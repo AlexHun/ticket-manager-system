@@ -22,7 +22,7 @@ landed, as the issue asked.
 ## The issue named the wrong type, and that is the first finding
 
 [#215](https://github.com/AlexHun/ticket-manager-system/issues/215) opens with
-"the pipeline outcome — a Stage, one of the six stops `CONTEXT.md` names". Those
+"the pipeline outcome — a Stage, one of the six stops `GLOSSARY.md` names". Those
 are two types in `@ticket/shared` and they are not the same size or the same
 question:
 
@@ -131,7 +131,7 @@ is what makes one table over the persisted taxonomy sufficient. It is also why
 the wording on the screen cannot say "the provider could not be reached", which
 is true of one cause in three.
 
-So the rule both sites are reaching for, which `CONTEXT.md` now states as the
+So the rule both sites are reaching for, which `GLOSSARY.md` now states as the
 definition of _Outcome_:
 
 > An **Outcome** says whether a verdict was reached about the ticket, and what
@@ -278,7 +278,7 @@ the equivalence the table above establishes, which is cheaper than either site
 depending on the other.
 
 **Separating `unavailable` out of `AutoReplyDecline` altogether.** The deepest
-fix, and deferred rather than rejected. `CONTEXT.md` defines _Decline_ as "the
+fix, and deferred rather than rejected. `GLOSSARY.md` defines _Decline_ as "the
 auto-reply's **decision** not to answer a ticket… a normal outcome, not a
 failure", and `unavailable` is neither a decision nor normal — the definition
 excludes the member. That mis-modelling is the cause of everything above: nine
@@ -326,7 +326,7 @@ except read the other way round. There it was evidence _against_ a module: the
 domain had never needed a noun for "transition". Here the concept is on the wire
 in two read models and rendered on two screens, so the gap was a real one, and
 two derivations drifting apart over a word nobody had pinned down is what an
-unnamed concept costs. Added to `CONTEXT.md` under _The unattended path_, beside
+unnamed concept costs. Added to `GLOSSARY.md` under _The unattended path_, beside
 _Stage_ and _Decline_, with the verdict/absence distinction in the definition
 rather than only here.
 

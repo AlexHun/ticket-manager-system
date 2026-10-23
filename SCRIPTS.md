@@ -31,7 +31,7 @@ bun run --filter '@ticket/api' db:seed  # not for anything DB-shaped
 ```
 
 `bun run --filter '<pkg>' <script>` _does_ execute with the workspace as its cwd
-on the Bun in use here (1.3.13 — verified, `bun test src` resolves inside
+on the Bun in use here (1.4.4 — verified, `bun test src` resolves inside
 `apps/api`). It has not always: an older Bun ran the inner script from the
 caller's cwd, which made `dotenv -e .env.test` silently find no file and pointed
 a test reset at the **dev** database, wiping it. So the root `db:test:*` scripts
@@ -105,7 +105,7 @@ It writes three rows:
 - **The demo agent**, `agent@example.com` / `password123` — **skipped when
   `NODE_ENV=production`**, which the API's Dockerfile sets. That is what makes
   seeding a deployed database safe: it cannot leave a published-password account
-  behind. Real agents are created by an admin through the Users screen.
+  behind. Real agents are created by an admin through the Team screen.
 
 Dev and test logins, both seeded by this script:
 
@@ -276,10 +276,11 @@ Every deploy after the first is step 1 alone.
 | `bun run dev:api`     | API only                                                            |
 | `bun run dev:web`     | web only                                                            |
 | `bun run dev:web:develop` | web only on :4000, with `/api` proxied to the Railway **develop** API instead of :3001 (`DEV_API_PROXY`, read in `apps/web/vite.config.ts`) — the app pages show develop's database and the `/__dev` tools still work, because they read this machine and never the API. Signing in needs `http://localhost:4000` in develop's `TRUSTED_ORIGINS`, and Chrome or Firefox: the session cookie is `Secure`, which those two send to `localhost` over plain HTTP and Safari does not |
-| `bun run dev:stop`    | kills every dev server on 3001/3002/4000/4001 and proves the ports came back. **Windows/PowerShell only** — it has to outlive the `bun` that launched it |
+| `bun run dev:stop`    | kills every dev server on 3001/3002/4000/4001 and proves the ports came back, sparing MCP servers such as chrome-devtools that run under `bunx`, and naming any process Windows would not end. **Windows/PowerShell only** — it has to outlive the `bun` that launched it |
 | `bun run build`       | builds every workspace that has a `build` script (the web app; the API ships as source) |
-| `bun run typecheck`   | `tsc --noEmit` across all four workspaces                           |
-| `bun run test`        | both unit suites, `@ticket/api` then `@ticket/web`. ~5.5 min on Windows; `.husky/pre-push` runs only the API half |
+| `bun run typecheck`   | `tsc --noEmit` across the five workspaces that have a `typecheck` script (`tools/lint` has none), then `tsc -p tsconfig.json` over the root E2E project (`playwright.config.ts`, `tests/**`) |
+| `bun run lint`        | type-aware ESLint over `apps/api`, `apps/web`, `packages/core` and `packages/shared`: `no-floating-promises` and `no-misused-promises` everywhere, plus the two React hooks rules on `apps/web`. CI runs it, no hook does; ~67s warm on Windows, ~28s on CI. Config and the TypeScript 6 pin it needs live in the `tools/lint` workspace; [conventions.md](docs/standards/conventions.md) has why |
+| `bun run test`        | every unit suite, `@ticket/shared` then `@ticket/repo-scan` then `@ticket/api` then `@ticket/web`. ~5.5 min on Windows; `.husky/pre-push` runs only the API suite |
 | `bun run format`      | Prettier `--write` over the repo, minus `.prettierignore`            |
 | `bun run format:check`| Prettier `--check`; CI runs this, and it is the only one of these that touches nothing |
 | `bun run tokens`      | forecast vs. actual token spend per issue, from the local Claude Code transcripts plus one `gh issue list` call for titles and `forecast/S\|M\|L` labels — reads nothing in this repo, and writes only the usage history outside it (`USAGE_HISTORY_FILE` overrides where). `--push <url>` also sends that history's response rows and the issue listing — never transcript text — to a dev server's Usage page, which is how Railway's `develop` gets its figures (DEPLOYMENT.md §7). Without `gh` the actuals still print, the forecast columns read `-` and the title is blank. `CLAUDE_TRANSCRIPT_DIR` overrides which transcript directory it reads and `GH_ISSUES_FILE` overrides the issue listing with a JSON file; the join, the bands and the verdicts live in `apps/web/dev/usage.ts` and `issues.ts`, shared with the dev-tools Usage page so the two cannot disagree. Every **open** issue prints too, with its band and `-` for every figure, so what is forecast and not yet started reads beside what it cost; those rows are excluded from the percentiles and the accuracy figure. The last line totals what ran on `main` or with no branch, in turns **and** output tokens — it belongs to no issue and is in none of the rows above |

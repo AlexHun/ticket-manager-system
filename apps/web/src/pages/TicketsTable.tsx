@@ -17,6 +17,7 @@ import {
   type Ticket,
   type TicketSortField,
   type TicketWithAssignee,
+  NO_TICKETS_YET,
 } from "@ticket/shared";
 import { Hint } from "@/components/Hint";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
@@ -260,9 +261,13 @@ const DEFAULT_TOTAL_WIDTH = columns.reduce((sum, c) => sum + (c.size ?? 0), 0);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const SILENCE_STEPS = [
-  { after: 7 * DAY_MS, className: "bg-ember-3", label: "quiet over a week" },
-  { after: 3 * DAY_MS, className: "bg-ember-2", label: "quiet 3–7 days" },
-  { after: 1 * DAY_MS, className: "bg-ember-1", label: "quiet 1–3 days" },
+  {
+    after: 7 * DAY_MS,
+    className: "bg-ember-3",
+    label: "Quiet for over a week",
+  },
+  { after: 3 * DAY_MS, className: "bg-ember-2", label: "Quiet for 3–7 days" },
+  { after: 1 * DAY_MS, className: "bg-ember-1", label: "Quiet for 1–3 days" },
 ] as const;
 
 function silenceOf(
@@ -357,7 +362,7 @@ export function TicketsTable({
   tickets,
   sorting,
   onSortingChange,
-  emptyMessage = "No tickets found.",
+  emptyMessage = NO_TICKETS_YET,
   density = ROW_DENSITY.comfortable,
   className,
 }: TicketsTableProps) {
@@ -482,7 +487,7 @@ export function TicketsTable({
                     {index === 0 && silence && (
                       <span
                         aria-hidden="true"
-                        title={`Last message ${silence.label}`}
+                        title={silence.label}
                         className={cn(
                           "absolute inset-y-px left-0 w-[3px] rounded-r-sm",
                           silence.className,

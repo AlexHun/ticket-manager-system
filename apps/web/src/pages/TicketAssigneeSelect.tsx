@@ -15,6 +15,7 @@ import { extractErrorMessage } from "@/lib/errors";
 import { ticketAssigneesKey } from "@/lib/ticket-queries";
 import { useAssigneesQuery } from "@/lib/use-assignees";
 import { useTicketField } from "@/lib/use-ticket-field";
+import { TEAM_LOAD_ERROR } from "@/lib/use-users";
 
 /** The trigger's id, so the detail page's `<dt>` can label it. */
 export const ASSIGNEE_SELECT_ID = "ticket-assignee";
@@ -27,6 +28,8 @@ export const ASSIGNEE_SELECT_ID = "ticket-assignee";
 const UNASSIGNED = "unassigned";
 
 const UNASSIGNED_LABEL = "Unassigned";
+
+const ASSIGNEE_ERROR = "Couldn't update the assignee. Try again.";
 
 export function TicketAssigneeSelect({
   ticket,
@@ -49,7 +52,7 @@ export function TicketAssigneeSelect({
       updated.assignedTo
         ? `Assigned to ${updated.assignedTo.name}`
         : "Ticket unassigned",
-    errorMessage: "Failed to update the assignee",
+    errorMessage: ASSIGNEE_ERROR,
     onError: () => {
       // The likeliest cause is a roster that has moved on — a user removed
       // since this page was drawn. Refetch it so the choice that just failed
@@ -164,7 +167,7 @@ export function TicketAssigneeSelect({
 /**
  * The line under the control: the assignee's email, or whichever failure got in
  * the way. One element, because they are alternatives — showing an email beside
- * "couldn't load users" would suggest the field is fine.
+ * "couldn't load the team" would suggest the field is fine.
  */
 function AssigneeStatus({
   selected,
@@ -178,7 +181,7 @@ function AssigneeStatus({
   if (mutationError) {
     return (
       <p className="text-xs text-destructive" role="alert">
-        {extractErrorMessage(mutationError, "Failed to update the assignee")}
+        {extractErrorMessage(mutationError, ASSIGNEE_ERROR)}
       </p>
     );
   }
@@ -186,7 +189,7 @@ function AssigneeStatus({
   if (rosterError) {
     return (
       <p className="text-xs text-destructive" role="alert">
-        Couldn't load the list of users.
+        {TEAM_LOAD_ERROR}
       </p>
     );
   }

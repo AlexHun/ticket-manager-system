@@ -1,12 +1,12 @@
 ## reading
 
-Gathered at <gathered-at> from tests/e2e/fixtures/transcripts.local — 2 transcripts, 4 issues, read in <scan-ms> ms.
+Gathered at <gathered-at> from tests/e2e/fixtures/transcripts.local — 5 transcripts, 4 issues, read in <scan-ms> ms.
 
 ## table — default columns
 
 Issue | Title | Output tokens | Forecast vs actual
 #105 | Fixture: an issue that came in over its band | 90,000 | S <60k M 60-150k over
-#101 | Fixture: the issue these transcripts spent on | 20,000 | S <60k S <60k on target
+#101 | Fixture: the issue these transcripts spent on | 32,000 | S <60k S <60k on target
 #102 | Fixture: an issue nobody forecast | 3,000 | — S <60k
 #103 | Fixture: an open issue nobody has started | — | M 60-150k —
 
@@ -14,7 +14,7 @@ Issue | Title | Output tokens | Forecast vs actual
 
 Issue | Title | Output tokens | Forecast vs actual | Turns | Sessions | Cache read
 #105 | Fixture: an issue that came in over its band | 90,000 | S <60k M 60-150k over | 1 | 1 | 250,000
-#101 | Fixture: the issue these transcripts spent on | 20,000 | S <60k S <60k on target | 2 | 1 | 400,000
+#101 | Fixture: the issue these transcripts spent on | 32,000 | S <60k S <60k on target | 5 | 1 | 560,000
 #102 | Fixture: an issue nobody forecast | 3,000 | — S <60k | 1 | 1 | 20,000
 #103 | Fixture: an open issue nobody has started | — | M 60-150k — | — | — | —
 
@@ -41,9 +41,9 @@ Only issues with both halves are counted. A band nobody has started work against
 
 Output distribution
 Issues with recorded spend, by the band their output tokens landed in.
-p25 3,000 · median 20,000 · p75 90,000
+p25 3,000 · median 32,000 · p75 90,000
 p25 3,000
-median 20,000
+median 32,000
 p75 90,000
 S
 M

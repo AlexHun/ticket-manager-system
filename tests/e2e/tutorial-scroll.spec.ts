@@ -4,6 +4,7 @@ import {
   TICKET_STATUS,
   TUTORIAL_PAGE_KEY,
   type TutorialStatusResponse,
+  USER_ROLE,
 } from "@ticket/shared";
 import { ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { signIn } from "./helpers/auth";
@@ -94,7 +95,7 @@ test.describe("tutorial scrolling", () => {
       (r) => r.fulfill({ json: status }),
     );
     await page.setViewportSize(PHONE);
-    await signIn(page, "agent");
+    await signIn(page, USER_ROLE.agent);
     await page.goto(ticketDetailPath(ticketId));
 
     await page.getByRole("button", { name: "Got it" }).click();

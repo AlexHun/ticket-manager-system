@@ -1,7 +1,25 @@
 {
+  "extraKnownMarketplaces": {
+    "mattpocock": {
+      "source": { "source": "github", "repo": "mattpocock/skills" }
+    }
+  },
   "enabledPlugins": {
-    "mattpocock-skills@claude-plugins-official": true,
+    "mattpocock-skills@mattpocock": true,
+    "mattpocock-skills@claude-plugins-official": false,
     "github@claude-plugins-official": false
+  },
+  "permissions": {
+    "allow": [
+      "PowerShell(gh pr merge * --merge --delete-branch)",
+      "Bash(gh pr merge * --merge --delete-branch)",
+      "PowerShell(bun run --filter @ticket/web test *)",
+      "Bash(bun run --filter @ticket/web test *)"
+    ],
+    "ask": [
+      "PowerShell(gh pr merge *-* --merge --delete-branch)",
+      "Bash(gh pr merge *-* --merge --delete-branch)"
+    ]
   },
   "hooks": {
     "PreToolUse": [
@@ -11,6 +29,113 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-no-verify.mjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-bare-vitest.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Edit|Write|Grep|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-env-read.mjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-stop-failure.mjs\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/push-usage.mjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-waiting.mjs\""
           }
         ]
       }
@@ -22,6 +147,15 @@
             "type": "command",
             "command": "git fetch origin --quiet",
             "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/print-resume-state.mjs\""
           }
         ]
       }

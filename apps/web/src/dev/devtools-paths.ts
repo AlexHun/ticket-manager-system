@@ -1,6 +1,6 @@
 /**
- * The paths the dev-only Vite middleware answers on, and the one thing all
- * three dev tools share.
+ * The paths the dev-only Vite middleware answers on, and the one thing every
+ * dev tool shares.
  *
  * **Why this is its own module** (#284). `protocol.ts` used to hold three
  * unrelated contracts in one file — the project map's graph, the test runner's
@@ -13,8 +13,8 @@
  *
  * This record was the one name that did not cluster. Every tool's handler in
  * `apps/web/dev/plugin.ts` registers a path out of it and the browser client in
- * `./dev-api` calls all three, so it belongs to none of the three and to all of
- * them. Putting it in one would have made the other two read that page's
+ * `./dev-api` calls every one, so it belongs to none of the tools and to all of
+ * them. Putting it in one would have made the others read that page's
  * contract to find a route — the map importing the Usage module for the sake of
  * `graph` — which is exactly the coupling the split was for. Copying it per
  * tool was the other option and is worse: these strings are a *pairing* between
@@ -50,4 +50,9 @@ export const DEVTOOLS_API = {
    *  connect mounts by prefix, so `/__devtools/usage/push` would reach the scan
    *  handler first. */
   usagePush: "/__devtools/usage-push",
+  /** `GET` streams this machine's sessions of this repository and the
+   *  subagents under each, as server-sent events: the reading when a page
+   *  connects and again whenever it changes, writing nothing (#591) —
+   *  `./sessions-protocol`. */
+  sessions: "/__devtools/sessions",
 } as const;

@@ -60,7 +60,9 @@ export function KnowledgeArchiveDialog({
       toast.error(
         extractErrorMessage(
           err,
-          restoring ? "Failed to restore" : "Failed to archive",
+          restoring
+            ? "Couldn't restore the article. Try again."
+            : "Couldn't archive the article. Try again.",
         ),
       );
     },
@@ -80,7 +82,7 @@ export function KnowledgeArchiveDialog({
           {restoring ? (
             <p>
               It goes back into the knowledge base at {article?.id}. It stays
-              withheld from the assistant until you turn that on again.
+              withheld from the auto-reply until you turn that on again.
             </p>
           ) : (
             <>

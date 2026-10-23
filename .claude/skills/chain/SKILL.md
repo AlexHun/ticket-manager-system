@@ -11,11 +11,18 @@ context, gates the merge, and moves on. It never implements anything itself,
 so it stays small across the whole chain while each ticket still gets its own
 context, as CLAUDE.md's one-ticket-per-session rule asks.
 
+The workers are the user's team, and each has a name. The user is Alex; the
+conductor is **Anvil**. Every worker gets a forge word no worker has carried earlier in
+this session (Ember, Flint, Spark, Quench, Tongs, Bellows, Rivet, Temper,
+Ingot, Crucible, then any other), and the conductor uses that name whenever it
+speaks of the worker. A worker that resumes another's ticket gets a new name;
+the ticket keeps both.
+
 Arguments: the plan or PRD path (`docs/plans/<slug>.md`, `docs/prd/<slug>.md`)
 or an explicit list of issue numbers, plus an optional `auto`. Asking is the
 default: every merge waits for the user's yes. `auto` merges a green,
-question-free PR without asking; the user can also switch it on mid-chain by
-saying so.
+question-free, two-way-door PR without asking; the user can also switch it on
+mid-chain by saying so.
 
 ## 1. Find the chain
 
@@ -23,27 +30,44 @@ saying so.
 section, and both share the `<slug>`. List the open issues that name it:
 
 ```
-gh issue list --state open --search "<slug> in:body" --limit 100 --json number,title,blockedBy --jq '.[] | {number, title, blockers: (.blockedBy.nodes | map(.number))}'
+(gh issue list --state open --search "<slug> in:body" --limit 100 --json number,title,blockedBy,labels | ConvertFrom-Json) | Select-Object number, title, @{n='blockers';e={$_.blockedBy.nodes.number}}, @{n='labels';e={$_.labels.name}}
 ```
 
 Tickets older than the `## Parent` section name no path; when the search comes
 back empty, ask the user for the issue numbers and read the same fields with
-`gh issue view <n> --json number,title,state,blockedBy`.
+`gh issue view <n> --json number,title,state,blockedBy,labels`.
 
 Order them by their blocking edges, blockers first, ties by issue number. Show
-the order, flag any blocker outside the chain that is still open, and wait for
-the user's OK. State lives in GitHub, so re-running `/chain` on the same
-argument resumes where a stopped chain left off.
+the order, flag any blocker outside the chain that is still open, and flag
+every `ready-for-human` ticket: no worker takes one, so the user lands it
+before the chain reaches it (`to-tickets` gives that label to a ticket that
+grants an agent permissions, which auto mode refuses an agent, as #524 found).
+Wait for the user's OK. State lives in GitHub, so re-running `/chain` on the
+same argument resumes where a stopped chain left off.
 
 ## 2. Run the next link
 
-Take the first ticket whose blockers are all closed. Confirm `git status` is
-clean and `git fetch origin` has run, then start one `general-purpose`
-subagent with this prompt and wait for its completion notice:
+Take the first ticket whose blockers are all closed. When it is
+`ready-for-human`, the user lands it: once they say its change is in, by
+their own commit or PR, check that `origin/develop` carries it, close the
+ticket with a comment naming the commit, and take the next ticket. Confirm
+`git status` is clean and `git fetch origin` has run, then check the usage
+limit with `node .claude/scripts/usage-gate.mjs`, which reads the snapshot the
+user's terminal status line writes:
 
-> Invoke the `implement` skill for issue #<n> and follow it to the end. You
-> are a subagent: a background command will never wake you, so run
-> `gh pr checks <pr> --watch` in the foreground with the maximum timeout, and
+- `go`: start the worker.
+- `pause`: stop the chain (step 4) and give the reset time. A ticket started
+  near the limit dies mid-run, and the limit stops this session with it.
+- `unknown`: start the worker, and say once in the chain that the limit
+  cannot be seen.
+
+Start one `general-purpose` subagent with this prompt and wait for its
+completion notice:
+
+> You are <Name>, on the team. Invoke the `implement` skill for issue #<n>
+> and follow it to the end. You are a subagent: a background command will
+> never wake you, so run `gh pr checks <pr> --watch` in the foreground with
+> the maximum timeout, and
 > run it again until it exits. "no checks reported" right after a push means
 > the run has not registered yet, and a superseded run ends `cancelled`; both
 > are a re-watch, not a failure. Report only once every CI job is green: a red
@@ -54,8 +78,22 @@ subagent with this prompt and wait for its completion notice:
 
 Steps 3 and 4 act on that `RESULT` line.
 
+**A reply without a `RESULT` line is continued once.** Continue the worker
+with:
+
+> Your reply has no `RESULT` line. Finish what `implement` still needs, then
+> end with the same `RESULT` line.
+
+When that reply has none either, the chain stops (step 4): a worker that
+cannot say where its ticket stands twice running wants the user, not a third
+guess at its state (#523).
+
+**To continue a worker**, send it the message with SendMessage, so it keeps
+its context. When this session has no SendMessage, start a fresh, newly named
+worker with the prompt above followed by the message.
+
 **Red CI is fixed, not skipped.** When the worker still returns `ci=red`,
-continue that same worker with SendMessage, so it keeps its diagnosis so far:
+continue it, so it keeps its diagnosis so far:
 
 > CI on #<pr> is still red. Find why, fix it, push, and watch until green. End
 > with the same `RESULT` line.
@@ -64,18 +102,74 @@ Allow three such rounds per ticket. A ticket still red after the third is the
 one red case that stops the chain (step 4): a failure that resists three
 focused attempts wants the user's judgement, not a fourth.
 
+**A worker stopped by an API error is resumed.** Its completion notice says
+`failed` and names the error; a usage limit stops this session too, so the
+resume runs on the user's next message. Rebuild the ticket's state as
+CLAUDE.md's resume rule says, adding the issue's `Progress:` comments and the
+last line of `~/.claude/stop-failures.jsonl` whose `cwd` is this repo (the
+`StopFailure` hook writes one per stop, for every project). Tell the user
+where the ticket stands. The tree is dirty with the stopped worker's files,
+which are the work: skip the clean-tree check, run the usage gate, and on
+`go` or `unknown` continue the worker with:
+
+> <Earlier name> stopped on an API error partway through this ticket. Its
+> work is on `<branch>`: <commits, uncommitted files, PR>. Keep that work:
+> check it against the ticket, finish what is missing, and continue
+> `implement` from the step it reached.
+
+Allow two resumes per ticket. A third stop stops the chain (step 4).
+
 ## 3. Gate the merge
 
 Re-check the PR yourself: `gh pr checks <pr>` all passing and
-`gh pr view <pr> --json mergeable,baseRefName` showing `MERGEABLE` into
-`develop`. Then:
+`gh pr view <pr> --json mergeable,baseRefName,body` showing `MERGEABLE` into
+`develop`. The body follows `mattpocock-skills:pr`'s template, which
+`implement` fills; read its **Door** and **Blast Radius** under
+`## Merge Danger`. Then:
 
-- With `auto`, merge. Without it, show the PR link with the `RESULT` line and
-  ask; the user's yes covers this one PR only.
+- With `auto`, merge a two-way door. Otherwise — no `auto`, a one-way door,
+  or a body with no **Door** — show the PR link with the `RESULT` line, the
+  Door and the Blast Radius, and ask; the user's yes covers this one PR only.
 - Merge with `gh pr merge <pr> --merge --delete-branch`, the repo's merge-commit
   style. `Closes #<n>` in the PR body closes the ticket, which is what unblocks
   the next one.
-- `git fetch origin`, then go back to step 2.
+- Post the worker's run on the issue, from its completion notice's
+  `<usage>`: a `Usage:` comment, one line per notice when the ticket took
+  more than one worker or round:
+
+  ```
+  Usage: <Name> final_context_tokens=<n> tool_uses=<n> duration_ms=<n> RESULT ticket=#<n> pr=#<pr> ci=<ci> questions=<...>
+  ```
+
+  `final_context_tokens=<n>` is the notice's `<subagent_tokens>`, renamed for what
+  it holds: how full the worker's context was at its last API call. Measured
+  on #545-#547, it came within 2% of that response's input, cache and output
+  summed, and ran about 10-14x the worker's output tokens. Comments posted
+  before the rename write it `subagent_tokens=<n>`. Read a ticket's spend from the
+  transcripts, with `bun run tokens` or the `/__dev/usage` page.
+
+  Write it to a scratchpad file and pass it with
+  `gh issue comment <n> --body-file <file>`. Done when this ticket's comment
+  is posted. It is the one record of the worker's run — its size, tool uses
+  and duration — that survives a session that writes no transcript: session
+  `6732eb5d` (`/chain 491-493`) wrote none, neither its own nor any worker's,
+  so `bun run tokens` and `retro` had nothing to read (#522).
+- Score the work, then `git fetch origin` and go back to step 2.
+
+**Score** each ticket out of 100, from the worker's report, the PR body, its
+commits and the CI rounds. The conductor does not read the diff, which would
+grow its context with every ticket, so the score judges what the team showed:
+
+| Part      | Points | Earned by                                                                           |
+| --------- | ------ | ----------------------------------------------------------------------------------- |
+| Spec fit  | 30     | every acceptance criterion delivered; anything beyond the ticket flagged and argued |
+| Quality   | 25     | Evidence whose before and after prove the change; the `## Review` findings settled  |
+| CI        | 15     | green on the first push; less for each fix round                                    |
+| Judgement | 15     | decisions the user owns raised, not buried; scope held; Door and Blast Radius true  |
+| Report    | 15     | accurate and plain, the `RESULT` line right                                         |
+
+Give the score with one line on where points went. A stop the worker did not
+cause, such as a usage limit, costs nothing.
 
 ## 4. Stop
 
@@ -85,10 +179,17 @@ The chain stops, and reports, when any of these holds:
   marked the PRD `Status: Shipped`; if its header still says otherwise, say so
   in the report;
 - a ticket is still `ci=red` after three fix rounds;
+- the usage gate says `pause`, or a ticket stops on an API error a third time;
 - a worker returns `pr=none` or `questions` that are not `none`;
-- the next ticket is blocked by an open issue outside the chain;
+- a worker's reply still has no `RESULT` line after one continue;
+- the next ticket is blocked by an open issue outside the chain, or is
+  `ready-for-human` and its change has not landed;
 - a merge fails or the user declines one.
 
-Report a table with one row per ticket — ticket, PR, CI, merged or why it
-stopped — and, when stopped early, the one thing the user has to decide before
-`/chain <same argument>` can resume.
+The ticket that stopped the chain gets its `Usage:` comment too, in step 3's
+shape, since a stopped run is the one `retro` most needs to read. A notice
+whose reply carried no `RESULT` line ends its row on `RESULT=none`.
+
+Report a table with one row per ticket — ticket, team member, PR, CI, score,
+merged or why it stopped — and, when stopped early, the one thing the user has
+to decide before `/chain <same argument>` can resume.

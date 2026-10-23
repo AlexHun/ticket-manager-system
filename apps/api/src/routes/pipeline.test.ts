@@ -25,6 +25,9 @@
  *     somebody believes that path writes; and which unstamped rows the
  *     classifier will still act on, which is a query (#361).
  *
+ * `POST /simulate` is reached only for its refusals (#485), which answer before
+ * ingestion runs and are copy a person reads in the simulator panel.
+ *
  * `GET /` is not reached over a socket, and that is a limitation worth naming
  * rather than working around: it reads queue depth through `getBoss()`, which
  * throws with no queue started, and the seam that would answer it — `./boss` —
@@ -37,7 +40,7 @@
  * `tests/e2e/pipeline-offer.spec.ts`, against a server whose queue is running.
  */
 
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   ADMIN_SCREEN,
   AUTO_REPLY_DECLINE,
@@ -76,7 +79,8 @@ import { serveRouter } from "../test/route-app";
  */
 process.env.OPENAI_API_KEY = "sk-test-not-a-real-key";
 
-const { pipelineCounts, pipelineRouter, toRun } = await import("./pipeline");
+const { CLASSIFIER_VERDICT, pipelineCounts, pipelineRouter, toRun } =
+  await import("./pipeline");
 const { AUTO_REPLY_WORKER } = await import("../jobs/auto-reply-ticket");
 const { RECONCILE_MAX_AGE_MS } = await import("../jobs/classify-ticket");
 
@@ -94,6 +98,15 @@ const CLASSIFIED_AT = new Date("2026-09-01T09:00:12.000Z");
 const NOT_AWAITING = { classifier: false, autoReply: false };
 /** The auto-reply was offered the row and nobody has answered it since. */
 const AWAITING_AUTO_REPLY = { classifier: false, autoReply: true };
+/**
+ * `toRun`'s answer to what the assistant decided, which the routes ask of the
+ * database through `classifierFiled` and `classifierGaveUp` (#561) and
+ * `assistantResolved` (#562).
+ */
+const FILED = { verdict: CLASSIFIER_VERDICT.filed, resolved: false };
+const GAVE_UP = { verdict: CLASSIFIER_VERDICT.gaveUp, resolved: false };
+const UNSTAMPED = { verdict: null, resolved: false };
+const RESOLVED = { verdict: CLASSIFIER_VERDICT.filed, resolved: true };
 
 /** Everything on and nothing withheld: the deployment where the pipeline runs. */
 const LIVE: PipelineConfig = {
@@ -141,9 +154,9 @@ describe("toRun — the outcome it derives from a decline", () => {
   test.each([...AUTO_REPLY_DECLINES])(
     "%s answers the outcome `DECLINE_OUTCOME` names for it",
     (decline) => {
-      expect(toRun(declinedRow(decline), LIVE, NOT_AWAITING).outcome).toBe(
-        DECLINE_OUTCOME[decline],
-      );
+      expect(
+        toRun(declinedRow(decline), LIVE, NOT_AWAITING, FILED).outcome,
+      ).toBe(DECLINE_OUTCOME[decline]);
     },
   );
 
@@ -159,6 +172,7 @@ describe("toRun — the outcome it derives from a decline", () => {
       declinedRow(AUTO_REPLY_DECLINE.unavailable),
       LIVE,
       NOT_AWAITING,
+      FILED,
     );
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.abandoned);
@@ -170,9 +184,9 @@ describe("toRun — the outcome it derives from a decline", () => {
     // every real decline alone.
     for (const decline of AUTO_REPLY_DECLINES) {
       if (decline === AUTO_REPLY_DECLINE.unavailable) continue;
-      expect(toRun(declinedRow(decline), LIVE, NOT_AWAITING).outcome).toBe(
-        PIPELINE_OUTCOME.declined,
-      );
+      expect(
+        toRun(declinedRow(decline), LIVE, NOT_AWAITING, FILED).outcome,
+      ).toBe(PIPELINE_OUTCOME.declined);
     }
   });
 
@@ -182,7 +196,7 @@ describe("toRun — the outcome it derives from a decline", () => {
     // that is where the attempt died — which is why the exit could never have
     // been read as the verdict in the first place.
     for (const decline of AUTO_REPLY_DECLINES) {
-      const run = toRun(declinedRow(decline), LIVE, NOT_AWAITING);
+      const run = toRun(declinedRow(decline), LIVE, NOT_AWAITING, FILED);
       const exited = run.stages.find(
         (stage) => stage.state === PIPELINE_STAGE_STATE.exited,
       );
@@ -198,6 +212,7 @@ describe("toRun — the outcome it derives from a decline", () => {
       declinedRow(AUTO_REPLY_DECLINE.unavailable),
       LIVE,
       NOT_AWAITING,
+      FILED,
     );
     const below = PIPELINE_STAGES.indexOf(PIPELINE_STAGE.drafted) + 1;
 
@@ -219,6 +234,7 @@ describe("toRun — the rest of the outcomes", () => {
       }),
       LIVE,
       NOT_AWAITING,
+      RESOLVED,
     );
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.resolved);
@@ -227,12 +243,41 @@ describe("toRun — the rest of the outcomes", () => {
 
   test("the classifier out of retries is `abandoned` too, with no reason", () => {
     // The other road to `abandoned`, and the reason its wording has to be true
-    // of more than one thing: a stamped `classifiedAt` with no category is the
-    // classifier's terminal path, which never reached the auto-reply at all.
-    const run = toRun(row({ category: null }), LIVE, NOT_AWAITING);
+    // of more than one thing: a stamped `classifiedAt` with no category of the
+    // classifier's own (`classifierGaveUp`) is its terminal path, which never
+    // reached the auto-reply at all.
+    const run = toRun(row({ category: null }), LIVE, NOT_AWAITING, GAVE_UP);
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.abandoned);
     expect(run.decline).toBeNull();
+  });
+
+  test("filed by the classifier and cleared by an agent is not `abandoned`", () => {
+    // R1 (#561): the row an agent's clear leaves — stamped, no category — is
+    // the row the terminal path leaves too. What tells them apart is the
+    // classifier's own record, so the ticket stays past the classified stop.
+    const run = toRun(row({ category: null }), LIVE, NOT_AWAITING, FILED);
+
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
+    const classified = run.stages.find(
+      (stage) => stage.stage === PIPELINE_STAGE.classified,
+    );
+    expect(classified?.state).toBe(PIPELINE_STAGE_STATE.done);
+    expect(run.stages.map((stage) => stage.state)).not.toContain(
+      PIPELINE_STAGE_STATE.exited,
+    );
+  });
+
+  test("given up on and then filed by an agent is still `abandoned`", () => {
+    // R2's other side: a category a person chose after the classifier gave up
+    // does not make the classifier's attempt a filing.
+    const run = toRun(row(), LIVE, NOT_AWAITING, GAVE_UP);
+
+    expect(run.outcome).toBe(PIPELINE_OUTCOME.abandoned);
+    const exited = run.stages.find(
+      (stage) => stage.state === PIPELINE_STAGE_STATE.exited,
+    );
+    expect(exited?.stage).toBe(PIPELINE_STAGE.classified);
   });
 
   test("waiting on a stage that will run is `pending`", () => {
@@ -240,6 +285,7 @@ describe("toRun — the rest of the outcomes", () => {
       row({ status: TICKET_STATUS.New }),
       LIVE,
       AWAITING_AUTO_REPLY,
+      FILED,
     );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
   });
@@ -259,7 +305,12 @@ describe("toRun — the auto-reply's offer is read off the row", () => {
     // never enqueued, and nothing will enqueue it now. Guessed from today's
     // settings it read `pending` forever once the switch went back on. A row
     // from before the column reads the same way, which is R7.
-    const run = toRun(row({ status: TICKET_STATUS.New }), LIVE, NOT_AWAITING);
+    const run = toRun(
+      row({ status: TICKET_STATUS.New }),
+      LIVE,
+      NOT_AWAITING,
+      FILED,
+    );
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
     expect(run.stages.map((stage) => stage.state)).not.toContain(
@@ -280,6 +331,7 @@ describe("toRun — the auto-reply's offer is read off the row", () => {
         autoReplyArticleCount: 0,
       },
       AWAITING_AUTO_REPLY,
+      FILED,
     );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
   });
@@ -305,12 +357,12 @@ describe("toRun — a ticket with no classification verdict", () => {
   const AWAITING_CLASSIFIER = { classifier: true, autoReply: false };
 
   test("awaited by the classifier is `pending`", () => {
-    const run = toRun(unstamped(), LIVE, AWAITING_CLASSIFIER);
+    const run = toRun(unstamped(), LIVE, AWAITING_CLASSIFIER, UNSTAMPED);
     expect(run.outcome).toBe(PIPELINE_OUTCOME.pending);
   });
 
   test("not awaited is `notOffered`, with nothing left in flight", () => {
-    const run = toRun(unstamped(), LIVE, NOT_AWAITING);
+    const run = toRun(unstamped(), LIVE, NOT_AWAITING, UNSTAMPED);
 
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
     expect(run.stages.map((stage) => stage.state)).not.toContain(
@@ -325,6 +377,7 @@ describe("toRun — a ticket with no classification verdict", () => {
       unstamped(),
       { ...LIVE, aiConfigured: false },
       AWAITING_CLASSIFIER,
+      UNSTAMPED,
     );
     expect(run.outcome).toBe(PIPELINE_OUTCOME.notOffered);
   });
@@ -384,16 +437,30 @@ describe("pipelineCounts — an unstamped ticket", () => {
     await seedTicket({
       createdAt: AN_HOUR_AGO,
       category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
       classifiedAt: AN_HOUR_AGO,
     });
     await seedTicket({ createdAt: AN_HOUR_AGO, classifiedAt: AN_HOUR_AGO });
+    // And each of them after an agent's hand (#561): filed by the classifier
+    // and cleared, which is still filed; given up on and then filed by a
+    // person, which is still given up.
+    await seedTicket({
+      createdAt: AN_HOUR_AGO,
+      classifierCategory: TICKET_CATEGORY.Technical,
+      classifiedAt: AN_HOUR_AGO,
+    });
+    await seedTicket({
+      createdAt: AN_HOUR_AGO,
+      category: TICKET_CATEGORY.Refund,
+      classifiedAt: AN_HOUR_AGO,
+    });
 
-    const counts = await pipelineCounts(FROM, TO, true);
+    const counts = await pipelineCounts({ from: FROM, to: TO }, true);
 
     expect(counts).toMatchObject({
-      received: 6,
-      machineClassified: 1,
-      classifyAbandoned: 1,
+      received: 8,
+      machineClassified: 2,
+      classifyAbandoned: 2,
       classifyPending: 2,
       classifyNotOffered: {
         [CLASSIFY_NOT_OFFERED.noKey]: 0,
@@ -416,7 +483,7 @@ describe("pipelineCounts — an unstamped ticket", () => {
       category: TICKET_CATEGORY.Technical,
     });
 
-    const counts = await pipelineCounts(FROM, TO, false);
+    const counts = await pipelineCounts({ from: FROM, to: TO }, false);
 
     expect(counts).toMatchObject({
       received: 3,
@@ -437,6 +504,7 @@ describe("pipelineCounts — a classified ticket with no verdict", () => {
   const classified = {
     createdAt: AN_HOUR_AGO,
     category: TICKET_CATEGORY.Technical,
+    classifierCategory: TICKET_CATEGORY.Technical,
     classifiedAt: AN_HOUR_AGO,
   };
   let replies = 0;
@@ -511,7 +579,7 @@ describe("pipelineCounts — a classified ticket with no verdict", () => {
     // Unstamped, so the classifier's half, not this one.
     await seedTicket({ createdAt: AN_HOUR_AGO, status: TICKET_STATUS.New });
 
-    const counts = await pipelineCounts(FROM, TO, true);
+    const counts = await pipelineCounts({ from: FROM, to: TO }, true);
 
     expect(counts).toMatchObject({
       received: 9,
@@ -530,6 +598,7 @@ describe("GET /api/pipeline/runs/:id", () => {
     const ticket = await seedTicket({
       status: TICKET_STATUS.Processing,
       category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
       classifiedAt: CLASSIFIED_AT,
     });
 
@@ -556,6 +625,7 @@ describe("GET /api/pipeline/runs/:id", () => {
     const ticket = await seedTicket({
       status: TICKET_STATUS.Open,
       category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
       classifiedAt: CLASSIFIED_AT,
       autoReplyDecline: AUTO_REPLY_DECLINE.notCovered,
       autoReplyDeclinedAt: new Date(),
@@ -565,6 +635,58 @@ describe("GET /api/pipeline/runs/:id", () => {
     const body = (await res.json()) as PipelineRunResponse;
 
     expect(body.run.outcome).toBe(PIPELINE_OUTCOME.declined);
+  });
+
+  test("a ticket the classifier filed and an agent cleared is not abandoned", async () => {
+    // R1 (#561), through the route and so through `classifierFiled`: the row
+    // an agent's clear leaves, with the classifier's record beside it.
+    const ticket = await seedTicket({
+      status: TICKET_STATUS.Open,
+      classifierCategory: TICKET_CATEGORY.Technical,
+      classifiedAt: CLASSIFIED_AT,
+    });
+
+    const res = await fetch(url(`/runs/${ticket.id}`), { headers: ADMIN });
+    const body = (await res.json()) as PipelineRunResponse;
+
+    expect(body.run.outcome).not.toBe(PIPELINE_OUTCOME.abandoned);
+    expect(body.run.category).toBeNull();
+  });
+
+  test("a ticket the assistant resolved and an agent reassigned is still resolved", async () => {
+    // R3 (#562), through the route and so through `assistantResolved`: the
+    // assignee records who owns the ticket, and moving it withdraws nothing.
+    const ticket = await seedTicket({
+      status: TICKET_STATUS.Closed,
+      category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
+      classifiedAt: CLASSIFIED_AT,
+      autoResolvedAt: CLASSIFIED_AT,
+      assignedToId: COLLEAGUE.admin.id,
+    });
+
+    const res = await fetch(url(`/runs/${ticket.id}`), { headers: ADMIN });
+    const body = (await res.json()) as PipelineRunResponse;
+
+    expect(body.run.outcome).toBe(PIPELINE_OUTCOME.resolved);
+  });
+
+  test("a ticket the classifier gave up on is abandoned at the classified stop", async () => {
+    // R2, the same route: stamped, and no record of a filing.
+    const ticket = await seedTicket({
+      status: TICKET_STATUS.New,
+      classifiedAt: CLASSIFIED_AT,
+    });
+
+    const res = await fetch(url(`/runs/${ticket.id}`), { headers: ADMIN });
+    const body = (await res.json()) as PipelineRunResponse;
+
+    expect(body.run.outcome).toBe(PIPELINE_OUTCOME.abandoned);
+    expect(
+      body.run.stages.find(
+        (stage) => stage.state === PIPELINE_STAGE_STATE.exited,
+      )?.stage,
+    ).toBe(PIPELINE_STAGE.classified);
   });
 
   describe("a ticket with no classification verdict", () => {
@@ -643,6 +765,7 @@ describe("GET /api/pipeline/runs/:id", () => {
     }
     const classified = {
       category: TICKET_CATEGORY.Technical,
+      classifierCategory: TICKET_CATEGORY.Technical,
       classifiedAt: CLASSIFIED_AT,
     };
     const answered = (ticketId: number) =>
@@ -701,5 +824,73 @@ describe("GET /api/pipeline/runs/:id", () => {
   test("a ticket that does not exist is a 404, not an empty run", async () => {
     const res = await fetch(url("/runs/4242"), { headers: ADMIN });
     expect(res.status).toBe(404);
+  });
+});
+
+/* ── What the simulator says when it refuses (#485) ──────────────────────── */
+
+describe("POST /simulate — its refusals read as copy", () => {
+  /** An email the schema accepts, so each test changes only what it is about. */
+  const EMAIL = {
+    localPart: "marta",
+    senderName: "Marta",
+    subject: "Where is my order?",
+    textBody: "It has not arrived.",
+    htmlBody: "",
+    inReplyTo: "",
+  };
+
+  async function simulate(body: Record<string, string>) {
+    const res = await fetch(url("/simulate"), {
+      method: "POST",
+      headers: { ...ADMIN, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: res.status,
+      error: ((await res.json()) as { error: string }).error,
+    };
+  }
+
+  const previous = process.env.PIPELINE_SIMULATOR_ENABLED;
+  beforeEach(() => {
+    process.env.PIPELINE_SIMULATOR_ENABLED = "true";
+  });
+  afterEach(() => {
+    if (previous === undefined) delete process.env.PIPELINE_SIMULATOR_ENABLED;
+    else process.env.PIPELINE_SIMULATOR_ENABLED = previous;
+  });
+
+  test("switched off, it says so without naming the variable", async () => {
+    process.env.PIPELINE_SIMULATOR_ENABLED = "false";
+    expect(await simulate(EMAIL)).toEqual({
+      status: 503,
+      error:
+        "Couldn't send the email — the simulator is off on this deployment.",
+    });
+  });
+
+  test("an email with no body says what to give it", async () => {
+    expect(await simulate({ ...EMAIL, textBody: " " })).toEqual({
+      status: 400,
+      error: "Give the email a body — text, HTML or both.",
+    });
+  });
+
+  test("an over-long Message-ID says the limit", async () => {
+    expect(await simulate({ ...EMAIL, inReplyTo: "x".repeat(201) })).toEqual({
+      status: 400,
+      error: "Keep the Message-ID to 200 characters or fewer.",
+    });
+  });
+
+  test("a Message-ID nothing carries says what to do instead", async () => {
+    expect(
+      await simulate({ ...EMAIL, inReplyTo: "<nobody@example.test>" }),
+    ).toEqual({
+      status: 400,
+      error:
+        "Couldn't find an email with that Message-ID. Leave it empty to open a new ticket.",
+    });
   });
 });

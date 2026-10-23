@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  BRAND_NAME,
   NEW_FEATURE_KEY,
   NEW_FEATURE_KEYS,
   TICKET_VIEWS,
@@ -98,7 +99,7 @@ describe("AppSidebar brand", () => {
   test("the brand link is named after the product and leads to the dashboard", () => {
     renderSidebar();
 
-    const brand = screen.getByRole("link", { name: "The Great Forge Desk" });
+    const brand = screen.getByRole("link", { name: BRAND_NAME });
     expect(brand).toHaveAttribute("href", "/");
   });
 
@@ -114,9 +115,7 @@ describe("AppSidebar brand", () => {
       },
     ]);
 
-    expect(
-      screen.getByRole("link", { name: "The Great Forge Desk" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: BRAND_NAME })).toBeInTheDocument();
   });
 });
 
@@ -128,7 +127,7 @@ describe("AppSidebar navigation", () => {
     "Activity",
     "Tutorials",
   ];
-  const PRIVATE = ["Users", "Outbox"];
+  const PRIVATE = ["Team", "Outbox"];
 
   function navLinks(): string[] {
     return screen.getAllByRole("link").map((link) => link.textContent ?? "");
@@ -143,7 +142,7 @@ describe("AppSidebar navigation", () => {
   });
 
   // R3: the showcase screens come from `isAnonymous`, and the role is agent.
-  test("a demo session sees the showcase screens and not Users or Outbox", () => {
+  test("a demo session sees the showcase screens and not Team or Outbox", () => {
     session.user = {
       id: "demo-1",
       name: "Demo visitor",

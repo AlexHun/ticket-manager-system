@@ -14,7 +14,7 @@ import { useDemoStatus, useDemoUsage } from "@/lib/demo-queries";
  * how many of them opened a ticket, and (#464, demo-welcome PRD R11) how many
  * followed one of the welcome's suggested steps.
  *
- * On the Users page because that page is admin-only for a demo session too —
+ * On the Team page because that page is admin-only for a demo session too —
  * it is absent from the demo's nav and its URL is not found — and the API
  * behind this refuses one regardless. Drawn only while demo mode is on: a
  * deployment that takes real mail never offered the demo, and a card of

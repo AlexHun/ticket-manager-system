@@ -11,6 +11,7 @@ import {
   type OutboxListResponse,
 } from "@ticket/shared";
 import { api } from "@/lib/api";
+import { extractErrorMessage } from "@/lib/errors";
 import { ROUTE, ticketDetailPath } from "@/lib/routes";
 import { Tutorial } from "@/components/Tutorial";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -42,9 +43,10 @@ const STATUS_LABEL: Record<OutboundEmailStatus, string> = {
   queued: "Queued",
   sent: "Sent",
   failed: "Failed",
-  undeliverable: "Not sent",
+  undeliverable: "Undeliverable",
   // A demo session's email (#325): recorded here, never sent, never retried.
-  withheld: "Not sent (demo)",
+  // A label of its own, not Undeliverable's: that state is retryable.
+  withheld: "Withheld (demo)",
 };
 
 const KIND_LABEL: Record<OutboundEmailKind, string> = {
@@ -103,7 +105,7 @@ export function OutboxPage() {
         </PageHeader>
 
         {/* Said out loud rather than left to be inferred from a page of rows all
-          reading "Not sent". From every other screen, "no provider bound" and
+          reading "Undeliverable". From every other screen, "no provider bound" and
           "a quiet week" look identical. */}
         {/* Theme tokens on the card below, not a raw palette colour: there is no
           warning token in this theme, and inventing one here would put a fourth
@@ -146,21 +148,21 @@ export function OutboxPage() {
               them down with `mailConfigured` instead of adding another copy. */}
             <p className="text-xs text-muted-foreground">
               Invitation and password-reset links work for 24 hours, and their
-              emails are cleared once they expire — resend from{" "}
+              emails are cleared once they expire — resend from the{" "}
               <Link
                 to={ROUTE.users.path}
                 className="underline underline-offset-2"
               >
-                Users
+                Team
               </Link>{" "}
-              if one has gone. Ticket replies are kept for 90 days.
+              screen if one has gone. Ticket replies are kept for 90 days.
             </p>
           </div>
         )}
 
         {error && (
           <p className="text-sm text-destructive" role="alert">
-            {error.message}
+            {extractErrorMessage(error, "Couldn't load the Outbox. Try again.")}
           </p>
         )}
 
@@ -283,14 +285,17 @@ function OutboxRow({
               ) : (
                 <RotateCw className="size-4" />
               )}
-              {retry.isPending ? "Queueing…" : "Try again"}
+              {retry.isPending ? "Trying again…" : "Try again"}
             </Button>
           )}
         </div>
 
         {retry.error && (
           <p className="text-sm text-destructive" role="alert">
-            {retry.error.message}
+            {extractErrorMessage(
+              retry.error,
+              "Couldn't retry that email. Try again.",
+            )}
           </p>
         )}
         {/* Plain text in a text node, never `dangerouslySetInnerHTML`. Every

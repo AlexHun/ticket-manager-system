@@ -151,7 +151,7 @@ person who learns the wrong word.
 - `docs/agents/issue-tracker.md` records that a new issue carries a
   `forecast/S|M|L` label when it is cut (R11).
 
-`CONTEXT.md` is not touched: it is the support desk's glossary, and _Ticket_
+`GLOSSARY.md` is not touched: it is the support desk's glossary, and _Ticket_
 must keep meaning one customer's request.
 
 **E2E:** none of its own — this slice changes words, and the specs from slices

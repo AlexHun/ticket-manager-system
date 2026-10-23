@@ -47,7 +47,7 @@ const issue = (
 /**
  * Five issues: the three the transcript fixture spends on, and two it does not.
  *
- * `#101` spent 20,000 output tokens against a `forecast/S` band (<60k), so it
+ * `#101` spent 32,000 output tokens against a `forecast/S` band (<60k), so it
  * is **on target** — the enriched row the spec reads a title, an `href` and a
  * verdict off. `#102` carries no forecast label at all, which is the other case
  * worth holding: it must render with its figures and *no* verdict, rather than
@@ -107,4 +107,73 @@ export function writeGhIssuesFixture(): void {
  *  rather than being handed a report that says it did. */
 export function removeGhIssuesFixture(): void {
   rmSync(GH_ISSUES_FIXTURE_PATH, { force: true });
+}
+
+/**
+ * The issue listing a running chain is ordered by on the Sessions page
+ * (#594), and the file the dev server reads it from as `GH_CHAIN_ISSUES_FILE`
+ * (`apps/web/dev/issues.ts`). It holds what `listChainIssues`' call prints —
+ * `gh issue list --search "<plan>" in:body --json number,title,state,blockedBy`
+ * — and is written and removed by the spec for `GH_ISSUES_FIXTURE_PATH`'s
+ * reason: a missing file is how a chain whose order is unknown is reached
+ * through the real middleware.
+ */
+export const GH_CHAIN_ISSUES_FIXTURE_PATH = path.join(
+  HERE,
+  "gh-chain-issues.local.json",
+);
+
+const chainIssue = (
+  number: number,
+  title: string,
+  state: "OPEN" | "CLOSED",
+  blockedBy: [number, "OPEN" | "CLOSED"][] = [],
+) => ({
+  number,
+  title,
+  state,
+  blockedBy: {
+    nodes: blockedBy.map(([n, s]) => ({ number: n, state: s })),
+    totalCount: blockedBy.length,
+  },
+});
+
+/**
+ * Four issues of the conductor fixture's plan, listed out of order. `#201` is
+ * closed, so Merged; `#202` and `#203` wait on it alone, so in the chain's
+ * order — blockers first, ties by number — `#202`, which the conductor
+ * started Flint on, is In progress and `#203` is Next. `#204` waits on
+ * `#299`, which is outside the chain and still open, so it is Blocked.
+ */
+export const GH_CHAIN_ISSUES = [
+  chainIssue(204, "Fixture: a chain issue blocked from outside", "OPEN", [
+    [299, "OPEN"],
+  ]),
+  chainIssue(203, "Fixture: the chain's next issue", "OPEN", [[201, "CLOSED"]]),
+  chainIssue(202, "Fixture: the chain issue in progress", "OPEN", [
+    [201, "CLOSED"],
+  ]),
+  chainIssue(201, "Fixture: the chain issue already merged", "CLOSED"),
+];
+
+/**
+ * The same four issues, every one closed: a chain with nothing left to
+ * watch, which the Sessions page folds to its count (#613).
+ */
+export const GH_CHAIN_ISSUES_ALL_MERGED = GH_CHAIN_ISSUES.map((issue) => ({
+  ...issue,
+  state: "CLOSED" as const,
+}));
+
+export function writeGhChainIssuesFixture(issues = GH_CHAIN_ISSUES): void {
+  mkdirSync(HERE, { recursive: true });
+  writeFileSync(
+    GH_CHAIN_ISSUES_FIXTURE_PATH,
+    JSON.stringify(issues, null, 2),
+    "utf8",
+  );
+}
+
+export function removeGhChainIssuesFixture(): void {
+  rmSync(GH_CHAIN_ISSUES_FIXTURE_PATH, { force: true });
 }

@@ -31,7 +31,7 @@ import type { EvalsConfig } from "./evals";
  * **Two halves of one panel, and they are different things on purpose.** The
  * schedule fires forever, is frozen-corpus only, and is paused rather than
  * deleted. A planned run fires once, may name either corpus, and is cancelled
- * rather than paused. `CONTEXT.md` carries both verbs with the object each one
+ * rather than paused. `GLOSSARY.md` carries both verbs with the object each one
  * takes, because the failure mode here is a confirmation dialog rather than a
  * type error — one verb across the two is how an admin comes to believe that
  * pausing the schedule stops tonight's run. It does not. **Nothing stops a run
@@ -285,7 +285,7 @@ export function createEvalScheduleRouter(config: EvalsConfig): Router {
       // key, and unset is a supported state the whole app degrades the same way.
       if (!config.evalConfigured()) {
         res.status(503).json({
-          error: "No AI provider is configured, so an eval cannot run.",
+          error: "Couldn't plan the run — no AI provider is configured.",
         });
         return;
       }
@@ -302,7 +302,7 @@ export function createEvalScheduleRouter(config: EvalsConfig): Router {
       const horizon = Date.now() + EVAL_PLAN_HORIZON_DAYS * 24 * 60 * 60 * 1000;
       if (runAt.getTime() > horizon) {
         res.status(400).json({
-          error: `A run can be planned at most ${EVAL_PLAN_HORIZON_DAYS} days ahead.`,
+          error: `Couldn't plan the run — pick a time within ${EVAL_PLAN_HORIZON_DAYS} days.`,
         });
         return;
       }
@@ -385,7 +385,10 @@ export function createEvalScheduleRouter(config: EvalsConfig): Router {
       });
 
       if (count === 0) {
-        res.status(404).json({ error: "No planned run to cancel" });
+        res.status(404).json({
+          error:
+            "Couldn't cancel the planned run — it is no longer planned. Reload to see what became of it.",
+        });
         return;
       }
 

@@ -9,7 +9,7 @@ category, and — where a knowledge article covers it — gets an **auto-reply**
 written and sent with nobody reading it first. Everything else lands in the
 backlog for an **agent**, who gets AI summaries and reply polishing to work with.
 
-- **Vocabulary** — [`CONTEXT.md`](./CONTEXT.md) fixes what every term above means.
+- **Vocabulary** — [`GLOSSARY.md`](./GLOSSARY.md) fixes what every term above means.
 - **Decisions** — [`docs/adr/`](./docs/adr/) records why the design is what it is.
 - **Standards** — [`docs/standards/`](./docs/standards/) is how code here is written.
 
@@ -49,7 +49,7 @@ are `General`, `Technical`, `Refund`, `Other`.
 
 | Layer    | Pick                                                                       |
 | -------- | -------------------------------------------------------------------------- |
-| Runtime  | Bun 1.3.13                                                                 |
+| Runtime  | Bun 1.4.4                                                                  |
 | Frontend | React 19 + Vite + TypeScript, Tailwind v4, shadcn/ui, TanStack Query/Table |
 | Backend  | Express 5 + TypeScript, server-sent events for live updates                |
 | Database | Postgres + Prisma 7                                                        |
@@ -80,7 +80,7 @@ docs/      ADRs, coding standards, agent configuration
 
 ## Getting started
 
-**Prerequisites:** [Bun](https://bun.sh) 1.3.13+ and a Postgres you can reach.
+**Prerequisites:** [Bun](https://bun.sh) 1.4.4+ and a Postgres you can reach.
 Neither an OpenAI key nor a mail provider is required — without them the AI
 features answer 503, tickets stay uncategorised, and mail records as
 undeliverable. Everything else runs.
@@ -135,15 +135,16 @@ Root scripts run from the repo root; anything database-shaped must run from
 `apps/api` — [`SCRIPTS.md`](./SCRIPTS.md) explains why, and is the full index of
 every command with what it writes and where it may be run.
 
-| Command                               | Does                                      |
-| ------------------------------------- | ----------------------------------------- |
-| `bun run dev`                         | both apps in watch mode                   |
-| `bun run build`                       | build every workspace                     |
-| `bun run typecheck`                   | typecheck every workspace                 |
-| `bun run --filter '@ticket/api' test` | API unit tests (`bun test`)               |
-| `bun run --filter '@ticket/web' test` | web unit tests (Vitest + Testing Library) |
-| `bun run test:e2e`                    | Playwright end-to-end suite               |
-| `bun run test:e2e:ui`                 | Playwright in UI mode                     |
+| Command                               | Does                                           |
+| ------------------------------------- | ---------------------------------------------- |
+| `bun run dev`                         | both apps in watch mode                        |
+| `bun run build`                       | build every workspace                          |
+| `bun run typecheck`                   | typecheck the workspaces and E2E specs         |
+| `bun run lint`                        | type-aware lint of both apps and both packages |
+| `bun run --filter '@ticket/api' test` | API unit tests (`bun test`)                    |
+| `bun run --filter '@ticket/web' test` | web unit tests (Vitest + Testing Library)      |
+| `bun run test:e2e`                    | Playwright end-to-end suite                    |
+| `bun run test:e2e:ui`                 | Playwright in UI mode                          |
 
 **End-to-end tests** run against their own database (`ticket_manager_test`) on
 their own ports (API `:3002`, web `:4001`), so a suite can run while

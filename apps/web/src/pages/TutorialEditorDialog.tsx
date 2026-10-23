@@ -120,7 +120,10 @@ export function TutorialEditorDialog({
       toast.success(`${TUTORIAL_PAGE_LABEL[tutorial!.pageKey]} tutorial saved`);
     },
     onError: (err) => {
-      const message = extractErrorMessage(err, "Failed to save the tutorial");
+      const message = extractErrorMessage(
+        err,
+        "Couldn't save the tutorial. Try again.",
+      );
       setServerError(message);
       toast.error(message);
     },
@@ -144,18 +147,20 @@ export function TutorialEditorDialog({
         <DialogHeader>
           <DialogTitle>{label}</DialogTitle>
           <DialogDescription>
-            Shown once to a user who has not seen this page's tutorial yet, or
-            whose version is out of date. Editing the wording here never
+            Shown once to a team member who has not seen this page's tutorial
+            yet, or whose version is out of date. Editing the wording here never
             re-triggers it — only a developer bumping the page's version does
             that.
           </DialogDescription>
         </DialogHeader>
 
         <form
-          onSubmit={handleSubmit((values) => {
-            setServerError(null);
-            mutation.mutate(values);
-          })}
+          onSubmit={(event) =>
+            void handleSubmit((values) => {
+              setServerError(null);
+              mutation.mutate(values);
+            })(event)
+          }
           noValidate
           className="flex flex-col gap-5"
         >
@@ -194,7 +199,7 @@ export function TutorialEditorDialog({
                       onClick={() => remove(index)}
                     >
                       <Trash2 aria-hidden="true" />
-                      Remove
+                      Remove step
                     </Button>
                   </div>
 
@@ -261,7 +266,7 @@ export function TutorialEditorDialog({
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value={NO_ANCHOR}>
-                                No target (centered)
+                                No target (centred)
                               </SelectItem>
                               {anchors.map((anchor) => (
                                 <SelectItem key={anchor.id} value={anchor.id}>
@@ -274,7 +279,7 @@ export function TutorialEditorDialog({
                       />
                       <p className="text-xs text-muted-foreground">
                         Points the step at that element on the live page with a
-                        dot and a connector line. Leave it centered for a step
+                        dot and a connector line. Leave it centred for a step
                         that isn't about one specific thing.
                       </p>
                     </div>

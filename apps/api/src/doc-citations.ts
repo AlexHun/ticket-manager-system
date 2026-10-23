@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { stripComments } from "./strip-comments";
+import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
+import { stripComments } from "@ticket/repo-scan/strip-comments";
 
 /**
  * The citation index and the two resolvers behind `doc-citations.test.ts`:
@@ -21,12 +22,14 @@ import { stripComments } from "./strip-comments";
  *
  * **Paths resolve against tracked files, never the working directory.** A
  * developer's untracked and gitignored files would otherwise make a citation
- * green on their machine and red on CI. The documents themselves are read from
- * disk, and every line split tolerates `\r\n`, so a CRLF Windows checkout and
- * an LF CI one index the same citations at the same lines.
+ * green on their machine and red on CI. The list is `trackedFiles`, from
+ * `@ticket/repo-scan`, which the repo's other checks of its own files read
+ * too (#567). The documents themselves are read from disk, and every line
+ * split tolerates `\r\n`, so a CRLF Windows checkout and an LF CI one index
+ * the same citations at the same lines.
  *
- * Nothing here touches the database or the network; `git ls-files` reads the
- * local index, and `renameHints` the local history.
+ * Nothing here touches the database or the network; `renameHints` reads the
+ * local history.
  */
 
 /**
@@ -216,17 +219,6 @@ export class TrackedTree {
     });
     return citations;
   }
-}
-
-/** The files git tracks under `root`, as `/`-separated paths relative to it. */
-export function trackedFiles(root: string): string[] {
-  return execFileSync("git", ["ls-files", "-z"], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split("\0")
-    .filter(Boolean);
 }
 
 /* ── Which documents are read ─────────────────────────────────────────────── */
@@ -425,7 +417,7 @@ const SLASH_COMMENTED = /\.(?:[cm]?[jt]sx?|json|jsonc)$/;
  * comment.
  */
 function codeOutsideComments(file: string, text: string): string {
-  if (SLASH_COMMENTED.test(file)) return stripComments(text);
+  if (SLASH_COMMENTED.test(file)) return stripComments(text).code;
   if (file.endsWith(".css")) return text.replace(/\/\*[\s\S]*?\*\//g, "");
   if (file.endsWith(".sql")) return text.replace(/--.*$/gm, "");
   if (file.endsWith(".prisma")) return text.replace(/\/\/.*$/gm, "");
@@ -647,6 +639,7 @@ export function renameHints(
         ],
         {
           cwd: root,
+          env: repositoryFreeEnv(),
           encoding: "utf8",
           maxBuffer: 64 * 1024 * 1024,
           stdio: ["ignore", "pipe", "ignore"],

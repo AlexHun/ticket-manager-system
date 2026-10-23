@@ -4,10 +4,8 @@ import { z } from "zod";
 import { simulateEmailSchema } from "@ticket/core";
 import {
   asAutoReplyDecline,
-  AUTO_REPLY_DECLINES,
   CLASSIFY_NOT_OFFERED,
   DASHBOARD_RANGE,
-  DASHBOARD_RANGE_DAYS,
   DECLINE_OUTCOME,
   DECLINE_STAGE,
   DEFAULT_DASHBOARD_RANGE,
@@ -20,7 +18,6 @@ import {
   PIPELINE_STAGE_STATE,
   SIMULATED_SENDER_DOMAIN,
   TICKET_STATUS,
-  type AutoReplyDecline,
   type PipelineConfig,
   type PipelineCounts,
   type PipelineOverviewResponse,
@@ -32,6 +29,15 @@ import {
   type PipelineStageState,
 } from "@ticket/shared";
 import { autoReplyArticleCount } from "../ai/knowledge-base";
+import {
+  assistantResolved,
+  classifierFiled,
+  classifierGaveUp,
+  inWindow,
+  windowCounts,
+  windowFor,
+  type CountWindow,
+} from "../assistant-decisions";
 import { isAiConfigured } from "../ai/provider";
 import { prisma, type Prisma } from "../db";
 import {
@@ -68,11 +74,12 @@ import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
  *
  * Nothing here writes anything a job would not have written. There is no
  * `/pipeline` column and no simulated-ticket flag: every number below is
- * derived from `classifiedAt`, `category`, `status`, `autoResolvedAt`,
- * `autoReplyDecline`, `autoReplyOfferedAt` and the messages' `direction` /
- * `automated` / `citedArticleIds`. The one column added since the page existed,
- * `autoReplyOfferedAt` (#360), is the job's record of a decision it made, like
- * `autoReplyDecline`, and is not written for the page's benefit.
+ * derived from `classifiedAt`, `classifierCategory`, `category`, `status`,
+ * `autoResolvedAt`, `autoReplyDecline`, `autoReplyOfferedAt` and the messages'
+ * `direction` / `automated` / `citedArticleIds`. The two columns added since the
+ * page existed, `autoReplyOfferedAt` (#360) and `classifierCategory` (#561),
+ * are each a job's record of a decision it made, like `autoReplyDecline`, and
+ * neither is written for the page's benefit.
  */
 
 export const pipelineRouter = Router();
@@ -159,13 +166,14 @@ const pipelineQuerySchema = z.object({
     .default(DEFAULT_DASHBOARD_RANGE),
 });
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
-
 /**
  * Which columns a run is rebuilt from. Exactly the ones the jobs write, plus
  * enough of the thread to answer "what did the machine cite". Whether each half
  * will still act — which reads `autoReplyOfferedAt` and the whole thread — is
- * asked of the database by `awaitingOf` instead.
+ * asked of the database by `factsOf` instead, and so is what the assistant
+ * decided: the classifier's verdict (#561) and whether it resolved the ticket
+ * (#562). `autoResolvedAt` is still selected, for the time the resolved stop
+ * shows.
  */
 const RUN_SELECT = {
   id: true,
@@ -197,18 +205,44 @@ type RunRow = Prisma.TicketGetPayload<{ select: typeof RUN_SELECT }>;
 /**
  * Whether each half of the pipeline will still act on a row: the database's
  * answers to `classifierWillStillAct` and `autoReplyWillStillAct`, asked by
- * `awaitingOf` below.
+ * `factsOf` below.
  */
 type Awaiting = { classifier: boolean; autoReply: boolean };
+
+/**
+ * What the classifier decided about a row, if anything yet: the database's
+ * answer to `classifierFiled` and `classifierGaveUp` in `assistant-decisions.ts`,
+ * asked by `factsOf` below (#561). Null is no verdict yet. Exported for the
+ * test that hands `toRun` each answer.
+ */
+export const CLASSIFIER_VERDICT = {
+  filed: "filed",
+  gaveUp: "gaveUp",
+} as const;
+type ClassifierVerdict =
+  (typeof CLASSIFIER_VERDICT)[keyof typeof CLASSIFIER_VERDICT] | null;
+
+/**
+ * What the assistant decided about a row: the classifier's verdict, and
+ * whether the auto-reply resolved it (`assistantResolved`, #562). Both are the
+ * database's answers to the statements in `assistant-decisions.ts`, asked by
+ * `factsOf` below.
+ */
+type Decided = { verdict: ClassifierVerdict; resolved: boolean };
 
 /**
  * Rebuild one ticket's trip down the rail.
  *
  * Every branch here is a fact a column records. Whether each half will still
  * act on this row arrives as `awaiting`: the caller asks the database, through
- * `awaitingOf` below, which runs `classifierWillStillAct` and
+ * `factsOf` below, which runs `classifierWillStillAct` and
  * `autoReplyWillStillAct` — the statements the rail's counts read too, and the
- * first the reconcile sweep. What this deliberately does *not* do is
+ * first the reconcile sweep. What the assistant decided arrives the same way,
+ * as `decided`: the classifier's verdict from `classifierFiled` and
+ * `classifierGaveUp` (#561) — read off `category` here, an agent clearing a
+ * category the classifier filed was drawn as the classifier giving up — and
+ * whether the auto-reply resolved it from `assistantResolved` (#562), the
+ * statement the dashboard counts. What this deliberately does *not* do is
  * guess: a ticket with no classification verdict that nothing will classify —
  * no API key, a category a person filed first, or older than the reconcile
  * window — is `notOffered`, not "still thinking", because nothing is scheduled
@@ -231,15 +265,15 @@ export function toRun(
   row: RunRow,
   config: PipelineConfig,
   awaiting: Awaiting,
+  { verdict, resolved }: Decided,
 ): PipelineRun {
   const decline = asAutoReplyDecline(row.autoReplyDecline);
-  const machineClassified = row.classifiedAt !== null && row.category !== null;
+  const machineClassified = verdict === CLASSIFIER_VERDICT.filed;
   // The classifier's own terminal path: it stamped a time and never filed a
   // category. Named for which half of the pipeline gave up — the same word
   // `PipelineCounts.classifyAbandoned` uses — because `abandoned` is now an
   // outcome two different exits reach.
-  const classifyAbandoned = row.classifiedAt !== null && row.category === null;
-  const resolved = row.autoResolvedAt !== null;
+  const classifyAbandoned = verdict === CLASSIFIER_VERDICT.gaveUp;
 
   // Is anything still going to happen to this ticket? Two different answers,
   // one per half of the pipeline. A ticket waiting on a stage nothing will ever
@@ -397,15 +431,22 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
 }
 
 /**
- * The overview's raw facts for tickets created in `[from, to)`.
+ * The overview's raw facts for tickets created in `window`.
  *
  * **Exported for its test**, for the reason `toRun` is: `GET /` also reads queue
  * depth through `getBoss()`, which `pipeline.test.ts` cannot reach (see its
  * header), and the split below is a claim about rows that only a real database
  * can check.
  *
+ * Filed, given up, resolved and the decline tally are `windowCounts` from
+ * `assistant-decisions.ts` (#563), the call the effectiveness route makes for
+ * its `classified`, `resolved` and per-reason declines, so for the same range
+ * the two screens cannot disagree. Its counts read `classifierFiled`,
+ * `classifierGaveUp` (#561) and `assistantResolved` (#562), the statements
+ * `factsOf` asks of each listed ticket.
+ *
  * The classifier's rule is `classifierWillStillAct` from `jobs/classify-ticket.ts`
- * at `to`, the statement `awaitingOf` asks of each listed ticket, so the
+ * at `to`, the statement `factsOf` asks of each listed ticket, so the
  * rail and the Recent arrivals list beside it cannot disagree about the same
  * tickets (#355, #361). With a key, what it matches is `classifyPending`. With
  * none, nothing is coming for those tickets either, so they are not offered and
@@ -422,49 +463,35 @@ async function queueDepth(name: string): Promise<PipelineQueueDepth> {
  * offer is only ever recorded where one could run.
  */
 export async function pipelineCounts(
-  from: Date,
-  to: Date,
+  window: CountWindow,
   aiConfigured: boolean,
 ): Promise<PipelineCounts> {
-  const window = { createdAt: { gte: from, lt: to } };
-  const machineFiled = {
-    classifiedAt: { not: null },
-    category: { not: null },
-  } satisfies Prisma.TicketWhereInput;
+  const slice = inWindow(window);
   // Machine-classified, with neither a resolve nor a decline: what the two
   // auto-reply counts split by the offer record (#363).
   const noAutoReplyVerdict = {
-    ...window,
-    ...machineFiled,
-    autoResolvedAt: null,
+    ...slice,
+    ...classifierFiled,
+    NOT: assistantResolved,
     autoReplyDecline: null,
   } satisfies Prisma.TicketWhereInput;
 
   const [
+    {
+      classified: machineClassified,
+      gaveUp: classifyAbandoned,
+      resolved: autoResolved,
+      declines,
+    },
     received,
-    machineClassified,
-    classifyAbandoned,
     classifierRuleMatches,
-    autoResolved,
-    declineGroups,
     autoReplyPending,
     autoReplyNotOffered,
   ] = await Promise.all([
-    prisma.ticket.count({ where: window }),
-    prisma.ticket.count({ where: { ...window, ...machineFiled } }),
+    windowCounts(window),
+    prisma.ticket.count({ where: slice }),
     prisma.ticket.count({
-      where: { ...window, classifiedAt: { not: null }, category: null },
-    }),
-    prisma.ticket.count({
-      where: { AND: [window, classifierWillStillAct(to)] },
-    }),
-    prisma.ticket.count({
-      where: { ...window, autoResolvedAt: { not: null } },
-    }),
-    prisma.ticket.groupBy({
-      by: ["autoReplyDecline"],
-      where: { ...window, autoReplyDecline: { not: null } },
-      _count: { _all: true },
+      where: { AND: [slice, classifierWillStillAct(window.to)] },
     }),
     prisma.ticket.count({
       where: { AND: [noAutoReplyVerdict, autoReplyWillStillAct()] },
@@ -473,16 +500,6 @@ export async function pipelineCounts(
       where: { ...noAutoReplyVerdict, autoReplyOfferedAt: null },
     }),
   ]);
-
-  // Every reason, including the zeroes. A zero here is information — it is the
-  // difference between "that check has never fired" and "we do not measure it".
-  const declines = Object.fromEntries(
-    AUTO_REPLY_DECLINES.map((d) => [d, 0]),
-  ) as Record<AutoReplyDecline, number>;
-  for (const group of declineGroups) {
-    const reason = asAutoReplyDecline(group.autoReplyDecline);
-    if (reason) declines[reason] += group._count._all;
-  }
 
   const classifyPending = aiConfigured ? classifierRuleMatches : 0;
 
@@ -507,15 +524,16 @@ export async function pipelineCounts(
 }
 
 /**
- * What each half of the pipeline will still act on among `ticketIds` at `now`
- * — the `awaiting` answer `toRun` takes, asked through the same
- * `classifierWillStillAct` and `autoReplyWillStillAct` statements
- * `pipelineCounts` counts.
+ * What `toRun` takes about each of `ticketIds` at `now`, asked through the
+ * statements `pipelineCounts` counts: what each half of the pipeline will still
+ * act on (`classifierWillStillAct`, `autoReplyWillStillAct`), and what the
+ * assistant decided (`classifierFiled`, `classifierGaveUp`, #561;
+ * `assistantResolved`, #562).
  */
-async function awaitingOf(
+async function factsOf(
   ticketIds: number[],
   now: Date,
-): Promise<(ticketId: number) => Awaiting> {
+): Promise<(ticketId: number) => { awaiting: Awaiting; decided: Decided }> {
   const matching = async (rule: Prisma.TicketWhereInput) => {
     const rows = await prisma.ticket.findMany({
       where: { AND: [{ id: { in: ticketIds } }, rule] },
@@ -523,14 +541,38 @@ async function awaitingOf(
     });
     return new Set(rows.map((row) => row.id));
   };
-  const [classifier, autoReply] = await Promise.all([
-    matching(classifierWillStillAct(now)),
-    matching(autoReplyWillStillAct()),
-  ]);
+  const [classifierWillAct, autoReplyWillAct, filed, gaveUp, resolved] =
+    await Promise.all([
+      matching(classifierWillStillAct(now)),
+      matching(autoReplyWillStillAct()),
+      matching(classifierFiled),
+      matching(classifierGaveUp),
+      matching(assistantResolved),
+    ]);
   return (ticketId) => ({
-    classifier: classifier.has(ticketId),
-    autoReply: autoReply.has(ticketId),
+    awaiting: {
+      classifier: classifierWillAct.has(ticketId),
+      autoReply: autoReplyWillAct.has(ticketId),
+    },
+    decided: {
+      verdict: filed.has(ticketId)
+        ? CLASSIFIER_VERDICT.filed
+        : gaveUp.has(ticketId)
+          ? CLASSIFIER_VERDICT.gaveUp
+          : null,
+      resolved: resolved.has(ticketId),
+    },
   });
+}
+
+/** One listed row's run, from the row and what `factsOf` answered about it. */
+function runOf(
+  row: RunRow,
+  config: PipelineConfig,
+  facts: Awaited<ReturnType<typeof factsOf>>,
+): PipelineRun {
+  const { awaiting, decided } = facts(row.id);
+  return toRun(row, config, awaiting, decided);
 }
 
 pipelineRouter.get(
@@ -547,19 +589,18 @@ pipelineRouter.get(
     }
 
     const { range } = parsed.data;
-    const days = DASHBOARD_RANGE_DAYS[range];
 
-    // Pinned once, so every number in the response describes the same window.
-    const to = new Date();
-    const from = new Date(to.getTime() - days * DAY_MS);
+    // Pinned once, so every number in the response describes the same window:
+    // `windowFor`, which the effectiveness route pins its window with too.
+    const window = windowFor(range);
 
     const [config, counts, recentRows, classify, autoReply] = await Promise.all(
       [
         readConfig(),
         // The key `readConfig` reports: `provider.ts` reads it once, at import.
-        pipelineCounts(from, to, isAiConfigured()),
+        pipelineCounts(window, isAiConfigured()),
         prisma.ticket.findMany({
-          where: { createdAt: { gte: from, lt: to } },
+          where: inWindow(window),
           select: RUN_SELECT,
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: PIPELINE_RECENT_LIMIT,
@@ -571,19 +612,19 @@ pipelineRouter.get(
 
     // After the rows rather than beside them: it asks about the listed ids
     // alone, at the same `to` the count reads.
-    const awaiting = await awaitingOf(
+    const facts = await factsOf(
       recentRows.map((row) => row.id),
-      to,
+      window.to,
     );
 
     res.json({
       config,
       range,
-      from: from.toISOString(),
-      to: to.toISOString(),
+      from: window.from.toISOString(),
+      to: window.to.toISOString(),
       counts,
       queues: { classify, autoReply },
-      recent: recentRows.map((row) => toRun(row, config, awaiting(row.id))),
+      recent: recentRows.map((row) => runOf(row, config, facts)),
     });
   },
 );
@@ -603,13 +644,13 @@ pipelineRouter.get(
       return;
     }
 
-    const [config, row, awaiting] = await Promise.all([
+    const [config, row, facts] = await Promise.all([
       readConfig(),
       prisma.ticket.findUnique({
         where: { id: parsed.data },
         select: RUN_SELECT,
       }),
-      awaitingOf([parsed.data], new Date()),
+      factsOf([parsed.data], new Date()),
     ]);
 
     if (!row) {
@@ -617,7 +658,7 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: toRun(row, config, awaiting(row.id)) });
+    res.json({ run: runOf(row, config, facts) });
   },
 );
 
@@ -658,7 +699,7 @@ pipelineRouter.post(
     if (!simulatorEnabled()) {
       res.status(503).json({
         error:
-          "The pipeline simulator is off. Set PIPELINE_SIMULATOR_ENABLED=true to turn it on.",
+          "Couldn't send the email — the simulator is off on this deployment.",
       });
       return;
     }
@@ -672,7 +713,7 @@ pipelineRouter.post(
     const session = sessionOf(res);
     if (overSimulateLimit(session.session.id)) {
       res.status(429).json({
-        error: `Too many simulated emails — ${SIMULATE_LIMIT} a minute. Each one costs a model call.`,
+        error: `Couldn't send the email — the simulator takes ${SIMULATE_LIMIT} a minute, since each one costs a model call. Wait a minute and try again.`,
       });
       return;
     }
@@ -684,7 +725,8 @@ pipelineRouter.post(
       const parentTicketId = await findParentTicketId(inReplyTo);
       if (parentTicketId === null) {
         res.status(400).json({
-          error: "Nothing in the database has that Message-ID.",
+          error:
+            "Couldn't find an email with that Message-ID. Leave it empty to open a new ticket.",
         });
         return;
       }
@@ -700,7 +742,7 @@ pipelineRouter.post(
       if (!parent || !isSimulatedAddress(parent.customerEmail)) {
         res.status(403).json({
           error:
-            "That Message-ID belongs to a real customer's thread. Simulated replies may only thread onto simulated tickets.",
+            "Couldn't reply on that thread — it belongs to a real customer. Simulated replies thread onto simulated tickets only.",
         });
         return;
       }

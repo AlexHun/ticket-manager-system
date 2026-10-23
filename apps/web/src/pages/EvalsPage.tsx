@@ -7,6 +7,7 @@ import {
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
+  midSentence,
   PIPELINE_OUTCOME,
   TUTORIAL_PAGE_KEY,
   type AutoReplyDecline,
@@ -168,14 +169,15 @@ function categoryLabel(category: TicketCategory | null): string {
  * `DECLINE_SHORT` rather than a second set of words: the rail already says
  * these ten things, and two files' worth of carefully-argued wording is two
  * files' worth that will eventually disagree — which is the whole reason
- * `pipeline-labels.ts` exists.
+ * `pipeline-labels.ts` exists. The reason follows a dash, so it goes through
+ * `midSentence`, as the activity feed's does.
  */
 function verdict(
   outcome: PipelineOutcome,
   decline: AutoReplyDecline | null,
 ): string {
   const label = OUTCOME_LABEL[outcome];
-  return decline ? `${label} — ${DECLINE_SHORT[decline]}` : label;
+  return decline ? `${label} — ${midSentence(DECLINE_SHORT[decline])}` : label;
 }
 
 /**
@@ -268,7 +270,7 @@ function Metric({
   /**
    * How this number reads against what it had to clear, from `eval-bands.ts`.
    *
-   * Named for the act rather than for `verdict` above, which is CONTEXT.md's
+   * Named for the act rather than for `verdict` above, which is GLOSSARY.md's
    * word for where a repeat landed — judging is what a threshold does to a
    * rate, and the two are different acts on the same card.
    *
@@ -706,7 +708,7 @@ function RunCard({
                 <Metric
                   label="Estimated cost"
                   value={`$${run.usd.toFixed(4)}`}
-                  detail={`${run.results.length} cases × ${run.repeats}`}
+                  detail={`${run.results.length} ${run.results.length === 1 ? "case" : "cases"} × ${run.repeats}`}
                 />
                 <Metric
                   label="Prompt cache"
@@ -922,7 +924,9 @@ export function EvalsPage() {
       toast.success("Eval run started");
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Could not start the run"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't start the run. Try again."),
+      );
     },
   });
 
@@ -1018,7 +1022,7 @@ export function EvalsPage() {
 
         {error && (
           <p className="text-sm text-muted-foreground">
-            {extractErrorMessage(error, "Could not load runs")}
+            {extractErrorMessage(error, "Couldn't load runs. Try again.")}
           </p>
         )}
 
