@@ -315,6 +315,59 @@ test("applySweepSchedule takes a paused sweep off the clock", async () => {
   expect(scheduled.has("sweep")).toBe(false);
 });
 
+/**
+ * A `PgBoss` that records its own lifecycle into a shared log and opens no
+ * connection. Only what `startBoss` and `stopBoss` touch is here.
+ */
+function fakeInstance(label: string, log: string[]) {
+  return {
+    on: () => {},
+    start: async () => {
+      log.push(`start:${label}`);
+    },
+    stop: async () => {
+      log.push(`stop:${label}`);
+    },
+  } as unknown as PgBoss;
+}
+
+test("a hot reload's start stops the queue the last evaluation started", async () => {
+  // `bun --hot` re-evaluates `boss.ts` and keeps `globalThis`, so the second
+  // `startBoss` runs in a fresh copy of the module whose own `let` knows nothing
+  // of the first. A query string is a second module record for the same file,
+  // which is that re-evaluation without a watcher (#639).
+  const evaluate = (n: number) =>
+    import(`./boss?evaluation=${n}`) as Promise<typeof import("./boss")>;
+  const first = await evaluate(1);
+  const second = await evaluate(2);
+  const log: string[] = [];
+  const a = fakeInstance("a", log);
+  const b = fakeInstance("b", log);
+
+  const silenced = spyOn(console, "log").mockImplementation(() => {});
+  try {
+    await first.startBoss(() => a);
+    await second.startBoss(() => b);
+
+    // The old instance is stopped before the new one starts, so its pool and
+    // its workers — polling with the code they were loaded with — are gone
+    // rather than orphaned. Before #639 every reload added two connections and
+    // another copy of every worker.
+    expect(log).toEqual(["start:a", "stop:a", "start:b"]);
+    // And both copies of the module agree on which one is running.
+    expect(second.getBoss()).toBe(b);
+    expect(first.getBoss()).toBe(b);
+  } finally {
+    await second.stopBoss();
+    silenced.mockRestore();
+  }
+
+  // The graceful stop still reaches the running instance, and leaves none
+  // behind for another file's `getBoss()` to find.
+  expect(log).toEqual(["start:a", "stop:a", "start:b", "stop:b"]);
+  expect(() => second.getBoss()).toThrow("Job queue used before startBoss()");
+});
+
 test("no job module calls pg-boss's own registration functions", async () => {
   const dir = import.meta.dir;
   const files = (await readdir(dir)).filter(
