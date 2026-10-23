@@ -7,6 +7,32 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Create an issue**: `gh issue create --title "..." --body "..."`, or `--body-file <file>` for a multi-line body written to a file first.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
 - **List issues**: `(gh issue list --state open --json number,title,body,labels,comments | ConvertFrom-Json) | Select-Object number, title, body, @{n='labels';e={$_.labels.name}}, @{n='comments';e={$_.comments.body}}` with appropriate `--label` and `--state` filters.
+- **List every open issue's blockers** in one call, never one `dependencies/blocked_by` request per issue (#647: 93 calls for 31 issues). Write the query to a scratch file and run `(gh api graphql -F owner=AlexHun -F repo=ticket-manager-system -F query=@<file> | ConvertFrom-Json).data.repository.issues.nodes`; an issue whose `blockedBy` holds no `OPEN` node is ready.
+
+  ```graphql
+  query ($owner: String!, $repo: String!) {
+    repository(owner: $owner, name: $repo) {
+      issues(states: OPEN, first: 100) {
+        nodes {
+          number
+          title
+          labels(first: 10) {
+            nodes {
+              name
+            }
+          }
+          blockedBy(first: 20) {
+            nodes {
+              number
+              state
+            }
+          }
+        }
+      }
+    }
+  }
+  ```
+
 - **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Without sub-issues, put `Part of #<parent>` at the top of the child body.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
