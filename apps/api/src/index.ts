@@ -220,12 +220,19 @@ const port = Number(process.env.PORT ?? 3001);
  * ones. Only matters since `/api/events` — a process whose responses all
  * complete in milliseconds has nothing to close.
  */
-const running = globalThis as unknown as {
+const globalForApi = globalThis as unknown as {
   apiServer: Server | undefined;
   apiSignalHandler: ((signal: NodeJS.Signals) => void) | undefined;
 };
 
 async function start() {
+  // First, before anything below can stop the queue the last evaluation
+  // started: an old server still accepting while that happens would answer an
+  // enqueueing request with `getBoss()`'s throw. Stops accepting and leaves its
+  // open responses alone — an event stream on it stays subscribed through
+  // `events/hub.ts`, whose set survives the reload, and ends on its own.
+  globalForApi.apiServer?.close();
+
   await prisma.$queryRaw`SELECT 1`;
   console.log("Connected to Postgres");
 
@@ -236,12 +243,7 @@ async function start() {
   // queue the last evaluation started.
   await startJobs();
 
-  // Stops accepting on the old server and leaves its open responses alone: an
-  // event stream on it stays subscribed through `events/hub.ts`, whose set
-  // survives the reload, and ends on its own.
-  running.apiServer?.close();
-
-  running.apiServer = app.listen(port, () => {
+  globalForApi.apiServer = app.listen(port, () => {
     console.log(`API listening on http://localhost:${port}`);
   });
 }
@@ -252,7 +254,7 @@ async function shutdown(signal: string) {
   // Stop accepting, then end what is open. Both are needed and neither replaces
   // the other: `close()` waits for in-flight responses, and an event stream is
   // in-flight forever by definition, so on its own it would simply hang.
-  running.apiServer?.close();
+  globalForApi.apiServer?.close();
 
   // Before `stopJobs`, which waits up to 30s for a graceful pg-boss stop. A slow
   // job must not hold every open tab's stream for half a minute — the browser
@@ -272,11 +274,11 @@ async function shutdown(signal: string) {
 // off before this one goes on, or a Ctrl-C after N reloads would run N+1
 // shutdowns, each on the code it was loaded with.
 const onSignal = (signal: NodeJS.Signals) => void shutdown(signal);
-if (running.apiSignalHandler) {
-  process.off("SIGINT", running.apiSignalHandler);
-  process.off("SIGTERM", running.apiSignalHandler);
+if (globalForApi.apiSignalHandler) {
+  process.off("SIGINT", globalForApi.apiSignalHandler);
+  process.off("SIGTERM", globalForApi.apiSignalHandler);
 }
-running.apiSignalHandler = onSignal;
+globalForApi.apiSignalHandler = onSignal;
 process.on("SIGINT", onSignal);
 process.on("SIGTERM", onSignal);
 
