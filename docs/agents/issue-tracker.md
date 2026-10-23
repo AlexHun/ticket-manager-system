@@ -7,7 +7,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Create an issue**: `gh issue create --title "..." --body "..."`, or `--body-file <file>` for a multi-line body written to a file first.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
 - **List issues**: `(gh issue list --state open --json number,title,body,labels,comments | ConvertFrom-Json) | Select-Object number, title, body, @{n='labels';e={$_.labels.name}}, @{n='comments';e={$_.comments.body}}` with appropriate `--label` and `--state` filters.
-- **List every open issue's blockers** in one call, never one `dependencies/blocked_by` request per issue (#647: 93 calls for 31 issues). Write the query to a scratch file and run `(gh api graphql -F owner=AlexHun -F repo=ticket-manager-system -F query=@<file> | ConvertFrom-Json).data.repository.issues.nodes`; an issue whose `blockedBy` holds no `OPEN` node is ready.
+- **List every open issue's blockers** with one GraphQL call; reading `dependencies/blocked_by` issue by issue took 93 calls for 31 issues (#647). Write the query to a scratch file and run `(gh api graphql -F owner=AlexHun -F repo=ticket-manager-system -F query=@<file> | ConvertFrom-Json).data.repository.issues.nodes`; an issue whose `blockedBy` holds no `OPEN` node is ready.
 
   ```graphql
   query ($owner: String!, $repo: String!) {
