@@ -119,7 +119,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "Structured output goes through generateText + Output.object, never generateObject (it omits timeout)",
     standard: "ai-features.md",
-    roots: API,
+    roots: ALL,
     // The identifier anywhere in code — the import, the call, an aliased
     // import. Comments are already blanked, and the name means nothing else.
     forms: [/\bgenerateObject\b/],
