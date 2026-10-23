@@ -274,6 +274,37 @@ describe("shapeReply — the bookends it was told not to write", () => {
   test("returns nothing when the bookends were the whole of the answer", () => {
     // `autoReply` reads this as a decline: said yes, and wrote nothing.
     expect(shapeReply(NAME, ["Hi Marta,", "Best regards,"], [])).toBeNull();
+    expect(shapeReply(NAME, [], ["Hi Marta,", "Best regards,"])).toBeNull();
+  });
+
+  test("drops a greeting or a sign off the model put in the steps", () => {
+    // #635: numbered, it shipped as step 2 with our sign off after it. Led by
+    // a dash or not, the step is a bookend and goes before the numbering.
+    for (const steps of [
+      ["Set the quality to Auto", "Best regards"],
+      ["Set the quality to Auto", "Best regards,", BRAND_NAME],
+      ["Hi Marta,", "Set the quality to Auto"],
+      ["Hello", "Set the quality to Auto", "Thanks!"],
+    ]) {
+      expect(
+        shaped(["Buffering is almost always the quality setting."], steps),
+      ).toBe(
+        "Hi Marta,\n\n" +
+          "Buffering is almost always the quality setting.\n\n" +
+          "1. Set the quality to Auto\n\n" +
+          `Best regards,\n${BRAND_NAME}`,
+      );
+    }
+  });
+
+  test("keeps a step that merely opens with a greeting word", () => {
+    // #573's keep-case for paragraphs, held for steps too.
+    expect(
+      shaped(
+        ["Buffering is almost always the quality setting."],
+        ["Hi-res video: set it to Auto"],
+      ),
+    ).toContain("1. Hi-res video: set it to Auto");
   });
 });
 
@@ -419,6 +450,11 @@ describe("shapeReply — whatever dash the model used", () => {
             paragraphs: [`${dash} ${greeting},`, BODY],
             steps: [`${dash} ${STEP}`],
           },
+          {
+            row: row("as a step"),
+            paragraphs: [BODY],
+            steps: [`${dash} ${greeting},`, `${dash} ${STEP}`],
+          },
         );
       }
       for (const closer of closers) {
@@ -441,6 +477,11 @@ describe("shapeReply — whatever dash the model used", () => {
             paragraphs: [BODY, `${dash} ${closer}`],
             steps: [`${dash} ${STEP}`],
           },
+          {
+            row: row("as a step"),
+            paragraphs: [BODY],
+            steps: [`${dash} ${STEP}`, `${dash} ${closer}`],
+          },
         );
       }
     }
@@ -456,7 +497,7 @@ describe("shapeReply — whatever dash the model used", () => {
         `Best regards,\n${BRAND_NAME}`;
       return reply === expected ? [] : [`${row} -> ${JSON.stringify(reply)}`];
     });
-    expect(rows.length).toBe(692);
+    expect(rows.length).toBe(796);
     expect(misshaped).toEqual([]);
   });
 });

@@ -19,8 +19,9 @@ import { withoutDashes } from "./provider";
  * and it is placed straight into the greeting line.
  *
  * One exported function, so the order of the passes is this module's alone:
- * flatten, strip the bookends the model wrote anyway (`withoutBookends`), add
- * ours and number the steps (`composeReply`), then take every em and en dash out
+ * flatten, strip the bookends the model wrote anyway, in its paragraphs
+ * (`withoutBookends`) and its steps (`withoutStepBookends`), add ours and number
+ * the steps (`composeReply`), then take every em and en dash out
  * of the assembled text. It was inside `autoReply` until #572, where every test
  * of a string transform had to script a model call to reach it.
  *
@@ -272,6 +273,18 @@ function isSignOff(text: string): boolean {
 }
 
 /**
+ * Whether `text` is a greeting and nothing else, a leading dash looked past:
+ * closed and with nothing after it, or unclosed and short enough to be nothing
+ * but a greeting.
+ */
+function isGreeting(text: string): boolean {
+  const line = text.replace(LEADING_DASH, "");
+  if (!GREETING_LINE.test(line)) return false;
+  const rest = line.replace(GREETING_PREFIX, "");
+  return rest.length === 0 || (rest === line && line.length <= GREETING_MAX);
+}
+
+/**
  * Take out the greeting and sign off the model added anyway.
  *
  * It was asked twice not to, which — as everything in `auto-reply.ts` records —
@@ -298,9 +311,8 @@ function withoutBookends(paragraphs: string[]): string[] {
     // greeting word and is left exactly alone unless it is short enough to be
     // nothing but an unpunctuated greeting.
     const rest = first.replace(GREETING_PREFIX, "");
-    if (rest.length === 0) kept.shift();
+    if (isGreeting(first)) kept.shift();
     else if (rest !== first) kept[0] = rest[0]!.toUpperCase() + rest.slice(1);
-    else if (first.length <= GREETING_MAX) kept.shift();
   }
 
   while (kept.length > 0 && isSignOff(kept[kept.length - 1]!)) kept.pop();
@@ -317,6 +329,21 @@ function withoutBookends(paragraphs: string[]): string[] {
     else kept.pop();
   }
 
+  return kept;
+}
+
+/**
+ * Take out a greeting the model made its first step and a sign off it made its
+ * last ones (#635).
+ *
+ * Numbered, either one shipped as a step with ours beside it: two greetings or
+ * two sign offs in one reply. Only a whole step is a bookend, by the tests the paragraphs use, so
+ * "Hi-res video: set it to Auto" is a step and stays one.
+ */
+function withoutStepBookends(steps: string[]): string[] {
+  const kept = [...steps];
+  if (kept.length > 0 && isGreeting(kept[0]!)) kept.shift();
+  while (kept.length > 0 && isSignOff(kept[kept.length - 1]!)) kept.pop();
   return kept;
 }
 
@@ -344,12 +371,14 @@ function composeReply(
       // A dash on its own is a separator, "--" above a signature, not content.
       .filter((p) => p.length > 0 && !DASH_ONLY.test(p)),
   ).map(withoutSentenceDashes);
-  const actions = steps
-    // The prompt says the numbering is ours; strip it when it arrives anyway,
-    // or the customer reads "1. 1. Try a different browser". A dash leads a
-    // step as a bullet does, and left on it reads "1., Set the quality".
-    .map((step) => flatten(step).replace(STEP_MARKER, ""))
-    .filter((step) => step.length > 0);
+  const actions = withoutStepBookends(
+    steps
+      // The prompt says the numbering is ours; strip it when it arrives anyway,
+      // or the customer reads "1. 1. Try a different browser". A dash leads a
+      // step as a bullet does, and left on it reads "1., Set the quality".
+      .map((step) => flatten(step).replace(STEP_MARKER, ""))
+      .filter((step) => step.length > 0),
+  );
 
   if (body.length === 0 && actions.length === 0) return null;
 
