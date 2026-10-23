@@ -26,10 +26,12 @@ import {
   scriptModel,
 } from "../test/model";
 
+// Types only, erased at load; the modules themselves come in below.
+import type { ClassifyContext } from "./classify";
+import type { AiFailure } from "./provider";
+
 const { classifyTicket } = await import("./classify");
 const { AI_FAILURE } = await import("./provider");
-type ClassifyContext = Parameters<typeof classifyTicket>[0];
-type AiFailure = (typeof AI_FAILURE)[keyof typeof AI_FAILURE];
 
 const CONTEXT: ClassifyContext = {
   subject: "Export to CSV fails with error 500",
@@ -169,7 +171,7 @@ describe("classifyTicket — what reaches the model", () => {
     }
   });
 
-  test("and an untrimmed message builds its trimmed self's prompt", async () => {
+  test("builds an untrimmed message's prompt from its trimmed text", async () => {
     await classifyTicket(CONTEXT);
     const trimmed = lastCall().prompt;
 
@@ -221,7 +223,7 @@ describe("classifyTicket — what reaches the model", () => {
     expect(modelCalls("classify")).toHaveLength(2);
   });
 
-  test("and only once: a second failure is the answer", async () => {
+  test("retries only once: a second failure is the answer", async () => {
     failWith(
       providerError(500, "internal error"),
       { throws: providerError(500, "internal error") },
@@ -301,8 +303,11 @@ describe("classifyTicket — what comes back", () => {
   });
 
   test("a refusal is no answer: empty, never a category", async () => {
-    // A model that declines writes prose where the schema wanted JSON. Nothing
-    // parses, so nothing is filed, and the job retries it as `empty`.
+    // A model that declines leaves no JSON where the schema wanted it: prose
+    // here, and OpenAI's own refusal content part, which the SDK does not map
+    // to text, arrives as no text at all (the empty-output test below). The
+    // fake can only answer text, so this is the parse path both take: nothing
+    // parses, nothing is filed, and the job retries it as `empty`.
     scriptModel("classify", {
       text: "I'm sorry, but I can't help with classifying this message.",
       usage: USAGE,
@@ -366,8 +371,9 @@ describe("classifyTicket — each provider failure", () => {
     ],
   } satisfies Record<Exclude<AiFailure, "empty">, unknown[]>;
 
-  const cases = Object.entries(PROVOKED).flatMap(([reason, errors]) =>
-    errors.map(
+  const reasons = Object.keys(PROVOKED) as (keyof typeof PROVOKED)[];
+  const cases = reasons.flatMap((reason) =>
+    PROVOKED[reason].map(
       (err) => [`${reason} (${err.statusCode})`, err, reason] as const,
     ),
   );
@@ -377,7 +383,7 @@ describe("classifyTicket — each provider failure", () => {
 
     const result = await classifyTicket(CONTEXT);
 
-    expect(result).toEqual({ ok: false, reason: reason as AiFailure });
+    expect(result).toEqual({ ok: false, reason });
     // No call reached an answer, so there is no cost to carry.
     expect(result.usage).toBeUndefined();
   });
