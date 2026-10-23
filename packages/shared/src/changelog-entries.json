@@ -1038,5 +1038,10 @@
     "version": "0.1.261",
     "date": "2026-10-23",
     "title": "Settle the #639 review findings"
+  },
+  {
+    "version": "0.1.262",
+    "date": "2026-10-23",
+    "title": "Dev:stop spares MCP servers and names what it could not stop"
   }
 ]
