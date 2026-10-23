@@ -40,8 +40,9 @@ import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
  * this suite runs on pre-push as well as in CI, and the web suite only in CI:
  * a widened `better-auth` pin or a dropped `--redactNetworkHeaders` is caught
  * before it leaves the machine. So does the product-name rule (#545), which
- * reads both apps' raw text, comments included, rather than one workspace's
- * stripped source.
+ * reads raw text, comments included, across both apps, the packages but
+ * `@ticket/shared` and the scripts, rather than one workspace's stripped
+ * source.
  *
  * Nothing is mocked, and nothing here touches the database.
  */
@@ -183,6 +184,8 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "No test file registers ../db, ../middleware/auth or the session seam ../middleware/session with mock.module: the preload binds the database and who is asking once",
     standard: "testing-api.md",
+    // The API's alone: `../db` and the middleware are its modules, and only
+    // its tests run under the preload.
     roots: API,
     // `session` beside the two the bullet names: it is the specifier the
     // preload actually binds for the guards (#366), so a file re-registering
@@ -283,8 +286,11 @@ const agentName = (markdown: string) =>
 const AGENT = (name: string, extra = "") =>
   `---\nname: "${name}"\nmodel: haiku\ntools: Read, Glob, Grep\n${extra}---\n\nBody.\n`;
 
-/** The workspaces the product-name rule reads, repo-relative. */
-const BRAND_SCOPE = ["apps/api", "apps/web"];
+/** The roots the product-name rule reads, repo-relative: both apps, and since
+ *  #568 the other packages and the scripts. */
+const BRAND_SCOPE = ["apps/api", "apps/web", "packages", "scripts"];
+/** Where the name is typed, once, for everything else to read: never read. */
+const BRAND_HOME = "packages/shared";
 /** The text files a name could be typed into. Not `.env*`: a local env file
  *  holds live secrets, and nothing reads it here. */
 const BRAND_FILE =
@@ -326,7 +332,8 @@ const BRAND_ALLOWANCES: Record<string, { count: number; reason: string }> = {
 };
 
 /**
- * Every tracked text file under `BRAND_SCOPE`, keyed by repo-relative path.
+ * Every tracked text file under `BRAND_SCOPE` and outside `BRAND_HOME`, keyed
+ * by repo-relative path.
  * This file is read too: its fixtures build the name from the constants rather
  * than typing it. Tracked files, as the source rules read (#567), so installed,
  * built and generated output is never read and needs no exclusion; an
@@ -337,6 +344,7 @@ function brandScopeFiles(): FileContents {
     ...TRACKED.filter(
       (file) =>
         BRAND_SCOPE.some((dir) => file.startsWith(`${dir}/`)) &&
+        !file.startsWith(`${BRAND_HOME}/`) &&
         BRAND_FILE.test(file.slice(file.lastIndexOf("/") + 1)),
     ),
   );
@@ -473,7 +481,7 @@ const CONFIG_RULES: ConfigRule[] = [
     },
   },
   {
-    name: "The product name is typed only in @ticket/shared: apps/api and apps/web read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
+    name: "The product name is typed only in @ticket/shared: apps/api, apps/web, the other packages and scripts/ read BRAND_NAME, BRAND_SHORT or BRAND_ATTRIBUTIVE, comments included, outside the counted allowances in BRAND_ALLOWANCES",
     standard: "copy.md",
     read: brandScopeFiles,
     problems: (files) => {
@@ -549,6 +557,9 @@ test("the product-name rule reads the tree it means to", () => {
   expect(files).toContain("apps/api/src/auth.ts");
   expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
   expect(files).toContain("apps/web/index.html");
+  expect(files).toContain("packages/core/src/index.ts");
+  expect(files).toContain("scripts/graph.ts");
+  expect(files.some((file) => file.startsWith(`${BRAND_HOME}/`))).toBe(false);
   // No file is skipped by name: the guard itself is read like any other.
   expect(files).toContain(SELF);
   expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
