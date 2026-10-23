@@ -158,7 +158,7 @@ const SOURCE_RULES: Rule[] = [
   {
     name: "The generated Prisma client is imported only by ./db and the test Postgres module; everything else imports the singleton from ./db",
     standard: "backend.md",
-    roots: API,
+    roots: ALL,
     forms: [new RegExp(String.raw`${SPECIFIER}[^"'\n]*generated/prisma\b`)],
     allowed: ["apps/api/src/db.ts", "apps/api/src/test/pg.ts"],
     catches: [
