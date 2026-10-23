@@ -15,8 +15,8 @@
  * this file asserts is one the real checks can reach. The classifier the
  * runner asks first is real too since #656, scripted on the same fake: each
  * repeat makes two model calls, and each feature gets its own scripted answer.
- * The model half is measured by running the thing, which is what the harness is for, and
- * exercised end to end against the E2E suite's fake provider in
+ * The model half is measured by running the thing, which is what the harness
+ * is for, and exercised end to end against the E2E suite's fake provider in
  * `tests/e2e/evals.spec.ts`.
  *
  * The R12 assertion is the interesting one and it is deliberately made against
