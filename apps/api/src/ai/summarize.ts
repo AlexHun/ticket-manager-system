@@ -181,7 +181,7 @@ const MESSAGE_MARKER = "##MSG";
  * That last half is why this exists rather than the route reaching for
  * `isAiConfigured` directly, which is what it did until #174 wrote the tests
  * for that route. Replacing the provider's own export means registering a
- * second `mock.module("../ai/provider", …)` on a specifier `jobs/sweeps.test.ts`
+ * second `mock.module("../ai/provider", …)` on a specifier the test preload
  * already owns — and that stub holds *state*, so the process-wide registry
  * would keep one of the two switches and quietly ignore the other
  * (`docs/standards/testing.md`). A per-feature guard is one line, and it keeps
@@ -558,7 +558,7 @@ export async function summarizeTicket(
 ): Promise<SummarizeResult> {
   try {
     const { output, usage } = await generateText({
-      model: openaiModel(SUMMARY_MODEL),
+      model: openaiModel("summarize", SUMMARY_MODEL),
       // `Output.object` rather than the `generateObject` function next to it in
       // the SDK, for one concrete reason: `generateObject` omits `timeout` from
       // its options, and an unbounded provider call behind a spinner is not a

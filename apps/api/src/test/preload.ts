@@ -50,13 +50,22 @@
  * `"../db"` to `"../db-nope"` — and run the suite. It must go red with
  * connection failures, not green and not silently slow.
  */
-import { mock } from "bun:test";
+import { afterEach, beforeEach, mock } from "bun:test";
 import { testSession } from "./caller";
+import {
+  aiSwitch,
+  rememberRealOpenaiModel,
+  resetModel,
+  scriptedModel,
+  unscripted,
+} from "./model";
 import { Prisma, prisma } from "./pg";
 
 // Deliberately before the registration below. `import` statements hoist above
-// it, which is fine: neither `bun:test` nor `./pg` reads `DATABASE_URL` — the
-// modules that do are linked later, when the first test file imports them.
+// it, which is fine: neither `bun:test`, `./model` nor `./pg` reads
+// `DATABASE_URL` or the OpenAI variables below — the modules that do are linked
+// later, `../ai/provider` by the dynamic import at the bottom of this file and
+// the rest when the first test file imports them.
 process.env.DATABASE_URL =
   "postgresql://unreachable:unreachable@127.0.0.1:1/api-tests-must-mock-db";
 
@@ -88,3 +97,38 @@ await mock.module("../db", () => ({ Prisma, prisma }));
 await mock.module("../middleware/session", () => ({
   lookupSession: testSession,
 }));
+
+// The model (#578). Every AI feature gets its model from `openaiModel`, and
+// this replaces that one function with the scripted fake in `./model`, so a
+// test scripts an answer instead of registering a stand-in of its own. Imported
+// here, after the key above is set, because `provider.ts` reads it at import;
+// and spread into a plain object before the registration, because
+// `mock.module` replaces the live namespace and a factory spreading the import
+// binding would be spreading itself (`testing-api.md`).
+//
+// `isAiConfigured` is the one other export replaced, and it is here rather
+// than in `jobs/sweeps.test.ts`, which used to register this specifier for it:
+// two stateful registrations of one specifier are two boxes, of which the
+// registry keeps one (#174). It answers what the real one does until a test
+// sets `aiSwitch.configured`, and the `beforeEach` below puts it back.
+// Same depth caveat as `"../db"`: this resolves from `src/test/`.
+const provider = { ...(await import("../ai/provider")) };
+rememberRealOpenaiModel(provider.openaiModel);
+await mock.module("../ai/provider", () => ({
+  ...provider,
+  openaiModel: scriptedModel,
+  isAiConfigured: () => aiSwitch.configured ?? provider.isAiConfigured(),
+}));
+
+beforeEach(() => {
+  resetModel();
+  aiSwitch.configured = undefined;
+});
+
+// The loud half of an unscripted call. The fake throws, but every feature
+// catches a provider error and answers with a result, so without this a test
+// that forgot to script would pass on an ordinary-looking `provider` failure.
+afterEach(() => {
+  const missed = unscripted[0];
+  if (missed) throw missed;
+});

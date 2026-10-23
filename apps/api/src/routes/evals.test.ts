@@ -15,7 +15,7 @@
  * field on it. So the `../evals/config` registration is gone, and with it the
  * whole reason that one-line module was written — a caller reading
  * `../ai/provider` directly would put a second *stateful* stub on a specifier
- * `jobs/sweeps.test.ts` already owns, and the registry keeps one of two
+ * the test preload owns (#578), and the registry keeps one of two
  * (testing.md, #174). Nothing here binds either specifier now.
  *
  * The seam that remains is `../jobs/eval-run`, which stands in for the enqueue

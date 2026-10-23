@@ -279,7 +279,7 @@ export async function polishDraft(
 ): Promise<PolishResult> {
   try {
     const { text, usage } = await generateText({
-      model: openaiModel(POLISH_MODEL),
+      model: openaiModel("polish", POLISH_MODEL),
       system: SYSTEM_PROMPT,
       prompt: userPrompt(draft, context),
       maxOutputTokens: MAX_OUTPUT_TOKENS,

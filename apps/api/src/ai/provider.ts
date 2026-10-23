@@ -69,7 +69,20 @@ export function isAiConfigured(): boolean {
  */
 let provider: ReturnType<typeof createOpenAI> | undefined;
 
-export function openaiModel(modelId: string) {
+/** The four features that call the model, as `logUsage` names them. */
+export type AiFeature = "polish" | "summarize" | "classify" | "auto-reply";
+
+/**
+ * The model one feature calls.
+ *
+ * `feature` is not read here, and it is not decoration. All four features run
+ * on the same model id, so the id cannot tell their calls apart, and the API
+ * suite's scripted model (`src/test/model.ts`, #578) replaces this function
+ * and answers each call by the feature that made it. A test scripts the
+ * classifier and the auto-reply separately, and a flow that calls both gets
+ * each one's answer whatever order the calls come in.
+ */
+export function openaiModel(_feature: AiFeature, modelId: string) {
   provider ??= createOpenAI({
     apiKey: OPENAI_API_KEY,
     baseURL: OPENAI_BASE_URL,

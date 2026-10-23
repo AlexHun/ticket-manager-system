@@ -20,6 +20,7 @@ import {
   type OutboundEmailStatus,
   type TicketStatus,
 } from "@ticket/shared";
+import { aiSwitch } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 
 /**
@@ -40,31 +41,35 @@ import { prisma, resetDb } from "../test/pg";
  * the `notIn`, and the status filter — the three things most worth getting
  * right, and the three a fake would be free to get wrong in the same way twice.
  *
- * ## The two mocks, and why both default to the truth
+ * ## The two switches, and why both default to the truth
  *
- * `../ai/provider` and `./boss` are both replaced with the real module spread
- * into a plain object first, so every other export stays genuine — see the
- * registry note in `docs/standards/testing.md`.
+ * `./boss` is replaced with the real module spread into a plain object first,
+ * so every other export stays genuine — see the registry note in
+ * `docs/standards/testing.md`. `isAiConfigured` is switched through
+ * `aiSwitch` from `../test/model`, on the preload's registration of
+ * `../ai/provider`: this file registered that specifier itself until #578,
+ * and the preload's fake model needs the same one, so the switch moved there
+ * rather than leave two stateful registrations of one specifier (#174).
  *
  * **Each replaced export behaves exactly like the real one until a test opts
  * out, and that is the load-bearing part.** `mock.module`'s registry is one
- * process wide and nothing resets it between files, so these two fakes are in
- * force for every file that links `../ai/provider` or `./boss` after this one —
- * and which files those are depends on the order `bun test` reaches them in,
- * which differs between a Windows dev machine and CI. A fake whose default is
- * indistinguishable from the real module cannot make that ordering matter.
+ * process wide and nothing resets it between files, so the `./boss` fake is in
+ * force for every file that links it after this one — and which files those
+ * are depends on the order `bun test` reaches them in, which differs between a
+ * Windows dev machine and CI. A fake whose default is indistinguishable from
+ * the real module cannot make that ordering matter.
  *
  * So `isAiConfigured` answers whatever the real one does until a test sets
- * `aiConfigured`, and `beforeEach` and `afterEach` both put it back. It used to
- * start `false`, on the reasoning that the real one answers that in this suite
- * — and that was never so: the preload sets a key now, and before it did, the
- * first file to link the provider in forward order was an `ai/` one that set
- * one (#303). A reverse-order run put this file ahead of `ai/polish.test.ts`,
- * and `isPolishConfigured()`, which reads straight through to this fake,
- * answered `false` in a file that never mentions this one. It has to be
- * reachable at all because `enqueueClassification` short-circuits on it —
- * without setting it, the sweep's whole output is a no-op and there is nothing
- * to assert.
+ * `aiSwitch.configured`, and `beforeEach` and `afterEach` both put it back (the
+ * preload's own `beforeEach` does too). It used to start `false`, on the
+ * reasoning that the real one answers that in this suite — and that was never
+ * so: the preload sets a key now, and before it did, the first file to link the
+ * provider in forward order was an `ai/` one that set one (#303). A
+ * reverse-order run put this file ahead of `ai/polish.test.ts`, and
+ * `isPolishConfigured()`, which reads straight through to this switch, answered
+ * `false` in a file that never mentions this one. It has to be reachable at
+ * all because `enqueueClassification` short-circuits on it — without setting
+ * it, the sweep's whole output is a no-op and there is nothing to assert.
  *
  * And `getBoss` delegates to the real one — which throws, the queue never
  * having been started — unless a test has installed a queue to watch. That
@@ -75,20 +80,6 @@ import { prisma, resetDb } from "../test/pg";
  * which is the shape `testing.md` warns about — a file that passes alone and
  * fails in the suite.
  */
-
-// Spread into a plain object *now*, before the mock is registered: `mock.module`
-// replaces the live namespace, so a factory that spreads the import binding is
-// spreading itself.
-const provider = { ...(await import("../ai/provider")) };
-/**
- * What `isAiConfigured` answers, or `undefined` for "whatever the real one
- * does".
- */
-let aiConfigured: boolean | undefined;
-await mock.module("../ai/provider", () => ({
-  ...provider,
-  isAiConfigured: () => aiConfigured ?? provider.isAiConfigured(),
-}));
 
 /** Everything a sweep asked to be enqueued, in order. */
 let enqueued: { queue: string; ticketId: number }[] = [];
@@ -242,7 +233,7 @@ beforeEach(async () => {
   await resetDb();
   enqueued = [];
   sentThroughDb = [];
-  aiConfigured = undefined;
+  aiSwitch.configured = undefined;
   watchedQueue = undefined;
   process.env.AUTO_REPLY_ENABLED = "true";
   quiet = [
@@ -258,7 +249,7 @@ afterEach(() => {
   // because of which test happens to be last. Nothing else in the process
   // should ever see a working queue from `getBoss()`, or a provider this file
   // switched on or off.
-  aiConfigured = undefined;
+  aiSwitch.configured = undefined;
   watchedQueue = undefined;
   if (autoReplySwitch === undefined) delete process.env.AUTO_REPLY_ENABLED;
   else process.env.AUTO_REPLY_ENABLED = autoReplySwitch;
@@ -268,7 +259,7 @@ afterEach(() => {
 
 describe("CLASSIFY_RECONCILE_SWEEP", () => {
   test("offers back a ticket that never reached a verdict", async () => {
-    aiConfigured = true;
+    aiSwitch.configured = true;
     watchQueue();
     const id = await newTicket({ createdAt: ago(30 * MINUTE) });
 
@@ -278,7 +269,7 @@ describe("CLASSIFY_RECONCILE_SWEEP", () => {
   });
 
   test("leaves alone everything outside the band", async () => {
-    aiConfigured = true;
+    aiSwitch.configured = true;
     watchQueue();
 
     // Inside the ten-minute floor: already queued, or already retrying — the
@@ -314,7 +305,7 @@ describe("CLASSIFY_RECONCILE_SWEEP", () => {
     // deployment must not build a backlog for the day somebody adds a key. This
     // is the state the E2E suite runs in, and the throw is what makes the
     // assertion below mean "never asked" rather than "asked nothing".
-    aiConfigured = false;
+    aiSwitch.configured = false;
     await newTicket({ createdAt: ago(30 * MINUTE) });
 
     await CLASSIFY_RECONCILE_SWEEP.run();
@@ -375,7 +366,7 @@ describe("AUTO_REPLY_RECOVER_SWEEP", () => {
   test("re-offers a released ticket and keeps its first recorded offer", async () => {
     // A re-offer is the same decision sent again, not a new one, so the stamp
     // `/pipeline` reads keeps the instant the ticket was first offered.
-    aiConfigured = true;
+    aiSwitch.configured = true;
     await autoReplyArticle();
     watchQueue();
     const firstOffer = ago(HOUR);
@@ -397,7 +388,7 @@ describe("AUTO_REPLY_RECOVER_SWEEP", () => {
 
 describe("enqueueAutoReply", () => {
   test("records the offer on the ticket when it sends the job", async () => {
-    aiConfigured = true;
+    aiSwitch.configured = true;
     await autoReplyArticle();
     watchQueue();
     const id = await newTicket();
@@ -417,7 +408,7 @@ describe("enqueueAutoReply", () => {
   ])("records nothing and sends nothing with %s", async (_, deployment) => {
     // No queue is watched, so a send would reach the real `getBoss()` and
     // throw: "sent nothing" is asserted by the call returning at all.
-    aiConfigured = deployment.key;
+    aiSwitch.configured = deployment.key;
     if (deployment.corpus) await autoReplyArticle();
     if (!deployment.enabled) process.env.AUTO_REPLY_ENABLED = "false";
     const id = await newTicket();
@@ -431,7 +422,7 @@ describe("enqueueAutoReply", () => {
     // One transaction, so the record never claims an offer no job carries,
     // which would read `pending` forever: the bug this column exists to fix,
     // arriving by another road.
-    aiConfigured = true;
+    aiSwitch.configured = true;
     await autoReplyArticle();
     watchQueue({ failing: true });
     const id = await newTicket();

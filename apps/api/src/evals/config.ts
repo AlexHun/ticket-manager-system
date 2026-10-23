@@ -8,7 +8,7 @@ import { isAiConfigured } from "../ai/provider";
  * There is one key behind every AI feature, so "can polish" and "can run an
  * eval" are the same question — but a route or a registration that reads
  * `isAiConfigured` **directly** forces its test file onto the `../ai/provider`
- * specifier, which `jobs/sweeps.test.ts` already owns with a *stateful* stub.
+ * specifier, which the test preload owns with a *stateful* stub (#578).
  * Two stateful copies are two boxes, of which the process-wide registry keeps
  * one, leaving the other file's switch inert. A guard of its own gives each
  * caller's test a specifier nothing else touches.

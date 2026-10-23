@@ -468,7 +468,7 @@ export async function autoReply(
   let usage: AiUsage | undefined;
   try {
     const generated = await generateText({
-      model: openaiModel(AUTO_REPLY_MODEL),
+      model: openaiModel("auto-reply", AUTO_REPLY_MODEL),
       // `Output.object` rather than `generateObject`, which omits `timeout` from
       // its options — see the note in `summarize.ts`. It matters most here: this
       // call holds a ticket invisible for its whole duration.
