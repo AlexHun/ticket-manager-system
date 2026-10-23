@@ -162,7 +162,7 @@ await mock.module("../ai/polish-reply", () => ({
 // stub holds **state** — the scripted model, and a switch the sweeps' reconcile
 // tests flip. Two stateful copies on one specifier are two boxes, of
 // which the process-wide registry keeps one, leaving the other file's switch
-// inert (`docs/standards/testing.md` says so about `../test/send-email`, for
+// inert (`docs/standards/testing-api.md` says so about `../test/send-email`, for
 // exactly this reason). A per-feature guard gives this route's test a specifier
 // nothing else touches — while its module has no test of its own. `summarize`
 // has none; `polish` has one, which is why that half goes through
@@ -261,11 +261,13 @@ const SUMMARY: TicketSummary = {
 const SUMMARY_ANSWER = { text: JSON.stringify(SUMMARY) } satisfies ModelAnswer;
 
 /**
- * What the model answers on the way to each failure the summary route reports.
- * `empty` is an answer that is not the schema, which the SDK throws as
- * `NoObjectGeneratedError`.
+ * What the model answers on the way to each provider failure, for both
+ * endpoints: the summary route reports these six, and `POLISH_ANSWER` adds
+ * polish's own `invented`. `empty` is blank text, which a polish reports as
+ * empty and the summariser's structured output throws as
+ * `NoObjectGeneratedError`, which it reports as empty too.
  */
-const SUMMARY_FAILURE_ANSWER: Record<AiFailureValue, ModelAnswer> = {
+const AI_FAILURE_ANSWER: Record<AiFailureValue, ModelAnswer> = {
   provider: { throws: providerError(500, "internal error") },
   busy: { throws: providerError(429, '{"error":{"code":"rate_limit"}}') },
   quota: {
@@ -382,14 +384,7 @@ function lastContext(): PolishContext {
 
 /** What the model answers on the way to each failure the route reports. */
 const POLISH_ANSWER: Record<PolishFailureValue, ModelAnswer> = {
-  provider: { throws: providerError(500, "internal error") },
-  busy: { throws: providerError(429, '{"error":{"code":"rate_limit"}}') },
-  quota: {
-    throws: providerError(429, '{"error":{"code":"insufficient_quota"}}'),
-  },
-  auth: { throws: providerError(401) },
-  config: { throws: providerError(400, "unsupported_value") },
-  empty: { text: "   " },
+  ...AI_FAILURE_ANSWER,
   invented: { text: "We have refunded your order in full." },
 };
 
@@ -494,14 +489,26 @@ function lastSummaryContext(): SummarizeContext {
   const statusLine = frameLine(prompt, "Status");
   const status = Object.values(TICKET_STATUS).find((s) => s === statusLine);
   if (!status) throw new Error(`the prompt names no status: ${statusLine}`);
-  const category = frameLine(prompt, "Category");
+  const categoryLine = frameLine(prompt, "Category");
+  const category =
+    categoryLine === "not yet categorised"
+      ? null
+      : Object.values(TICKET_CATEGORY).find((c) => c === categoryLine);
+  if (category === undefined) {
+    throw new Error(`the prompt names no category: ${categoryLine}`);
+  }
   const thread = fencedText(prompt, "ticket_thread");
+  // A thread over the budget has a `##MSG […n message(s) omitted…]` line in
+  // its middle, which this would read as part of a message. No test here
+  // seeds one, so it refuses rather than misreads.
+  if (thread?.includes("##MSG […")) {
+    throw new Error("lastSummaryContext cannot read a trimmed thread");
+  }
   return {
     subject: frameLine(prompt, "Subject") ?? "",
     customerName: frameLine(prompt, "Customer") ?? "",
     status,
-    category:
-      Object.values(TICKET_CATEGORY).find((c) => c === category) ?? null,
+    category,
     messages:
       thread === null
         ? []
@@ -1122,7 +1129,7 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
     ];
 
     for (const { reason, status, says } of cases) {
-      scriptModel("summarize", SUMMARY_FAILURE_ANSWER[reason]);
+      scriptModel("summarize", AI_FAILURE_ANSWER[reason]);
       const sent = await postSummary({ ticketId: TICKET });
       expect(sent.status).toBe(status);
       expect(sent.body.error).toContain(says);
@@ -1133,7 +1140,7 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
   });
 
   test("does not tell an agent to retry an empty balance", async () => {
-    scriptModel("summarize", SUMMARY_FAILURE_ANSWER[AI_FAILURE.quota]);
+    scriptModel("summarize", AI_FAILURE_ANSWER[AI_FAILURE.quota]);
 
     const sent = await postSummary({ ticketId: TICKET });
 
@@ -1142,10 +1149,10 @@ describe("POST /api/ai/summarize-ticket — answering", () => {
   });
 
   test("says when to come back, but only when coming back would help", async () => {
-    scriptModel("summarize", SUMMARY_FAILURE_ANSWER[AI_FAILURE.busy]);
+    scriptModel("summarize", AI_FAILURE_ANSWER[AI_FAILURE.busy]);
     expect((await postSummary({ ticketId: TICKET })).retryAfter).toBe("10");
 
-    scriptModel("summarize", SUMMARY_FAILURE_ANSWER[AI_FAILURE.config]);
+    scriptModel("summarize", AI_FAILURE_ANSWER[AI_FAILURE.config]);
     expect((await postSummary({ ticketId: TICKET })).retryAfter).toBeNull();
   });
 });
