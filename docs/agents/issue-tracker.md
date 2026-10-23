@@ -64,8 +64,8 @@ comment, 17 (50%) had a worker end past 150k by that figure.
   at 200-250k (38) and 78% past 250k (41). The median output in the two bands
   either side of 200k differs far less (38k against 47k). Bigger tickets also
   give a review more to find, so this places the line rather than proving the
-  cause. CLAUDE.md's "past roughly 150k" stays the point to start watching a
-  session; 200k is the line a ticket is cut to.
+  cause. 200k is the line a ticket is cut to, and CLAUDE.md's
+  one-ticket-per-session rule names it.
 
 **The per-turn figures are re-measured on responses.** Until #413 a turn was a
 transcript record, which counted one response once per content block, and the

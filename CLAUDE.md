@@ -44,8 +44,9 @@ background. A red job whose test has an open `Flake:` issue gets one
 session, and one that goes green on re-run is filed as `Flake: <test>`. Report
 it done and stop there rather than opening the next one, so the next ticket
 starts in a fresh context. Context cost per turn climbs steeply with session
-length, and past roughly 150k tokens reasoning degrades — a ticket that
-outgrows its window wants splitting, not compacting.
+length, and past roughly 200k tokens of context review starts finding more —
+a ticket forecast past that, about 75 turns in one window, wants splitting,
+not compacting (`docs/agents/issue-tracker.md`, #627).
 
 **Resume from the repo, not from memory.** After an API error, a restore or a
 `Continue`, read `git status`, the current branch and `gh pr view` before the
