@@ -3,7 +3,8 @@
 # Build context is the **repository root** (see the note in apps/api/Dockerfile);
 # Railway is pointed at this file by `dockerfilePath` in apps/web/railway.json.
 
-FROM oven/bun:1-slim AS build
+# Bun pinned to CI's `BUN_VERSION`, as in apps/api/Dockerfile.
+FROM oven/bun:1.4.4-slim AS build
 
 WORKDIR /app
 

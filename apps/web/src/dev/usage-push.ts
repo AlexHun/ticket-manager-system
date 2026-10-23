@@ -12,7 +12,7 @@
  * `dev/usage-push.test.ts` holds the sending side to the same six fields.
  *
  * **Why the listing rides along rather than `gh` on Railway.** `Dockerfile.dev`
- * is `oven/bun:1-slim` with no `gh`, and a `gh` there would need a token
+ * is the slim Bun image, with no `gh`, and a `gh` there would need a token
  * provisioned, rotated and kept out of the test runner's children. The laptop
  * already holds a listing for every scan, so it sends that, and the dev server
  * writes it to the file `GH_ISSUES_FILE` names — the seam `fetchIssueMetadata`

@@ -9,7 +9,8 @@
 #
 # Build context is the **repository root**, like the other two images.
 
-FROM oven/bun:1-slim
+# Bun pinned to CI's `BUN_VERSION`, as in apps/api/Dockerfile.
+FROM oven/bun:1.4.4-slim
 
 # The API-unit suite on `/__dev/tests` loads the Prisma client, and Prisma's
 # engines look for OpenSSL, which the slim image lacks (see apps/api/Dockerfile).

@@ -49,7 +49,7 @@ are `General`, `Technical`, `Refund`, `Other`.
 
 | Layer    | Pick                                                                       |
 | -------- | -------------------------------------------------------------------------- |
-| Runtime  | Bun 1.3.13                                                                 |
+| Runtime  | Bun 1.4.4                                                                  |
 | Frontend | React 19 + Vite + TypeScript, Tailwind v4, shadcn/ui, TanStack Query/Table |
 | Backend  | Express 5 + TypeScript, server-sent events for live updates                |
 | Database | Postgres + Prisma 7                                                        |
@@ -80,7 +80,7 @@ docs/      ADRs, coding standards, agent configuration
 
 ## Getting started
 
-**Prerequisites:** [Bun](https://bun.sh) 1.3.13+ and a Postgres you can reach.
+**Prerequisites:** [Bun](https://bun.sh) 1.4.4+ and a Postgres you can reach.
 Neither an OpenAI key nor a mail provider is required — without them the AI
 features answer 503, tickets stay uncategorised, and mail records as
 undeliverable. Everything else runs.

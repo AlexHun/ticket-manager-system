@@ -409,6 +409,49 @@ async function postSummary(
   };
 }
 
+/**
+ * Resolves once `check` holds, or throws naming `what` after `ms`.
+ *
+ * For the hang-up tests below, which wait on things that happen on the
+ * server's side of a socket the test has just walked away from.
+ */
+async function until(what: string, check: () => boolean, ms = 1000) {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error(`never happened: ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/**
+ * Sends `body` to `path` and hangs up once `arrived` says the model has been
+ * asked, as a closed tab does. The request never answers, so the one outcome
+ * this accepts is the browser's own abort; an answer or any other failure
+ * throws.
+ */
+async function hangUpOn(path: string, body: unknown, arrived: () => boolean) {
+  const browser = new AbortController();
+  const sent = fetch(url(path), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...asCaller({ id: await freshUser() }),
+    },
+    body: JSON.stringify(body),
+    signal: browser.signal,
+  });
+  await until("the model was asked", arrived);
+  browser.abort();
+  await sent.then(
+    () => {
+      throw new Error("the request answered before the hang-up");
+    },
+    (err: unknown) => {
+      if (!(err instanceof Error && err.name === "AbortError")) throw err;
+    },
+  );
+}
+
 /** The thread the summariser was handed on its most recent call. */
 function lastSummaryContext(): SummarizeContext {
   const call = summarizeTicket.mock.calls.at(-1);
@@ -626,13 +669,25 @@ describe("POST /api/ai/polish-reply — the context it assembles", () => {
     );
   });
 
-  // "hands the model a signal it can be abandoned with" stood here until #578.
-  // It read the route's own signal off the stub's third argument. Under the
-  // real `polishDraft` the model is always handed one, the caller's merged
-  // with the 20s timeout, so the same assertion would pass with the route's
-  // signal gone. The test that can see the route's signal, a browser hanging
-  // up and the call aborting, found the route never fires it under Bun, and
-  // goes in with that fix (#651).
+  test("abandons the model call when the browser hangs up", async () => {
+    // A model that never answers, so the only way the call ends inside the
+    // test is the route's own signal: the 20s timeout merged into the same
+    // signal is far past `until`'s second. Bun 1.3.13 never fired `res`
+    // `close` for a hang-up once the body had been read (#651), so this was
+    // red until CI and the images moved to 1.4.4.
+    scriptModel("polish", { hangs: true });
+
+    await hangUpOn(
+      "/polish-reply",
+      goodBody(),
+      () => modelCalls("polish").length === 1,
+    );
+
+    await until(
+      "the model's signal aborted",
+      () => lastModelCall("polish").abortSignal?.aborted === true,
+    );
+  });
 });
 
 describe("POST /api/ai/polish-reply — answering", () => {
@@ -953,10 +1008,33 @@ describe("POST /api/ai/summarize-ticket — the thread it assembles", () => {
     expect(sent.body.messageCount).toBe(1);
   });
 
-  test("hands the model a signal it can be abandoned with", async () => {
-    await postSummary({ ticketId: TICKET });
+  test("abandons the model call when the browser hangs up", async () => {
+    // The summariser is still a stub here, so it stands in for a model that
+    // answers only once it is told to stop. This replaces "hands the model a
+    // signal it can be abandoned with", which a signal that never fires
+    // passed: under Bun 1.3.13 it never did (#651).
+    let signal: AbortSignal | undefined;
+    summarizeTicket.mockImplementationOnce((_context, given) => {
+      signal = given;
+      return new Promise<SummarizeResult>((resolve) => {
+        given?.addEventListener(
+          "abort",
+          () => resolve({ ok: false, reason: AI_FAILURE.provider }),
+          { once: true },
+        );
+      });
+    });
 
-    expect(summarizeTicket.mock.calls.at(-1)![1]).toBeInstanceOf(AbortSignal);
+    await hangUpOn(
+      "/summarize-ticket",
+      { ticketId: TICKET },
+      () => signal !== undefined,
+    );
+
+    await until(
+      "the summariser's signal aborted",
+      () => signal?.aborted === true,
+    );
   });
 });
 
