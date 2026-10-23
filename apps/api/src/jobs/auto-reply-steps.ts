@@ -1,35 +1,16 @@
-import {
-  autoReply,
-  type AutoReplyContext,
-  type AutoReplyResult,
-} from "../ai/auto-reply";
-import type { KbArticle } from "../ai/knowledge-base";
 import type { Prisma } from "../db";
 
 /**
- * The two steps of `./auto-reply-ticket.ts` that its test has to stand in for,
- * and nothing else.
+ * The one step of `./auto-reply-ticket.ts` that its test has to wrap, and
+ * nothing else.
  *
- * A module of its own for the reason `../evals/reply-to-case.ts` is one
- * (`docs/adr/0016`, testing-api.md). `auto-reply-ticket.test.ts` needs the model
- * to answer, and `../ai/auto-reply.test.ts` imports `../ai/auto-reply` to test
- * that very function, so a factory on that specifier would hand one of the two
- * files a stranger's stub depending on load order. Only the job imports this
- * module, so its test has a specifier nothing else loads for real. The
- * in-transaction read sits beside it for the same test and the same reason: one
- * specifier only the job imports, rather than two.
- *
- * **Functions, never `export { autoReply } from …`**: a re-export's binding is
- * the source module's, and rewiring it rewrites `autoReply` itself (#303).
+ * A module of its own so the job's test has a specifier nothing else loads for
+ * real (`docs/adr/0016`, testing-api.md): only the job imports this. It held a
+ * second step until #580, `draftReply`, a one-line shim over `autoReply` that
+ * existed so the test could answer for the model without registering
+ * `../ai/auto-reply`, which `ai/auto-reply.test.ts` tests. The test scripts the
+ * preload's fake model now, and the job calls `autoReply` itself.
  */
-
-/** Ask the model for a reply. */
-export function draftReply(
-  articles: KbArticle[],
-  context: AutoReplyContext,
-): Promise<AutoReplyResult> {
-  return autoReply(articles, context);
-}
 
 /**
  * The ticket as the resolving transaction sees it: what the gates read, and its

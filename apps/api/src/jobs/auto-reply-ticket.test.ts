@@ -5,9 +5,9 @@ import {
   TICKET_CATEGORY,
   TICKET_STATUS,
 } from "@ticket/shared";
-import type { AutoReplyResult } from "../ai/auto-reply";
 import type { Prisma } from "../db";
 import { CUSTOMER, seedTicket } from "../test/fixtures";
+import { scriptModel } from "../test/model";
 import { prisma, resetDb } from "../test/pg";
 import { sendEmailStub, stubSendEmail } from "../test/send-email";
 
@@ -29,16 +29,16 @@ import { sendEmailStub, stubSendEmail } from "../test/send-email";
  * Postgres re-checks an `UPDATE`'s `where` against a row a concurrent
  * transaction committed.
  *
- * Both stubs default to the real module and act only while a test has set
- * them, so a file that links the job before or after this one sees the genuine
- * answer (testing-api.md).
+ * The wrapper defaults to the real read and acts only while a test has set it,
+ * so a file that links the job before or after this one sees the genuine
+ * answer (testing-api.md). The model is the preload's scripted fake, so the
+ * reply is the real `autoReply`'s, checks and all, over a corpus this file
+ * seeds; until #580 a second wrapper here stood in for it.
  */
 
 type Tx = Prisma.TransactionClient;
 
 const steps = {
-  /** What the model answers. `null` asks the real one. */
-  reply: null as AutoReplyResult | null,
   /** Run once, through the resolve's `tx`, right after the re-read. */
   afterRead: null as ((tx: Tx, ticketId: number) => Promise<void>) | null,
 };
@@ -46,8 +46,6 @@ const steps = {
 const actual = { ...(await import("./auto-reply-steps")) };
 await mock.module("./auto-reply-steps", () => ({
   ...actual,
-  draftReply: async (...args: Parameters<typeof actual.draftReply>) =>
-    steps.reply ?? actual.draftReply(...args),
   readResolveState: async (tx: Tx, ticketId: number) => {
     const state = await actual.readResolveState(tx, ticketId);
     const write = steps.afterRead;
@@ -69,11 +67,26 @@ const { AUTO_REPLY_WORKER } = await import("./auto-reply-ticket");
 /** Long before the test runs, so a message written now visibly moves it. */
 const OPENED_AT = new Date(Date.now() - 60 * 60 * 1000);
 
-const ANSWER: AutoReplyResult = {
-  ok: true,
-  reply: "Hello Marta,\n\nUse the reset link on the sign-in page.",
+/** The one article the model answers from, so the corpus is not empty. */
+async function autoReplyArticle(): Promise<void> {
+  await prisma.knowledgeArticle.create({
+    data: {
+      id: "KB-001",
+      title: "How do I reset my password?",
+      category: TICKET_CATEGORY.Technical,
+      body: "Use the reset link on the sign-in page.",
+      autoReply: true,
+    },
+  });
+}
+
+/** What the model answers: a reply built from that article, which every check passes. */
+const ANSWER = JSON.stringify({
+  answered: true,
   articleIds: ["KB-001"],
-};
+  paragraphs: ["Use the reset link on the sign-in page."],
+  steps: null,
+});
 
 async function claimableTicket(): Promise<number> {
   const ticket = await seedTicket({
@@ -151,16 +164,16 @@ function outboundCount(ticketId: number) {
 }
 
 beforeEach(async () => {
-  steps.reply = ANSWER;
+  scriptModel("auto-reply", { text: ANSWER });
   steps.afterRead = null;
   sendEmailStub.failAfterWriting = false;
   await resetDb();
+  await autoReplyArticle();
 });
 
-// Back to the real module, so a job test that runs after this file in the same
-// process is not handed this file's canned answer.
+// Back to the real read, so a job test that runs after this file in the same
+// process is not handed this file's interleaving.
 afterEach(() => {
-  steps.reply = null;
   steps.afterRead = null;
 });
 

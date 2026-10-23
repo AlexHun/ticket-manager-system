@@ -7,7 +7,7 @@ import {
   TICKET_STATUS,
   type AutoReplyDecline,
 } from "@ticket/shared";
-import { AUTO_REPLY_FAILURE } from "../ai/auto-reply";
+import { AUTO_REPLY_FAILURE, autoReply } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
 import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import { isAiConfigured } from "../ai/provider";
@@ -22,11 +22,7 @@ import {
 import { REPLY_ORIGIN, SEND_OUTCOME, sendReply } from "../outbound";
 import { assistantActor, recordActivity } from "../ticket-activity";
 import { isRetryable } from "./ai-retry";
-import {
-  draftReply,
-  readResolveState,
-  type ResolveState,
-} from "./auto-reply-steps";
+import { readResolveState, type ResolveState } from "./auto-reply-steps";
 import {
   getBoss,
   registerSweep,
@@ -434,7 +430,7 @@ async function handle(job: AutoReplyJob): Promise<void> {
   // check 4 exists to close.
   const articles = await autoReplyArticles();
 
-  const result = await draftReply(articles, {
+  const result = await autoReply(articles, {
     subject: ticket.subject,
     // The one inbound message: the `followUp` gate above has already turned back
     // every ticket carrying more than one, so this index is the whole thread
