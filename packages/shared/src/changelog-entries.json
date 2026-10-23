@@ -1043,5 +1043,15 @@
     "version": "0.1.262",
     "date": "2026-10-23",
     "title": "Dev:stop spares MCP servers and names what it could not stop"
+  },
+  {
+    "version": "0.1.264",
+    "date": "2026-10-23",
+    "title": "Drop a greeting or sign off the model put in the steps"
+  },
+  {
+    "version": "0.1.264",
+    "date": "2026-10-23",
+    "title": "Settle the #635 review findings"
   }
 ]
