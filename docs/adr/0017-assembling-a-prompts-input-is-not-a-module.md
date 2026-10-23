@@ -237,6 +237,11 @@ pull request rather than in the suite; the builder is four lines from
 other. If a `classify.test.ts` is ever wanted, the seam to give it is its own, not
 `"ai"`.
 
+_Since #657 it exists, and not on `"ai"`: the preload's scripted model
+(`apps/api/src/test/model.ts`, #578) answers every feature without a
+`mock.module("ai", ...)`, and `ai/classify.test.ts` asserts the classify half
+of the rule beside the auto-reply's and polish's._
+
 **Nothing is extracted, and reversing this costs one function.** If a third
 gate-reading path ever appears — a second harness, a replay tool, a "what would the
 desk have said" screen — it will arrive with a source shape of its own, and the
