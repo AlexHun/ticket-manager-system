@@ -31,7 +31,7 @@ bun run --filter '@ticket/api' db:seed  # not for anything DB-shaped
 ```
 
 `bun run --filter '<pkg>' <script>` _does_ execute with the workspace as its cwd
-on the Bun in use here (1.3.13 — verified, `bun test src` resolves inside
+on the Bun in use here (1.4.4 — verified, `bun test src` resolves inside
 `apps/api`). It has not always: an older Bun ran the inner script from the
 caller's cwd, which made `dotenv -e .env.test` silently find no file and pointed
 a test reset at the **dev** database, wiping it. So the root `db:test:*` scripts

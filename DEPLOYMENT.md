@@ -448,9 +448,12 @@ policy and the bundle are always produced together and cannot disagree.
   safe to run more than once — handlers are idempotent and `Processing` is a
   claim taken with a conditional `updateMany` — but nothing here has been
   measured at more than one.
-- **Pinned base images.** The Dockerfiles use `oven/bun:1-slim` and
-  `caddy:2-alpine` — both confirmed to exist and be active on Docker Hub, both
-  floating within a major. Pin to a digest for reproducible builds.
+- **Digest-pinned base images.** The Bun image is pinned to a version,
+  `oven/bun:1.4.4-slim`, the one CI's `BUN_VERSION` names, and the two move
+  together: while the Dockerfiles floated on `oven/bun:1-slim`, production and
+  CI could run different Bun releases, and one of them dropped a hung-up
+  browser's `close` (#651). `caddy:2-alpine` still floats within its major.
+  Neither is pinned to a digest; do that for byte-reproducible builds.
 
 ## Local rehearsal
 

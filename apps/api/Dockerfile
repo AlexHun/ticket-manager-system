@@ -7,7 +7,13 @@
 # A Dockerfile rather than Railway's automatic builder because Railpack does not
 # detect Bun projects — a Bun app on Railway has to bring its own image.
 
-FROM oven/bun:1-slim
+#
+# Pinned to the Bun CI runs (`BUN_VERSION` in `.github/workflows/ci.yml`), and
+# moved with it, never left floating: the two disagreeing is how #651 happened.
+# Bun 1.3.13 fired no `close` when a browser hung up on a route that had read
+# its body, so the AI routes went on paying for a generation nobody would see.
+
+FROM oven/bun:1.4.4-slim
 
 # Prisma's schema engine — which `prisma migrate deploy` runs as the pre-deploy
 # command — is a native binary that needs OpenSSL. It is absent from the slim
