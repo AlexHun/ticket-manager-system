@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { checkRules, type Rule } from "@ticket/repo-scan/rules";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
+import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * The frontend standards a check can decide without judgement, enforced here
@@ -20,16 +22,18 @@ import { stripComments } from "@ticket/repo-scan/strip-comments";
  * Matching runs over `stripComments`' output — `@ticket/repo-scan`'s scanner,
  * which the project map, the API's guard and the doc citations read too, and
  * which blanks comments and keeps strings — so an explanation never fails the
- * build. The `forms` cases at the bottom hold that for every rule: each one is
- * shown a violation it must catch and a comment it must ignore, and a rule may
- * also be shown legitimate lines it must pass.
+ * build. Each rule is shown a violation it must catch and a comment it must
+ * ignore, and may also be shown legitimate lines it must pass. The rule shape
+ * and the runner that turns the table into those tests are
+ * `@ticket/repo-scan/rules`, which the API guard hands its own table to (#567).
  *
  * Scope is the web workspace's own code — `src/` and `dev/` — and, for a rule
  * that sets `e2e`, the Playwright specs and helpers under `tests/e2e` too
  * (#393). Only the role-literal rule does: the others govern how the app is
  * built — its controls, its data fetching, its tokens — and a spec drives the
  * built app rather than being part of it. An e2e file is named by its path
- * from the repository root.
+ * from the repository root. Every file is one git tracks (`trackedFiles`,
+ * #567), so a local run checks what CI checks.
  */
 
 const WEB_ROOT = path.resolve(import.meta.dirname, "..");
@@ -40,34 +44,18 @@ const isE2e = (file: string) => file.startsWith(`${E2E_DIR}/`);
 /** This file holds every banned form as a fixture, so it is never scanned. */
 const SELF = "dev/standards-guard.test.ts";
 
-interface Rule {
-  /** The bullet, in a sentence a failing run can be acted on from. */
-  name: string;
-  /** The standards file the bullet lives in, under `docs/standards/`. */
-  standard: string;
-  /** The banned forms. Each is matched against comment-stripped source. */
-  forms: RegExp[];
-  /** Which files the rule reads, as paths relative to `apps/web`. Every
-   *  `src/` and `dev/` file when absent. */
-  applies?: (file: string) => boolean;
+/** A rule's `applies` and `allowed` name paths relative to `apps/web`;
+ *  `applies` absent is every `src/` and `dev/` file. */
+interface WebRule extends Rule {
   /** Also read every `.ts` file under `tests/e2e`, all of them: `applies` is
    *  asked only about the web workspace's own files. */
   e2e?: true;
-  /** Files where the form is the point rather than a violation. */
-  allowed?: string[];
-  /** Lines that break the rule, each of which must be caught. */
-  catches: string[];
-  /** Lines that keep the rule while resembling a break, each of which must
-   *  pass. */
-  passes?: string[];
-  /** A comment that only mentions the form, and must be ignored. */
-  ignores: string;
 }
 
 const isTest = (file: string) => /\.test\.tsx?$/.test(file);
 const ROLE = `["'](?:admin|agent)["']`;
 
-const RULES: Rule[] = [
+const RULES: WebRule[] = [
   {
     name: "A route's path is declared once, in ROUTE: navigate(), <Navigate to>, <Link to>, a pathname comparison, an assignment to location.href or window.location, and location.assign()/replace() read ROUTE.<name>.path or ticketDetailPath, never a path literal",
     standard: "frontend.md",
@@ -220,40 +208,17 @@ const RULES: Rule[] = [
 /** The directory a scanned path is relative to. */
 const rootOf = (file: string) => (isE2e(file) ? REPO_ROOT : WEB_ROOT);
 
-/** Every `.ts`/`.tsx` file under `src/` and `dev/`, relative to `apps/web`,
- *  then every `.ts` file under `tests/e2e`, relative to the repository root. */
-function sourceFiles(): string[] {
-  const files: string[] = [];
-  const walk = (root: string, dir: string, ext: RegExp) => {
-    for (const entry of readdirSync(path.join(root, dir), {
-      withFileTypes: true,
-    })) {
-      const rel = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) walk(root, rel, ext);
-      else if (ext.test(entry.name)) files.push(rel);
-    }
-  };
-  walk(WEB_ROOT, "src", /\.tsx?$/);
-  walk(WEB_ROOT, "dev", /\.tsx?$/);
-  walk(REPO_ROOT, E2E_DIR, /\.ts$/);
-  return files.filter((file) => file !== SELF);
-}
+/** Every `.ts`/`.tsx` file git tracks under `src/` and `dev/`, relative to
+ *  `apps/web`, then every `.ts` file under `tests/e2e`, relative to the
+ *  repository root. */
+const TRACKED = trackedFiles(REPO_ROOT);
+const FILES = [
+  ...TRACKED.flatMap((file) =>
+    file.startsWith("apps/web/") ? [file.slice("apps/web/".length)] : [],
+  ).filter((file) => /^(?:src|dev)\/.*\.tsx?$/.test(file)),
+  ...TRACKED.filter((file) => isE2e(file) && file.endsWith(".ts")),
+].filter((file) => file !== SELF);
 
-/** The 1-based line numbers in `code` where any of the rule's forms matches,
- *  each once however many forms match it. */
-function offendingLines(rule: Rule, code: string): number[] {
-  const lines = new Set<number>();
-  for (const form of rule.forms) {
-    // The form's own flags kept: a `/u` or `/i` form must not lose them here.
-    const global = new RegExp(form.source, `${form.flags.replace("g", "")}g`);
-    for (const match of code.matchAll(global)) {
-      lines.add(code.slice(0, match.index).split("\n").length);
-    }
-  }
-  return [...lines].sort((a, b) => a - b);
-}
-
-const FILES = sourceFiles();
 const CODE = new Map(
   FILES.map((file) => [
     file,
@@ -263,7 +228,7 @@ const CODE = new Map(
 
 test("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
-  // walk is a green run that checked nothing.
+  // list is a green run that checked nothing.
   expect(FILES.filter((file) => !isE2e(file)).length).toBeGreaterThan(100);
   expect(FILES).toContain("src/App.tsx");
   expect(FILES).toContain("dev/scan.ts");
@@ -272,36 +237,13 @@ test("the guard reads the tree it means to", () => {
   expect(FILES).toContain("tests/e2e/helpers/auth.ts");
 });
 
-describe.each(RULES)("$standard: $name", (rule) => {
-  test(`holds across src/ and dev/${rule.e2e ? ", and tests/e2e" : ""}`, () => {
-    const offenders: string[] = [];
-    for (const file of FILES) {
-      if (isE2e(file) ? !rule.e2e : rule.applies?.(file) === false) continue;
-      if (rule.allowed?.includes(file)) continue;
-      for (const line of offendingLines(rule, CODE.get(file)!)) {
-        offenders.push(`${file}:${line}`);
-      }
-    }
-    expect(offenders, `${rule.name} (docs/standards/${rule.standard})`).toEqual(
-      [],
-    );
-  });
-
-  test("its allowlist names files that exist", () => {
-    // A renamed exemption would leave the rule guarding nothing there and
-    // failing nothing, which reads exactly like a clean tree.
-    for (const file of rule.allowed ?? []) expect(FILES).toContain(file);
-  });
-
-  test.each(rule.catches)("catches %s", (line) => {
-    expect(offendingLines(rule, stripComments(line).code)).toEqual([1]);
-  });
-
-  test.each(rule.passes ?? [])("passes %s", (line) => {
-    expect(offendingLines(rule, stripComments(line).code)).toEqual([]);
-  });
-
-  test("ignores a comment that only mentions the form", () => {
-    expect(offendingLines(rule, stripComments(rule.ignores).code)).toEqual([]);
-  });
-});
+checkRules(
+  RULES,
+  {
+    code: CODE,
+    across: (rule) => `src/ and dev/${rule.e2e ? ", and tests/e2e" : ""}`,
+    reads: (rule, file) =>
+      isE2e(file) ? rule.e2e === true : rule.applies?.(file) !== false,
+  },
+  { describe, test, expect },
+);

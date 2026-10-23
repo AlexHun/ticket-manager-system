@@ -101,19 +101,32 @@ describe("checkRules", () => {
     );
   });
 
-  test("the holds test reads only the files the rule applies to and the scan reads for it", () => {
+  test("the holds test reads only the files the rule applies to", () => {
     const { runner, failure } = recorder();
-    const code = tree({
-      "src/lib/api.ts": "",
-      "dev/x.ts": `fetch("/dev");`,
-      "tests/e2e/y.ts": `fetch("/e2e");`,
-    });
+    const code = tree({ "src/lib/api.ts": "", "dev/x.ts": `fetch("/dev");` });
     checkRules(
       [{ ...RULE, applies: (file) => !file.startsWith("dev/") }],
-      { code, across: "src/", reads: (_, file) => !file.startsWith("tests/") },
+      { code, across: "src/" },
       runner,
     );
     expect(failure(`${TITLE} > holds across src/`)).toBeUndefined();
+  });
+
+  test("a scan's own reads decides in place of the rule's applies", () => {
+    const { runner, failure } = recorder();
+    const code = tree({
+      "src/lib/api.ts": "",
+      "src/a.ts": `fetch("/src");`,
+      "tests/e2e/y.ts": `fetch("/e2e");`,
+    });
+    checkRules(
+      [{ ...RULE, applies: (file) => !file.startsWith("tests/") }],
+      { code, across: "src/", reads: (_, file) => !file.startsWith("src/a") },
+      runner,
+    );
+    expect(failure(`${TITLE} > holds across src/`)).toContain(
+      "tests/e2e/y.ts:1 breaks:",
+    );
   });
 
   test("the allowlist check fails on an allowed file the scan does not read", () => {

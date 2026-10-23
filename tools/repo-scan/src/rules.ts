@@ -62,10 +62,13 @@ export interface RuleScan<R extends Rule = Rule> {
   code: ReadonlyMap<string, string>;
   /** Where a rule's holds test says it reads: `holds across <across>`. */
   across: string | ((rule: R) => string);
-  /** Whether the guard reads `file` for `rule` at all, asked before the rule's
-   *  own `applies`. Every file when absent. */
+  /** Whether `rule` reads `file`. When absent, the rule's own `applies`
+   *  decides; a guard whose files are not all alike (the web guard's
+   *  `tests/e2e`) answers here, and asks `applies` itself where it should. */
   reads?: (rule: R, file: string) => boolean;
 }
+
+const appliesTo = (rule: Rule, file: string) => rule.applies?.(file) !== false;
 
 /** The parts of `bun:test` and Vitest the runner registers its tests with. */
 export interface TestRunner {
@@ -90,6 +93,7 @@ export function checkRules<R extends Rule>(
   scan: RuleScan<R>,
   { describe, test, expect }: TestRunner,
 ): void {
+  const reads = scan.reads ?? appliesTo;
   for (const rule of rules) {
     const across =
       typeof scan.across === "string" ? scan.across : scan.across(rule);
@@ -97,9 +101,7 @@ export function checkRules<R extends Rule>(
       test(`holds across ${across}`, () => {
         const offenders: string[] = [];
         for (const [file, code] of scan.code) {
-          if (scan.reads?.(rule, file) === false) continue;
-          if (rule.applies?.(file) === false) continue;
-          if (rule.allowed?.includes(file)) continue;
+          if (!reads(rule, file) || rule.allowed?.includes(file)) continue;
           for (const line of offendingLines(rule, code)) {
             offenders.push(`${file}:${line} breaks: ${label(rule)}`);
           }

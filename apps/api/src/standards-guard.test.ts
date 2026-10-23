@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { BRAND_ATTRIBUTIVE, BRAND_NAME, BRAND_SHORT } from "@ticket/shared";
+import { checkRules, type Rule } from "@ticket/repo-scan/rules";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
+import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * The backend, AI, API-testing and repo-config standards a check can decide
@@ -20,7 +22,13 @@ import { stripComments } from "@ticket/repo-scan/strip-comments";
  * `generateText` and not `generateObject`. Matching runs over comment-stripped
  * source (`stripComments`, from `@ticket/repo-scan`), so an explanation never
  * fails the build, and each rule is shown a violation it must catch and a
- * comment it must ignore.
+ * comment it must ignore. The rule shape and the runner that turns the table
+ * into tests are `@ticket/repo-scan/rules`, which the web guard hands its own
+ * table to (#567).
+ *
+ * **It reads the files git tracks** (`trackedFiles`, #567), so a local run
+ * checks what CI checks, and nothing generated or ignored needs excluding by
+ * name.
  *
  * **The repo-wide config rules live here rather than in the web guard** because
  * this suite runs on pre-push as well as in CI, and the web suite only in CI:
@@ -40,24 +48,6 @@ const REPO_ROOT = path.resolve(API_ROOT, "../..");
 /** This file holds every banned form as a fixture, so it is never scanned. */
 const SELF = "src/standards-guard.test.ts";
 
-interface SourceRule {
-  /** The bullet, in a sentence a failing run can be acted on from. */
-  name: string;
-  /** The standards file the bullet lives in, under `docs/standards/`. */
-  standard: string;
-  /** The banned forms. Each is matched against comment-stripped source. */
-  forms: RegExp[];
-  /** Which files the rule reads, as paths relative to `apps/api`. Every
-   *  scanned file when absent. */
-  applies?: (file: string) => boolean;
-  /** Files where the form is the point rather than a violation. */
-  allowed?: string[];
-  /** Lines that break the rule, each of which must be caught. */
-  catches: string[];
-  /** A comment that only mentions the form, and must be ignored. */
-  ignores: string;
-}
-
 const isTest = (file: string) => file.endsWith(".test.ts");
 /** Production code: neither a test nor the helpers under `src/test/`. */
 const isProduction = (file: string) =>
@@ -73,7 +63,9 @@ const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']`;
 /** A field of the SDK's usage object or of `AiUsage`, as a whole word. */
 const USAGE_FIELD = String.raw`(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b`;
 
-const SOURCE_RULES: SourceRule[] = [
+/** The source rules. Each rule's `applies` and `allowed` name paths relative
+ *  to `apps/api`. */
+const SOURCE_RULES: Rule[] = [
   {
     name: 'Role values read USER_ROLE from @ticket/shared, in tests and fixtures too: no bare "admin" / "agent" in a role field, a comparison, a case, a cast, a two-role list, or an activity fromValue/toValue (a handoff target reads HANDOFF_TARGET)',
     standard: "conventions.md",
@@ -190,46 +182,27 @@ const SOURCE_RULES: SourceRule[] = [
   },
 ];
 
-/** Every `.ts` file the guard reads, relative to `apps/api`: `src/` less the
- *  generated client, the seed scripts under `prisma/`, and `prisma.config.ts`. */
-function sourceFiles(): string[] {
-  const files: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(path.join(API_ROOT, dir), {
-      withFileTypes: true,
-    })) {
-      const rel = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) {
-        if (rel !== "src/generated") walk(rel);
-      } else if (entry.name.endsWith(".ts")) files.push(rel);
-    }
-  };
-  walk("src");
-  for (const entry of readdirSync(path.join(API_ROOT, "prisma"))) {
-    if (entry.endsWith(".ts")) files.push(`prisma/${entry}`);
-  }
-  files.push("prisma.config.ts");
-  return files.filter((file) => file !== SELF);
-}
+/** Every file git tracks, relative to the repository root. */
+const TRACKED = trackedFiles(REPO_ROOT);
 
-/** The 1-based line numbers in `code` where any of the rule's forms matches,
- *  each once however many forms match it. */
-function offendingLines(rule: SourceRule, code: string): number[] {
-  const lines = new Set<number>();
-  for (const form of rule.forms) {
-    // The form's own flags kept: a `/u` or `/i` form must not lose them here.
-    const global = new RegExp(form.source, `${form.flags.replace("g", "")}g`);
-    for (const match of code.matchAll(global)) {
-      lines.add(code.slice(0, match.index).split("\n").length);
-    }
-  }
-  return [...lines].sort((a, b) => a - b);
-}
+/** Every `.ts` file the source rules read, relative to `apps/api`: those git
+ *  tracks under `src/` and `prisma/` (the seed scripts), and
+ *  `prisma.config.ts`. The generated client is not tracked, so it is not
+ *  read. */
+const FILES = TRACKED.flatMap((file) =>
+  file.startsWith("apps/api/") ? [file.slice("apps/api/".length)] : [],
+).filter(
+  (file) =>
+    file.endsWith(".ts") &&
+    (file.startsWith("src/") ||
+      file.startsWith("prisma/") ||
+      file === "prisma.config.ts") &&
+    file !== SELF,
+);
 
 const label = (rule: { name: string; standard: string }) =>
   `${rule.name} (docs/standards/${rule.standard})`;
 
-const FILES = sourceFiles();
 const CODE = new Map(
   FILES.map((file) => [
     file,
@@ -239,7 +212,7 @@ const CODE = new Map(
 
 test("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
-  // walk is a green run that checked nothing.
+  // list is a green run that checked nothing.
   expect(FILES.length).toBeGreaterThan(100);
   expect(FILES).toContain("src/index.ts");
   expect(FILES).toContain("src/ai/provider.ts");
@@ -248,38 +221,15 @@ test("the guard reads the tree it means to", () => {
   expect(FILES.some((file) => file.startsWith("src/generated/"))).toBe(false);
 });
 
-for (const rule of SOURCE_RULES) {
-  describe(`${rule.standard}: ${rule.name}`, () => {
-    test("holds across apps/api", () => {
-      const offenders: string[] = [];
-      for (const file of FILES) {
-        if (rule.applies?.(file) === false || rule.allowed?.includes(file)) {
-          continue;
-        }
-        for (const line of offendingLines(rule, CODE.get(file)!)) {
-          offenders.push(`${file}:${line} breaks: ${label(rule)}`);
-        }
-      }
-      expect(offenders).toEqual([]);
-    });
-
-    test("its allowlist names files that exist", () => {
-      // A renamed exemption would leave the rule guarding nothing there and
-      // failing nothing, which reads exactly like a clean tree.
-      for (const file of rule.allowed ?? []) expect(FILES).toContain(file);
-    });
-
-    test.each(rule.catches)("catches %s", (line) => {
-      expect(offendingLines(rule, stripComments(line).code)).toEqual([1]);
-    });
-
-    test("ignores a comment that only mentions the form", () => {
-      expect(offendingLines(rule, stripComments(rule.ignores).code)).toEqual(
-        [],
-      );
-    });
-  });
-}
+checkRules(
+  SOURCE_RULES,
+  { code: CODE, across: "apps/api" },
+  {
+    describe,
+    test,
+    expect,
+  },
+);
 
 /* ── Repo config ─────────────────────────────────────────────────────────── */
 
@@ -341,16 +291,6 @@ const AGENT = (name: string, extra = "") =>
 
 /** The workspaces the product-name rule reads, repo-relative. */
 const BRAND_SCOPE = ["apps/api", "apps/web"];
-/** What the walk never enters: installed, built or generated output, and
- *  dot-directories (tool caches). */
-const BRAND_SKIP_DIRS = new Set([
-  "node_modules",
-  "dist",
-  "generated",
-  "coverage",
-  "test-results",
-  "playwright-report",
-]);
 /** The text files a name could be typed into. Not `.env*`: a local env file
  *  holds live secrets, and nothing reads it here. */
 const BRAND_FILE =
@@ -392,27 +332,20 @@ const BRAND_ALLOWANCES: Record<string, { count: number; reason: string }> = {
 };
 
 /**
- * Every text file under `BRAND_SCOPE`, keyed by repo-relative path. This file
- * is read too: its fixtures build the name from the constants rather than
- * typing it. The walk reads the disk, as `sourceFiles` does, so an untracked
- * file under the two apps fails the push before it is committed.
+ * Every tracked text file under `BRAND_SCOPE`, keyed by repo-relative path.
+ * This file is read too: its fixtures build the name from the constants rather
+ * than typing it. Tracked files, as the source rules read (#567), so installed,
+ * built and generated output is never read and needs no exclusion; an
+ * untracked file is read once it is added.
  */
 function brandScopeFiles(): FileContents {
-  const paths: string[] = [];
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(path.join(REPO_ROOT, dir), {
-      withFileTypes: true,
-    })) {
-      const rel = `${dir}/${entry.name}`;
-      if (entry.isDirectory()) {
-        if (!BRAND_SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) {
-          walk(rel);
-        }
-      } else if (BRAND_FILE.test(entry.name)) paths.push(rel);
-    }
-  };
-  for (const dir of BRAND_SCOPE) walk(dir);
-  return readRepo(...paths);
+  return readRepo(
+    ...TRACKED.filter(
+      (file) =>
+        BRAND_SCOPE.some((dir) => file.startsWith(`${dir}/`)) &&
+        BRAND_FILE.test(file.slice(file.lastIndexOf("/") + 1)),
+    ),
+  );
 }
 
 /** The 1-based line of each place `text` names the product. */
@@ -616,7 +549,7 @@ const CONFIG_RULES: ConfigRule[] = [
 ];
 
 test("the product-name rule reads the tree it means to", () => {
-  // An empty walk would pass every file it did not read.
+  // An empty list would pass every file it did not read.
   const files = Object.keys(brandScopeFiles());
   expect(files.length).toBeGreaterThan(400);
   expect(files).toContain("apps/api/src/auth.ts");
