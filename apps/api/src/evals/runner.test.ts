@@ -12,13 +12,11 @@
  * **translation** — an `AutoReplyResult` into an outcome, an outcome into a
  * match, five of them into a rate — not what the model says; but each result
  * is now one `autoReply` really returns for a scripted answer, so a verdict
- * this file asserts is one the real checks can reach. Until #580 the file
- * stubbed `autoReply` through a one-line seam, `./reply-to-case`, and could
- * script results production never produces. The classifier the runner asks
- * first is real too since #656, scripted on the same fake: each repeat makes
- * two model calls, and each feature gets its own scripted answer. The model half
- * is measured by running the thing, which is what the harness is for, and
- * exercised end to end against the E2E suite's fake provider in
+ * this file asserts is one the real checks can reach. The classifier the
+ * runner asks first is real too since #656, scripted on the same fake: each
+ * repeat makes two model calls, and each feature gets its own scripted answer.
+ * The model half is measured by running the thing, which is what the harness
+ * is for, and exercised end to end against the E2E suite's fake provider in
  * `tests/e2e/evals.spec.ts`.
  *
  * The R12 assertion is the interesting one and it is deliberately made against

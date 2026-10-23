@@ -148,8 +148,7 @@ const realSummarize = { ...summarizeModule };
 // real `isPolishConfigured`, and a factory on its specifier is what that file
 // imports whenever this one loads first (#303) — see the seam's header. This
 // replaces the seam's one export outright and never delegates to it, so there
-// is nothing to spread. Until #578 it replaced `polishReply` beside it, the
-// rewrite itself; the route now calls the real `polishDraft`, and the model
+// is nothing to spread. The route calls the real `polishDraft`, and the model
 // under it is scripted instead.
 await mock.module("../ai/polish-reply", () => ({
   isPolishReplyConfigured: () => configured,

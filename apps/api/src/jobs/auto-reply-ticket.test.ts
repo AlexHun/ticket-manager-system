@@ -34,7 +34,7 @@ import { sendEmailStub, stubSendEmail } from "../test/send-email";
  * so a file that links the job before or after this one sees the genuine
  * answer (testing-api.md). The model is the preload's scripted fake, so the
  * reply is the real `autoReply`'s, checks and all, over a corpus this file
- * seeds; until #580 a second wrapper here stood in for it.
+ * seeds.
  */
 
 type Tx = Prisma.TransactionClient;

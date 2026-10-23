@@ -5,11 +5,9 @@ import type { Prisma } from "../db";
  * nothing else.
  *
  * A module of its own so the job's test has a specifier nothing else loads for
- * real (`docs/adr/0016`, testing-api.md): only the job imports this. It held a
- * second step until #580, `draftReply`, a one-line shim over `autoReply` that
- * existed so the test could answer for the model without registering
- * `../ai/auto-reply`, which `ai/auto-reply.test.ts` tests. The test scripts the
- * preload's fake model now, and the job calls `autoReply` itself.
+ * real (`docs/adr/0016`, testing-api.md): only the job imports this. The
+ * model's answer is not a step here: the test scripts it on the preload's fake
+ * model (`../test/model`), and the job calls `autoReply` itself.
  */
 
 /**

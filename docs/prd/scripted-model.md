@@ -1,6 +1,6 @@
 # PRD: One scripted model for every API test that needs an answer
 
-**Status:** Draft Â· **Author:** Aleksei Hunich Â· **Date:** 2026-10-16
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-16
 
 ## Problem
 
@@ -109,12 +109,12 @@ module registry.
 ## Open questions
 
 - [ ] Where does the fake attach: `openaiModel`, or the provider object it
-      builds? â€” _affects R1_, decide in the plan
+      builds? — _affects R1_, decide in the plan
 - [ ] Is a call routed to its feature by the model id, or by order? Several
-      tests make a classify call and an auto-reply call in one flow. â€”
+      tests make a classify call and an auto-reply call in one flow. —
       _affects R1, R4_, decide in the plan
 - [ ] **Assumed:** a model call that escapes the fake still fails at the closed
       port, so nothing reaches OpenAI even if R1 has a gap.
 - [ ] How does `provider.test.ts` still test the real `openaiModel` once the
-      preload replaces the model for the whole process? â€” _affects R1_,
+      preload replaces the model for the whole process? — _affects R1_,
       decide in the plan
