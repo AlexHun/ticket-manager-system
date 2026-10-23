@@ -9,8 +9,10 @@
 # leaves every web server up — which is exactly how :4000 ends up with two
 # listeners.
 #
-# node.exe is deliberately untouched: on this machine those are MCP servers, not
-# dev servers.
+# MCP servers are spared, whatever runs them. node.exe is never swept, and a
+# bun/bunx process is spared when its own command line or an ancestor's names an
+# MCP server: `.mcp.json` starts chrome-devtools through `bunx`, and a sweep
+# that took it disconnected the session's browser tools mid-run.
 
 $ErrorActionPreference = "Stop"
 $ports = 3001, 3002, 4000, 4001
@@ -27,19 +29,48 @@ while ($walk) {
   if ($selfChain -contains $walk) { break }
 }
 
-$targets = @(
-  Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='bunx.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $selfChain -notcontains $_.ProcessId }
+$byId = @{}
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ForEach-Object { $byId[$_.ProcessId] = $_ }
+
+function Test-UnderMcp($proc) {
+  $seen = @()
+  while ($proc -and $seen -notcontains $proc.ProcessId) {
+    # A package name like `chrome-devtools-mcp`, not a flag: `--mcp-config` on a
+    # Claude Code ancestor would otherwise spare every dev server it started.
+    if ($proc.CommandLine -match "[\w.]-mcp\b|mcp-server|@modelcontextprotocol/") { return $true }
+    $seen += $proc.ProcessId
+    $proc = $byId[$proc.ParentProcessId]
+  }
+  return $false
+}
+
+$bunProcs = @(
+  $byId.Values |
+    Where-Object { ($_.Name -eq "bun.exe" -or $_.Name -eq "bunx.exe") -and $selfChain -notcontains $_.ProcessId }
 )
+$spared = @($bunProcs | Where-Object { Test-UnderMcp $_ })
+$targets = @($bunProcs | Where-Object { $spared -notcontains $_ })
+
+if ($spared.Count -gt 0) {
+  Write-Host "Spared $($spared.Count) bun/bunx process(es) running an MCP server."
+}
 
 if ($targets.Count -eq 0) {
   Write-Host "No bun/bunx dev servers running."
 } else {
-  $mb = [math]::Round((($targets | Measure-Object WorkingSetSize -Sum).Sum) / 1MB)
+  # Counted by what is gone afterwards, not by what was asked to stop: a process
+  # Windows refuses to end stays in the list and is named below.
   foreach ($t in $targets) {
     try { Stop-Process -Id $t.ProcessId -Force -ErrorAction Stop } catch { }
   }
-  Write-Host "Stopped $($targets.Count) bun/bunx process(es), freed ~$mb MB."
+  Start-Sleep -Milliseconds 300
+  $survivors = @($targets | Where-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue })
+  $stopped = @($targets | Where-Object { $survivors -notcontains $_ })
+  $mb = [math]::Round((($stopped | Measure-Object WorkingSetSize -Sum).Sum) / 1MB)
+  Write-Host "Stopped $($stopped.Count) bun/bunx process(es), freed ~$mb MB."
+  foreach ($s in $survivors) {
+    Write-Host "  could not stop PID $($s.ProcessId): $($s.CommandLine)"
+  }
 }
 
 Start-Sleep -Milliseconds 600
