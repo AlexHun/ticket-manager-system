@@ -23,10 +23,10 @@ import { stripComments } from "@ticket/repo-scan/strip-comments";
  * **Paths resolve against tracked files, never the working directory.** A
  * developer's untracked and gitignored files would otherwise make a citation
  * green on their machine and red on CI. The list is `trackedFiles`, from
- * `@ticket/repo-scan`, which the standards guards read too (#567). The
- * documents themselves are read from disk, and every line split tolerates
- * `\r\n`, so a CRLF Windows checkout and an LF CI one index the same citations
- * at the same lines.
+ * `@ticket/repo-scan`, which the repo's other checks of its own files read
+ * too (#567). The documents themselves are read from disk, and every line
+ * split tolerates `\r\n`, so a CRLF Windows checkout and an LF CI one index
+ * the same citations at the same lines.
  *
  * Nothing here touches the database or the network; `renameHints` reads the
  * local history.

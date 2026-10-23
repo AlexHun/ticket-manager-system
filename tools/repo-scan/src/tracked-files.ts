@@ -4,9 +4,10 @@ import { repositoryFreeEnv } from "./git-env.ts";
 /**
  * The files git tracks under `root`, as `/`-separated paths relative to it.
  *
- * Every check that reads the repository's own source reads this list (#567,
- * `docs/prd/one-repo-scanner.md` R5): both standards guards,
- * `validation-copy.test.ts`, `git-spawn-env.test.ts` and the doc citations.
+ * Every check that reads the repository's own files reads this list (#567,
+ * `docs/prd/one-repo-scanner.md` R5): both standards guards, their config
+ * rules included, `validation-copy.test.ts`, `git-spawn-env.test.ts` and the
+ * doc citations.
  * So a local run checks what CI checks, and a generated or ignored directory
  * needs no exclusion written by hand. The cost is that an untracked file a
  * developer has not yet added is not read until it is, which the PRD accepts:
@@ -24,4 +25,13 @@ export function trackedFiles(root: string): string[] {
   })
     .split("\0")
     .filter(Boolean);
+}
+
+/** The paths in `files` under `dir`, relative to it: what a check reads when
+ *  its own paths are named from a workspace or a directory, not the root. */
+export function filesUnder(files: readonly string[], dir: string): string[] {
+  const prefix = `${dir.replace(/\/$/, "")}/`;
+  return files.flatMap((file) =>
+    file.startsWith(prefix) ? [file.slice(prefix.length)] : [],
+  );
 }

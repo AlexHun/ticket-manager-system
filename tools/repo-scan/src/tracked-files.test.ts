@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { trackedFiles } from "./tracked-files.ts";
+import { filesUnder, trackedFiles } from "./tracked-files.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
@@ -23,5 +23,17 @@ describe("trackedFiles", () => {
     // `node_modules` is ignored and installed in every checkout that runs this.
     const files = trackedFiles(REPO_ROOT);
     expect(files.some((file) => file.includes("node_modules/"))).toBe(false);
+  });
+});
+
+describe("filesUnder", () => {
+  test("keeps the files under a directory, relative to it, and nothing that only shares its prefix", () => {
+    const files = [
+      "apps/web/src/a.ts",
+      "apps/webhooks/b.ts",
+      "apps/web",
+      "c.ts",
+    ];
+    expect(filesUnder(files, "apps/web")).toEqual(["src/a.ts"]);
   });
 });

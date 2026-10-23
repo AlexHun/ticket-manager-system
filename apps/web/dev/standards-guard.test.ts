@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { checkRules, type Rule } from "@ticket/repo-scan/rules";
+import { appliesTo, checkRules, type Rule } from "@ticket/repo-scan/rules";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
-import { trackedFiles } from "@ticket/repo-scan/tracked-files";
+import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * The frontend standards a check can decide without judgement, enforced here
@@ -213,9 +213,9 @@ const rootOf = (file: string) => (isE2e(file) ? REPO_ROOT : WEB_ROOT);
  *  repository root. */
 const TRACKED = trackedFiles(REPO_ROOT);
 const FILES = [
-  ...TRACKED.flatMap((file) =>
-    file.startsWith("apps/web/") ? [file.slice("apps/web/".length)] : [],
-  ).filter((file) => /^(?:src|dev)\/.*\.tsx?$/.test(file)),
+  ...filesUnder(TRACKED, "apps/web").filter((file) =>
+    /^(?:src|dev)\/.*\.tsx?$/.test(file),
+  ),
   ...TRACKED.filter((file) => isE2e(file) && file.endsWith(".ts")),
 ].filter((file) => file !== SELF);
 
@@ -243,7 +243,7 @@ checkRules(
     code: CODE,
     across: (rule) => `src/ and dev/${rule.e2e ? ", and tests/e2e" : ""}`,
     reads: (rule, file) =>
-      isE2e(file) ? rule.e2e === true : rule.applies?.(file) !== false,
+      isE2e(file) ? rule.e2e === true : appliesTo(rule, file),
   },
   { describe, test, expect },
 );

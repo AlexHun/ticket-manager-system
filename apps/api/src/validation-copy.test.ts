@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { TICKET_INPUT_MESSAGE } from "@ticket/shared";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
-import { trackedFiles } from "@ticket/repo-scan/tracked-files";
+import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * Every validation message in `@ticket/core` that a person can see ends in a
@@ -23,7 +23,7 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
  */
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
-const SCHEMAS = "packages/core/src/schemas/";
+const SCHEMAS = "packages/core/src/schemas";
 
 /** A `"…"`, `'…'` or template literal, matched left to right so a quote of one
  *  kind inside a literal of another stays part of it. */
@@ -107,12 +107,10 @@ const EXEMPT: Record<string, Record<string, string>> = {
   },
 };
 
-/** Each tracked schema file, named as `EXEMPT` names it: relative to
- *  `SCHEMAS`. */
-const schemaFiles = trackedFiles(REPO_ROOT).flatMap((file) =>
-  file.startsWith(SCHEMAS) && file.endsWith(".ts")
-    ? [file.slice(SCHEMAS.length)]
-    : [],
+/** Each tracked schema file directly in `SCHEMAS`, named as `EXEMPT` names it:
+ *  relative to that directory. */
+const schemaFiles = filesUnder(trackedFiles(REPO_ROOT), SCHEMAS).filter(
+  (file) => /^[^/]+\.ts$/.test(file),
 );
 const scanned = schemaFiles.map((file) => ({
   file,
@@ -134,7 +132,7 @@ describe("validation messages end in a full stop (copy.md, #518)", () => {
       messages
         .filter((m) => !m.text.endsWith("."))
         .filter((m) => EXEMPT[file]?.[m.text] === undefined)
-        .map((m) => `${SCHEMAS}${file}:${m.line}  "${m.text}"`),
+        .map((m) => `${SCHEMAS}/${file}:${m.line}  "${m.text}"`),
     );
     expect(missing).toEqual([]);
   });

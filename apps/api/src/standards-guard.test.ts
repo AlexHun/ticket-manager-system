@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { BRAND_ATTRIBUTIVE, BRAND_NAME, BRAND_SHORT } from "@ticket/shared";
-import { checkRules, type Rule } from "@ticket/repo-scan/rules";
+import { checkRules, type Rule, ruleLabel } from "@ticket/repo-scan/rules";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
-import { trackedFiles } from "@ticket/repo-scan/tracked-files";
+import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * The backend, AI, API-testing and repo-config standards a check can decide
@@ -26,9 +26,9 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
  * into tests are `@ticket/repo-scan/rules`, which the web guard hands its own
  * table to (#567).
  *
- * **It reads the files git tracks** (`trackedFiles`, #567), so a local run
- * checks what CI checks, and nothing generated or ignored needs excluding by
- * name.
+ * **Every rule here reads the files git tracks** (`trackedFiles`, #567), the
+ * config rules included, so a local run checks what CI checks, and nothing
+ * generated or ignored needs excluding by name.
  *
  * **The repo-wide config rules live here rather than in the web guard** because
  * this suite runs on pre-push as well as in CI, and the web suite only in CI:
@@ -186,22 +186,16 @@ const SOURCE_RULES: Rule[] = [
 const TRACKED = trackedFiles(REPO_ROOT);
 
 /** Every `.ts` file the source rules read, relative to `apps/api`: those git
- *  tracks under `src/` and `prisma/` (the seed scripts), and
+ *  tracks under `src/`, the seed scripts directly in `prisma/`, and
  *  `prisma.config.ts`. The generated client is not tracked, so it is not
  *  read. */
-const FILES = TRACKED.flatMap((file) =>
-  file.startsWith("apps/api/") ? [file.slice("apps/api/".length)] : [],
-).filter(
+const FILES = filesUnder(TRACKED, "apps/api").filter(
   (file) =>
-    file.endsWith(".ts") &&
-    (file.startsWith("src/") ||
-      file.startsWith("prisma/") ||
+    (/^src\/.*\.ts$/.test(file) ||
+      /^prisma\/[^/]+\.ts$/.test(file) ||
       file === "prisma.config.ts") &&
     file !== SELF,
 );
-
-const label = (rule: { name: string; standard: string }) =>
-  `${rule.name} (docs/standards/${rule.standard})`;
 
 const CODE = new Map(
   FILES.map((file) => [
@@ -437,8 +431,8 @@ const CONFIG_RULES: ConfigRule[] = [
     standard: "conventions.md",
     read: () =>
       readRepo(
-        ...readdirSync(path.join(REPO_ROOT, AGENTS_DIR))
-          .filter((entry) => entry.endsWith(".md"))
+        ...filesUnder(TRACKED, AGENTS_DIR)
+          .filter((entry) => /^[^/]+\.md$/.test(entry))
           .map((entry) => `${AGENTS_DIR}/${entry}`),
       ),
     problems: (files) => {
@@ -566,7 +560,7 @@ for (const rule of CONFIG_RULES) {
       expect(
         rule
           .problems(rule.read())
-          .map((problem) => `${problem} breaks: ${label(rule)}`),
+          .map((problem) => `${problem} breaks: ${ruleLabel(rule)}`),
       ).toEqual([]);
     });
 

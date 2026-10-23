@@ -27,7 +27,7 @@ export interface Rule {
   /** Which of the guard's files the rule reads. Every one when absent. */
   applies?: (file: string) => boolean;
   /** Files where the form is the point rather than a violation. Each must be
-   *  a file the guard reads, or the check below fails. */
+   *  a file the guard reads, or `checkRules`' allowlist test fails. */
   allowed?: string[];
   /** Lines that break the rule, each of which must be caught. */
   catches: string[];
@@ -68,7 +68,10 @@ export interface RuleScan<R extends Rule = Rule> {
   reads?: (rule: R, file: string) => boolean;
 }
 
-const appliesTo = (rule: Rule, file: string) => rule.applies?.(file) !== false;
+/** Whether `rule`'s own `applies` reads `file`: every file when it is absent.
+ *  What `checkRules` asks when a scan has no `reads` of its own. */
+export const appliesTo = (rule: Rule, file: string): boolean =>
+  rule.applies?.(file) !== false;
 
 /** The parts of `bun:test` and Vitest the runner registers its tests with. */
 export interface TestRunner {
@@ -79,7 +82,9 @@ export interface TestRunner {
   };
 }
 
-const label = (rule: Rule) => `${rule.name} (docs/standards/${rule.standard})`;
+/** A rule named as a failure names it: its bullet, and the standards file. */
+export const ruleLabel = (rule: { name: string; standard: string }): string =>
+  `${rule.name} (docs/standards/${rule.standard})`;
 
 /**
  * One `describe` per rule, holding five kinds of test: the rule holds across
@@ -103,7 +108,7 @@ export function checkRules<R extends Rule>(
         for (const [file, code] of scan.code) {
           if (!reads(rule, file) || rule.allowed?.includes(file)) continue;
           for (const line of offendingLines(rule, code)) {
-            offenders.push(`${file}:${line} breaks: ${label(rule)}`);
+            offenders.push(`${file}:${line} breaks: ${ruleLabel(rule)}`);
           }
         }
         expect(offenders).toEqual([]);
@@ -115,7 +120,7 @@ export function checkRules<R extends Rule>(
             .filter((file) => !scan.code.has(file))
             .map(
               (file) =>
-                `${file} is allowed by, and not read for: ${label(rule)}`,
+                `${file} is allowlisted, and the guard does not read it: ${ruleLabel(rule)}`,
             ),
         ).toEqual([]);
       });
