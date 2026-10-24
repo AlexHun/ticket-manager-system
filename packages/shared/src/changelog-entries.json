@@ -1063,5 +1063,15 @@
     "version": "0.1.270",
     "date": "2026-10-23",
     "title": "Settle the #651 review findings"
+  },
+  {
+    "version": "0.1.276",
+    "date": "2026-10-24",
+    "title": "Cut a sign-off welded onto the last step (#645)"
+  },
+  {
+    "version": "0.1.276",
+    "date": "2026-10-24",
+    "title": "Test a step's welded tail by the step's own rule (#645)"
   }
 ]
