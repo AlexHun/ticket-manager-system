@@ -9,6 +9,7 @@ import {
   ruleLabel,
   underAny,
 } from "@ticket/repo-scan/rules";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
@@ -206,8 +207,10 @@ const SOURCE_RULES: Rule[] = [
   },
 ];
 
-/** Every file git tracks, relative to the repository root. */
-const TRACKED = trackedFiles(REPO_ROOT);
+/** Every file git tracks, relative to the repository root. None in the develop
+ *  image, which has no `.git` or `git`; every check that reads the tree skips
+ *  there. */
+const TRACKED = partialCheckout ? [] : trackedFiles(REPO_ROOT);
 
 const CODE = ruleCode(SOURCE_RULES, {
   root: REPO_ROOT,
@@ -215,7 +218,7 @@ const CODE = ruleCode(SOURCE_RULES, {
   tracked: TRACKED,
 });
 
-test("the guard reads the tree it means to", () => {
+test.skipIf(partialCheckout)("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
   // list is a green run that checked nothing. Each rule's own roots check
   // asks the same of every root it names.
@@ -228,7 +231,11 @@ test("the guard reads the tree it means to", () => {
   expect(files.some((file) => file.includes("/generated/"))).toBe(false);
 });
 
-checkRules(SOURCE_RULES, CODE, { describe, test, expect });
+checkRules(SOURCE_RULES, CODE, {
+  describe,
+  test: test.skipIf(partialCheckout),
+  expect,
+});
 
 /* ── Repo config ─────────────────────────────────────────────────────────── */
 
@@ -606,24 +613,27 @@ const CONFIG_RULES: ConfigRule[] = [
   },
 ];
 
-test("the product-name rule reads the tree it means to", () => {
-  // An empty list would pass every file it did not read.
-  const files = Object.keys(brandScopeFiles());
-  expect(files.length).toBeGreaterThan(400);
-  expect(files).toContain("apps/api/src/auth.ts");
-  expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
-  expect(files).toContain("apps/web/index.html");
-  expect(files).toContain("packages/core/src/index.ts");
-  expect(files).toContain("scripts/graph.ts");
-  expect(files.some((file) => file.startsWith(`${BRAND_HOME}/`))).toBe(false);
-  // No file is skipped by name: the guard itself is read like any other.
-  expect(files).toContain(SELF);
-  expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
-});
+test.skipIf(partialCheckout)(
+  "the product-name rule reads the tree it means to",
+  () => {
+    // An empty list would pass every file it did not read.
+    const files = Object.keys(brandScopeFiles());
+    expect(files.length).toBeGreaterThan(400);
+    expect(files).toContain("apps/api/src/auth.ts");
+    expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
+    expect(files).toContain("apps/web/index.html");
+    expect(files).toContain("packages/core/src/index.ts");
+    expect(files).toContain("scripts/graph.ts");
+    expect(files.some((file) => file.startsWith(`${BRAND_HOME}/`))).toBe(false);
+    // No file is skipped by name: the guard itself is read like any other.
+    expect(files).toContain(SELF);
+    expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
+  },
+);
 
 for (const rule of CONFIG_RULES) {
   describe(`${rule.standard}: ${rule.name}`, () => {
-    test("holds in the repo", () => {
+    test.skipIf(partialCheckout)("holds in the repo", () => {
       expect(
         rule
           .problems(rule.read())

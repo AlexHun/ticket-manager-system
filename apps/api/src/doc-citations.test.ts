@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
 import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 import {
@@ -410,7 +411,9 @@ const EXEMPTIONS: Exemption[] = [
   })),
 ];
 
-const TRACKED = trackedFiles(REPO_ROOT);
+// The develop image has no `.git`, no `git` and no docs, so there the walk
+// reads nothing and the two blocks that need a repository skip.
+const TRACKED = partialCheckout ? [] : trackedFiles(REPO_ROOT);
 const TREE = new TrackedTree(TRACKED);
 const SYMBOLS = new SymbolIndex(symbolSources(REPO_ROOT, TRACKED));
 const readDoc = (doc: string) =>
@@ -418,78 +421,85 @@ const readDoc = (doc: string) =>
 const DOCS = documentsInScope(TRACKED, EXCLUDED_SKILLS, readDoc);
 const CITATIONS = DOCS.flatMap((doc) => TREE.citationsIn(doc, readDoc(doc)));
 
-describe(`Cited paths and symbols in the documents agents read exist (${STANDARD})`, () => {
-  test("the walk reads the documents it means to", () => {
-    // An empty walk is a green run that checked nothing: a directory moved,
-    // or git listed nothing.
-    expect(DOCS.length).toBeGreaterThanOrEqual(55);
-    for (const doc of [
-      "docs/standards/testing-api.md",
-      "docs/standards/frontend.md",
-      "docs/adr/0014-api-tests-run-against-a-real-postgres-in-process.md",
-      "CLAUDE.md",
-      "apps/api/CLAUDE.md",
-      "apps/web/CLAUDE.md",
-      ".claude/skills/implement/SKILL.md",
-      ".claude/agents/bulk-reader.md",
-    ]) {
-      expect(DOCS).toContain(doc);
-    }
-    expect(DOCS).not.toContain(".claude/skills/shadcn/SKILL.md");
-    expect(DOCS.filter((doc) => doc.startsWith(".agents/"))).toEqual([]);
-    // An open PRD is read; a shipped one and every plan are not.
-    expect(DOCS).toContain("docs/prd/run-projection-and-shared-vocabulary.md");
-    expect(DOCS).not.toContain("docs/prd/doc-citations.md");
-    expect(DOCS.filter((doc) => doc.startsWith("docs/plans/"))).toEqual([]);
-    const kinds = (kind: string) =>
-      CITATIONS.filter((c) => c.kind === kind).length;
-    expect(kinds("path")).toBeGreaterThan(700);
-    expect(kinds("symbol")).toBeGreaterThan(1000);
-  });
+describe.skipIf(partialCheckout)(
+  `Cited paths and symbols in the documents agents read exist (${STANDARD})`,
+  () => {
+    test("the walk reads the documents it means to", () => {
+      // An empty walk is a green run that checked nothing: a directory moved,
+      // or git listed nothing.
+      expect(DOCS.length).toBeGreaterThanOrEqual(55);
+      for (const doc of [
+        "docs/standards/testing-api.md",
+        "docs/standards/frontend.md",
+        "docs/adr/0014-api-tests-run-against-a-real-postgres-in-process.md",
+        "CLAUDE.md",
+        "apps/api/CLAUDE.md",
+        "apps/web/CLAUDE.md",
+        ".claude/skills/implement/SKILL.md",
+        ".claude/agents/bulk-reader.md",
+      ]) {
+        expect(DOCS).toContain(doc);
+      }
+      expect(DOCS).not.toContain(".claude/skills/shadcn/SKILL.md");
+      expect(DOCS.filter((doc) => doc.startsWith(".agents/"))).toEqual([]);
+      // An open PRD is read; a shipped one and every plan are not.
+      expect(DOCS).toContain(
+        "docs/prd/run-projection-and-shared-vocabulary.md",
+      );
+      expect(DOCS).not.toContain("docs/prd/doc-citations.md");
+      expect(DOCS.filter((doc) => doc.startsWith("docs/plans/"))).toEqual([]);
+      const kinds = (kind: string) =>
+        CITATIONS.filter((c) => c.kind === kind).length;
+      expect(kinds("path")).toBeGreaterThan(700);
+      expect(kinds("symbol")).toBeGreaterThan(1000);
+    });
 
-  test("every excluded skill is a skill directory", () => {
-    expect(unknownExclusions(TRACKED, EXCLUDED_SKILLS)).toEqual([]);
-  });
+    test("every excluded skill is a skill directory", () => {
+      expect(unknownExclusions(TRACKED, EXCLUDED_SKILLS)).toEqual([]);
+    });
 
-  test("the symbols resolve against the source, not an empty corpus", () => {
-    expect(SYMBOLS.resolves("requireAdmin")).toBe(true);
-    expect(SYMBOLS.resolves("TableFrame")).toBe(true);
-    // This check's own files are not source: their tables name every
-    // exempted symbol as a string.
-    expect(SYMBOLS.resolves("checkCitations")).toBe(false);
-  });
+    test("the symbols resolve against the source, not an empty corpus", () => {
+      expect(SYMBOLS.resolves("requireAdmin")).toBe(true);
+      expect(SYMBOLS.resolves("TableFrame")).toBe(true);
+      // This check's own files are not source: their tables name every
+      // exempted symbol as a string.
+      expect(SYMBOLS.resolves("checkCitations")).toBe(false);
+    });
 
-  test("every symbol exemption is history or a library or tool name", () => {
-    for (const { citation, reason } of EXEMPTIONS) {
-      if (TREE.pathOf(citation) !== undefined) continue;
-      const kind = [HISTORY, EXTERNAL].find((k) => reason.startsWith(`${k} `));
-      // The citation rides along so a failure names the exemption.
-      expect({ citation, kind }).toEqual({
-        citation,
-        kind: expect.any(String),
-      });
-    }
-  });
+    test("every symbol exemption is history or a library or tool name", () => {
+      for (const { citation, reason } of EXEMPTIONS) {
+        if (TREE.pathOf(citation) !== undefined) continue;
+        const kind = [HISTORY, EXTERNAL].find((k) =>
+          reason.startsWith(`${k} `),
+        );
+        // The citation rides along so a failure names the exemption.
+        expect({ citation, kind }).toEqual({
+          citation,
+          kind: expect.any(String),
+        });
+      }
+    });
 
-  test("every path and symbol a document in scope cites exists", () => {
-    const report = checkCitations(
-      CITATIONS,
-      TREE,
-      SYMBOLS,
-      EXEMPTIONS,
-      renameHints(REPO_ROOT, TREE, SYMBOLS),
-    );
-    expect(report.stale).toEqual([]);
-    expect(report.unusedExemptions).toEqual([]);
-  });
+    test("every path and symbol a document in scope cites exists", () => {
+      const report = checkCitations(
+        CITATIONS,
+        TREE,
+        SYMBOLS,
+        EXEMPTIONS,
+        renameHints(REPO_ROOT, TREE, SYMBOLS),
+      );
+      expect(report.stale).toEqual([]);
+      expect(report.unusedExemptions).toEqual([]);
+    });
 
-  test("every exemption names a document in scope, and a reason", () => {
-    for (const exemption of EXEMPTIONS) {
-      expect(DOCS).toContain(exemption.doc);
-      expect(exemption.reason.length).toBeGreaterThan(0);
-    }
-  });
-});
+    test("every exemption names a document in scope, and a reason", () => {
+      for (const exemption of EXEMPTIONS) {
+        expect(DOCS).toContain(exemption.doc);
+        expect(exemption.reason.length).toBeGreaterThan(0);
+      }
+    });
+  },
+);
 
 /* ── The check, shown what it must catch and what it must pass ───────────── */
 
@@ -869,231 +879,238 @@ describe("what counts as a path", () => {
 
 /* ── The failure names the rename, from git history ──────────────────────── */
 
-describe("a stale citation that git history shows was renamed", () => {
-  /**
-   * A repository of its own, so the hint is shown a rename this test made
-   * rather than one this repo happens to have. Git runs with no global or
-   * system config, so a developer's settings cannot change what it records.
-   */
-  const scratch = mkdtempSync(path.join(tmpdir(), "doc-citations-"));
-  const repo = path.join(scratch, "full");
-  const shallow = path.join(scratch, "shallow");
-  const emptyConfig = path.join(scratch, "gitconfig");
-  writeFileSync(emptyConfig, "");
-  // Free of the repository a hook's environment names, or `git init` and
-  // every commit below would land in it (#531).
-  const env = {
-    ...repositoryFreeEnv(),
-    GIT_CONFIG_GLOBAL: emptyConfig,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_AUTHOR_NAME: "Planted",
-    GIT_AUTHOR_EMAIL: "planted@example.com",
-    GIT_COMMITTER_NAME: "Planted",
-    GIT_COMMITTER_EMAIL: "planted@example.com",
-  };
-  const git = (cwd: string, ...args: string[]) =>
-    execFileSync("git", args, { cwd, env, encoding: "utf8" }).trim();
-  const write = (file: string, text: string) =>
-    writeFileSync(path.join(repo, file), text);
-  // Each git call is a process, ~60ms or more on Windows, so the hashes are
-  // read once at the end rather than after every commit.
-  const commit = (message: string) => {
-    git(repo, "add", "-A");
-    git(repo, "commit", "-q", "-m", message);
-  };
+describe.skipIf(partialCheckout)(
+  "a stale citation that git history shows was renamed",
+  () => {
+    /**
+     * A repository of its own, so the hint is shown a rename this test made
+     * rather than one this repo happens to have. Git runs with no global or
+     * system config, so a developer's settings cannot change what it records.
+     */
+    const scratch = mkdtempSync(path.join(tmpdir(), "doc-citations-"));
+    const repo = path.join(scratch, "full");
+    const shallow = path.join(scratch, "shallow");
+    const emptyConfig = path.join(scratch, "gitconfig");
+    writeFileSync(emptyConfig, "");
+    // Free of the repository a hook's environment names, or `git init` and
+    // every commit below would land in it (#531).
+    const env = {
+      ...repositoryFreeEnv(),
+      GIT_CONFIG_GLOBAL: emptyConfig,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_AUTHOR_NAME: "Planted",
+      GIT_AUTHOR_EMAIL: "planted@example.com",
+      GIT_COMMITTER_NAME: "Planted",
+      GIT_COMMITTER_EMAIL: "planted@example.com",
+    };
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", args, { cwd, env, encoding: "utf8" }).trim();
+    const write = (file: string, text: string) =>
+      writeFileSync(path.join(repo, file), text);
+    // Each git call is a process, ~60ms or more on Windows, so the hashes are
+    // read once at the end rather than after every commit.
+    const commit = (message: string) => {
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", message);
+    };
 
-  // A move is a plain rename that the next `add -A` stages: git records no
-  // renames either way, and `log` finds them by content.
-  const move = (from: string, to: string) =>
-    renameSync(path.join(repo, from), path.join(repo, to));
-  // The hook's eleven git processes take ~1.2s on a Windows dev machine, the
-  // clone dearer than the rest, and under memory pressure ran past bun's 5s
-  // default, blocking a push (#614). The hook and every test here that starts
-  // git have this timeout instead.
-  const GIT_TIMEOUT_MS = 30_000;
+    // A move is a plain rename that the next `add -A` stages: git records no
+    // renames either way, and `log` finds them by content.
+    const move = (from: string, to: string) =>
+      renameSync(path.join(repo, from), path.join(repo, to));
+    // The hook's eleven git processes take ~1.2s on a Windows dev machine, the
+    // clone dearer than the rest, and under memory pressure ran past bun's 5s
+    // default, blocking a push (#614). The hook and every test here that starts
+    // git have this timeout instead.
+    const GIT_TIMEOUT_MS = 30_000;
 
-  // Built in `beforeAll` rather than in the describe body, so a run filtered
-  // to other tests starts no git, and a git failure fails these tests alone.
-  let movedIn = "";
-  let renamedIn = "";
-  beforeAll(() => {
-    mkdirSync(path.join(repo, "src"), { recursive: true });
-    git(repo, "init", "-q");
-    write(
-      "src/provider.ts",
-      'export const TABLE_FRAME = "frame";\nexport const frame = () => TABLE_FRAME;\n',
-    );
-    write("src/kept.ts", "export const keptName = 1;\n");
-    write("src/index.ts", "export {\n  TABLE_FRAME,\n} from './provider';\n");
-    // Two files that share a name, each renamed to something else.
-    mkdirSync(path.join(repo, "a"));
-    mkdirSync(path.join(repo, "b"));
-    write("a/util.ts", "export const alpha = 'the first util';\n");
-    write("b/util.ts", "export const beta = 'the second util, unlike it';\n");
-    commit("add the provider");
-    move("src/provider.ts", "src/llm.ts");
-    move("a/util.ts", "a/helpers.ts");
-    move("b/util.ts", "b/tools.ts");
-    commit("rename the provider and the utils");
-    write(
-      "src/llm.ts",
-      '// See TABLE_FRAME.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
-    );
-    commit("rename the constant");
-    // The last commit to touch the old name renames it in a comment, and swaps
-    // a line that is the name alone for another lone name: neither is the
-    // rename.
-    write(
-      "src/llm.ts",
-      '// See TableFrame.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
-    );
-    write("src/index.ts", "export {\n  frame,\n} from './llm';\n");
-    commit("fix the comment and the index");
-    [, renamedIn = "", movedIn = ""] = git(repo, "log", "--format=%h").split(
-      "\n",
-    );
-    git(
-      scratch,
-      "clone",
-      "-q",
-      "--depth",
-      "1",
-      pathToFileURL(repo).href,
-      shallow,
-    );
-  }, GIT_TIMEOUT_MS);
-
-  afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-
-  const DOC = "docs/standards/planted.md";
-  const MARKDOWN =
-    "See `provider.ts` and `src/provider.ts`, then `TABLE_FRAME`.\nNever `never-was.ts` or `neverWas`.\nEither `util.ts`, or `a/util.ts`.\n";
-  const staleIn = (root: string) => {
-    const files = trackedFiles(root);
-    const tree = new TrackedTree(files);
-    const symbols = new SymbolIndex(symbolSources(root, files));
-    return checkCitations(
-      tree.citationsIn(DOC, MARKDOWN),
-      tree,
-      symbols,
-      [],
-      renameHints(root, tree, symbols),
-    ).stale;
-  };
-
-  test(
-    "fails with the new name and the commit that renamed it, and a citation never renamed fails as before",
-    () => {
-      expect(staleIn(repo)).toEqual([
-        `${DOC}:1 cites \`provider.ts\`, which no tracked file matches; renamed provider.ts → src/llm.ts (${movedIn})`,
-        `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches; renamed src/provider.ts → src/llm.ts (${movedIn})`,
-        `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment; renamed TABLE_FRAME → TableFrame (${renamedIn})`,
-        `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
-        `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
-        // Two files named `util.ts` were renamed: no telling which one is meant.
-        `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
-        `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches; renamed a/util.ts → a/helpers.ts (${movedIn})`,
-      ]);
-    },
-    GIT_TIMEOUT_MS,
-  );
-
-  test(
-    "on a shallow clone still fails, naming the document, line and citation, with no hint",
-    () => {
-      expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe("true");
-      expect(staleIn(shallow)).toEqual([
-        `${DOC}:1 cites \`provider.ts\`, which no tracked file matches`,
-        `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches`,
-        `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment`,
-        `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
-        `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
-        `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
-        `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches`,
-      ]);
-    },
-    GIT_TIMEOUT_MS,
-  );
-
-  test("when git cannot run, the lookup answers nothing rather than throwing", () => {
-    // A directory that does not exist: git cannot even start in it, whatever
-    // repository the temporary directory happens to sit inside.
-    const missing = path.join(scratch, "missing");
-    const hint = renameHints(missing, PLANTED_TREE, PLANTED_SYMBOLS);
-    expect(
-      hint({
-        doc: DOC,
-        line: 1,
-        text: "provider.ts",
-        kind: "path",
-        name: "provider.ts",
-      }),
-    ).toBeUndefined();
-  });
-
-  test(
-    "asks the repository at its root even when the environment names another",
-    () => {
-      // Git runs a hook with `GIT_DIR` set; from a linked worktree, `pre-push`
-      // reached this suite with it pointing at the worktree being pushed. Every
-      // git call here inherited it, so `trackedFiles` and `renameHints` read
-      // that repository instead of `root`, and this block's own `git init` and
-      // commits landed in it: the branch gained four planted commits, and the
-      // shared config `core.bare = true` (#531). A child process, because Bun
-      // hands a child the environment it started with, not `process.env` as a
-      // test has since changed it.
-      const other = path.join(scratch, "other");
-      mkdirSync(other);
-      git(other, "init", "-q");
-      const module = Bun.resolveSync(
-        "@ticket/repo-scan/tracked-files",
-        import.meta.dir,
+    // Built in `beforeAll` rather than in the describe body, so a run filtered
+    // to other tests starts no git, and a git failure fails these tests alone.
+    let movedIn = "";
+    let renamedIn = "";
+    beforeAll(() => {
+      mkdirSync(path.join(repo, "src"), { recursive: true });
+      git(repo, "init", "-q");
+      write(
+        "src/provider.ts",
+        'export const TABLE_FRAME = "frame";\nexport const frame = () => TABLE_FRAME;\n',
       );
-      const listed = execFileSync(
-        process.execPath,
-        [
-          "-e",
-          `import { trackedFiles } from ${JSON.stringify(module)};
+      write("src/kept.ts", "export const keptName = 1;\n");
+      write("src/index.ts", "export {\n  TABLE_FRAME,\n} from './provider';\n");
+      // Two files that share a name, each renamed to something else.
+      mkdirSync(path.join(repo, "a"));
+      mkdirSync(path.join(repo, "b"));
+      write("a/util.ts", "export const alpha = 'the first util';\n");
+      write("b/util.ts", "export const beta = 'the second util, unlike it';\n");
+      commit("add the provider");
+      move("src/provider.ts", "src/llm.ts");
+      move("a/util.ts", "a/helpers.ts");
+      move("b/util.ts", "b/tools.ts");
+      commit("rename the provider and the utils");
+      write(
+        "src/llm.ts",
+        '// See TABLE_FRAME.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
+      );
+      commit("rename the constant");
+      // The last commit to touch the old name renames it in a comment, and swaps
+      // a line that is the name alone for another lone name: neither is the
+      // rename.
+      write(
+        "src/llm.ts",
+        '// See TableFrame.\nexport const TableFrame = "frame";\nexport const frame = () => TableFrame;\n',
+      );
+      write("src/index.ts", "export {\n  frame,\n} from './llm';\n");
+      commit("fix the comment and the index");
+      [, renamedIn = "", movedIn = ""] = git(repo, "log", "--format=%h").split(
+        "\n",
+      );
+      git(
+        scratch,
+        "clone",
+        "-q",
+        "--depth",
+        "1",
+        pathToFileURL(repo).href,
+        shallow,
+      );
+    }, GIT_TIMEOUT_MS);
+
+    afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+    const DOC = "docs/standards/planted.md";
+    const MARKDOWN =
+      "See `provider.ts` and `src/provider.ts`, then `TABLE_FRAME`.\nNever `never-was.ts` or `neverWas`.\nEither `util.ts`, or `a/util.ts`.\n";
+    const staleIn = (root: string) => {
+      const files = trackedFiles(root);
+      const tree = new TrackedTree(files);
+      const symbols = new SymbolIndex(symbolSources(root, files));
+      return checkCitations(
+        tree.citationsIn(DOC, MARKDOWN),
+        tree,
+        symbols,
+        [],
+        renameHints(root, tree, symbols),
+      ).stale;
+    };
+
+    test(
+      "fails with the new name and the commit that renamed it, and a citation never renamed fails as before",
+      () => {
+        expect(staleIn(repo)).toEqual([
+          `${DOC}:1 cites \`provider.ts\`, which no tracked file matches; renamed provider.ts → src/llm.ts (${movedIn})`,
+          `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches; renamed src/provider.ts → src/llm.ts (${movedIn})`,
+          `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment; renamed TABLE_FRAME → TableFrame (${renamedIn})`,
+          `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
+          `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+          // Two files named `util.ts` were renamed: no telling which one is meant.
+          `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+          `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches; renamed a/util.ts → a/helpers.ts (${movedIn})`,
+        ]);
+      },
+      GIT_TIMEOUT_MS,
+    );
+
+    test(
+      "on a shallow clone still fails, naming the document, line and citation, with no hint",
+      () => {
+        expect(git(shallow, "rev-parse", "--is-shallow-repository")).toBe(
+          "true",
+        );
+        expect(staleIn(shallow)).toEqual([
+          `${DOC}:1 cites \`provider.ts\`, which no tracked file matches`,
+          `${DOC}:1 cites \`src/provider.ts\`, which no tracked file matches`,
+          `${DOC}:1 cites \`TABLE_FRAME\`, which no source, test or config file names outside a comment`,
+          `${DOC}:2 cites \`never-was.ts\`, which no tracked file matches`,
+          `${DOC}:2 cites \`neverWas\`, which no source, test or config file names outside a comment`,
+          `${DOC}:3 cites \`util.ts\`, which no tracked file matches`,
+          `${DOC}:3 cites \`a/util.ts\`, which no tracked file matches`,
+        ]);
+      },
+      GIT_TIMEOUT_MS,
+    );
+
+    test("when git cannot run, the lookup answers nothing rather than throwing", () => {
+      // A directory that does not exist: git cannot even start in it, whatever
+      // repository the temporary directory happens to sit inside.
+      const missing = path.join(scratch, "missing");
+      const hint = renameHints(missing, PLANTED_TREE, PLANTED_SYMBOLS);
+      expect(
+        hint({
+          doc: DOC,
+          line: 1,
+          text: "provider.ts",
+          kind: "path",
+          name: "provider.ts",
+        }),
+      ).toBeUndefined();
+    });
+
+    test(
+      "asks the repository at its root even when the environment names another",
+      () => {
+        // Git runs a hook with `GIT_DIR` set; from a linked worktree, `pre-push`
+        // reached this suite with it pointing at the worktree being pushed. Every
+        // git call here inherited it, so `trackedFiles` and `renameHints` read
+        // that repository instead of `root`, and this block's own `git init` and
+        // commits landed in it: the branch gained four planted commits, and the
+        // shared config `core.bare = true` (#531). A child process, because Bun
+        // hands a child the environment it started with, not `process.env` as a
+        // test has since changed it.
+        const other = path.join(scratch, "other");
+        mkdirSync(other);
+        git(other, "init", "-q");
+        const module = Bun.resolveSync(
+          "@ticket/repo-scan/tracked-files",
+          import.meta.dir,
+        );
+        const listed = execFileSync(
+          process.execPath,
+          [
+            "-e",
+            `import { trackedFiles } from ${JSON.stringify(module)};
          console.log(JSON.stringify(trackedFiles(${JSON.stringify(repo)})));`,
-        ],
-        {
-          env: { ...env, GIT_DIR: path.join(other, ".git") },
-          encoding: "utf8",
+          ],
+          {
+            env: { ...env, GIT_DIR: path.join(other, ".git") },
+            encoding: "utf8",
+          },
+        );
+        expect(JSON.parse(listed)).toContain("src/llm.ts");
+      },
+      GIT_TIMEOUT_MS,
+    );
+
+    test("a green run performs no history lookup", () => {
+      const citations = plantedCitations(
+        "See `provider.ts` and `TableFrame`.\n",
+      );
+      const report = checkCitations(
+        citations,
+        PLANTED_TREE,
+        PLANTED_SYMBOLS,
+        [],
+        () => {
+          throw new Error("looked up a citation that resolves");
         },
       );
-      expect(JSON.parse(listed)).toContain("src/llm.ts");
-    },
-    GIT_TIMEOUT_MS,
-  );
+      expect(report).toEqual({ stale: [], unusedExemptions: [] });
+    });
 
-  test("a green run performs no history lookup", () => {
-    const citations = plantedCitations("See `provider.ts` and `TableFrame`.\n");
-    const report = checkCitations(
-      citations,
-      PLANTED_TREE,
-      PLANTED_SYMBOLS,
-      [],
-      () => {
-        throw new Error("looked up a citation that resolves");
-      },
-    );
-    expect(report).toEqual({ stale: [], unusedExemptions: [] });
-  });
-
-  test("an exempted citation performs no history lookup either", () => {
-    const citations = plantedCitations("Was one `protocol.ts`.\n");
-    const report = checkCitations(
-      citations,
-      PLANTED_TREE,
-      PLANTED_SYMBOLS,
-      [{ doc: PLANTED_DOC, citation: "protocol.ts", reason: "history" }],
-      () => {
-        throw new Error("looked up an exempted citation");
-      },
-    );
-    expect(report).toEqual({ stale: [], unusedExemptions: [] });
-  });
-});
+    test("an exempted citation performs no history lookup either", () => {
+      const citations = plantedCitations("Was one `protocol.ts`.\n");
+      const report = checkCitations(
+        citations,
+        PLANTED_TREE,
+        PLANTED_SYMBOLS,
+        [{ doc: PLANTED_DOC, citation: "protocol.ts", reason: "history" }],
+        () => {
+          throw new Error("looked up an exempted citation");
+        },
+      );
+      expect(report).toEqual({ stale: [], unusedExemptions: [] });
+    });
+  },
+);
 
 /* ── The query behind `bun run graph` ─────────────────────────────────────── */
 

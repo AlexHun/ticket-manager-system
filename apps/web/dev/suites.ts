@@ -16,7 +16,9 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { childEnv } from "./child-env.ts";
 import {
   CASE_STATUS,
@@ -30,12 +32,15 @@ import {
   type SuiteKind,
 } from "../src/dev/test-run-protocol.ts";
 
-interface Suite extends SuiteDescriptor {
+/** `unavailable` is not declared but read off the tree, per request. */
+interface Suite extends Omit<SuiteDescriptor, "unavailable"> {
   /** Argv, joined by the shell. Kept split so `command` can be rendered
    *  faithfully without quoting guesswork. */
   argv: string[];
   /** Repo-relative working directory. */
   cwd: string;
+  /** Repo-relative paths the suite cannot run without. */
+  needs?: string[];
 }
 
 /**
@@ -48,17 +53,34 @@ interface Suite extends SuiteDescriptor {
  * on a relative path resolving inside a workspace.
  */
 const SUITES: Suite[] = [
-  {
-    id: "typecheck",
-    label: "TypeScript",
-    description:
-      "tsc across every workspace and the E2E specs — the contract in packages/shared and packages/core is only real if this passes.",
-    kind: SUITE_KIND.types,
-    argv: ["bun", "run", "typecheck"],
-    command: "bun run typecheck",
-    cwd: ".",
-    heavy: false,
-  },
+  partialCheckout
+    ? {
+        // The root script's second half, `tsc -p tsconfig.json`, checks only
+        // `playwright.config.ts` and `tests/`, and the develop image has
+        // neither, nor that tsconfig (#585). So there the suite runs the first
+        // half alone, and says so in its command.
+        id: "typecheck",
+        label: "TypeScript",
+        description:
+          "tsc across every workspace — the contract in packages/shared and packages/core is only real if this passes. The E2E specs are not in this image.",
+        kind: SUITE_KIND.types,
+        // Quoted for the shell, which would otherwise expand the `*`.
+        argv: ["bun", "--filter", "'*'", "typecheck"],
+        command: "bun --filter '*' typecheck",
+        cwd: ".",
+        heavy: false,
+      }
+    : {
+        id: "typecheck",
+        label: "TypeScript",
+        description:
+          "tsc across every workspace and the E2E specs — the contract in packages/shared and packages/core is only real if this passes.",
+        kind: SUITE_KIND.types,
+        argv: ["bun", "run", "typecheck"],
+        command: "bun run typecheck",
+        cwd: ".",
+        heavy: false,
+      },
   {
     id: "api-unit",
     label: "API unit tests",
@@ -91,19 +113,36 @@ const SUITES: Suite[] = [
     command: "bun run test:e2e",
     cwd: ".",
     heavy: true,
+    // Without its config Playwright loads every Bun and Vitest file in the repo
+    // as a spec and ends "No tests found", which is what the develop image did:
+    // the root `.dockerignore` leaves both out (#585).
+    needs: ["playwright.config.ts", "tests/e2e"],
   },
 ];
 
+/** Why `suite` cannot run under `root`, or null: the paths it needs and lacks. */
+function unavailableReason(suite: Suite, root: string): string | null {
+  const missing = (suite.needs ?? []).filter(
+    (need) => !existsSync(path.join(root, need)),
+  );
+  if (missing.length === 0) return null;
+  return `Not in this checkout: ${missing.join(", ")}. The develop image is built without them, so this suite runs only from a clone.`;
+}
+
 /** What the page is allowed to know: everything but the argv, listed field by
- *  field so a future `Suite` addition cannot leak into the response by accident. */
-export const suiteDescriptors: SuiteDescriptor[] = SUITES.map((suite) => ({
-  id: suite.id,
-  label: suite.label,
-  description: suite.description,
-  command: suite.command,
-  kind: suite.kind,
-  heavy: suite.heavy,
-}));
+ *  field so a future `Suite` addition cannot leak into the response by accident.
+ *  Read per request, against the tree the dev server runs in. */
+export function describeSuites(root: string): SuiteDescriptor[] {
+  return SUITES.map((suite) => ({
+    id: suite.id,
+    label: suite.label,
+    description: suite.description,
+    command: suite.command,
+    kind: suite.kind,
+    heavy: suite.heavy,
+    unavailable: unavailableReason(suite, root),
+  }));
+}
 
 export function findSuite(id: string): Suite | undefined {
   return SUITES.find((suite) => suite.id === id);

@@ -356,10 +356,14 @@ The route exists only on the dev server (the plugin is `apply: "serve"`), and
 Basic Auth covers it like every other request.
 
 **What the dev image does not have.** The root `.dockerignore` applies to it
-too, so `tests/`, `scripts/`, `*.md` and `playwright.config.ts` are absent: the
-map does not show them and the E2E suite cannot run there. The image is built
-for the typecheck and API-unit suites; the web-unit suite has not been run
-there.
+too, so `.git`, `.claude/`, `.mcp.json`, `tests/`, `scripts/`, `*.md` and
+`playwright.config.ts` are absent, and there is no `git`. The map does not show
+them, and `/__dev/tests` shows the E2E suite as unavailable with the reason
+rather than running it (#585). The other three suites run there and pass: the
+image carries a real Node for Vitest, and sets `PARTIAL_CHECKOUT=1`, under which
+the unit tests that read those files skip and print one line saying so. The
+TypeScript suite runs the workspaces' typecheck alone, since the root project's
+half checks only the absent E2E files.
 
 **Seeding** develop's database is the §5 commands pointed at that environment:
 
