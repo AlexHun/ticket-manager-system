@@ -46,7 +46,10 @@ merging this one release, short of step 2's gate.
 5. **Merge**, in its own call: `gh pr merge <n> --merge`, the repo's
    merge-commit style, and never `--delete-branch`, whose branch here is
    `develop`. No rule in `.claude/settings.json` allows it, on purpose: the
-   permission prompt is the user's last word before production.
+   user has the last word before production. Outside auto mode that is the
+   permission prompt. In auto mode the classifier refuses the call outright
+   (#672), so hand the user the command, `! gh pr merge <n> --merge`, with
+   the PR link, and go on to step 6 once they say it is merged.
 6. **Watch production.** Railway posts one commit status per service on the
    merge commit (`git rev-parse origin/main` after a fetch):
 
