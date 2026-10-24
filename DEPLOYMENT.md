@@ -355,13 +355,15 @@ listing, and develop's scans tally those exactly as the laptop's do.
 The route exists only on the dev server (the plugin is `apply: "serve"`), and
 Basic Auth covers it like every other request.
 
-**What the dev image does not have.** The root `.dockerignore` applies to it
-too, so `.git`, `.claude/`, `.mcp.json`, `tests/`, `scripts/`, `*.md` and
+**What the dev image does not have.** It copies only the workspaces and the
+root manifests, and the root `.dockerignore` applies to it too, so `.git`,
+`.claude/`, `.mcp.json`, `tests/`, `scripts/`, `*.md` and
 `playwright.config.ts` are absent, and there is no `git`. The map does not show
 them, and `/__dev/tests` shows the E2E suite as unavailable with the reason
 rather than running it (#585). The other three suites run there and pass: the
 image carries a real Node for Vitest, and sets `PARTIAL_CHECKOUT=1`, under which
-the unit tests that read those files skip and print one line saying so. The
+the unit tests that read those files or start `git` skip, and each run prints
+one line saying so. The
 TypeScript suite runs the workspaces' typecheck alone, since the root project's
 half checks only the absent E2E files.
 

@@ -53,34 +53,31 @@ interface Suite extends Omit<SuiteDescriptor, "unavailable"> {
  * on a relative path resolving inside a workspace.
  */
 const SUITES: Suite[] = [
-  partialCheckout
-    ? {
-        // The root script's second half, `tsc -p tsconfig.json`, checks only
-        // `playwright.config.ts` and `tests/`, and the develop image has
-        // neither, nor that tsconfig (#585). So there the suite runs the first
-        // half alone, and says so in its command.
-        id: "typecheck",
-        label: "TypeScript",
-        description:
-          "tsc across every workspace — the contract in packages/shared and packages/core is only real if this passes. The E2E specs are not in this image.",
-        kind: SUITE_KIND.types,
-        // Quoted for the shell, which would otherwise expand the `*`.
-        argv: ["bun", "--filter", "'*'", "typecheck"],
-        command: "bun --filter '*' typecheck",
-        cwd: ".",
-        heavy: false,
-      }
-    : {
-        id: "typecheck",
-        label: "TypeScript",
-        description:
-          "tsc across every workspace and the E2E specs — the contract in packages/shared and packages/core is only real if this passes.",
-        kind: SUITE_KIND.types,
-        argv: ["bun", "run", "typecheck"],
-        command: "bun run typecheck",
-        cwd: ".",
-        heavy: false,
-      },
+  {
+    id: "typecheck",
+    label: "TypeScript",
+    kind: SUITE_KIND.types,
+    cwd: ".",
+    heavy: false,
+    ...(partialCheckout
+      ? {
+          // The root script's second half, `tsc -p tsconfig.json`, checks only
+          // `playwright.config.ts` and `tests/`, and the develop image has
+          // neither, nor that tsconfig (#585). So there the suite runs the
+          // first half alone, and says so in its command.
+          description:
+            "tsc across every workspace — the contract in packages/shared and packages/core is only real if this passes. The E2E specs are not in this image.",
+          // Quoted for the shell, which would otherwise expand the `*`.
+          argv: ["bun", "--filter", "'*'", "typecheck"],
+          command: "bun --filter '*' typecheck",
+        }
+      : {
+          description:
+            "tsc across every workspace and the E2E specs — the contract in packages/shared and packages/core is only real if this passes.",
+          argv: ["bun", "run", "typecheck"],
+          command: "bun run typecheck",
+        }),
+  },
   {
     id: "api-unit",
     label: "API unit tests",
@@ -115,7 +112,10 @@ const SUITES: Suite[] = [
     heavy: true,
     // Without its config Playwright loads every Bun and Vitest file in the repo
     // as a spec and ends "No tests found", which is what the develop image did:
-    // the root `.dockerignore` leaves both out (#585).
+    // it copies neither (#585). Read off the tree rather than keyed on
+    // `PARTIAL_CHECKOUT` like the skipped tests, because this is whether a
+    // button can do anything, not a check that could go quietly green: a clone
+    // missing either fails CI's E2E job whatever this page shows.
     needs: ["playwright.config.ts", "tests/e2e"],
   },
 ];
@@ -126,7 +126,7 @@ function unavailableReason(suite: Suite, root: string): string | null {
     (need) => !existsSync(path.join(root, need)),
   );
   if (missing.length === 0) return null;
-  return `Not in this checkout: ${missing.join(", ")}. The develop image is built without them, so this suite runs only from a clone.`;
+  return `Not in this checkout: ${missing.join(", ")}. The develop image is built without them; run this suite from a full clone.`;
 }
 
 /** What the page is allowed to know: everything but the argv, listed field by
