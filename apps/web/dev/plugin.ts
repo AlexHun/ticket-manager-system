@@ -24,9 +24,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { REPO_ROOT } from "./child-env.ts";
 import { scanProject } from "./scan.ts";
 import {
+  describeSuites,
   findSuite,
   runSuite,
-  suiteDescriptors,
   type RunHandle,
 } from "./suites.ts";
 import { gatherUsage, readStoredUsage } from "./usage.ts";
@@ -229,7 +229,7 @@ export function devToolsPlugin(): Plugin {
       server.middlewares.use(
         DEVTOOLS_API.suites,
         only("GET", (_req, res) =>
-          sendJson(res, 200, { suites: suiteDescriptors }),
+          sendJson(res, 200, { suites: describeSuites(REPO_ROOT) }),
         ),
       );
 
@@ -282,6 +282,21 @@ export function devToolsPlugin(): Plugin {
                 unknown.length > 0
                   ? `No such suite: ${unknown.join(", ")}`
                   : "No suites given",
+            });
+            return;
+          }
+
+          // The page never asks for one, so this answers a stale tab or a
+          // hand-made request: a suite that cannot run here is refused, not
+          // queued to fail.
+          const unavailable = describeSuites(REPO_ROOT).filter(
+            (suite) => requested.includes(suite.id) && suite.unavailable,
+          );
+          if (unavailable.length > 0) {
+            sendJson(res, 409, {
+              error: unavailable
+                .map((suite) => `${suite.label}: ${suite.unavailable}`)
+                .join(" "),
             });
             return;
           }

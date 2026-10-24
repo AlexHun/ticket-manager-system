@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
 import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
@@ -155,13 +156,15 @@ function offendingSpawns(code: string): string[] {
 /** How many git or gh spawns `code` makes, clean or not. */
 const spawnCount = (code: string) => [...code.matchAll(SPAWN)].length;
 
-const FILES = trackedFiles(REPO_ROOT).filter(
+// The develop image has no `.git` or `git`, so there the list is empty and the
+// three checks that read it skip.
+const FILES = (partialCheckout ? [] : trackedFiles(REPO_ROOT)).filter(
   (file) => ROOTS.some((root) => file.startsWith(root)) && SOURCE.test(file),
 );
 const read = (file: string) =>
   stripComments(readFileSync(path.join(REPO_ROOT, file), "utf8")).code;
 
-test("the check reads the tree it means to", () => {
+test.skipIf(partialCheckout)("the check reads the tree it means to", () => {
   // 473 when #566 wrote this check.
   expect(FILES.length).toBeGreaterThan(400);
   const spawning = FILES.filter((file) => spawnCount(read(file)) > 0);
@@ -179,20 +182,28 @@ test("the check reads the tree it means to", () => {
   );
 });
 
-test("every git and gh spawn under apps/ and scripts/ runs without a repository's variables", () => {
-  const offending = FILES.filter((file) => !Object.hasOwn(EXEMPT, file))
-    .flatMap((file) => offendingSpawns(read(file)).map((at) => `${file}:${at}`))
-    .sort();
-  expect(offending).toEqual([]);
-});
+test.skipIf(partialCheckout)(
+  "every git and gh spawn under apps/ and scripts/ runs without a repository's variables",
+  () => {
+    const offending = FILES.filter((file) => !Object.hasOwn(EXEMPT, file))
+      .flatMap((file) =>
+        offendingSpawns(read(file)).map((at) => `${file}:${at}`),
+      )
+      .sort();
+    expect(offending).toEqual([]);
+  },
+);
 
-test("each exemption names a tracked file that still has something to exempt", () => {
-  for (const [file, reason] of Object.entries(EXEMPT)) {
-    expect(reason.length).toBeGreaterThan(0);
-    expect(FILES).toContain(file);
-    expect(spawnCount(read(file))).toBeGreaterThan(0);
-  }
-});
+test.skipIf(partialCheckout)(
+  "each exemption names a tracked file that still has something to exempt",
+  () => {
+    for (const [file, reason] of Object.entries(EXEMPT)) {
+      expect(reason.length).toBeGreaterThan(0);
+      expect(FILES).toContain(file);
+      expect(spawnCount(read(file))).toBeGreaterThan(0);
+    }
+  },
+);
 
 test("each wrapper returns the cleanup's result where it is declared", () => {
   for (const [name, file] of Object.entries(WRAPPERS)) {

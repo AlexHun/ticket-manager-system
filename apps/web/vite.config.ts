@@ -6,6 +6,10 @@ import { visualizer } from "rollup-plugin-visualizer";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import {
+  PARTIAL_CHECKOUT_NOTE,
+  partialCheckout,
+} from "@ticket/repo-scan/checkout";
 import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
 import { basicAuthPlugin } from "./dev/basic-auth.ts";
 import { devToolsPlugin } from "./dev/plugin.ts";
@@ -196,6 +200,13 @@ export default defineConfig(({ mode }) => {
   // than `process.env`.
   if (!env.VITE_SENTRY_RELEASE) {
     process.env.VITE_SENTRY_RELEASE = releaseName();
+  }
+
+  // Once per Vitest run, so the tests the develop image skips are not skipped
+  // silently (#585). The dev server there carries the marker too and says
+  // nothing.
+  if (process.env.VITEST && partialCheckout) {
+    console.warn(PARTIAL_CHECKOUT_NOTE);
   }
 
   return {

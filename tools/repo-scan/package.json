@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./checkout": "./src/checkout.ts",
     "./git-env": "./src/git-env.ts",
     "./rules": "./src/rules.ts",
     "./strip-comments": "./src/strip-comments.ts",

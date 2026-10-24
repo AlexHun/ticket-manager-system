@@ -10,6 +10,7 @@ import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import {
   issueOfBranch,
   projectSlug,
@@ -75,6 +76,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+// Three of these need `git`, which the develop image does not carry.
 describe("resolveHistoryFile", () => {
   const git = (cwd: string, ...args: string[]) =>
     execFileAsync(
@@ -95,32 +97,38 @@ describe("resolveHistoryFile", () => {
     return { main, linked };
   }
 
-  it("is one file for every worktree of a clone, keyed on the main worktree's root (#423)", async () => {
-    const { main, linked } = await cloneWithWorktree();
-    const home = join(dir, "home");
+  it.skipIf(partialCheckout)(
+    "is one file for every worktree of a clone, keyed on the main worktree's root (#423)",
+    async () => {
+      const { main, linked } = await cloneWithWorktree();
+      const home = join(dir, "home");
 
-    const fromMain = await resolveHistoryFile({}, { cwd: main, home });
-    const fromLinked = await resolveHistoryFile({}, { cwd: linked, home });
+      const fromMain = await resolveHistoryFile({}, { cwd: main, home });
+      const fromLinked = await resolveHistoryFile({}, { cwd: linked, home });
 
-    expect(fromLinked).toBe(fromMain);
-    expect(dirname(fromMain)).toBe(join(home, ".claude-usage-history"));
-    // Keyed on the main root, not the linked one — and the transcripts stay
-    // keyed on each worktree's own path, which is where Claude Code writes them.
-    expect(fromMain).toMatch(/-main\.sqlite$/);
-    expect(resolveTranscriptDir({}, { cwd: linked, home })).not.toBe(
-      resolveTranscriptDir({}, { cwd: main, home }),
-    );
-  });
+      expect(fromLinked).toBe(fromMain);
+      expect(dirname(fromMain)).toBe(join(home, ".claude-usage-history"));
+      // Keyed on the main root, not the linked one — and the transcripts stay
+      // keyed on each worktree's own path, which is where Claude Code writes them.
+      expect(fromMain).toMatch(/-main\.sqlite$/);
+      expect(resolveTranscriptDir({}, { cwd: linked, home })).not.toBe(
+        resolveTranscriptDir({}, { cwd: main, home }),
+      );
+    },
+  );
 
-  it("names the same file from a directory inside a worktree", async () => {
-    const { main, linked } = await cloneWithWorktree();
-    const inside = join(linked, "apps");
-    mkdirSync(inside);
+  it.skipIf(partialCheckout)(
+    "names the same file from a directory inside a worktree",
+    async () => {
+      const { main, linked } = await cloneWithWorktree();
+      const inside = join(linked, "apps");
+      mkdirSync(inside);
 
-    expect(await resolveHistoryFile({}, { cwd: inside, home: dir })).toBe(
-      await resolveHistoryFile({}, { cwd: main, home: dir }),
-    );
-  });
+      expect(await resolveHistoryFile({}, { cwd: inside, home: dir })).toBe(
+        await resolveHistoryFile({}, { cwd: main, home: dir }),
+      );
+    },
+  );
 
   it("falls back to the working directory's slug outside any checkout", async () => {
     // The temporary directory exists and holds no clone, so git starts and
@@ -143,35 +151,38 @@ describe("resolveHistoryFile", () => {
     );
   });
 
-  it("answers for its own working directory when the environment names another repository (#531)", async () => {
-    // Git sets `GIT_DIR` for a hook, and a git call that inherits it answers
-    // for the hook's repository whatever its `cwd` says. `GIT_INDEX_FILE` does
-    // not move `--git-common-dir`'s answer (measured, git 2.52), so the second
-    // half holds the store's environment with a call that reads the index.
-    const own = join(dir, "own");
-    const other = join(dir, "other");
-    for (const [repo, file] of [
-      [own, "own.txt"],
-      [other, "other.txt"],
-    ] as const) {
-      mkdirSync(repo);
-      await git(repo, "init", "-q");
-      writeFileSync(join(repo, file), "");
-      await git(repo, "add", file);
-    }
-    vi.stubEnv("GIT_DIR", join(other, ".git"));
-    vi.stubEnv("GIT_INDEX_FILE", join(other, ".git", "index"));
+  it.skipIf(partialCheckout)(
+    "answers for its own working directory when the environment names another repository (#531)",
+    async () => {
+      // Git sets `GIT_DIR` for a hook, and a git call that inherits it answers
+      // for the hook's repository whatever its `cwd` says. `GIT_INDEX_FILE` does
+      // not move `--git-common-dir`'s answer (measured, git 2.52), so the second
+      // half holds the store's environment with a call that reads the index.
+      const own = join(dir, "own");
+      const other = join(dir, "other");
+      for (const [repo, file] of [
+        [own, "own.txt"],
+        [other, "other.txt"],
+      ] as const) {
+        mkdirSync(repo);
+        await git(repo, "init", "-q");
+        writeFileSync(join(repo, file), "");
+        await git(repo, "add", file);
+      }
+      vi.stubEnv("GIT_DIR", join(other, ".git"));
+      vi.stubEnv("GIT_INDEX_FILE", join(other, ".git", "index"));
 
-    expect(await resolveHistoryFile({}, { cwd: own, home: dir })).toMatch(
-      /-own\.sqlite$/,
-    );
-    const { stdout } = await execFileAsync("git", ["ls-files"], {
-      cwd: own,
-      env: gitEnv(),
-      encoding: "utf8",
-    });
-    expect(stdout.trim()).toBe("own.txt");
-  });
+      expect(await resolveHistoryFile({}, { cwd: own, home: dir })).toMatch(
+        /-own\.sqlite$/,
+      );
+      const { stdout } = await execFileAsync("git", ["ls-files"], {
+        cwd: own,
+        env: gitEnv(),
+        encoding: "utf8",
+      });
+      expect(stdout.trim()).toBe("own.txt");
+    },
+  );
 
   it("honours the override, which is how the E2E and the unit tests keep off the real file", async () => {
     expect(
