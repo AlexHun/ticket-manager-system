@@ -11,5 +11,20 @@
 #
 # E2E is not here either. It needs a Postgres, a migrated ticket_manager_test
 # and two servers on alt ports (SCRIPTS.md); CI's `e2e` job owns it.
+#
+# A passing suite prints only its totals. Its full output ran to ~20.7k
+# characters per push (132 `[ai]` usage lines, the job logs, four
+# `prisma:error` blocks from tests that roll back on purpose), and every
+# agent push carried it into the agent's context; a failure still prints all
+# of it.
 bun run typecheck
-bun run --filter @ticket/api test
+log=$(mktemp)
+echo "API suite: running, full output only on failure"
+if bun run --filter @ticket/api test >"$log" 2>&1; then
+  grep -E ' [0-9]+ (pass|fail|skip)[[:space:]]*$|Ran [0-9]+ tests' "$log"
+  rm -f "$log"
+else
+  cat "$log"
+  rm -f "$log"
+  exit 1
+fi

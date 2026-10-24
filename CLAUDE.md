@@ -24,11 +24,10 @@ freshly fetched develop —
 `git fetch origin && git switch -c <branch> origin/develop` — since local
 `develop` lags whatever merged since the last session — and open its PR into
 `develop` (the repo's default branch, so `gh pr create` targets it and
-`Closes #<n>` closes the ticket on merge). Nothing merges into `main` except a
-release: one PR from `develop` into `main`, opened only when the user asks for
-it, once CI on `develop`'s tip is green. `main` is what Railway deploys to
-production. The version bump runs on `develop`, after every merge, and a
-release carries that version to `main` unchanged.
+`Closes #<n>` closes the ticket on merge). Nothing merges into `main`, which
+Railway deploys to production, except a release, made only when the user asks
+for it, through the `release` skill. The version bump runs on `develop`, after
+every merge, and a release carries that version to `main` unchanged.
 
 **Self-check before every commit.** Search for each reference the change leaves
 stale: old symbol names, moved paths, mentions in docs and comments. Re-read
@@ -38,9 +37,10 @@ its source. These are the defects review agents most often send back, each one
 a fix commit.
 
 **One ticket per session.** A ticket ends when its PR is green in CI: after
-`/mattpocock-skills:code-review`, push and run `gh pr checks <n> --watch` in the
-background. A red job whose test has an open `Flake:` issue gets one
-`gh run rerun <run-id> --failed`; any other red job is diagnosed in this
+`/mattpocock-skills:code-review`, push and run
+`node .claude/scripts/wait-checks.mjs <n>` in the foreground, again each time
+it ends `pending`: E2E runs 11-18 minutes, longer than one tool call. A red
+job whose test has an open `Flake:` issue gets one `gh run rerun <run-id> --failed`; any other red job is diagnosed in this
 session, and one that goes green on re-run is filed as `Flake: <test>`. Report
 it done and stop there rather than opening the next one, so the next ticket
 starts in a fresh context. Context cost per turn climbs steeply with session

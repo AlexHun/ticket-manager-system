@@ -42,7 +42,7 @@ const STEPS: [string, ToolCall[]][] = [
     IMPLEMENT_STEP.ship,
     [shell("gh pr create --base develop --body-file .scratch/pr.md")],
   ],
-  [IMPLEMENT_STEP.ci, [shell("gh pr checks 607 --watch")]],
+  [IMPLEMENT_STEP.ci, [shell("node .claude/scripts/wait-checks.mjs 607")]],
 ];
 
 /** `implement` started, then every step's calls up to and including `step`. */
@@ -118,6 +118,15 @@ describe("implementStepOfCalls", () => {
       ]),
     ).toBe(IMPLEMENT_STEP.review);
   });
+
+  it.each(["gh pr checks 607 --watch", "gh run watch 40058941458 --compact"])(
+    "reads CI from %s, which waited on checks before wait-checks.mjs",
+    (command) => {
+      expect(
+        implementStepOfCalls([...through(IMPLEMENT_STEP.ship), shell(command)]),
+      ).toBe(IMPLEMENT_STEP.ci);
+    },
+  );
 
   it("reads Bash's commands as it reads PowerShell's", () => {
     expect(
