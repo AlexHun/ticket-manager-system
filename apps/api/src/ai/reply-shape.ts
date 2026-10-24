@@ -323,19 +323,30 @@ function withoutBookends(paragraphs: string[]): string[] {
   else if (rest !== null) kept[0] = recapitalised(rest);
 
   while (kept.length > 0 && isSignOff(kept[kept.length - 1]!)) kept.pop();
+  return withoutWeldedSignOff(kept);
+}
 
+/**
+ * `blocks` with a sign off welded onto the end of the last one cut, by
+ * `DASHED_TAIL` and `TRAILING_SIGN_OFF`, and the block dropped when nothing is
+ * left of it.
+ *
+ * One function for the last paragraph and the last step, so the two strips
+ * cannot drift apart: the step had no such cut until #645, and "1. Set the
+ * quality to Auto. Best regards" shipped with ours after it.
+ */
+function withoutWeldedSignOff(blocks: string[]): string[] {
+  const kept = [...blocks];
   const tail = kept[kept.length - 1];
-  if (tail !== undefined) {
-    const dashed = DASHED_TAIL.exec(tail);
-    const undashed =
-      dashed !== null && isSignOff(dashed[2]!)
-        ? tail.slice(0, dashed.index) + dashed[1]!
-        : tail;
-    const trimmed = undashed.replace(TRAILING_SIGN_OFF, "$1").trim();
-    if (trimmed.length > 0) kept[kept.length - 1] = trimmed;
-    else kept.pop();
-  }
-
+  if (tail === undefined) return kept;
+  const dashed = DASHED_TAIL.exec(tail);
+  const undashed =
+    dashed !== null && isSignOff(dashed[2]!)
+      ? tail.slice(0, dashed.index) + dashed[1]!
+      : tail;
+  const trimmed = undashed.replace(TRAILING_SIGN_OFF, "$1").trim();
+  if (trimmed.length > 0) kept[kept.length - 1] = trimmed;
+  else kept.pop();
   return kept;
 }
 
@@ -375,7 +386,8 @@ function isStepSignOff(step: string): boolean {
  * two sign offs in one reply. A greeting is cut from the first step as from the
  * first paragraph, so "Hi Marta, set the quality to Auto" keeps its instruction
  * and "Hi-res video: set it to Auto" is no greeting at all. A sign off goes
- * only when it is the whole step, by `isStepSignOff`.
+ * when it is the whole step, by `isStepSignOff`, or when it is welded onto the
+ * end of the last one, by the cut the last paragraph gets (#645).
  */
 function withoutStepBookends(steps: string[]): string[] {
   const kept = [...steps];
@@ -383,7 +395,7 @@ function withoutStepBookends(steps: string[]): string[] {
   if (rest === "") kept.shift();
   else if (rest !== null) kept[0] = recapitalised(rest);
   while (kept.length > 0 && isStepSignOff(kept[kept.length - 1]!)) kept.pop();
-  return kept;
+  return withoutWeldedSignOff(kept);
 }
 
 /**
