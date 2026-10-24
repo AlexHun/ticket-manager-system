@@ -311,7 +311,8 @@ describe("shapeReply — the bookends it was told not to write", () => {
 
   test("keeps a last step that merely opens with a closer", () => {
     // A step is as short as a sign off, so `SIGN_OFF_MAX` cannot tell them
-    // apart there: under it, each of these was dropped as one.
+    // apart there: under it, each of these was dropped as one. After a dash,
+    // welded to the step before (#645), they are still instructions.
     for (const step of [
       "Support team can reset it for you",
       "Thanks to the cache, reload once",
@@ -320,10 +321,18 @@ describe("shapeReply — the bookends it was told not to write", () => {
       expect(
         shaped(["Buffering is almost always the quality setting."], [step]),
       ).toContain(`1. ${step}`);
+      for (const welded of [
+        `Reload the page. — ${step}`,
+        `Reload the page. ${step}`,
+      ]) {
+        expect(
+          shaped(["Buffering is almost always the quality setting."], [welded]),
+        ).toContain(step);
+      }
     }
   });
 
-  test("takes a sign off off the end of the last step", () => {
+  test("cuts a sign off welded onto the last step", () => {
     // #645: the welded form #635 left out. "1. Set the quality to Auto. Best
     // regards" shipped with our sign off after it. The dash-led forms are the
     // "welded in a step" rows of the table below.
