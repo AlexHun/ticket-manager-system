@@ -24,7 +24,7 @@ function readChecks() {
   const { stdout, stderr } = spawnSync(
     "gh",
     ["pr", "checks", pr, "--json", "name,bucket,link"],
-    { encoding: "utf8", shell: process.platform === "win32" },
+    { encoding: "utf8" },
   );
   try {
     return JSON.parse(stdout);
