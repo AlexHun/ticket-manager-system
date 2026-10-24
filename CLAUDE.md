@@ -24,11 +24,10 @@ freshly fetched develop —
 `git fetch origin && git switch -c <branch> origin/develop` — since local
 `develop` lags whatever merged since the last session — and open its PR into
 `develop` (the repo's default branch, so `gh pr create` targets it and
-`Closes #<n>` closes the ticket on merge). Nothing merges into `main` except a
-release: one PR from `develop` into `main`, opened only when the user asks for
-it, once CI on `develop`'s tip is green. `main` is what Railway deploys to
-production. The version bump runs on `develop`, after every merge, and a
-release carries that version to `main` unchanged.
+`Closes #<n>` closes the ticket on merge). Nothing merges into `main`, which
+Railway deploys to production, except a release, made only when the user asks
+for it, through the `release` skill. The version bump runs on `develop`, after
+every merge, and a release carries that version to `main` unchanged.
 
 **Self-check before every commit.** Search for each reference the change leaves
 stale: old symbol names, moved paths, mentions in docs and comments. Re-read
