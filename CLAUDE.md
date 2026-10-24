@@ -38,9 +38,10 @@ its source. These are the defects review agents most often send back, each one
 a fix commit.
 
 **One ticket per session.** A ticket ends when its PR is green in CI: after
-`/mattpocock-skills:code-review`, push and run `gh pr checks <n> --watch` in the
-background. A red job whose test has an open `Flake:` issue gets one
-`gh run rerun <run-id> --failed`; any other red job is diagnosed in this
+`/mattpocock-skills:code-review`, push and run
+`node .claude/scripts/wait-checks.mjs <n>` in the foreground, again each time
+it ends `pending`: E2E runs 11-18 minutes, longer than one tool call. A red
+job whose test has an open `Flake:` issue gets one `gh run rerun <run-id> --failed`; any other red job is diagnosed in this
 session, and one that goes green on re-run is filed as `Flake: <test>`. Report
 it done and stop there rather than opening the next one, so the next ticket
 starts in a fresh context. Context cost per turn climbs steeply with session

@@ -17,7 +17,7 @@
 // | Commit          | the `Progress: built` comment step 6 leaves           |
 // | Review          | the `code-review` skill                               |
 // | Ship            | `gh pr create`                                        |
-// | CI              | `gh pr checks`, or `gh run watch`, `rerun` or `view`  |
+// | CI              | `wait-checks.mjs`, `gh pr checks`, or `gh run watch`, `rerun` or `view` |
 //
 // A card is on the furthest step it has made a call of, counted from the
 // last time it invoked `implement` (a `Skill` call, or a `/implement`
@@ -94,7 +94,10 @@ const COMMAND_STEPS: [RegExp, KnownStep][] = [
     IMPLEMENT_STEP.commit,
   ],
   [/\bgh\s+pr\s+create\b/, IMPLEMENT_STEP.ship],
-  [/\bgh\s+(?:pr\s+checks|run\s+(?:watch|rerun|view))\b/, IMPLEMENT_STEP.ci],
+  [
+    /\bwait-checks\.mjs\b|\bgh\s+(?:pr\s+checks|run\s+(?:watch|rerun|view))\b/,
+    IMPLEMENT_STEP.ci,
+  ],
 ];
 
 const field = (input: unknown, key: string): string | null => {
