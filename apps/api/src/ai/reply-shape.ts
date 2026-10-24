@@ -323,19 +323,46 @@ function withoutBookends(paragraphs: string[]): string[] {
   else if (rest !== null) kept[0] = recapitalised(rest);
 
   while (kept.length > 0 && isSignOff(kept[kept.length - 1]!)) kept.pop();
+  return withoutWeldedSignOff(kept, isSignOff);
+}
 
+/**
+ * Cut a sign off welded onto the end of the last block, and drop the block
+ * when nothing is left of it.
+ *
+ * One function for the last paragraph and the last step, so the two strips
+ * cannot drift apart: the step had no such cut until #645, and "1. Set the
+ * quality to Auto. Best regards" shipped with ours after it.
+ *
+ * The caller says what counts as the closer, because the step's test is
+ * stricter, as `isStepSignOff` says: `isDashedCloser` tests what follows a
+ * dash, and `isTrailingCloser` what `TRAILING_SIGN_OFF` would cut. By the
+ * paragraph's tests, "Reload the page. — Support team can reset it for you"
+ * and "Reload the page. Cheers app: sign out and back in" each lost their
+ * instruction.
+ */
+function withoutWeldedSignOff(
+  blocks: string[],
+  isDashedCloser: (text: string) => boolean,
+  isTrailingCloser: (text: string) => boolean = () => true,
+): string[] {
+  const kept = [...blocks];
   const tail = kept[kept.length - 1];
-  if (tail !== undefined) {
-    const dashed = DASHED_TAIL.exec(tail);
-    const undashed =
-      dashed !== null && isSignOff(dashed[2]!)
-        ? tail.slice(0, dashed.index) + dashed[1]!
-        : tail;
-    const trimmed = undashed.replace(TRAILING_SIGN_OFF, "$1").trim();
-    if (trimmed.length > 0) kept[kept.length - 1] = trimmed;
-    else kept.pop();
-  }
-
+  if (tail === undefined) return kept;
+  const dashed = DASHED_TAIL.exec(tail);
+  const undashed =
+    dashed !== null && isDashedCloser(dashed[2]!)
+      ? tail.slice(0, dashed.index) + dashed[1]!
+      : tail;
+  const welded = TRAILING_SIGN_OFF.exec(undashed);
+  const trimmed = (
+    welded !== null &&
+    isTrailingCloser(undashed.slice(welded.index + welded[1]!.length).trim())
+      ? undashed.slice(0, welded.index) + welded[1]!
+      : undashed
+  ).trim();
+  if (trimmed.length > 0) kept[kept.length - 1] = trimmed;
+  else kept.pop();
   return kept;
 }
 
@@ -375,7 +402,8 @@ function isStepSignOff(step: string): boolean {
  * two sign offs in one reply. A greeting is cut from the first step as from the
  * first paragraph, so "Hi Marta, set the quality to Auto" keeps its instruction
  * and "Hi-res video: set it to Auto" is no greeting at all. A sign off goes
- * only when it is the whole step, by `isStepSignOff`.
+ * when it is the whole step, by `isStepSignOff`, or when it is welded onto the
+ * end of the last one, by the cut the last paragraph gets (#645).
  */
 function withoutStepBookends(steps: string[]): string[] {
   const kept = [...steps];
@@ -383,7 +411,7 @@ function withoutStepBookends(steps: string[]): string[] {
   if (rest === "") kept.shift();
   else if (rest !== null) kept[0] = recapitalised(rest);
   while (kept.length > 0 && isStepSignOff(kept[kept.length - 1]!)) kept.pop();
-  return kept;
+  return withoutWeldedSignOff(kept, isStepSignOff, isStepSignOff);
 }
 
 /**
