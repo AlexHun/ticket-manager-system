@@ -264,15 +264,25 @@ const firstLine = (text: string): string | null =>
  *  quotes the markup further in is not one. */
 const COMMAND_PROMPT = /^\s*<command-(?:name|message)>/;
 const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/;
+/** A `!` shell command, and the prompt holding what it printed (#679). */
+const BASH_INPUT = /^\s*<bash-input>([\s\S]*?)<\/bash-input>/;
+const BASH_OUTPUT = /^\s*<bash-(?:stdout|stderr)>/;
 
 /**
- * A prompt's task: a typed command as the command and its arguments, any other
- * prompt as its first line. Claude Code records a command as
- * `<command-name>`, `<command-message>` and `<command-args>` in either order,
- * the args sometimes left out (#616). `clear` marks a bare `/clear`, which
- * says nothing of the work and gives way to the next prompt.
+ * A prompt's task: a typed command as the command and its arguments, a `!`
+ * shell command as `! ` and the command, any other prompt as its first line.
+ * Claude Code records a command as `<command-name>`, `<command-message>` and
+ * `<command-args>` in either order, the args sometimes left out (#616). `clear`
+ * marks a bare `/clear`, which says nothing of the work and gives way to the
+ * next prompt. A shell command's output is no task at all.
  */
 function taskOf(text: string): { text: string; clear: boolean } | null {
+  if (BASH_OUTPUT.test(text)) return null;
+  const bash = BASH_INPUT.exec(text)?.[1];
+  if (bash !== undefined) {
+    const line = firstLine(bash);
+    return line === null ? null : { text: `! ${line}`, clear: false };
+  }
   const name = COMMAND_PROMPT.test(text)
     ? COMMAND_NAME.exec(text)?.[1]?.trim()
     : undefined;

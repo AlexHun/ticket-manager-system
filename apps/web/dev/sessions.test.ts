@@ -274,6 +274,42 @@ describe("readSessions", () => {
     });
   });
 
+  it("reads a ! prompt as the shell command it ran, and never titles a session by its output", async () => {
+    session("bash", prompt("<bash-input>gh auth login</bash-input>", T(0)));
+    // As Claude Code records them: the input can open on a space, and an
+    // output prompt with nothing on stdout still carries the tag.
+    session(
+      "spaced",
+      prompt("<bash-input> railway ssh --service api</bash-input>", T(0)),
+    );
+    session(
+      "output-first",
+      prompt(
+        "<bash-stdout></bash-stdout><bash-stderr>Using SSH key</bash-stderr>",
+        T(0),
+      ),
+      prompt("A later prompt.", T(1)),
+    );
+    // A bare `/clear` gives way to the next prompt, and output is not one.
+    session(
+      "after-clear",
+      prompt("<command-name>/clear</command-name>", T(0)),
+      prompt("<bash-stderr>gh: not logged in</bash-stderr>", T(1)),
+      prompt("A later prompt.", T(2)),
+    );
+
+    const tasks = Object.fromEntries(
+      (await readSessions(dir)).sessions.map((s) => [s.id, s.task]),
+    );
+
+    expect(tasks).toEqual({
+      bash: "! gh auth login",
+      spaced: "! railway ssh --service api",
+      "output-first": "A later prompt.",
+      "after-clear": "A later prompt.",
+    });
+  });
+
   it("keeps a plain prompt's first line, even one that quotes a command's markup", async () => {
     session(
       "quotes",
