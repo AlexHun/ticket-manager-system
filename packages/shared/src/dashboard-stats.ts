@@ -1,4 +1,4 @@
-import type { AutoReplyDecline } from "./index.ts";
+import type { AutoReplyDecline } from "./auto-reply.ts";
 import type {
   TicketAssignee,
   TicketCategory,

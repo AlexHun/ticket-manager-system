@@ -1,4 +1,4 @@
-import type { AutoReplyDecline } from "./index.ts";
+import type { AutoReplyDecline } from "./auto-reply.ts";
 import { TICKET_SEARCH_MAX_LENGTH } from "./ticket-list.ts";
 import type { User } from "./users.ts";
 
