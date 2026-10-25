@@ -67,7 +67,7 @@ describe("chainArgsOf", () => {
     expect(chainArgsOf("Run /chain docs/plans/x.md for me")).toBeNull();
   });
 
-  it("reads /chain off a prompt that opens on its name tag too", () => {
+  it("reads /chain off a prompt that opens on <command-name> rather than <command-message>", () => {
     expect(
       chainArgsOf(
         "<command-name>/chain</command-name>\n<command-message>chain</command-message>\n<command-args>#1 #2</command-args>",

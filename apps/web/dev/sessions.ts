@@ -267,7 +267,7 @@ const BASH_OUTPUT = /^\s*<bash-(?:stdout|stderr)>/;
 /**
  * A prompt's task: a typed command as the command and its arguments, a `!`
  * shell command as `! ` and the command, any other prompt as its first line
- * (`commandOf` reads a command, #616). `clear` marks a bare `/clear`, which
+ * (`./command-prompt.ts` says when a prompt is a typed command). `clear` marks a bare `/clear`, which
  * says nothing of the work and gives way to the next prompt. A shell
  * command's output is no task at all.
  */
