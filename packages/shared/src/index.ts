@@ -15,6 +15,7 @@ export * from "./tutorials.ts";
 export * from "./new-features.ts";
 export * from "./dashboard-layout.ts";
 export * from "./brand.ts";
+export * from "./health.ts";
 
 /**
  * Why the knowledge-base auto-reply left a ticket for a person.
@@ -83,10 +84,6 @@ export function asAutoReplyDecline(
 ): AutoReplyDecline | null {
   if (value === null) return null;
   return Object.values(AUTO_REPLY_DECLINE).find((d) => d === value) ?? null;
-}
-
-export interface HealthResponse {
-  status: "ok";
 }
 
 /**
