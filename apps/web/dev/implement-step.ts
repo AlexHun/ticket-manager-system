@@ -44,6 +44,7 @@ import {
   IMPLEMENT_STEP,
   type ImplementStep,
 } from "../src/dev/sessions-protocol.ts";
+import { commandOf } from "./command-prompt.ts";
 
 /** A step a call can show, which is every step but Unknown. */
 type KnownStep = Exclude<ImplementStep, typeof IMPLEMENT_STEP.unknown>;
@@ -120,13 +121,10 @@ export function marksOf({ name, input }: ToolCall): StepMark[] {
   );
 }
 
-/** How Claude Code records `/implement` typed at the prompt. */
-const IMPLEMENT_COMMAND = /<command-name>\/implement<\/command-name>/;
-
 /** What one prompt says: that `implement` started, when it ran the
  *  command, as a `Skill` call does in a subagent. */
 export const marksOfPrompt = (text: string): StepMark[] =>
-  IMPLEMENT_COMMAND.test(text) ? [IMPLEMENT_STARTED] : [];
+  commandOf(text)?.name === "/implement" ? [IMPLEMENT_STARTED] : [];
 
 /**
  * The step `marks` add up to, in the order the calls were made: null when

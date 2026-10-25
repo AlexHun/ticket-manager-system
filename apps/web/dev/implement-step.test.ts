@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { implementStepOfCalls, type ToolCall } from "./implement-step.ts";
+import {
+  IMPLEMENT_STARTED,
+  implementStepOfCalls,
+  marksOfPrompt,
+  type ToolCall,
+} from "./implement-step.ts";
 import { IMPLEMENT_STEP } from "../src/dev/sessions-protocol.ts";
 
 /**
@@ -156,5 +161,33 @@ describe("implementStepOfCalls", () => {
         shell("gh issue view 595"),
       ]),
     ).toBe(IMPLEMENT_STEP.read);
+  });
+});
+
+describe("marksOfPrompt", () => {
+  it("marks implement started for a prompt that opens on its tags, in either order", () => {
+    expect(
+      marksOfPrompt(
+        "<command-message>implement</command-message>\n<command-name>/implement</command-name>\n<command-args>682</command-args>",
+      ),
+    ).toEqual([IMPLEMENT_STARTED]);
+    expect(
+      marksOfPrompt(
+        "<command-name>/implement</command-name>\n<command-message>implement</command-message>",
+      ),
+    ).toEqual([IMPLEMENT_STARTED]);
+  });
+
+  it("marks nothing for a prompt that only quotes the markup further in (#682)", () => {
+    expect(
+      marksOfPrompt(
+        "It is recorded as <command-name>/implement</command-name>, see?",
+      ),
+    ).toEqual([]);
+    expect(
+      marksOfPrompt(
+        "<bash-stdout>a.jsonl: <command-name>/implement</command-name></bash-stdout><bash-stderr></bash-stderr>",
+      ),
+    ).toEqual([]);
   });
 });

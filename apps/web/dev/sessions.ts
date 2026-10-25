@@ -43,13 +43,13 @@ import {
   type ToolTally,
 } from "../src/dev/sessions-protocol.ts";
 import {
-  COMMAND_ARGS,
   chainArgsOf,
   chainPlanOf,
   chainView,
   workerOf,
   type ChainLister,
 } from "./chains.ts";
+import { commandOf } from "./command-prompt.ts";
 import {
   implementStepOf,
   marksOf,
@@ -260,21 +260,16 @@ const firstLine = (text: string): string | null =>
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? null;
 
-/** A prompt that is a typed command opens on one of its tags; one that only
- *  quotes the markup further in is not one. */
-const COMMAND_PROMPT = /^\s*<command-(?:name|message)>/;
-const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/;
 /** A `!` shell command, and the prompt holding what it printed (#679). */
 const BASH_INPUT = /^\s*<bash-input>([\s\S]*?)<\/bash-input>/;
 const BASH_OUTPUT = /^\s*<bash-(?:stdout|stderr)>/;
 
 /**
  * A prompt's task: a typed command as the command and its arguments, a `!`
- * shell command as `! ` and the command, any other prompt as its first line.
- * Claude Code records a command as `<command-name>`, `<command-message>` and
- * `<command-args>` in either order, the args sometimes left out (#616). `clear`
- * marks a bare `/clear`, which says nothing of the work and gives way to the
- * next prompt. A shell command's output is no task at all.
+ * shell command as `! ` and the command, any other prompt as its first line
+ * (`commandOf` reads a command, #616). `clear` marks a bare `/clear`, which
+ * says nothing of the work and gives way to the next prompt. A shell
+ * command's output is no task at all.
  */
 function taskOf(text: string): { text: string; clear: boolean } | null {
   if (BASH_OUTPUT.test(text)) return null;
@@ -283,14 +278,11 @@ function taskOf(text: string): { text: string; clear: boolean } | null {
     const line = firstLine(bash);
     return line === null ? null : { text: `! ${line}`, clear: false };
   }
-  const name = COMMAND_PROMPT.test(text)
-    ? COMMAND_NAME.exec(text)?.[1]?.trim()
-    : undefined;
-  const args = name ? COMMAND_ARGS.exec(text)?.[1]?.trim() : undefined;
-  const line = firstLine(name ? (args ? `${name} ${args}` : name) : text);
+  const command = commandOf(text);
+  const line = firstLine(command ? `${command.name} ${command.args}` : text);
   return line === null
     ? null
-    : { text: line, clear: name === "/clear" && !args };
+    : { text: line, clear: command?.name === "/clear" && !command.args };
 }
 
 type ToolUse = { type: string; id: string; name?: unknown; input?: unknown };
