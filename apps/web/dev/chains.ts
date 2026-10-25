@@ -23,6 +23,7 @@ import {
   type ChainWorker,
 } from "../src/dev/sessions-protocol.ts";
 import { CHAIN_ORDER_UNKNOWN } from "../src/dev/sessions-copy.ts";
+import { commandOf } from "./command-prompt.ts";
 import {
   CHAIN_ISSUES_FILE_ENV,
   ISSUE_STATE,
@@ -31,18 +32,14 @@ import {
   type ListedChainIssue,
 } from "./issues.ts";
 
-const CHAIN_COMMAND = /<command-name>\/chain<\/command-name>/;
-/** A typed command's arguments, as Claude Code records them. */
-export const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
-
 /**
  * What `/chain` was given, off the prompt Claude Code records for the
  * command, or null for any other prompt. An empty string for `/chain` given
  * nothing.
  */
 export function chainArgsOf(text: string): string | null {
-  if (!CHAIN_COMMAND.test(text)) return null;
-  return COMMAND_ARGS.exec(text)?.[1]?.trim() ?? "";
+  const command = commandOf(text);
+  return command?.name === "/chain" ? command.args : null;
 }
 
 const PLAN_PATH = /(?:^|\s)(?:\.\/)?(docs\/(?:plans|prd)\/[\w.-]+\.md)(?=\s|$)/;
