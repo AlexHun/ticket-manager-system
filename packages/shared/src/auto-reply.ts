@@ -104,7 +104,7 @@ export const AUTO_REPLY_DECLINES = [
  * and `notCovered` is the model declining to write anything at all — none of
  * them read a payload, so none of them belongs in a catch rate (PRD R9).
  *
- * Adding a seventh check to `auto-reply.ts` means adding it here too, or the
+ * Adding a seventh check to `ai/auto-reply.ts` means adding it here too, or the
  * catch rate quietly stops counting what it catches.
  */
 export const OUTPUT_CHECK_DECLINES = [

@@ -3,10 +3,10 @@ import { ADMIN_SCREEN, type AdminScreen } from "./admin-screen.ts";
 /**
  * Whether a demo visitor sees each admin screen (#320, #368) — said once, here.
  *
- * A `Record` for `DECLINE_STAGE`'s reason: an eighth screen is a compile error
- * until somebody answers, and there is no default that opens one. The web
- * derives its gate (`AdminScreenRoute`), the navigation (`navItemsFor`) and the
- * tutorial editor's list (`routes/tutorials.ts`) from it, and
+ * A `Record` for `DECLINE_STAGE`'s reason (`pipeline.ts`): an eighth screen is
+ * a compile error until somebody answers, and there is no default that opens
+ * one. The web derives its gate (`AdminScreenRoute`), the navigation
+ * (`navItemsFor`) and the tutorial editor's list (`routes/tutorials.ts`) from it, and
  * `demo-session.spec.ts` its showcase reads, through `showcaseReads` in
  * `tests/e2e/helpers/demo.ts` (#369). The API's guards are
  * **checked against** it rather than derived from it: a guard stays chosen
