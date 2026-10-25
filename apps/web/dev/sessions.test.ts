@@ -275,14 +275,7 @@ describe("readSessions", () => {
   });
 
   it("reads a ! prompt as the shell command it ran, and never titles a session by its output", async () => {
-    session(
-      "bash",
-      prompt("<bash-input>gh auth login</bash-input>", T(0)),
-      prompt(
-        "<bash-stdout>! First copy your one-time code</bash-stdout>",
-        T(1),
-      ),
-    );
+    session("bash", prompt("<bash-input>gh auth login</bash-input>", T(0)));
     // As Claude Code records them: the input can open on a space, and an
     // output prompt with nothing on stdout still carries the tag.
     session(
@@ -297,6 +290,13 @@ describe("readSessions", () => {
       ),
       prompt("A later prompt.", T(1)),
     );
+    // A bare `/clear` gives way to the next prompt, and output is not one.
+    session(
+      "after-clear",
+      prompt("<command-name>/clear</command-name>", T(0)),
+      prompt("<bash-stderr>gh: not logged in</bash-stderr>", T(1)),
+      prompt("A later prompt.", T(2)),
+    );
 
     const tasks = Object.fromEntries(
       (await readSessions(dir)).sessions.map((s) => [s.id, s.task]),
@@ -306,6 +306,7 @@ describe("readSessions", () => {
       bash: "! gh auth login",
       spaced: "! railway ssh --service api",
       "output-first": "A later prompt.",
+      "after-clear": "A later prompt.",
     });
   });
 
