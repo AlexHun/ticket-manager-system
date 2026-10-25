@@ -43,6 +43,7 @@ import {
   type ToolTally,
 } from "../src/dev/sessions-protocol.ts";
 import {
+  COMMAND_ARGS,
   chainArgsOf,
   chainPlanOf,
   chainView,
@@ -172,6 +173,8 @@ interface FactsSoFar {
   /** Lines fed so far, so a resumed reading numbers the next one. */
   lines: number;
   task: string | null;
+  /** Whether `task` is a bare `/clear`, which the next prompt replaces. */
+  taskCleared: boolean;
   model: string | null;
   first: string | null;
   firstMs: number;
@@ -196,6 +199,7 @@ const startFacts = (file: string): FactsSoFar => ({
   file,
   lines: 0,
   task: null,
+  taskCleared: false,
   model: null,
   first: null,
   firstMs: Infinity,
@@ -256,6 +260,29 @@ const firstLine = (text: string): string | null =>
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? null;
 
+/** A prompt that is a typed command opens on one of its tags; one that only
+ *  quotes the markup further in is not one. */
+const COMMAND_PROMPT = /^\s*<command-(?:name|message)>/;
+const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/;
+
+/**
+ * A prompt's task: a typed command as the command and its arguments, any other
+ * prompt as its first line. Claude Code records a command as
+ * `<command-name>`, `<command-message>` and `<command-args>` in either order,
+ * the args sometimes left out (#616). `clear` marks a bare `/clear`, which
+ * says nothing of the work and gives way to the next prompt.
+ */
+function taskOf(text: string): { text: string; clear: boolean } | null {
+  const name = COMMAND_PROMPT.test(text)
+    ? COMMAND_NAME.exec(text)?.[1]?.trim()
+    : undefined;
+  const args = name ? COMMAND_ARGS.exec(text)?.[1]?.trim() : undefined;
+  const line = firstLine(name ? (args ? `${name} ${args}` : name) : text);
+  return line === null
+    ? null
+    : { text: line, clear: name === "/clear" && !args };
+}
+
 type ToolUse = { type: string; id: string; name?: unknown; input?: unknown };
 
 function toolUses(content: unknown): ToolUse[] {
@@ -305,7 +332,12 @@ function feed(
 
   const body = promptBody(rec);
   if (body !== null) {
-    f.task ??= firstLine(body);
+    // The first prompt, unless it was a bare `/clear` (#616).
+    const task = f.task === null || f.taskCleared ? taskOf(body) : null;
+    if (task) {
+      f.task = task.text;
+      f.taskCleared = task.clear;
+    }
     // The first `/chain` command, wherever it falls: a conductor may have
     // opened on a `/clear` (#594).
     f.chainArgs ??= chainArgsOf(body);
