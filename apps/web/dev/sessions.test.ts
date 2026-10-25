@@ -274,6 +274,24 @@ describe("readSessions", () => {
     });
   });
 
+  it("keeps a plain prompt's first line, even one that quotes a command's markup", async () => {
+    session(
+      "quotes",
+      prompt(
+        "Review the fix.\nA `/clear` is recorded as `<command-name>/clear</command-name>`.",
+        T(0),
+      ),
+      prompt("A later prompt.", T(1)),
+    );
+    session("literal", prompt("/clear", T(0)), prompt("A later prompt.", T(1)));
+
+    const tasks = Object.fromEntries(
+      (await readSessions(dir)).sessions.map((s) => [s.id, s.task]),
+    );
+
+    expect(tasks).toEqual({ quotes: "Review the fix.", literal: "/clear" });
+  });
+
   it("reads a session Done once its turn ended and nothing under it is Running", async () => {
     session("ended", response(1, T(0), { stop: "end_turn" }));
     session("working", response(1, T(0), { stop: "tool_use" }));

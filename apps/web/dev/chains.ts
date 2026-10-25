@@ -32,7 +32,8 @@ import {
 } from "./issues.ts";
 
 const CHAIN_COMMAND = /<command-name>\/chain<\/command-name>/;
-const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
+/** A typed command's arguments, as Claude Code records them. */
+export const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
 
 /**
  * What `/chain` was given, off the prompt Claude Code records for the

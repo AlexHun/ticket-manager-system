@@ -99,8 +99,8 @@ export interface SessionCard {
   subagentType: string | null;
   /**
    * What it was asked to do. A subagent's is its meta file's `description`; a
-   * session's is its first prompt, cut to its first line, a typed command read
-   * as the command and its arguments and a bare `/clear` giving way to the next
+   * session's is its first prompt, cut to its first line. A typed command reads
+   * as the command and its arguments, and a bare `/clear` gives way to the next
    * prompt (#616). Null when the transcript holds neither.
    */
   task: string | null;
