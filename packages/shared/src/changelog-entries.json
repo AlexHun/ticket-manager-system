@@ -1083,5 +1083,10 @@
     "version": "0.1.280",
     "date": "2026-10-25",
     "title": "Correct the develop image's prose after review"
+  },
+  {
+    "version": "0.1.283",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the moved comments and the cycle check"
   }
 ]
