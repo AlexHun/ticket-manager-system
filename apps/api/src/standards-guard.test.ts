@@ -77,6 +77,9 @@ const ROLE_KEY = String.raw`\b(?:role|fromValue|toValue)`;
 /** A module specifier in an import, a re-export, a dynamic import or a
  *  require — the quote that opens it, so a form can name what follows. */
 const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']`;
+/** A module specifier as `SPECIFIER` reads it, or one a test registers: the
+ *  registry is what a deep import of `@ticket/shared` gets past. */
+const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
 /** A field of the SDK's usage object or of `AiUsage`, as a whole word. */
 const USAGE_FIELD = String.raw`(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b`;
 
@@ -119,6 +122,32 @@ const SOURCE_RULES: Rule[] = [
       `roles: ["admin", "agent"],`,
     ],
     ignores: `// Values are bare: \`toValue: "admin"\`, not "Role: admin".`,
+  },
+  {
+    name: "Callers import the bare @ticket/shared: never a subpath, nor a shared file by path, which a test's registration of @ticket/shared does not reach",
+    standard: "conventions.md",
+    // `@ticket/core` and the scripts are callers too (#579). The package's
+    // own files import each other as `./changelog.ts`, which no form matches.
+    roots: API_PACKAGES_SCRIPTS,
+    forms: [
+      new RegExp(String.raw`${SPECIFIER_OR_MOCK}@ticket/shared/`),
+      new RegExp(
+        String.raw`${SPECIFIER_OR_MOCK}[^"'\`\n]*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
+      ),
+    ],
+    catches: [
+      `import { CHANGELOG_ENTRIES } from "@ticket/shared/changelog";`,
+      `import { USER_ROLE } from "../../packages/shared/src/index";`,
+      `export { USER_ROLE } from "../../shared/src/index.ts";`,
+      `const shared = await import("../../../packages/shared");`,
+      `await mock.module("@ticket/shared/src/changelog.ts", () => stub);`,
+    ],
+    passes: [
+      `import { USER_ROLE } from "@ticket/shared";`,
+      `await mock.module("@ticket/shared", () => ({ ...actualShared }));`,
+      `import { checkRules } from "@ticket/repo-scan/rules";`,
+    ],
+    ignores: `// Import "@ticket/shared", never "@ticket/shared/changelog".`,
   },
   {
     name: "Structured output goes through generateText + Output.object, never generateObject (it omits timeout)",
