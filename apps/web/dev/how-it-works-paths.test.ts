@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { ARCHITECTURE_NODES } from "../src/lib/how-it-works/architecture.ts";
 import type { InTheCode } from "../src/lib/how-it-works/code.ts";
 import { LIFECYCLE_STEPS } from "../src/lib/how-it-works/lifecycle.ts";
@@ -38,9 +39,13 @@ const NAMED: [string, InTheCode][] = [
 ];
 
 describe("How it works' code paths", () => {
-  it("resolves the repo root where it expects it", () => {
-    expect(existsSync(path.join(REPO_ROOT, "CLAUDE.md"))).toBe(true);
-  });
+  // `CLAUDE.md` is one of the Markdown files the develop image leaves out.
+  it.skipIf(partialCheckout)(
+    "resolves the repo root where it expects it",
+    () => {
+      expect(existsSync(path.join(REPO_ROOT, "CLAUDE.md"))).toBe(true);
+    },
+  );
 
   it("lists at least one path for every box, subsystem and lifecycle step", () => {
     const bare = NAMED.filter(([, part]) => part.code.length === 0).map(

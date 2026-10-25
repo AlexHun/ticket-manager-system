@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { runHook } from "./test/run-hook";
 
 // `.claude/hooks/block-bare-vitest.mjs` is a PreToolUse hook registered for
@@ -11,7 +12,8 @@ const run = (command: string, tool_name = "Bash") =>
     tool_input: { command },
   });
 
-describe("block-bare-vitest hook", () => {
+// The hook is under `.claude/`, which the develop image does not carry.
+describe.skipIf(partialCheckout)("block-bare-vitest hook", () => {
   test.each([
     "bunx vitest run src/pages/UsersPage.test.tsx",
     "bun x vitest run",

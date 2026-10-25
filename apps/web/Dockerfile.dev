@@ -18,6 +18,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# A real Node, for the web suite on `/__dev/tests` (#585). Vitest's bin starts
+# with `#!/usr/bin/env node`, and the only `node` in the Bun image is
+# `/usr/local/bun-node-fallback-bin/node`, a link to `bun` that `childEnv`'s
+# `bun-node-*` rule does not match. On Bun, Vitest's workers half-load: 31 of
+# 86 files failed with "Vitest mocker was not initialized" or
+# `evaluating 'runner.config'`, and every one loaded once this was added.
+# `/usr/local/bin` is ahead of the fallback on PATH. Node 22, since Vitest 4
+# needs 20 or later and Debian's `nodejs` is older.
+COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node
+
 WORKDIR /app
 
 # Manifests first for layer caching; every workspace's, because
@@ -38,9 +48,10 @@ COPY tsconfig.base.json ./
 # Every workspace, not only the web app's: the project map scans `apps/api`
 # and the Prisma schema, and the typecheck and API-unit suites run against it.
 # The root `.dockerignore` still applies, so `tests/`, `scripts/`, `*.md` and
-# `playwright.config.ts` are absent — the map does not see them and the E2E
-# suite cannot run here. `tools/repo-scan` is the comment stripper the project
-# map and both standards guards import (#565).
+# `playwright.config.ts` are absent — the map does not see them, and
+# `/__dev/tests` shows the E2E suite as unavailable rather than running it
+# (#585). `tools/repo-scan` is the comment stripper the project map and both
+# standards guards import (#565).
 COPY packages packages
 COPY tools/repo-scan tools/repo-scan
 COPY apps apps
@@ -63,6 +74,12 @@ ENV DEV_BASIC_AUTH_REQUIRED=1
 # and a push is refused until `USAGE_HISTORY_FILE` names a file on the volume.
 # See `apps/web/dev/usage-push.ts` and DEPLOYMENT.md §7.
 ENV USAGE_HISTORY_PUSHED=1
+
+# Not a full checkout: no `.git`, `.claude/`, `.mcp.json`, Markdown or `tests/`,
+# and no `git`. The unit tests that read those skip under this marker and say
+# so once per run (`@ticket/repo-scan/checkout`, #585). Only this image sets it,
+# so a file missing from a clone or from CI still fails its test.
+ENV PARTIAL_CHECKOUT=1
 
 # **No `NODE_ENV=production`.** This is a dev server on purpose:
 # `import.meta.env.DEV` must be true for the `/__dev` routes to exist at all.

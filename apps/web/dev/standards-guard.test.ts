@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import path from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { checkRules, type Rule, ruleCode } from "@ticket/repo-scan/rules";
+import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * The frontend standards a check can decide without judgement, enforced here
@@ -205,9 +207,15 @@ const RULES: Rule[] = [
   },
 ];
 
-const CODE = ruleCode(RULES, { root: REPO_ROOT, skip: [SELF] });
+// The develop image has no `.git` or `git`, so there nothing is read and every
+// check over the tree skips; the rules' own examples skip with them.
+const CODE = ruleCode(RULES, {
+  root: REPO_ROOT,
+  skip: [SELF],
+  tracked: partialCheckout ? [] : trackedFiles(REPO_ROOT),
+});
 
-test("the guard reads the tree it means to", () => {
+test.skipIf(partialCheckout)("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
   // list is a green run that checked nothing. Each rule's own roots check
   // asks the same of every root it names.
@@ -222,4 +230,8 @@ test("the guard reads the tree it means to", () => {
   expect(files).toContain(`${E2E}/helpers/auth.ts`);
 });
 
-checkRules(RULES, CODE, { describe, test, expect });
+checkRules(RULES, CODE, {
+  describe,
+  test: test.skipIf(partialCheckout),
+  expect,
+});
