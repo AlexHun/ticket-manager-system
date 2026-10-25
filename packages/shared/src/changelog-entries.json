@@ -1108,5 +1108,15 @@
     "version": "0.1.286",
     "date": "2026-10-25",
     "title": "Settle the review's findings on the ! shell command title"
+  },
+  {
+    "version": "0.1.287",
+    "date": "2026-10-25",
+    "title": "Read /chain and /implement only off a prompt that opens on them"
+  },
+  {
+    "version": "0.1.287",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the anchored command reading"
   }
 ]
