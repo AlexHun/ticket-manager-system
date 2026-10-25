@@ -256,6 +256,25 @@ const firstLine = (text: string): string | null =>
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? null;
 
+const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/;
+const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
+
+/** The task a bare `/clear` gives, which a later prompt replaces (#616). */
+const CLEAR_TASK = "/clear";
+
+/**
+ * A prompt's task: a typed command as the command and its arguments, any other
+ * prompt as its first line. Claude Code records a command as
+ * `<command-name>`, `<command-message>` and `<command-args>` in either order,
+ * the args sometimes left out (#616).
+ */
+function taskOf(text: string): string | null {
+  const name = COMMAND_NAME.exec(text)?.[1]?.trim();
+  if (!name) return firstLine(text);
+  const args = COMMAND_ARGS.exec(text)?.[1]?.trim();
+  return firstLine(args ? `${name} ${args}` : name);
+}
+
 type ToolUse = { type: string; id: string; name?: unknown; input?: unknown };
 
 function toolUses(content: unknown): ToolUse[] {
@@ -305,7 +324,11 @@ function feed(
 
   const body = promptBody(rec);
   if (body !== null) {
-    f.task ??= firstLine(body);
+    // The first prompt, unless it was a bare `/clear`, which says nothing of
+    // the work the session went on to do (#616).
+    if (f.task === null || f.task === CLEAR_TASK) {
+      f.task = taskOf(body) ?? f.task;
+    }
     // The first `/chain` command, wherever it falls: a conductor may have
     // opened on a `/clear` (#594).
     f.chainArgs ??= chainArgsOf(body);

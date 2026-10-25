@@ -239,6 +239,41 @@ describe("readSessions", () => {
     expect(s.task).toBe("Fix the tree.");
   });
 
+  it("reads a command prompt as the command and its arguments, and skips a bare /clear", async () => {
+    const command = (name: string, args: string) =>
+      `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`;
+    session("implement", prompt(command("implement", "613"), T(0)));
+    session(
+      "chain",
+      // As Claude Code records `/clear`: the name first, indented.
+      prompt(
+        "<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>",
+        T(0),
+      ),
+      prompt(command("chain", "docs/plans/x.md"), T(1)),
+    );
+    session("clear", prompt(command("clear", ""), T(0)));
+    session(
+      "no-args",
+      prompt(
+        "<command-message>i-have-adhd</command-message>\n<command-name>/i-have-adhd</command-name>",
+        T(0),
+      ),
+      prompt("A later prompt.", T(1)),
+    );
+
+    const tasks = Object.fromEntries(
+      (await readSessions(dir)).sessions.map((s) => [s.id, s.task]),
+    );
+
+    expect(tasks).toEqual({
+      implement: "/implement 613",
+      chain: "/chain docs/plans/x.md",
+      clear: "/clear",
+      "no-args": "/i-have-adhd",
+    });
+  });
+
   it("reads a session Done once its turn ended and nothing under it is Running", async () => {
     session("ended", response(1, T(0), { stop: "end_turn" }));
     session("working", response(1, T(0), { stop: "tool_use" }));
