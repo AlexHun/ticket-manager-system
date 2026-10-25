@@ -5,10 +5,10 @@ import { USER_ROLE, type UserRole } from "./users.ts";
  * What a screen just stopped being right about.
  *
  * Deliberately **not** `TicketActivityAction`, the ticket trail in `tickets.ts`.
- * That trail answers "what does an agent
- * reading this ticket have to account for?" — durable, human-readable, mirrored
- * by a Postgres enum. This answers "what does a mounted query have to re-read?" —
- * ephemeral, machine-read, gone the moment it is applied.
+ * That trail answers "what does an agent reading this ticket have to account
+ * for?" — durable, human-readable, mirrored by a Postgres enum. This answers
+ * "what does a mounted query have to re-read?" — ephemeral, machine-read, gone
+ * the moment it is applied.
  *
  * The comment on `TICKET_ACTIVITY_ACTION` is the proof they cannot be one union:
  * it lists what it excludes on purpose, and one of those is **a reply** ("already

@@ -80,7 +80,7 @@ export const ASSIGNEE_NONE = "none";
 
 /**
  * Query-param sentinel for the whole backlog at once — `New` and `Open`
- * together, which is what `BACKLOG_STATUS` means everywhere else here.
+ * together, which is what `BACKLOG_STATUS` (`tickets.ts`) means everywhere else.
  *
  * It exists because the status filter takes one value and "nobody has dealt with
  * this" is two. Every dashboard number carrying that meaning spans both, so
