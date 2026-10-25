@@ -1088,5 +1088,15 @@
     "version": "0.1.283",
     "date": "2026-10-25",
     "title": "Settle the review's findings on the moved comments and the cycle check"
+  },
+  {
+    "version": "0.1.285",
+    "date": "2026-10-25",
+    "title": "Title a Sessions card by the command it ran, past a bare /clear"
+  },
+  {
+    "version": "0.1.285",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the command-prompt title"
   }
 ]
