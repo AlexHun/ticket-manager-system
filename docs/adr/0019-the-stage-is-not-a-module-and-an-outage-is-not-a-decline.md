@@ -170,8 +170,8 @@ admin as the knowledge base having been consulted and found wanting.
 Four places in this repo already say it must not:
 
 - `DECLINE_STAGE`'s comment (`packages/shared/src/pipeline.ts`) — "it is the
-  one entry here that is **not a verdict about the ticket** — the provider could
-  not be reached, so nothing was ever decided".
+  one entry here that is **not a verdict about the ticket** — the model was
+  never usefully asked, so nothing was ever decided".
 - `onExhausted`'s own comment (`apps/api/src/jobs/auto-reply-ticket.ts:551`) —
   "`unavailable`, not a judgement about the ticket… 'not covered by the
   knowledge base' would be a claim nobody made".
