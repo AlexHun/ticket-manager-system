@@ -30,9 +30,10 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
  * `dev/` — and, for the role-literal rule and the bare `@ticket/shared` import
  * (#579), the Playwright specs and helpers under `tests/e2e` too (#393). The
  * others govern how the app is built — its controls, its data fetching, its
- * tokens — and a spec drives the built app rather than being part of it. None reaches `packages/` or `scripts/`,
- * which hold no UI; the API guard's rules are the ones that do. Every file is
- * one git tracks (`trackedFiles`, #567), so a local run checks what CI checks.
+ * tokens — and a spec drives the built app rather than being part of it. None
+ * reaches `packages/` or `scripts/`, which hold no UI; the API guard's rules
+ * are the ones that do. Every file is one git tracks (`trackedFiles`, #567), so
+ * a local run checks what CI checks.
  */
 
 /** The repository root, which every path here is relative to. */
@@ -50,7 +51,7 @@ const isTest = (file: string) => /\.test\.tsx?$/.test(file);
 const ROLE = `["'](?:admin|agent)["']`;
 /** A module specifier in an import, a re-export, a dynamic import, a require
  *  or a test's registration: the quote that opens it. */
-const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
+const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
 
 /** The rules. Each one's `roots`, `applies` and `allowed` name paths from the
  *  repository root. */
@@ -214,9 +215,9 @@ const RULES: Rule[] = [
     // The specs import the package's vocabulary as the app does (#579).
     roots: [...APP, E2E],
     forms: [
-      new RegExp(String.raw`${SPECIFIER}@ticket/shared/`),
+      new RegExp(String.raw`${SPECIFIER_OR_MOCK}@ticket/shared/`),
       new RegExp(
-        String.raw`${SPECIFIER}[^"'\`\n]*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
+        String.raw`${SPECIFIER_OR_MOCK}[^"'\`\n]*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
       ),
     ],
     catches: [

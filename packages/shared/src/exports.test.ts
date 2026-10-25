@@ -7,7 +7,8 @@ import * as shared from "./index";
  * domain (#579, `docs/prd/split-shared.md` R2): every name, its `typeof`, and
  * its value serialised, so a move that drops an export, renames one, or lets
  * an `export *` clash silently shadow one fails here. Every value the package
- * exports is plain JSON, which is what makes the value comparable at all.
+ * exports, functions aside, is plain JSON, which is what makes the value
+ * comparable at all.
  *
  * A function is recorded by its arity, not its source: Bun hands back the
  * transpiled text, which a Bun upgrade could change without a line here
