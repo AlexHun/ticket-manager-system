@@ -1098,5 +1098,15 @@
     "version": "0.1.285",
     "date": "2026-10-25",
     "title": "Settle the review's findings on the command-prompt title"
+  },
+  {
+    "version": "0.1.286",
+    "date": "2026-10-25",
+    "title": "Title a Sessions card by its ! shell command, never its output"
+  },
+  {
+    "version": "0.1.286",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the ! shell command title"
   }
 ]
