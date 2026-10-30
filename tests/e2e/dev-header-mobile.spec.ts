@@ -139,6 +139,30 @@ test.describe("dev tools header at phone width", () => {
     await expect(tab(page, "Sessions")).toHaveAttribute("aria-current", "page");
   });
 
+  // #692: each page's own heading row wrapped its "dev only" badge onto a
+  // line below the heading, alone on Sessions. It sits on the heading's line.
+  for (const { label, path } of TABS) {
+    test(`on ${label}, the dev-only badge shares the heading's line`, async ({
+      page,
+    }) => {
+      await page.goto(path);
+      const heading = page.getByRole("heading", { level: 1, name: label });
+      const badge = page.getByText("dev only", { exact: true });
+      await expect(heading).toBeVisible();
+      await expect(badge).toBeVisible();
+
+      const [h, b] = await Promise.all([
+        heading.boundingBox(),
+        badge.boundingBox(),
+      ]);
+      if (!h || !b) throw new Error(`${label}: not laid out`);
+      const middle = b.y + b.height / 2;
+      expect(middle).toBeGreaterThan(h.y);
+      expect(middle).toBeLessThan(h.y + h.height);
+      expect(b.x + b.width).toBeLessThanOrEqual(PHONE.width);
+    });
+  }
+
   test("the header does not widen the page", async ({ page }) => {
     for (const viewport of [PHONE, DESKTOP]) {
       await page.setViewportSize(viewport);

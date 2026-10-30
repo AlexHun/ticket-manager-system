@@ -104,45 +104,43 @@ export function SessionsPage() {
   return (
     /* Block layout with `space-y`, for the reason `TestRunnerPage` gives. */
     <main className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold">{SESSIONS_TITLE}</h1>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            {SESSIONS_LEAD}
-          </p>
-          {/* The rest is read once, so it starts folded rather than standing
-              above the sessions on every visit (#613). */}
-          <Collapsible open={howOpen} onOpenChange={setHowOpen}>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="xs" className="-ml-2">
-                <FoldChevron open={howOpen} inline />
-                {SESSIONS_HOW_LABEL}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <p
-                data-sessions-how
-                className="max-w-prose pt-1 text-sm text-muted-foreground"
-              >
-                {sessionsHow(
-                  SESSION_STATE.waiting,
-                  SESSION_STATE.stopped,
-                  idleTime(SESSION_IDLE_MS),
-                )}
-              </p>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
+      <div className="space-y-1">
         <div className="flex items-center gap-2">
-          {/* A live region, mounted throughout so it exists before its words
-              do: unlike the reading's line below, this changes only when
-              something starts or stops waiting on the developer, which is
-              worth announcing. */}
+          <h1 className="text-lg font-semibold">{SESSIONS_TITLE}</h1>
+          {/* A live region, mounted throughout so it exists before its
+              words do: unlike the reading's line below, this changes only
+              when something starts or stops waiting on the developer,
+              which is worth announcing. */}
           <span role="status" data-sessions-waiting={waiting}>
             {waiting > 0 && <Badge>{waitingCount(waiting)}</Badge>}
           </span>
           <Badge variant="outline">dev only</Badge>
         </div>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          {SESSIONS_LEAD}
+        </p>
+        {/* The rest is read once, so it starts folded rather than standing
+            above the sessions on every visit (#613). */}
+        <Collapsible open={howOpen} onOpenChange={setHowOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="xs" className="-ml-2">
+              <FoldChevron open={howOpen} inline />
+              {SESSIONS_HOW_LABEL}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <p
+              data-sessions-how
+              className="max-w-prose pt-1 text-sm text-muted-foreground"
+            >
+              {sessionsHow(
+                SESSION_STATE.waiting,
+                SESSION_STATE.stopped,
+                idleTime(SESSION_IDLE_MS),
+              )}
+            </p>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
 
       {report ? (
