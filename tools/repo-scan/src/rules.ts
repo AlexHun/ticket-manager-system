@@ -43,12 +43,9 @@ export interface Rule {
    *  allowlist test fails. */
   allowed?: string[];
   /** Lines that break the rule, each of which must be caught — and caught
-   *  again with its double-quoted literals rewritten in single quotes and in
-   *  backticks (`inEveryQuote`), unless `asTyped` says why not. */
+   *  again with its literals rewritten in each of the other two quotes
+   *  (`inEveryQuote`). */
   catches: string[];
-  /** Why the rule bans a literal only in the quote its `catches` are typed
-   *  in, when another quote is not the same mistake. Absent, every quote is. */
-  asTyped?: string;
   /** Lines that keep the rule while resembling a break, each of which must
    *  pass. */
   passes?: string[];
@@ -188,10 +185,7 @@ export function checkRules(
         ).toEqual([]);
       });
 
-      const catches = rule.asTyped
-        ? rule.catches
-        : rule.catches.flatMap(inEveryQuote);
-      for (const line of catches) {
+      for (const line of rule.catches.flatMap(inEveryQuote)) {
         test(`catches ${line}`, () => {
           expect(offendingLines(rule, stripComments(line).code)).toEqual([1]);
         });

@@ -9,7 +9,13 @@ import {
   ruleLabel,
   underAny,
 } from "@ticket/repo-scan/rules";
-import { key, literal, QUOTE } from "@ticket/repo-scan/spellings";
+import {
+  key,
+  literal,
+  MODULE_SUFFIX,
+  NOT_QUOTE,
+  QUOTE,
+} from "@ticket/repo-scan/spellings";
 import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
@@ -74,7 +80,8 @@ const isProduction = (file: string) =>
 const ROLE = literal("admin", "agent");
 /** The fields a role is written into: the user's own, and the two sides of a
  *  `role_changed` activity row. */
-const ROLE_KEY = String.raw`\b(?:role|fromValue|toValue)`;
+const ROLE_FIELDS = ["role", "fromValue", "toValue"];
+const ROLE_KEY = String.raw`(?<![\w$])(?:${ROLE_FIELDS.join("|")})`;
 /** A module specifier in an import, a re-export, a dynamic import or a
  *  require — the quote that opens it, so a form can name what follows. */
 const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*${QUOTE}`;
@@ -94,11 +101,11 @@ const SOURCE_RULES: Rule[] = [
     // Where a role is meant, not the word: `asCaller("admin")` and
     // `seedColleagues("admin")` name a test fixture, and `REPLY_ORIGIN.agent`
     // is a different enum, so none of those match. The web guard's forms,
-    // plus a quoted or optional key, a backtick literal and an assignment,
-    // which review of this file found missing.
+    // plus an assignment and a literal typed as a `UserRole`, which review of
+    // this file found missing.
     forms: [
       // `role: "admin"`, `"role": "admin"`, `role?: "admin"`.
-      new RegExp(String.raw`${key("role", "fromValue", "toValue")}\s*${ROLE}`),
+      new RegExp(String.raw`${key(...ROLE_FIELDS)}\s*${ROLE}`),
       new RegExp(String.raw`${ROLE_KEY}\s*=(?!=)\s*${ROLE}`),
       // Anything typed as a role and given a literal: `let r: UserRole = "agent"`.
       new RegExp(String.raw`:\s*UserRole\s*=(?!=)\s*${ROLE}`),
@@ -133,7 +140,7 @@ const SOURCE_RULES: Rule[] = [
     forms: [
       new RegExp(String.raw`${SPECIFIER_OR_MOCK}@ticket/shared/`),
       new RegExp(
-        String.raw`${SPECIFIER_OR_MOCK}[^"'\`\n]*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
+        String.raw`${SPECIFIER_OR_MOCK}${NOT_QUOTE}*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
       ),
     ],
     catches: [
@@ -172,7 +179,7 @@ const SOURCE_RULES: Rule[] = [
     forms: [
       /\bLanguageModelUsage\b/,
       new RegExp(String.raw`\.${USAGE_FIELD}`),
-      new RegExp(String.raw`\[\s*["'\`]${USAGE_FIELD}["'\`]\s*\]`),
+      new RegExp(String.raw`\[\s*${QUOTE}${USAGE_FIELD}${QUOTE}\s*\]`),
       // A destructuring read: `const { cachedInputTokens } = usage`.
       new RegExp(
         String.raw`\b(?:const|let|var)\s*\{[^}]*${USAGE_FIELD}[^}]*\}\s*=`,
@@ -193,7 +200,9 @@ const SOURCE_RULES: Rule[] = [
     name: "The generated Prisma client is imported only by ./db and the test Postgres module; everything else imports the singleton from ./db",
     standard: "backend.md",
     roots: API_PACKAGES_SCRIPTS,
-    forms: [new RegExp(String.raw`${SPECIFIER}[^"'\`\n]*generated/prisma\b`)],
+    forms: [
+      new RegExp(String.raw`${SPECIFIER}${NOT_QUOTE}*generated/prisma\b`),
+    ],
     allowed: ["apps/api/src/db.ts", "apps/api/src/test/pg.ts"],
     catches: [
       `import { PrismaClient } from "../generated/prisma/client";`,
@@ -207,7 +216,7 @@ const SOURCE_RULES: Rule[] = [
     standard: "backend.md",
     roots: API_PACKAGES_SCRIPTS,
     forms: [
-      new RegExp(String.raw`${SPECIFIER}postmark(?:/[^"'\`\n]*)?${QUOTE}`),
+      new RegExp(String.raw`${SPECIFIER}postmark(?:/${NOT_QUOTE}*)?${QUOTE}`),
     ],
     allowed: ["apps/api/src/mail/transport.ts"],
     catches: [
@@ -227,7 +236,7 @@ const SOURCE_RULES: Rule[] = [
     // it is the per-file default the bullet warns about.
     forms: [
       new RegExp(
-        String.raw`\bmock\.module\(\s*${QUOTE}(?:\.{1,2}\/)+(?:db|middleware\/(?:auth|session))(?:\.ts|\/index(?:\.ts)?)?${QUOTE}`,
+        String.raw`\bmock\.module\(\s*${QUOTE}(?:\.{1,2}\/)+(?:db|middleware\/(?:auth|session))${MODULE_SUFFIX}${QUOTE}`,
       ),
     ],
     allowed: ["apps/api/src/test/preload.ts"],

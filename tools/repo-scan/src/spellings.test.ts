@@ -51,7 +51,20 @@ describe("inEveryQuote", () => {
     ]);
   });
 
-  test("returns a line with no double-quoted literal alone", () => {
+  test("expands a line from the quote it was typed in", () => {
+    expect(inEveryQuote(`f('a');`)).toEqual([`f('a');`, `f("a");`, "f(`a`);"]);
+    expect(inEveryQuote("f(`a`);")).toEqual(["f(`a`);", `f("a");`, `f('a');`]);
+  });
+
+  test("rewrites only the literals in the quote that opens the first one", () => {
+    expect(inEveryQuote(`f("a", 'b');`)).toEqual([
+      `f("a", 'b');`,
+      `f('a', 'b');`,
+      "f(`a`, 'b');",
+    ]);
+  });
+
+  test("returns a line with no literal alone", () => {
     expect(inEveryQuote("f(USER_ROLE.admin);")).toEqual([
       "f(USER_ROLE.admin);",
     ]);

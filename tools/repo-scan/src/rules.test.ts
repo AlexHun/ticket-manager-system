@@ -100,19 +100,6 @@ describe("checkRules", () => {
     expect(failure(`${TITLE} > catches await fetch('/api');`)).toBeDefined();
   });
 
-  test("asTyped keeps a rule's catches to the quote they are typed in", () => {
-    const { runner, tests } = recorder();
-    const asTyped: Rule = {
-      ...RULE,
-      forms: [/\bfetch\("/],
-      asTyped: "a planted reason",
-    };
-    checkRules([asTyped], tree({ "web/src/lib/api.ts": "" }), runner);
-    expect(
-      [...tests.keys()].filter((name) => name.includes("> catches ")),
-    ).toEqual([`${TITLE} > catches await fetch("/api");`]);
-  });
-
   test("the holds test fails on a breach, naming the file, the line and the rule, and skips an allowed file", () => {
     const { runner, failure } = recorder();
     const code = tree({
