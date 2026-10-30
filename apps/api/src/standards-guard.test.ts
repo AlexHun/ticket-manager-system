@@ -415,6 +415,37 @@ const BRAND_SHELL: FileContents = Object.fromEntries(
   ]),
 );
 
+/** Every text file git tracks, by name: the product name's kinds, plus shell,
+ *  PowerShell and plain text, and the extensionless hooks. Binaries are not
+ *  read. */
+const TEXT_FILE =
+  /(?:\.(?:ts|tsx|js|mjs|cjs|html|css|json|md|sql|prisma|toml|svg|ya?ml|sh|ps1|txt)|^Dockerfile(?:\.\w+)?|^Caddyfile|^pre-(?:commit|push))$/;
+/**
+ * What a Windows round trip leaves in a UTF-8 file: a byte-order mark from
+ * `Out-File` or `Set-Content`, the replacement character from bytes that were
+ * not UTF-8, and U+00E2 U+20AC — the first two bytes of a UTF-8 dash or curly
+ * quote read as Windows-1252 and written back, so one `—` becomes three
+ * characters (commit 4927a82 shipped 41). Built from code points, so this file
+ * never holds one.
+ */
+const char = (...codePoints: number[]) => String.fromCodePoint(...codePoints);
+const ENCODING_DAMAGE: Record<string, RegExp> = {
+  "a byte-order mark": new RegExp(`^${char(0xfeff)}`),
+  "a replacement character": new RegExp(char(0xfffd)),
+  "a dash or quote mangled through Windows-1252": new RegExp(
+    char(0xe2, 0x20ac),
+  ),
+};
+
+/** Every tracked text file, keyed by repo-relative path. */
+function textFiles(): FileContents {
+  return readRepo(
+    ...TRACKED.filter((file) =>
+      TEXT_FILE.test(file.slice(file.lastIndexOf("/") + 1)),
+    ),
+  );
+}
+
 const CONFIG_RULES: ConfigRule[] = [
   {
     name: "better-auth is pinned to an exact version, no ^ or ~, in both apps' manifests, and the two agree",
@@ -640,6 +671,44 @@ const CONFIG_RULES: ConfigRule[] = [
         '// The lockup reads BRAND_NAME; at the desk the agents forge replies.\n<span className="sr-only">{BRAND_NAME}</span>\n',
     },
   },
+  {
+    name: "Every tracked text file is UTF-8 with no byte-order mark, no replacement character and no dash or quote mangled through Windows-1252",
+    standard: "conventions.md",
+    read: textFiles,
+    problems: (files) => {
+      const found: string[] = [];
+      for (const [file, text] of Object.entries(files)) {
+        for (const [damage, form] of Object.entries(ENCODING_DAMAGE)) {
+          const match = form.exec(text);
+          if (match) {
+            const line = text.slice(0, match.index).split("\n").length;
+            found.push(`${file}:${line} holds ${damage}`);
+          }
+        }
+      }
+      return found;
+    },
+    catches: [
+      { "apps/web/src/pages/UsersTable.tsx": "\uFEFFimport x from 'y';\n" },
+      { "apps/api/src/mail/sign-off.ts": "// Thanks \uFFFD the team\n" },
+      {
+        "apps/api/src/jobs/auto-reply-ticket.ts":
+          "// receives two \u00E2\u20AC\u201D one of them\n",
+      },
+      {
+        "docs/standards/copy.md":
+          "Write \u00E2\u20AC\u0153queue\u00E2\u20AC.\n",
+      },
+    ],
+    ignores: {
+      // The characters themselves are fine; so is a mark that is not first.
+      "apps/api/src/jobs/auto-reply-ticket.ts":
+        "// receives two \u2014 one \u201Cof\u201D them \u2019s\n",
+      "packages/shared/src/brand.ts": "export const A = 'Café';\n",
+      "apps/api/src/strip.ts":
+        "const BOM = '\\uFEFF';\nconst x = 'a\uFEFFb';\n",
+    },
+  },
 ];
 
 test.skipIf(partialCheckout)(
@@ -657,6 +726,21 @@ test.skipIf(partialCheckout)(
     // No file is skipped by name: the guard itself is read like any other.
     expect(files).toContain(SELF);
     expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
+  },
+);
+
+test.skipIf(partialCheckout)(
+  "the encoding rule reads the tree it means to",
+  () => {
+    // An empty list would pass every file it did not read.
+    const files = Object.keys(textFiles());
+    expect(files.length).toBeGreaterThan(700);
+    expect(files).toContain("apps/api/src/jobs/auto-reply-ticket.ts");
+    expect(files).toContain("docs/standards/conventions.md");
+    expect(files).toContain(".husky/pre-push");
+    expect(files).toContain("apps/api/Dockerfile");
+    expect(files).toContain(SELF);
+    expect(files.some((file) => file.endsWith(".png"))).toBe(false);
   },
 );
 

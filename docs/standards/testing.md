@@ -10,6 +10,15 @@
 
 For E2E test commands (`test:e2e`, `db:test:*`), see the `playwright-e2e-author` agent.
 
+## A test earns its place by failing
+
+Binds every suite: web, API, E2E and the standards guards. **Before a test is committed, break the line it guards and watch it go red.** A retro of the 237 commits on `develop` that settled a review finding (2026-08-01 to 2026-10-30) found about 30 that fixed a test which could not fail, every one passing over the bug it was named for. PR #160 shows the habit as a table — each mutation, and which half of the tests caught it. Name the mutation in the commit body or PR ("deleting `automated: false` turns this red", `89d2810`), so review can check it rather than trust it. The four shapes these came in:
+
+- **An absence or a zero first proves its query finds something.** `toBe(0)`, `toHaveLength(0)`, `toHaveCount(0)` and `not.toBeVisible()` all pass on a misspelt key or a locator that matches nothing. `17430d2`'s cross-corpus half asserted only zero counts, which a missing locator satisfies; `dbCalls` throws on an unknown operation name for the same reason ([testing-api.md](testing-api.md)). Assert the positive in the same test — the live card on screen, then its zero.
+- **Measure the property, not a proxy that cannot vary.** `3c3c39d` asked a heading's own box whether a word was cropped, and `max-w-full` clamps that box to the screen; `f57d131` measured a `min-w-0` cell that shrinks to fit; `e4dd7cf` counted a span's `getClientRects()`, one box however the text wraps; `38d4216` compared a client area that excludes classic scrollbars.
+- **Match exactly.** `17430d2`'s card lookup by substring found `Run 74` when asked for `Run 7`, and `f2683c5` asserted a fragment of a sentence the change had rewritten.
+- **A test name is a claim the body makes good.** `9f7c801`'s "updates rather than duplicates on a second call" made one call, and its `seenAt` check passed for any past date; `89d2810`'s "never falls back to the assistant" never reached the guard it names.
+
 ## API tests (`apps/api`)
 
 **The `apps/api` test conventions live in [testing-api.md](testing-api.md)** — `bun test`,
