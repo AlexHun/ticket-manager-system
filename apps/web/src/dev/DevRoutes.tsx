@@ -104,11 +104,13 @@ export function DevRoutes() {
               so Tab reaches every one without the row being a tab stop of its
               own. Whichever takes focus is scrolled fully into view, since
               Chrome's own focus scroll leaves a half-clipped tab where it is,
-              and the current one is scrolled to on arrival. */}
+              and the current one is scrolled to on arrival. The scrollbar is
+              thin rather than hidden: in a narrow desktop window it is the
+              pointer's one sign that the row scrolls. */}
           <nav
             ref={navRef}
             aria-label="Dev tools"
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:thin]"
             onFocus={(event) => scrollIntoRow(event.target)}
           >
             {DEV_NAV_ITEMS.map((item) => (
