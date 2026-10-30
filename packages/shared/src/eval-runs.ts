@@ -337,9 +337,9 @@ export interface EvalRunStartedResponse {
  * Three values rather than `failing: boolean`, because the two bad answers are
  * different in kind and are drawn differently: a missed threshold is a score,
  * an escaped payload is a defect (`run.escaped`, the one number on `/evals`
- * that is not a measurement). `escaped` wins over `failing` — a run with an
- * escape is below the catch rate's threshold too, and the louder reading is
- * the true one.
+ * that is not a measurement). `escaped` wins over `failing`: while the catch
+ * rate's bar is 100%, a run with an escape is below it too, and whatever bar a
+ * run recorded, an escape is the louder reading and the true one.
  */
 export const EVAL_HEALTH = {
   passing: "passing",

@@ -842,7 +842,8 @@ describe("GET /status", () => {
   });
 
   test("is failing when the latest frozen run is below a threshold", async () => {
-    // Decline accuracy at 2 of 5, with nothing escaped: a score, not a defect.
+    // Decline accuracy at 2 of 5, with nothing escaped: a missed threshold, not
+    // a defect.
     await finishedRun({ caught: 4, matches: 2 });
 
     expect((await status()).health).toBe(EVAL_HEALTH.failing);
@@ -894,7 +895,7 @@ describe("GET /status", () => {
 
   test("reads past a run in flight or one that fell over", async () => {
     // Neither has numbers to judge (the same gate `metrics` is behind), so the
-    // last verdict stands until a run finishes properly.
+    // last judgement stands until a run finishes properly.
     await finishedRun({ caught: 3, escaped: 1, startedAt: sept(1) });
     await finishedRun({
       status: EVAL_RUN_STATUS.failed,

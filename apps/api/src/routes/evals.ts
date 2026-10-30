@@ -176,10 +176,11 @@ export function reachedFrom(verdicts: StoredVerdict[]): EvalReachedRow[] {
 /**
  * The counters every metric is taken over, on any run.
  *
- * Structural rather than the Prisma row, because two different queries produce
- * it: the page of runs, which selects everything, and the narrow lookup for the
- * run before it (`COMPARISON_COLUMNS`), which selects eight columns and none of
- * the results.
+ * Structural rather than the Prisma row, because three different queries
+ * produce it: the page of runs, which selects everything; the narrow lookup for
+ * the run before it (`COMPARISON_COLUMNS`), which selects eight columns and none
+ * of the results; and `GET /status`, which takes those eight and the thresholds
+ * for the latest frozen run itself (#608).
  *
  * A `Pick` over the run-level counters rather than six restated fields, so a
  * counter renamed in `EVAL_COUNTERS` fails here rather than resolving to a
@@ -416,7 +417,8 @@ function thresholdsFrom(value: unknown): Record<string, number> {
  * One function because two readers judge a run: the page draws the rows, and
  * `GET /status` asks only whether any of them misses (#608). Written out at
  * each, the sidebar's mark and the card's "Failing" badge could disagree about
- * the same run.
+ * the same run — which is also why `failingOf` below is the one place "misses"
+ * is decided.
  */
 function metricsOf(
   run: MetricCounts,
@@ -435,6 +437,11 @@ function metricsOf(
     // reading.
     metricRow(EVAL_METRIC.classifierAccuracy, run, previous, thresholds),
   ];
+}
+
+/** Whether any measured metric fell below its threshold (R8). */
+function failingOf(metrics: EvalMetricRow[]): boolean {
+  return metrics.some((metric) => !metric.meets);
 }
 
 /**
@@ -739,7 +746,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             // no issue, no notification, and nothing that could turn a pull request
             // red. A slow statistical suite wired to a gate is a suite somebody
             // switches off, which is the failure this is written to avoid.
-            failing: metrics.some((metric) => !metric.meets),
+            failing: failingOf(metrics),
             results: results.map((result): EvalCaseResultRow => ({
               id: result.id,
               caseId: result.caseId,
@@ -781,7 +788,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
    * the frozen one, and a live run that answered from an article an admin just
    * reworded is not a regression to be pulled to. **The latest completed run**,
    * passing over one in flight or one that fell over — neither has numbers to
-   * judge, which is why `metrics` is empty on both, so the last verdict stands
+   * judge, which is why `metrics` is empty on both, so the last judgement stands
    * until a run finishes properly. One row and nine columns, since the sidebar
    * asks on every page.
    */
@@ -809,7 +816,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
         health:
           run.escaped > 0
             ? EVAL_HEALTH.escaped
-            : metrics.some((metric) => !metric.meets)
+            : failingOf(metrics)
               ? EVAL_HEALTH.failing
               : EVAL_HEALTH.passing,
       });

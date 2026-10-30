@@ -21,7 +21,6 @@ import {
 } from "@/lib/new-feature-queries";
 import { useEvalStatus } from "@/lib/eval-queries";
 import { ROUTE } from "@/lib/routes";
-import { cn } from "@/lib/utils";
 import { seesAdminScreen, viewerOf } from "@/lib/viewer";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
@@ -42,13 +41,16 @@ const EVAL_MARK: Record<
   [EVAL_HEALTH.failing]: {
     text: "Failing",
     label: "Failing: the latest frozen eval run is below a threshold",
-    className: "text-status-critical",
+    // Each entry holds its colour on hover and on the active row itself, which
+    // the badge's own classes would otherwise repaint.
+    className:
+      "text-status-critical peer-hover/menu-button:text-status-critical peer-data-[active=true]/menu-button:text-status-critical",
   },
   [EVAL_HEALTH.escaped]: {
     text: "Defect",
     label: "Defect: the latest frozen eval run let a planted payload through",
     className:
-      "border border-status-critical/40 bg-status-critical-soft text-status-critical",
+      "border border-status-critical/40 bg-status-critical-soft text-status-critical peer-hover/menu-button:text-status-critical peer-data-[active=true]/menu-button:text-status-critical",
   },
 };
 
@@ -145,7 +147,9 @@ export function AppSidebar() {
                           is unambiguous at the same one-word cost. Text, not a
                           count, so it doesn't collide with the unread slot
                           above (mutually exclusive today: only Tickets has
-                          unread, and Tickets has no newFeatureKey). */}
+                          unread, and Tickets has no newFeatureKey). The eval
+                          mark below shares the slot too, so Evals must not be
+                          given a newFeatureKey while it can be marked. */}
                       {isNew && (
                         <SidebarMenuBadge
                           data-testid="new-feature-badge"
@@ -157,17 +161,12 @@ export function AppSidebar() {
 
                       {/* The eval mark (#608). An `img` with a label rather
                           than bare text, so it is announced with why it is
-                          there, not as a lone word beside the link. Its colour
-                          holds on hover and on the active row, which the
-                          badge's own classes would otherwise repaint. */}
+                          there, not as a lone word beside the link. */}
                       {item.to === ROUTE.evals.path && evalMark && (
                         <SidebarMenuBadge
                           role="img"
                           aria-label={evalMark.label}
-                          className={cn(
-                            evalMark.className,
-                            "peer-hover/menu-button:text-status-critical peer-data-[active=true]/menu-button:text-status-critical",
-                          )}
+                          className={evalMark.className}
                         >
                           {evalMark.text}
                         </SidebarMenuBadge>
