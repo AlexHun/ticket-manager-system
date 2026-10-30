@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Bot, Pencil, Trash2 } from "lucide-react";
 import { USER_ROLE, type User, type UserRole } from "@ticket/shared";
 import { Badge } from "@/components/ui/badge";
