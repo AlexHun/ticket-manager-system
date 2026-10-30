@@ -234,6 +234,21 @@ const EXEMPTIONS: Exemption[] = [
       "a column the ADR decided not to add.",
     ],
     [
+      "docs/adr/0021-a-planned-run-is-not-a-run.md",
+      "previousRuns",
+      "the predecessor walk in `routes/evals.ts` until #607 folded it into `seriesOf`.",
+    ],
+    [
+      "docs/prd/run-projection-and-shared-vocabulary.md",
+      "previousRuns",
+      "the predecessor walk in `routes/evals.ts` until #607 folded it into `seriesOf`.",
+    ],
+    [
+      "docs/prd/run-projection-and-shared-vocabulary.md",
+      "anchorRun",
+      "the off-page predecessor lookup until #607 folded it into `seriesOf`.",
+    ],
+    [
       "docs/standards/testing.md",
       "renderWithQuery",
       "a helper the bullet records as deleted.",

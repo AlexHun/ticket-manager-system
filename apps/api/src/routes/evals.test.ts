@@ -31,6 +31,7 @@ import {
   ADMIN_SCREEN,
   EVAL_CORPUS,
   EVAL_HEALTH,
+  EVAL_HISTORY_RUNS,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   EVAL_METRIC,
@@ -54,6 +55,8 @@ import { seedColleagues } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
 import type { StoredVerdict } from "../evals/stored-verdict";
+// Type-only, so it is erased and does not load the router ahead of the mock.
+import type { SeriesRun } from "./evals";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -104,8 +107,12 @@ const {
   categoriesFrom,
   checksFrom,
   createEvalsRouter,
+  fallFrom,
   filedFrom,
+  historyFrom,
   reachedFrom,
+  trailingFrom,
+  weekEarlierOf,
 } = await import("./evals");
 
 const evalsRouter = createEvalsRouter(config);
@@ -1034,7 +1041,7 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
   test("finds the previous run even when it has fallen off the end of the page", async () => {
     // A series longer than the window this route reads — the nightly is frozen,
     // so this is where the frozen series lands after three weeks. Without the
-    // anchor lookup the oldest run drawn would quietly stop being comparable at
+    // lookup past the page the oldest run drawn would quietly stop being comparable at
     // exactly the point somebody most wants to know whether something moved.
     //
     // 4 of 5, where every run in the way is 5 of 5: the value that comes back
@@ -1059,6 +1066,251 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
     expect(
       previousOf(body, EVAL_METRIC.declineAccuracy, -1)?.value,
     ).toBeCloseTo(0.8, 6);
+  });
+});
+
+/* ── A case's recent history, and the week-earlier flag (#607) ────────────── */
+
+/**
+ * A finished run answering the cases a test names, each with its own matches.
+ *
+ * Only the counters a history reads are made to agree — the run's `matches`
+ * and `attempts` are the cases' sums, so its decline accuracy is what the
+ * trailing average pools. The verdicts stay `caseResult`'s five matched
+ * repeats: nothing in a history reads them.
+ */
+async function seriesRun(
+  startedAt: Date,
+  cases: Record<string, number>,
+  overrides: { corpus?: EvalCorpus; status?: EvalRunStatus } = {},
+) {
+  const entries = Object.entries(cases);
+
+  return prisma.evalRun.create({
+    data: {
+      corpus: overrides.corpus ?? EVAL_CORPUS.frozen,
+      status: overrides.status ?? EVAL_RUN_STATUS.completed,
+      startedAt,
+      finishedAt: new Date(),
+      repeats: 5,
+      attempts: entries.length * 5,
+      matches: entries.reduce((sum, [, matches]) => sum + matches, 0),
+      thresholds: EVAL_THRESHOLD,
+      results: {
+        create: entries.map(([caseId, matches]) =>
+          caseResult({ caseId, matches }),
+        ),
+      },
+    },
+  });
+}
+
+/** One case's row off a run on the page — the newest unless told otherwise. */
+function caseOf(body: EvalRunsResponse, caseId: string, at = 0) {
+  const row = body.runs.at(at)?.results.find((r) => r.caseId === caseId);
+  if (!row) throw new Error(`No ${caseId} on the run`);
+  return row;
+}
+
+/** A history drawn as its matches, gaps as null, to keep assertions short. */
+function matchesOf(body: EvalRunsResponse, caseId: string, at = 0) {
+  return caseOf(body, caseId, at).history.map(
+    (split) => split?.matches ?? null,
+  );
+}
+
+describe("GET /runs — a case's recent history (#607)", () => {
+  test("draws a case's splits over the last runs, oldest first, ending with this one", async () => {
+    // Eight runs, so the window has something to leave out: the first one.
+    const splits = [1, 5, 5, 4, 3, 5, 2, 0];
+    for (const [i, matches] of splits.entries()) {
+      await seriesRun(sept(i + 1), { "off-corpus": matches });
+    }
+
+    const body = await runs();
+
+    expect(matchesOf(body, "off-corpus")).toEqual(
+      splits.slice(-EVAL_HISTORY_RUNS),
+    );
+    expect(caseOf(body, "off-corpus").history.at(-1)).toEqual({
+      runId: body.runs[0]!.id,
+      matches: 0,
+      repeats: 5,
+    });
+    // An older card's history ends with that card, not with the newest run.
+    expect(matchesOf(body, "off-corpus", 1)).toEqual(
+      splits.slice(-EVAL_HISTORY_RUNS - 1, -1),
+    );
+  });
+
+  test("a case added since an older run is a gap there, not a zero", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(2), { "off-corpus": 5, "planted-link": 4 });
+
+    const body = await runs();
+
+    expect(matchesOf(body, "planted-link")).toEqual([null, 4]);
+  });
+
+  test("leaves a run in flight or one that fell over out of every history", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(
+      sept(2),
+      { "off-corpus": 0 },
+      { status: EVAL_RUN_STATUS.failed },
+    );
+    await seriesRun(sept(3), { "off-corpus": 4 });
+    await seriesRun(
+      sept(4),
+      { "off-corpus": 1 },
+      { status: EVAL_RUN_STATUS.running },
+    );
+
+    const body = await runs();
+
+    // The run in flight draws no history of its own, as it draws no metrics.
+    expect(caseOf(body, "off-corpus", 0).history).toEqual([]);
+    expect(caseOf(body, "off-corpus", 0).fell).toBeNull();
+    expect(matchesOf(body, "off-corpus", 1)).toEqual([5, 4]);
+  });
+
+  test("never mixes a live run into a frozen history (R4)", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(2), { "off-corpus": 0 }, { corpus: EVAL_CORPUS.live });
+    await seriesRun(sept(3), { "off-corpus": 4 });
+
+    expect(matchesOf(await runs(), "off-corpus")).toEqual([5, 4]);
+    expect(matchesOf(await runs(EVAL_CORPUS.live), "off-corpus")).toEqual([0]);
+  });
+
+  test("reaches back past the end of the page for the oldest card's history", async () => {
+    for (let day = 1; day <= EVAL_RUN_LIMIT + 1; day += 1) {
+      await seriesRun(sept(day), { "off-corpus": day === 1 ? 2 : 5 });
+    }
+
+    const body = await runs();
+
+    expect(body.runs).toHaveLength(EVAL_RUN_LIMIT);
+    expect(matchesOf(body, "off-corpus", -1)).toEqual([2, 5]);
+  });
+});
+
+describe("GET /runs — the trailing average (#607)", () => {
+  function trailingOf(body: EvalRunsResponse, at = 0) {
+    return metricOf(body, EVAL_METRIC.declineAccuracy, at).trailing;
+  }
+
+  test("pools each metric over the window, this run included", async () => {
+    // 5, 4 and 3 of 5: 12 of 15. Equal denominators, so pooled and a mean of
+    // rates agree here; `trailingFrom`'s own tests are where they part.
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(2), { "off-corpus": 4 });
+    await seriesRun(sept(3), { "off-corpus": 3 });
+
+    const trailing = trailingOf(await runs());
+
+    expect(trailing?.runs).toBe(3);
+    expect(trailing?.value).toBeCloseTo(0.8, 6);
+  });
+
+  test("shows none with fewer than two runs before this one", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(2), { "off-corpus": 4 });
+
+    expect(trailingOf(await runs())).toBeNull();
+  });
+
+  test("leaves a run in flight, one that fell over and a live run out of it", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(
+      sept(2),
+      { "off-corpus": 0 },
+      { status: EVAL_RUN_STATUS.failed },
+    );
+    await seriesRun(sept(3), { "off-corpus": 0 }, { corpus: EVAL_CORPUS.live });
+    await seriesRun(sept(4), { "off-corpus": 5 });
+    await seriesRun(sept(5), { "off-corpus": 5 });
+    await seriesRun(
+      sept(6),
+      { "off-corpus": 0 },
+      { status: EVAL_RUN_STATUS.running },
+    );
+
+    const body = await runs();
+
+    expect(trailingOf(body, 1)).toEqual({ value: 1, runs: 3 });
+  });
+});
+
+describe("GET /runs — a case that fell since a week earlier (#607)", () => {
+  test("flags a case two or more below the run a week earlier", async () => {
+    const weekEarlier = await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(8), { "off-corpus": 3 });
+
+    expect(caseOf(await runs(), "off-corpus").fell).toEqual({
+      runId: weekEarlier.id,
+      startedAt: sept(1).toISOString(),
+      matches: 5,
+      repeats: 5,
+    });
+  });
+
+  test("does not flag a drop of exactly one", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(8), { "off-corpus": 4 });
+
+    expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
+  });
+
+  test("reads the latest run at least a week earlier, not the previous run", async () => {
+    // Day 2 is the latest run seven days or more before day 9; day 3 is six
+    // days before it and too recent, however far the case fell since.
+    await seriesRun(sept(1), { "off-corpus": 1 });
+    const weekEarlier = await seriesRun(sept(2), { "off-corpus": 5 });
+    await seriesRun(sept(3), { "off-corpus": 1 });
+    await seriesRun(sept(9), { "off-corpus": 3 });
+
+    expect(caseOf(await runs(), "off-corpus").fell?.runId).toBe(weekEarlier.id);
+  });
+
+  test("passes over a run that fell over, and a live run, for the week-earlier one", async () => {
+    const weekEarlier = await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(
+      sept(2),
+      { "off-corpus": 1 },
+      { status: EVAL_RUN_STATUS.failed },
+    );
+    await seriesRun(sept(2), { "off-corpus": 1 }, { corpus: EVAL_CORPUS.live });
+    await seriesRun(sept(9), { "off-corpus": 3 });
+
+    expect(caseOf(await runs(), "off-corpus").fell?.runId).toBe(weekEarlier.id);
+  });
+
+  test("no week-earlier run is no flag", async () => {
+    await seriesRun(sept(3), { "off-corpus": 5 });
+    await seriesRun(sept(8), { "off-corpus": 0 });
+
+    expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
+  });
+
+  test("a case absent from the week-earlier run is no flag", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(8), { "off-corpus": 5, "planted-link": 0 });
+
+    expect(caseOf(await runs(), "planted-link").fell).toBeNull();
+  });
+
+  test("finds the oldest card's week-earlier run off the end of the page", async () => {
+    // Twenty-eight nightly runs: the page holds days 9 to 28, and the oldest
+    // card drawn, day 9, is read against day 2 — seven runs past the page's end.
+    for (let day = 1; day <= EVAL_RUN_LIMIT + 8; day += 1) {
+      await seriesRun(sept(day), { "off-corpus": day === 9 ? 2 : 5 });
+    }
+
+    const body = await runs();
+
+    expect(caseOf(body, "off-corpus", -1).fell?.matches).toBe(5);
+    expect(caseOf(body, "off-corpus", 0).fell).toBeNull();
   });
 });
 
@@ -1444,5 +1696,123 @@ describe("checksFrom", () => {
         },
       ]),
     ).toEqual([{ decline: AUTO_REPLY_DECLINE.unbackedReference, count: 2 }]);
+  });
+});
+
+/* ── A series, as values (#607) ──────────────────────────────────────────── */
+
+/** A completed run of a series, with only what a history reads. */
+function seriesValue(
+  id: number,
+  startedAt: Date,
+  overrides: Partial<SeriesRun> = {},
+): SeriesRun {
+  return {
+    id,
+    startedAt,
+    caught: 0,
+    escaped: 0,
+    matches: 5,
+    attempts: 5,
+    classifyMatches: 0,
+    classifiedRepeats: 0,
+    results: [{ caseId: "off-corpus", matches: 5, repeats: 5 }],
+    ...overrides,
+  };
+}
+
+describe("trailingFrom", () => {
+  test("pools the window rather than averaging its rates", () => {
+    // 1 of 1 and 0 of 3 payloads caught, then a quiet night: pooled, 1 of 4.
+    // A mean of the two measured rates would say 50%, weighing one payload the
+    // same as three.
+    const window = [
+      seriesValue(1, sept(1), { caught: 1 }),
+      seriesValue(2, sept(2), { escaped: 3 }),
+      seriesValue(3, sept(3)),
+    ];
+
+    expect(trailingFrom(EVAL_METRIC.catchRate, window)).toEqual({
+      value: 0.25,
+      runs: 3,
+    });
+  });
+
+  test("is null-valued when no run in the window measured the metric", () => {
+    const window = [1, 2, 3].map((day) => seriesValue(day, sept(day)));
+
+    expect(trailingFrom(EVAL_METRIC.catchRate, window)).toEqual({
+      value: null,
+      runs: 3,
+    });
+  });
+
+  test("is absent with fewer than two runs before the last", () => {
+    const window = [1, 2].map((day) => seriesValue(day, sept(day)));
+
+    expect(trailingFrom(EVAL_METRIC.declineAccuracy, window)).toBeNull();
+  });
+});
+
+describe("historyFrom", () => {
+  test("draws a run that did not answer the case as a gap", () => {
+    const window = [
+      seriesValue(1, sept(1), { results: [] }),
+      seriesValue(2, sept(2)),
+    ];
+
+    expect(historyFrom(window, "off-corpus")).toEqual([
+      null,
+      { runId: 2, matches: 5, repeats: 5 },
+    ]);
+  });
+});
+
+describe("weekEarlierOf", () => {
+  const series = [9, 3, 2, 1].map((day) => seriesValue(day, sept(day)));
+
+  test("is the latest run that started at least seven days before", () => {
+    // Day 2 is exactly seven days before day 9, which counts; day 3 is six.
+    expect(weekEarlierOf(series, series[0]!)?.id).toBe(2);
+  });
+
+  test("is null when nothing is that old", () => {
+    expect(weekEarlierOf(series, series.at(-1)!)).toBeNull();
+  });
+});
+
+describe("fallFrom", () => {
+  const weekEarlier = seriesValue(1, sept(1));
+
+  test("carries the week-earlier split when the case fell by two or more", () => {
+    expect(fallFrom({ caseId: "off-corpus", matches: 3 }, weekEarlier)).toEqual(
+      {
+        runId: 1,
+        startedAt: sept(1).toISOString(),
+        matches: 5,
+        repeats: 5,
+      },
+    );
+  });
+
+  test("is null for a drop of one, a rise, or no week-earlier run", () => {
+    expect(
+      fallFrom({ caseId: "off-corpus", matches: 4 }, weekEarlier),
+    ).toBeNull();
+    expect(
+      fallFrom(
+        { caseId: "off-corpus", matches: 5 },
+        seriesValue(1, sept(1), {
+          results: [{ caseId: "off-corpus", matches: 2, repeats: 5 }],
+        }),
+      ),
+    ).toBeNull();
+    expect(fallFrom({ caseId: "off-corpus", matches: 0 }, null)).toBeNull();
+  });
+
+  test("is null for a case the week-earlier run did not answer", () => {
+    expect(
+      fallFrom({ caseId: "planted-link", matches: 0 }, weekEarlier),
+    ).toBeNull();
   });
 });

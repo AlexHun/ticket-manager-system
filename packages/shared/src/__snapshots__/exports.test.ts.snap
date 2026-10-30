@@ -465,6 +465,10 @@ exports[`the package's exports are the names, kinds and values recorded before t
       "passing": "passing",
     },
   },
+  "EVAL_HISTORY_RUNS": {
+    "typeof": "number",
+    "value": 7,
+  },
   "EVAL_METRIC": {
     "typeof": "object",
     "value": {

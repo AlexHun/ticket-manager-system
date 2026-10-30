@@ -38,6 +38,50 @@ export interface EvalCaseResultRow extends EvalCaseCounters {
   expectedCategory: TicketCategory | null;
   filed: EvalFiledRow[];
   reached: EvalReachedRow[];
+  /**
+   * This case's split on each of the last `EVAL_HISTORY_RUNS` completed runs of
+   * the series, oldest first and ending with this run (#607, R14).
+   *
+   * One run is five repeats, and five repeats cannot tell a case that has
+   * stopped working from one that had a bad night; a week of nightly runs is
+   * thirty-five. **A null is a run that did not answer this case** — a case
+   * added since — and it is a gap, never a zero: a zero would read as the case
+   * failing every repeat on a run that never asked it.
+   *
+   * Empty on a run that has not completed, which has no place in a series yet —
+   * the same gate `EvalRunRow.metrics` is behind.
+   */
+  history: (EvalCaseSplit | null)[];
+  /**
+   * Set when this case matched two or more fewer repeats than it did on the
+   * run a week earlier, and null otherwise (#607).
+   *
+   * Null too when there is no week-earlier run, or the case was not on it:
+   * no flag rather than a guess. Display only — nothing notifies (R8, R11).
+   */
+  fell: EvalCaseFall | null;
+}
+
+/** One case's split on one run, as its history draws it (#607). */
+export interface EvalCaseSplit {
+  runId: number;
+  matches: number;
+  repeats: number;
+}
+
+/**
+ * What a case matched on the run a week earlier, carried only when it has
+ * fallen since (#607).
+ *
+ * The week-earlier run is the latest completed run on the same corpus that
+ * started at least seven days before this one. Named on the row, run and date,
+ * because "down from 5/5" is a claim somebody will want to go and check.
+ */
+export interface EvalCaseFall {
+  runId: number;
+  startedAt: string;
+  matches: number;
+  repeats: number;
 }
 
 /**
@@ -77,6 +121,31 @@ export interface EvalMetricRow {
    * number.
    */
   previous: EvalPreviousMetric | null;
+  /**
+   * The metric over the last `EVAL_HISTORY_RUNS` completed runs of the series,
+   * this one included (#607, R14).
+   *
+   * Null with fewer than two runs before this one: an "average" of one or two
+   * runs is the run-to-run noise it exists to smooth, drawn as a trend.
+   */
+  trailing: EvalTrailingMetric | null;
+}
+
+/**
+ * One metric pooled over a window of runs (#607).
+ *
+ * **Pooled, not a mean of rates**: the numerators summed over the
+ * denominators summed, through the same arithmetic as a single run's rate. A
+ * mean of rates would weigh a catch rate over one payload the same as one over
+ * nine, and has nothing to say about a run that measured none; pooling leaves
+ * that run out of both sides, as one run's own rate leaves out an unanswered
+ * repeat.
+ */
+export interface EvalTrailingMetric {
+  /** Null when no run in the window measured this metric. */
+  value: number | null;
+  /** How many runs the window held, this one included. */
+  runs: number;
 }
 
 /**
@@ -366,3 +435,12 @@ export interface EvalStatusResponse {
  * off the page. Named here because the page quotes it when the list is full.
  */
 export const EVAL_RUN_LIMIT = 20;
+
+/**
+ * How many completed runs a case's history and a metric's trailing average
+ * reach back over, the run itself included (#607).
+ *
+ * Seven, which is a week of the nightly series: 35 repeats of a case, enough
+ * to tell a real split from a wrong expectation, where one run's five is not.
+ */
+export const EVAL_HISTORY_RUNS = 7;
