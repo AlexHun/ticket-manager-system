@@ -28,12 +28,12 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
  *
  * Each rule names its roots (#568): the web workspace's own code — `src/` and
  * `dev/` — and, for the role-literal rule and the bare `@ticket/shared` import
- * (#579), the Playwright specs and helpers under `tests/e2e` too (#393), which
- * the `page.goto` rule reads alone. The others govern how the app is built —
- * its controls, its data fetching, its tokens — and a spec drives the built app rather than being part of it. None
- * reaches `packages/` or `scripts/`, which hold no UI; the API guard's rules
- * are the ones that do. Every file is one git tracks (`trackedFiles`, #567), so
- * a local run checks what CI checks.
+ * (#579), the Playwright specs and helpers under `tests/e2e` too (#393); the
+ * `page.goto` rule reads only `tests/e2e`. The others govern how the app is
+ * built — its controls, its data fetching, its tokens — and a spec drives the
+ * built app rather than being part of it. None reaches `packages/` or `scripts/`,
+ * which hold no UI; the API guard's rules are the ones that do. Every file is
+ * one git tracks (`trackedFiles`, #567), so a local run checks what CI checks.
  */
 
 /** The repository root, which every path here is relative to. */
