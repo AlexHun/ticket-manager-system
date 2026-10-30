@@ -92,7 +92,7 @@ jobs:
         run: bun run format:check
 
       # Every workspace, then the root project that holds playwright.config.ts
-      # and tests/e2e (#553; docs/standards/conventions.md).
+      # and tests/e2e (#553; docs/standards/checks.md).
       - name: Typecheck all workspaces and the E2E project
         run: bun run typecheck
 
@@ -102,7 +102,7 @@ jobs:
       # outbox write or a react-query mutation compiles cleanly and drops its
       # error, and typecheck cannot see it. Here and in no hook: it is the slow
       # kind of check, and the pre-commit hook is the fast gate
-      # (docs/standards/conventions.md has the measured cost). After the Prisma
+      # (docs/standards/checks.md has the measured cost). After the Prisma
       # client is generated, because the rules read its types.
       - name: Lint the apps and packages
         run: bun run lint

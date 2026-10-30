@@ -2,6 +2,13 @@ import { describe, expect, test } from "vitest";
 import path from "node:path";
 import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { checkRules, type Rule, ruleCode } from "@ticket/repo-scan/rules";
+import {
+  key,
+  literal,
+  NOT_QUOTE,
+  OPENS_LITERAL,
+  QUOTE,
+} from "@ticket/repo-scan/spellings";
 import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
@@ -48,10 +55,10 @@ const E2E = "tests/e2e";
 const SELF = `${DEV}/standards-guard.test.ts`;
 
 const isTest = (file: string) => /\.test\.tsx?$/.test(file);
-const ROLE = `["'](?:admin|agent)["']`;
+const ROLE = literal("admin", "agent");
 /** A module specifier in an import, a re-export, a dynamic import, a require
  *  or a test's registration: the quote that opens it. */
-const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
+const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*${QUOTE}`;
 
 /** The rules. Each one's `roots`, `applies` and `allowed` name paths from the
  *  repository root. */
@@ -65,18 +72,26 @@ const RULES: Rule[] = [
     forms: [
       // `useNavigate()`'s function, not `router.navigate(…)`, which a test may
       // drive by URL.
-      /(?<![\w$.])navigate\(\s*(?:["']|`(?!\$\{))/,
+      new RegExp(String.raw`(?<![\w$.])navigate\(\s*${OPENS_LITERAL}`),
       // `[^<]`, not `[^<>]`: an arrow-function handler before `to=` has a `>`.
-      /<(?:Navigate|Link|NavLink)\b[^<]*?\bto=\{?\s*(?:["']|`(?!\$\{))/,
-      /<(?:Navigate|Link|NavLink)\b[^<]*?\bto=\{\{\s*pathname:\s*(?:["']|`(?!\$\{))/,
-      /\bpathname\s*[=!]==\s*(?:["']|`(?!\$\{))/,
+      new RegExp(
+        String.raw`<(?:Navigate|Link|NavLink)\b[^<]*?\bto=\{?\s*${OPENS_LITERAL}`,
+      ),
+      new RegExp(
+        String.raw`<(?:Navigate|Link|NavLink)\b[^<]*?\bto=\{\{\s*pathname:\s*${OPENS_LITERAL}`,
+      ),
+      new RegExp(String.raw`\bpathname\s*[=!]==\s*${OPENS_LITERAL}`),
       /(?:["']|`)\s*[=!]==\s*(?:[\w$]+\.)*pathname\b/,
       // A full-page navigation (#544): `window.location.href = "/"` reached
       // develop in #521 because no form above reads it. `=(?!=)` leaves a
       // comparison alone. A bare `location =` is not read: it is also how a
       // local is declared.
-      /(?:(?<![\w$.])window\.location|(?<![\w$])location\.href)\s*=(?!=)\s*(?:["']|`(?!\$\{))/,
-      /(?<![\w$])location\.(?:assign|replace)\(\s*(?:["']|`(?!\$\{))/,
+      new RegExp(
+        String.raw`(?:(?<![\w$.])window\.location|(?<![\w$])location\.href)\s*=(?!=)\s*${OPENS_LITERAL}`,
+      ),
+      new RegExp(
+        String.raw`(?<![\w$])location\.(?:assign|replace)\(\s*${OPENS_LITERAL}`,
+      ),
     ],
     // Client routes live in `src/`; the node half under `dev/` answers server
     // paths (`/health`). `src/test/` exercises the router helper with synthetic
@@ -109,7 +124,7 @@ const RULES: Rule[] = [
     // them on the 404. An absolute URL the test was handed — an invitation
     // link — is a variable, not a literal, and passes.
     roots: [E2E],
-    forms: [/\.goto\(\s*(?:["']|`(?!\$\{))/],
+    forms: [new RegExp(String.raw`\.goto\(\s*${OPENS_LITERAL}`)],
     catches: [
       `await page.goto("/tickets");`,
       `await page.goto(\`/tickets/\${id}\`);`,
@@ -129,12 +144,15 @@ const RULES: Rule[] = [
     roots: APP,
     forms: [
       /<select[\s>/]/,
-      /<input\b[^<]*?\btype=\{?\s*["'](?:checkbox|radio)["']/,
+      new RegExp(
+        String.raw`<input\b[^<]*?\btype=\{?\s*${literal("checkbox", "radio")}`,
+      ),
     ],
     applies: (file) => !file.startsWith(`${SRC}/components/ui/`),
     catches: [
       `<select value={v}>`,
       `<input onChange={(e) => set(e.target.checked)} type="checkbox" />`,
+      `<input type={"radio"} name="size" />`,
     ],
     ignores: `/** shadcn's \`Select\`, not a native \`<select>\` or \`<input type="radio">\`. */`,
   },
@@ -199,8 +217,7 @@ const RULES: Rule[] = [
     // write role values as often as the app does (#393).
     roots: [...APP, E2E],
     forms: [
-      new RegExp(`\\brole\\s*:\\s*${ROLE}`),
-      new RegExp(`\\b(?:fromValue|toValue)\\s*:\\s*${ROLE}`),
+      new RegExp(`${key("role", "fromValue", "toValue")}\\s*${ROLE}`),
       new RegExp(`[=!]==?\\s*${ROLE}`),
       new RegExp(`${ROLE}\\s*[=!]==?`),
       new RegExp(`\\.(?:toBe|toEqual|includes)\\(\\s*${ROLE}\\s*\\)`),
@@ -239,7 +256,7 @@ const RULES: Rule[] = [
     forms: [
       new RegExp(String.raw`${SPECIFIER_OR_MOCK}@ticket/shared/`),
       new RegExp(
-        String.raw`${SPECIFIER_OR_MOCK}[^"'\`\n]*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
+        String.raw`${SPECIFIER_OR_MOCK}${NOT_QUOTE}*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
       ),
     ],
     catches: [

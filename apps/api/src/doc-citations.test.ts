@@ -41,7 +41,7 @@ import {
  * the line and the missing path or symbol, and on a full clone the new name
  * and the commit that renamed it (#443, slice 5), so the doc fix lands in the
  * same branch as the rename. The bullet is the pre-push one in
- * `docs/standards/conventions.md`.
+ * `docs/standards/checks.md`.
  *
  * The index, the resolvers, the scope and the excluded skills are
  * `doc-citations.ts`, which states what counts as a path and as a symbol,
@@ -60,7 +60,7 @@ import {
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
 /** The standards file whose bullet this check holds. */
-const STANDARD = "docs/standards/conventions.md";
+const STANDARD = "docs/standards/checks.md";
 
 const GITIGNORED = "Gitignored, so never tracked:";
 const MEMORY = "A Claude Code memory file, kept outside the repo:";
@@ -117,12 +117,12 @@ const EXEMPTIONS: Exemption[] = [
     reason: `${GITIGNORED} each developer's own environment file.`,
   },
   {
-    doc: "docs/standards/dev-tools.md",
+    doc: "docs/standards/dev-tools-usage.md",
     citation: "tests/e2e/fixtures/transcripts.local",
     reason: `${GITIGNORED} the local-only fixture directory, kept out on purpose.`,
   },
   {
-    doc: "docs/standards/dev-tools.md",
+    doc: "docs/standards/dev-tools-usage.md",
     citation: "tests/e2e/fixtures/usage-history.local.sqlite",
     reason: `${GITIGNORED} the local-only usage database, kept out on purpose.`,
   },
