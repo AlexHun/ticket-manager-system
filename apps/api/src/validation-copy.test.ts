@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { TICKET_INPUT_MESSAGE } from "@ticket/shared";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { stripComments } from "@ticket/repo-scan/strip-comments";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
@@ -109,9 +110,12 @@ const EXEMPT: Record<string, Record<string, string>> = {
 
 /** Each tracked schema file directly in `SCHEMAS`, named as `EXEMPT` names it:
  *  relative to that directory. */
-const schemaFiles = filesUnder(trackedFiles(REPO_ROOT), SCHEMAS).filter(
-  (file) => /^[^/]+\.ts$/.test(file),
-);
+// The develop image has no `.git` or `git`, so there the list is empty and the
+// three checks that read it skip.
+const schemaFiles = filesUnder(
+  partialCheckout ? [] : trackedFiles(REPO_ROOT),
+  SCHEMAS,
+).filter((file) => /^[^/]+\.ts$/.test(file));
 const scanned = schemaFiles.map((file) => ({
   file,
   messages: messagesIn(
@@ -120,38 +124,49 @@ const scanned = schemaFiles.map((file) => ({
 }));
 
 describe("validation messages end in a full stop (copy.md, #518)", () => {
-  test("the check reads the schemas it means to", () => {
-    // An empty list would pass every message it did not read.
-    expect(schemaFiles).toContain("tickets.ts");
-    expect(schemaFiles).toContain("users.ts");
-    expect(scanned.some(({ messages }) => messages.length > 0)).toBe(true);
-  });
+  test.skipIf(partialCheckout)(
+    "the check reads the schemas it means to",
+    () => {
+      // An empty list would pass every message it did not read.
+      expect(schemaFiles).toContain("tickets.ts");
+      expect(schemaFiles).toContain("users.ts");
+      expect(scanned.some(({ messages }) => messages.length > 0)).toBe(true);
+    },
+  );
 
-  test("every message in packages/core/src/schemas does, or is exempt", () => {
-    const missing = scanned.flatMap(({ file, messages }) =>
-      messages
-        .filter((m) => !m.text.endsWith("."))
-        .filter((m) => EXEMPT[file]?.[m.text] === undefined)
-        .map((m) => `${SCHEMAS}/${file}:${m.line}  "${m.text}"`),
-    );
-    expect(missing).toEqual([]);
-  });
+  test.skipIf(partialCheckout)(
+    "every message in packages/core/src/schemas does, or is exempt",
+    () => {
+      const missing = scanned.flatMap(({ file, messages }) =>
+        messages
+          .filter((m) => !m.text.endsWith("."))
+          .filter((m) => EXEMPT[file]?.[m.text] === undefined)
+          .map((m) => `${SCHEMAS}/${file}:${m.line}  "${m.text}"`),
+      );
+      expect(missing).toEqual([]);
+    },
+  );
 
-  test("every exemption still names a message without one", () => {
-    const stale = Object.entries(EXEMPT).flatMap(([file, messages]) =>
-      Object.keys(messages)
-        .filter(
-          (text) =>
-            !scanned.some(
-              (s) =>
-                s.file === file &&
-                s.messages.some((m) => m.text === text && !text.endsWith(".")),
-            ),
-        )
-        .map((text) => `${file}: "${text}"`),
-    );
-    expect(stale).toEqual([]);
-  });
+  test.skipIf(partialCheckout)(
+    "every exemption still names a message without one",
+    () => {
+      const stale = Object.entries(EXEMPT).flatMap(([file, messages]) =>
+        Object.keys(messages)
+          .filter(
+            (text) =>
+              !scanned.some(
+                (s) =>
+                  s.file === file &&
+                  s.messages.some(
+                    (m) => m.text === text && !text.endsWith("."),
+                  ),
+              ),
+          )
+          .map((text) => `${file}: "${text}"`),
+      );
+      expect(stale).toEqual([]);
+    },
+  );
 
   test("the ticket input messages the schemas take from @ticket/shared do too", () => {
     const missing = Object.entries(TICKET_INPUT_MESSAGE)

@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { REPO_ROOT } from "./test/run-hook";
 
 // `.claude/hooks/push-usage.mjs` is the SessionEnd hook that sends this
@@ -99,7 +100,8 @@ const logLines = async (count: number) => {
 
 // Each case starts three processes (hook, worker, fake), and a cold `node`
 // takes seconds on a Windows dev machine, hence the timeouts.
-describe("push-usage hook", () => {
+// The hook is under `.claude/`, which the develop image does not carry.
+describe.skipIf(partialCheckout)("push-usage hook", () => {
   test("returns before the push ends, then logs the rows it added", async () => {
     const { code, stderr } = await run(
       { username: USER, password: PASS },

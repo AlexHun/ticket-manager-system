@@ -67,6 +67,27 @@ describe("chainArgsOf", () => {
     expect(chainArgsOf("Run /chain docs/plans/x.md for me")).toBeNull();
   });
 
+  it("reads /chain off a prompt that opens on <command-name> rather than <command-message>", () => {
+    expect(
+      chainArgsOf(
+        "<command-name>/chain</command-name>\n<command-message>chain</command-message>\n<command-args>#1 #2</command-args>",
+      ),
+    ).toBe("#1 #2");
+  });
+
+  it("answers null for a prompt that only quotes the markup further in (#682)", () => {
+    expect(
+      chainArgsOf(
+        "How is it recorded? As <command-name>/chain</command-name><command-args>docs/plans/x.md</command-args>",
+      ),
+    ).toBeNull();
+    expect(
+      chainArgsOf(
+        "<bash-stdout>a.jsonl: <command-name>/chain</command-name><command-args>docs/plans/x.md</command-args></bash-stdout><bash-stderr></bash-stderr>",
+      ),
+    ).toBeNull();
+  });
+
   it("answers an empty string for /chain given nothing", () => {
     expect(chainArgsOf("<command-name>/chain</command-name>")).toBe("");
   });

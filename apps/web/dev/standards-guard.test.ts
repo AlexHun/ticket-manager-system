@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import path from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { checkRules, type Rule, ruleCode } from "@ticket/repo-scan/rules";
+import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
  * The frontend standards a check can decide without judgement, enforced here
@@ -25,12 +27,13 @@ import { checkRules, type Rule, ruleCode } from "@ticket/repo-scan/rules";
  * `@ticket/repo-scan/rules`, which the API guard hands its own table to (#567).
  *
  * Each rule names its roots (#568): the web workspace's own code — `src/` and
- * `dev/` — and, for the role-literal rule alone, the Playwright specs and
- * helpers under `tests/e2e` too (#393). The others govern how the app is built
- * — its controls, its data fetching, its tokens — and a spec drives the built
- * app rather than being part of it. None reaches `packages/` or `scripts/`,
- * which hold no UI; the API guard's rules are the ones that do. Every file is
- * one git tracks (`trackedFiles`, #567), so a local run checks what CI checks.
+ * `dev/` — and, for the role-literal rule and the bare `@ticket/shared` import
+ * (#579), the Playwright specs and helpers under `tests/e2e` too (#393). The
+ * others govern how the app is built — its controls, its data fetching, its
+ * tokens — and a spec drives the built app rather than being part of it. None
+ * reaches `packages/` or `scripts/`, which hold no UI; the API guard's rules
+ * are the ones that do. Every file is one git tracks (`trackedFiles`, #567), so
+ * a local run checks what CI checks.
  */
 
 /** The repository root, which every path here is relative to. */
@@ -46,6 +49,9 @@ const SELF = `${DEV}/standards-guard.test.ts`;
 
 const isTest = (file: string) => /\.test\.tsx?$/.test(file);
 const ROLE = `["'](?:admin|agent)["']`;
+/** A module specifier in an import, a re-export, a dynamic import, a require
+ *  or a test's registration: the quote that opens it. */
+const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
 
 /** The rules. Each one's `roots`, `applies` and `allowed` name paths from the
  *  repository root. */
@@ -203,11 +209,39 @@ const RULES: Rule[] = [
     ],
     ignores: `// a placeholder span instead of a button for role === "admin".`,
   },
+  {
+    name: "Callers import the bare @ticket/shared: never a subpath, nor a shared file by path, which a test's registration of @ticket/shared does not reach",
+    standard: "conventions.md",
+    // The specs import the package's vocabulary as the app does (#579).
+    roots: [...APP, E2E],
+    forms: [
+      new RegExp(String.raw`${SPECIFIER_OR_MOCK}@ticket/shared/`),
+      new RegExp(
+        String.raw`${SPECIFIER_OR_MOCK}[^"'\`\n]*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
+      ),
+    ],
+    catches: [
+      `import { TICKET_STATUS } from "@ticket/shared/tickets";`,
+      `import { USER_ROLE } from "../../packages/shared/src/index";`,
+      `vi.mock("@ticket/shared/src/changelog.ts", () => stub);`,
+    ],
+    passes: [
+      `import { USER_ROLE } from "@ticket/shared";`,
+      `import { stripComments } from "@ticket/repo-scan/strip-comments";`,
+    ],
+    ignores: `// Import "@ticket/shared", never "@ticket/shared/changelog".`,
+  },
 ];
 
-const CODE = ruleCode(RULES, { root: REPO_ROOT, skip: [SELF] });
+// The develop image has no `.git` or `git`, so there nothing is read and every
+// check over the tree skips; the rules' own examples skip with them.
+const CODE = ruleCode(RULES, {
+  root: REPO_ROOT,
+  skip: [SELF],
+  tracked: partialCheckout ? [] : trackedFiles(REPO_ROOT),
+});
 
-test("the guard reads the tree it means to", () => {
+test.skipIf(partialCheckout)("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
   // list is a green run that checked nothing. Each rule's own roots check
   // asks the same of every root it names.
@@ -222,4 +256,8 @@ test("the guard reads the tree it means to", () => {
   expect(files).toContain(`${E2E}/helpers/auth.ts`);
 });
 
-checkRules(RULES, CODE, { describe, test, expect });
+checkRules(RULES, CODE, {
+  describe,
+  test: test.skipIf(partialCheckout),
+  expect,
+});

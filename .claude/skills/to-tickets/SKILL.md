@@ -109,6 +109,8 @@ not layer by layer.
 
 - [ ] Criterion 1
 - [ ] Criterion 2
+- [ ] The slice's **Budget:** line as the plan states it, when it has one: the
+      volume, the first-load target and the INP target, each with its `R<n>`
 
 ## Blocked by
 

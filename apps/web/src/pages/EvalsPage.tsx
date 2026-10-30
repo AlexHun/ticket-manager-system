@@ -12,6 +12,7 @@ import {
   TUTORIAL_PAGE_KEY,
   type AutoReplyDecline,
   type EvalCaseResultRow,
+  type EvalCaseSplit,
   type EvalCategoryRow,
   type EvalCorpus,
   type EvalFiledRow,
@@ -22,6 +23,7 @@ import {
   type EvalRunRow,
   type EvalRunStartedResponse,
   type EvalRunsResponse,
+  type EvalTrailingMetric,
   type PipelineOutcome,
   type TicketCategory,
 } from "@ticket/shared";
@@ -58,6 +60,7 @@ import {
 import { CORPUS_LABEL } from "@/lib/eval-labels";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
+import { formatDateRange } from "@/lib/format";
 import { DECLINE_SHORT } from "@/lib/pipeline-labels";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
@@ -243,6 +246,21 @@ function deltaLabel(
 }
 
 /**
+ * A metric over the last few runs on this corpus, pooled (#607, R14).
+ *
+ * The delta above it reads one run against one run, which at five repeats a
+ * case is mostly noise; this is the line that says what normal has been.
+ * It names how many runs it is over, because the window is shorter than
+ * `EVAL_HISTORY_RUNS` until a series has that many. A window where nothing was
+ * measured says so rather than drawing a dash nobody can read.
+ */
+function trailingLabel(trailing: EvalTrailingMetric): string {
+  return trailing.value === null
+    ? `not measured in the last ${trailing.runs} runs`
+    : `${trailing.runs}-run average ${points(trailing.value)}%`;
+}
+
+/**
  * One headline number with its own denominator underneath it.
  *
  * The denominator is not decoration. "84%" over 5 repeats and "84%" over 175
@@ -255,6 +273,7 @@ function Metric({
   value,
   detail,
   delta,
+  trailing,
   judgement,
 }: {
   label: string;
@@ -267,6 +286,8 @@ function Metric({
   detail?: string;
   /** How far this moved since the last run on the same corpus (R14). */
   delta?: string;
+  /** What it has averaged over the last few runs on the same corpus (#607). */
+  trailing?: string;
   /**
    * How this number reads against what it had to clear, from `eval-bands.ts`.
    *
@@ -322,6 +343,13 @@ function Metric({
           {delta}
         </div>
       )}
+      {/* Muted for the delta's reason: it is context for the figure, and the
+          band on the figure is what says whether it clears its bar. */}
+      {trailing && (
+        <div className="text-xs tabular-nums text-muted-foreground">
+          {trailing}
+        </div>
+      )}
     </div>
   );
 }
@@ -351,6 +379,7 @@ function MetricCell({ row }: { row: EvalMetricRow }) {
       delta={
         row.previous === null ? undefined : deltaLabel(row.value, row.previous)
       }
+      trailing={row.trailing === null ? undefined : trailingLabel(row.trailing)}
       detail={
         row.value === null
           ? `no ${METRIC_UNIT[row.metric]} in this run`
@@ -430,6 +459,46 @@ function Filed({ result }: { result: EvalCaseResultRow }) {
   );
 }
 
+/**
+ * This case's matches on each of the last few runs, oldest first (#607).
+ *
+ * One run's five repeats cannot tell a case that stopped working from one that
+ * had a bad night; seven runs of them can. Matches only, since every run is
+ * out of its repeats and the row's own rate already says how many — each one's
+ * full split is in the text a screen reader is given. A run that did not
+ * answer the case is a dash, never a zero: a zero would say it failed every
+ * repeat on a run that never asked it.
+ */
+function History({ history }: { history: (EvalCaseSplit | null)[] }) {
+  // Empty only on a run that has not completed, which is in no series yet —
+  // and there the rows arriving one at a time are the news, not their past.
+  if (history.length === 0) return null;
+
+  return (
+    <ol
+      aria-label={`Last ${history.length} ${history.length === 1 ? "run" : "runs"}, oldest first`}
+      className="flex gap-1.5 tabular-nums"
+    >
+      {history.map((split, index) =>
+        split === null ? (
+          // Keyed by place: a gap has no run id, and the list never reorders.
+          <li key={`gap-${index}`} className="text-muted-foreground">
+            —<span className="sr-only"> not answered on that run</span>
+          </li>
+        ) : (
+          <li key={split.runId}>
+            {split.matches}
+            <span className="sr-only">
+              {" "}
+              of {split.repeats} on run {split.runId}
+            </span>
+          </li>
+        ),
+      )}
+    </ol>
+  );
+}
+
 function ResultRow({ result }: { result: EvalCaseResultRow }) {
   const clean = result.matches === result.repeats;
 
@@ -474,7 +543,7 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             not the safety question. `hostile-display-name` expects a clean
             reply and gets one; whether the link in that From name reached it is
             a different fact, and one a 5/5 would hide entirely. */}
-        {/* The one coloured thing in this table, and it stays: the per-case
+        {/* The one red thing in this table, and it stays: the per-case
             *rates* are deliberately unbanded — thirty-six coloured rows would
             spend the signal the six headline numbers need — but an escape is
             not a rate, it is the defect, and the row it happened on is the only
@@ -490,6 +559,24 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             {result.caught} caught
           </div>
         )}
+        {/* The table's one amber thing (#607), and the words carry it without
+            the colour. Not a rate band — the rates above stay unbanded — and
+            not red: a case that fell since a week earlier is not a defect the
+            way an escape is. It is the row an admin opened
+            this table looking for, though, since a fall of 5/5 to 0/5 moves the
+            headline accuracy by about three points, which is inside a passing
+            run. Named run and date, because "down from" is a claim somebody
+            will go and check. */}
+        {result.fell && (
+          <div className="text-xs font-medium text-status-warning">
+            Down from {result.fell.matches}/{result.fell.repeats} a week earlier
+            (run {result.fell.runId},{" "}
+            {formatDateRange(new Date(result.fell.startedAt))})
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-2 align-top">
+        <History history={result.history} />
       </td>
       <td className="px-3 py-2 align-top">
         <Filed result={result} />
@@ -849,7 +936,13 @@ function RunCard({
                           <th scope="col" className="px-3 py-2 font-medium">
                             As expected
                           </th>
-                          {/* Last, and set apart on purpose: the three columns to its
+                          {/* Beside the rate it is the history of, and before
+                        the classifier's column: it reads the same auto-reply
+                        matches, one per run (#607). */}
+                          <th scope="col" className="px-3 py-2 font-medium">
+                            Recent runs
+                          </th>
+                          {/* Last, and set apart on purpose: the four columns to its
                         left are the auto-reply, this one is the classifier —
                         a different model answering a different question, which
                         is why it is a metric of its own rather than a column

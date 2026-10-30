@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { REPO_ROOT } from "./test/run-hook";
 
 // `.claude/hooks/record-waiting.mjs` writes a record while a session or one of
@@ -112,7 +113,8 @@ const quietly = { code: 0, stdout: "", stderr: "" };
 
 // Each case starts up to six `node` processes, one per event, which take a
 // second or more cold on a Windows dev machine, hence the timeouts.
-describe("record-waiting hook", () => {
+// The hook is under `.claude/`, which the develop image does not carry.
+describe.skipIf(partialCheckout)("record-waiting hook", () => {
   test("records a session held on a permission prompt, and clears it once the call has run", () => {
     expect(run(base(PERMISSION_PROMPT))).toEqual(quietly);
     expect(records()).toEqual([

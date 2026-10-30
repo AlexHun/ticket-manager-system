@@ -172,10 +172,13 @@ function Controls({
   runner: TestRunner;
 }) {
   const busy = runner.activeId !== null;
+  // A suite this server cannot run (#585) is out of "run everything" and out of
+  // every count, so a clean run on the develop server can read "all passed".
+  const runnable = suites.filter((suite) => !suite.unavailable);
   // Named, not id'd: the banner is the one line a screen reader announces, and
   // "web-unit" is an internal handle.
   const running = suites.find((suite) => suite.id === runner.activeId);
-  const finished = suites.filter((suite) => {
+  const finished = runnable.filter((suite) => {
     const status = runOf(runner.runs, suite.id).status;
     return status === RUN_STATUS.passed || status === RUN_STATUS.failed;
   });
@@ -192,12 +195,14 @@ function Controls({
           <p className="text-sm text-muted-foreground">
             {suites.length} suites. Run one, or run them all — fastest first, so
             a broken type fails before Playwright boots a browser.
+            {runnable.length < suites.length &&
+              ` ${suites.length - runnable.length} cannot run on this server.`}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">dev only</Badge>
           <Button
-            onClick={() => runner.runAll(suites.map((suite) => suite.id))}
+            onClick={() => runner.runAll(runnable.map((suite) => suite.id))}
             disabled={planned}
           >
             <Play aria-hidden="true" />
@@ -246,7 +251,7 @@ function Controls({
               className="size-4 text-status-good"
             />
             <span>
-              {finished.length} of {suites.length} suites run — all passed.
+              {finished.length} of {runnable.length} suites run — all passed.
             </span>
           </>
         ) : (
@@ -262,11 +267,11 @@ function Controls({
           </>
         )}
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          {finished.length}/{suites.length} complete
+          {finished.length}/{runnable.length} complete
         </span>
       </div>
       <Progress
-        value={(finished.length / Math.max(1, suites.length)) * 100}
+        value={(finished.length / Math.max(1, runnable.length)) * 100}
         aria-hidden="true"
       />
 
@@ -330,6 +335,11 @@ function SuiteCard({
               </Button>
             </CollapsibleTrigger>
             <StatusBadge status={status} />
+            {suite.unavailable && (
+              <Badge variant="outline" className="font-normal">
+                unavailable here
+              </Badge>
+            )}
             {queuePosition >= 0 && !isRunning && (
               <Badge variant="secondary" className="font-normal">
                 queued
@@ -348,19 +358,29 @@ function SuiteCard({
                     Clear
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => runner.run(suite.id)}
-                  disabled={isRunning || queuePosition >= 0}
-                >
-                  {isRunning ? (
-                    <Loader2 aria-hidden="true" className="animate-spin" />
-                  ) : (
-                    <Play aria-hidden="true" />
-                  )}
-                  Run
-                </Button>
+                {/* A disabled button takes no pointer events, so the reason's
+                    tooltip hangs on a focusable wrapper. */}
+                <Hint content={suite.unavailable}>
+                  <span tabIndex={suite.unavailable ? 0 : undefined}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => runner.run(suite.id)}
+                      disabled={
+                        isRunning ||
+                        queuePosition >= 0 ||
+                        suite.unavailable !== null
+                      }
+                    >
+                      {isRunning ? (
+                        <Loader2 aria-hidden="true" className="animate-spin" />
+                      ) : (
+                        <Play aria-hidden="true" />
+                      )}
+                      Run
+                    </Button>
+                  </span>
+                </Hint>
               </div>
             </div>
           </CardTitle>
@@ -369,6 +389,9 @@ function SuiteCard({
         <CollapsibleContent>
           <CardContent className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">{suite.description}</p>
+            {suite.unavailable && (
+              <p className="text-sm text-status-warning">{suite.unavailable}</p>
+            )}
 
             <div className="flex flex-wrap items-center gap-2">
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">

@@ -1073,5 +1073,80 @@
     "version": "0.1.276",
     "date": "2026-10-24",
     "title": "Test a step's welded tail by the step's own rule (#645)"
+  },
+  {
+    "version": "0.1.280",
+    "date": "2026-10-25",
+    "title": "Run the Tests page's suites green on the develop image"
+  },
+  {
+    "version": "0.1.280",
+    "date": "2026-10-25",
+    "title": "Correct the develop image's prose after review"
+  },
+  {
+    "version": "0.1.283",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the moved comments and the cycle check"
+  },
+  {
+    "version": "0.1.285",
+    "date": "2026-10-25",
+    "title": "Title a Sessions card by the command it ran, past a bare /clear"
+  },
+  {
+    "version": "0.1.285",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the command-prompt title"
+  },
+  {
+    "version": "0.1.286",
+    "date": "2026-10-25",
+    "title": "Title a Sessions card by its ! shell command, never its output"
+  },
+  {
+    "version": "0.1.286",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the ! shell command title"
+  },
+  {
+    "version": "0.1.287",
+    "date": "2026-10-25",
+    "title": "Read /chain and /implement only off a prompt that opens on them"
+  },
+  {
+    "version": "0.1.287",
+    "date": "2026-10-25",
+    "title": "Settle the review's findings on the anchored command reading"
+  },
+  {
+    "version": "0.1.288",
+    "date": "2026-10-30",
+    "title": "Say how the frozen eval series stands at GET /api/evals/status"
+  },
+  {
+    "version": "0.1.288",
+    "date": "2026-10-30",
+    "title": "Mark the Evals nav item while the frozen eval series is failing"
+  },
+  {
+    "version": "0.1.288",
+    "date": "2026-10-30",
+    "title": "Settle the review's findings on the Evals nav mark"
+  },
+  {
+    "version": "0.1.289",
+    "date": "2026-10-30",
+    "title": "Show each case's recent history and a trailing average per metric"
+  },
+  {
+    "version": "0.1.289",
+    "date": "2026-10-30",
+    "title": "Settle the review's findings on the case history"
+  },
+  {
+    "version": "0.1.291",
+    "date": "2026-10-30",
+    "title": "Settle the review's findings on the Sessions page's batches"
   }
 ]

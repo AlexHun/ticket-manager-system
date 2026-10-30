@@ -49,6 +49,7 @@ import {
   workerOf,
   type ChainLister,
 } from "./chains.ts";
+import { commandOf } from "./command-prompt.ts";
 import {
   implementStepOf,
   marksOf,
@@ -172,6 +173,8 @@ interface FactsSoFar {
   /** Lines fed so far, so a resumed reading numbers the next one. */
   lines: number;
   task: string | null;
+  /** Whether `task` is a bare `/clear`, which the next prompt replaces. */
+  taskCleared: boolean;
   model: string | null;
   first: string | null;
   firstMs: number;
@@ -196,6 +199,7 @@ const startFacts = (file: string): FactsSoFar => ({
   file,
   lines: 0,
   task: null,
+  taskCleared: false,
   model: null,
   first: null,
   firstMs: Infinity,
@@ -256,6 +260,31 @@ const firstLine = (text: string): string | null =>
     .map((l) => l.trim())
     .find((l) => l.length > 0) ?? null;
 
+/** A `!` shell command, and the prompt holding what it printed (#679). */
+const BASH_INPUT = /^\s*<bash-input>([\s\S]*?)<\/bash-input>/;
+const BASH_OUTPUT = /^\s*<bash-(?:stdout|stderr)>/;
+
+/**
+ * A prompt's task: a typed command as the command and its arguments, a `!`
+ * shell command as `! ` and the command, any other prompt as its first line
+ * (`./command-prompt.ts` says when a prompt is a typed command). `clear` marks a bare `/clear`, which
+ * says nothing of the work and gives way to the next prompt. A shell
+ * command's output is no task at all.
+ */
+function taskOf(text: string): { text: string; clear: boolean } | null {
+  if (BASH_OUTPUT.test(text)) return null;
+  const bash = BASH_INPUT.exec(text)?.[1];
+  if (bash !== undefined) {
+    const line = firstLine(bash);
+    return line === null ? null : { text: `! ${line}`, clear: false };
+  }
+  const command = commandOf(text);
+  const line = firstLine(command ? `${command.name} ${command.args}` : text);
+  return line === null
+    ? null
+    : { text: line, clear: command?.name === "/clear" && !command.args };
+}
+
 type ToolUse = { type: string; id: string; name?: unknown; input?: unknown };
 
 function toolUses(content: unknown): ToolUse[] {
@@ -305,7 +334,12 @@ function feed(
 
   const body = promptBody(rec);
   if (body !== null) {
-    f.task ??= firstLine(body);
+    // The first prompt, unless it was a bare `/clear` (#616).
+    const task = f.task === null || f.taskCleared ? taskOf(body) : null;
+    if (task) {
+      f.task = task.text;
+      f.taskCleared = task.clear;
+    }
     // The first `/chain` command, wherever it falls: a conductor may have
     // opened on a `/clear` (#594).
     f.chainArgs ??= chainArgsOf(body);

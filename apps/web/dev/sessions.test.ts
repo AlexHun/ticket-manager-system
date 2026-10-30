@@ -239,6 +239,95 @@ describe("readSessions", () => {
     expect(s.task).toBe("Fix the tree.");
   });
 
+  it("reads a command prompt as the command and its arguments, and skips a bare /clear", async () => {
+    const command = (name: string, args: string) =>
+      `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`;
+    session("implement", prompt(command("implement", "613"), T(0)));
+    session(
+      "chain",
+      // As Claude Code records `/clear`: the name first, indented.
+      prompt(
+        "<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>",
+        T(0),
+      ),
+      prompt(command("chain", "docs/plans/x.md"), T(1)),
+    );
+    session("clear", prompt(command("clear", ""), T(0)));
+    session(
+      "no-args",
+      prompt(
+        "<command-message>i-have-adhd</command-message>\n<command-name>/i-have-adhd</command-name>",
+        T(0),
+      ),
+      prompt("A later prompt.", T(1)),
+    );
+
+    const tasks = Object.fromEntries(
+      (await readSessions(dir)).sessions.map((s) => [s.id, s.task]),
+    );
+
+    expect(tasks).toEqual({
+      implement: "/implement 613",
+      chain: "/chain docs/plans/x.md",
+      clear: "/clear",
+      "no-args": "/i-have-adhd",
+    });
+  });
+
+  it("reads a ! prompt as the shell command it ran, and never titles a session by its output", async () => {
+    session("bash", prompt("<bash-input>gh auth login</bash-input>", T(0)));
+    // As Claude Code records them: the input can open on a space, and an
+    // output prompt with nothing on stdout still carries the tag.
+    session(
+      "spaced",
+      prompt("<bash-input> railway ssh --service api</bash-input>", T(0)),
+    );
+    session(
+      "output-first",
+      prompt(
+        "<bash-stdout></bash-stdout><bash-stderr>Using SSH key</bash-stderr>",
+        T(0),
+      ),
+      prompt("A later prompt.", T(1)),
+    );
+    // A bare `/clear` gives way to the next prompt, and output is not one.
+    session(
+      "after-clear",
+      prompt("<command-name>/clear</command-name>", T(0)),
+      prompt("<bash-stderr>gh: not logged in</bash-stderr>", T(1)),
+      prompt("A later prompt.", T(2)),
+    );
+
+    const tasks = Object.fromEntries(
+      (await readSessions(dir)).sessions.map((s) => [s.id, s.task]),
+    );
+
+    expect(tasks).toEqual({
+      bash: "! gh auth login",
+      spaced: "! railway ssh --service api",
+      "output-first": "A later prompt.",
+      "after-clear": "A later prompt.",
+    });
+  });
+
+  it("keeps a plain prompt's first line, even one that quotes a command's markup", async () => {
+    session(
+      "quotes",
+      prompt(
+        "Review the fix.\nA `/clear` is recorded as `<command-name>/clear</command-name>`.",
+        T(0),
+      ),
+      prompt("A later prompt.", T(1)),
+    );
+    session("literal", prompt("/clear", T(0)), prompt("A later prompt.", T(1)));
+
+    const tasks = Object.fromEntries(
+      (await readSessions(dir)).sessions.map((s) => [s.id, s.task]),
+    );
+
+    expect(tasks).toEqual({ quotes: "Review the fix.", literal: "/clear" });
+  });
+
   it("reads a session Done once its turn ended and nothing under it is Running", async () => {
     session("ended", response(1, T(0), { stop: "end_turn" }));
     session("working", response(1, T(0), { stop: "tool_use" }));
@@ -1100,7 +1189,7 @@ describe("readSessions: step and tools", () => {
       calls(
         T(7),
         shell(
-          'gh issue comment 595 --body "Progress: built, next is review (step 7)"',
+          'gh issue comment 595 --body "Progress: built, next is the look (step 7)"',
         ),
       ),
       calls(T(8), skill("mattpocock-skills:code-review"), ["Agent", {}]),

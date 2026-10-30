@@ -1,0 +1,972 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`the package's exports are the names, kinds and values recorded before the split 1`] = `
+{
+  "ACTIVITY_ACTION": {
+    "typeof": "object",
+    "value": {
+      "archived": "archived",
+      "assignee_changed": "assignee_changed",
+      "auto_declined": "auto_declined",
+      "auto_resolved": "auto_resolved",
+      "category_changed": "category_changed",
+      "created": "created",
+      "handoff_changed": "handoff_changed",
+      "reopened": "reopened",
+      "reply_sent": "reply_sent",
+      "restored": "restored",
+      "role_changed": "role_changed",
+      "status_changed": "status_changed",
+      "updated": "updated",
+      "user_created": "user_created",
+      "user_deleted": "user_deleted",
+      "user_edited": "user_edited",
+      "user_invited": "user_invited",
+    },
+  },
+  "ACTIVITY_ENTITY_TYPE": {
+    "typeof": "object",
+    "value": {
+      "admin": "admin",
+      "automation": "automation",
+      "knowledge": "knowledge",
+      "ticket": "ticket",
+    },
+  },
+  "ACTIVITY_ENTITY_TYPES": {
+    "typeof": "object",
+    "value": [
+      "ticket",
+      "knowledge",
+      "admin",
+      "automation",
+    ],
+  },
+  "ACTIVITY_EVENT_FIELD": {
+    "typeof": "object",
+    "value": {
+      "assignee_changed": "assignee",
+      "auto_declined": "status",
+      "auto_resolved": "status",
+      "category_changed": "category",
+      "created": null,
+      "reopened": "status",
+      "status_changed": "status",
+    },
+  },
+  "ADMIN_ACTIVITY_ACTION": {
+    "typeof": "object",
+    "value": {
+      "role_changed": "role_changed",
+      "user_created": "user_created",
+      "user_deleted": "user_deleted",
+      "user_edited": "user_edited",
+      "user_invited": "user_invited",
+    },
+  },
+  "ADMIN_DELETE_REFUSED_MESSAGE": {
+    "typeof": "string",
+    "value": "An admin cannot be deleted. Change their role to Agent first.",
+  },
+  "ADMIN_SCREEN": {
+    "typeof": "object",
+    "value": {
+      "activity": "activity",
+      "evals": "evals",
+      "knowledge": "knowledge",
+      "outbox": "outbox",
+      "pipeline": "pipeline",
+      "tutorials": "tutorials",
+      "users": "users",
+    },
+  },
+  "AGENT_SETTABLE_STATUS": {
+    "typeof": "object",
+    "value": [
+      "Open",
+      "Resolved",
+      "Closed",
+    ],
+  },
+  "AGE_BUCKET": {
+    "typeof": "object",
+    "value": {
+      "d1to3": "d1to3",
+      "d3to7": "d3to7",
+      "over7d": "over7d",
+      "under1d": "under1d",
+    },
+  },
+  "ASSIGNEE_NONE": {
+    "typeof": "string",
+    "value": "none",
+  },
+  "ASSIGNEE_NOT_FOUND_MESSAGE": {
+    "typeof": "string",
+    "value": "Couldn't find that assignee. Pick someone else.",
+  },
+  "AUTO_REPLY_DECLINE": {
+    "typeof": "object",
+    "value": {
+      "answered": "answered",
+      "category": "category",
+      "followUp": "followUp",
+      "noCitation": "noCitation",
+      "noText": "noText",
+      "notCovered": "notCovered",
+      "tooLong": "tooLong",
+      "unavailable": "unavailable",
+      "unbackedCommitment": "unbackedCommitment",
+      "unbackedReference": "unbackedReference",
+    },
+  },
+  "AUTO_REPLY_DECLINES": {
+    "typeof": "object",
+    "value": [
+      "category",
+      "answered",
+      "noText",
+      "followUp",
+      "notCovered",
+      "unavailable",
+      "noCitation",
+      "unbackedCommitment",
+      "unbackedReference",
+      "tooLong",
+    ],
+  },
+  "AUTO_REPLY_NOT_OFFERED_LABEL": {
+    "typeof": "string",
+    "value": "Never offered to the auto-reply",
+  },
+  "AUTO_REPLY_PENDING_LABEL": {
+    "typeof": "string",
+    "value": "Offered, verdict still coming",
+  },
+  "BACKLOG_STATUS": {
+    "typeof": "object",
+    "value": [
+      "New",
+      "Open",
+    ],
+  },
+  "BRAND_ATTRIBUTIVE": {
+    "typeof": "string",
+    "value": "Great Forge Desk",
+  },
+  "BRAND_NAME": {
+    "typeof": "string",
+    "value": "The Great Forge Desk",
+  },
+  "BRAND_SHORT": {
+    "typeof": "string",
+    "value": "Forge Desk",
+  },
+  "CATEGORY_NONE": {
+    "typeof": "string",
+    "value": "none",
+  },
+  "CHANGELOG_ENTRIES": {
+    "typeof": "object",
+    "value": "changelog-entries.json",
+  },
+  "CHANGELOG_LATEST_VERSION": {
+    "typeof": "string",
+    "value": "changelog-entries.json",
+  },
+  "CLASSIFY_NOT_OFFERED": {
+    "typeof": "object",
+    "value": {
+      "filedOrStale": "filedOrStale",
+      "noKey": "noKey",
+    },
+  },
+  "CLASSIFY_NOT_OFFERED_LABEL": {
+    "typeof": "object",
+    "value": {
+      "filedOrStale": "Never offered — filed by hand, or over a day old",
+      "noKey": "Never offered — no API key on this deployment",
+    },
+  },
+  "CLASSIFY_PENDING_LABEL": {
+    "typeof": "string",
+    "value": "Queued, or being classified now",
+  },
+  "CLIENT_TICKET_STATUS": {
+    "typeof": "object",
+    "value": [
+      "New",
+      "Open",
+      "Resolved",
+      "Closed",
+    ],
+  },
+  "DASHBOARD_BUCKET": {
+    "typeof": "object",
+    "value": {
+      "day": "day",
+      "month": "month",
+      "week": "week",
+    },
+  },
+  "DASHBOARD_PANEL_ID": {
+    "typeof": "object",
+    "value": {
+      "assistantEffectiveness": "assistantEffectiveness",
+      "backlogAge": "backlogAge",
+      "byCategory": "byCategory",
+      "firstResponseChart": "firstResponseChart",
+      "needsAttention": "needsAttention",
+      "statusMix": "statusMix",
+      "topCustomers": "topCustomers",
+      "volumeChart": "volumeChart",
+      "workload": "workload",
+    },
+  },
+  "DASHBOARD_PANEL_IDS": {
+    "typeof": "object",
+    "value": [
+      "volumeChart",
+      "statusMix",
+      "needsAttention",
+      "firstResponseChart",
+      "byCategory",
+      "workload",
+      "backlogAge",
+      "topCustomers",
+      "assistantEffectiveness",
+    ],
+  },
+  "DASHBOARD_PANEL_WIDTH": {
+    "typeof": "object",
+    "value": {
+      "half": "half",
+      "narrow": "narrow",
+      "twoThirds": "twoThirds",
+      "wide": "wide",
+    },
+  },
+  "DASHBOARD_PANEL_WIDTHS": {
+    "typeof": "object",
+    "value": [
+      "narrow",
+      "half",
+      "twoThirds",
+      "wide",
+    ],
+  },
+  "DASHBOARD_RANGE": {
+    "typeof": "object",
+    "value": {
+      "d30": "30d",
+      "d7": "7d",
+      "d90": "90d",
+      "m12": "12m",
+    },
+  },
+  "DASHBOARD_RANGE_BUCKET": {
+    "typeof": "object",
+    "value": {
+      "12m": "month",
+      "30d": "day",
+      "7d": "day",
+      "90d": "week",
+    },
+  },
+  "DASHBOARD_RANGE_DAYS": {
+    "typeof": "object",
+    "value": {
+      "12m": 365,
+      "30d": 30,
+      "7d": 7,
+      "90d": 90,
+    },
+  },
+  "DASHBOARD_SCOPE": {
+    "typeof": "object",
+    "value": {
+      "all": "all",
+      "mine": "mine",
+    },
+  },
+  "DECLINE_OUTCOME": {
+    "typeof": "object",
+    "value": {
+      "answered": "declined",
+      "category": "declined",
+      "followUp": "declined",
+      "noCitation": "declined",
+      "noText": "declined",
+      "notCovered": "declined",
+      "tooLong": "declined",
+      "unavailable": "abandoned",
+      "unbackedCommitment": "declined",
+      "unbackedReference": "declined",
+    },
+  },
+  "DECLINE_STAGE": {
+    "typeof": "object",
+    "value": {
+      "answered": "eligible",
+      "category": "eligible",
+      "followUp": "eligible",
+      "noCitation": "checked",
+      "noText": "eligible",
+      "notCovered": "drafted",
+      "tooLong": "checked",
+      "unavailable": "drafted",
+      "unbackedCommitment": "checked",
+      "unbackedReference": "checked",
+    },
+  },
+  "DEFAULT_DASHBOARD_LAYOUT": {
+    "typeof": "object",
+    "value": [
+      {
+        "panelId": "volumeChart",
+        "width": "twoThirds",
+      },
+      {
+        "panelId": "statusMix",
+        "width": "narrow",
+      },
+      {
+        "panelId": "needsAttention",
+        "width": "twoThirds",
+      },
+      {
+        "panelId": "firstResponseChart",
+        "width": "narrow",
+      },
+      {
+        "panelId": "byCategory",
+        "width": "narrow",
+      },
+      {
+        "panelId": "workload",
+        "width": "narrow",
+      },
+      {
+        "panelId": "backlogAge",
+        "width": "narrow",
+      },
+      {
+        "panelId": "topCustomers",
+        "width": "wide",
+      },
+      {
+        "panelId": "assistantEffectiveness",
+        "width": "wide",
+      },
+    ],
+  },
+  "DEFAULT_DASHBOARD_RANGE": {
+    "typeof": "string",
+    "value": "90d",
+  },
+  "DEFAULT_PAGE_SIZE": {
+    "typeof": "number",
+    "value": 25,
+  },
+  "DEFAULT_TICKET_SORT": {
+    "typeof": "object",
+    "value": {
+      "field": "lastMessageAt",
+      "order": "desc",
+    },
+  },
+  "DEMO_AI_LIMIT_MESSAGE": {
+    "typeof": "string",
+    "value": "Demo AI limit reached — resets at 00:00 UTC.",
+  },
+  "DEMO_AI_LIMIT_REASON": {
+    "typeof": "string",
+    "value": "demo-ai-limit",
+  },
+  "DEMO_MODE_OFF_MESSAGE": {
+    "typeof": "string",
+    "value": "Couldn't start a demo session — demo mode is off.",
+  },
+  "DEMO_READ_ONLY_NOTE": {
+    "typeof": "string",
+    "value": "Read-only in the demo.",
+  },
+  "DEMO_SEES_ADMIN_SCREEN": {
+    "typeof": "object",
+    "value": {
+      "activity": true,
+      "evals": true,
+      "knowledge": true,
+      "outbox": false,
+      "pipeline": true,
+      "tutorials": true,
+      "users": false,
+    },
+  },
+  "DEMO_START_LIMIT_MESSAGE": {
+    "typeof": "string",
+    "value": "Couldn't start a demo session — too many have started from your network. Try again later.",
+  },
+  "DEMO_USAGE_LABEL": {
+    "typeof": "object",
+    "value": {
+      "sessionsFollowedStep": "Followed a step",
+      "sessionsOpenedTicket": "Opened a ticket",
+      "sessionsStarted": "Started",
+      "title": "Demo sessions this week",
+    },
+  },
+  "EVAL_CASE_COUNTERS": {
+    "typeof": "object",
+    "value": [
+      "repeats",
+      "matches",
+      "abandoned",
+      "usd",
+      "cachedRepeats",
+      "cacheable",
+      "caught",
+      "escaped",
+      "classifiedRepeats",
+      "classifyMatches",
+    ],
+  },
+  "EVAL_CORPUS": {
+    "typeof": "object",
+    "value": {
+      "frozen": "frozen",
+      "live": "live",
+    },
+  },
+  "EVAL_CORPUS_DEFAULT": {
+    "typeof": "string",
+    "value": "frozen",
+  },
+  "EVAL_COUNTERS": {
+    "typeof": "object",
+    "value": {
+      "abandoned": "abandoned",
+      "cacheable": "cacheable",
+      "cachedRepeats": "cachedRepeats",
+      "caught": "caught",
+      "classifiedRepeats": "classifiedRepeats",
+      "classifyMatches": "classifyMatches",
+      "escaped": "escaped",
+      "matches": "matches",
+      "repeats": "attempts",
+      "usd": "usd",
+    },
+  },
+  "EVAL_HEALTH": {
+    "typeof": "object",
+    "value": {
+      "escaped": "escaped",
+      "failing": "failing",
+      "passing": "passing",
+    },
+  },
+  "EVAL_HISTORY_RUNS": {
+    "typeof": "number",
+    "value": 7,
+  },
+  "EVAL_METRIC": {
+    "typeof": "object",
+    "value": {
+      "catchRate": "catchRate",
+      "classifierAccuracy": "classifierAccuracy",
+      "declineAccuracy": "declineAccuracy",
+    },
+  },
+  "EVAL_MISSED_PLAN_WINDOW_HOURS": {
+    "typeof": "number",
+    "value": 24,
+  },
+  "EVAL_PLANNED_RUN_GRACE_MINUTES": {
+    "typeof": "number",
+    "value": 15,
+  },
+  "EVAL_PLANNED_RUN_LIMIT": {
+    "typeof": "number",
+    "value": 20,
+  },
+  "EVAL_PLANNED_RUN_STATUS": {
+    "typeof": "object",
+    "value": {
+      "cancelled": "cancelled",
+      "fired": "fired",
+      "missed": "missed",
+      "planned": "planned",
+    },
+  },
+  "EVAL_PLAN_HORIZON_DAYS": {
+    "typeof": "number",
+    "value": 7,
+  },
+  "EVAL_RUN_LIMIT": {
+    "typeof": "number",
+    "value": 20,
+  },
+  "EVAL_RUN_STATUS": {
+    "typeof": "object",
+    "value": {
+      "completed": "completed",
+      "failed": "failed",
+      "running": "running",
+    },
+  },
+  "EVAL_THRESHOLD": {
+    "typeof": "object",
+    "value": {
+      "catchRate": 1,
+      "classifierAccuracy": 0.8,
+      "declineAccuracy": 0.8,
+    },
+  },
+  "EVENT_AUDIENCE": {
+    "typeof": "object",
+    "value": {
+      "eval_run_changed": "admin",
+      "pipeline_changed": "admin",
+      "ticket_created": "all",
+      "ticket_message": "all",
+      "ticket_updated": "all",
+    },
+  },
+  "FIRST_PAGE": {
+    "typeof": "number",
+    "value": 1,
+  },
+  "HANDOFF_TARGET": {
+    "typeof": "object",
+    "value": {
+      "admin": "admin",
+      "unassigned": "unassigned",
+      "user": "user",
+    },
+  },
+  "HANDOFF_TARGETS": {
+    "typeof": "object",
+    "value": [
+      "admin",
+      "user",
+      "unassigned",
+    ],
+  },
+  "KB_BODY_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 4000,
+  },
+  "KB_INTERNAL_NOTE_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 2000,
+  },
+  "KB_TITLE_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 200,
+  },
+  "KNOWLEDGE_REVISION_ACTION": {
+    "typeof": "object",
+    "value": {
+      "archived": "archived",
+      "created": "created",
+      "restored": "restored",
+      "updated": "updated",
+    },
+  },
+  "KNOWLEDGE_REVISION_STATUS": {
+    "typeof": "object",
+    "value": {
+      "approved": "approved",
+      "pending": "pending",
+      "rejected": "rejected",
+    },
+  },
+  "LATENCY_BUCKET": {
+    "typeof": "object",
+    "value": {
+      "h1to4": "h1to4",
+      "h4to24": "h4to24",
+      "over24h": "over24h",
+      "under1h": "under1h",
+    },
+  },
+  "MAX_MESSAGE_BODY_LENGTH": {
+    "typeof": "number",
+    "value": 10000,
+  },
+  "MAX_PAGE_SIZE": {
+    "typeof": "number",
+    "value": 100,
+  },
+  "MAX_TICKET_ID": {
+    "typeof": "number",
+    "value": 2147483647,
+  },
+  "MESSAGE_DIRECTION": {
+    "typeof": "object",
+    "value": {
+      "inbound": "inbound",
+      "outbound": "outbound",
+    },
+  },
+  "NEEDS_ATTENTION_LIMIT": {
+    "typeof": "number",
+    "value": 6,
+  },
+  "NEW_FEATURE_KEY": {
+    "typeof": "object",
+    "value": {
+      "activityPage": "activityPage",
+      "howItWorks": "howItWorks",
+    },
+  },
+  "NEW_FEATURE_KEYS": {
+    "typeof": "object",
+    "value": [
+      "activityPage",
+      "howItWorks",
+    ],
+  },
+  "NEW_FEATURE_VERSIONS": {
+    "typeof": "object",
+    "value": {
+      "activityPage": 1,
+      "howItWorks": 1,
+    },
+  },
+  "NO_TICKETS_YET": {
+    "typeof": "string",
+    "value": "No tickets yet. They appear here as customer email arrives.",
+  },
+  "OUTBOUND_EMAIL_KIND": {
+    "typeof": "object",
+    "value": {
+      "invitation": "invitation",
+      "passwordReset": "passwordReset",
+      "reply": "reply",
+    },
+  },
+  "OUTBOUND_EMAIL_STATUS": {
+    "typeof": "object",
+    "value": {
+      "failed": "failed",
+      "queued": "queued",
+      "sent": "sent",
+      "undeliverable": "undeliverable",
+      "withheld": "withheld",
+    },
+  },
+  "OUTPUT_CHECK_DECLINES": {
+    "typeof": "object",
+    "value": [
+      "unbackedCommitment",
+      "unbackedReference",
+    ],
+  },
+  "PAGE_SIZE_OPTIONS": {
+    "typeof": "object",
+    "value": [
+      10,
+      25,
+      50,
+      100,
+    ],
+  },
+  "PIPELINE_OUTCOME": {
+    "typeof": "object",
+    "value": {
+      "abandoned": "abandoned",
+      "declined": "declined",
+      "notOffered": "notOffered",
+      "pending": "pending",
+      "resolved": "resolved",
+    },
+  },
+  "PIPELINE_RECENT_LIMIT": {
+    "typeof": "number",
+    "value": 12,
+  },
+  "PIPELINE_STAGE": {
+    "typeof": "object",
+    "value": {
+      "checked": "checked",
+      "classified": "classified",
+      "drafted": "drafted",
+      "eligible": "eligible",
+      "received": "received",
+      "resolved": "resolved",
+    },
+  },
+  "PIPELINE_STAGES": {
+    "typeof": "object",
+    "value": [
+      "received",
+      "classified",
+      "eligible",
+      "drafted",
+      "checked",
+      "resolved",
+    ],
+  },
+  "PIPELINE_STAGE_STATE": {
+    "typeof": "object",
+    "value": {
+      "active": "active",
+      "done": "done",
+      "exited": "exited",
+      "pending": "pending",
+      "skipped": "skipped",
+    },
+  },
+  "SIMULATED_SENDER_DOMAIN": {
+    "typeof": "string",
+    "value": "sim.example.com",
+  },
+  "SORT_ORDER": {
+    "typeof": "object",
+    "value": {
+      "asc": "asc",
+      "desc": "desc",
+    },
+  },
+  "STATUS_BACKLOG": {
+    "typeof": "string",
+    "value": "backlog",
+  },
+  "SUMMARY_SENTIMENT": {
+    "typeof": "object",
+    "value": {
+      "angry": "angry",
+      "frustrated": "frustrated",
+      "neutral": "neutral",
+      "positive": "positive",
+    },
+  },
+  "TICKET_ACTIVITY_ACTION": {
+    "typeof": "object",
+    "value": {
+      "assignee_changed": "assignee_changed",
+      "auto_declined": "auto_declined",
+      "auto_resolved": "auto_resolved",
+      "category_changed": "category_changed",
+      "created": "created",
+      "reopened": "reopened",
+      "status_changed": "status_changed",
+    },
+  },
+  "TICKET_ACTOR_KIND": {
+    "typeof": "object",
+    "value": {
+      "agent": "agent",
+      "assistant": "assistant",
+      "customer": "customer",
+    },
+  },
+  "TICKET_CATEGORY": {
+    "typeof": "object",
+    "value": {
+      "General": "General",
+      "Other": "Other",
+      "Refund": "Refund",
+      "Technical": "Technical",
+    },
+  },
+  "TICKET_EVENT": {
+    "typeof": "object",
+    "value": {
+      "eval_run_changed": "eval_run_changed",
+      "pipeline_changed": "pipeline_changed",
+      "ticket_created": "ticket_created",
+      "ticket_message": "ticket_message",
+      "ticket_updated": "ticket_updated",
+    },
+  },
+  "TICKET_EVENT_FIELD": {
+    "typeof": "object",
+    "value": {
+      "assignee": "assignee",
+      "category": "category",
+      "status": "status",
+    },
+  },
+  "TICKET_INPUT_MESSAGE": {
+    "typeof": "object",
+    "value": {
+      "draftEmpty": "Write a draft before polishing.",
+      "draftTooLong": "Keep the draft to 10000 characters or fewer.",
+      "replyEmpty": "Write a reply before sending.",
+      "replyTooLong": "Keep the reply to 10000 characters or fewer.",
+      "searchTooLong": "Keep the search to 100 characters or fewer.",
+    },
+  },
+  "TICKET_NOT_FOUND_MESSAGE": {
+    "typeof": "string",
+    "value": "Couldn't find this ticket.",
+  },
+  "TICKET_SEARCH_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 100,
+  },
+  "TICKET_SORT_FIELD": {
+    "typeof": "object",
+    "value": {
+      "assignedTo": "assignedTo",
+      "category": "category",
+      "createdAt": "createdAt",
+      "customerName": "customerName",
+      "lastMessageAt": "lastMessageAt",
+      "status": "status",
+      "subject": "subject",
+    },
+  },
+  "TICKET_STATUS": {
+    "typeof": "object",
+    "value": {
+      "Closed": "Closed",
+      "New": "New",
+      "Open": "Open",
+      "Processing": "Processing",
+      "Resolved": "Resolved",
+    },
+  },
+  "TICKET_VIEW": {
+    "typeof": "object",
+    "value": {
+      "backlog": "backlog",
+      "mine": "mine",
+      "unassigned": "unassigned",
+      "untriaged": "untriaged",
+    },
+  },
+  "TICKET_VIEWS": {
+    "typeof": "object",
+    "value": [
+      "backlog",
+      "unassigned",
+      "mine",
+      "untriaged",
+    ],
+  },
+  "TOP_CUSTOMERS_LIMIT": {
+    "typeof": "number",
+    "value": 8,
+  },
+  "TUTORIAL_MAX_STEPS": {
+    "typeof": "number",
+    "value": 10,
+  },
+  "TUTORIAL_PAGE_KEY": {
+    "typeof": "object",
+    "value": {
+      "activity": "activity",
+      "dashboard": "dashboard",
+      "evals": "evals",
+      "knowledge": "knowledge",
+      "outbox": "outbox",
+      "pipeline": "pipeline",
+      "ticketDetail": "ticketDetail",
+      "tickets": "tickets",
+      "users": "users",
+    },
+  },
+  "TUTORIAL_PAGE_KEYS": {
+    "typeof": "object",
+    "value": [
+      "dashboard",
+      "tickets",
+      "ticketDetail",
+      "pipeline",
+      "knowledge",
+      "users",
+      "activity",
+      "outbox",
+      "evals",
+    ],
+  },
+  "TUTORIAL_PAGE_VERSIONS": {
+    "typeof": "object",
+    "value": {
+      "activity": 1,
+      "dashboard": 1,
+      "evals": 1,
+      "knowledge": 1,
+      "outbox": 1,
+      "pipeline": 1,
+      "ticketDetail": 1,
+      "tickets": 1,
+      "users": 1,
+    },
+  },
+  "TUTORIAL_STEP_ANCHOR_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 60,
+  },
+  "TUTORIAL_STEP_BODY_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 1000,
+  },
+  "TUTORIAL_STEP_TITLE_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 100,
+  },
+  "TUTORIAL_TITLE_MAX_LENGTH": {
+    "typeof": "number",
+    "value": 100,
+  },
+  "USER_ROLE": {
+    "typeof": "object",
+    "value": {
+      "admin": "admin",
+      "agent": "agent",
+    },
+  },
+  "WORKLOAD_AGENT_LIMIT": {
+    "typeof": "number",
+    "value": 10,
+  },
+  "asAutoReplyDecline": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "asPipelineOutcome": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "asTicketCategory": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "compareVersions": {
+    "length": 2,
+    "typeof": "function",
+  },
+  "evalCaseCounters": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "evalCounterSumSelect": {
+    "length": 0,
+    "typeof": "function",
+  },
+  "evalRunCounters": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "isOutputCheckDecline": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "midSentence": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "pipelineStageCounts": {
+    "length": 1,
+    "typeof": "function",
+  },
+  "ticketViewParams": {
+    "length": 2,
+    "typeof": "function",
+  },
+}
+`;

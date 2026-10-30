@@ -169,9 +169,9 @@ admin as the knowledge base having been consulted and found wanting.
 
 Four places in this repo already say it must not:
 
-- `DECLINE_STAGE`'s comment (`packages/shared/src/index.ts:1521`) — "it is the
-  one entry here that is **not a verdict about the ticket** — the provider could
-  not be reached, so nothing was ever decided".
+- `DECLINE_STAGE`'s comment (`packages/shared/src/pipeline.ts`) — "it is the
+  one entry here that is **not a verdict about the ticket** — the model was
+  never usefully asked, so nothing was ever decided".
 - `onExhausted`'s own comment (`apps/api/src/jobs/auto-reply-ticket.ts:551`) —
   "`unavailable`, not a judgement about the ticket… 'not covered by the
   knowledge base' would be a claim nobody made".
@@ -246,7 +246,7 @@ Nine sites already carry a hand-kept guard, comment or special-cased label about
 this one enum member. Three are guards, all in `PipelineRail.tsx` — `:82`
 (`declineTone` gives it the neutral), `:93` (`isOutputCheck`), `:383` (the stub
 renders muted). Four are prose: `DECLINE_STAGE`'s comment
-(`shared/src/index.ts:1521`), `onExhausted`'s (`auto-reply-ticket.ts:551`),
+(`shared/src/pipeline.ts`), `onExhausted`'s (`auto-reply-ticket.ts:551`),
 `verdictOf`'s (`runner.ts:181`), and the case set's coverage entry
 (`auto-reply-cases.ts:974`). Two are labels written to avoid the word "decline"
 (`pipeline-labels.ts:53`, `:73` — "The assistant could not be reached").

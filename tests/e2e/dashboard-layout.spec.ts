@@ -28,7 +28,7 @@ const LAST_PANEL =
   DEFAULT_DASHBOARD_LAYOUT[DEFAULT_DASHBOARD_LAYOUT.length - 1]!.panelId;
 // statusMix is narrow (the minimum width) and topCustomers is wide (the
 // maximum) in the default layout — see DEFAULT_DASHBOARD_LAYOUT in
-// packages/shared/src/index.ts.
+// packages/shared/src/dashboard-layout.ts.
 const NARROWEST_PANEL = DEFAULT_DASHBOARD_LAYOUT.find(
   (p) => p.width === "narrow",
 )!.panelId;

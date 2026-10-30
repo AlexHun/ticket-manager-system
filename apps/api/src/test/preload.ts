@@ -51,6 +51,10 @@
  * connection failures, not green and not silently slow.
  */
 import { afterEach, beforeEach, mock } from "bun:test";
+import {
+  PARTIAL_CHECKOUT_NOTE,
+  partialCheckout,
+} from "@ticket/repo-scan/checkout";
 import { testSession } from "./caller";
 import {
   aiSwitch,
@@ -132,3 +136,7 @@ afterEach(() => {
   const missed = unscripted[0];
   if (missed) throw missed;
 });
+
+// Once per run, so the tests the develop image skips are not skipped silently
+// (#585). Nowhere else is it set.
+if (partialCheckout) console.warn(PARTIAL_CHECKOUT_NOTE);

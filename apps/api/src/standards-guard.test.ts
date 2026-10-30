@@ -9,6 +9,7 @@ import {
   ruleLabel,
   underAny,
 } from "@ticket/repo-scan/rules";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
@@ -76,6 +77,9 @@ const ROLE_KEY = String.raw`\b(?:role|fromValue|toValue)`;
 /** A module specifier in an import, a re-export, a dynamic import or a
  *  require — the quote that opens it, so a form can name what follows. */
 const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']`;
+/** A module specifier as `SPECIFIER` reads it, or one a test registers: the
+ *  registry is what a deep import of `@ticket/shared` gets past. */
+const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
 /** A field of the SDK's usage object or of `AiUsage`, as a whole word. */
 const USAGE_FIELD = String.raw`(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b`;
 
@@ -118,6 +122,32 @@ const SOURCE_RULES: Rule[] = [
       `roles: ["admin", "agent"],`,
     ],
     ignores: `// Values are bare: \`toValue: "admin"\`, not "Role: admin".`,
+  },
+  {
+    name: "Callers import the bare @ticket/shared: never a subpath, nor a shared file by path, which a test's registration of @ticket/shared does not reach",
+    standard: "conventions.md",
+    // `@ticket/core` and the scripts are callers too (#579). The package's
+    // own files import each other as `./changelog.ts`, which no form matches.
+    roots: API_PACKAGES_SCRIPTS,
+    forms: [
+      new RegExp(String.raw`${SPECIFIER_OR_MOCK}@ticket/shared/`),
+      new RegExp(
+        String.raw`${SPECIFIER_OR_MOCK}[^"'\`\n]*\b(?:packages/shared|shared/src)(?=[/"'\`])`,
+      ),
+    ],
+    catches: [
+      `import { CHANGELOG_ENTRIES } from "@ticket/shared/changelog";`,
+      `import { USER_ROLE } from "../../packages/shared/src/index";`,
+      `export { USER_ROLE } from "../../shared/src/index.ts";`,
+      `const shared = await import("../../../packages/shared");`,
+      `await mock.module("@ticket/shared/src/changelog.ts", () => stub);`,
+    ],
+    passes: [
+      `import { USER_ROLE } from "@ticket/shared";`,
+      `await mock.module("@ticket/shared", () => ({ ...actualShared }));`,
+      `import { checkRules } from "@ticket/repo-scan/rules";`,
+    ],
+    ignores: `// Import "@ticket/shared", never "@ticket/shared/changelog".`,
   },
   {
     name: "Structured output goes through generateText + Output.object, never generateObject (it omits timeout)",
@@ -206,8 +236,10 @@ const SOURCE_RULES: Rule[] = [
   },
 ];
 
-/** Every file git tracks, relative to the repository root. */
-const TRACKED = trackedFiles(REPO_ROOT);
+/** Every file git tracks, relative to the repository root. None in the develop
+ *  image, which has no `.git` or `git`; every check that reads the tree skips
+ *  there. */
+const TRACKED = partialCheckout ? [] : trackedFiles(REPO_ROOT);
 
 const CODE = ruleCode(SOURCE_RULES, {
   root: REPO_ROOT,
@@ -215,7 +247,7 @@ const CODE = ruleCode(SOURCE_RULES, {
   tracked: TRACKED,
 });
 
-test("the guard reads the tree it means to", () => {
+test.skipIf(partialCheckout)("the guard reads the tree it means to", () => {
   // Guard against every rule passing because the directory moved: an empty
   // list is a green run that checked nothing. Each rule's own roots check
   // asks the same of every root it names.
@@ -228,7 +260,11 @@ test("the guard reads the tree it means to", () => {
   expect(files.some((file) => file.includes("/generated/"))).toBe(false);
 });
 
-checkRules(SOURCE_RULES, CODE, { describe, test, expect });
+checkRules(SOURCE_RULES, CODE, {
+  describe,
+  test: test.skipIf(partialCheckout),
+  expect,
+});
 
 /* ── Repo config ─────────────────────────────────────────────────────────── */
 
@@ -606,24 +642,27 @@ const CONFIG_RULES: ConfigRule[] = [
   },
 ];
 
-test("the product-name rule reads the tree it means to", () => {
-  // An empty list would pass every file it did not read.
-  const files = Object.keys(brandScopeFiles());
-  expect(files.length).toBeGreaterThan(400);
-  expect(files).toContain("apps/api/src/auth.ts");
-  expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
-  expect(files).toContain("apps/web/index.html");
-  expect(files).toContain("packages/core/src/index.ts");
-  expect(files).toContain("scripts/graph.ts");
-  expect(files.some((file) => file.startsWith(`${BRAND_HOME}/`))).toBe(false);
-  // No file is skipped by name: the guard itself is read like any other.
-  expect(files).toContain(SELF);
-  expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
-});
+test.skipIf(partialCheckout)(
+  "the product-name rule reads the tree it means to",
+  () => {
+    // An empty list would pass every file it did not read.
+    const files = Object.keys(brandScopeFiles());
+    expect(files.length).toBeGreaterThan(400);
+    expect(files).toContain("apps/api/src/auth.ts");
+    expect(files).toContain("apps/web/src/components/layout/LoginLockup.tsx");
+    expect(files).toContain("apps/web/index.html");
+    expect(files).toContain("packages/core/src/index.ts");
+    expect(files).toContain("scripts/graph.ts");
+    expect(files.some((file) => file.startsWith(`${BRAND_HOME}/`))).toBe(false);
+    // No file is skipped by name: the guard itself is read like any other.
+    expect(files).toContain(SELF);
+    expect(files.some((file) => file.includes("/node_modules/"))).toBe(false);
+  },
+);
 
 for (const rule of CONFIG_RULES) {
   describe(`${rule.standard}: ${rule.name}`, () => {
-    test("holds in the repo", () => {
+    test.skipIf(partialCheckout)("holds in the repo", () => {
       expect(
         rule
           .problems(rule.read())

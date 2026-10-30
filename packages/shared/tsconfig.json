@@ -2,7 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "types": ["bun"],
-    "noEmit": true
+    "noEmit": true,
+    // The index re-exports each domain file with a `.ts` extension (#579).
+    "allowImportingTsExtensions": true
   },
   "include": ["src"]
 }

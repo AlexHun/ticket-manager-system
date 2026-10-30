@@ -42,6 +42,12 @@ export interface SuiteDescriptor {
    * leaves it out of "run everything" unless asked.
    */
   heavy: boolean;
+  /**
+   * Why this suite cannot run on this server, or null when it can. The develop
+   * image has no Playwright config or specs (#585), and a suite the page offered
+   * there would only fail. The page leaves it out of "run everything".
+   */
+  unavailable: string | null;
 }
 
 export const CASE_STATUS = {

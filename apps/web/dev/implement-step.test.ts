@@ -1,5 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { describe, expect, it } from "vitest";
-import { implementStepOfCalls, type ToolCall } from "./implement-step.ts";
+import {
+  IMPLEMENT_STARTED,
+  implementStepOfCalls,
+  marksOf,
+  marksOfPrompt,
+  type ToolCall,
+} from "./implement-step.ts";
 import { IMPLEMENT_STEP } from "../src/dev/sessions-protocol.ts";
 
 /**
@@ -33,7 +42,7 @@ const STEPS: [string, ToolCall[]][] = [
     [
       shell("git commit -F .scratch/msg.txt; git push -u origin HEAD"),
       shell(
-        'gh issue comment 595 --body "Progress: built, next is review (step 7)"',
+        'gh issue comment 595 --body "Progress: built, next is the look (step 7)"',
       ),
     ],
   ],
@@ -156,5 +165,66 @@ describe("implementStepOfCalls", () => {
         shell("gh issue view 595"),
       ]),
     ).toBe(IMPLEMENT_STEP.read);
+  });
+});
+
+/** Every `Progress:` comment the skill tells a worker to leave, as written. */
+const skillComments = (): string[] =>
+  readFileSync(
+    join(import.meta.dirname, "../../../.claude/skills/implement/SKILL.md"),
+    "utf8",
+  ).match(/Progress: [^"`]+/g) ?? [];
+
+// The skill's own text, not a copy of it: a reworded comment fails here
+// rather than reading Unknown from Review on, on every card.
+describe.skipIf(partialCheckout)("the skill's Progress comments", () => {
+  const comments = partialCheckout ? [] : skillComments();
+  const marksOfComment = (text: string) =>
+    marksOf(shell(`gh issue comment 595 --body "${text}"`));
+
+  it("marks commit for step 6's comment and nothing for the others", () => {
+    expect(comments.map((text) => [text, marksOfComment(text)])).toEqual(
+      comments.map((text) => [
+        text,
+        text.startsWith("Progress: built") ? [IMPLEMENT_STEP.commit] : [],
+      ]),
+    );
+  });
+
+  it("leaves one comment per checkpoint, the look step's among them", () => {
+    expect(comments.map((text) => text.split(",")[0])).toEqual([
+      "Progress: building",
+      "Progress: built",
+      "Progress: looked",
+      "Progress: reviewed",
+    ]);
+  });
+});
+
+describe("marksOfPrompt", () => {
+  it("marks implement started for a prompt that opens on its tags, in either order", () => {
+    expect(
+      marksOfPrompt(
+        "<command-message>implement</command-message>\n<command-name>/implement</command-name>\n<command-args>682</command-args>",
+      ),
+    ).toEqual([IMPLEMENT_STARTED]);
+    expect(
+      marksOfPrompt(
+        "<command-name>/implement</command-name>\n<command-message>implement</command-message>",
+      ),
+    ).toEqual([IMPLEMENT_STARTED]);
+  });
+
+  it("marks nothing for a prompt that only quotes the markup further in (#682)", () => {
+    expect(
+      marksOfPrompt(
+        "It is recorded as <command-name>/implement</command-name>, see?",
+      ),
+    ).toEqual([]);
+    expect(
+      marksOfPrompt(
+        "<bash-stdout>a.jsonl: <command-name>/implement</command-name></bash-stdout><bash-stderr></bash-stderr>",
+      ),
+    ).toEqual([]);
   });
 });

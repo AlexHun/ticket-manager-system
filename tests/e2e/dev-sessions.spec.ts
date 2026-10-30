@@ -272,8 +272,9 @@ function backdateSessionA() {
 
 /**
  * A `/chain` conductor (#594), written into the working copy by the chain
- * tests alone, so every other test's cards and figures stand. Its prompt is
- * what Claude Code records for `/chain <plan>`, and its two `Agent` calls are
+ * tests alone, so every other test's cards and figures stand. Its prompts are
+ * what Claude Code records for `/clear` and then `/chain <plan>`, which titles
+ * its card (#616), and its two `Agent` calls are
  * `chain` step 2's: Ember on `#201`, finished, and Flint on `#202`, still
  * running, which keeps the conductor Running. Ember has no transcript.
  * Flint's holds the calls `implement` makes up to opening its PR (#595), and
@@ -303,7 +304,7 @@ const FLINT_CALLS: [string, object][] = [
     "PowerShell",
     {
       command:
-        'gh issue comment 202 --body "Progress: built, next is review (step 7)"',
+        'gh issue comment 202 --body "Progress: built, next is the look (step 7)"',
     },
   ],
   ["Skill", { skill: "mattpocock-skills:code-review" }],
@@ -359,6 +360,18 @@ function writeConductor() {
   writeFileSync(
     `${TRANSCRIPT_WORKING_DIR}/${CONDUCTOR}.jsonl`,
     [
+      // A conductor opened on `/clear`, recorded as Claude Code records it.
+      JSON.stringify({
+        type: "user",
+        sessionId: CONDUCTOR,
+        gitBranch: "develop",
+        timestamp: "2026-09-03T10:00:00.000Z",
+        message: {
+          role: "user",
+          content:
+            "<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>",
+        },
+      }),
       JSON.stringify({
         type: "user",
         sessionId: CONDUCTOR,
@@ -907,6 +920,13 @@ test.describe("dev tools: Sessions", () => {
       name: /^Hide the subagents of/,
     });
     await expect(toggle).toBeVisible({ timeout: MANY_READ_MS });
+    // The page draws its cards a batch at a time (#618): counted before the
+    // last batch, the page is smaller than the one the fold lays out, and a
+    // batch drawn during the trace is a layout that is not the fold's.
+    await expect(page.locator("[data-sessions-drawing]")).toHaveCount(0);
+    await expect(
+      groupIn(page, MANY_GROUP).locator("[data-session-card]"),
+    ).toHaveCount(MANY_SESSIONS * (1 + MANY_SUBAGENTS));
     const elements = await page.evaluate(
       () => document.getElementsByTagName("*").length,
     );
@@ -1067,6 +1087,10 @@ test.describe("dev tools: Sessions", () => {
       0,
     );
     await expectTools(conductor, ["Agent ×2"]);
+    // Titled by the command it ran, past the `/clear` it opened on (#616).
+    await expect(conductor.getByRole("heading")).toHaveText(
+      `/chain ${CHAIN_PLAN}`,
+    );
     const ember = own(
       childOf(cardIn(groupIn(page, GROUP.base), CONDUCTOR), EMBER),
     );

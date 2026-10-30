@@ -1,6 +1,6 @@
 # PRD: `@ticket/shared` split by domain
 
-**Status:** Draft · **Author:** Aleksei Hunich · **Date:** 2026-10-17
+**Status:** Shipped · **Author:** Aleksei Hunich · **Date:** 2026-10-17
 
 ## Problem
 

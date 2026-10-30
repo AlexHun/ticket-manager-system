@@ -33,6 +33,7 @@ function metricRow(
     threshold: EVAL_THRESHOLD[metric],
     meets: true,
     previous: null,
+    trailing: null,
     ...overrides,
   };
 }

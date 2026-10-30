@@ -8,7 +8,7 @@ half needs nothing new on the wire either: `updateTicket` in
 `routes/tickets.ts` already publishes a `ticket_updated` event with
 `fields: ["assignee"]` whenever the diff includes it
 ([#18](https://github.com/AlexHun/ticket-manager-system/issues/18)'s own
-premise), and [`TicketEvent`](../../packages/shared/src/index.ts) carries no
+premise), and [`TicketEvent`](../../packages/shared/src/events.ts) carries no
 payload by design — an id and a verb, never data, because the client already
 holds an authenticated `GET` for every fact it might need and a payload would
 be a second, unguarded read path. A client that has just been told "a ticket

@@ -1052,7 +1052,8 @@ model EvalRun {
   /// here anyway: a stored rate means nothing without the denominator it was
   /// taken over, and a run kept for months has to keep saying what it measured.
   repeats       Int   @default(1)
-  /// Repeats actually answered across every case: cases × `repeats`. Written
+  /// Repeats asked across every case: cases × `repeats`, the unanswered ones
+  /// included (`abandoned` counts those, and none of them can match). Written
   /// when the run closes, so a run in flight reads zero rather than a fraction
   /// of a number nobody can interpret.
   attempts      Int   @default(0)
