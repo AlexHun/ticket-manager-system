@@ -1738,6 +1738,20 @@ describe("trailingFrom", () => {
     });
   });
 
+  test("keeps a repeat the classifier could not answer out of both sides", () => {
+    // 4 of 5 classified, 3 of 3 (two unanswered) and 5 of 5: pooled over the
+    // 13 it answered, 12 of 13 — never over the 15 repeats asked.
+    const window = [
+      seriesValue(1, sept(1), { classifyMatches: 4, classifiedRepeats: 5 }),
+      seriesValue(2, sept(2), { classifyMatches: 3, classifiedRepeats: 3 }),
+      seriesValue(3, sept(3), { classifyMatches: 5, classifiedRepeats: 5 }),
+    ];
+
+    expect(trailingFrom(EVAL_METRIC.classifierAccuracy, window)?.value).toBe(
+      12 / 13,
+    );
+  });
+
   test("is null-valued when no run in the window measured the metric", () => {
     const window = [1, 2, 3].map((day) => seriesValue(day, sept(day)));
 

@@ -561,8 +561,8 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
         )}
         {/* The table's one amber thing (#607), and the words carry it without
             the colour. Not a rate band — the rates above stay unbanded — and
-            not red: a case two or more below where it stood a week earlier is
-            not a defect the way an escape is. It is the row an admin opened
+            not red: a case that fell since a week earlier is not a defect the
+            way an escape is. It is the row an admin opened
             this table looking for, though, since a fall of 5/5 to 0/5 moves the
             headline accuracy by about three points, which is inside a passing
             run. Named run and date, because "down from" is a claim somebody

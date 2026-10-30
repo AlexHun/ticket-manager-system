@@ -53,8 +53,9 @@ export interface EvalCaseResultRow extends EvalCaseCounters {
    */
   history: (EvalCaseSplit | null)[];
   /**
-   * Set when this case matched two or more fewer repeats than it did on the
-   * run a week earlier, and null otherwise (#607).
+   * Set when this case matched enough fewer repeats than it did on the run a
+   * week earlier to be flagged, and null otherwise (#607). How many is
+   * `FALL_MATCHES` in `apps/api/src/routes/evals.ts`, decided there alone.
    *
    * Null too when there is no week-earlier run, or the case was not on it:
    * no flag rather than a guess. Display only — nothing notifies (R8, R11).
@@ -77,11 +78,8 @@ export interface EvalCaseSplit {
  * started at least seven days before this one. Named on the row, run and date,
  * because "down from 5/5" is a claim somebody will want to go and check.
  */
-export interface EvalCaseFall {
-  runId: number;
+export interface EvalCaseFall extends EvalCaseSplit {
   startedAt: string;
-  matches: number;
-  repeats: number;
 }
 
 /**

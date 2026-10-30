@@ -270,8 +270,7 @@ function metricRow(
   window: MetricCounts[],
   thresholds: Record<string, number>,
 ): EvalMetricRow {
-  // The window ends with this run, so the one before it is its predecessor.
-  const previous = window.at(-2) ?? null;
+  const previous = predecessorIn(window);
   // A run that recorded no threshold for this metric is judged by the constant
   // this build carries. That is every row written before the column existed, and
   // it is the only honest reading of an absent key — the alternative is a zero
@@ -306,7 +305,8 @@ export function trailingFrom(
   metric: EvalMetric,
   window: MetricCounts[],
 ): EvalTrailingMetric | null {
-  if (window.length - 1 < 2) return null;
+  const runsBefore = window.length - 1;
+  if (runsBefore < 2) return null;
 
   let numerator = 0;
   let denominator = 0;
@@ -477,13 +477,21 @@ function windowOf(series: SeriesRun[], run: PriorRun): SeriesRun[] {
 }
 
 /**
+ * The run before the last in a window — its predecessor, since a window ends
+ * with the run it was taken for. Null on a window of one or none.
+ */
+function predecessorIn<T>(window: T[]): T | null {
+  return window.at(-2) ?? null;
+}
+
+/**
  * The run a week earlier than `run`: the latest in a newest-first series that
  * started at least seven days before it, or null when nothing is that old.
  */
-export function weekEarlierOf<T extends PriorRun>(
-  series: T[],
+export function weekEarlierOf(
+  series: SeriesRun[],
   run: PriorRun,
-): T | null {
+): SeriesRun | null {
   const latest = weekBefore(run).getTime();
   return series.find((other) => other.startedAt.getTime() <= latest) ?? null;
 }
@@ -828,10 +836,9 @@ export function createEvalsRouter(config: EvalsConfig): Router {
           const completed = run.status === EVAL_RUN_STATUS.completed;
           // Empty on every run that is not `completed`, because `seriesOf`
           // leaves those out — the same gate `metrics` is behind, and for the
-          // same reason: there is nothing yet to compare. It ends with this
-          // run, so the run before it is its predecessor.
+          // same reason: there is nothing yet to compare.
           const window = completed ? windowOf(series, run) : [];
-          const previous = window.at(-2) ?? null;
+          const previous = predecessorIn(window);
           const weekEarlier = completed ? weekEarlierOf(series, run) : null;
           // Only on a run that finished properly, and `completed` rather than
           // "not running" — the two states this excludes are excluded for the
