@@ -1168,5 +1168,10 @@
     "version": "0.1.293",
     "date": "2026-10-30",
     "title": "Keep a focused tab's ring inside the scrolling row"
+  },
+  {
+    "version": "0.1.294",
+    "date": "2026-10-30",
+    "title": "Keep the dev-only badge on the heading's line at phone width"
   }
 ]
