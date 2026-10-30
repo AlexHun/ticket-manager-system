@@ -920,6 +920,13 @@ test.describe("dev tools: Sessions", () => {
       name: /^Hide the subagents of/,
     });
     await expect(toggle).toBeVisible({ timeout: MANY_READ_MS });
+    // The page draws its cards a batch at a time (#618): counted before the
+    // last batch, the page is smaller than the one the fold lays out, and a
+    // batch drawn during the trace is a layout that is not the fold's.
+    await expect(page.locator("[data-sessions-drawing]")).toHaveCount(0);
+    await expect(
+      groupIn(page, MANY_GROUP).locator("[data-session-card]"),
+    ).toHaveCount(MANY_SESSIONS * (1 + MANY_SUBAGENTS));
     const elements = await page.evaluate(
       () => document.getElementsByTagName("*").length,
     );
