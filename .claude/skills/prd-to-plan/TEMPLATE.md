@@ -29,6 +29,10 @@ The thinnest observable path through every layer above.
 
 **E2E:** `tests/e2e/<name>.spec.ts` — <the assertion that proves the path is alive>
 
+**Budget:** <only on the slice that first draws a page at the PRD's worst
+case: "at <volume>, first load under <ms> (R<n>), <interaction> under <ms> INP
+(R<n>)">
+
 ## Slice 2 — <name>
 
 **Retires:** <unknown> · **Covers:** R2, R3

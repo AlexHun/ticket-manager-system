@@ -1189,7 +1189,7 @@ describe("readSessions: step and tools", () => {
       calls(
         T(7),
         shell(
-          'gh issue comment 595 --body "Progress: built, next is review (step 7)"',
+          'gh issue comment 595 --body "Progress: built, next is the look (step 7)"',
         ),
       ),
       calls(T(8), skill("mattpocock-skills:code-review"), ["Agent", {}]),

@@ -304,7 +304,7 @@ const FLINT_CALLS: [string, object][] = [
     "PowerShell",
     {
       command:
-        'gh issue comment 202 --body "Progress: built, next is review (step 7)"',
+        'gh issue comment 202 --body "Progress: built, next is the look (step 7)"',
     },
   ],
   ["Skill", { skill: "mattpocock-skills:code-review" }],

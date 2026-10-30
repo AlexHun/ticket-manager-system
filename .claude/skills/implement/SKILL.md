@@ -47,8 +47,32 @@ invoke it.
    the PRD is citation-checked forever.
 6. **Commit** after the self-check in CLAUDE.md, push, and leave the
    checkpoint on the issue:
-   `gh issue comment <n> --body "Progress: built, next is review (step 7)"`.
-7. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
+   `gh issue comment <n> --body "Progress: built, next is the look (step 7)"`.
+7. **Look at the page.** Skip to step 8 when the ticket renders no page and
+   changes none. Otherwise open each page it touches in a real browser, through
+   the chrome-devtools MCP (`docs/standards/conventions.md`), on real-volume
+   data and never the E2E fixtures: the Sessions page passed review and CI on a
+   handful of fixture sessions, and this machine's 256 then cost three more
+   tickets (#611, #613, #618). For an app page that is the dev database after
+   `cd apps/api && bun run db:seed:tickets`, 100 tickets over about six months
+   (`SCRIPTS.md`); for a `/__dev` page it is `bun run dev` reading this
+   machine's own transcripts, with no `CLAUDE_TRANSCRIPT_DIR` set, never the
+   E2E's web server, which reads the fixtures. When the PRD's worst case is
+   above what that holds, say how far below it the look was. At 1440 px and
+   390 px wide, save a screenshot to `.scratch/look-<n>/` and read it back for
+   anything that overflows, clips or wraps badly. Then trace the page's main
+   interaction, the one the PRD's budget names, or a fold, filter or sort when
+   none is named: start the trace with reload and auto-stop off, make the
+   interaction, and stop it with a file path in the same directory. Leave the
+   checkpoint with `--body-file`: `Progress: looked, next is review (step 8)`,
+   each screenshot's path and what it shows, the trace's path, and its first
+   load and slowest interaction in ms. The files stay on this machine, since
+   `gh` uploads no image; never upload a `/__dev` one by hand either, since it
+   shows the developer's own prompts and this repo's issues are public. Done
+   when both screenshots and the trace are named in that comment, and every
+   interaction over 200 ms in it has an issue filed or a fix pushed, named
+   beside it.
+8. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
    `origin/develop`. Its two axes run as background subagents whatever that
    skill asks, and a background report reaches a subagent only between its
    own tool calls: a worker that ends its turn to wait never hears back
@@ -73,10 +97,10 @@ invoke it.
    the `file:line` its reason rests on, read in this step: #607's PR kept the
    outage-flags-a-case finding on "some cases expect no verdict", which
    `evals/runner.ts` contradicts in so many words, and no citation was asked.
-   Push, and comment `Progress: reviewed, next is ship (step 8)`. Done when
+   Push, and comment `Progress: reviewed, next is ship (step 9)`. Done when
    both axes' results are in hand, every finding is fixed or answered in the
    PR body with its citation, and the fixes are pushed.
-8. **Ship.** Open a PR into `develop` from the body written in step 7, which
+9. **Ship.** Open a PR into `develop` from the body written in step 8, which
    says `Closes #<n>`, and take it to green in CI as CLAUDE.md's Workflow
    describes.
 

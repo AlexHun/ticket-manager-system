@@ -21,6 +21,23 @@ finish. If a change affects two roles differently, say how for each.
 One primary metric. At most two supporting ones. A guardrail metric — the thing
 that must *not* get worse — if there is an obvious one.
 
+## Volume and budgets
+
+For a PRD that adds or changes a page; drop the section only when it does
+neither.
+
+| Page | Typical volume | Worst case | Measured how |
+| ---- | -------------- | ---------- | ------------ |
+| <page> | <n items, e.g. 200 tickets> | <n> | <the count or query, or `estimated`> |
+
+| Budget | Target | Requirement |
+| ------ | ------ | ----------- |
+| First load, to the first useful content, at the worst case | <ms, or `TBD — needs <who>`> | R<n> |
+| Main interaction (<which: a fold, a filter, a sort…>), INP | <ms; 200 unless argued> | R<n> |
+
+Each budget is also a `Must` in the table below, so the plan and the tickets
+carry it.
+
 ## Scope
 
 ### In this pass

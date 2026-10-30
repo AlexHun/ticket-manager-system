@@ -3,9 +3,11 @@
 // `docs/plans/dev-tools-sessions-page.md` (#595, R9).
 //
 // The steps are R9's eight, which are `.claude/skills/implement/SKILL.md`'s
-// with two differences: the skill's step 5 (mark the PRD shipped) has no
-// step of its own, so a worker there still reads Build, and its step 8 is
-// two here, Ship once the PR is opened and CI once its checks are watched.
+// with three differences: the skill's step 5 (mark the PRD shipped) has no
+// step of its own, so a worker there still reads Build; nor has its step 7
+// (look at the page, #626), whose `Progress: looked` comment matches no rule,
+// so a worker there still reads Commit; and its step 9 is two here, Ship once
+// the PR is opened and CI once its checks are watched.
 // Each is matched by the call the skill tells the worker to make:
 //
 // | Step            | The call                                              |
@@ -38,7 +40,8 @@
 //
 // Pure, so each rule is a unit test over made-up calls
 // (`./implement-step.test.ts`), and an edit to the skill that changes a call
-// breaks a test before it misleads the page.
+// breaks a test before it misleads the page. The `Progress:` comments are
+// also read off the skill itself there, so a reworded one fails a test too.
 
 import {
   IMPLEMENT_STEP,
