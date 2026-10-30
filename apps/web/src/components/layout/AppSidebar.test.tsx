@@ -3,16 +3,21 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   BRAND_NAME,
+  EVAL_HEALTH,
   NEW_FEATURE_KEY,
   NEW_FEATURE_KEYS,
+  TICKET_EVENT,
   TICKET_VIEWS,
   USER_ROLE,
+  type EvalHealth,
+  type EvalStatusResponse,
   type NewFeatureKey,
   type NewFeatureStatusResponse,
   type TicketUnreadResponse,
   type TicketView,
   type TicketViewCountsResponse,
 } from "@ticket/shared";
+import { applyEvent } from "@/lib/realtime-events";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -27,6 +32,7 @@ const viewsGet = apiStub.get("/api/tickets/views");
 // it pending forever and could log an act() warning.
 const newFeaturesGet = apiStub.get("/api/new-features/status");
 const newFeatureSeenPost = apiStub.post("/api/new-features/:featureKey/seen");
+const evalStatusGet = apiStub.get("/api/evals/status");
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
 
@@ -66,6 +72,10 @@ function newFeatureStatuses(
   return { data: { statuses } satisfies NewFeatureStatusResponse };
 }
 
+function evalStatus(health: EvalHealth | null) {
+  return { data: { health } satisfies EvalStatusResponse };
+}
+
 function renderSidebar() {
   return renderRoutes([
     {
@@ -91,6 +101,7 @@ beforeEach(() => {
   viewsGet.mockResolvedValue(zeroViewCounts());
   newFeaturesGet.mockResolvedValue(newFeatureStatuses());
   newFeatureSeenPost.mockResolvedValue({ data: { ok: true } });
+  evalStatusGet.mockResolvedValue(evalStatus(null));
 });
 
 describe("AppSidebar brand", () => {
@@ -246,5 +257,77 @@ describe("AppSidebar new-feature badge", () => {
     await user.click(link);
 
     expect(newFeatureSeenPost).not.toHaveBeenCalled();
+  });
+});
+
+describe("AppSidebar eval mark (#608)", () => {
+  const FAILING = /below a threshold/i;
+  const DEFECT = /planted payload/i;
+
+  function marks() {
+    return screen.queryAllByRole("img", { name: /eval run/i });
+  }
+
+  test("marks Evals failing while the latest frozen run is below a threshold", async () => {
+    evalStatusGet.mockResolvedValue(evalStatus(EVAL_HEALTH.failing));
+    renderSidebar();
+
+    const mark = await screen.findByRole("img", { name: FAILING });
+    expect(mark).toHaveTextContent("Failing");
+    expect(mark.closest("li")).toHaveTextContent("Evals");
+    expect(mark).not.toHaveClass("bg-status-critical-soft");
+  });
+
+  test("marks an escape with the critical mark instead", async () => {
+    evalStatusGet.mockResolvedValue(evalStatus(EVAL_HEALTH.escaped));
+    renderSidebar();
+
+    const mark = await screen.findByRole("img", { name: DEFECT });
+    expect(mark).toHaveTextContent("Defect");
+    expect(mark).toHaveClass("bg-status-critical-soft");
+    expect(screen.queryByRole("img", { name: FAILING })).toBeNull();
+  });
+
+  test.each([EVAL_HEALTH.passing, null])(
+    "draws no mark when the status is %s",
+    async (health) => {
+      evalStatusGet.mockResolvedValue(evalStatus(health));
+      renderSidebar();
+
+      await waitFor(() => expect(evalStatusGet).toHaveBeenCalled());
+      await screen.findByRole("link", { name: "Evals" });
+      expect(marks()).toEqual([]);
+    },
+  );
+
+  test("updates when a run finishes, without a reload", async () => {
+    evalStatusGet.mockResolvedValueOnce(evalStatus(EVAL_HEALTH.passing));
+    evalStatusGet.mockResolvedValueOnce(evalStatus(EVAL_HEALTH.failing));
+    const { queryClient } = renderSidebar();
+    await waitFor(() => expect(evalStatusGet).toHaveBeenCalledTimes(1));
+    expect(marks()).toEqual([]);
+
+    applyEvent(queryClient, {
+      kind: TICKET_EVENT.eval_run_changed,
+      runId: 7,
+      at: new Date().toISOString(),
+    });
+
+    expect(await screen.findByRole("img", { name: FAILING })).toBeVisible();
+  });
+
+  test("an agent never asks, and never sees the mark", async () => {
+    session.user = {
+      id: "agent-1",
+      name: "Aaron Agent",
+      role: USER_ROLE.agent,
+      isAnonymous: false,
+    };
+    evalStatusGet.mockResolvedValue(evalStatus(EVAL_HEALTH.escaped));
+    renderSidebar();
+
+    await waitFor(() => expect(viewsGet).toHaveBeenCalled());
+    expect(evalStatusGet).not.toHaveBeenCalled();
+    expect(marks()).toEqual([]);
   });
 });

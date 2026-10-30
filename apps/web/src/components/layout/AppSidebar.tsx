@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
+import { ADMIN_SCREEN, EVAL_HEALTH, type EvalHealth } from "@ticket/shared";
 import { useSession } from "@/lib/auth-client";
 import {
   Sidebar,
@@ -18,17 +19,44 @@ import {
   useMarkNewFeatureSeen,
   useNewFeatureStatus,
 } from "@/lib/new-feature-queries";
+import { useEvalStatus } from "@/lib/eval-queries";
 import { ROUTE } from "@/lib/routes";
-import { viewerOf } from "@/lib/viewer";
+import { cn } from "@/lib/utils";
+import { seesAdminScreen, viewerOf } from "@/lib/viewer";
 import { useUnreadAssignments } from "@/lib/use-assignment-toasts";
 import { DEV_NAV_ITEMS, isNavItemActive, navItemsFor } from "./nav-items";
 import { SidebarBrand } from "./SidebarBrand";
 import { SidebarViews } from "./SidebarViews";
 
+/**
+ * The Evals item's mark (#608), one per bad answer, worded as `/evals` words
+ * the same two things. A missed threshold is a score and takes the page's red
+ * text; an escape is a defect and takes the filled, bordered ground the page
+ * holds back for it, so the two never read as one. `passing` has no entry:
+ * a passing series draws nothing.
+ */
+const EVAL_MARK: Record<
+  Exclude<EvalHealth, typeof EVAL_HEALTH.passing>,
+  { text: string; label: string; className: string }
+> = {
+  [EVAL_HEALTH.failing]: {
+    text: "Failing",
+    label: "Failing: the latest frozen eval run is below a threshold",
+    className: "text-status-critical",
+  },
+  [EVAL_HEALTH.escaped]: {
+    text: "Defect",
+    label: "Defect: the latest frozen eval run let a planted payload through",
+    className:
+      "border border-status-critical/40 bg-status-critical-soft text-status-critical",
+  },
+};
+
 export function AppSidebar() {
   const { data: session } = useSession();
   const { pathname } = useLocation();
-  const items = navItemsFor(viewerOf(session?.user));
+  const viewer = viewerOf(session?.user);
+  const items = navItemsFor(viewer);
   // Unread count for the "Tickets" row only — see the badge below for why
   // this is a different question from any of `SidebarViews`'s counts.
   const { data: unread } = useUnreadAssignments();
@@ -36,6 +64,14 @@ export function AppSidebar() {
   // The "new" badge (issue #45) — one request for every item's dot state.
   const { data: newFeatureStatuses } = useNewFeatureStatus();
   const markNewFeatureSeen = useMarkNewFeatureSeen();
+  // The eval mark (#608) — asked only by a viewer the Evals item is drawn for.
+  const { data: evalStatus } = useEvalStatus(
+    seesAdminScreen(viewer, ADMIN_SCREEN.evals),
+  );
+  const evalMark =
+    evalStatus?.health && evalStatus.health !== EVAL_HEALTH.passing
+      ? EVAL_MARK[evalStatus.health]
+      : null;
 
   return (
     <Sidebar collapsible="icon">
@@ -116,6 +152,24 @@ export function AppSidebar() {
                           className="bg-sidebar-primary text-sidebar-primary-foreground peer-data-[active=true]/menu-button:text-sidebar-primary-foreground"
                         >
                           New
+                        </SidebarMenuBadge>
+                      )}
+
+                      {/* The eval mark (#608). An `img` with a label rather
+                          than bare text, so it is announced with why it is
+                          there, not as a lone word beside the link. Its colour
+                          holds on hover and on the active row, which the
+                          badge's own classes would otherwise repaint. */}
+                      {item.to === ROUTE.evals.path && evalMark && (
+                        <SidebarMenuBadge
+                          role="img"
+                          aria-label={evalMark.label}
+                          className={cn(
+                            evalMark.className,
+                            "peer-hover/menu-button:text-status-critical peer-data-[active=true]/menu-button:text-status-critical",
+                          )}
+                        >
+                          {evalMark.text}
                         </SidebarMenuBadge>
                       )}
                     </SidebarMenuItem>
