@@ -7,6 +7,7 @@
     "./checkout": "./src/checkout.ts",
     "./git-env": "./src/git-env.ts",
     "./rules": "./src/rules.ts",
+    "./spellings": "./src/spellings.ts",
     "./strip-comments": "./src/strip-comments.ts",
     "./tracked-files": "./src/tracked-files.ts"
   },

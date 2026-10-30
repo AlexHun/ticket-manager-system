@@ -71,7 +71,7 @@ describe("offendingLines", () => {
 });
 
 describe("checkRules", () => {
-  test("registers a holds test named by the rule's roots, the roots and allowlist checks, and one test per catches, passes and ignores example", () => {
+  test("registers a holds test named by the rule's roots, the roots and allowlist checks, and one test per catches spelling, passes and ignores example", () => {
     const { runner, tests } = recorder();
     checkRules([RULE], tree({ "web/src/lib/api.ts": "" }), runner);
     expect([...tests.keys()]).toEqual([
@@ -79,6 +79,8 @@ describe("checkRules", () => {
       ROOTS,
       `${TITLE} > its allowlist names files that exist`,
       `${TITLE} > catches await fetch("/api");`,
+      `${TITLE} > catches await fetch('/api');`,
+      `${TITLE} > catches await fetch(\`/api\`);`,
       `${TITLE} > passes await prefetch("/api");`,
       `${TITLE} > ignores a comment that only mentions the form`,
     ]);
@@ -87,7 +89,15 @@ describe("checkRules", () => {
   test("every test passes for a rule whose examples are right", () => {
     const { runner, tests, failure } = recorder();
     checkRules([RULE], tree({ "web/src/lib/api.ts": "" }), runner);
-    expect([...tests.keys()].map(failure)).toEqual(Array(6).fill(undefined));
+    expect([...tests.keys()].map(failure)).toEqual(Array(8).fill(undefined));
+  });
+
+  test("a form that reads only the quote its catches are typed in fails the other spellings", () => {
+    const { runner, failure } = recorder();
+    const doubleOnly: Rule = { ...RULE, forms: [/\bfetch\("/] };
+    checkRules([doubleOnly], tree({ "web/src/lib/api.ts": "" }), runner);
+    expect(failure(`${TITLE} > catches await fetch("/api");`)).toBeUndefined();
+    expect(failure(`${TITLE} > catches await fetch('/api');`)).toBeDefined();
   });
 
   test("the holds test fails on a breach, naming the file, the line and the rule, and skips an allowed file", () => {

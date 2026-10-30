@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { inEveryQuote } from "./spellings.ts";
 import { stripComments } from "./strip-comments.ts";
 import { trackedFiles } from "./tracked-files.ts";
 
@@ -41,7 +42,9 @@ export interface Rule {
    *  repo-relative path. Each must be a file the guard reads, or `checkRules`'
    *  allowlist test fails. */
   allowed?: string[];
-  /** Lines that break the rule, each of which must be caught. */
+  /** Lines that break the rule, each of which must be caught — and caught
+   *  again with its literals rewritten in each of the other two quotes
+   *  (`inEveryQuote`). */
   catches: string[];
   /** Lines that keep the rule while resembling a break, each of which must
    *  pass. */
@@ -182,7 +185,7 @@ export function checkRules(
         ).toEqual([]);
       });
 
-      for (const line of rule.catches) {
+      for (const line of rule.catches.flatMap(inEveryQuote)) {
         test(`catches ${line}`, () => {
           expect(offendingLines(rule, stripComments(line).code)).toEqual([1]);
         });
