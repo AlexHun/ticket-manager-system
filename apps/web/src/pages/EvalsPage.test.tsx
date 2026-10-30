@@ -114,6 +114,9 @@ function makeResult(
         matched: true,
       },
     ],
+    // No history and nothing fallen by default (#607); the history tests opt in.
+    history: [],
+    fell: null,
     ...overrides,
   };
 }
@@ -136,6 +139,8 @@ function makeMetric(
     // No earlier run by default, so a test about something else is not also a
     // test about R14. The comparison tests below opt in.
     previous: null,
+    // No window either, for the same reason; the trailing-average tests opt in.
+    trailing: null,
     ...overrides,
   };
 }
@@ -1333,6 +1338,146 @@ describe("what moved since last time", () => {
     expect(
       screen.queryByText(/First run on the frozen corpus/),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("the trailing average (#607)", () => {
+  test("shows each metric's average over the window beside its delta", async () => {
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            previous: { id: 6, startedAt: "2026-09-03T10:00:00.000Z" },
+            metrics: [
+              makeMetric(EVAL_METRIC.declineAccuracy, {
+                value: 0.84,
+                numerator: 21,
+                denominator: 25,
+                previous: { value: 0.9 },
+                trailing: { value: 0.884, runs: 7 },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    expect(await screen.findByText("7-run average 88%")).toBeInTheDocument();
+    // Beside the delta, not instead of it.
+    expect(screen.getByText("-6pp")).toBeInTheDocument();
+  });
+
+  test("says a window measured nothing rather than drawing a dash", async () => {
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            metrics: [
+              makeMetric(EVAL_METRIC.catchRate, {
+                value: null,
+                numerator: 0,
+                denominator: 0,
+                trailing: { value: null, runs: 3 },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+
+    expect(
+      await screen.findByText("not measured in the last 3 runs"),
+    ).toBeInTheDocument();
+  });
+
+  test("draws no average where the server sent none", async () => {
+    render();
+
+    await screen.findByText("Decline accuracy");
+    expect(screen.queryByText(/-run average/)).not.toBeInTheDocument();
+  });
+});
+
+describe("a case's recent history (#607)", () => {
+  test("draws a case's matches on the last runs, oldest first, with gaps", async () => {
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            results: [
+              makeResult({
+                matches: 2,
+                history: [
+                  null,
+                  { runId: 5, matches: 5, repeats: 5 },
+                  { runId: 7, matches: 2, repeats: 5 },
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+    await showCases(user);
+
+    const history = screen.getByRole("list", {
+      name: "Last 3 runs, oldest first",
+    });
+    const items = within(history).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "— not answered on that run",
+      "5 of 5 on run 5",
+      "2 of 5 on run 7",
+    ]);
+    expect(
+      screen.getByRole("columnheader", { name: "Recent runs" }),
+    ).toBeInTheDocument();
+  });
+
+  test("flags a case that fell since a week earlier, naming the run", async () => {
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            results: [
+              makeResult({
+                matches: 2,
+                fell: {
+                  runId: 3,
+                  startedAt: "2026-09-02T10:00:00.000Z",
+                  matches: 5,
+                  repeats: 5,
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+    await showCases(user);
+
+    expect(
+      screen.getByText("Down from 5/5 a week earlier (run 3, 2 Sep 2026)"),
+    ).toBeInTheDocument();
+  });
+
+  test("flags nothing on a case that did not fall", async () => {
+    const user = userEvent.setup();
+
+    render();
+    await showCases(user);
+
+    expect(screen.queryByText(/Down from/)).not.toBeInTheDocument();
   });
 });
 

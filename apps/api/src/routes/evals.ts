@@ -7,13 +7,16 @@ import {
   EVAL_CORPUS,
   EVAL_CORPUS_DEFAULT,
   EVAL_HEALTH,
+  EVAL_HISTORY_RUNS,
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   EVAL_THRESHOLD,
   isOutputCheckDecline,
   type AutoReplyDecline,
+  type EvalCaseFall,
   type EvalCaseResultRow,
+  type EvalCaseSplit,
   type EvalCategoryRow,
   type EvalCheckRow,
   type EvalCorpus,
@@ -28,6 +31,7 @@ import {
   type EvalRunStatus,
   type EvalRunStartedResponse,
   type EvalStatusResponse,
+  type EvalTrailingMetric,
   type TicketCategory,
 } from "@ticket/shared";
 import {
@@ -82,6 +86,10 @@ import { requireAdmin, requireAdminView } from "../middleware/auth";
  * needs the seam: the status code, the wire shape, and that an old run still
  * draws what it drew. Nothing outside this file and its test imports them, and
  * nothing should — `createEvalsRouter` is still the module's interface.
+ *
+ * The series readers joined them on the same terms (#607): `trailingFrom`,
+ * `historyFrom`, `weekEarlierOf` and `fallFrom` take runs built as values, so
+ * pooled-versus-mean and a gap-versus-zero are asserted without a database.
  */
 
 /**
@@ -176,11 +184,11 @@ export function reachedFrom(verdicts: StoredVerdict[]): EvalReachedRow[] {
 /**
  * The counters every metric is taken over, on any run.
  *
- * Structural rather than the Prisma row, because three different queries
- * produce it: the page of runs, which selects everything; the narrow lookup for
- * the run before it (`COMPARISON_COLUMNS`), which selects eight columns and none
- * of the results; and `GET /status`, which takes those eight and the thresholds
- * for the latest frozen run itself (#608).
+ * Structural rather than the Prisma row, because three kinds of query produce
+ * it: the page of runs, which selects everything; the series around the page
+ * (`SERIES_COLUMNS`), which selects eight columns and each case's split but no
+ * verdicts; and `GET /status`, which takes those eight and the thresholds for
+ * the latest frozen run itself (#608).
  *
  * A `Pick` over the run-level counters rather than six restated fields, so a
  * counter renamed in `EVAL_COUNTERS` fails here rather than resolving to a
@@ -198,7 +206,7 @@ type MetricCounts = Pick<
   | "classifiedRepeats"
 >;
 
-/** A run reduced to what the run after it needs in order to say what moved. */
+/** A run reduced to what the runs after it need in order to say what moved. */
 interface PriorRun extends MetricCounts {
   id: number;
   startedAt: Date;
@@ -250,7 +258,7 @@ function rate(numerator: number, denominator: number): number | null {
 
 /**
  * One metric, judged against what this run recorded (R8) and read against the
- * run before it (R14).
+ * runs before it (R14): the one immediately before, and the trailing window.
  *
  * `meets` is true for an unmeasured value, because a metric with no measurement
  * cannot fall below anything — and the page prints the denominator beside every
@@ -259,9 +267,10 @@ function rate(numerator: number, denominator: number): number | null {
 function metricRow(
   metric: EvalMetric,
   run: MetricCounts,
-  previous: PriorRun | null,
+  window: MetricCounts[],
   thresholds: Record<string, number>,
 ): EvalMetricRow {
+  const previous = predecessorIn(window);
   // A run that recorded no threshold for this metric is judged by the constant
   // this build carries. That is every row written before the column existed, and
   // it is the only honest reading of an absent key — the alternative is a zero
@@ -278,7 +287,36 @@ function metricRow(
     threshold,
     meets: value === null || value >= threshold,
     previous: previous === null ? null : previousMetric(metric, previous),
+    trailing: trailingFrom(metric, window),
   };
+}
+
+/**
+ * One metric pooled over a window of runs, oldest first and ending with the
+ * run being drawn (#607).
+ *
+ * Through `METRIC_COUNTS` again, summed on both sides, so a run that measured
+ * nothing adds nothing to either — the same reading one run's rate gives an
+ * unanswered repeat. Null with fewer than two runs before the last: an average
+ * of one or two runs is the noise it exists to smooth (see
+ * `EvalTrailingMetric`).
+ */
+export function trailingFrom(
+  metric: EvalMetric,
+  window: MetricCounts[],
+): EvalTrailingMetric | null {
+  const runsBefore = window.length - 1;
+  if (runsBefore < 2) return null;
+
+  let numerator = 0;
+  let denominator = 0;
+  for (const run of window) {
+    const counts = METRIC_COUNTS[metric](run);
+    numerator += counts.numerator;
+    denominator += counts.denominator;
+  }
+
+  return { value: rate(numerator, denominator), runs: window.length };
 }
 
 /**
@@ -297,7 +335,7 @@ function metricRow(
  */
 function previousMetric(
   metric: EvalMetric,
-  previous: PriorRun,
+  previous: MetricCounts,
 ): EvalPreviousMetric {
   const { numerator, denominator } = METRIC_COUNTS[metric](previous);
 
@@ -317,79 +355,187 @@ const COMPARISON_COLUMNS = {
 } as const;
 
 /**
- * For each run on the page, the completed run before it on the same corpus
- * (R14).
- *
- * Three conditions, and each one rules out a comparison that would be worse
- * than none. **Same corpus**, because frozen and live are two series (R4) and a
- * delta across them measures an admin's article edits and calls it a prompt
- * regression. Since #234 that one is kept by the query rather than by this
- * function — a page is one corpus now — so the `corpus` argument is what the
- * anchor lookup is aimed with, and nothing here has to re-check a row's series.
- * **Completed**, because a run still filling in holds a fraction of the set and
- * a rate over a fraction is a different number, not a smaller one — so a run in
- * flight is skipped rather than compared against or used as a predecessor. And
- * **before**, on the same `[startedAt, id]` ordering the page itself uses, so
- * two runs started in the same second still have one answer.
- *
- * The page is walked oldest-first and the last seen run is carried forward,
- * which is one pass and no per-run query. The one thing that pass cannot see is
- * a predecessor that fell off the end of the page — and it will, once a series
- * is more than `EVAL_RUN_LIMIT` runs long: the oldest run drawn would then
- * quietly stop being comparable at exactly the point somebody most wants to
- * know whether something moved. So there is one anchor lookup for the run
- * immediately older than the page, which is one extra query whatever the
- * history holds.
+ * A completed run of one series, reduced to what the runs around it read
+ * (#607): the counters its metrics are rates over, and each case's split.
+ * Exported as a type so `evals.test.ts` can build one as a value.
  */
-async function previousRuns(
-  corpus: EvalCorpus,
-  page: (PriorRun & { status: EvalRunStatus })[],
-): Promise<Map<number, PriorRun>> {
-  const previous = new Map<number, PriorRun>();
-  // "The newest completed run seen so far", walking oldest-first — which starts
-  // out as the run immediately older than the page itself.
-  let newestSeen = await anchorRun(corpus, page.at(-1));
+export interface SeriesRun extends PriorRun {
+  results: { caseId: string; matches: number; repeats: number }[];
+}
 
-  for (const run of [...page].reverse()) {
-    // Skipped both ways: a run in flight or one that fell over is neither
-    // compared against a predecessor nor allowed to become one, which is what
-    // stops a half-finished run anchoring the series it interrupted.
-    if (run.status !== EVAL_RUN_STATUS.completed) continue;
+/** What a series run is read with — counters and splits, no verdicts, no Json. */
+const SERIES_COLUMNS = {
+  ...COMPARISON_COLUMNS,
+  results: { select: { caseId: true, matches: true, repeats: true } },
+} as const;
 
-    if (newestSeen) previous.set(run.id, newestSeen);
-    newestSeen = run;
-  }
+/** How long before a run its week-earlier run started, at least (#607). */
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-  return previous;
+/**
+ * How many fewer matches than a week earlier flag a case (#607). One is within
+ * a run's own noise at five repeats; two catches a case going from 5/5 to 0/5
+ * without flagging every wobble.
+ */
+const FALL_MATCHES = 2;
+
+/** Newest first on `[startedAt, id]`, the page's own `orderBy`. */
+function newestFirst(a: PriorRun, b: PriorRun): number {
+  return b.startedAt.getTime() - a.startedAt.getTime() || b.id - a.id;
+}
+
+/** The latest start a run's week-earlier run may have. */
+function weekBefore(run: PriorRun): Date {
+  return new Date(run.startedAt.getTime() - WEEK_MS);
 }
 
 /**
- * The completed run of this corpus immediately older than the page.
+ * Every completed run of this corpus that a run on the page is read against,
+ * newest first (R14, #607): the page's own completed runs, the
+ * `EVAL_HISTORY_RUNS - 1` before the oldest of them, and every run that can be
+ * one of theirs a week earlier.
  *
- * One query whatever the history holds, and it is what keeps the answer
- * independent of `EVAL_RUN_LIMIT` — see the note on `previousRuns`. The
- * `[startedAt, id]` tie-break mirrors the page's own `orderBy` exactly; a
- * lookup that compared `startedAt` alone would skip a run started in the same
- * second and hand back the one before it.
+ * Three conditions, and each one rules out a comparison that would be worse
+ * than none. **Same corpus**, because frozen and live are two series (R4) and a
+ * delta or an average across them measures an admin's article edits and calls
+ * it a prompt regression; kept by the query, so nothing downstream has to
+ * re-check a row's series. **Completed**, because a run still filling in holds
+ * a fraction of the set and a rate over a fraction is a different number, not
+ * a smaller one — so a run in flight or one that fell over is neither read nor
+ * read against. And **ordered** on the page's own `[startedAt, id]`, so two
+ * runs started in the same second still have one answer.
+ *
+ * **Three queries whatever the history holds**, rather than one per card, and
+ * each one is there because a series outgrows the page. Once it is longer than
+ * `EVAL_RUN_LIMIT`, the oldest card drawn has its predecessor and the rest of
+ * its window off the end of the page — the first query. And its week-earlier
+ * run is further back again: the second finds that one, which is the earliest
+ * any card needs, and the third reads everything from there to a week before
+ * the newest card, which holds every other card's week-earlier run, since a
+ * later card's is never earlier.
  */
-async function anchorRun(
+async function seriesOf(
   corpus: EvalCorpus,
-  oldest: { id: number; startedAt: Date } | undefined,
-): Promise<PriorRun | null> {
-  if (!oldest) return null;
+  page: (SeriesRun & { status: EvalRunStatus })[],
+): Promise<SeriesRun[]> {
+  const completed = page.filter(
+    (run) => run.status === EVAL_RUN_STATUS.completed,
+  );
+  const newest = completed[0];
+  const oldest = completed.at(-1);
+  if (!newest || !oldest) return [];
 
-  return prisma.evalRun.findFirst({
+  const series = { corpus, status: EVAL_RUN_STATUS.completed };
+  const orderBy = [{ startedAt: "desc" as const }, { id: "desc" as const }];
+
+  const older = await prisma.evalRun.findMany({
     where: {
-      corpus,
-      status: EVAL_RUN_STATUS.completed,
+      ...series,
       OR: [
         { startedAt: { lt: oldest.startedAt } },
         { startedAt: oldest.startedAt, id: { lt: oldest.id } },
       ],
     },
-    orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-    select: COMPARISON_COLUMNS,
+    orderBy,
+    take: EVAL_HISTORY_RUNS - 1,
+    select: SERIES_COLUMNS,
   });
+
+  const earliest = await prisma.evalRun.findFirst({
+    where: { ...series, startedAt: { lte: weekBefore(oldest) } },
+    orderBy,
+    select: { startedAt: true },
+  });
+  const weekEarlier =
+    earliest === null
+      ? []
+      : await prisma.evalRun.findMany({
+          where: {
+            ...series,
+            startedAt: { gte: earliest.startedAt, lte: weekBefore(newest) },
+          },
+          select: SERIES_COLUMNS,
+        });
+
+  // The three overlap whenever the series is short, so they meet by id.
+  const byId = new Map<number, SeriesRun>();
+  for (const run of [...completed, ...older, ...weekEarlier]) {
+    byId.set(run.id, run);
+  }
+  return [...byId.values()].sort(newestFirst);
+}
+
+/**
+ * The window a completed run is read over: the last `EVAL_HISTORY_RUNS` runs
+ * of its series up to and including it, oldest first.
+ */
+function windowOf(series: SeriesRun[], run: PriorRun): SeriesRun[] {
+  return series
+    .filter((other) => newestFirst(other, run) >= 0)
+    .slice(0, EVAL_HISTORY_RUNS)
+    .reverse();
+}
+
+/**
+ * The run before the last in a window — its predecessor, since a window ends
+ * with the run it was taken for. Null on a window of one or none.
+ */
+function predecessorIn<T>(window: T[]): T | null {
+  return window.at(-2) ?? null;
+}
+
+/**
+ * The run a week earlier than `run`: the latest in a newest-first series that
+ * started at least seven days before it, or null when nothing is that old.
+ */
+export function weekEarlierOf(
+  series: SeriesRun[],
+  run: PriorRun,
+): SeriesRun | null {
+  const latest = weekBefore(run).getTime();
+  return series.find((other) => other.startedAt.getTime() <= latest) ?? null;
+}
+
+/**
+ * One case's split on each run of a window, oldest first.
+ *
+ * A run that did not answer the case is a null — a gap, never a zero, which
+ * would read as the case failing every repeat on a run that never asked it.
+ */
+export function historyFrom(
+  window: SeriesRun[],
+  caseId: string,
+): (EvalCaseSplit | null)[] {
+  return window.map((run) => {
+    const result = run.results.find((r) => r.caseId === caseId);
+    return result
+      ? { runId: run.id, matches: result.matches, repeats: result.repeats }
+      : null;
+  });
+}
+
+/**
+ * The week-earlier split of a case that has fallen `FALL_MATCHES` or more
+ * since, or null.
+ *
+ * Matches compared as counts, the same numerator the row's own rate draws, so
+ * the flag cannot disagree with the two splits it names. An unanswered repeat
+ * is read the way that rate reads it, and the row counts those beside it.
+ */
+export function fallFrom(
+  result: { caseId: string; matches: number },
+  weekEarlier: SeriesRun | null,
+): EvalCaseFall | null {
+  const before = weekEarlier?.results.find((r) => r.caseId === result.caseId);
+  if (!weekEarlier || !before) return null;
+  if (before.matches - result.matches < FALL_MATCHES) return null;
+
+  return {
+    runId: weekEarlier.id,
+    startedAt: weekEarlier.startedAt.toISOString(),
+    matches: before.matches,
+    repeats: before.repeats,
+  };
 }
 
 /**
@@ -422,20 +568,20 @@ function thresholdsFrom(value: unknown): Record<string, number> {
  */
 function metricsOf(
   run: MetricCounts,
-  previous: PriorRun | null,
+  window: MetricCounts[],
   thresholds: Record<string, number>,
 ): EvalMetricRow[] {
   return [
     // The catch rate first, because it is the one ADR-0004 stands on and the
     // only one whose failure is a defect.
-    metricRow(EVAL_METRIC.catchRate, run, previous, thresholds),
-    metricRow(EVAL_METRIC.declineAccuracy, run, previous, thresholds),
+    metricRow(EVAL_METRIC.catchRate, run, window, thresholds),
+    metricRow(EVAL_METRIC.declineAccuracy, run, window, thresholds),
     // Last, and over its own denominator: `classifiedRepeats` is the classifier
     // answered, which is neither `attempts` nor the case count. A run from
     // before this metric existed has both halves at zero and reports no
     // accuracy rather than a zero — `metricRow` is what makes that the honest
     // reading.
-    metricRow(EVAL_METRIC.classifierAccuracy, run, previous, thresholds),
+    metricRow(EVAL_METRIC.classifierAccuracy, run, window, thresholds),
   ];
 }
 
@@ -662,9 +808,9 @@ export function createEvalsRouter(config: EvalsConfig): Router {
         include: { results: { orderBy: { id: "asc" } } },
       });
 
-      // R14, and it is one extra query rather than one per run — see
-      // `previousRuns`.
-      const previousByRun = await previousRuns(corpus, runs);
+      // R14 and #607, and three extra queries rather than any per run — see
+      // `seriesOf`.
+      const series = await seriesOf(corpus, runs);
 
       res.json({
         corpus,
@@ -687,10 +833,13 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             ...result,
             verdicts: parseStoredVerdicts(result.verdicts),
           }));
-          // Null on every run that is not `completed`, because `previousRuns`
-          // skips those — the same gate `metrics` is behind, and for the same
-          // reason: there is nothing yet to compare.
-          const previous = previousByRun.get(run.id) ?? null;
+          const completed = run.status === EVAL_RUN_STATUS.completed;
+          // Empty on every run that is not `completed`, because `seriesOf`
+          // leaves those out — the same gate `metrics` is behind, and for the
+          // same reason: there is nothing yet to compare.
+          const window = completed ? windowOf(series, run) : [];
+          const previous = predecessorIn(window);
+          const weekEarlier = completed ? weekEarlierOf(series, run) : null;
           // Only on a run that finished properly, and `completed` rather than
           // "not running" — the two states this excludes are excluded for the
           // same reason. A rate over the third of the set that has been answered
@@ -701,10 +850,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
           // and drawing "Failing" over it would put the wrong word on a card
           // whose real news is that the provider was unreachable. Empty is what
           // the page draws nothing from.
-          const metrics =
-            run.status === EVAL_RUN_STATUS.completed
-              ? metricsOf(run, previous, thresholds)
-              : [];
+          const metrics = completed ? metricsOf(run, window, thresholds) : [];
 
           return {
             id: run.id,
@@ -770,6 +916,8 @@ export function createEvalsRouter(config: EvalsConfig): Router {
                 asTicketCategory(result.expectedCategory),
               ),
               reached: reachedFrom(result.verdicts),
+              history: historyFrom(window, result.caseId),
+              fell: fallFrom(result, weekEarlier),
             })),
           };
         }),
@@ -810,7 +958,9 @@ export function createEvalsRouter(config: EvalsConfig): Router {
         return;
       }
 
-      const metrics = metricsOf(run, null, thresholdsFrom(run.thresholds));
+      // No window: the sidebar asks whether this run misses, not how it
+      // compares, so it reads no run around it.
+      const metrics = metricsOf(run, [], thresholdsFrom(run.thresholds));
 
       res.json({
         health:
