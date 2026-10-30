@@ -8,7 +8,8 @@ import { ROUTE } from "../../apps/web/src/lib/routes";
  * seen at all.
  *
  * The labels are retyped rather than read off `DEV_NAV_ITEMS`, which is empty
- * outside `vite dev` and imports icons Playwright's loader cannot resolve.
+ * outside `vite dev` (it is gated on `import.meta.env.DEV`) and imports
+ * through the `@/` alias, which Playwright's loader does not resolve.
  */
 const TABS = [
   { label: "Project map", path: ROUTE.devMap.path },
@@ -29,24 +30,27 @@ function tab(page: Page, label: string) {
 }
 
 /**
- * A pixel of slack. Scrolled to its end, the row left Sessions 0.23px past its
- * edge: `scrollWidth` is a whole number while the tabs' widths are not.
+ * A pixel of slack: `scrollWidth` is a whole number while the tabs' widths are
+ * not. Before the row had padding, scrolling it to its end left Sessions
+ * 0.23px past the row's edge.
  */
 const SUBPIXEL = 1;
 
 /**
- * Whether a tab's whole box is inside the row's visible part, and so inside
- * the window: a tab the row has clipped is not on screen however near it is.
+ * Whether a tab's whole box is inside the row's visible part, and the row
+ * inside the window at its current width: a tab the row has clipped is not
+ * on screen however near it is.
  */
 async function onScreen(page: Page, label: string) {
   const [box, row] = await Promise.all([
     tab(page, label).boundingBox(),
     nav(page).boundingBox(),
   ]);
-  if (!box || !row) throw new Error(`${label}: not laid out`);
+  const viewport = page.viewportSize();
+  if (!box || !row || !viewport) throw new Error(`${label}: not laid out`);
   return (
     row.x >= 0 &&
-    row.x + row.width <= PHONE.width &&
+    row.x + row.width <= viewport.width &&
     box.x >= row.x - SUBPIXEL &&
     box.x + box.width <= row.x + row.width + SUBPIXEL
   );
@@ -142,7 +146,8 @@ test.describe("dev tools header at phone width", () => {
       const header = page.getByRole("banner");
       await expect(header).toBeVisible();
       const box = await header.boundingBox();
-      expect(box!.x + box!.width, `${viewport.width}px`).toBeLessThanOrEqual(
+      if (!box) throw new Error(`${viewport.width}px: header not laid out`);
+      expect(box.x + box.width, `${viewport.width}px`).toBeLessThanOrEqual(
         viewport.width,
       );
       expect(

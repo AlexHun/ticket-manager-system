@@ -102,15 +102,18 @@ export function DevRoutes() {
           {/* At phone width the four tabs are wider than the room left, so the
               row scrolls rather than squeezing them (#617). Each tab is a link,
               so Tab reaches every one without the row being a tab stop of its
-              own. Whichever takes focus is scrolled fully into view, since
-              Chrome's own focus scroll leaves a half-clipped tab where it is,
-              and the current one is scrolled to on arrival. The scrollbar is
-              thin rather than hidden: in a narrow desktop window it is the
-              pointer's one sign that the row scrolls. */}
+              own, and whichever takes focus is scrolled fully into view, since
+              Chrome's own focus scroll leaves a half-clipped tab where it is.
+              A scroller clips what its children draw outside it, and the focus
+              outline sits 2px outside a tab, so `p-1` holds the ring inside
+              the row and `scroll-px-1` keeps it there for a tab scrolled to an
+              edge. The scrollbar is thin rather than hidden: in a narrow
+              desktop window it is the pointer's one sign that the row
+              scrolls. */}
           <nav
             ref={navRef}
             aria-label="Dev tools"
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:thin]"
+            className="flex min-w-0 flex-1 scroll-px-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:thin]"
             onFocus={(event) => scrollIntoRow(event.target)}
           >
             {DEV_NAV_ITEMS.map((item) => (
