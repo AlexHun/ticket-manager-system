@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { USER_ROLE } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
+import { ROUTE } from "../../apps/web/src/lib/routes";
 import { API_URL } from "./helpers/env";
 
 const ADMIN = CREDENTIALS.admin;
@@ -38,7 +39,7 @@ async function fillLoginForm(
 
 test.describe("Login flow", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/login");
+    await page.goto(ROUTE.login.path);
   });
 
   test("admin login succeeds — redirects to / and shows Team link", async ({
@@ -129,7 +130,7 @@ test.describe("Login flow", () => {
     await signIn(page, USER_ROLE.admin);
 
     // Now navigate to /login explicitly
-    await page.goto("/login");
+    await page.goto(ROUTE.login.path);
 
     // LoginPage detects the existing session and redirects back to /
     await expect(page).toHaveURL("/");
@@ -175,7 +176,7 @@ test.describe("Logout flow", () => {
     await expect(page).toHaveURL("/login");
 
     // Navigating to / now should redirect back to /login (no session)
-    await page.goto("/");
+    await page.goto(ROUTE.dashboard.path);
     await expect(page).toHaveURL("/login");
   });
 });
@@ -186,14 +187,14 @@ test.describe("Logout flow", () => {
 
 test.describe("Route protection — unauthenticated", () => {
   test("/ redirects to /login when not authenticated", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(ROUTE.dashboard.path);
     await expect(page).toHaveURL("/login");
   });
 
   test("/users redirects to /login when not authenticated", async ({
     page,
   }) => {
-    await page.goto("/users");
+    await page.goto(ROUTE.users.path);
     await expect(page).toHaveURL("/login");
   });
 });
@@ -204,7 +205,7 @@ test.describe("Route protection — authenticated agent", () => {
   });
 
   test("/users redirects agent to / (admin-only route)", async ({ page }) => {
-    await page.goto("/users");
+    await page.goto(ROUTE.users.path);
     await expect(page).toHaveURL("/");
   });
 });
@@ -215,7 +216,7 @@ test.describe("Route protection — authenticated admin", () => {
   });
 
   test("/users renders the Team heading for admin", async ({ page }) => {
-    await page.goto("/users");
+    await page.goto(ROUTE.users.path);
     await expect(page).toHaveURL("/users");
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),

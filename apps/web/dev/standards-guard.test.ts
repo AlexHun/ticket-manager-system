@@ -28,9 +28,9 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
  *
  * Each rule names its roots (#568): the web workspace's own code — `src/` and
  * `dev/` — and, for the role-literal rule and the bare `@ticket/shared` import
- * (#579), the Playwright specs and helpers under `tests/e2e` too (#393). The
- * others govern how the app is built — its controls, its data fetching, its
- * tokens — and a spec drives the built app rather than being part of it. None
+ * (#579), the Playwright specs and helpers under `tests/e2e` too (#393), which
+ * the `page.goto` rule reads alone. The others govern how the app is built —
+ * its controls, its data fetching, its tokens — and a spec drives the built app rather than being part of it. None
  * reaches `packages/` or `scripts/`, which hold no UI; the API guard's rules
  * are the ones that do. Every file is one git tracks (`trackedFiles`, #567), so
  * a local run checks what CI checks.
@@ -100,6 +100,28 @@ const RULES: Rule[] = [
       `expect(location.href).toBe(ROUTE.dashboard.path);`,
     ],
     ignores: `// This used to be \`<Navigate to="/" replace />\`.`,
+  },
+  {
+    name: "A spec navigates by ROUTE too: page.goto() reads ROUTE.<name>.path or ticketDetailPath, never a path literal",
+    standard: "conventions.md",
+    // The specs read the app's own record, which is import-free so they can,
+    // and a path that changes there moves them with it rather than landing
+    // them on the 404. An absolute URL the test was handed — an invitation
+    // link — is a variable, not a literal, and passes.
+    roots: [E2E],
+    forms: [/\.goto\(\s*(?:["']|`(?!\$\{))/],
+    catches: [
+      `await page.goto("/tickets");`,
+      `await page.goto(\`/tickets/\${id}\`);`,
+      `await page.goto(\n  "/?range=7d",\n);`,
+    ],
+    passes: [
+      `await page.goto(ROUTE.tickets.path);`,
+      `await page.goto(ticketDetailPath(id));`,
+      `await page.goto(\`\${ROUTE.dashboard.path}?range=7d\`);`,
+      `await page.goto(link);`,
+    ],
+    ignores: `// This used to be \`page.goto("/tickets")\`.`,
   },
   {
     name: "UI controls come from shadcn/ui: no native <select>, checkbox or radio outside src/components/ui/",
