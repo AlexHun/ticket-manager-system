@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { inEveryQuote } from "./spellings.ts";
 import { stripComments } from "./strip-comments.ts";
 import { trackedFiles } from "./tracked-files.ts";
 
@@ -41,8 +42,13 @@ export interface Rule {
    *  repo-relative path. Each must be a file the guard reads, or `checkRules`'
    *  allowlist test fails. */
   allowed?: string[];
-  /** Lines that break the rule, each of which must be caught. */
+  /** Lines that break the rule, each of which must be caught — and caught
+   *  again with its double-quoted literals rewritten in single quotes and in
+   *  backticks (`inEveryQuote`), unless `asTyped` says why not. */
   catches: string[];
+  /** Why the rule bans a literal only in the quote its `catches` are typed
+   *  in, when another quote is not the same mistake. Absent, every quote is. */
+  asTyped?: string;
   /** Lines that keep the rule while resembling a break, each of which must
    *  pass. */
   passes?: string[];
@@ -182,7 +188,10 @@ export function checkRules(
         ).toEqual([]);
       });
 
-      for (const line of rule.catches) {
+      const catches = rule.asTyped
+        ? rule.catches
+        : rule.catches.flatMap(inEveryQuote);
+      for (const line of catches) {
         test(`catches ${line}`, () => {
           expect(offendingLines(rule, stripComments(line).code)).toEqual([1]);
         });

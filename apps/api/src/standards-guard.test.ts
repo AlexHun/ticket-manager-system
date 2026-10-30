@@ -9,6 +9,7 @@ import {
   ruleLabel,
   underAny,
 } from "@ticket/repo-scan/rules";
+import { key, literal, QUOTE } from "@ticket/repo-scan/spellings";
 import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
@@ -70,16 +71,16 @@ const isTest = (file: string) => /\.test\.[cm]?[jt]sx?$/.test(file);
 const isProduction = (file: string) =>
   !isTest(file) && !file.startsWith("apps/api/src/test/");
 
-const ROLE = "[\"'`](?:admin|agent)[\"'`]";
+const ROLE = literal("admin", "agent");
 /** The fields a role is written into: the user's own, and the two sides of a
  *  `role_changed` activity row. */
 const ROLE_KEY = String.raw`\b(?:role|fromValue|toValue)`;
 /** A module specifier in an import, a re-export, a dynamic import or a
  *  require — the quote that opens it, so a form can name what follows. */
-const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']`;
+const SPECIFIER = String.raw`(?:\bfrom|\bimport|\brequire)\s*\(?\s*${QUOTE}`;
 /** A module specifier as `SPECIFIER` reads it, or one a test registers: the
  *  registry is what a deep import of `@ticket/shared` gets past. */
-const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
+const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*${QUOTE}`;
 /** A field of the SDK's usage object or of `AiUsage`, as a whole word. */
 const USAGE_FIELD = String.raw`(?:inputTokens|outputTokens|totalTokens|reasoningTokens|cachedInputTokens|inputTokenDetails|outputTokenDetails|cacheReadTokens)\b`;
 
@@ -97,7 +98,7 @@ const SOURCE_RULES: Rule[] = [
     // which review of this file found missing.
     forms: [
       // `role: "admin"`, `"role": "admin"`, `role?: "admin"`.
-      new RegExp(String.raw`${ROLE_KEY}["']?\s*\??\s*:\s*${ROLE}`),
+      new RegExp(String.raw`${key("role", "fromValue", "toValue")}\s*${ROLE}`),
       new RegExp(String.raw`${ROLE_KEY}\s*=(?!=)\s*${ROLE}`),
       // Anything typed as a role and given a literal: `let r: UserRole = "agent"`.
       new RegExp(String.raw`:\s*UserRole\s*=(?!=)\s*${ROLE}`),
@@ -192,7 +193,7 @@ const SOURCE_RULES: Rule[] = [
     name: "The generated Prisma client is imported only by ./db and the test Postgres module; everything else imports the singleton from ./db",
     standard: "backend.md",
     roots: API_PACKAGES_SCRIPTS,
-    forms: [new RegExp(String.raw`${SPECIFIER}[^"'\n]*generated/prisma\b`)],
+    forms: [new RegExp(String.raw`${SPECIFIER}[^"'\`\n]*generated/prisma\b`)],
     allowed: ["apps/api/src/db.ts", "apps/api/src/test/pg.ts"],
     catches: [
       `import { PrismaClient } from "../generated/prisma/client";`,
@@ -205,7 +206,9 @@ const SOURCE_RULES: Rule[] = [
     name: "postmark is imported only by mail/transport.ts: every email goes through the outbox (ADR-0009)",
     standard: "backend.md",
     roots: API_PACKAGES_SCRIPTS,
-    forms: [new RegExp(String.raw`${SPECIFIER}postmark(?:/[^"'\n]*)?["']`)],
+    forms: [
+      new RegExp(String.raw`${SPECIFIER}postmark(?:/[^"'\`\n]*)?${QUOTE}`),
+    ],
     allowed: ["apps/api/src/mail/transport.ts"],
     catches: [
       `import { ServerClient } from "postmark";`,
@@ -223,7 +226,9 @@ const SOURCE_RULES: Rule[] = [
     // preload actually binds for the guards (#366), so a file re-registering
     // it is the per-file default the bullet warns about.
     forms: [
-      /\bmock\.module\(\s*["'](?:\.{1,2}\/)+(?:db|middleware\/(?:auth|session))(?:\.ts|\/index(?:\.ts)?)?["']/,
+      new RegExp(
+        String.raw`\bmock\.module\(\s*${QUOTE}(?:\.{1,2}\/)+(?:db|middleware\/(?:auth|session))(?:\.ts|\/index(?:\.ts)?)?${QUOTE}`,
+      ),
     ],
     allowed: ["apps/api/src/test/preload.ts"],
     catches: [

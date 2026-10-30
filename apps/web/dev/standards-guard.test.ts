@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import path from "node:path";
 import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { checkRules, type Rule, ruleCode } from "@ticket/repo-scan/rules";
+import { key, literal } from "@ticket/repo-scan/spellings";
 import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
@@ -48,7 +49,7 @@ const E2E = "tests/e2e";
 const SELF = `${DEV}/standards-guard.test.ts`;
 
 const isTest = (file: string) => /\.test\.tsx?$/.test(file);
-const ROLE = `["'](?:admin|agent)["']`;
+const ROLE = literal("admin", "agent");
 /** A module specifier in an import, a re-export, a dynamic import, a require
  *  or a test's registration: the quote that opens it. */
 const SPECIFIER_OR_MOCK = String.raw`(?:\bfrom|\bimport|\brequire|\bmock\.module|\bvi\.mock)\s*\(?\s*["'\`]`;
@@ -129,7 +130,9 @@ const RULES: Rule[] = [
     roots: APP,
     forms: [
       /<select[\s>/]/,
-      /<input\b[^<]*?\btype=\{?\s*["'](?:checkbox|radio)["']/,
+      new RegExp(
+        String.raw`<input\b[^<]*?\btype=\{?\s*${literal("checkbox", "radio")}`,
+      ),
     ],
     applies: (file) => !file.startsWith(`${SRC}/components/ui/`),
     catches: [
@@ -199,8 +202,7 @@ const RULES: Rule[] = [
     // write role values as often as the app does (#393).
     roots: [...APP, E2E],
     forms: [
-      new RegExp(`\\brole\\s*:\\s*${ROLE}`),
-      new RegExp(`\\b(?:fromValue|toValue)\\s*:\\s*${ROLE}`),
+      new RegExp(`${key("role", "fromValue", "toValue")}\\s*${ROLE}`),
       new RegExp(`[=!]==?\\s*${ROLE}`),
       new RegExp(`${ROLE}\\s*[=!]==?`),
       new RegExp(`\\.(?:toBe|toEqual|includes)\\(\\s*${ROLE}\\s*\\)`),
