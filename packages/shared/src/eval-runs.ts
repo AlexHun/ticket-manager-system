@@ -266,7 +266,11 @@ export interface EvalRunRow {
   /** How many times each case was answered. Five, and recorded rather than assumed. */
   repeats: number;
   /**
-   * Repeats answered, and how many landed where their case said.
+   * Repeats asked, and how many landed where their case said.
+   *
+   * `attempts` counts every repeat, the unanswered ones included: `abandoned`
+   * below says how many those were, and none of them can match. So an outage
+   * lowers decline accuracy, and the figure beside it is what says why.
    *
    * `matches / attempts` is decline accuracy — the PRD's second metric, and the
    * one whose target is `TBD` until a run produces a baseline. Zero while a run

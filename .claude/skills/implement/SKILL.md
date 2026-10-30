@@ -69,10 +69,13 @@ invoke it.
    state a review's result only from its report. Run an axis whose file is
    still missing after the loop's 15 minutes inline instead. Fix every
    finding, or write down why one stands, and list each finding and how it
-   was settled under the PR body's `## Review`.
+   was settled under the PR body's `## Review`. A finding that stands cites
+   the `file:line` its reason rests on, read in this step: #607's PR kept the
+   outage-flags-a-case finding on "some cases expect no verdict", which
+   `evals/runner.ts` contradicts in so many words, and no citation was asked.
    Push, and comment `Progress: reviewed, next is ship (step 8)`. Done when
    both axes' results are in hand, every finding is fixed or answered in the
-   PR body, and the fixes are pushed.
+   PR body with its citation, and the fixes are pushed.
 8. **Ship.** Open a PR into `develop` from the body written in step 7, which
    says `Closes #<n>`, and take it to green in CI as CLAUDE.md's Workflow
    describes.
