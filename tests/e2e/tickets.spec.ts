@@ -1731,14 +1731,14 @@ test.describe("Tickets page", () => {
 
   test("redirects to /login when unauthenticated", async ({ page }) => {
     await page.goto(ROUTE.tickets.path);
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 
   test("agent can reach /tickets from the sidebar link", async ({ page }) => {
     await signIn(page, USER_ROLE.agent);
     await page.getByRole("link", { name: "Tickets" }).click();
 
-    await expect(page).toHaveURL("/tickets");
+    await expect(page).toHaveURL(ROUTE.tickets.path);
     await expect(
       page.getByRole("heading", { name: "Tickets", level: 1 }),
     ).toBeVisible();
@@ -2442,14 +2442,14 @@ test.describe("Tickets page", () => {
     // on screen — the route's loader started the request, and the router is
     // holding the navigation until it answers. The component that used to
     // start it has not mounted, so there is no skeleton anywhere.
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
     await expect(page.getByLabel("Loading tickets")).toHaveCount(0);
 
     releaseList();
 
     // And the page it hands over to is the populated one — one transition, not
     // a skeleton in between.
-    await expect(page).toHaveURL("/tickets");
+    await expect(page).toHaveURL(ROUTE.tickets.path);
     await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
     expect(await skeletonWasSeen(page)).toBe(false);
   });
@@ -2542,7 +2542,7 @@ test.describe("Tickets page", () => {
     // The pending value is not just kept on screen, it lands: once the first
     // write catches up, the second one goes out behind it.
     await expect(search).toHaveValue("Oldest");
-    await expect(page).toHaveURL("/tickets?q=Oldest");
+    await expect(page).toHaveURL(`${ROUTE.tickets.path}?q=Oldest`);
     await expect(page.getByRole("row")).toHaveCount(2);
     await expect(page.getByRole("row").nth(1)).toContainText("Oldest ticket");
   });
@@ -2561,7 +2561,7 @@ test.describe("Ticket detail page", () => {
     const id = await seedTicketWithThread();
 
     await page.goto(ticketDetailPath(id));
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 
   test("opens from the ticket list by clicking the subject", async ({
@@ -2573,7 +2573,7 @@ test.describe("Ticket detail page", () => {
 
     await page.getByRole("link", { name: "Clickable subject" }).click();
 
-    await expect(page).toHaveURL(`/tickets/${id}`);
+    await expect(page).toHaveURL(ticketDetailPath(id));
     await expect(
       page.getByRole("heading", { name: "Clickable subject", level: 1 }),
     ).toBeVisible();
@@ -2990,6 +2990,6 @@ test.describe("Tickets list URL state", () => {
 
     await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
     // Defaults are never written back, so the resting URL stays bare.
-    await expect(page).toHaveURL("/tickets");
+    await expect(page).toHaveURL(ROUTE.tickets.path);
   });
 });

@@ -34,7 +34,7 @@ export async function signIn(page: Page, role: UserRole): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // Wait until the app leaves /login — the route guard will redirect to /
-  await page.waitForURL("/");
+  await page.waitForURL(ROUTE.dashboard.path);
 }
 
 /**
@@ -65,5 +65,5 @@ export async function acceptInvitation(
   await page.getByLabel("Confirm password").fill(password);
   await page.getByRole("button", { name: "Set password" }).click();
 
-  await page.waitForURL("/login");
+  await page.waitForURL(ROUTE.login.path);
 }
