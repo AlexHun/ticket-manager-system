@@ -1,5 +1,5 @@
 // The lint gate: type-aware rules over the backend (#534) and the web app
-// (#535), and nothing else. `docs/standards/conventions.md` has which rules,
+// (#535), and nothing else. `docs/standards/checks.md` has which rules,
 // why they run in CI only, what a run costs and how to exempt one line;
 // `docs/standards/frontend.md` has the web app's two hooks rules.
 //

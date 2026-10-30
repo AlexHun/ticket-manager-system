@@ -673,7 +673,7 @@ const CONFIG_RULES: ConfigRule[] = [
   },
   {
     name: "Every tracked text file is UTF-8 with no byte-order mark, no replacement character and no dash or quote mangled through Windows-1252",
-    standard: "conventions.md",
+    standard: "checks.md",
     read: textFiles,
     problems: (files) => {
       const found: string[] = [];

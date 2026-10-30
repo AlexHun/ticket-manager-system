@@ -24,7 +24,8 @@ Done when every matching file has been read and every rule in it either applied 
 | [domain.md](../../../docs/standards/domain.md) | Ticket statuses, assignment, the `/pipeline` page, the automated assistant account, handoff routing, reopen behaviour |
 | [backend.md](../../../docs/standards/backend.md) | `apps/api` — Prisma, Express, CORS, Better Auth config, pg-boss jobs, `ingest.ts`, the outbox, outbound mail |
 | [frontend.md](../../../docs/standards/frontend.md) | `apps/web` — shadcn/Radix controls, Tailwind tokens, forms, axios + react-query, sonner, the React hooks and promise lint rules, `AiShine` |
-| [dev-tools.md](../../../docs/standards/dev-tools.md) | `/__dev`: `apps/web/src/dev/` and `apps/web/dev/` — the Sessions, Usage, project map and test runner pages, the Vite plugin, transcripts and the usage history, `bun run tokens`, the develop server's Basic Auth, spawning `git`/`gh` from the dev server |
+| [dev-tools.md](../../../docs/standards/dev-tools.md) | `/__dev`: `apps/web/src/dev/` and `apps/web/dev/` — the Sessions, project map and test runner pages, the Vite plugin, transcripts, the develop server's Basic Auth, spawning `git`/`gh` from the dev server |
+| [dev-tools-usage.md](../../../docs/standards/dev-tools-usage.md) | The `/__dev/usage` page — its scan, turns and warnings, the usage history and its push to Railway, the table, its filters and chart, `bun run tokens`; read with dev-tools.md |
 | [design.md](../../../docs/standards/design.md) | How a screen looks — fonts and type tokens, colour and surfaces, spacing, alignment, radius, icons; any new or restyled UI |
 | [design-states.md](../../../docs/standards/design-states.md) | How a screen behaves — hover/focus/disabled states, loading skeletons, empty and error screens, motion and transitions, semantic markup |
 | [copy.md](../../../docs/standards/copy.md) | Any word a person reads — labels, buttons, headings, tooltips, placeholders, `aria-label`s, empty states, toasts, dialogs, error messages (API ones included), tutorial steps, the invitation and reset emails |
@@ -34,7 +35,8 @@ Done when every matching file has been read and every rule in it either applied 
 | [testing.md](../../../docs/standards/testing.md) | Test commands, any `apps/web` component test, or a script/env question |
 | [testing-api.md](../../../docs/standards/testing-api.md) | Any `apps/api` test — `bun test`, the in-process Postgres, `resetDb`, `mock.module` and the registry hazard, route tests, shared stubs, `dbCalls` |
 | [deployment.md](../../../docs/standards/deployment.md) | Railway, Dockerfiles, migrations, `COOKIE_DOMAIN`, `VITE_API_URL`, anything build-time |
-| [conventions.md](../../../docs/standards/conventions.md) | TypeScript strictness, `bun run lint` and its floating-promise rules, `@ticket/shared` types and `USER_ROLE`, zod in `@ticket/core`, new dependencies, delegating bulk work to a worker-model subagent, context7 and chrome-devtools MCP usage |
+| [conventions.md](../../../docs/standards/conventions.md) | TypeScript strictness, `@ticket/shared` types and `USER_ROLE`, zod in `@ticket/core`, new dependencies, delegating bulk work to a worker-model subagent, context7 and chrome-devtools MCP usage |
+| [checks.md](../../../docs/standards/checks.md) | Prettier, the `.husky` pre-commit and pre-push hooks, `bun run lint` and its floating-promise rules, what CI re-runs, file encoding, the cost of a check in a hook, `doc-citations` |
 
 ## Always
 

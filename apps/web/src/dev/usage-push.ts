@@ -23,7 +23,7 @@
  * a preference. The dev server reaches this module from `vite.config.ts` under
  * Vite's native config loader, which resolves nothing extensionless along the
  * import graph, and `@ticket/core`'s index re-exports with extensionless paths
- * (`./schemas/activity`) — the case `dev-tools.md` records as a dev server that
+ * (`./schemas/activity`) — the case `dev-tools-usage.md` records as a dev server that
  * will not start. It is still defined once, and both ends parse with it. It imports
  * `zod` and nothing else.
  */
