@@ -64,13 +64,16 @@ export function DevRoutes() {
   // width the row opens scrolled to its start, where Sessions is out of sight.
   // Observed rather than scrolled once, because the first scroll lands before
   // Geist has loaded, and the swap widens the tabs and pushed Sessions 6px
-  // back out of the row. The observer reports once on `observe` and again on
-  // each change of the tab's size.
+  // back out of the row. The observer reports once on `observe` and again
+  // whenever the tab changes size (the font) or the row does (the window
+  // narrowing, which leaves the tab's size alone).
   useEffect(() => {
-    const current = navRef.current?.querySelector('[aria-current="page"]');
-    if (!current) return;
+    const row = navRef.current;
+    const current = row?.querySelector('[aria-current="page"]');
+    if (!row || !current) return;
     const observer = new ResizeObserver(() => scrollIntoRow(current));
     observer.observe(current);
+    observer.observe(row);
     return () => observer.disconnect();
   }, [pathname]);
 

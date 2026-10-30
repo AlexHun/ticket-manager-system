@@ -86,6 +86,19 @@ test.describe("dev tools header at phone width", () => {
     });
   }
 
+  test("the current tab stays on screen when the window narrows", async ({
+    page,
+  }) => {
+    // Opened wide, where nothing scrolls, then narrowed: the row shrinks but
+    // the tab keeps its size, so watching the tab alone never moved it.
+    await page.setViewportSize(DESKTOP);
+    await page.goto(ROUTE.devSessions.path);
+    await expect(tab(page, "Sessions")).toBeVisible();
+
+    await page.setViewportSize(PHONE);
+    await expect.poll(() => onScreen(page, "Sessions")).toBe(true);
+  });
+
   test("the lockup and every tab label sit on one line", async ({ page }) => {
     await page.goto(ROUTE.devMap.path);
     const lockup = page
