@@ -80,7 +80,7 @@ Before considering a test complete, verify:
 - [ ] Does it exercise a real user-observable flow end-to-end?
 - [ ] Are locators semantic and resilient to markup changes?
 - [ ] Are assertions web-first (auto-retrying)?
-- [ ] Have I broken the behaviour each assertion guards and seen it fail? A zero, an absence or a substring match passes on a locator that finds nothing (`docs/standards/testing.md`, "A test earns its place by failing").
+- [ ] Have I broken the behaviour each assertion guards and seen it fail? A zero or an absence passes on a locator that finds nothing, and a substring match passes on the wrong element (`docs/standards/testing.md`, "A test earns its place by failing").
 - [ ] Is the test independent and idempotent?
 - [ ] Does setup/teardown leave the test DB in a consistent state?
 - [ ] Have I avoided `waitForTimeout` and other arbitrary delays?

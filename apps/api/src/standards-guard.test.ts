@@ -732,7 +732,8 @@ test.skipIf(partialCheckout)(
 test.skipIf(partialCheckout)(
   "the encoding rule reads the tree it means to",
   () => {
-    // An empty list would pass every file it did not read.
+    // An empty list would pass every file it did not read. 880 when written
+    // (2026-10-30); the floor only has to rule out an empty or partial read.
     const files = Object.keys(textFiles());
     expect(files.length).toBeGreaterThan(700);
     expect(files).toContain("apps/api/src/jobs/auto-reply-ticket.ts");
