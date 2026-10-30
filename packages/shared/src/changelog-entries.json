@@ -1143,5 +1143,10 @@
     "version": "0.1.289",
     "date": "2026-10-30",
     "title": "Settle the review's findings on the case history"
+  },
+  {
+    "version": "0.1.291",
+    "date": "2026-10-30",
+    "title": "Settle the review's findings on the Sessions page's batches"
   }
 ]
