@@ -2815,7 +2815,7 @@ test.describe("Ticket detail page", () => {
     // resolved, which lands slightly after the heading is already on screen.
     // Going back before that push lands would pop the list's own `page=2`
     // entry instead of the ticket-detail one.
-    await page.waitForURL(/\/tickets\/\d+$/);
+    await page.waitForURL(new RegExp(`${ticketDetailPath(String.raw`\d+`)}$`));
 
     await page.goBack();
 

@@ -36,7 +36,7 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
  * Each rule names its roots (#568): the web workspace's own code — `src/` and
  * `dev/` — and, for the role-literal rule and the bare `@ticket/shared` import
  * (#579), the Playwright specs and helpers under `tests/e2e` too (#393); the
- * spec's `ROUTE` rule reads only `tests/e2e`. The others govern how the app is
+ * rule that holds a spec's URLs to `ROUTE` reads only `tests/e2e`. The others govern how the app is
  * built — its controls, its data fetching, its tokens — and a spec drives the
  * built app rather than being part of it. None reaches `packages/` or `scripts/`,
  * which hold no UI; the API guard's rules are the ones that do. Every file is
@@ -123,8 +123,10 @@ const RULES: Rule[] = [
     // and a path that changes there moves them with it rather than landing
     // them on the 404 — or, for an assertion, waiting out its timeout on a
     // URL the app no longer has. An absolute URL the test was handed — an
-    // invitation link — is a variable, not a literal, and passes; so does a
-    // regex, which matches a shape (`/page=2/`) rather than naming a route.
+    // invitation link — is a variable, not a literal, and passes. A regex
+    // is not read: one that names a route is built from the record, as
+    // `new RegExp(`${ROUTE.devSessions.path}$`)` is, and one such as
+    // `/page=2/` matches a query rather than a route.
     roots: [E2E],
     forms: [
       new RegExp(
