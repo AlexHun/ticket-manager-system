@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import type { UserRole } from "@ticket/shared";
+import { ROUTE } from "../../../apps/web/src/lib/routes";
 import { waitForInvitationLink } from "./db";
 
 export const CREDENTIALS: Record<
@@ -20,7 +21,7 @@ export const CREDENTIALS: Record<
 export async function signIn(page: Page, role: UserRole): Promise<void> {
   const { email, password } = CREDENTIALS[role];
 
-  await page.goto("/login");
+  await page.goto(ROUTE.login.path);
 
   const emailInput = page.getByLabel("Email");
   const passwordInput = page.getByLabel("Password");
