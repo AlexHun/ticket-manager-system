@@ -191,7 +191,10 @@ function Controls({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">Tests</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold">Tests</h1>
+            <Badge variant="outline">dev only</Badge>
+          </div>
           <p className="text-sm text-muted-foreground">
             {suites.length} suites. Run one, or run them all — fastest first, so
             a broken type fails before Playwright boots a browser.
@@ -200,7 +203,6 @@ function Controls({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline">dev only</Badge>
           <Button
             onClick={() => runner.runAll(runnable.map((suite) => suite.id))}
             disabled={planned}

@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
+import { onHeadingLine } from "./helpers/layout";
 
 /**
  * #617: at 390px the dev tools header ran past the right edge. "Dev tools"
@@ -138,6 +139,27 @@ test.describe("dev tools header at phone width", () => {
     await expect(page).toHaveURL(ROUTE.devSessions.path);
     await expect(tab(page, "Sessions")).toHaveAttribute("aria-current", "page");
   });
+
+  // #692: each page's own heading row wrapped its "dev only" badge onto a
+  // line below the heading, alone on Sessions. It sits on the heading's line.
+  for (const { label, path } of TABS) {
+    test(`on ${label}, the dev-only badge shares the heading's line`, async ({
+      page,
+    }) => {
+      await page.goto(path);
+      const heading = page.getByRole("heading", {
+        level: 1,
+        name: label,
+        exact: true,
+      });
+      const badge = heading
+        .locator("..")
+        .getByText("dev only", { exact: true });
+      await expect(badge).toBeVisible();
+
+      await expect.poll(() => onHeadingLine(heading, badge)).toBe(true);
+    });
+  }
 
   test("the header does not widen the page", async ({ page }) => {
     for (const viewport of [PHONE, DESKTOP]) {
