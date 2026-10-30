@@ -457,6 +457,14 @@ exports[`the package's exports are the names, kinds and values recorded before t
       "usd": "usd",
     },
   },
+  "EVAL_HEALTH": {
+    "typeof": "object",
+    "value": {
+      "escaped": "escaped",
+      "failing": "failing",
+      "passing": "passing",
+    },
+  },
   "EVAL_METRIC": {
     "typeof": "object",
     "value": {

@@ -30,6 +30,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import {
   ADMIN_SCREEN,
   EVAL_CORPUS,
+  EVAL_HEALTH,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   EVAL_METRIC,
@@ -43,6 +44,7 @@ import {
   type EvalRunStatus,
   type EvalRunsResponse,
   type EvalRunStartedResponse,
+  type EvalStatusResponse,
   type TicketCategory,
 } from "@ticket/shared";
 import { AUTO_REPLY_CASES } from "@ticket/core";
@@ -122,7 +124,7 @@ beforeEach(async () => {
 /* ── Who it refuses (#367) ───────────────────────────────────────────────── */
 
 refusesAgentAndDemo(url, evalsRouter, ["POST /runs"]);
-screenReads(url, evalsRouter, ADMIN_SCREEN.evals, ["GET /runs"]);
+screenReads(url, evalsRouter, ADMIN_SCREEN.evals, ["GET /runs", "GET /status"]);
 
 async function post(body: unknown = {}) {
   return fetch(url("/runs"), {
@@ -820,6 +822,90 @@ function sept(day: number): Date {
 function previousOf(body: EvalRunsResponse, metric: EvalMetric, at = 0) {
   return metricOf(body, metric, at).previous;
 }
+
+/* ── What the sidebar is told (#608) ─────────────────────────────────────── */
+
+async function status(): Promise<EvalStatusResponse> {
+  const res = await fetch(url("/status"), { headers: ADMIN });
+  return (await res.json()) as EvalStatusResponse;
+}
+
+describe("GET /status", () => {
+  test("is null while the frozen corpus has no completed run", async () => {
+    expect(await status()).toEqual({ health: null });
+  });
+
+  test("is passing when the latest frozen run meets every threshold", async () => {
+    await finishedRun({ caught: 4 });
+
+    expect((await status()).health).toBe(EVAL_HEALTH.passing);
+  });
+
+  test("is failing when the latest frozen run is below a threshold", async () => {
+    // Decline accuracy at 2 of 5, with nothing escaped: a score, not a defect.
+    await finishedRun({ caught: 4, matches: 2 });
+
+    expect((await status()).health).toBe(EVAL_HEALTH.failing);
+  });
+
+  test("is escaped when the latest frozen run let a payload through", async () => {
+    // Below the catch rate too, and the louder reading wins.
+    await finishedRun({ caught: 3, escaped: 1 });
+
+    expect((await status()).health).toBe(EVAL_HEALTH.escaped);
+  });
+
+  test("judges the run against the thresholds it recorded", async () => {
+    // The same rule the page keeps, or the mark and the card would disagree.
+    await finishedRun({
+      caught: 4,
+      matches: 2,
+      thresholds: { [EVAL_METRIC.declineAccuracy]: 0.4 },
+    });
+
+    expect((await status()).health).toBe(EVAL_HEALTH.passing);
+  });
+
+  test("clears when a later frozen run passes", async () => {
+    await finishedRun({ caught: 3, escaped: 1, startedAt: sept(1) });
+    await finishedRun({ caught: 4, startedAt: sept(2) });
+
+    expect((await status()).health).toBe(EVAL_HEALTH.passing);
+  });
+
+  test("is neither set nor cleared by a live run (R4)", async () => {
+    await finishedRun({ caught: 4, startedAt: sept(1) });
+    await finishedRun({
+      caught: 3,
+      escaped: 1,
+      corpus: EVAL_CORPUS.live,
+      startedAt: sept(2),
+    });
+    expect((await status()).health).toBe(EVAL_HEALTH.passing);
+
+    await finishedRun({ caught: 3, escaped: 1, startedAt: sept(3) });
+    await finishedRun({
+      caught: 4,
+      corpus: EVAL_CORPUS.live,
+      startedAt: sept(4),
+    });
+    expect((await status()).health).toBe(EVAL_HEALTH.escaped);
+  });
+
+  test("reads past a run in flight or one that fell over", async () => {
+    // Neither has numbers to judge (the same gate `metrics` is behind), so the
+    // last verdict stands until a run finishes properly.
+    await finishedRun({ caught: 3, escaped: 1, startedAt: sept(1) });
+    await finishedRun({
+      status: EVAL_RUN_STATUS.failed,
+      error: "provider unreachable",
+      startedAt: sept(2),
+    });
+    await finishedRun({ status: EVAL_RUN_STATUS.running, startedAt: sept(3) });
+
+    expect((await status()).health).toBe(EVAL_HEALTH.escaped);
+  });
+});
 
 describe("GET /runs — comparison against the previous run (R14)", () => {
   test("compares a finished run against the one before it on the same corpus", async () => {
