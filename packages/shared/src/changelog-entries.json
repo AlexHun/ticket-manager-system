@@ -1173,5 +1173,10 @@
     "version": "0.1.294",
     "date": "2026-10-30",
     "title": "Keep the dev-only badge on the heading's line at phone width"
+  },
+  {
+    "version": "0.1.298",
+    "date": "2026-10-30",
+    "title": "Keep the coding-standards description valid YAML"
   }
 ]
