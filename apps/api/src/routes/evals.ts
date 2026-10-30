@@ -4,7 +4,9 @@ import {
   asAutoReplyDecline,
   asPipelineOutcome,
   asTicketCategory,
+  EVAL_CORPUS,
   EVAL_CORPUS_DEFAULT,
+  EVAL_HEALTH,
   EVAL_METRIC,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
@@ -25,6 +27,7 @@ import {
   type EvalRunsResponse,
   type EvalRunStatus,
   type EvalRunStartedResponse,
+  type EvalStatusResponse,
   type TicketCategory,
 } from "@ticket/shared";
 import {
@@ -173,10 +176,11 @@ export function reachedFrom(verdicts: StoredVerdict[]): EvalReachedRow[] {
 /**
  * The counters every metric is taken over, on any run.
  *
- * Structural rather than the Prisma row, because two different queries produce
- * it: the page of runs, which selects everything, and the narrow lookup for the
- * run before it (`COMPARISON_COLUMNS`), which selects eight columns and none of
- * the results.
+ * Structural rather than the Prisma row, because three different queries
+ * produce it: the page of runs, which selects everything; the narrow lookup for
+ * the run before it (`COMPARISON_COLUMNS`), which selects eight columns and none
+ * of the results; and `GET /status`, which takes those eight and the thresholds
+ * for the latest frozen run itself (#608).
  *
  * A `Pick` over the run-level counters rather than six restated fields, so a
  * counter renamed in `EVAL_COUNTERS` fails here rather than resolving to a
@@ -405,6 +409,39 @@ function thresholdsFrom(value: unknown): Record<string, number> {
       (entry): entry is [string, number] => typeof entry[1] === "number",
     ),
   );
+}
+
+/**
+ * A completed run's three metrics, each judged against what the run recorded.
+ *
+ * One function because two readers judge a run: the page draws the rows, and
+ * `GET /status` asks only whether any of them misses (#608). Written out at
+ * each, the sidebar's mark and the card's "Failing" badge could disagree about
+ * the same run — which is also why `failingOf` below is the one place "misses"
+ * is decided.
+ */
+function metricsOf(
+  run: MetricCounts,
+  previous: PriorRun | null,
+  thresholds: Record<string, number>,
+): EvalMetricRow[] {
+  return [
+    // The catch rate first, because it is the one ADR-0004 stands on and the
+    // only one whose failure is a defect.
+    metricRow(EVAL_METRIC.catchRate, run, previous, thresholds),
+    metricRow(EVAL_METRIC.declineAccuracy, run, previous, thresholds),
+    // Last, and over its own denominator: `classifiedRepeats` is the classifier
+    // answered, which is neither `attempts` nor the case count. A run from
+    // before this metric existed has both halves at zero and reports no
+    // accuracy rather than a zero — `metricRow` is what makes that the honest
+    // reading.
+    metricRow(EVAL_METRIC.classifierAccuracy, run, previous, thresholds),
+  ];
+}
+
+/** Whether any measured metric fell below its threshold (R8). */
+function failingOf(metrics: EvalMetricRow[]): boolean {
+  return metrics.some((metric) => !metric.meets);
 }
 
 /**
@@ -666,28 +703,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
           // the page draws nothing from.
           const metrics =
             run.status === EVAL_RUN_STATUS.completed
-              ? [
-                  // The catch rate first, because it is the one ADR-0004 stands
-                  // on and the only one whose failure is a defect.
-                  metricRow(EVAL_METRIC.catchRate, run, previous, thresholds),
-                  metricRow(
-                    EVAL_METRIC.declineAccuracy,
-                    run,
-                    previous,
-                    thresholds,
-                  ),
-                  // Last, and over its own denominator: `classifiedRepeats` is
-                  // the classifier answered, which is neither `attempts` nor the
-                  // case count. A run from before this metric existed has both
-                  // halves at zero and reports no accuracy rather than a zero —
-                  // `metricRow` is what makes that the honest reading.
-                  metricRow(
-                    EVAL_METRIC.classifierAccuracy,
-                    run,
-                    previous,
-                    thresholds,
-                  ),
-                ]
+              ? metricsOf(run, previous, thresholds)
               : [];
 
           return {
@@ -730,7 +746,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             // no issue, no notification, and nothing that could turn a pull request
             // red. A slow statistical suite wired to a gate is a suite somebody
             // switches off, which is the failure this is written to avoid.
-            failing: metrics.some((metric) => !metric.meets),
+            failing: failingOf(metrics),
             results: results.map((result): EvalCaseResultRow => ({
               id: result.id,
               caseId: result.caseId,
@@ -757,6 +773,52 @@ export function createEvalsRouter(config: EvalsConfig): Router {
             })),
           };
         }),
+      });
+    },
+  );
+
+  /**
+   * How the frozen series stands, for the sidebar's Evals item (#608).
+   *
+   * A failing run used to be visible on `/evals` and nowhere else, so it was
+   * seen only by whoever went looking. R8 rules out a notification or an issue;
+   * it does not rule out a mark where admins already look, which is this.
+   *
+   * **Frozen only**, and that is R4 rather than a default: the nightly series is
+   * the frozen one, and a live run that answered from an article an admin just
+   * reworded is not a regression to be pulled to. **The latest completed run**,
+   * passing over one in flight or one that fell over — neither has numbers to
+   * judge, which is why `metrics` is empty on both, so the last judgement stands
+   * until a run finishes properly. One row and nine columns, since the sidebar
+   * asks on every page.
+   */
+  router.get(
+    "/status",
+    requireAdminView,
+    async (_req: Request, res: Response<EvalStatusResponse>) => {
+      const run = await prisma.evalRun.findFirst({
+        where: {
+          corpus: EVAL_CORPUS.frozen,
+          status: EVAL_RUN_STATUS.completed,
+        },
+        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        select: { ...COMPARISON_COLUMNS, thresholds: true },
+      });
+
+      if (run === null) {
+        res.json({ health: null });
+        return;
+      }
+
+      const metrics = metricsOf(run, null, thresholdsFrom(run.thresholds));
+
+      res.json({
+        health:
+          run.escaped > 0
+            ? EVAL_HEALTH.escaped
+            : failingOf(metrics)
+              ? EVAL_HEALTH.failing
+              : EVAL_HEALTH.passing,
       });
     },
   );

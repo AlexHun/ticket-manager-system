@@ -331,6 +331,34 @@ export interface EvalRunStartedResponse {
 }
 
 /**
+ * What the latest completed run on the frozen corpus says, for the sidebar's
+ * Evals item (#608).
+ *
+ * Three values rather than `failing: boolean`, because the two bad answers are
+ * different in kind and are drawn differently: a missed threshold is a score,
+ * an escaped payload is a defect (`run.escaped`, the one number on `/evals`
+ * that is not a measurement). `escaped` wins over `failing`: while the catch
+ * rate's bar is 100%, a run with an escape is below it too, and whatever bar a
+ * run recorded, an escape is the louder reading and the true one.
+ */
+export const EVAL_HEALTH = {
+  passing: "passing",
+  failing: "failing",
+  escaped: "escaped",
+} as const;
+
+export type EvalHealth = (typeof EVAL_HEALTH)[keyof typeof EVAL_HEALTH];
+
+/** The reply to `GET /api/evals/status`. */
+export interface EvalStatusResponse {
+  /**
+   * Null while the frozen corpus has no completed run, which is no mark: there
+   * is nothing to be below a threshold yet.
+   */
+  health: EvalHealth | null;
+}
+
+/**
  * How many runs `GET /api/evals/runs` carries — **per corpus** (#234).
  *
  * The cap is applied inside the series the request asked for, not across both,
