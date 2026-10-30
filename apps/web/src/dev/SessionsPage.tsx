@@ -1,4 +1,11 @@
-import { useId, useMemo, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +66,12 @@ import {
 import { FoldChevron } from "./FoldChevron";
 import { SessionChains } from "./SessionChains";
 import { ALL_STATES, filterGroups, type StateChoice } from "./sessions-filter";
+import {
+  BATCH_CARDS,
+  FIRST_BATCH_CARDS,
+  cardsIn,
+  drawnGroups,
+} from "./sessions-batches";
 import { STATE_BADGE } from "./session-visuals";
 import {
   useSessionsStream,
@@ -253,9 +266,15 @@ function Groups({ report }: { report: SessionsReport }) {
   // A slice names its card by id; the facts are the card's, once per reading.
   const cards = useMemo(() => indexCards(report.sessions), [report.sessions]);
   const [choice, setChoice] = useState<StateChoice>(ALL_STATES);
-  const groups = useMemo(
+  const filtered = useMemo(
     () => filterGroups(report.groups, cards, choice),
     [report.groups, cards, choice],
+  );
+  const total = cardsIn(filtered);
+  const budget = useDrawBudget(total);
+  const groups = useMemo(
+    () => drawnGroups(filtered, budget),
+    [filtered, budget],
   );
   return (
     <div className="space-y-4">
@@ -286,7 +305,8 @@ function Groups({ report }: { report: SessionsReport }) {
           {NO_SESSIONS_IN_STATE}
         </p>
       ) : (
-        <div className="space-y-6">
+        // Busy while later batches are still to be drawn (#618).
+        <div className="space-y-6" aria-busy={budget < total}>
           {groups.map((group) => (
             <Group key={group.key} group={group} cards={cards} />
           ))}
@@ -294,6 +314,25 @@ function Groups({ report }: { report: SessionsReport }) {
       )}
     </div>
   );
+}
+
+/**
+ * How many cards to draw, starting at `FIRST_BATCH_CARDS` and growing by
+ * `BATCH_CARDS` a frame until it covers `total` (#618). A new reading or
+ * another filter keeps what is drawn rather than starting again. Not a
+ * transition: a running session sends a reading every 2 seconds, which
+ * restarts a transition, so a batch slower than that was never drawn.
+ */
+function useDrawBudget(total: number): number {
+  const [budget, setBudget] = useState(FIRST_BATCH_CARDS);
+  useEffect(() => {
+    if (budget >= total) return;
+    const frame = requestAnimationFrame(() => {
+      setBudget((drawn) => drawn + BATCH_CARDS);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [budget, total]);
+  return budget;
 }
 
 /** Every card in `cards`, at any depth, by its id. */
@@ -331,7 +370,8 @@ function groupWords(group: SessionGroup): { title: ReactNode; note?: string } {
   }
 }
 
-function Group({
+/** Memoised, as `CardBody` is, so a batch renders only what it adds (#618). */
+const Group = memo(function Group({
   group,
   cards,
 }: {
@@ -383,7 +423,7 @@ function Group({
       </ol>
     </section>
   );
-}
+});
 
 /** A card's heading level by its depth, the session's being `h3` under its
  *  group's `h2`, so the outline follows the tree. Past `h6` it stays there. */
@@ -399,7 +439,7 @@ const HEADINGS = ["h3", "h4", "h5", "h6"] as const;
  * card (design.md): the nesting is the tree, and the rule already says what is
  * under what.
  */
-function CardBody({
+const CardBody = memo(function CardBody({
   slice,
   cards,
   depth,
@@ -495,7 +535,7 @@ function CardBody({
       </article>
     </Collapsible>
   );
-}
+});
 
 /**
  * A card's step in words, or null for none. Only a card running `implement`
