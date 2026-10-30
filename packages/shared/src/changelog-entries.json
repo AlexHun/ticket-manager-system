@@ -1148,5 +1148,25 @@
     "version": "0.1.291",
     "date": "2026-10-30",
     "title": "Settle the review's findings on the Sessions page's batches"
+  },
+  {
+    "version": "0.1.293",
+    "date": "2026-10-30",
+    "title": "Fit the dev tools header at phone width"
+  },
+  {
+    "version": "0.1.293",
+    "date": "2026-10-30",
+    "title": "Keep the current tab in view when the window narrows"
+  },
+  {
+    "version": "0.1.293",
+    "date": "2026-10-30",
+    "title": "Draw the tab row's scrollbar thin"
+  },
+  {
+    "version": "0.1.293",
+    "date": "2026-10-30",
+    "title": "Keep a focused tab's ring inside the scrolling row"
   }
 ]
