@@ -178,12 +178,12 @@ const skillComments = (): string[] =>
 // The skill's own text, not a copy of it: a reworded comment fails here
 // rather than reading Unknown from Review on, on every card.
 describe.skipIf(partialCheckout)("the skill's Progress comments", () => {
-  const commented = (text: string) =>
+  const comments = partialCheckout ? [] : skillComments();
+  const marksOfComment = (text: string) =>
     marksOf(shell(`gh issue comment 595 --body "${text}"`));
 
   it("marks commit for step 6's comment and nothing for the others", () => {
-    const comments = skillComments();
-    expect(comments.map((text) => [text, commented(text)])).toEqual(
+    expect(comments.map((text) => [text, marksOfComment(text)])).toEqual(
       comments.map((text) => [
         text,
         text.startsWith("Progress: built") ? [IMPLEMENT_STEP.commit] : [],
@@ -192,7 +192,7 @@ describe.skipIf(partialCheckout)("the skill's Progress comments", () => {
   });
 
   it("leaves one comment per checkpoint, the look step's among them", () => {
-    expect(skillComments().map((text) => text.split(",")[0])).toEqual([
+    expect(comments.map((text) => text.split(",")[0])).toEqual([
       "Progress: building",
       "Progress: built",
       "Progress: looked",

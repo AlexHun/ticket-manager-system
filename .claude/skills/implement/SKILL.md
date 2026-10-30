@@ -52,8 +52,8 @@ invoke it.
    changes none. Otherwise open each page it touches in a real browser, through
    the chrome-devtools MCP (`docs/standards/conventions.md`), on real-volume
    data and never the E2E fixtures: the Sessions page passed review and CI on a
-   handful of fixture sessions, and this machine's 256 then cost two more
-   tickets (#611, #613). For an app page that is the dev database after
+   handful of fixture sessions, and this machine's 256 then cost three more
+   tickets (#611, #613, #618). For an app page that is the dev database after
    `cd apps/api && bun run db:seed:tickets`, 100 tickets over about six months
    (`SCRIPTS.md`); for a `/__dev` page it is `bun run dev` reading this
    machine's own transcripts, with no `CLAUDE_TRANSCRIPT_DIR` set, never the
@@ -66,11 +66,12 @@ invoke it.
    interaction, and stop it with a file path in the same directory. Leave the
    checkpoint with `--body-file`: `Progress: looked, next is review (step 8)`,
    each screenshot's path and what it shows, the trace's path, and its first
-   load and slowest interaction in ms. The files stay on this machine: `gh`
-   uploads no image, and a `/__dev` screenshot shows the developer's own
-   prompts, which this public repo's issue would publish. Done when both
-   screenshots and the trace are named in that comment, and every interaction
-   over 200 ms in it has an issue filed or a fix pushed, named beside it.
+   load and slowest interaction in ms. The files stay on this machine, since
+   `gh` uploads no image; never upload a `/__dev` one by hand either, since it
+   shows the developer's own prompts and this repo's issues are public. Done
+   when both screenshots and the trace are named in that comment, and every
+   interaction over 200 ms in it has an issue filed or a fix pushed, named
+   beside it.
 8. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
    `origin/develop`. Its two axes run as background subagents whatever that
    skill asks, and a background report reaches a subagent only between its
