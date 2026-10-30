@@ -1118,5 +1118,20 @@
     "version": "0.1.287",
     "date": "2026-10-25",
     "title": "Settle the review's findings on the anchored command reading"
+  },
+  {
+    "version": "0.1.288",
+    "date": "2026-10-30",
+    "title": "Say how the frozen eval series stands at GET /api/evals/status"
+  },
+  {
+    "version": "0.1.288",
+    "date": "2026-10-30",
+    "title": "Mark the Evals nav item while the frozen eval series is failing"
+  },
+  {
+    "version": "0.1.288",
+    "date": "2026-10-30",
+    "title": "Settle the review's findings on the Evals nav mark"
   }
 ]
