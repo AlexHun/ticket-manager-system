@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { ROUTE } from "../../apps/web/src/lib/routes";
+import { onHeadingLine } from "./helpers/layout";
 
 /**
  * #617: at 390px the dev tools header ran past the right edge. "Dev tools"
@@ -146,20 +147,17 @@ test.describe("dev tools header at phone width", () => {
       page,
     }) => {
       await page.goto(path);
-      const heading = page.getByRole("heading", { level: 1, name: label });
-      const badge = page.getByText("dev only", { exact: true });
-      await expect(heading).toBeVisible();
+      const heading = page.getByRole("heading", {
+        level: 1,
+        name: label,
+        exact: true,
+      });
+      const badge = heading
+        .locator("..")
+        .getByText("dev only", { exact: true });
       await expect(badge).toBeVisible();
 
-      const [h, b] = await Promise.all([
-        heading.boundingBox(),
-        badge.boundingBox(),
-      ]);
-      if (!h || !b) throw new Error(`${label}: not laid out`);
-      const middle = b.y + b.height / 2;
-      expect(middle).toBeGreaterThan(h.y);
-      expect(middle).toBeLessThan(h.y + h.height);
-      expect(b.x + b.width).toBeLessThanOrEqual(PHONE.width);
+      await expect.poll(() => onHeadingLine(heading, badge)).toBe(true);
     });
   }
 

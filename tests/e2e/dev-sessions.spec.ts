@@ -48,6 +48,7 @@ import {
   SESSION_STATE,
 } from "../../apps/web/src/dev/sessions-protocol";
 import { signIn } from "./helpers/auth";
+import { onHeadingLine } from "./helpers/layout";
 import {
   resetTranscriptWorkingCopy,
   TRANSCRIPT_WORKING_DIR,
@@ -838,6 +839,20 @@ test.describe("dev tools: Sessions", () => {
       timeout: R4_MS,
     });
     await expect(count).toHaveText(waitingCount(1));
+    // At phone width the count and the dev-only badge still share the
+    // heading's line (#692).
+    await page.setViewportSize({ width: 390, height: 900 });
+    const heading = page.getByRole("heading", {
+      level: 1,
+      name: SESSIONS_TITLE,
+      exact: true,
+    });
+    for (const item of [
+      count,
+      heading.locator("..").getByText("dev only", { exact: true }),
+    ]) {
+      await expect.poll(() => onHeadingLine(heading, item)).toBe(true);
+    }
     // The wait is the subagent's, not the cards above it.
     await expect(stateOf(a)).toHaveText(SESSION_STATE.running);
     await expect(stateOf(childOf(a, REVIEW))).toHaveText(SESSION_STATE.done);
