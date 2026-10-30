@@ -1133,5 +1133,15 @@
     "version": "0.1.288",
     "date": "2026-10-30",
     "title": "Settle the review's findings on the Evals nav mark"
+  },
+  {
+    "version": "0.1.289",
+    "date": "2026-10-30",
+    "title": "Show each case's recent history and a trailing average per metric"
+  },
+  {
+    "version": "0.1.289",
+    "date": "2026-10-30",
+    "title": "Settle the review's findings on the case history"
   }
 ]
