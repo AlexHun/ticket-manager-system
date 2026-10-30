@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
 import { describe, expect, it } from "vitest";
 import {
   IMPLEMENT_STARTED,
   implementStepOfCalls,
+  marksOf,
   marksOfPrompt,
   type ToolCall,
 } from "./implement-step.ts";
@@ -38,7 +42,7 @@ const STEPS: [string, ToolCall[]][] = [
     [
       shell("git commit -F .scratch/msg.txt; git push -u origin HEAD"),
       shell(
-        'gh issue comment 595 --body "Progress: built, next is review (step 7)"',
+        'gh issue comment 595 --body "Progress: built, next is the look (step 7)"',
       ),
     ],
   ],
@@ -161,6 +165,39 @@ describe("implementStepOfCalls", () => {
         shell("gh issue view 595"),
       ]),
     ).toBe(IMPLEMENT_STEP.read);
+  });
+});
+
+/** Every `Progress:` comment the skill tells a worker to leave, as written. */
+const skillComments = (): string[] =>
+  readFileSync(
+    join(import.meta.dirname, "../../../.claude/skills/implement/SKILL.md"),
+    "utf8",
+  ).match(/Progress: [^"`]+/g) ?? [];
+
+// The skill's own text, not a copy of it: a reworded comment fails here
+// rather than reading Unknown from Review on, on every card.
+describe.skipIf(partialCheckout)("the skill's Progress comments", () => {
+  const commented = (text: string) =>
+    marksOf(shell(`gh issue comment 595 --body "${text}"`));
+
+  it("marks commit for step 6's comment and nothing for the others", () => {
+    const comments = skillComments();
+    expect(comments.map((text) => [text, commented(text)])).toEqual(
+      comments.map((text) => [
+        text,
+        text.startsWith("Progress: built") ? [IMPLEMENT_STEP.commit] : [],
+      ]),
+    );
+  });
+
+  it("leaves one comment per checkpoint, the look step's among them", () => {
+    expect(skillComments().map((text) => text.split(",")[0])).toEqual([
+      "Progress: building",
+      "Progress: built",
+      "Progress: looked",
+      "Progress: reviewed",
+    ]);
   });
 });
 

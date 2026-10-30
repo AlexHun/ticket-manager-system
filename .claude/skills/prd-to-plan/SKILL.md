@@ -83,7 +83,12 @@ Each slice must be independently mergeable and leave `develop` shippable.
 ### 5. Check coverage, then write
 
 Every `Must` in the PRD maps to a slice, cited by `R<n>`. A requirement with no
-slice is a gap; a slice with no `R<n>` is scope creep — resolve both first, then
+slice is a gap; a slice with no `R<n>` is scope creep. A page's budget maps to
+the slice that first draws the page at the PRD's worst-case volume, and that
+slice carries a **Budget:** line stating the volume and both targets with their
+`R<n>`: an E2E runs on fixtures and cannot hold a budget, so `implement`'s look
+at the page (step 7) checks it, and `to-tickets` copies the line into the
+ticket's acceptance criteria. Resolve all three first, then
 land it on a branch (`git checkout -b docs/plan-<slug>`) and open a PR.
 
 ## The done bar for every slice
