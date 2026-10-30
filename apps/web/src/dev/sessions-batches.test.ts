@@ -83,7 +83,7 @@ describe("drawnGroups", () => {
     expect(drawn[0]!.sessions[0]).toBe(GROUPS[0]!.sessions[0]);
   });
 
-  test("a group cut short keeps its total, which is the issue's whatever is drawn", () => {
+  test("a group cut short keeps the issue's whole total", () => {
     const drawn = drawnGroups(GROUPS, 4);
     expect(drawn[1]!.out).toBe(1_000);
   });

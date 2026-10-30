@@ -270,7 +270,7 @@ function Groups({ report }: { report: SessionsReport }) {
     () => filterGroups(report.groups, cards, choice),
     [report.groups, cards, choice],
   );
-  const total = cardsIn(filtered);
+  const total = useMemo(() => cardsIn(filtered), [filtered]);
   const budget = useDrawBudget(total);
   const groups = useMemo(
     () => drawnGroups(filtered, budget),
@@ -305,11 +305,11 @@ function Groups({ report }: { report: SessionsReport }) {
           {NO_SESSIONS_IN_STATE}
         </p>
       ) : (
-        // Busy while later batches are still to be drawn (#618).
-        <div className="space-y-6" aria-busy={budget < total}>
+        <div className="space-y-6">
           {groups.map((group) => (
             <Group key={group.key} group={group} cards={cards} />
           ))}
+          {budget < total && <DrawingSkeleton />}
         </div>
       )}
     </div>
@@ -587,6 +587,26 @@ function Fact({
       >
         {children}
       </dd>
+    </div>
+  );
+}
+
+/**
+ * Below the cards drawn so far while later batches are still to come (#618).
+ * Busy itself rather than the list above it, which would keep a screen reader
+ * from the cards already there.
+ */
+function DrawingSkeleton() {
+  return (
+    <div
+      className="space-y-3"
+      aria-busy="true"
+      aria-label="Drawing the rest of the sessions"
+      data-sessions-drawing
+    >
+      {Array.from({ length: 2 }).map((_, i) => (
+        <Skeleton key={i} className="h-20 w-full" />
+      ))}
     </div>
   );
 }
