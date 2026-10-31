@@ -9,6 +9,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { router } from "./App";
 import { queryClient } from "@/lib/query-client";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { NewReleaseToast } from "@/components/NewReleaseToast";
 import { Toaster } from "@/components/ui/sonner";
 import "./index.css";
 
@@ -26,6 +27,7 @@ createRoot(rootElement).render(
         <RouterProvider router={router} />
       </AppErrorBoundary>
       <Toaster />
+      <NewReleaseToast />
     </QueryClientProvider>
   </StrictMode>,
 );

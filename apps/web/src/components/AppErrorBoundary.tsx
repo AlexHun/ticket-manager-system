@@ -1,5 +1,12 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useRouteError } from "react-router-dom";
 import { ROUTE } from "@/lib/routes";
+import {
+  isReplaced,
+  releaseQueryOptions,
+  reloadOnceFor,
+} from "@/lib/release-check";
 import { Sentry } from "@/lib/sentry";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +18,8 @@ import {
 } from "@/components/ui/card";
 
 /**
- * The app's only error boundary, wrapped around everything below the providers.
+ * The app's error boundary, wrapped around everything below the providers.
+ * Errors inside a route reach it through `RethrowRouteError`.
  *
  * It exists for a failure this repo has already had rather than for a
  * hypothetical one. A React render error unmounts the entire tree, so before
@@ -30,12 +38,16 @@ import {
  * chrome alive and look tidier, but it also lets a broken page fail quietly in a
  * corner; one at the top is honest about the fact that the app is in an unknown
  * state.
+ *
+ * A tab left open across a deploy lands here too (#452), so the fallback asks
+ * which release the server runs and reloads once if it is not this tab's.
  */
 export function AppErrorBoundary({ children }: { children: ReactNode }) {
   return (
     <Sentry.ErrorBoundary
-      fallback={({ resetError }) => (
+      fallback={({ error, resetError }) => (
         <div className="flex min-h-svh items-center justify-center p-6">
+          <ReloadIfReplaced />
           <Card className="w-full max-w-md">
             <CardHeader>
               <CardTitle>Couldn't show this page</CardTitle>
@@ -45,7 +57,16 @@ export function AppErrorBoundary({ children }: { children: ReactNode }) {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex gap-2">
-              <Button onClick={resetError}>Try again</Button>
+              <Button
+                onClick={() => {
+                  // A route's error lives on in the router's own state, so a
+                  // re-render throws it again; only a reload retries it.
+                  if (isRouteError(error)) window.location.reload();
+                  else resetError();
+                }}
+              >
+                Try again
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -65,4 +86,42 @@ export function AppErrorBoundary({ children }: { children: ReactNode }) {
       {children}
     </Sentry.ErrorBoundary>
   );
+}
+
+/**
+ * Reloads the page once when the server runs a release other than this tab's.
+ *
+ * `staleTime: 0` so a crash asks afresh rather than trusting what
+ * `NewReleaseToast` cached up to the app's `staleTime` ago.
+ */
+function ReloadIfReplaced() {
+  const { data: served } = useQuery({ ...releaseQueryOptions(), staleTime: 0 });
+
+  useEffect(() => {
+    if (isReplaced(served)) reloadOnceFor(served);
+  }, [served]);
+
+  return null;
+}
+
+/**
+ * The root route's `ErrorBoundary`: rethrows what the router caught, so it
+ * reaches `AppErrorBoundary` above `RouterProvider`.
+ *
+ * Without it a data router renders its own error page for anything a route
+ * throws, a failed lazy import included, and `AppErrorBoundary` saw none of it:
+ * #451's crash showed React Router's "Unexpected Application Error!". A throw
+ * from an error boundary's own render passes to the boundary above it.
+ */
+export function RethrowRouteError(): never {
+  const error = useRouteError();
+  if (typeof error === "object" && error !== null) routeErrors.add(error);
+  throw error;
+}
+
+/** What `RethrowRouteError` passed up, so the fallback can tell a route's error. */
+const routeErrors = new WeakSet<object>();
+
+function isRouteError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && routeErrors.has(error);
 }
