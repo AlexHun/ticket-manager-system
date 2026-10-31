@@ -186,14 +186,16 @@ const SHARES = {
 const R4_MS = 5_000;
 /**
  * The chain tests' first wait after `page.goto`, which is on the stream's
- * first reading rather than on a change, so R4 does not bound it. At the
- * default 5s, "never uses the desk's words" failed on a first run and passed
- * on rerun, alone and in the whole file, as other chain tests had (#620). A
- * cold first reading of a working machine's transcripts takes about 25s
- * (dev-tools.md, #618). On 2026-10-31 the fixture's first card came
- * 0.9-1.1s after the page loaded, over seven runs on Windows each on a
- * freshly started server, so the allowance costs a passing run nothing.
- * `MANY_READ_MS` is the fold test's allowance for its first reading.
+ * first reading rather than on a change, so R4 does not bound it. The
+ * chain tests take it because one of them failed there at the default 5s:
+ * "never uses the desk's words" failed on a first run in isolation, then
+ * passed twice, and once in a run of the whole file, and had been seen
+ * failing on #594 and #613 (#620). A working machine's cold first reading took 25.2s, measured
+ * 2026-10-30 over 206 groups on one cold visit (dev-tools.md, #618). On
+ * 2026-10-31 the fixture's first card came 1.0-1.1s after `page.goto`
+ * returned, over seven runs on Windows each on a freshly started server, so
+ * the allowance costs a passing run nothing. `MANY_READ_MS` is the fold
+ * test's allowance for its first reading.
  */
 const FIRST_READ_MS = 30_000;
 
