@@ -1188,5 +1188,25 @@
     "version": "0.1.301",
     "date": "2026-10-31",
     "title": "Settle the review's findings on replace-once"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Serve the running release at /version.json"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Offer a reload when a new version is deployed"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Reload a crashed tab once when a new version is out"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Settle the review's findings on the new-version reload"
   }
 ]
