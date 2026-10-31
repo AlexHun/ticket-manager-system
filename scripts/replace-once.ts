@@ -92,7 +92,7 @@ if (import.meta.main) {
     process.exit(1);
   }
   const pairs: unknown = JSON.parse(
-    readFileSync(pairsFile, "utf8").replace(/^﻿/, ""),
+    readFileSync(pairsFile, "utf8").replace(/^\uFEFF/, ""),
   );
   if (!Array.isArray(pairs) || !pairs.every(isPair)) {
     console.error(
