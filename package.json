@@ -21,6 +21,7 @@
     "lint": "bun run --filter @ticket/lint lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:changed": "bun scripts/format-changed.ts",
     "tokens": "bun scripts/issue-tokens.ts",
     "graph": "bun scripts/graph.ts",
     "test:e2e": "playwright test",
