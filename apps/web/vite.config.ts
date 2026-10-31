@@ -13,6 +13,7 @@ import {
 import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
 import { basicAuthPlugin } from "./dev/basic-auth.ts";
 import { devToolsPlugin } from "./dev/plugin.ts";
+import { releasePlugin } from "./release.ts";
 import {
   apiOriginFrom,
   cspMetaPolicy,
@@ -198,8 +199,12 @@ export default defineConfig(({ mode }) => {
   // one in a `.env` file is a deliberate override (a CI tag, a build number) and
   // is left alone. `env` above holds both, which is why the check reads it rather
   // than `process.env`.
+  //
+  // `releasePlugin` serves the same value, so an open tab can tell a deploy has
+  // replaced the bundle it is running (#452).
+  const release = env.VITE_SENTRY_RELEASE || releaseName();
   if (!env.VITE_SENTRY_RELEASE) {
-    process.env.VITE_SENTRY_RELEASE = releaseName();
+    process.env.VITE_SENTRY_RELEASE = release;
   }
 
   // Once per Vitest run, so the tests the develop image skips are not skipped
@@ -222,6 +227,7 @@ export default defineConfig(({ mode }) => {
       // `apply: "serve"` inside, so this contributes nothing to a build — see the
       // note at the top of dev/plugin.ts.
       devToolsPlugin(),
+      releasePlugin(release),
       cspPlugin(apiOrigin, sentryOrigin),
       cspCaddyPlugin(apiOrigin, sentryOrigin),
       // Writes a treemap of the production bundle on every build — the only way
