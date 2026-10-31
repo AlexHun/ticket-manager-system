@@ -319,8 +319,9 @@ test("plans a run at a picked time, against the chosen corpus", async () => {
   // The day button by the full date the calendar writes into `data-day`, not
   // by its number: the grid also shows the neighbouring months' days, so on
   // the 29th "30" matched both 30 August and 30 September and the test threw.
+  const tomorrow = new Date(2026, 10, 1);
   const day = document.querySelector<HTMLButtonElement>(
-    `button[data-day="${new Date(2026, 10, 1).toLocaleDateString()}"]`,
+    `button[data-day="${tomorrow.toLocaleDateString()}"]`,
   );
   if (!day) throw new Error("no day button for tomorrow");
   await user.click(day);
@@ -341,10 +342,12 @@ test("plans a run at a picked time, against the chosen corpus", async () => {
   // specific afternoon has chosen it.
   expect(body.corpus).toBe(EVAL_CORPUS.live);
   const at = new Date(body.runAt);
-  expect(at.getMonth()).toBe(10);
-  expect(at.getDate()).toBe(1);
+  expect(at.getFullYear()).toBe(tomorrow.getFullYear());
+  expect(at.getMonth()).toBe(tomorrow.getMonth());
+  expect(at.getDate()).toBe(tomorrow.getDate());
   expect(at.getHours()).toBe(14);
   expect(at.getMinutes()).toBe(30);
+  expect(at.getTime()).toBeGreaterThan(Date.now());
 });
 
 test("an empty list says what will fill it", async () => {
