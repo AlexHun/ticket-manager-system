@@ -2,13 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { replaceOnce } from "../../../scripts/replace-once.ts";
+import { partialCheckout } from "@ticket/repo-scan/checkout";
+import { type Pair, replaceOnce } from "./replace-once";
 import { REPO_ROOT } from "./test/run-hook";
 
-// `scripts/replace-once.ts` is the shell edit CLAUDE.md points at for a change
-// the Edit tool can't make (#629). `scripts/` has no runner of its own, so its
-// test sits in the API suite beside the hook tests, which `.husky/pre-push`
-// runs.
+const BOM = String.fromCharCode(0xfeff);
+
 describe("replaceOnce", () => {
   test("replaces each pair that occurs exactly once, in order", () => {
     const text = "alpha beta gamma\n";
@@ -39,6 +38,10 @@ describe("replaceOnce", () => {
     expect(replaceOnce("price", [["price", "$& $1 $$"]])).toBe("$& $1 $$");
   });
 
+  test("a leading byte order mark is dropped", () => {
+    expect(replaceOnce(`${BOM}docs: x\n`, [["x", "y"]])).toBe("docs: y\n");
+  });
+
   test("throws naming every pair that matches no times or more than once", () => {
     const text = "one two two\n";
     expect(() =>
@@ -52,20 +55,32 @@ describe("replaceOnce", () => {
     );
   });
 
+  test("overlapping occurrences each count", () => {
+    expect(() => replaceOnce("aaa", [["aa", "X"]])).toThrow(
+      'replace-once: pair 1 ("aa") matches 2 times',
+    );
+  });
+
   test("an empty search string is refused", () => {
     expect(() => replaceOnce("text", [["", "x"]])).toThrow(
       "replace-once: pair 1 has an empty search string",
     );
   });
 
-  test("revert swaps each pair, so the same file undoes the edit", () => {
-    const pairs: [string, string][] = [["const a = 1;", "const a = 2;"]];
-    const edited = replaceOnce("const a = 1;\n", pairs);
-    expect(replaceOnce(edited, pairs, { revert: true })).toBe("const a = 1;\n");
+  test("revert undoes chained pairs, last first", () => {
+    const pairs: Pair[] = [
+      ["beta", "BETA"],
+      ["BETA gamma", "delta"],
+    ];
+    const edited = replaceOnce("alpha beta gamma\n", pairs);
+    expect(replaceOnce(edited, pairs, { revert: true })).toBe(
+      "alpha beta gamma\n",
+    );
   });
 });
 
-describe("bun scripts/replace-once.ts", () => {
+// The script is under `scripts/`, which the develop image does not carry.
+describe.skipIf(partialCheckout)("bun scripts/replace-once.ts", () => {
   const SCRIPT = path.join(REPO_ROOT, "scripts/replace-once.ts");
   let dir: string;
   beforeEach(() => {
@@ -79,7 +94,7 @@ describe("bun scripts/replace-once.ts", () => {
     const result = Bun.spawnSync(["bun", SCRIPT, ...args]);
     return { code: result.exitCode, stderr: result.stderr.toString() };
   };
-  const files = (content: string, pairs: unknown) => {
+  const writeFixture = (content: string, pairs: unknown) => {
     const file = path.join(dir, "target.ts");
     const pairsFile = path.join(dir, "pairs.json");
     writeFileSync(file, content);
@@ -88,9 +103,10 @@ describe("bun scripts/replace-once.ts", () => {
   };
 
   test("writes UTF-8 with no BOM, keeping every character it did not replace", () => {
-    const { file, pairsFile } = files("// a — b – c\r\nconst x = 1;\r\n", [
-      ["x = 1", "x = 2"],
-    ]);
+    const { file, pairsFile } = writeFixture(
+      "// a — b – c\r\nconst x = 1;\r\n",
+      [["x = 1", "x = 2"]],
+    );
     expect(run(file, pairsFile).code).toBe(0);
     const bytes = readFileSync(file);
     expect([...bytes.subarray(0, 3)]).toEqual([0x2f, 0x2f, 0x20]);
@@ -99,7 +115,7 @@ describe("bun scripts/replace-once.ts", () => {
 
   test("writes nothing and exits 1 when any pair fails", () => {
     const content = "one two two\n";
-    const { file, pairsFile } = files(content, [
+    const { file, pairsFile } = writeFixture(content, [
       ["one", "1"],
       ["two", "2"],
     ]);
@@ -111,15 +127,24 @@ describe("bun scripts/replace-once.ts", () => {
 
   test("--revert with the same pairs file restores the original", () => {
     const content = "if (ok) return;\n";
-    const { file, pairsFile } = files(content, [["if (ok)", "if (!ok)"]]);
+    const { file, pairsFile } = writeFixture(content, [
+      ["if (ok)", "if (!ok)"],
+    ]);
     expect(run(file, pairsFile).code).toBe(0);
     expect(readFileSync(file, "utf8")).toBe("if (!ok) return;\n");
     expect(run("--revert", file, pairsFile).code).toBe(0);
     expect(readFileSync(file, "utf8")).toBe(content);
   });
 
+  test("reads a pairs file that starts with a byte order mark", () => {
+    const { file, pairsFile } = writeFixture("a\n", []);
+    writeFileSync(pairsFile, `${BOM}[["a", "b"]]`);
+    expect(run(file, pairsFile).code).toBe(0);
+    expect(readFileSync(file, "utf8")).toBe("b\n");
+  });
+
   test("refuses a pairs file that is not a list of string pairs", () => {
-    const { file, pairsFile } = files("text\n", [["only one"]]);
+    const { file, pairsFile } = writeFixture("text\n", [["only one"]]);
     const { code, stderr } = run(file, pairsFile);
     expect(code).toBe(1);
     expect(stderr).toContain("is not a JSON list of [from, to] string pairs");
