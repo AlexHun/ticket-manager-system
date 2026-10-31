@@ -146,7 +146,7 @@ test.describe("login scene with motion", () => {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL("/");
+    await page.waitForURL(ROUTE.dashboard.path);
     await expect(
       page.getByRole("link", { name: "Tickets", exact: true }),
     ).toBeVisible();

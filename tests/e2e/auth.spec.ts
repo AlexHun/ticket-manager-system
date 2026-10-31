@@ -47,7 +47,7 @@ test.describe("Login flow", () => {
   }) => {
     await fillLoginForm(page, ADMIN.email, ADMIN.password);
 
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
     // Admin sees the Team nav link
     await expect(
       page.getByRole("link", { name: "Team", exact: true }),
@@ -66,7 +66,7 @@ test.describe("Login flow", () => {
   }) => {
     await fillLoginForm(page, AGENT.email, AGENT.password);
 
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
     // Agent must NOT see the Team nav link
     await expect(
       page.getByRole("link", { name: "Team", exact: true }),
@@ -80,7 +80,7 @@ test.describe("Login flow", () => {
   }) => {
     await fillLoginForm(page, ADMIN.email, WRONG_PASSWORD);
 
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
     // A server-error paragraph with role=alert must appear
     await expect(page.getByRole("alert")).toBeVisible();
     // No session cookie was set — form inputs still present
@@ -92,7 +92,7 @@ test.describe("Login flow", () => {
   }) => {
     await fillLoginForm(page, UNKNOWN_EMAIL, ADMIN.password);
 
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
     await expect(page.getByRole("alert")).toBeVisible();
   });
 
@@ -107,7 +107,7 @@ test.describe("Login flow", () => {
     // Zod messages wired via react-hook-form
     await expect(page.getByText("Enter a valid email.")).toBeVisible();
     await expect(page.getByText("Enter your password.")).toBeVisible();
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 
   test("invalid email format — client-side email error appears", async ({
@@ -120,7 +120,7 @@ test.describe("Login flow", () => {
     await page.getByRole("button", { name: "Sign in" }).click();
 
     await expect(page.getByText("Enter a valid email.")).toBeVisible();
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 
   test("already-authenticated user navigating to /login — bounced to /", async ({
@@ -133,7 +133,7 @@ test.describe("Login flow", () => {
     await page.goto(ROUTE.login.path);
 
     // LoginPage detects the existing session and redirects back to /
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
   });
 
   test("inputs are disabled while submitting", async ({ page }) => {
@@ -173,11 +173,11 @@ test.describe("Logout flow", () => {
     await page.getByRole("button", { name: "Sign out" }).click();
 
     // Should land on /login
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
 
     // Navigating to / now should redirect back to /login (no session)
     await page.goto(ROUTE.dashboard.path);
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 });
 
@@ -188,14 +188,14 @@ test.describe("Logout flow", () => {
 test.describe("Route protection — unauthenticated", () => {
   test("/ redirects to /login when not authenticated", async ({ page }) => {
     await page.goto(ROUTE.dashboard.path);
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 
   test("/users redirects to /login when not authenticated", async ({
     page,
   }) => {
     await page.goto(ROUTE.users.path);
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 });
 
@@ -206,7 +206,7 @@ test.describe("Route protection — authenticated agent", () => {
 
   test("/users redirects agent to / (admin-only route)", async ({ page }) => {
     await page.goto(ROUTE.users.path);
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
   });
 });
 
@@ -217,7 +217,7 @@ test.describe("Route protection — authenticated admin", () => {
 
   test("/users renders the Team heading for admin", async ({ page }) => {
     await page.goto(ROUTE.users.path);
-    await expect(page).toHaveURL("/users");
+    await expect(page).toHaveURL(ROUTE.users.path);
     await expect(
       page.getByRole("heading", { name: "Team", exact: true }),
     ).toBeVisible();
@@ -235,7 +235,7 @@ test.describe("Session persistence", () => {
     // Reload the tab — session cookie must keep the user authenticated
     await page.reload();
 
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
     // The app shell is rendered (not the login form) confirming the session is live
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   });

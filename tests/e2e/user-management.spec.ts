@@ -273,7 +273,7 @@ test.describe("User lifecycle — sign-in consequences", () => {
 
     // Sign out as admin.
     await page.getByRole("button", { name: "Sign out" }).click();
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
 
     // The deleted user's credentials must now fail — soft-delete sets
     // banned: true and wipes sessions server-side.
@@ -283,7 +283,7 @@ test.describe("User lifecycle — sign-in consequences", () => {
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
     await expect(page.getByRole("alert")).toBeVisible();
   });
 
@@ -303,7 +303,7 @@ test.describe("User lifecycle — sign-in consequences", () => {
     await expect(page.getByRole("row", { name: email })).toBeVisible();
 
     await page.getByRole("button", { name: "Sign out" }).click();
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
 
     // The path a new colleague actually walks: an invitation lands in the
     // outbox, they follow its link and pick a password nobody else has seen.
@@ -315,7 +315,7 @@ test.describe("User lifecycle — sign-in consequences", () => {
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
     // Fresh user was created as an agent (default role) — no Team link.
     await expect(
       page.getByRole("link", { name: "Team", exact: true }),

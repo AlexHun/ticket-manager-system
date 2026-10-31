@@ -89,7 +89,7 @@ test.describe("the evals screen", () => {
     await signIn(page, USER_ROLE.admin);
 
     await page.getByRole("link", { name: "Evals" }).click();
-    await page.waitForURL("/evals");
+    await page.waitForURL(ROUTE.evals.path);
 
     await expect(
       page.getByRole("heading", { name: "Evals", level: 1 }),
@@ -383,7 +383,7 @@ test.describe("the evals screen", () => {
     await expect(page.getByRole("link", { name: "Evals" })).toHaveCount(0);
 
     await page.goto(ROUTE.evals.path);
-    await page.waitForURL("/");
+    await page.waitForURL(ROUTE.dashboard.path);
   });
 });
 
