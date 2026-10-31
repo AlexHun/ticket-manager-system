@@ -8,7 +8,7 @@ Rules for every word a person reads: labels, buttons, headings, tooltips, placeh
 
 **Out of scope, on purpose:**
 
-- **`/__dev` pages.** Developer tooling, and several of their strings are a contract that suites index by (`apps/web/src/dev/usage-copy.ts`, see [dev-tools.md](dev-tools.md)).
+- **`/__dev` pages.** Developer tooling, and several of their strings are a contract that suites index by (`apps/web/src/dev/usage-copy.ts`, see [dev-tools-usage.md](dev-tools-usage.md)).
 - **Changelog entries.** CI writes them from `feat`/`fix` commit subjects, so these rules bind a `feat`/`fix` subject as they bind a label, and an entry already recorded in `packages/shared/src/changelog-entries.json` is history and is left as it was.
 - **Seeded tickets and knowledge articles.** They are written as customers write, and a customer's typo there is realistic.
 - **Text sent to a model.** Prompts are governed by [ai-features.md](ai-features.md) and [security-auto-reply.md](security-auto-reply.md); rewording one for style changes measured behaviour.
@@ -69,7 +69,7 @@ The invitation and reset emails (`apps/api/src/auth.ts`) and the auto-reply's si
 
 ## Changing copy safely
 
-- **Tests read copy.** Playwright `getByRole(…, { name })` and RTL text queries match on it, so a reworded label is a test change in the same commit. Playwright matches a name as a case-insensitive **substring**: a new name that contains another control's name puts the old query in strict-mode violation ([dev-tools.md](dev-tools.md) has the measured case).
+- **Tests read copy.** Playwright `getByRole(…, { name })` and RTL text queries match on it, so a reworded label is a test change in the same commit. Playwright matches a name as a case-insensitive **substring**: a new name that contains another control's name puts the old query in strict-mode violation ([dev-tools-usage.md](dev-tools-usage.md) has the measured case).
 - **A string that two suites share is a contract**, not a literal — `DEMO_READ_ONLY_NOTE` in `@ticket/shared` is the pattern. Reword it there and both suites follow.
 - **Tutorial steps live in the database.** The starter copy is `apps/api/src/tutorial-starter-content.ts`, and `apps/api/prisma/seed-tutorials.ts` skips every page that already has a row, so fixing a typo there changes new installs and nothing already deployed. A deployed wording is brought level by a data migration that rewrites a field only where it still holds the old seeded text, so an admin's edit in the tutorial editor survives; `apps/api/src/tutorial-wording-migration.test.ts` (#489) replays one against rows seeded with the old copy, and is the shape to copy. Rewording a tutorial never needs a `TUTORIAL_PAGE_VERSIONS` bump; only a page change that makes the steps wrong does.
 - **Review copy by area**, not repo-wide in one pass: one screen family per change keeps the test churn reviewable. The `copy-reviewer` agent in `.claude/agents/` reviews one area's inventory against this file and returns tagged findings with suggested text.

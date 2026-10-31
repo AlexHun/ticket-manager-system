@@ -29,6 +29,7 @@ import {
   type UpdateTicketResponse,
 } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
+import { ROUTE, ticketDetailPath } from "../../apps/web/src/lib/routes";
 import { resetE2eUsers, resetTickets, testDb } from "./helpers/db";
 import {
   API_URL,
@@ -1729,15 +1730,15 @@ test.describe("Tickets page", () => {
   });
 
   test("redirects to /login when unauthenticated", async ({ page }) => {
-    await page.goto("/tickets");
-    await expect(page).toHaveURL("/login");
+    await page.goto(ROUTE.tickets.path);
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 
   test("agent can reach /tickets from the sidebar link", async ({ page }) => {
     await signIn(page, USER_ROLE.agent);
     await page.getByRole("link", { name: "Tickets" }).click();
 
-    await expect(page).toHaveURL("/tickets");
+    await expect(page).toHaveURL(ROUTE.tickets.path);
     await expect(
       page.getByRole("heading", { name: "Tickets", level: 1 }),
     ).toBeVisible();
@@ -1745,7 +1746,7 @@ test.describe("Tickets page", () => {
 
   test("admin can reach /tickets too", async ({ page }) => {
     await signIn(page, USER_ROLE.admin);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await expect(
       page.getByRole("heading", { name: "Tickets", level: 1 }),
@@ -1754,7 +1755,7 @@ test.describe("Tickets page", () => {
 
   test("shows the empty state when there are no tickets", async ({ page }) => {
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await expect(page.getByText(NO_TICKETS_YET)).toBeVisible();
     await expect(page.getByRole("table")).toHaveCount(0);
@@ -1765,7 +1766,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const rows = page.getByRole("row");
     // Row 0 is the header
@@ -1785,7 +1786,7 @@ test.describe("Tickets page", () => {
   test("shows a dash for an uncategorised ticket", async ({ page }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const newestRow = page.getByRole("row").nth(1);
     await expect(newestRow).toContainText("—");
@@ -1796,7 +1797,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const rows = page.getByRole("row");
     await expect(rows.nth(1)).toContainText("Newest ticket");
@@ -1820,7 +1821,7 @@ test.describe("Tickets page", () => {
     page,
   }) => {
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await filterControl(page, "Status").waitFor();
 
     // Still asserted because scrollbars and the search field's native clear
@@ -1847,7 +1848,7 @@ test.describe("Tickets page", () => {
 
   test("opens dropdowns at least as wide as the control", async ({ page }) => {
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     for (const label of ["Status", "Category"]) {
       const trigger = filterControl(page, label);
@@ -1876,7 +1877,7 @@ test.describe("Tickets page", () => {
   test("narrows the list with the status filter", async ({ page }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await expect(page.getByRole("row")).toHaveCount(4); // header + 3
 
     await chooseFilter(page, "Status", TICKET_STATUS.Resolved);
@@ -1890,7 +1891,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await chooseFilter(page, "Category", TICKET_CATEGORY.Technical);
     await expect(page.getByRole("row")).toHaveCount(2);
@@ -1904,7 +1905,7 @@ test.describe("Tickets page", () => {
   test("searches across subject and customer", async ({ page }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await page.getByLabel("Search").fill("oldest@example.com");
 
@@ -1917,7 +1918,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await page.getByLabel("Search").fill("no-such-ticket-anywhere");
 
@@ -1935,7 +1936,7 @@ test.describe("Tickets page", () => {
   test("keeps the filter applied while re-sorting", async ({ page }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await chooseFilter(page, "Category", "Uncategorised");
     await expect(page.getByRole("row")).toHaveCount(3);
@@ -1951,7 +1952,7 @@ test.describe("Tickets page", () => {
   test("pages through the list and back", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     // Default order is newest-first, so page 1 starts at Ticket 30.
     await expect(page.getByRole("row")).toHaveCount(DEFAULT_PAGE_SIZE + 1);
@@ -1978,7 +1979,7 @@ test.describe("Tickets page", () => {
   test("changing the page size returns to the first page", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await page.getByRole("button", { name: "Next page" }).click();
     await expect(page.getByText("Page 2 of 2")).toBeVisible();
@@ -1993,7 +1994,7 @@ test.describe("Tickets page", () => {
   test("filtering resets paging and recounts", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await page.getByRole("button", { name: "Next page" }).click();
     await expect(page.getByText("Page 2 of 2")).toBeVisible();
@@ -2008,7 +2009,7 @@ test.describe("Tickets page", () => {
   test("hides pagination when nothing matches", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await page.getByLabel("Search").fill("no-such-ticket-anywhere");
 
@@ -2035,7 +2036,7 @@ test.describe("Tickets page", () => {
       },
     });
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const widths = () =>
       page
@@ -2056,7 +2057,7 @@ test.describe("Tickets page", () => {
   test("stretches the columns to fill the frame", async ({ page }) => {
     await seedNumberedTickets(5);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await page.getByRole("columnheader", { name: "Subject" }).waitFor();
 
     const { table, frame } = await page.evaluate(() => {
@@ -2103,7 +2104,7 @@ test.describe("Tickets page", () => {
       })),
     });
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await expect(page.getByRole("table")).toBeVisible();
 
     // One theme, and it is dark — see the note at the top of index.css. This
@@ -2180,7 +2181,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedNumberedTickets(5);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const cursorOf = (locator: ReturnType<typeof page.locator>) =>
       locator.evaluate((el) => getComputedStyle(el).cursor);
@@ -2208,7 +2209,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedNumberedTickets(5);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const before = await columnWidths(page);
     // Within the headroom COLUMN_META leaves between the default total and the
@@ -2229,7 +2230,7 @@ test.describe("Tickets page", () => {
   test("honours the minimum width when dragged far left", async ({ page }) => {
     await seedNumberedTickets(5);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const before = await columnWidths(page);
     await dragHandle(page, "Subject", -600);
@@ -2252,7 +2253,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedNumberedTickets(5);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const before = await columnWidths(page);
     await dragHandle(page, "Subject", 120);
@@ -2267,7 +2268,7 @@ test.describe("Tickets page", () => {
   test("resizes from the keyboard", async ({ page }) => {
     await seedNumberedTickets(5);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const before = await columnWidths(page);
     await resizeHandleFor(page, "Subject").focus();
@@ -2282,7 +2283,7 @@ test.describe("Tickets page", () => {
   test("keeps a resized width when the page changes", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     const before = await columnWidths(page);
     await dragHandle(page, "Subject", 90);
@@ -2297,7 +2298,7 @@ test.describe("Tickets page", () => {
   test("fits the viewport: the window never scrolls", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await expect(page.getByText("1–25 of 30")).toBeVisible();
 
     const overflow = await page.evaluate(() => {
@@ -2315,7 +2316,7 @@ test.describe("Tickets page", () => {
   test("keeps the header visible while the rows scroll", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     // Wait for the real rows, or there is nothing yet to overflow the frame.
     // The header alone is not that signal: it renders with the skeleton too,
@@ -2354,7 +2355,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     // Wait for the real rows, or there is nothing yet to overflow the frame.
     // The header alone is not that signal: it renders with the skeleton too,
@@ -2393,7 +2394,7 @@ test.describe("Tickets page", () => {
   test("moves the aria-sort marker to the clicked column", async ({ page }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     // The default sort is `lastMessageAt` desc, whose column is labelled
     // "Activity" — not `createdAt`. See DEFAULT_TICKET_SORT in @ticket/shared
@@ -2441,14 +2442,14 @@ test.describe("Tickets page", () => {
     // on screen — the route's loader started the request, and the router is
     // holding the navigation until it answers. The component that used to
     // start it has not mounted, so there is no skeleton anywhere.
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
     await expect(page.getByLabel("Loading tickets")).toHaveCount(0);
 
     releaseList();
 
     // And the page it hands over to is the populated one — one transition, not
     // a skeleton in between.
-    await expect(page).toHaveURL("/tickets");
+    await expect(page).toHaveURL(ROUTE.tickets.path);
     await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
     expect(await skeletonWasSeen(page)).toBe(false);
   });
@@ -2465,7 +2466,9 @@ test.describe("Tickets page", () => {
     // init script rather than an `evaluate`, because the document this watches
     // does not exist yet.
     await page.addInitScript(WATCH_FOR_SKELETON);
-    await page.goto(`/tickets?category=${TICKET_CATEGORY.Technical}`);
+    await page.goto(
+      `${ROUTE.tickets.path}?category=${TICKET_CATEGORY.Technical}`,
+    );
 
     await expect(page.getByRole("row")).toHaveCount(2);
     await expect(page.getByRole("row").nth(1)).toContainText("Middle ticket");
@@ -2475,7 +2478,7 @@ test.describe("Tickets page", () => {
   test("a filter change costs exactly one list request", async ({ page }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await expect(page.getByRole("row")).toHaveCount(4);
 
     // Counted from here, so the initial load is not in the total.
@@ -2503,7 +2506,7 @@ test.describe("Tickets page", () => {
   }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await expect(page.getByRole("row")).toHaveCount(4);
 
     // Hold only the first settled search. The URL write that carries it is now
@@ -2539,7 +2542,7 @@ test.describe("Tickets page", () => {
     // The pending value is not just kept on screen, it lands: once the first
     // write catches up, the second one goes out behind it.
     await expect(search).toHaveValue("Oldest");
-    await expect(page).toHaveURL("/tickets?q=Oldest");
+    await expect(page).toHaveURL(`${ROUTE.tickets.path}?q=Oldest`);
     await expect(page.getByRole("row")).toHaveCount(2);
     await expect(page.getByRole("row").nth(1)).toContainText("Oldest ticket");
   });
@@ -2557,8 +2560,8 @@ test.describe("Ticket detail page", () => {
   test("redirects to /login when unauthenticated", async ({ page }) => {
     const id = await seedTicketWithThread();
 
-    await page.goto(`/tickets/${id}`);
-    await expect(page).toHaveURL("/login");
+    await page.goto(ticketDetailPath(id));
+    await expect(page).toHaveURL(ROUTE.login.path);
   });
 
   test("opens from the ticket list by clicking the subject", async ({
@@ -2566,11 +2569,11 @@ test.describe("Ticket detail page", () => {
   }) => {
     const id = await seedTicketWithThread({ subject: "Clickable subject" });
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await page.getByRole("link", { name: "Clickable subject" }).click();
 
-    await expect(page).toHaveURL(`/tickets/${id}`);
+    await expect(page).toHaveURL(ticketDetailPath(id));
     await expect(
       page.getByRole("heading", { name: "Clickable subject", level: 1 }),
     ).toBeVisible();
@@ -2588,7 +2591,7 @@ test.describe("Ticket detail page", () => {
   }) => {
     const id = await seedTicketWithThread({ subject: "Prefetched subject" });
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     const row = page.getByRole("link", { name: "Prefetched subject" });
     await expect(row).toBeVisible();
 
@@ -2649,7 +2652,7 @@ test.describe("Ticket detail page", () => {
   test("renders the whole thread oldest first", async ({ page }) => {
     const id = await seedTicketWithThread();
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     await expect(page.getByText("Messages (3)")).toBeVisible();
     const messages = threadMessages(page);
@@ -2671,7 +2674,7 @@ test.describe("Ticket detail page", () => {
   }) => {
     const id = await seedTicketWithThread();
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     const box = page.getByRole("textbox", { name: "Reply" });
     await box.fill("Thanks for the details — that is fixed now.");
@@ -2691,7 +2694,7 @@ test.describe("Ticket detail page", () => {
   test("a rejected reply keeps the draft in the box", async ({ page }) => {
     const id = await seedTicketWithThread();
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
     // The thread is on screen; the ticket is gone by the time Send is pressed.
     // Longer than the default 5000ms: under a full-suite run this page's first
     // render can be slow enough to trip the default, which reads as a reply-path
@@ -2714,7 +2717,7 @@ test.describe("Ticket detail page", () => {
   test("refuses to send an empty reply", async ({ page }) => {
     const id = await seedTicketWithThread();
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     // An empty box disables Send, so the click never happens; the keyboard
     // gesture is the way left in, and validation catches it there.
@@ -2735,7 +2738,7 @@ test.describe("Ticket detail page", () => {
     const id = await seedTicketWithThread({ subject: "Deep linked" });
     await signIn(page, USER_ROLE.agent);
 
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     await expect(
       page.getByRole("heading", { name: "Deep linked", level: 1 }),
@@ -2751,7 +2754,7 @@ test.describe("Ticket detail page", () => {
   }) => {
     await signIn(page, USER_ROLE.agent);
 
-    await page.goto(`/tickets/${MAX_TICKET_ID}`);
+    await page.goto(ticketDetailPath(MAX_TICKET_ID));
 
     await expect(
       page.getByRole("heading", { name: "Ticket not found", level: 1 }),
@@ -2766,7 +2769,7 @@ test.describe("Ticket detail page", () => {
       htmlBody: '<img src="x" onerror="window.__xss = true">',
     });
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     await expect(page.getByText("Second message, from support.")).toBeVisible();
     // The plain-text part renders; the attacker-supplied markup does not exist
@@ -2780,7 +2783,7 @@ test.describe("Ticket detail page", () => {
   }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     // Build a view that is not the default in three ways at once.
     // `New`, because that is what `seedNumberedTickets` actually produces: it
@@ -2812,7 +2815,7 @@ test.describe("Ticket detail page", () => {
     // resolved, which lands slightly after the heading is already on screen.
     // Going back before that push lands would pop the list's own `page=2`
     // entry instead of the ticket-detail one.
-    await page.waitForURL(/\/tickets\/\d+$/);
+    await page.waitForURL(new RegExp(`${ticketDetailPath(String.raw`\d+`)}$`));
 
     await page.goBack();
 
@@ -2826,7 +2829,7 @@ test.describe("Ticket detail page", () => {
   test("the back link returns to the same list view", async ({ page }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     // `New`, for the reason spelled out in the test above: these thirty take the
     // schema default, and filtering them on `Open` leaves the list empty and the
@@ -2868,7 +2871,7 @@ test.describe("Ticket assignment (detail page)", () => {
   test("assigns a ticket, and it stays assigned", async ({ page }) => {
     const id = await seedTicketWithThread();
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     await expect(picker(page)).toContainText("Unassigned");
     await expect(picker(page)).toBeEnabled();
@@ -2887,7 +2890,7 @@ test.describe("Ticket assignment (detail page)", () => {
   test("hands the ticket back to nobody", async ({ page }) => {
     const id = await seedTicketWithThread({ assignedToId: ZOE.id });
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     await expect(picker(page)).toContainText(ZOE.name);
 
@@ -2902,7 +2905,7 @@ test.describe("Ticket assignment (detail page)", () => {
   test("offers every active user, whatever their role", async ({ page }) => {
     const id = await seedTicketWithThread();
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
 
     await expect(picker(page)).toBeEnabled();
     await picker(page).click();
@@ -2919,7 +2922,7 @@ test.describe("Ticket assignment (detail page)", () => {
   }) => {
     const id = await seedTicketWithThread();
     await signIn(page, USER_ROLE.agent);
-    await page.goto(`/tickets/${id}`);
+    await page.goto(ticketDetailPath(id));
     await expect(picker(page)).toBeEnabled();
 
     // Clicking the term in the definition list opens the control beside it,
@@ -2948,7 +2951,7 @@ test.describe("Tickets list URL state", () => {
     await signIn(page, USER_ROLE.agent);
 
     await page.goto(
-      `/tickets?status=${TICKET_STATUS.Resolved}&sort=${TICKET_SORT_FIELD.subject}&order=${SORT_ORDER.asc}`,
+      `${ROUTE.tickets.path}?status=${TICKET_STATUS.Resolved}&sort=${TICKET_SORT_FIELD.subject}&order=${SORT_ORDER.asc}`,
     );
 
     await expect(page.getByRole("row")).toHaveCount(2); // header + 1
@@ -2966,7 +2969,7 @@ test.describe("Tickets list URL state", () => {
   }) => {
     await seedNumberedTickets(30);
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await page.getByRole("button", { name: "Next page" }).click();
     await expect(page).toHaveURL(/page=2/);
@@ -2983,10 +2986,10 @@ test.describe("Tickets list URL state", () => {
   }) => {
     await seedTickets();
     await signIn(page, USER_ROLE.agent);
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
 
     await expect(page.getByRole("row").nth(1)).toContainText("Newest ticket");
     // Defaults are never written back, so the resting URL stays bare.
-    await expect(page).toHaveURL("/tickets");
+    await expect(page).toHaveURL(ROUTE.tickets.path);
   });
 });

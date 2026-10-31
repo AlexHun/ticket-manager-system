@@ -17,6 +17,7 @@ import {
 } from "@ticket/shared";
 import { SMOKE_CASE_IDS } from "@ticket/core";
 import { CREDENTIALS, signIn } from "./helpers/auth";
+import { ROUTE } from "../../apps/web/src/lib/routes";
 import { testDb } from "./helpers/db";
 import { API_URL } from "./helpers/env";
 
@@ -88,7 +89,7 @@ test.describe("the evals screen", () => {
     await signIn(page, USER_ROLE.admin);
 
     await page.getByRole("link", { name: "Evals" }).click();
-    await page.waitForURL("/evals");
+    await page.waitForURL(ROUTE.evals.path);
 
     await expect(
       page.getByRole("heading", { name: "Evals", level: 1 }),
@@ -197,7 +198,7 @@ test.describe("the evals screen", () => {
 
     try {
       await signIn(page, USER_ROLE.admin);
-      await page.goto("/evals");
+      await page.goto(ROUTE.evals.path);
 
       // Scoped to this run's card: the suite's other specs leave runs of their
       // own in this database, and an assertion that read the whole page would
@@ -313,7 +314,7 @@ test.describe("the evals screen", () => {
 
     try {
       await signIn(page, USER_ROLE.admin);
-      await page.goto("/evals");
+      await page.goto(ROUTE.evals.path);
 
       // Matched on the title exactly, not on `hasText`: run ids are serial and
       // this database is never wiped, so "Run 7" is a substring of "Run 74"
@@ -381,8 +382,8 @@ test.describe("the evals screen", () => {
 
     await expect(page.getByRole("link", { name: "Evals" })).toHaveCount(0);
 
-    await page.goto("/evals");
-    await page.waitForURL("/");
+    await page.goto(ROUTE.evals.path);
+    await page.waitForURL(ROUTE.dashboard.path);
   });
 });
 
@@ -661,7 +662,7 @@ test.describe("the eval schedule", () => {
     page,
   }) => {
     await signIn(page, USER_ROLE.admin);
-    await page.goto("/evals");
+    await page.goto(ROUTE.evals.path);
 
     try {
       const time = page.getByLabel("Time (server clock)");
@@ -715,7 +716,7 @@ test.describe("the eval schedule", () => {
 
     try {
       await signIn(page, USER_ROLE.admin);
-      await page.goto("/evals");
+      await page.goto(ROUTE.evals.path);
 
       const row = page.getByRole("listitem").filter({ hasText: "Ada Admin" });
       // Visibly not a run: "Upcoming" is a claim about the future, where every

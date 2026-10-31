@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
   DEMO_READ_ONLY_NOTE,
   EVAL_CORPUS,
@@ -91,6 +91,10 @@ beforeEach(() => {
   schedulePatch.mockResolvedValue({ data: {} });
   plannedPost.mockResolvedValue({ data: plannedRun() });
   plannedDelete.mockResolvedValue({ data: { ok: true } });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 test("shows the stored time and who last changed it", async () => {
@@ -298,6 +302,12 @@ test("offers re-timing as cancel and plan again", async () => {
 });
 
 test("plans a run at a picked time, against the chosen corpus", async () => {
+  // Only `Date` is faked, so `userEvent`'s own timers still run. Saturday
+  // 31 October 2026 ends its month's last week, so the calendar opens on a
+  // grid without tomorrow in it: on the real 31 October, with no clock pinned
+  // and no month turned, the day lookup found nothing and the test threw.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 9, 31, 12));
   const user = userEvent.setup();
   renderPanel();
 
@@ -305,10 +315,11 @@ test("plans a run at a picked time, against the chosen corpus", async () => {
   // `<label for>` pointing at a button *is* that button's accessible name, so
   // the trigger is named "Date" whatever it currently reads.
   await user.click(await screen.findByLabelText("Date"));
+  await user.click(screen.getByRole("button", { name: /next month/i }));
   // The day button by the full date the calendar writes into `data-day`, not
   // by its number: the grid also shows the neighbouring months' days, so on
   // the 29th "30" matched both 30 August and 30 September and the test threw.
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const tomorrow = new Date(2026, 10, 1);
   const day = document.querySelector<HTMLButtonElement>(
     `button[data-day="${tomorrow.toLocaleDateString()}"]`,
   );
@@ -331,6 +342,9 @@ test("plans a run at a picked time, against the chosen corpus", async () => {
   // specific afternoon has chosen it.
   expect(body.corpus).toBe(EVAL_CORPUS.live);
   const at = new Date(body.runAt);
+  expect(at.getFullYear()).toBe(tomorrow.getFullYear());
+  expect(at.getMonth()).toBe(tomorrow.getMonth());
+  expect(at.getDate()).toBe(tomorrow.getDate());
   expect(at.getHours()).toBe(14);
   expect(at.getMinutes()).toBe(30);
   expect(at.getTime()).toBeGreaterThan(Date.now());

@@ -363,7 +363,10 @@ function Header({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-lg font-semibold">Project map</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold">Project map</h1>
+          <Badge variant="outline">dev only</Badge>
+        </div>
         <p className="text-sm text-muted-foreground">
           {graph.totals.modules} modules and {graph.totals.edges} imports, read
           from source {new Date(graph.generatedAt).toLocaleTimeString()} in{" "}
@@ -371,7 +374,6 @@ function Header({
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <Badge variant="outline">dev only</Badge>
         <Button
           variant="outline"
           size="sm"

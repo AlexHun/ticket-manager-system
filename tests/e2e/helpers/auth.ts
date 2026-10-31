@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import type { UserRole } from "@ticket/shared";
+import { ROUTE } from "../../../apps/web/src/lib/routes";
 import { waitForInvitationLink } from "./db";
 
 export const CREDENTIALS: Record<
@@ -20,7 +21,7 @@ export const CREDENTIALS: Record<
 export async function signIn(page: Page, role: UserRole): Promise<void> {
   const { email, password } = CREDENTIALS[role];
 
-  await page.goto("/login");
+  await page.goto(ROUTE.login.path);
 
   const emailInput = page.getByLabel("Email");
   const passwordInput = page.getByLabel("Password");
@@ -33,7 +34,7 @@ export async function signIn(page: Page, role: UserRole): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
 
   // Wait until the app leaves /login — the route guard will redirect to /
-  await page.waitForURL("/");
+  await page.waitForURL(ROUTE.dashboard.path);
 }
 
 /**
@@ -64,5 +65,5 @@ export async function acceptInvitation(
   await page.getByLabel("Confirm password").fill(password);
   await page.getByRole("button", { name: "Set password" }).click();
 
-  await page.waitForURL("/login");
+  await page.waitForURL(ROUTE.login.path);
 }

@@ -115,7 +115,10 @@ export function UsagePage() {
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold">Usage</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold">Usage</h1>
+            <Badge variant="outline">dev only</Badge>
+          </div>
           <p className="max-w-prose text-sm text-muted-foreground">
             What each issue was forecast to cost and what it actually cost, in
             output tokens, read off this machine&rsquo;s Claude Code
@@ -124,7 +127,6 @@ export function UsagePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline">dev only</Badge>
           <Button onClick={runScan} disabled={scan.isPending}>
             {scan.isPending ? (
               <Loader2 aria-hidden="true" className="animate-spin" />

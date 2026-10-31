@@ -12,7 +12,11 @@ import {
   renderedMarkName,
   timeToDataMeasureName,
 } from "../../apps/web/src/lib/route-timing";
-import { ROUTE, type RouteTimingKey } from "../../apps/web/src/lib/routes";
+import {
+  ROUTE,
+  type RouteTimingKey,
+  ticketDetailPath,
+} from "../../apps/web/src/lib/routes";
 
 /**
  * Slice 5 of `docs/plans/route-level-data-prefetching.md`: the three routes the
@@ -125,7 +129,7 @@ test.describe("route timing instrumentation", () => {
     await page.goto(ROUTE.tickets.path);
 
     await page.getByRole("row").nth(1).getByRole("link").click();
-    await page.waitForURL(/\/tickets\/\d+$/);
+    await page.waitForURL(new RegExp(`${ticketDetailPath(String.raw`\d+`)}$`));
 
     await expectBracketed(page, ROUTE.ticketDetail.timingKey);
   });

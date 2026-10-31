@@ -6,6 +6,7 @@ import {
   USER_ROLE,
 } from "@ticket/shared";
 import { CREDENTIALS, signIn } from "./helpers/auth";
+import { ROUTE } from "../../apps/web/src/lib/routes";
 import { resetDashboardLayout } from "./helpers/db";
 // Plain data modules only (no "@/..." aliases inside them), so importing
 // straight from the web app's source is safe here the same way
@@ -328,7 +329,7 @@ test.describe("Dashboard panel customization", () => {
 
     // Sign out and back in as the same user, same tab: still customized.
     await page.getByRole("button", { name: "Sign out" }).click();
-    await expect(page).toHaveURL("/login");
+    await expect(page).toHaveURL(ROUTE.login.path);
     await signIn(page, USER_ROLE.agent);
     await enterCustomizeMode(page);
     expect(await panelOrder(page)).toEqual(expectedAgentOrder);
@@ -346,7 +347,7 @@ test.describe("Dashboard panel customization", () => {
       // A different signed-in user, in the same fresh context, still sees
       // the untouched default — one user's customization doesn't leak.
       await freshPage.getByRole("button", { name: "Sign out" }).click();
-      await expect(freshPage).toHaveURL("/login");
+      await expect(freshPage).toHaveURL(ROUTE.login.path);
       await signIn(freshPage, USER_ROLE.admin);
       await enterCustomizeMode(freshPage);
       expect(await panelOrder(freshPage)).toEqual(
@@ -473,7 +474,7 @@ test.describe("Dashboard prefetching", () => {
     // signing in already primed these three entries, and a `staleTime` of 30s
     // would have the loader resolve them from cache with no request at all. A
     // new document is a new QueryClient.
-    await page.goto("/tickets");
+    await page.goto(ROUTE.tickets.path);
     await expect(page.getByRole("heading", { name: "Tickets" })).toBeVisible();
 
     // Hold all three responses, which widens the gap between "navigation
@@ -506,14 +507,14 @@ test.describe("Dashboard prefetching", () => {
     // screen — the router is holding the navigation until they answer, so the
     // component that used to start them has not mounted and there is no
     // skeleton anywhere.
-    await expect(page).toHaveURL("/tickets");
+    await expect(page).toHaveURL(ROUTE.tickets.path);
     await expect(page.getByLabel("Loading dashboard")).toHaveCount(0);
 
     release();
 
     // The page it hands over to is the populated one — one transition, not a
     // skeleton in between.
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL(ROUTE.dashboard.path);
     await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
     expect(await skeletonWasSeen(page)).toBe(false);
   });
@@ -527,7 +528,7 @@ test.describe("Dashboard prefetching", () => {
     // script rather than an `evaluate`, because the document this watches does
     // not exist yet.
     await page.addInitScript(WATCH_FOR_SKELETON);
-    await page.goto("/?range=7d");
+    await page.goto(`${ROUTE.dashboard.path}?range=7d`);
 
     await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
     // The loader and the page agreed on the range, not just on the endpoint:
@@ -552,7 +553,7 @@ test.describe("Dashboard prefetching", () => {
     });
 
     await page.getByLabel("Last 7 days").click();
-    await expect(page).toHaveURL("/?range=7d");
+    await expect(page).toHaveURL(`${ROUTE.dashboard.path}?range=7d`);
     await expect(page.getByText(POPULATED, { exact: true })).toBeVisible();
 
     // The range change re-runs the loader *and* re-renders the page onto two
