@@ -184,6 +184,18 @@ const SHARES = {
  * assertion waits this long and no longer, so a slower stream fails here.
  */
 const R4_MS = 5_000;
+/**
+ * The chain tests' first wait after `page.goto`, which is on the stream's
+ * first reading rather than on a change, so R4 does not bound it. At the
+ * default 5s, "never uses the desk's words" failed on a first run and passed
+ * on rerun, alone and in the whole file, as other chain tests had (#620). A
+ * cold first reading of a working machine's transcripts takes about 25s
+ * (dev-tools.md, #618). On 2026-10-31 the fixture's first card came
+ * 0.9-1.1s after the page loaded, over seven runs on Windows each on a
+ * freshly started server, so the allowance costs a passing run nothing.
+ * `MANY_READ_MS` is the fold test's allowance for its first reading.
+ */
+const FIRST_READ_MS = 30_000;
 
 const SESSION_A_FILE = "session-a.jsonl";
 const SUBAGENTS = `${TRANSCRIPT_WORKING_DIR}/session-a/subagents`;
@@ -1028,7 +1040,7 @@ test.describe("dev tools: Sessions", () => {
     await page.goto(ROUTE.devSessions.path);
 
     const chain = page.locator(`[data-chain="${CONDUCTOR}"]`);
-    await expect(chain).toContainText(CHAIN_PLAN);
+    await expect(chain).toContainText(CHAIN_PLAN, { timeout: FIRST_READ_MS });
     // Work left, so it starts open, its count beside the heading (#613).
     await expect(chain.locator("[data-chain-merged]")).toHaveText(
       chainMerged(1, 4),
@@ -1067,6 +1079,7 @@ test.describe("dev tools: Sessions", () => {
     const chain = page.locator(`[data-chain="${CONDUCTOR}"]`);
     await expect(chain.locator("[data-chain-unknown]")).toContainText(
       CHAIN_ORDER_UNKNOWN,
+      { timeout: FIRST_READ_MS },
     );
     await expect(chain.locator("[data-chain-issue]")).toHaveCount(0);
     const workers = chain
@@ -1092,6 +1105,7 @@ test.describe("dev tools: Sessions", () => {
     const flint = own(childOf(cardIn(group, CONDUCTOR), FLINT));
     await expect(flint.locator('[data-session-fact="Step"]')).toHaveText(
       stepLabel(IMPLEMENT_STEP.ship),
+      { timeout: FIRST_READ_MS },
     );
     await expectTools(flint, FLINT_TOOLS);
 
@@ -1193,6 +1207,7 @@ test.describe("dev tools: Sessions", () => {
     const chain = page.locator(`[data-chain="${CONDUCTOR}"]`);
     await expect(chain.locator("[data-chain-merged]")).toHaveText(
       chainMerged(4, 4),
+      { timeout: FIRST_READ_MS },
     );
     await expect(chain.locator("[data-chain-issue]")).toHaveCount(0);
 
@@ -1278,7 +1293,7 @@ test.describe("dev tools: Sessions", () => {
     writeConductor();
     writeGhChainIssuesFixture();
     await page.goto(ROUTE.devSessions.path);
-    await expect(sessionAIn101(page)).toBeVisible();
+    await expect(sessionAIn101(page)).toBeVisible({ timeout: FIRST_READ_MS });
     await expect(page.locator("[data-chain-issue]")).toHaveCount(4);
 
     const words = await page.getByRole("main").evaluate((main) => {
