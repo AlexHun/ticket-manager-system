@@ -13,7 +13,7 @@ import {
 import { repositoryFreeEnv } from "@ticket/repo-scan/git-env";
 import { basicAuthPlugin } from "./dev/basic-auth.ts";
 import { devToolsPlugin } from "./dev/plugin.ts";
-import { releasePlugin } from "./release.ts";
+import { deployedCommit, releasePlugin } from "./release.ts";
 import {
   apiOriginFrom,
   cspMetaPolicy,
@@ -67,7 +67,10 @@ function releaseName(): string {
     readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8"),
   ) as { version: string };
 
-  const commit = git("rev-parse", "--short", "HEAD");
+  const commit = deployedCommit(
+    git("rev-parse", "--short", "HEAD"),
+    process.env,
+  );
   if (!commit) return `web@${version}`;
 
   // No pathspec, so this is the whole repo rather than this workspace — right,

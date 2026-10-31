@@ -135,23 +135,27 @@ describe("AppErrorBoundary after a deploy", () => {
   });
 });
 
+/** A router whose one page's chunk is gone, as after a deploy. */
+function staleChunkRouter() {
+  return createMemoryRouter([
+    {
+      ErrorBoundary: RethrowRouteError,
+      children: [
+        {
+          path: "/",
+          lazy: () =>
+            Promise.reject(
+              new TypeError("Failed to fetch dynamically imported module"),
+            ),
+        },
+      ],
+    },
+  ]);
+}
+
 describe("RethrowRouteError", () => {
   test("hands a route's failed import to this boundary rather than the router's page", async () => {
-    const router = createMemoryRouter([
-      {
-        ErrorBoundary: RethrowRouteError,
-        children: [
-          {
-            path: "/",
-            lazy: () =>
-              Promise.reject(
-                new TypeError("Failed to fetch dynamically imported module"),
-              ),
-          },
-        ],
-      },
-    ]);
-    renderBoundary(<RouterProvider router={router} />);
+    renderBoundary(<RouterProvider router={staleChunkRouter()} />);
 
     expect(
       await screen.findByText("Couldn't show this page"),
@@ -159,6 +163,31 @@ describe("RethrowRouteError", () => {
     expect(
       screen.queryByText("Unexpected Application Error!"),
     ).not.toBeInTheDocument();
+  });
+
+  test("makes Try again a reload, since the router still holds the error", async () => {
+    renderBoundary(<RouterProvider router={staleChunkRouter()} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Try again" }),
+    );
+
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("leaves Try again a re-render for an error outside the router", async () => {
+    let broken = true;
+    function BrokenOnce() {
+      if (broken) throw new Error("render failed");
+      return <p>Recovered</p>;
+    }
+    renderBoundary(<BrokenOnce />);
+    broken = false;
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(screen.getByText("Recovered")).toBeInTheDocument();
+    expect(reload).not.toHaveBeenCalled();
   });
 
   test("is the root route's error boundary", () => {

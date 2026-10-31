@@ -51,3 +51,22 @@ export function releaseMiddleware(release: string): Connect.NextHandleFunction {
 function releaseBody(release: string): string {
   return JSON.stringify({ release } satisfies ReleaseFile);
 }
+
+/**
+ * The commit `releaseName()` in `vite.config.ts` stamps: git's short sha, or
+ * where git cannot answer, Railway's `RAILWAY_GIT_COMMIT_SHA` cut to the same
+ * length.
+ *
+ * The develop image has neither `.git` nor `git` (`Dockerfile.dev`), so without
+ * the fallback its release was `web@<version>` alone. A merge's deploy carries
+ * the version of the bump before it, so the tab the deploy before left open saw
+ * no new release (#452). The dev server reads the variable at runtime, where
+ * Railway sets it. A production build sees it only if `apps/web/Dockerfile`
+ * passes it in as an `ARG`, which it does not today.
+ */
+export function deployedCommit(
+  gitSha: string,
+  env: Record<string, string | undefined>,
+): string {
+  return gitSha || (env.RAILWAY_GIT_COMMIT_SHA ?? "").slice(0, 7);
+}

@@ -1,14 +1,16 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
-import { isReplaced, releaseQueryOptions } from "@/lib/release-check";
+import {
+  RELEASE_CHECK_INTERVAL_MS,
+  isReplaced,
+  releaseQueryOptions,
+} from "@/lib/release-check";
 
 export const NEW_RELEASE_TOAST = {
   title: "A new version was deployed",
   description: "Reload the page to use it.",
   action: "Reload",
-  /** How often an open, visible tab asks between focuses. */
-  intervalMs: 5 * 60_000,
 } as const;
 
 /**
@@ -27,12 +29,12 @@ export const NEW_RELEASE_TOAST = {
 export function NewReleaseToast() {
   const { data: served } = useQuery({
     ...releaseQueryOptions(),
-    refetchInterval: NEW_RELEASE_TOAST.intervalMs,
+    refetchInterval: RELEASE_CHECK_INTERVAL_MS,
   });
   const told = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!served || !isReplaced(served) || told.current === served) return;
+    if (!isReplaced(served) || told.current === served) return;
     told.current = served;
     toast.info(NEW_RELEASE_TOAST.title, {
       id: "new-release",

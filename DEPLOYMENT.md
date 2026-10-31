@@ -96,7 +96,10 @@ variable into the build. Changing one requires a **rebuild**, not a redeploy.
 
 `VITE_SENTRY_RELEASE` is worth setting because `.git` is excluded from the build
 context, so `releaseName()` in `vite.config.ts` cannot ask git for a commit and
-falls back to a version with no sha in it.
+falls back to a version with no sha in it. The develop service's dev server does
+not need it: it reads Railway's `RAILWAY_GIT_COMMIT_SHA` at runtime instead
+(`deployedCommit` in `apps/web/release.ts`), so each develop deploy is a new
+release to the tabs it leaves open (#452).
 
 `web` needs one **runtime** variable as well, which is not a Vite value and is
 not baked into the bundle:

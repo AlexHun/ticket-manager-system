@@ -45,7 +45,7 @@ import {
 export function AppErrorBoundary({ children }: { children: ReactNode }) {
   return (
     <Sentry.ErrorBoundary
-      fallback={({ resetError }) => (
+      fallback={({ error, resetError }) => (
         <div className="flex min-h-svh items-center justify-center p-6">
           <ReloadIfReplaced />
           <Card className="w-full max-w-md">
@@ -57,7 +57,16 @@ export function AppErrorBoundary({ children }: { children: ReactNode }) {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex gap-2">
-              <Button onClick={resetError}>Try again</Button>
+              <Button
+                onClick={() => {
+                  // A route's error lives on in the router's own state, so a
+                  // re-render throws it again; only a reload retries it.
+                  if (isRouteError(error)) window.location.reload();
+                  else resetError();
+                }}
+              >
+                Try again
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -89,7 +98,7 @@ function ReloadIfReplaced() {
   const { data: served } = useQuery({ ...releaseQueryOptions(), staleTime: 0 });
 
   useEffect(() => {
-    if (served && isReplaced(served)) reloadOnceFor(served);
+    if (isReplaced(served)) reloadOnceFor(served);
   }, [served]);
 
   return null;
@@ -105,5 +114,14 @@ function ReloadIfReplaced() {
  * from an error boundary's own render passes to the boundary above it.
  */
 export function RethrowRouteError(): never {
-  throw useRouteError();
+  const error = useRouteError();
+  if (typeof error === "object" && error !== null) routeErrors.add(error);
+  throw error;
+}
+
+/** What `RethrowRouteError` passed up, so the fallback can tell a route's error. */
+const routeErrors = new WeakSet<object>();
+
+function isRouteError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && routeErrors.has(error);
 }

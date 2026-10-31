@@ -3,7 +3,12 @@ import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
+import type { QueryClient } from "@tanstack/react-query";
 import { RELEASE_PATH } from "@/lib/release-protocol";
+import {
+  RELEASE_CHECK_INTERVAL_MS,
+  releaseQueryOptions,
+} from "@/lib/release-check";
 import { NEW_RELEASE_TOAST, NewReleaseToast } from "./NewReleaseToast";
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
@@ -13,6 +18,16 @@ const DEPLOYED = "web@0.1.301+bbbbbbb";
 
 function renderToast() {
   return renderRoutes([{ path: "/", element: <NewReleaseToast /> }]);
+}
+
+/**
+ * How many answers the release query has settled on, failures included: a
+ * request counted is not yet a request answered, so an absence is asserted
+ * only once the answer it is about has landed.
+ */
+function answers(client: QueryClient): number {
+  const state = client.getQueryState(releaseQueryOptions().queryKey);
+  return (state?.dataUpdateCount ?? 0) + (state?.errorUpdateCount ?? 0);
 }
 
 /**
@@ -79,11 +94,24 @@ describe("NewReleaseToast", () => {
 
   test("says nothing while the server runs this tab's release", async () => {
     releaseGet.mockResolvedValue({ data: { release: RUNNING } });
-    renderToast();
+    const { queryClient } = renderToast();
 
-    await waitFor(() => expect(releaseGet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(answers(queryClient)).toBe(1));
     await refocus();
-    await waitFor(() => expect(releaseGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(answers(queryClient)).toBe(2));
+    expect(toast.info).not.toHaveBeenCalled();
+  });
+
+  test("says nothing when the bundle carries no release to compare", async () => {
+    vi.stubEnv("VITE_SENTRY_RELEASE", "");
+    releaseGet.mockResolvedValue({ data: { release: DEPLOYED } });
+    const { queryClient } = renderToast();
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData(releaseQueryOptions().queryKey)).toBe(
+        DEPLOYED,
+      ),
+    );
     expect(toast.info).not.toHaveBeenCalled();
   });
 
@@ -92,18 +120,18 @@ describe("NewReleaseToast", () => {
     ["answers with the SPA's HTML", () => ({ data: "<!doctype html>" })],
   ])("says nothing when the server %s", async (_name, respond) => {
     releaseGet.mockImplementation(respond);
-    renderToast();
+    const { queryClient } = renderToast();
 
-    await waitFor(() => expect(releaseGet).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(answers(queryClient)).toBe(1));
     await refocus();
-    await waitFor(() => expect(releaseGet).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(answers(queryClient)).toBe(2));
     expect(toast.info).not.toHaveBeenCalled();
   });
 
   test("notices a deploy when the tab comes back, and tells it once", async () => {
     releaseGet.mockResolvedValue({ data: { release: RUNNING } });
-    renderToast();
-    await waitFor(() => expect(releaseGet).toHaveBeenCalledTimes(1));
+    const { queryClient } = renderToast();
+    await waitFor(() => expect(answers(queryClient)).toBe(1));
 
     releaseGet.mockResolvedValue({ data: { release: DEPLOYED } });
     await refocus();
@@ -114,10 +142,10 @@ describe("NewReleaseToast", () => {
     // toast dismissed.
     releaseGet.mockResolvedValue({ data: "<!doctype html>" });
     await refocus();
-    await waitFor(() => expect(releaseGet).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(answers(queryClient)).toBe(3));
     releaseGet.mockResolvedValue({ data: { release: DEPLOYED } });
     await refocus();
-    await waitFor(() => expect(releaseGet).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(answers(queryClient)).toBe(4));
     expect(toast.info).toHaveBeenCalledTimes(1);
   });
 
@@ -130,7 +158,7 @@ describe("NewReleaseToast", () => {
 
       releaseGet.mockResolvedValue({ data: { release: DEPLOYED } });
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(NEW_RELEASE_TOAST.intervalMs);
+        await vi.advanceTimersByTimeAsync(RELEASE_CHECK_INTERVAL_MS);
       });
       await waitFor(() => expect(toast.info).toHaveBeenCalledTimes(1));
     } finally {

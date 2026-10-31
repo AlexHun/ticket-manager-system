@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { releaseMiddleware, releasePlugin } from "./release.ts";
+import { deployedCommit, releaseMiddleware, releasePlugin } from "./release.ts";
 import { RELEASE_PATH, readRelease } from "./src/lib/release-protocol.ts";
 
 /**
@@ -48,7 +48,6 @@ describe("releasePlugin on a build", () => {
       { type: string; fileName: string; source: string },
     ];
     expect(asset.type).toBe("asset");
-    expect(asset.fileName).toBe("version.json");
     expect(`/${asset.fileName}`).toBe(RELEASE_PATH);
     expect(readRelease(JSON.parse(asset.source))).toBe(RELEASE);
   });
@@ -64,11 +63,36 @@ describe("releaseMiddleware on the dev server", () => {
     expect(readRelease(JSON.parse(res.body))).toBe(RELEASE);
   });
 
+  it("answers a HEAD too", () => {
+    const { res, next } = serve("HEAD");
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+
   it("passes anything but a GET or HEAD on", () => {
     const { res, next } = serve("POST");
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.body).toBe("");
+  });
+});
+
+describe("deployedCommit", () => {
+  it("takes git's answer when there is one", () => {
+    expect(
+      deployedCommit("abc1234", { RAILWAY_GIT_COMMIT_SHA: "fedcba9876543210" }),
+    ).toBe("abc1234");
+  });
+
+  it("falls back to Railway's commit, shortened, where the image has no git", () => {
+    expect(
+      deployedCommit("", { RAILWAY_GIT_COMMIT_SHA: "fedcba9876543210" }),
+    ).toBe("fedcba9");
+  });
+
+  it("names no commit when neither knows one", () => {
+    expect(deployedCommit("", {})).toBe("");
   });
 });
 
