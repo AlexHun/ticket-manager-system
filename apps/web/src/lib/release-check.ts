@@ -28,11 +28,30 @@ export function releaseQueryOptions() {
 /**
  * Whether the server runs a release other than the one this tab loaded.
  *
- * A server that cannot say, or a bundle with no release stamped in it, is
- * never a new release: a false "reload" costs a reload, and a missed one costs
- * what a reload already fixed before this existed.
+ * A server that cannot say, or a bundle with no release stamped in it, never
+ * counts as replaced: the tab then behaves as it did before #452.
  */
 export function isReplaced(served: string | null | undefined): boolean {
   const running = import.meta.env.VITE_SENTRY_RELEASE;
   return Boolean(running) && Boolean(served) && served !== running;
+}
+
+/** The `sessionStorage` key holding the release this tab last reloaded for. */
+const RELOADED_FOR_KEY = "reloaded-for-release";
+
+/**
+ * Reloads the page for `served`, unless this tab already reloaded for it.
+ *
+ * Once per release, so a crash the new release has too stays on its error
+ * screen instead of reloading forever. Storage that cannot be read or written
+ * (a locked-down browser) means no reload, for the same reason.
+ */
+export function reloadOnceFor(served: string): void {
+  try {
+    if (sessionStorage.getItem(RELOADED_FOR_KEY) === served) return;
+    sessionStorage.setItem(RELOADED_FOR_KEY, served);
+  } catch {
+    return;
+  }
+  window.location.reload();
 }

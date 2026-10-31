@@ -1,4 +1,5 @@
 import { createBrowserRouter, type RouteObject } from "react-router-dom";
+import { RethrowRouteError } from "@/components/AppErrorBoundary";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ADMIN_SCREEN } from "@ticket/shared";
 import { AdminScreenRoute, adminScreen } from "@/components/AdminScreenRoute";
@@ -58,7 +59,8 @@ const devRoutes: RouteObject[] = import.meta.env.DEV
     ]
   : [];
 
-export const router = createBrowserRouter([
+/** Exported for `AppErrorBoundary.test.tsx`, which checks the root's boundary. */
+export const routes: RouteObject[] = [
   {
     /**
      * Pathless — every route below is a child of this one, so it always
@@ -73,6 +75,12 @@ export const router = createBrowserRouter([
      * `AppShell`'s own inner `Suspense` boundary below.
      */
     HydrateFallback: RouteFallback,
+    /**
+     * Hands anything a route throws, a failed lazy import included, to
+     * `AppErrorBoundary` above `RouterProvider`, rather than letting the
+     * router render its own error page.
+     */
+    ErrorBoundary: RethrowRouteError,
     /**
      * A pass-through that renders nothing but an `<Outlet>`: it is here to
      * watch navigations start, and this is the only route in the tree that is
@@ -281,4 +289,6 @@ export const router = createBrowserRouter([
       ...devRoutes,
     ],
   },
-]);
+];
+
+export const router = createBrowserRouter(routes);
