@@ -1213,5 +1213,15 @@
     "version": "0.1.303",
     "date": "2026-11-01",
     "title": "Settle the review's findings on format:changed"
+  },
+  {
+    "version": "0.1.304",
+    "date": "2026-11-01",
+    "title": "Take no optional index lock in background git status (#631)"
+  },
+  {
+    "version": "0.1.304",
+    "date": "2026-11-01",
+    "title": "Settle the review's findings on the index.lock fix (#631)"
   }
 ]
