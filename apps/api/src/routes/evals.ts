@@ -360,12 +360,15 @@ const COMPARISON_COLUMNS = {
  * Exported as a type so `evals.test.ts` can build one as a value.
  */
 export interface SeriesRun extends PriorRun {
-  results: {
-    caseId: string;
-    matches: number;
-    repeats: number;
-    abandoned: number;
-  }[];
+  results: SeriesSplit[];
+}
+
+/** One case's split on a series run, its unanswered repeats included. */
+export interface SeriesSplit {
+  caseId: string;
+  matches: number;
+  repeats: number;
+  abandoned: number;
 }
 
 /** What a series run is read with — counters and splits, no verdicts, no Json. */
@@ -531,25 +534,23 @@ export function historyFrom(
  * matches would read an outage as a fall: 5/5, then three of five answered
  * and all three matched, is two down and the provider's doing. The fall is
  * what the latest run's answered repeats would have matched at the week-earlier
- * rate, less what they did match, so a run with one answered repeat can show a
- * fall of one and never two. A run that answered none says nothing, and is no
- * flag either way.
+ * rate, less what they did match.
+ *
+ * No flag when either run left most of the case's repeats unanswered: what is
+ * left is too few to say the case used to match or has stopped, and scaled
+ * across the other run's answered repeats it can make a fall of two out of a
+ * single repeat — 1 of 1 answered a week earlier against 3/5 tonight.
  */
 export function fallFrom(
-  result: {
-    caseId: string;
-    matches: number;
-    repeats: number;
-    abandoned: number;
-  },
+  result: SeriesSplit,
   weekEarlier: SeriesRun | null,
 ): EvalCaseFall | null {
   const before = weekEarlier?.results.find((r) => r.caseId === result.caseId);
   if (!weekEarlier || !before) return null;
+  if (mostlyUnanswered(before) || mostlyUnanswered(result)) return null;
 
   const answeredBefore = before.repeats - before.abandoned;
   const answered = result.repeats - result.abandoned;
-  if (answeredBefore === 0 || answered === 0) return null;
   // `before.matches * answered / answeredBefore - result.matches`, multiplied
   // through by `answeredBefore` so the comparison stays in whole numbers.
   const fall = before.matches * answered - result.matches * answeredBefore;
@@ -562,6 +563,11 @@ export function fallFrom(
     repeats: before.repeats,
     abandoned: before.abandoned,
   };
+}
+
+/** Whether more of a split's repeats went unanswered than were answered. */
+function mostlyUnanswered(split: SeriesSplit): boolean {
+  return split.abandoned > split.repeats - split.abandoned;
 }
 
 /**

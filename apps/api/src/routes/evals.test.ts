@@ -1842,7 +1842,7 @@ describe("fallFrom", () => {
     return seriesValue(1, sept(1), { results: [split(matches, abandoned)] });
   }
 
-  test("carries the week-earlier split when the case fell by two or more", () => {
+  test("carries the week-earlier split when every repeat was answered and the case fell by two or more", () => {
     expect(fallFrom(split(3), weekEarlier())).toEqual({
       runId: 1,
       startedAt: sept(1).toISOString(),
@@ -1889,10 +1889,19 @@ describe("fallFrom", () => {
     });
   });
 
-  test("does not flag one miss among the answered repeats, however few", () => {
-    // One answered, and missed: a single repeat is one miss, never two.
-    expect(fallFrom(split(0, 4), weekEarlier())).toBeNull();
+  test("does not flag one miss among the answered repeats", () => {
     // Three answered, two matched.
     expect(fallFrom(split(2, 2), weekEarlier())).toBeNull();
+  });
+
+  test("is null when either run left the case mostly unanswered", () => {
+    // Each of these is a fall of two or more scaled to tonight's answered
+    // repeats, read off one or two answered repeats on one side.
+    // Two answered tonight, both missed.
+    expect(fallFrom(split(0, 3), weekEarlier())).toBeNull();
+    // One answered a week ago, and matched; 3/5 tonight, all answered.
+    expect(fallFrom(split(3), weekEarlier(1, 4))).toBeNull();
+    // Two answered a week ago, both matched.
+    expect(fallFrom(split(3), weekEarlier(2, 3))).toBeNull();
   });
 });

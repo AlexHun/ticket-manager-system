@@ -78,13 +78,14 @@ export interface EvalCaseSplit {
  *
  * The week-earlier run is the latest completed run on the same corpus that
  * started at least seven days before this one. Named on the row, run and date,
- * because "down from 5/5" is a claim somebody will want to go and check.
+ * because a fall from 5/5 is a claim somebody will want to go and check.
  */
 export interface EvalCaseFall extends EvalCaseSplit {
   startedAt: string;
   /**
-   * Repeats that run left unanswered (#686), so "down from 3/5" can say the
-   * other two were the provider's and not misses.
+   * Repeats that run left unanswered (#686), so the page can draw its split
+   * over the answered repeats the flag compares, and say how many were the
+   * provider's rather than misses.
    */
   abandoned: number;
 }

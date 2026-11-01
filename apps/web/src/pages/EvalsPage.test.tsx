@@ -1500,7 +1500,7 @@ describe("a case's recent history (#607)", () => {
 
     expect(
       screen.getByText(
-        "Down from 3/5, 2 unanswered, a week earlier (run 3, 2 Sep 2026)",
+        "Down from 3 of 3 answered a week earlier (2 unanswered; run 3, 2 Sep 2026)",
       ),
     ).toBeInTheDocument();
   });
