@@ -243,14 +243,14 @@ function joinIssues(
  * **No source that cannot be read makes this throw.** A missing directory is
  * the ordinary state of a machine that has never run Claude Code in this
  * project, and of CI; a 500 from the middleware would read as the page being
- * broken rather than as the honest
- * "there is nothing here". A `gh` that cannot answer is smaller still: it costs
- * three columns, not the page. Both are reported as warnings beside whatever
- * could be read, the way the project map surfaces what its scan could not
- * parse. Since #420 so is a history that cannot be read: the scan reports the
- * transcripts on disk alone, beside a warning of the history's own, and never
- * writes over the file. A deleted one needs nothing — the store creates a
- * fresh file and this scan fills it from what is on disk.
+ * broken rather than as the honest "there is nothing here". A `gh` that
+ * cannot answer is smaller still: it costs three columns, not the page. Both
+ * are reported as warnings beside whatever could be read, the way the project
+ * map surfaces what its scan could not parse. Since #420 so is a history that
+ * cannot be read: the scan reports the transcripts on disk alone, beside a
+ * warning of the history's own, and never writes over the file. A deleted one
+ * needs nothing — the store creates a fresh file and this scan fills it from
+ * what is on disk.
  *
  * **Each warning names its source** (#289). They were bare strings, so the only
  * way to tell an unreadable directory from an unavailable listing was to match

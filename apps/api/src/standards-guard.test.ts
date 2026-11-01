@@ -470,7 +470,8 @@ function textFiles(): FileContents {
 const COMMENT_WIDTH = 100;
 /** A line naming a URL may run past it: a link is not broken to fit. */
 const NAMES_URL = /https?:\/\//;
-/** Every tracked TypeScript and JavaScript file, `.claude/hooks/` included. */
+/** Every tracked TypeScript and JavaScript file, the scripts under `.claude/`
+ *  included. */
 const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
 
 /** Every tracked source file, keyed by repo-relative path. */
@@ -774,7 +775,7 @@ const CONFIG_RULES: ConfigRule[] = [
       {
         "apps/api/src/a.ts": `${commentOf(COMMENT_WIDTH + 1)}\nconst a = 1;\n`,
       },
-      // A doc-comment's middle line, in CRLF, the shape #644 sent back.
+      // A doc-comment's middle line (#644's shape), in CRLF.
       {
         "packages/shared/src/b.ts": `/**\r\n * ${"x".repeat(COMMENT_WIDTH)}\r\n */\r\n`,
       },
@@ -828,7 +829,8 @@ test.skipIf(partialCheckout)(
 test.skipIf(partialCheckout)(
   "the comment-width rule reads the tree it means to",
   () => {
-    // An empty list would pass every file it did not read.
+    // An empty list would pass every file it did not read. 629 when written
+    // (2026-11-01); the floor only has to rule out an empty or partial read.
     const files = Object.keys(sourceFiles());
     expect(files.length).toBeGreaterThan(500);
     expect(files).toContain("apps/api/src/index.ts");
