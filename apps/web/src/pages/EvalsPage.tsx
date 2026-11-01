@@ -270,12 +270,12 @@ function trailingLabel(trailing: EvalTrailingMetric): string {
  * text node for it rather than one per piece (#710).
  */
 function fellLabel(fell: EvalCaseFall): string {
-  const split =
-    fell.abandoned > 0
-      ? `${fell.matches} of ${fell.repeats - fell.abandoned} answered`
-      : `${fell.matches}/${fell.repeats}`;
-  const unanswered = fell.abandoned > 0 ? `${fell.abandoned} unanswered; ` : "";
-  return `Down from ${split} a week earlier (${unanswered}run ${fell.runId}, ${formatDateRange(new Date(fell.startedAt))})`;
+  const run = `run ${fell.runId}, ${formatDateRange(new Date(fell.startedAt))}`;
+  if (fell.abandoned > 0) {
+    const answered = fell.repeats - fell.abandoned;
+    return `Down from ${fell.matches} of ${answered} answered a week earlier (${fell.abandoned} unanswered; ${run})`;
+  }
+  return `Down from ${fell.matches}/${fell.repeats} a week earlier (${run})`;
 }
 
 /**

@@ -1519,7 +1519,7 @@ describe("the cost of opening a case table (#710)", () => {
   /**
    * Opening a run's table inserts every row at once, and the browser pays for
    * each node it adds. JSX splits `{a} of {b}` into one text node per piece, and
-   * the history cell alone was five per run on each of thirty-six rows, so a
+   * the history cell alone drew six for each run it lists, on every row, so a
    * string a row draws is built before it reaches the DOM, as one node.
    */
   test("draws no element of a case row with two text nodes side by side", async () => {
@@ -1529,9 +1529,10 @@ describe("the cost of opening a case table (#710)", () => {
         runs: [
           makeRun({
             results: [
-              // Every branch a row can draw: a payload that escaped and was
-              // caught, repeats left unanswered, a misfiling, a history with a
-              // gap, and a fall from a run that left some unanswered.
+              // The branches that put a number into a row's words: a payload
+              // that escaped and was caught, repeats left unanswered, a
+              // misfiling, a history with a gap, and a fall from a run that
+              // left some unanswered.
               makeResult({
                 adversarial: true,
                 matches: 1,
@@ -1581,9 +1582,15 @@ describe("the cost of opening a case table (#710)", () => {
 
     const table = screen.getByRole("table");
     const [, row] = within(table).getAllByRole("row");
-    // The row's own words first, so an empty or missing row cannot pass.
-    expect(row).toHaveTextContent("5 of 5 on run 5");
-    expect(row).toHaveTextContent("1 escaped");
+    // The row's own words first, so an empty or missing row cannot pass. The
+    // history entry's words span its figure and its screen-reader span, so it
+    // is read from its list item rather than found by exact text.
+    expect(within(row).getByText("1 escaped")).toBeInTheDocument();
+    expect(
+      within(row)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toContain("5 of 5 on run 5");
     const split: string[] = [];
     for (const element of row.querySelectorAll("*")) {
       const nodes = [...element.childNodes];
