@@ -1515,6 +1515,91 @@ describe("a case's recent history (#607)", () => {
   });
 });
 
+describe("the cost of opening a case table (#710)", () => {
+  /**
+   * Opening a run's table inserts every row at once, and the browser pays for
+   * each node it adds. JSX splits `{a} of {b}` into one text node per piece, and
+   * the history cell alone was five per run on each of thirty-six rows, so a
+   * string a row draws is built before it reaches the DOM, as one node.
+   */
+  test("draws no element of a case row with two text nodes side by side", async () => {
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            results: [
+              // Every branch a row can draw: a payload that escaped and was
+              // caught, repeats left unanswered, a misfiling, a history with a
+              // gap, and a fall from a run that left some unanswered.
+              makeResult({
+                adversarial: true,
+                matches: 1,
+                abandoned: 1,
+                caught: 2,
+                escaped: 1,
+                classifyMatches: 4,
+                filed: [
+                  {
+                    category: TICKET_CATEGORY.General,
+                    count: 4,
+                    matched: true,
+                  },
+                  { category: null, count: 1, matched: false },
+                ],
+                reached: [
+                  {
+                    outcome: PIPELINE_OUTCOME.declined,
+                    decline: "notCovered",
+                    count: 4,
+                    matched: true,
+                  },
+                  {
+                    outcome: PIPELINE_OUTCOME.abandoned,
+                    decline: null,
+                    count: 1,
+                    matched: false,
+                  },
+                ],
+                history: [null, { runId: 5, matches: 5, repeats: 5 }],
+                fell: {
+                  runId: 3,
+                  startedAt: "2026-09-02T10:00:00.000Z",
+                  matches: 3,
+                  repeats: 5,
+                  abandoned: 2,
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+    await showCases(user);
+
+    const table = screen.getByRole("table");
+    const [, row] = within(table).getAllByRole("row");
+    // The row's own words first, so an empty or missing row cannot pass.
+    expect(row).toHaveTextContent("5 of 5 on run 5");
+    expect(row).toHaveTextContent("1 escaped");
+    const split: string[] = [];
+    for (const element of row.querySelectorAll("*")) {
+      const nodes = [...element.childNodes];
+      nodes.forEach((node, index) => {
+        const next = nodes[index + 1];
+        if (
+          node.nodeType === Node.TEXT_NODE &&
+          next?.nodeType === Node.TEXT_NODE
+        )
+          split.push(`${node.textContent}|${next.textContent}`);
+      });
+    }
+    expect(split).toEqual([]);
+  });
+});
+
 describe("folding a run", () => {
   /**
    * The page draws twenty runs. A card that is a screenful of metrics, cost,
