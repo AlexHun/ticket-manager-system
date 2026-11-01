@@ -40,9 +40,11 @@ describe("repositoryFreeEnv", () => {
     });
   });
 
-  test("lets a git status leave the index unwritten, so it takes no index.lock (#631)", () => {
+  test("keeps a git status from rewriting the index (#631)", () => {
     // A status that finds stale stat data rewrites the index under
     // index.lock, and one killed while it writes leaves the lock behind.
+    // Five git processes; under memory pressure that can pass bun's 5s
+    // default, as it did for doc-citations (#614).
     const repo = mkdtempSync(join(tmpdir(), "git-env-"));
     try {
       const git = (env: NodeJS.ProcessEnv, ...args: string[]) =>
@@ -84,7 +86,7 @@ describe("repositoryFreeEnv", () => {
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("leaves the environment it was given alone", () => {
     const env = { GIT_DIR: "/elsewhere/.git" };
