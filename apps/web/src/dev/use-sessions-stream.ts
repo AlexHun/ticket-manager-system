@@ -4,6 +4,7 @@ import type {
   SessionsReport,
   SessionsStreamMessage,
 } from "./sessions-protocol";
+import { shareReading } from "./sessions-sharing";
 
 /**
  * Follows this machine's sessions of this repository as they change (#591):
@@ -49,7 +50,10 @@ export function useSessionsStream(): SessionsStreamState {
         return;
       }
       if (message.kind === "report") {
-        setReport(message.report);
+        // What the reading left unchanged keeps its object, so the page's
+        // memoised cards skip it (#689).
+        const next = message.report;
+        setReport((previous) => shareReading(previous, next));
         setProblem(null);
       } else {
         setProblem(message.message);
