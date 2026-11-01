@@ -1178,5 +1178,50 @@
     "version": "0.1.298",
     "date": "2026-10-30",
     "title": "Keep the coding-standards description valid YAML"
+  },
+  {
+    "version": "0.1.301",
+    "date": "2026-10-31",
+    "title": "Spell replace-once's BOM as an escape, not the character"
+  },
+  {
+    "version": "0.1.301",
+    "date": "2026-10-31",
+    "title": "Settle the review's findings on replace-once"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Serve the running release at /version.json"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Offer a reload when a new version is deployed"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Reload a crashed tab once when a new version is out"
+  },
+  {
+    "version": "0.1.302",
+    "date": "2026-10-31",
+    "title": "Settle the review's findings on the new-version reload"
+  },
+  {
+    "version": "0.1.303",
+    "date": "2026-11-01",
+    "title": "Settle the review's findings on format:changed"
+  },
+  {
+    "version": "0.1.304",
+    "date": "2026-11-01",
+    "title": "Take no optional index lock in background git status (#631)"
+  },
+  {
+    "version": "0.1.304",
+    "date": "2026-11-01",
+    "title": "Settle the review's findings on the index.lock fix (#631)"
   }
 ]

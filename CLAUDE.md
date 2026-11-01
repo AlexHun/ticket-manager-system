@@ -59,8 +59,11 @@ which earns a red feedback loop before it theorises.
 
 ## Shell
 
-Run `git`, `gh` and `bun` through PowerShell: on this Windows machine the Bash
-tool has none of them on its path. Write every multi-line message to a file in
+`git`, `gh`, `bun` and `node` run in both shells; `python` is the Store stub,
+and `python -` hangs until the timeout. An edit the Edit tool can't make, bulk
+or in a file not yet read, is `bun scripts/replace-once.ts <file> <pairs.json>`
+(`--revert` undoes it): UTF-8 without a BOM, CRLF kept, nothing written unless
+every pair matches exactly once. Write every multi-line message to a file in
 the scratchpad with the Write tool (`Out-File` adds a BOM) and pass the file —
 `git commit -F`, `gh pr create --body-file`, `gh issue comment --body-file` —
 so quoting never reaches the text. Read `gh` JSON with
@@ -71,7 +74,14 @@ A command that `.claude/settings.json` allows runs in its own call, follow-up
 checks in the next: chained, `gh pr merge` did not match its rule and auto
 mode refused it (#647). `.claude/hooks/block-env-read.mjs` refuses to read or
 write a local env file, which holds live secrets; read its committed example
-template for the names.
+template for the names. An empty `.git/index.lock` is a git killed while it
+wrote the index, most often a background `git status` or working-tree
+`git diff` refreshing stat data (#631); a killed `git add` or `git commit` with
+its lint-staged hook can leave one too. Delete it once `Get-Process git*` finds
+none running. A script, hook or status line that runs either of the first two
+in the background passes `--no-optional-locks`, or
+sets `GIT_OPTIONAL_LOCKS=0` as `repositoryFreeEnv` does for every git spawn
+under `apps/` and `scripts/` (held by `git-spawn-env.test.ts`).
 
 ## Agent skills
 

@@ -31,7 +31,9 @@ try {
 const cwd = input.cwd ?? process.cwd();
 
 const branch = run("git", ["branch", "--show-current"], cwd);
-const status = run("git", ["status", "--short"], cwd);
+// --no-optional-locks: a status killed by the timeout while it refreshes the
+// index would leave .git/index.lock behind (#631).
+const status = run("git", ["--no-optional-locks", "status", "--short"], cwd);
 const pr = run(
   "gh",
   [

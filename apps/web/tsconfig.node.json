@@ -22,6 +22,13 @@
   //
   // `csp.ts` is the policy `vite.config.ts` imports. Typecheck reached it through
   // that import already; it is named here because the lint gate's project
-  // service only finds a file a tsconfig names (#535).
-  "include": ["vite.config.ts", "csp.ts", "dev"]
+  // service only finds a file a tsconfig names (#535). `release.ts` is named for
+  // the same reason, with its test, which nothing imports.
+  "include": [
+    "vite.config.ts",
+    "csp.ts",
+    "release.ts",
+    "release.test.ts",
+    "dev"
+  ]
 }

@@ -30,7 +30,9 @@ const entry = {
   at: new Date().toISOString(),
   input,
   branch: git(["branch", "--show-current"], cwd),
-  status: git(["status", "--porcelain"], cwd)?.split("\n").filter(Boolean) ?? null,
+  // --no-optional-locks: a status killed by the timeout while it refreshes
+  // the index would leave .git/index.lock behind (#631).
+  status: git(["--no-optional-locks", "status", "--porcelain"], cwd)?.split("\n").filter(Boolean) ?? null,
 };
 
 try {
