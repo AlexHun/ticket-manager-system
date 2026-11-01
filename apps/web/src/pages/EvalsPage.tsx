@@ -566,11 +566,15 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             this table looking for, though, since a fall of 5/5 to 0/5 moves the
             headline accuracy by about three points, which is inside a passing
             run. Named run and date, because "down from" is a claim somebody
-            will go and check. */}
+            will go and check. The week-earlier run's unanswered repeats are
+            named too (#686): its split counts them as misses, and the flag
+            does not. */}
         {result.fell && (
           <div className="text-xs font-medium text-status-warning">
-            Down from {result.fell.matches}/{result.fell.repeats} a week earlier
-            (run {result.fell.runId},{" "}
+            Down from {result.fell.matches}/{result.fell.repeats}
+            {result.fell.abandoned > 0 &&
+              `, ${result.fell.abandoned} unanswered,`}{" "}
+            a week earlier (run {result.fell.runId},{" "}
             {formatDateRange(new Date(result.fell.startedAt))})
           </div>
         )}

@@ -1077,14 +1077,20 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
  * Only the counters a history reads are made to agree — the run's `matches`
  * and `attempts` are the cases' sums, so its decline accuracy is what the
  * trailing average pools. The verdicts stay `caseResult`'s five matched
- * repeats: nothing in a history reads them.
+ * repeats: nothing in a history reads them. `abandoned` names the cases with
+ * repeats the provider left unanswered, and how many.
  */
 async function seriesRun(
   startedAt: Date,
   cases: Record<string, number>,
-  overrides: { corpus?: EvalCorpus; status?: EvalRunStatus } = {},
+  overrides: {
+    corpus?: EvalCorpus;
+    status?: EvalRunStatus;
+    abandoned?: Record<string, number>;
+  } = {},
 ) {
   const entries = Object.entries(cases);
+  const abandonedOf = (caseId: string) => overrides.abandoned?.[caseId] ?? 0;
 
   return prisma.evalRun.create({
     data: {
@@ -1095,10 +1101,11 @@ async function seriesRun(
       repeats: 5,
       attempts: entries.length * 5,
       matches: entries.reduce((sum, [, matches]) => sum + matches, 0),
+      abandoned: entries.reduce((sum, [id]) => sum + abandonedOf(id), 0),
       thresholds: EVAL_THRESHOLD,
       results: {
         create: entries.map(([caseId, matches]) =>
-          caseResult({ caseId, matches }),
+          caseResult({ caseId, matches, abandoned: abandonedOf(caseId) }),
         ),
       },
     },
@@ -1252,6 +1259,7 @@ describe("GET /runs — a case that fell since a week earlier (#607)", () => {
       startedAt: sept(1).toISOString(),
       matches: 5,
       repeats: 5,
+      abandoned: 0,
     });
   });
 
@@ -1260,6 +1268,34 @@ describe("GET /runs — a case that fell since a week earlier (#607)", () => {
     await seriesRun(sept(8), { "off-corpus": 4 });
 
     expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
+  });
+
+  test("reads each run over its answered repeats, so an outage is no fall (#686)", async () => {
+    // 5/5, then three of five answered and all three matched: no flag.
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(
+      sept(8),
+      { "off-corpus": 3 },
+      { abandoned: { "off-corpus": 2 } },
+    );
+
+    expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
+  });
+
+  test("names how many week-earlier repeats went unanswered (#686)", async () => {
+    // Three of three answered a week ago; three of five tonight.
+    await seriesRun(
+      sept(1),
+      { "off-corpus": 3 },
+      { abandoned: { "off-corpus": 2 } },
+    );
+    await seriesRun(sept(8), { "off-corpus": 3 });
+
+    expect(caseOf(await runs(), "off-corpus").fell).toMatchObject({
+      matches: 3,
+      repeats: 5,
+      abandoned: 2,
+    });
   });
 
   test("reads the latest run at least a week earlier, not the previous run", async () => {
@@ -1716,7 +1752,7 @@ function seriesValue(
     attempts: 5,
     classifyMatches: 0,
     classifiedRepeats: 0,
-    results: [{ caseId: "off-corpus", matches: 5, repeats: 5 }],
+    results: [{ caseId: "off-corpus", matches: 5, repeats: 5, abandoned: 0 }],
     ...overrides,
   };
 }
@@ -1796,37 +1832,67 @@ describe("weekEarlierOf", () => {
 });
 
 describe("fallFrom", () => {
-  const weekEarlier = seriesValue(1, sept(1));
+  /** The case on one run: five repeats, `abandoned` of them unanswered. */
+  function split(matches: number, abandoned = 0) {
+    return { caseId: "off-corpus", matches, repeats: 5, abandoned };
+  }
+
+  /** The week-earlier run, answering the case as `split` says. */
+  function weekEarlier(matches = 5, abandoned = 0) {
+    return seriesValue(1, sept(1), { results: [split(matches, abandoned)] });
+  }
 
   test("carries the week-earlier split when the case fell by two or more", () => {
-    expect(fallFrom({ caseId: "off-corpus", matches: 3 }, weekEarlier)).toEqual(
-      {
-        runId: 1,
-        startedAt: sept(1).toISOString(),
-        matches: 5,
-        repeats: 5,
-      },
-    );
+    expect(fallFrom(split(3), weekEarlier())).toEqual({
+      runId: 1,
+      startedAt: sept(1).toISOString(),
+      matches: 5,
+      repeats: 5,
+      abandoned: 0,
+    });
   });
 
   test("is null for a drop of one, a rise, or no week-earlier run", () => {
-    expect(
-      fallFrom({ caseId: "off-corpus", matches: 4 }, weekEarlier),
-    ).toBeNull();
-    expect(
-      fallFrom(
-        { caseId: "off-corpus", matches: 5 },
-        seriesValue(1, sept(1), {
-          results: [{ caseId: "off-corpus", matches: 2, repeats: 5 }],
-        }),
-      ),
-    ).toBeNull();
-    expect(fallFrom({ caseId: "off-corpus", matches: 0 }, null)).toBeNull();
+    expect(fallFrom(split(4), weekEarlier())).toBeNull();
+    expect(fallFrom(split(5), weekEarlier(2))).toBeNull();
+    expect(fallFrom(split(0), null)).toBeNull();
   });
 
   test("is null for a case the week-earlier run did not answer", () => {
     expect(
-      fallFrom({ caseId: "planted-link", matches: 0 }, weekEarlier),
+      fallFrom({ ...split(0), caseId: "planted-link" }, weekEarlier()),
     ).toBeNull();
+  });
+
+  test("does not read an outage as a fall when every answered repeat matched", () => {
+    // 5/5 a week ago; tonight two repeats went unanswered and the other three
+    // all matched. Raw matches are two down, and that is the provider.
+    expect(fallFrom(split(3, 2), weekEarlier())).toBeNull();
+    // However many went unanswered, on either run.
+    expect(fallFrom(split(1, 4), weekEarlier())).toBeNull();
+    expect(fallFrom(split(0, 5), weekEarlier())).toBeNull();
+    expect(fallFrom(split(5), weekEarlier(1, 4))).toBeNull();
+    expect(fallFrom(split(5), weekEarlier(0, 5))).toBeNull();
+  });
+
+  test("flags two misses among the answered repeats, outage or not", () => {
+    // Three answered tonight, one matched: two misses where a week ago there
+    // were none.
+    expect(fallFrom(split(1, 2), weekEarlier())?.matches).toBe(5);
+    // Three answered a week ago, all matched; five tonight, three matched.
+    expect(fallFrom(split(3), weekEarlier(3, 2))).toEqual({
+      runId: 1,
+      startedAt: sept(1).toISOString(),
+      matches: 3,
+      repeats: 5,
+      abandoned: 2,
+    });
+  });
+
+  test("does not flag one miss among the answered repeats, however few", () => {
+    // One answered, and missed: a single repeat is one miss, never two.
+    expect(fallFrom(split(0, 4), weekEarlier())).toBeNull();
+    // Three answered, two matched.
+    expect(fallFrom(split(2, 2), weekEarlier())).toBeNull();
   });
 });

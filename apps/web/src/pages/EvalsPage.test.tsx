@@ -1455,6 +1455,7 @@ describe("a case's recent history (#607)", () => {
                   startedAt: "2026-09-02T10:00:00.000Z",
                   matches: 5,
                   repeats: 5,
+                  abandoned: 0,
                 },
               }),
             ],
@@ -1468,6 +1469,39 @@ describe("a case's recent history (#607)", () => {
 
     expect(
       screen.getByText("Down from 5/5 a week earlier (run 3, 2 Sep 2026)"),
+    ).toBeInTheDocument();
+  });
+
+  test("says how many week-earlier repeats went unanswered (#686)", async () => {
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            results: [
+              makeResult({
+                matches: 1,
+                fell: {
+                  runId: 3,
+                  startedAt: "2026-09-02T10:00:00.000Z",
+                  matches: 3,
+                  repeats: 5,
+                  abandoned: 2,
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+    await showCases(user);
+
+    expect(
+      screen.getByText(
+        "Down from 3/5, 2 unanswered, a week earlier (run 3, 2 Sep 2026)",
+      ),
     ).toBeInTheDocument();
   });
 

@@ -360,22 +360,30 @@ const COMPARISON_COLUMNS = {
  * Exported as a type so `evals.test.ts` can build one as a value.
  */
 export interface SeriesRun extends PriorRun {
-  results: { caseId: string; matches: number; repeats: number }[];
+  results: {
+    caseId: string;
+    matches: number;
+    repeats: number;
+    abandoned: number;
+  }[];
 }
 
 /** What a series run is read with — counters and splits, no verdicts, no Json. */
 const SERIES_COLUMNS = {
   ...COMPARISON_COLUMNS,
-  results: { select: { caseId: true, matches: true, repeats: true } },
+  results: {
+    select: { caseId: true, matches: true, repeats: true, abandoned: true },
+  },
 } as const;
 
 /** How long before a run its week-earlier run started, at least (#607). */
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * How many fewer matches than a week earlier flag a case (#607). One is within
- * a run's own noise at five repeats; two catches a case going from 5/5 to 0/5
- * without flagging every wobble.
+ * How many fewer matches than a week earlier flag a case (#607), counted over
+ * the latest run's answered repeats (#686). One is within a run's own noise at
+ * five repeats; two catches a case going from 5/5 to 0/5 without flagging
+ * every wobble.
  */
 const FALL_MATCHES = 2;
 
@@ -518,23 +526,41 @@ export function historyFrom(
  * The week-earlier split of a case that has fallen `FALL_MATCHES` or more
  * since, or null.
  *
- * Matches compared as counts, the same numerator the row's own rate draws, so
- * the flag cannot disagree with the two splits it names. An unanswered repeat
- * is read the way that rate reads it, and the row counts those beside it.
+ * Each run is read over its **answered** repeats (#686). An unanswered repeat
+ * can never match (the note on `verdictOf` in `evals/runner.ts`), so raw
+ * matches would read an outage as a fall: 5/5, then three of five answered
+ * and all three matched, is two down and the provider's doing. The fall is
+ * what the latest run's answered repeats would have matched at the week-earlier
+ * rate, less what they did match, so a run with one answered repeat can show a
+ * fall of one and never two. A run that answered none says nothing, and is no
+ * flag either way.
  */
 export function fallFrom(
-  result: { caseId: string; matches: number },
+  result: {
+    caseId: string;
+    matches: number;
+    repeats: number;
+    abandoned: number;
+  },
   weekEarlier: SeriesRun | null,
 ): EvalCaseFall | null {
   const before = weekEarlier?.results.find((r) => r.caseId === result.caseId);
   if (!weekEarlier || !before) return null;
-  if (before.matches - result.matches < FALL_MATCHES) return null;
+
+  const answeredBefore = before.repeats - before.abandoned;
+  const answered = result.repeats - result.abandoned;
+  if (answeredBefore === 0 || answered === 0) return null;
+  // `before.matches * answered / answeredBefore - result.matches`, multiplied
+  // through by `answeredBefore` so the comparison stays in whole numbers.
+  const fall = before.matches * answered - result.matches * answeredBefore;
+  if (fall < FALL_MATCHES * answeredBefore) return null;
 
   return {
     runId: weekEarlier.id,
     startedAt: weekEarlier.startedAt.toISOString(),
     matches: before.matches,
     repeats: before.repeats,
+    abandoned: before.abandoned,
   };
 }
 
