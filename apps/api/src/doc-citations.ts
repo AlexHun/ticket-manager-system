@@ -446,10 +446,10 @@ export interface SymbolSource {
  *   history and raw source would have kept passing after any rename, and 14
  *   were library or tool names a comment happened to mention.
  * - **comment-stripped source: 35 misses, every one real.** Each is absent
- *   from the code: the two stale names `docs/prd/doc-citations.md`'s R9 fixes, history, and library or tool
- *   names the code relies on without spelling (Better Auth's
- *   `requireEmailVerification`, Claude Code's `WebFetch`). The test's
- *   exemptions are that list, minus the two fixes.
+ *   from the code: the two stale names `docs/prd/doc-citations.md`'s R9
+ *   fixes, history, and library or tool names the code relies on without
+ *   spelling (Better Auth's `requireEmailVerification`, Claude Code's
+ *   `WebFetch`). The test's exemptions are that list, minus the two fixes.
  * - **declared names only: 44 misses.** Too strict: the 9 beyond the
  *   comment-stripped 35 are names this code uses and never declares
  *   (`tabIndex`, `dangerouslySetInnerHTML`, `TransactionClient`, `pg_tables`,

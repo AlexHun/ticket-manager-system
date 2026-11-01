@@ -1223,5 +1223,20 @@
     "version": "0.1.304",
     "date": "2026-11-01",
     "title": "Settle the review's findings on the index.lock fix (#631)"
+  },
+  {
+    "version": "0.1.305",
+    "date": "2026-11-01",
+    "title": "Settle the review's findings on the comment-width rule (#646)"
+  },
+  {
+    "version": "0.1.306",
+    "date": "2026-11-01",
+    "title": "Don't read an outage as a case falling (#686)"
+  },
+  {
+    "version": "0.1.306",
+    "date": "2026-11-01",
+    "title": "Settle the review's findings on the fall flag (#686)"
   }
 ]

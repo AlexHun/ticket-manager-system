@@ -14,7 +14,10 @@ export const TICKET_SORT_FIELD = {
   customerName: "customerName",
   status: "status",
   category: "category",
-  /** Sorts by the assignee's *name*, not the id — the id is a cuid and orders by nothing a reader can see. */
+  /**
+   * Sorts by the assignee's *name*, not the id — the id is a cuid and orders
+   * by nothing a reader can see.
+   */
   assignedTo: "assignedTo",
   /**
    * When anything last happened on the thread, in either direction.

@@ -6,7 +6,10 @@
  * only, which was the actual duplication.
  */
 
-/** One field to diff: which field, what action it writes if changed, and an optional label prefixed onto the value strings. */
+/**
+ * One field to diff: which field, what action it writes if changed, and an
+ * optional label prefixed onto the value strings.
+ */
 export interface DiffField<T, A> {
   field: keyof T;
   action: A;

@@ -54,8 +54,10 @@ export interface EvalCaseResultRow extends EvalCaseCounters {
   history: (EvalCaseSplit | null)[];
   /**
    * Set when this case matched enough fewer repeats than it did on the run a
-   * week earlier to be flagged, and null otherwise (#607). How many is
-   * `FALL_MATCHES` in `apps/api/src/routes/evals.ts`, decided there alone.
+   * week earlier to be flagged, and null otherwise (#607). Each run is read
+   * over its answered repeats, so an outage is not a fall (#686); how many
+   * fewer is `FALL_MATCHES` in `apps/api/src/routes/evals.ts`, decided there
+   * alone, with the arithmetic in `fallFrom` beside it.
    *
    * Null too when there is no week-earlier run, or the case was not on it:
    * no flag rather than a guess. Display only — nothing notifies (R8, R11).
@@ -76,10 +78,16 @@ export interface EvalCaseSplit {
  *
  * The week-earlier run is the latest completed run on the same corpus that
  * started at least seven days before this one. Named on the row, run and date,
- * because "down from 5/5" is a claim somebody will want to go and check.
+ * because a fall from 5/5 is a claim somebody will want to go and check.
  */
 export interface EvalCaseFall extends EvalCaseSplit {
   startedAt: string;
+  /**
+   * Repeats that run left unanswered (#686), so the page can draw its split
+   * over the answered repeats the flag compares, and say how many were the
+   * provider's rather than misses.
+   */
+  abandoned: number;
 }
 
 /**
