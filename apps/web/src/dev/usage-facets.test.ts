@@ -26,7 +26,13 @@ import {
 function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
   return {
     issue: 1,
-    spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 },
+    spend: {
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 400_000,
+      peakContext: null,
+    },
     title: "An issue",
     url: "https://example.test/1",
     forecast: "S",
@@ -137,7 +143,7 @@ describe("matchesFacets", () => {
    */
   test("calls a row that recorded zero output tokens started", () => {
     const zero = makeIssue({
-      spend: { out: 0, turns: 1, sessions: 1, cacheRead: 0 },
+      spend: { out: 0, turns: 1, sessions: 1, cacheRead: 0, peakContext: null },
       bucket: "S",
       verdict: VERDICT.onTarget,
     });

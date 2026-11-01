@@ -30,15 +30,16 @@ import type { IssueSpend, IssueUsage } from "./usage-protocol.ts";
  */
 
 /**
- * The columns a reader can rank by: the issue number, and each of the four
- * figures on a row's spend.
+ * The columns a reader can rank by: the issue number, and each figure on a
+ * row's spend but `peakContext`.
  *
  * **A record keyed by that union rather than a list of names, so it is
  * exhaustive by construction.** A list could only be checked for *membership* —
  * `satisfies readonly ("issue" | keyof IssueSpend)[]` says every name in it is
- * real and nothing about the names left out, so a fifth figure added to
+ * real and nothing about the names left out, so a figure added to
  * `IssueSpend` would quietly arrive with no way to rank by it. Keyed, the same
- * addition does not compile until it has been decided about. It also cannot
+ * addition does not compile until it has been decided about, as `peakContext`
+ * was (#642), named in an `Exclude` with its reason below. It also cannot
  * name `title` or `comparison` at all, which is where the two deliberate
  * exclusions below stop being a comment and start being a type.
  *
@@ -46,9 +47,14 @@ import type { IssueSpend, IssueUsage } from "./usage-protocol.ts";
  * by, and it can be absent (`gh` said nothing), which would need a second sink
  * rule beside the one this module is about; `comparison` is three facts in one
  * cell rather than a figure, and the band it would rank by is already the
- * distribution chart's question.
+ * distribution chart's question. `peakContext` (#642) has no column on the
+ * page, and it can be absent on a row that has spend, which would need a
+ * second sink rule too.
  */
-const SORTABLE: Record<"issue" | keyof IssueSpend, true> = {
+const SORTABLE: Record<
+  "issue" | Exclude<keyof IssueSpend, "peakContext">,
+  true
+> = {
   issue: true,
   out: true,
   turns: true,

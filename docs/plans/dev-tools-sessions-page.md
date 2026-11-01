@@ -109,7 +109,7 @@ the record clears both. The hook itself gets a test beside
 must come from the same deduped responses `tallySpend` totals (largest count
 per id, #431), or the page and Usage drift apart. The first decision: how each
 response is attributed to its file **without** adding a column to
-`TranscriptResponse`, whose six fields are the stored row and the push's wire
+`TranscriptResponse`, whose fields are the stored row and the push's wire
 (ADR-0023).
 **Covers:** R3, R6, R7
 **Un-hardcodes:** no subtree totals, no grouping.

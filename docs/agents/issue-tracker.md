@@ -54,7 +54,8 @@ nobody has an intuition for.
 - **The split rule is peak context.** A ticket is cut so the worker that
   implements it stays under **200k tokens of context**, which is about **75
   turns in one window**. Forecast above that, split it, whatever its output
-  band says.
+  band says. `bun run tokens` prints each issue's peak in its `peak` column
+  (#642).
 - **The label is output tokens.** Every issue carries one `forecast/S|M|L`
   label, applied when it is cut: `S` <60k, `M` 60-150k, `L` 150-250k. Read it
   off the turns at ~500 output tokens per turn, so `S` is under ~120 turns

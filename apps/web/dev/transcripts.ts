@@ -76,6 +76,14 @@ export interface Spend {
   out: number;
   cacheRead: number;
   sessions: number;
+  /**
+   * The largest context among the issue's responses in the window holding
+   * most of its turns (#642): the figure a ticket is cut by
+   * (`docs/agents/issue-tracker.md`). Null when any of its responses has no
+   * window or no context, a row stored before #642, since the window holding
+   * most turns cannot then be known.
+   */
+  peakContext: number | null;
 }
 
 export interface ScanResult {
@@ -143,8 +151,17 @@ interface TranscriptRecord {
   timestamp?: string;
   message?: {
     id?: string;
-    usage?: { output_tokens?: number; cache_read_input_tokens?: number };
+    usage?: TranscriptUsage;
   };
+}
+
+/** A record's token counts. The first two are read only into a response's
+ *  context (#642); exported for the Sessions reader, which reads them too. */
+export interface TranscriptUsage {
+  input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  output_tokens?: number;
 }
 
 /**
@@ -181,6 +198,19 @@ export interface TranscriptResponse {
   out: number;
   /** `cache_read_input_tokens`. */
   cacheRead: number;
+  /**
+   * How full the window was at this response (#642): its input, cache-creation,
+   * cache-read and output tokens added together (`contextOf`). Null on a row
+   * the history stored before #642, which reads as unknown, never as zero.
+   */
+  context: number | null;
+  /**
+   * The transcript file the response was read from, as `listTranscripts` names
+   * it: the window it ran in (#642). A session's subagents share its
+   * `sessionId`, so the session cannot say which window. Null on a row the
+   * history stored before #642.
+   */
+  window: string | null;
 }
 
 /**
@@ -201,6 +231,23 @@ export interface TranscriptCursor {
   lines: number;
   head: string;
 }
+
+/** What one response's usage says its window held: the four counts added
+ *  together (#642, ADR-0023). */
+const contextOf = (usage: TranscriptUsage) =>
+  (usage.input_tokens ?? 0) +
+  (usage.cache_creation_input_tokens ?? 0) +
+  (usage.cache_read_input_tokens ?? 0) +
+  (usage.output_tokens ?? 0);
+
+/** The counts one record carries for its response, as every reader that
+ *  collapses a response folds them — `readTranscripts` here and the Sessions
+ *  reader (`./sessions.ts`). */
+export const countsOf = (usage: TranscriptUsage): Counts => ({
+  out: usage.output_tokens ?? 0,
+  cacheRead: usage.cache_read_input_tokens ?? 0,
+  context: contextOf(usage),
+});
 
 /** Cursors keyed on each transcript's full path. */
 export type TranscriptCursors = Map<string, TranscriptCursor>;
@@ -285,20 +332,34 @@ function listTranscripts(dir: string): string[] {
   return files;
 }
 
+/** The counts a response is folded on. */
+type Counts = Pick<TranscriptResponse, "out" | "cacheRead" | "context">;
+
 /**
  * Two copies of one response's counts folded into one: the larger of each,
  * since a subagent transcript writes a partial count on a response's first
- * record and the final one on its last (#431). The one rule every reader that
- * collapses a response uses — `readTranscripts` here, and the Sessions reader
- * (`./sessions.ts`, `./session-groups.ts`), whose totals must equal these (R7).
+ * record and the final one on its last (#431). An unknown context gives way to
+ * a known one (#642). The one rule every reader that collapses a response
+ * uses — `readTranscripts` here, and the Sessions reader (`./sessions.ts`,
+ * `./session-groups.ts`), whose totals must equal these (R7).
  */
-export const largerCounts = (
-  a: Pick<TranscriptResponse, "out" | "cacheRead">,
-  b: Pick<TranscriptResponse, "out" | "cacheRead">,
-) => ({
+export const largerCounts = (a: Counts, b: Counts) => ({
   out: Math.max(a.out, b.out),
   cacheRead: Math.max(a.cacheRead, b.cacheRead),
+  context:
+    a.context === null
+      ? b.context
+      : b.context === null
+        ? a.context
+        : Math.max(a.context, b.context),
 });
+
+/** Whether `next` holds a count larger than `before`'s, so folding it in
+ *  changes the response. */
+export const raisesCounts = (before: Counts, next: Counts) =>
+  next.out > before.out ||
+  next.cacheRead > before.cacheRead ||
+  (next.context ?? 0) > (before.context ?? 0);
 
 /**
  * The key a record's response is counted once under (`TranscriptResponse.id`):
@@ -415,13 +476,12 @@ export function readTranscripts(
         // read, and counted from the top of the file however far in this read
         // began.
         const id = identityOf(rec, file, firstLine + index + 1);
-        const out = usage.output_tokens ?? 0;
-        const cacheRead = usage.cache_read_input_tokens ?? 0;
+        const counts = countsOf(usage);
         const kept = seen.get(id);
         if (kept) {
           // A later block of a response already kept: only its counts can say
           // more, and in a subagent transcript the first block's are partial.
-          Object.assign(kept, largerCounts(kept, { out, cacheRead }));
+          Object.assign(kept, largerCounts(kept, counts));
           return;
         }
         const response: TranscriptResponse = {
@@ -429,8 +489,8 @@ export function readTranscripts(
           session: rec.sessionId ?? null,
           branch: rec.gitBranch ?? null,
           at: rec.timestamp ?? null,
-          out,
-          cacheRead,
+          ...counts,
+          window: file,
         };
         seen.set(id, response);
         responses.push(response);
@@ -462,9 +522,21 @@ export function issueOfBranch(branch: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** A branch's running total. Distinct sessions are counted, so it holds a set. */
-interface BranchAccumulator extends Omit<Spend, "sessions"> {
+/** One issue's turns in one window, and the largest context among them. */
+interface WindowShare {
+  turns: number;
+  peak: number;
+}
+
+/**
+ * A branch's running total. Distinct sessions are counted, so it holds a set.
+ * The peak is decided per issue, so it holds each window's share (#642), and
+ * whether any response had no window or no context to share.
+ */
+interface BranchAccumulator extends Omit<Spend, "sessions" | "peakContext"> {
   sessions: Set<string>;
+  windows: Map<string, WindowShare>;
+  unknownWindow: boolean;
 }
 
 /**
@@ -499,26 +571,71 @@ export function tallySpend(
       out: 0,
       cacheRead: 0,
       sessions: new Set<string>(),
+      windows: new Map<string, WindowShare>(),
+      unknownWindow: false,
     };
     acc.turns++;
     acc.out += r.out;
     acc.cacheRead += r.cacheRead;
     acc.sessions.add(r.session ?? "");
+    if (r.window === null || r.context === null) {
+      acc.unknownWindow = true;
+    } else {
+      addToWindow(acc.windows, r.window, { turns: 1, peak: r.context });
+    }
     byBranch.set(r.branch, acc);
   }
   return { byIssue: spendByIssue(byBranch, issueOf), unattributed };
 }
 
+/** An issue's running total: its branches' sittings counted, their windows'
+ *  shares merged. */
+interface IssueAccumulator extends Omit<BranchAccumulator, "sessions"> {
+  sessions: number;
+}
+
+/** Add `more` to one window's share: its turns, and its peak if larger. */
+function addToWindow(
+  windows: Map<string, WindowShare>,
+  window: string,
+  more: WindowShare,
+) {
+  const share = windows.get(window) ?? { turns: 0, peak: 0 };
+  share.turns += more.turns;
+  share.peak = Math.max(share.peak, more.peak);
+  windows.set(window, share);
+}
+
+/**
+ * The peak of the window holding most turns, a tie going to the larger peak so
+ * the answer does not hang on the order rows were stored in. #627 measured with
+ * the first file read instead, which a store has no order for.
+ */
+function peakOf(windows: Map<string, WindowShare>): number {
+  let best: WindowShare | undefined;
+  for (const share of windows.values()) {
+    if (
+      !best ||
+      share.turns > best.turns ||
+      (share.turns === best.turns && share.peak > best.peak)
+    ) {
+      best = share;
+    }
+  }
+  return best?.peak ?? 0;
+}
+
 /**
  * Collapse branches onto the issue each one names. An issue occasionally gets
- * a second branch (a follow-up fix); both count toward the same issue. A
- * branch naming no issue is not attributable and is dropped.
+ * a second branch (a follow-up fix); both count toward the same issue, and so
+ * do a window's turns on both. A branch naming no issue is not attributable
+ * and is dropped.
  */
 function spendByIssue(
   byBranch: Map<string, BranchAccumulator>,
   issueOf: (branch: string) => number | null,
 ): Map<number, Spend> {
-  const byIssue = new Map<number, Spend>();
+  const byIssue = new Map<number, IssueAccumulator>();
   for (const [branch, s] of byBranch) {
     const number = issueOf(branch);
     if (number === null) continue;
@@ -527,14 +644,25 @@ function spendByIssue(
       out: 0,
       cacheRead: 0,
       sessions: 0,
+      windows: new Map<string, WindowShare>(),
+      unknownWindow: false,
     };
     acc.turns += s.turns;
     acc.out += s.out;
     acc.cacheRead += s.cacheRead;
     acc.sessions += s.sessions.size;
+    for (const [window, share] of s.windows) {
+      addToWindow(acc.windows, window, share);
+    }
+    acc.unknownWindow ||= s.unknownWindow;
     byIssue.set(number, acc);
   }
-  return byIssue;
+  return new Map(
+    [...byIssue].map(([number, { windows, unknownWindow, ...spend }]) => [
+      number,
+      { ...spend, peakContext: unknownWindow ? null : peakOf(windows) },
+    ]),
+  );
 }
 
 /** Read every transcript in `dir` and attribute its spend to issues: what is on
