@@ -192,8 +192,8 @@ app.use("/api/automation", automationRouter);
 app.use("/api/outbox", outboxRouter);
 
 // Admin-only apart from a demo session (#320), and read-only: a query-time
-// merge of the trails above plus sent replies. Registered last among these because it reads across all of
-// them rather than owning a domain of its own.
+// merge of the trails above plus sent replies. Registered last among these
+// because it reads across all of them rather than owning a domain of its own.
 app.use("/api/activity", activityRouter);
 
 // After every route, which is the only place it works: it is an Express error

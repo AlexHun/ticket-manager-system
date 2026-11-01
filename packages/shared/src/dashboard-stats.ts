@@ -262,7 +262,10 @@ export interface AssistantEffectivenessResponse {
      * agent may change, and the two disagreed as soon as an agent reassigned one.
      */
     resolved: number;
-    /** `resolved / classified`. Null, not 0, when nothing was classified — there is no rate to report. */
+    /**
+     * `resolved / classified`. Null, not 0, when nothing was classified —
+     * there is no rate to report.
+     */
     rate: number | null;
   };
   decline: {
