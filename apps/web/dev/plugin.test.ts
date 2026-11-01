@@ -315,7 +315,13 @@ describe(`POST ${DEVTOOLS_API.usage}`, () => {
 
       expect(row).toEqual({
         issue: 101,
-        spend: { out: 200_000, turns: 1, sessions: 1, cacheRead: 0 },
+        spend: {
+          out: 200_000,
+          turns: 1,
+          sessions: 1,
+          cacheRead: 0,
+          peakContext: 200_000,
+        },
         title: "The issue the fixture transcripts spent on",
         url: "https://github.com/AlexHun/ticket-manager-system/issues/101",
         forecast: "M",

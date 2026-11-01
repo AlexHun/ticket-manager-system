@@ -49,6 +49,11 @@
 // `gh` supplies titles and forecast labels. Without it (offline, unauthed) the
 // actuals still print, the forecast columns read "-" and the title is blank.
 //
+// `peak` (#642) is the issue's peak context, what a ticket is cut by
+// (`docs/agents/issue-tracker.md`): the largest context of one of its responses
+// in the window holding most of its turns. "-" when any of its responses was
+// stored before the history kept windows, since that window cannot be known.
+//
 // Since #251 the rows are not only what was spent: every *open* issue prints
 // too, with its band and no figures, so what is forecast and not yet started
 // reads beside what it cost. Those rows are excluded from the percentiles and
@@ -60,7 +65,11 @@ import {
   fetchIssueMetadata,
   type IssueMetadata,
 } from "../apps/web/dev/issues.ts";
-import { buildPush, pushRequest } from "../apps/web/dev/usage-push.ts";
+import {
+  buildPush,
+  pushRequest,
+  sendPush,
+} from "../apps/web/dev/usage-push.ts";
 import type { UsagePushResult } from "../apps/web/src/dev/usage-push.ts";
 import {
   TRANSCRIPT_DIR_ENV,
@@ -156,25 +165,32 @@ const diagnostic = (warning: UsageWarning, report: UsageReport) => {
 async function push(target: string, historyFile: string, meta: IssueMetadata) {
   try {
     const { endpoint, headers } = pushRequest(target);
-    const payload = await buildPush(historyFile, meta);
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      console.error(`Push to ${endpoint} failed: ${res.status} ${text}`);
+    // `sendPush` sends the six fields again to a server on the code before
+    // #642, which refuses the two it does not know (ADR-0023).
+    const answer = await sendPush(
+      await buildPush(historyFile, meta),
+      async (body) => {
+        const res = await fetch(endpoint, { method: "POST", headers, body });
+        return { status: res.status, text: await res.text() };
+      },
+    );
+    if (answer.status < 200 || answer.status > 299) {
+      console.error(
+        `Push to ${endpoint} failed: ${answer.status} ${answer.text}`,
+      );
       process.exitCode = 1;
       return;
     }
-    const result = JSON.parse(text) as UsagePushResult;
+    const result = JSON.parse(answer.text) as UsagePushResult;
     const listing =
       result.issues === null
         ? "no issue listing (the server keeps the one it has)"
         : `${result.issues} issues`;
+    const context = answer.withoutContext
+      ? " Without context or windows: the server predates them (#642)."
+      : "";
     console.log(
-      `pushed ${result.received} responses (${result.inserted} new) and ${listing} to ${new URL(endpoint).origin}.`,
+      `pushed ${result.received} responses (${result.inserted} new) and ${listing} to ${new URL(endpoint).origin}.${context}`,
     );
   } catch (err) {
     console.error(
@@ -266,14 +282,21 @@ async function main() {
    */
   const figure = (
     row: IssueUsage,
-    pick: (s: IssueSpend) => number,
+    pick: (s: IssueSpend) => number | null,
     format: (n: number) => string = String,
-  ) => (hasRecordedSpend(row) ? format(pick(row.spend)) : EMPTY);
+  ) => {
+    if (!hasRecordedSpend(row)) return EMPTY;
+    // The peak is the one figure that can be unknown on a row with spend
+    // (#642): a row stored before it, which is never printed as a number.
+    const n = pick(row.spend);
+    return n === null ? EMPTY : format(n);
+  };
 
   const head = [
     "issue".padEnd(6),
     "forecast".padEnd(10),
     "actual".padStart(7),
+    "peak".padStart(6),
     "bucket".padEnd(6),
     "verdict".padEnd(9),
     "turns".padStart(6),
@@ -302,6 +325,7 @@ async function main() {
           : EMPTY
         ).padEnd(10),
         figure(r, (s) => s.out, fmt).padStart(7),
+        figure(r, (s) => s.peakContext, fmt).padStart(6),
         (r.bucket ?? EMPTY).padEnd(6),
         (r.verdict ?? EMPTY).padEnd(9),
         figure(r, (s) => s.turns).padStart(6),
