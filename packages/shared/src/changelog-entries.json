@@ -1243,5 +1243,20 @@
     "version": "0.1.307",
     "date": "2026-11-01",
     "title": "Settle the review's findings on sessions re-rendering (#689)"
+  },
+  {
+    "version": "0.1.308",
+    "date": "2026-11-01",
+    "title": "Keep each response's context and window, and an issue's peak (#642)"
+  },
+  {
+    "version": "0.1.308",
+    "date": "2026-11-01",
+    "title": "Bun run tokens prints each issue's peak context (#642)"
+  },
+  {
+    "version": "0.1.308",
+    "date": "2026-11-01",
+    "title": "Settle the #642 review's findings"
   }
 ]
