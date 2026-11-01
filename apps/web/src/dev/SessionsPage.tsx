@@ -370,17 +370,11 @@ function groupWords(group: SessionGroup): { title: ReactNode; note?: string } {
 
 /**
  * Memoised, as `CardBody` is, so a batch renders only what it adds (#618) and
- * a reading only the groups it changed (#689). `cards` is built afresh from
- * every reading, so it is compared by the cards this group names, which
- * `shareReading` keeps while nothing under them changed.
+ * a reading only the groups it changed (#689). `cards` is a new map whenever
+ * a reading changes any card, so it is compared by the cards this group
+ * names, which `shareReading` keeps while nothing under them changed.
  */
-const Group = memo(function Group({
-  group,
-  cards,
-}: {
-  group: SessionGroup;
-  cards: Map<string, SessionCard>;
-}) {
+const Group = memo(function Group({ group, cards }: GroupProps) {
   const headingId = useId();
   const { title, note } = groupWords(group);
   return (
@@ -428,12 +422,14 @@ const Group = memo(function Group({
   );
 }, sameGroup);
 
+interface GroupProps {
+  group: SessionGroup;
+  cards: Map<string, SessionCard>;
+}
+
 /** Whether a group would draw what it drew: the same slices over the same
  *  cards. */
-function sameGroup(
-  before: { group: SessionGroup; cards: Map<string, SessionCard> },
-  after: { group: SessionGroup; cards: Map<string, SessionCard> },
-): boolean {
+function sameGroup(before: GroupProps, after: GroupProps): boolean {
   return (
     before.group === after.group &&
     after.group.sessions.every(
@@ -466,7 +462,7 @@ const HEADINGS = ["h3", "h4", "h5", "h6"] as const;
  * subagents with itself rather than with the memoised component, and every
  * subagent re-rendered whenever its session did (#689).
  */
-const CardBody = memo(function CardBodyOf({
+const CardBody = memo(function CardBodyRender({
   slice,
   card,
   depth,

@@ -5,7 +5,8 @@ import type { SessionsReport } from "./sessions-protocol";
  * (#689), so the page's memoised `Group` and `CardBody` skip whatever a
  * reading did not change. Each reading arrives as new objects, and before this
  * every drawn card re-rendered on every reading: measured 2026-11-01 on this
- * machine's 1,300 cards, 2.6-4.9s of main thread per reading, all of it React.
+ * machine's 1,300 cards, 2.6-4.9s of main thread per reading over four
+ * readings, all of it React.
  *
  * A part that changed is new, and so is everything above it, so a card is
  * kept only when its whole subtree is. A list's items are matched by their
