@@ -36,7 +36,7 @@ vi.mock("./sessions-copy", async (importOriginal) => {
 });
 
 /** Each session's `Card` renders once per render of the row around it, so
- *  the count names the rows a reading re-rendered (#717). */
+ *  the count is how many rows a reading re-rendered (#717). */
 const cardRows = vi.hoisted(() => ({ rendered: 0 }));
 vi.mock("@/components/ui/card", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/ui/card")>();

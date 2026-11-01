@@ -409,7 +409,7 @@ const Group = memo(function Group({ group, cards }: GroupProps) {
 }, sameGroup);
 
 /**
- * One session's row in a group, memoised apart from `CardBody` so a group that
+ * One session's row in a group, memoised as well as `CardBody`, so a group that
  * re-renders for one session skips its other sessions' wrappers too (#717):
  * a session that ran on `develop` shares its group with each other one that
  * did, and re-rendering all their rows was the largest part of a reading
