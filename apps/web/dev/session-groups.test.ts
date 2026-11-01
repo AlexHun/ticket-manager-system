@@ -25,6 +25,8 @@ const response = (
   at: null,
   out,
   cacheRead: 0,
+  context: null,
+  window: null,
 });
 
 const card = (

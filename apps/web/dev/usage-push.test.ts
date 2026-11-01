@@ -26,7 +26,10 @@ import {
   pushHistoryFile,
   pushRequest,
   receivePush,
+  sendPush,
+  withoutContext,
 } from "./usage-push.ts";
+import { z } from "zod";
 import { HISTORY_FILE_ENV } from "./usage-store.ts";
 import { PUSHED_RESPONSE_FIELDS } from "../src/dev/usage-push.ts";
 import { DEVTOOLS_API } from "../src/dev/devtools-paths.ts";
@@ -137,7 +140,7 @@ async function scanOnRailway() {
 }
 
 describe("buildPush", () => {
-  it("carries the six response fields and nothing else", async () => {
+  it("carries the stored row's fields and nothing else", async () => {
     await scanOnLaptop();
 
     const payload = await buildPush(laptop, listing());
@@ -276,6 +279,20 @@ describe("acceptPush", () => {
       { responses: [{ ...valid, id: "C:\\a.jsonl" }], issues: null },
     ],
     [
+      "a window named by its full path",
+      {
+        responses: [{ ...valid, window: "C:\\Users\\dev\\s1.jsonl" }],
+        issues: null,
+      },
+    ],
+    [
+      "a window that is not a transcript",
+      {
+        responses: [{ ...valid, window: "s1/tool-results/x.txt" }],
+        issues: null,
+      },
+    ],
+    [
       "an issue with a field nobody declared",
       {
         responses: [valid],
@@ -343,6 +360,118 @@ describe("acceptPush", () => {
     } finally {
       store.close();
     }
+  });
+});
+
+// #642: the SessionEnd hook pushes from whatever branch a session ends on, so
+// a laptop and develop's server can run code either side of the change.
+describe("a push across the change that added context and window", () => {
+  /** The wire as it stood before #642: six fields, strict. */
+  const before642 = z.strictObject({
+    responses: z.array(
+      z.strictObject({
+        id: z.string(),
+        session: z.string().nullable(),
+        branch: z.string().nullable(),
+        at: z.string().nullable(),
+        out: z.number(),
+        cacheRead: z.number(),
+      }),
+    ),
+    issues: z.array(z.unknown()).nullable(),
+  });
+
+  /** A server running the code before #642, as `send` sees it. */
+  const oldServer = (bodies: string[]) => (body: string) => {
+    bodies.push(body);
+    return Promise.resolve(
+      before642.safeParse(JSON.parse(body)).success
+        ? { status: 200, text: "{}" }
+        : { status: 400, text: "Not a usage push: Unrecognized keys" },
+    );
+  };
+
+  it("stores rows from a laptop that predates it as unknown, and Railway's peak reads unknown", async () => {
+    await scanOnLaptop();
+    const old = withoutContext(await buildPush(laptop, listing()));
+
+    const outcome = await acceptPush(old, railway, listingFile);
+
+    expect(outcome.status).toBe(200);
+    const remote = await scanOnRailway();
+    expect(remote.issues.find((r) => r.issue === 101)?.spend).toMatchObject({
+      out: 80_000,
+      peakContext: null,
+    });
+  });
+
+  it("lets a laptop that predates it take no known figure away", async () => {
+    const local = await scanOnLaptop();
+    const payload = await buildPush(laptop, listing());
+
+    await acceptPush(payload, railway, listingFile);
+    await acceptPush(withoutContext(payload), railway, listingFile);
+
+    const peak = (await scanOnRailway()).issues.find((r) => r.issue === 101)
+      ?.spend?.peakContext;
+    expect(peak).toBe(80_007);
+    expect(peak).toBe(
+      local.issues.find((r) => r.issue === 101)?.spend?.peakContext,
+    );
+  });
+
+  it("sends the six fields again when a server that predates it refuses the eight", async () => {
+    await scanOnLaptop();
+    const bodies: string[] = [];
+
+    const answer = await sendPush(
+      await buildPush(laptop, listing()),
+      oldServer(bodies),
+    );
+
+    expect(answer).toEqual({ status: 200, text: "{}", withoutContext: true });
+    expect(bodies).toHaveLength(2);
+    expect(JSON.parse(bodies[0]!).responses[0]).toHaveProperty("context");
+    expect(JSON.parse(bodies[1]!).responses[0]).not.toHaveProperty("context");
+  });
+
+  it("sends once to a server that takes the eight", async () => {
+    await scanOnLaptop();
+    const bodies: string[] = [];
+
+    const answer = await sendPush(
+      await buildPush(laptop, listing()),
+      async (body) => {
+        bodies.push(body);
+        const outcome = await acceptPush(
+          JSON.parse(body),
+          railway,
+          listingFile,
+        );
+        return { status: outcome.status, text: JSON.stringify(outcome.body) };
+      },
+    );
+
+    expect(answer.status).toBe(200);
+    expect(answer.withoutContext).toBe(false);
+    expect(bodies).toHaveLength(1);
+  });
+
+  // A 400 the six fields would get too is the push's own fault, and the first
+  // answer is the one that names it.
+  it("reports the first refusal when the six fields are refused as well", async () => {
+    await scanOnLaptop();
+    let call = 0;
+
+    const answer = await sendPush(await buildPush(laptop, listing()), () =>
+      Promise.resolve({ status: 400, text: `refusal ${++call}` }),
+    );
+
+    expect(answer).toEqual({
+      status: 400,
+      text: "refusal 1",
+      withoutContext: false,
+    });
   });
 });
 

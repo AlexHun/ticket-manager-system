@@ -28,7 +28,8 @@ inputs and not outputs.
 
 **One row per API response**: its identity (`message.id`, then the record's
 `uuid`, then file name and line number), session, branch, timestamp, output and
-cache-read tokens. That's `TranscriptResponse` in `apps/web/dev/transcripts.ts`,
+cache-read tokens, and since #642 its context and window ("Each response's
+context and window" below). That's `TranscriptResponse` in `apps/web/dev/transcripts.ts`,
 stored by `apps/web/dev/usage-store.ts`.
 
 The responses come from two places under the project's transcript directory:
@@ -131,7 +132,7 @@ with the same per-id dedupe a local scan uses. The store's file is on a
 Railway volume (`USAGE_HISTORY_FILE`), so it survives a redeploy.
 
 This keeps the rule above rather than bending it. What crosses the network is
-the rows, the six fields this ADR says are kept, and nothing derived from them,
+the rows, the fields this ADR says are kept, and nothing derived from them,
 so develop's figures are still tallied on every read under the code it is
 running. No message text, prompt or path is sent: the wire schema is strict at
 both ends. Develop's trend points are its own, one per day a push was followed
@@ -170,6 +171,60 @@ The alternatives were the other two answers to "the page forgets":
 - **Keep the last reading in react-query.** Rejected: it doesn't survive a
   reload or a discarded tab.
 - **Store the last report.** Rejected: it's the one thing this ADR rules out.
+
+## Each response's context and window (#642)
+
+#627 sizes a ticket by peak context: the worker that implements it stays
+under 200k tokens of context (`docs/agents/issue-tracker.md`). An issue's peak
+is the largest context of one of its responses in the window holding most of
+its turns. The six fields can't answer that, so the row gains two:
+
+- **`context`**: the response's input, cache-creation, cache-read and output
+  tokens, added together. It's the size of the window when that response was
+  written. It's an input in the same way `out` is: the response's own count,
+  folded at the largest across its records, since a subagent's first record
+  carries partial counts. Nothing reads the four parts apart, so they're
+  stored as one figure.
+- **`window`**: the transcript file the response was read from, named as the
+  scan lists it: `<session>.jsonl`, or `<session>/subagents/<file>.jsonl`. A
+  session's subagents share its `session`, so the session can't say which
+  window a response was in. A response found in two files keeps the first one
+  read, as it keeps that record's session and branch.
+
+The peak itself stays a computed answer. `tallySpend` works it out on every
+read: of an issue's windows, the one holding most of its turns, ties going to
+the larger peak, and the largest `context` among the issue's responses in it.
+That's the definition #627 measured with.
+
+**A row stored before #642 has neither field, and reads as unknown, never as
+zero.** An issue with any such row has no peak: the window holding most of its
+turns can't be known while some of its turns have no window. Adding the two
+columns also forgets every transcript's cursor, so the next scan reads each
+transcript still on disk once more, as #418's did, and the per-id upsert fills
+the rows it finds. A row whose transcript is already gone stays unknown. The
+upsert never replaces a known figure with an unknown one.
+
+**The push handles the version skew in both directions.** The SessionEnd hook
+(`.claude/hooks/push-usage.mjs`) pushes from whatever branch a session ends on,
+so a laptop and develop's server run different code for as long as a branch
+stays unmerged.
+
+- **Old laptop, new server.** The wire takes the two fields as optional. A row
+  pushed without them is stored with none, which reads as unknown.
+- **New laptop, old server.** The old schema is strict and answers a 400 for
+  a row with keys it doesn't know. `bun run tokens --push` then sends the same
+  rows once more with only the six fields, and its line says it did. So the
+  laptop's peaks reach develop only once develop runs this code, and nothing
+  is lost before then: the next push sends every row again.
+
+The window's name crosses the network along with the rows. It holds the
+session id, which was already sent, and a subagent's file name. It's a path
+relative to the transcript directory, so it carries no home directory or
+username. No message text is sent.
+
+`IssueSpend` carries the peak as `peakContext`, null when unknown. Only
+`bun run tokens` reads it: it prints a column beside output. The page shows no
+column for it, and its sort doesn't rank by it.
 
 ## Considered options
 

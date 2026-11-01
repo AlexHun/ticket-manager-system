@@ -46,9 +46,14 @@ import type { IssueSpend, IssueUsage } from "./usage-protocol.ts";
  * by, and it can be absent (`gh` said nothing), which would need a second sink
  * rule beside the one this module is about; `comparison` is three facts in one
  * cell rather than a figure, and the band it would rank by is already the
- * distribution chart's question.
+ * distribution chart's question. `peakContext` (#642) has no column on the
+ * page, and it can be absent on a row that has spend, which would need a
+ * second sink rule too.
  */
-const SORTABLE: Record<"issue" | keyof IssueSpend, true> = {
+const SORTABLE: Record<
+  "issue" | Exclude<keyof IssueSpend, "peakContext">,
+  true
+> = {
   issue: true,
   out: true,
   turns: true,

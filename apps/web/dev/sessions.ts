@@ -18,10 +18,10 @@
 // session instead.
 //
 // Its own reader rather than `./transcripts.ts`'s `readTranscripts`, which
-// answers per response with no file on the row — and whose six fields are the
-// usage history's stored row and the push's wire (ADR-0023), so they are not
-// widened for this page. Instead each card keeps the responses its own file
-// holds, keyed by the same `identityOf` and folded at the same largest count
+// answers per response and keeps nothing of the calls a card made — and whose
+// fields are the usage history's stored row and the push's wire (ADR-0023),
+// so they are not widened for this page. Instead each card keeps the responses
+// its own file holds, keyed by the same `identityOf` and folded at the same largest count
 // (#413, #431), and `./session-groups.ts` totals them with the Usage page's
 // `tallySpend` (#593): which card a response is in is which list holds it.
 //
@@ -58,9 +58,12 @@ import {
 } from "./implement-step.ts";
 import { groupSessions, type CreditedCard } from "./session-groups.ts";
 import {
+  contextOf,
   identityOf,
   largerCounts,
+  raisesCounts,
   type TranscriptResponse,
+  type TranscriptUsage,
 } from "./transcripts.ts";
 import { readWaiting, type WaitingRecord } from "./waiting.ts";
 
@@ -98,7 +101,7 @@ interface TranscriptRecord {
     model?: string;
     stop_reason?: string | null;
     content?: unknown;
-    usage?: { output_tokens?: number; cache_read_input_tokens?: number };
+    usage?: TranscriptUsage;
   };
 }
 
@@ -370,8 +373,11 @@ function feed(
   // As `readTranscripts` keeps a response: under its first record's session,
   // branch and time, at the largest counts any of its records carries.
   const id = identityOf(rec, f.file, lineNo);
-  const out = usage.output_tokens ?? 0;
-  const cacheRead = usage.cache_read_input_tokens ?? 0;
+  const counts = {
+    out: usage.output_tokens ?? 0,
+    cacheRead: usage.cache_read_input_tokens ?? 0,
+    context: contextOf(usage),
+  };
   const before = f.responses.get(id);
   if (!before) {
     f.responses.set(id, {
@@ -379,14 +385,11 @@ function feed(
       session: rec.sessionId ?? null,
       branch: rec.gitBranch ?? null,
       at: rec.timestamp ?? null,
-      out,
-      cacheRead,
+      ...counts,
+      window: f.file,
     });
-  } else if (out > before.out || cacheRead > before.cacheRead) {
-    f.responses.set(id, {
-      ...before,
-      ...largerCounts(before, { out, cacheRead }),
-    });
+  } else if (raisesCounts(before, counts)) {
+    f.responses.set(id, { ...before, ...largerCounts(before, counts) });
   }
 }
 

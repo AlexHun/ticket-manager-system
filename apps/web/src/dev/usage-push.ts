@@ -9,7 +9,7 @@
  * the issue listing `gh` gave the laptop. Both schemas are **strict**: a key
  * nobody declared here is a rejected push rather than a stored one, so a field
  * carrying message text cannot be added to the payload by one side alone.
- * `dev/usage-push.test.ts` holds the sending side to the same six fields.
+ * `dev/usage-push.test.ts` holds the sending side to the same fields.
  *
  * **Why the listing rides along rather than `gh` on Railway.** `Dockerfile.dev`
  * is the slim Bun image, with no `gh`, and a `gh` there would need a token
@@ -30,9 +30,9 @@
 
 import { z } from "zod";
 
-/** The six fields of a stored response, as `TranscriptResponse` names them. The
- *  test that guards the payload compares against this list. */
-export const PUSHED_RESPONSE_FIELDS = [
+/** The six fields a stored response had before #642, and the push carried.
+ *  A server running that code refuses any other key. */
+export const PRE_642_RESPONSE_FIELDS = [
   "id",
   "session",
   "branch",
@@ -41,14 +41,31 @@ export const PUSHED_RESPONSE_FIELDS = [
   "cacheRead",
 ] as const;
 
+/** The fields of a stored response, as `TranscriptResponse` names them. The
+ *  test that guards the payload compares against this list. */
+export const PUSHED_RESPONSE_FIELDS = [
+  ...PRE_642_RESPONSE_FIELDS,
+  "context",
+  "window",
+] as const;
+
 /** The two identity namespaces a response id is in, plus the line fallback —
- *  `identityOf` in `dev/transcripts.ts`. Its file is a transcript's base name,
- *  never a path. */
+ *  `identityOf` in `dev/transcripts.ts`. Its file is named below the
+ *  transcript directory, never by a full path. */
 const RESPONSE_ID = /^(message|uuid|line):/;
+
+/** A window as `listTranscripts` in `dev/transcripts.ts` names it: a session's
+ *  transcript, or one of its subagents'. Never a full path, so no home
+ *  directory or username crosses the wire. */
+const WINDOW = /^[\w.-]+(\/subagents\/[\w.-]+)?\.jsonl$/;
 
 const tokens = z.number().int().nonnegative();
 
-/** One `response` row. */
+/**
+ * One `response` row. `context` and `window` are optional (#642): a laptop on
+ * the code before them still pushes, and its rows are stored with neither,
+ * which reads as unknown. ADR-0023's #642 section.
+ */
 export const pushedResponseSchema = z.strictObject({
   id: z.string().regex(RESPONSE_ID),
   session: z.string().nullable(),
@@ -56,6 +73,8 @@ export const pushedResponseSchema = z.strictObject({
   at: z.string().nullable(),
   out: tokens,
   cacheRead: tokens,
+  context: tokens.nullable().optional(),
+  window: z.string().regex(WINDOW).nullable().optional(),
 });
 
 export type PushedResponse = z.infer<typeof pushedResponseSchema>;

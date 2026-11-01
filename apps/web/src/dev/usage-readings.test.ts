@@ -17,7 +17,13 @@ import {
 
 const row = (over: Partial<IssueUsage> = {}): IssueUsage => ({
   issue: 101,
-  spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 0 },
+  spend: {
+    out: 20_000,
+    turns: 2,
+    sessions: 1,
+    cacheRead: 0,
+    peakContext: null,
+  },
   title: null,
   url: null,
   forecast: "S",
@@ -30,13 +36,25 @@ const ROWS: IssueUsage[] = [
   row(),
   row({
     issue: 102,
-    spend: { out: 3000, turns: 1, sessions: 1, cacheRead: 0 },
+    spend: {
+      out: 3000,
+      turns: 1,
+      sessions: 1,
+      cacheRead: 0,
+      peakContext: null,
+    },
     forecast: null,
     verdict: null,
   }),
   row({
     issue: 105,
-    spend: { out: 90_000, turns: 3, sessions: 1, cacheRead: 0 },
+    spend: {
+      out: 90_000,
+      turns: 3,
+      sessions: 1,
+      cacheRead: 0,
+      peakContext: null,
+    },
     bucket: "M",
     verdict: "over",
   }),

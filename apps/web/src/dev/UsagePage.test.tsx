@@ -78,7 +78,13 @@ const FIXTURE_DIR = "/fixtures/transcripts";
 const ISSUE_URL = "https://github.com/AlexHun/ticket-manager-system/issues/101";
 
 /** The default row's figures, so a test that changes one can say which. */
-const SPEND = { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 };
+const SPEND = {
+  out: 20_000,
+  turns: 2,
+  sessions: 1,
+  cacheRead: 400_000,
+  peakContext: null,
+};
 
 /**
  * One row. The default is an issue `gh` answered for and the transcripts
@@ -116,7 +122,13 @@ function makeReport(over: Partial<UsageReport> = {}): UsageReport {
       makeIssue(),
       makeIssue({
         issue: 102,
-        spend: { out: 3000, turns: 1, sessions: 1, cacheRead: 12_000 },
+        spend: {
+          out: 3000,
+          turns: 1,
+          sessions: 1,
+          cacheRead: 12_000,
+          peakContext: null,
+        },
         title: "A second issue",
         url: "https://github.com/AlexHun/ticket-manager-system/issues/102",
         forecast: "S",
@@ -1149,7 +1161,13 @@ describe("UsagePage charts", () => {
           makeIssue({ verdict: "on target" }),
           makeIssue({
             issue: 102,
-            spend: { out: 3000, turns: 1, sessions: 1, cacheRead: 12_000 },
+            spend: {
+              out: 3000,
+              turns: 1,
+              sessions: 1,
+              cacheRead: 12_000,
+              peakContext: null,
+            },
             forecast: "S",
             verdict: "on target",
           }),

@@ -61,7 +61,13 @@ import { DEFAULT_USAGE_TABLE_VIEW, type UsageTableView } from "./usage-view";
 function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
   return {
     issue: 101,
-    spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 },
+    spend: {
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 400_000,
+      peakContext: null,
+    },
     title: "Ranking the table from its headers",
     url: "https://github.com/AlexHun/ticket-manager-system/issues/101",
     forecast: "M",
@@ -80,7 +86,13 @@ const ISSUES = [
   makeIssue(),
   makeIssue({
     issue: 102,
-    spend: { out: 3_000, turns: 9, sessions: 4, cacheRead: 12_000 },
+    spend: {
+      out: 3_000,
+      turns: 9,
+      sessions: 4,
+      cacheRead: 12_000,
+      peakContext: null,
+    },
     title: "A second issue",
     url: "https://github.com/AlexHun/ticket-manager-system/issues/102",
     forecast: "S",
@@ -88,7 +100,13 @@ const ISSUES = [
   }),
   makeIssue({
     issue: 105,
-    spend: { out: 90_000, turns: 1, sessions: 1, cacheRead: 250_000 },
+    spend: {
+      out: 90_000,
+      turns: 1,
+      sessions: 1,
+      cacheRead: 250_000,
+      peakContext: null,
+    },
     title: "An issue that came in over its band",
     url: "https://github.com/AlexHun/ticket-manager-system/issues/105",
     forecast: "S",
