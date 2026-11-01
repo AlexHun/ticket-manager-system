@@ -165,8 +165,9 @@ const diagnostic = (warning: UsageWarning, report: UsageReport) => {
 async function push(target: string, historyFile: string, meta: IssueMetadata) {
   try {
     const { endpoint, headers } = pushRequest(target);
-    // `sendPush` sends the six fields again to a server on the code before
-    // #642, which refuses the two it does not know (ADR-0023).
+    // `sendPush` sends `PRE_642_RESPONSE_FIELDS` again to a server on the
+    // code before #642, which refuses the two keys it does not know
+    // (ADR-0023).
     const answer = await sendPush(
       await buildPush(historyFile, meta),
       async (body) => {
@@ -186,7 +187,7 @@ async function push(target: string, historyFile: string, meta: IssueMetadata) {
       result.issues === null
         ? "no issue listing (the server keeps the one it has)"
         : `${result.issues} issues`;
-    const context = answer.withoutContext
+    const context = answer.sixFieldsOnly
       ? " Without context or windows: the server predates them (#642)."
       : "";
     console.log(

@@ -213,18 +213,20 @@ stays unmerged.
   pushed without them is stored with none, which reads as unknown.
 - **New laptop, old server.** The old schema is strict and answers a 400 for
   a row with keys it doesn't know. `bun run tokens --push` then sends the same
-  rows once more with only the six fields, and its line says it did. So the
-  laptop's peaks reach develop only once develop runs this code, and nothing
-  is lost before then: the next push sends every row again.
+  rows once more with only the six fields, and its line says it did. Any other
+  400 is reported as it is, since resending would store rows with no context
+  for a refusal that had nothing to do with them. So the laptop's peaks reach
+  develop only once develop runs this code, and nothing is lost before then:
+  the next push sends every row again.
 
 The window's name crosses the network along with the rows. It holds the
 session id, which was already sent, and a subagent's file name. It's a path
 relative to the transcript directory, so it carries no home directory or
 username. No message text is sent.
 
-`IssueSpend` carries the peak as `peakContext`, null when unknown. Only
-`bun run tokens` reads it: it prints a column beside output. The page shows no
-column for it, and its sort doesn't rank by it.
+`IssueSpend` carries the peak as `peakContext`, null when unknown.
+`bun run tokens` prints it in a column beside output. As of #642 the page
+shows no column for it, and `SORTABLE` leaves it out of the sort.
 
 ## Considered options
 

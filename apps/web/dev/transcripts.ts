@@ -234,11 +234,20 @@ export interface TranscriptCursor {
 
 /** What one response's usage says its window held: the four counts added
  *  together (#642, ADR-0023). */
-export const contextOf = (usage: TranscriptUsage) =>
+const contextOf = (usage: TranscriptUsage) =>
   (usage.input_tokens ?? 0) +
   (usage.cache_creation_input_tokens ?? 0) +
   (usage.cache_read_input_tokens ?? 0) +
   (usage.output_tokens ?? 0);
+
+/** The counts one record carries for its response, as every reader that
+ *  collapses a response folds them — `readTranscripts` here and the Sessions
+ *  reader (`./sessions.ts`). */
+export const countsOf = (usage: TranscriptUsage): Counts => ({
+  out: usage.output_tokens ?? 0,
+  cacheRead: usage.cache_read_input_tokens ?? 0,
+  context: contextOf(usage),
+});
 
 /** Cursors keyed on each transcript's full path. */
 export type TranscriptCursors = Map<string, TranscriptCursor>;
@@ -467,14 +476,12 @@ export function readTranscripts(
         // read, and counted from the top of the file however far in this read
         // began.
         const id = identityOf(rec, file, firstLine + index + 1);
-        const out = usage.output_tokens ?? 0;
-        const cacheRead = usage.cache_read_input_tokens ?? 0;
-        const context = contextOf(usage);
+        const counts = countsOf(usage);
         const kept = seen.get(id);
         if (kept) {
           // A later block of a response already kept: only its counts can say
           // more, and in a subagent transcript the first block's are partial.
-          Object.assign(kept, largerCounts(kept, { out, cacheRead, context }));
+          Object.assign(kept, largerCounts(kept, counts));
           return;
         }
         const response: TranscriptResponse = {
@@ -482,9 +489,7 @@ export function readTranscripts(
           session: rec.sessionId ?? null,
           branch: rec.gitBranch ?? null,
           at: rec.timestamp ?? null,
-          out,
-          cacheRead,
-          context,
+          ...counts,
           window: file,
         };
         seen.set(id, response);
@@ -583,6 +588,12 @@ export function tallySpend(
   return { byIssue: spendByIssue(byBranch, issueOf), unattributed };
 }
 
+/** An issue's running total: its branches' sittings counted, their windows'
+ *  shares merged. */
+interface IssueAccumulator extends Omit<BranchAccumulator, "sessions"> {
+  sessions: number;
+}
+
 /** Add `more` to one window's share: its turns, and its peak if larger. */
 function addToWindow(
   windows: Map<string, WindowShare>,
@@ -624,12 +635,7 @@ function spendByIssue(
   byBranch: Map<string, BranchAccumulator>,
   issueOf: (branch: string) => number | null,
 ): Map<number, Spend> {
-  const byIssue = new Map<
-    number,
-    Omit<BranchAccumulator, "sessions"> & {
-      sessions: number;
-    }
-  >();
+  const byIssue = new Map<number, IssueAccumulator>();
   for (const [branch, s] of byBranch) {
     const number = issueOf(branch);
     if (number === null) continue;

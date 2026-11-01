@@ -209,10 +209,10 @@ export async function acceptPush(
 }
 
 /**
- * The same push with only the six fields a server on the code before #642
- * takes (`PRE_642_RESPONSE_FIELDS`). Copied by name, as `buildPush` copies.
+ * The same push with only `PRE_642_RESPONSE_FIELDS`, which a server on the
+ * code before #642 takes. Copied by name, as `buildPush` copies.
  */
-export const withoutContext = (push: UsagePush): UsagePush => ({
+export const toPre642Push = (push: UsagePush): UsagePush => ({
   ...push,
   responses: push.responses.map(
     ({ id, session, branch, at, out, cacheRead }) => ({
@@ -233,13 +233,22 @@ export interface PushAnswer {
 }
 
 /**
+ * How a server on the code before #642 refuses a key it does not know: its
+ * strict schema's error, which that code's `acceptPush` passes through
+ * `z.prettifyError`. That code is fixed, so its wording is too.
+ */
+const UNKNOWN_KEY_REFUSAL = "Unrecognized key";
+
+/**
  * Send a push through `send`, which posts a body and reads the answer, and
- * send it again with the six fields if the server refuses it with a 400
- * (ADR-0023's #642 section). A server on the code before #642 refuses any key
- * it does not know, and the SessionEnd hook pushes from whatever branch a
- * session ends on, so the two can run either side of the change. When the six
- * fields are refused as well, the fault is the push's own, and the first
- * answer is the one returned, since it names the push that was meant.
+ * send it again as `toPre642Push` when the server refuses a key it does not
+ * know (ADR-0023's #642 section): the SessionEnd hook pushes from whatever
+ * branch a session ends on, so a laptop and the server can run either side of
+ * the change. Any other refusal is answered as it is: sending fewer fields
+ * would store the rows with no context and blame a server that never refused
+ * them. When the older fields are refused as well, the fault is the push's
+ * own, and the first answer is the one returned, since it names the push that
+ * was meant.
  *
  * `send` is a parameter so the one network call stays in
  * `scripts/issue-tokens.ts`, and a test can stand in for either server.
@@ -247,13 +256,15 @@ export interface PushAnswer {
 export async function sendPush(
   push: UsagePush,
   send: (body: string) => Promise<PushAnswer>,
-): Promise<PushAnswer & { withoutContext: boolean }> {
+): Promise<PushAnswer & { sixFieldsOnly: boolean }> {
   const first = await send(JSON.stringify(push));
-  if (first.status !== 400) return { ...first, withoutContext: false };
-  const second = await send(JSON.stringify(withoutContext(push)));
+  if (first.status !== 400 || !first.text.includes(UNKNOWN_KEY_REFUSAL)) {
+    return { ...first, sixFieldsOnly: false };
+  }
+  const second = await send(JSON.stringify(toPre642Push(push)));
   return second.status === 400
-    ? { ...first, withoutContext: false }
-    : { ...second, withoutContext: true };
+    ? { ...first, sixFieldsOnly: false }
+    : { ...second, sixFieldsOnly: true };
 }
 
 /** A body that ran past `MAX_PUSH_BYTES`. */

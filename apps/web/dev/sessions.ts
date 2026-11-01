@@ -58,7 +58,7 @@ import {
 } from "./implement-step.ts";
 import { groupSessions, type CreditedCard } from "./session-groups.ts";
 import {
-  contextOf,
+  countsOf,
   identityOf,
   largerCounts,
   raisesCounts,
@@ -373,11 +373,7 @@ function feed(
   // As `readTranscripts` keeps a response: under its first record's session,
   // branch and time, at the largest counts any of its records carries.
   const id = identityOf(rec, f.file, lineNo);
-  const counts = {
-    out: usage.output_tokens ?? 0,
-    cacheRead: usage.cache_read_input_tokens ?? 0,
-    context: contextOf(usage),
-  };
+  const counts = countsOf(usage);
   const before = f.responses.get(id);
   if (!before) {
     f.responses.set(id, {
