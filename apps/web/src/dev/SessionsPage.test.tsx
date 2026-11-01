@@ -35,6 +35,20 @@ vi.mock("./sessions-copy", async (importOriginal) => {
   };
 });
 
+/** Each session's `Card` renders once per render of the row around it, so
+ *  the count is how many rows a reading re-rendered (#717). */
+const cardRows = vi.hoisted(() => ({ rendered: 0 }));
+vi.mock("@/components/ui/card", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/card")>();
+  return {
+    ...actual,
+    Card: (props: Parameters<typeof actual.Card>[0]) => {
+      cardRows.rendered++;
+      return actual.Card(props);
+    },
+  };
+});
+
 /** The stream, answered by the test rather than the dev server. */
 class StubEventSource {
   static readonly CLOSED = 2;
@@ -139,6 +153,7 @@ const stateOf = (id: string) =>
 beforeEach(() => {
   rendered.length = 0;
   groupsRendered.length = 0;
+  cardRows.rendered = 0;
   vi.stubGlobal("EventSource", StubEventSource);
 });
 
@@ -201,5 +216,37 @@ describe("SessionsPage", () => {
     ).toHaveTextContent("Bash ×2");
     expect(rendered).toEqual([1_000, 2_000]);
     expect(groupsRendered).toEqual([101]);
+  });
+
+  test("a reading that changes one session in a group re-renders that session's row and not its neighbour's", () => {
+    // Both sessions in one group, as the `develop` group holds every session
+    // that ran there: the group re-renders for s1, and s2's row should not.
+    const shared = (s1Elapsed: number): SessionsReport => ({
+      ...reading(SESSION_STATE.running),
+      sessions: [card("s1", s1Elapsed), card("s2", 4_000)],
+      groups: [
+        {
+          key: "issue:101",
+          kind: SESSION_GROUP_KIND.issue,
+          issue: 101,
+          out: 2,
+          sessions: [
+            { id: "s1", out: 1, subtreeOut: 1, children: [] },
+            { id: "s2", out: 1, subtreeOut: 1, children: [] },
+          ],
+        },
+      ],
+    });
+    render(<SessionsPage />);
+    send(shared(1_000));
+    expect(cardRows.rendered).toBe(2);
+    rendered.length = 0;
+    groupsRendered.length = 0;
+    cardRows.rendered = 0;
+
+    send(shared(9_000));
+    expect(rendered).toEqual([9_000]);
+    expect(groupsRendered).toEqual([101]);
+    expect(cardRows.rendered).toBe(1);
   });
 });
