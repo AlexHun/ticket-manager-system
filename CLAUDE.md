@@ -74,7 +74,12 @@ A command that `.claude/settings.json` allows runs in its own call, follow-up
 checks in the next: chained, `gh pr merge` did not match its rule and auto
 mode refused it (#647). `.claude/hooks/block-env-read.mjs` refuses to read or
 write a local env file, which holds live secrets; read its committed example
-template for the names.
+template for the names. An empty `.git/index.lock` with no git process running
+is a `git status` or working-tree `git diff` that was killed while it wrote
+refreshed stat data to the index (#631): delete it. A script, hook or status
+line that runs either one in the background passes `--no-optional-locks`, or
+sets `GIT_OPTIONAL_LOCKS=0` as `repositoryFreeEnv` does for every git spawn
+under `apps/` and `scripts/` (held by `git-spawn-env.test.ts`).
 
 ## Agent skills
 

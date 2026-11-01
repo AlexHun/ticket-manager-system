@@ -43,11 +43,18 @@ export const GIT_LOCAL_ENV: readonly string[] = [
  * A copy of `env` without the variables that name a repository, so a git call
  * asks the one its `cwd` is in. A caller that sanitises for its own reasons
  * first (the dev server's `childEnv`) passes its result in, and keeps them.
+ *
+ * It also sets `GIT_OPTIONAL_LOCKS=0`. A `git status` or a `git diff` against
+ * the working tree otherwise writes refreshed stat data back to the index
+ * under `index.lock`, and one killed while it writes (a timeout's tree kill)
+ * leaves that lock empty with no git running, failing every later `git add`
+ * until someone deletes it (#631). A write git needs, such as `add` or
+ * `commit`, still takes the lock.
  */
 export function repositoryFreeEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  const free = { ...env };
+  const free: NodeJS.ProcessEnv = { ...env, GIT_OPTIONAL_LOCKS: "0" };
   for (const name of GIT_LOCAL_ENV) delete free[name];
   return free;
 }
