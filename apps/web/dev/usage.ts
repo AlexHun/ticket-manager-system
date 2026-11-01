@@ -240,9 +240,10 @@ function joinIssues(
  * stored point. `now` is the clock that point and `gatheredAt` are stamped
  * with, a parameter so the tests can move a day, which Playwright cannot.
  *
- * **No source that cannot be read makes this throw.** A missing directory is the ordinary state of a
- * machine that has never run Claude Code in this project, and of CI; a 500 from
- * the middleware would read as the page being broken rather than as the honest
+ * **No source that cannot be read makes this throw.** A missing directory is
+ * the ordinary state of a machine that has never run Claude Code in this
+ * project, and of CI; a 500 from the middleware would read as the page being
+ * broken rather than as the honest
  * "there is nothing here". A `gh` that cannot answer is smaller still: it costs
  * three columns, not the page. Both are reported as warnings beside whatever
  * could be read, the way the project map surfaces what its scan could not

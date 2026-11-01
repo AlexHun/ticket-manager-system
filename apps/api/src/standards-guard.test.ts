@@ -17,6 +17,7 @@ import {
   QUOTE,
 } from "@ticket/repo-scan/spellings";
 import { partialCheckout } from "@ticket/repo-scan/checkout";
+import { stripComments } from "@ticket/repo-scan/strip-comments";
 import { filesUnder, trackedFiles } from "@ticket/repo-scan/tracked-files";
 
 /**
@@ -460,6 +461,41 @@ function textFiles(): FileContents {
   );
 }
 
+/**
+ * The widest a comment-only line may be (#646). Prettier wraps code at 80 but
+ * never re-flows a comment, so a hand-edited one keeps whatever width the
+ * edit left. Comment lines of 81-90 characters were common and harmless when
+ * measured (2026-10-23); past 100 they were an edit nobody re-flowed.
+ */
+const COMMENT_WIDTH = 100;
+/** A line naming a URL may run past it: a link is not broken to fit. */
+const NAMES_URL = /https?:\/\//;
+/** Every tracked TypeScript and JavaScript file, `.claude/hooks/` included. */
+const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
+
+/** Every tracked source file, keyed by repo-relative path. */
+function sourceFiles(): FileContents {
+  return readRepo(...TRACKED.filter((file) => SOURCE_FILE.test(file)));
+}
+
+/** The 1-based lines of `text` that hold only a comment and are wider than
+ *  `COMMENT_WIDTH`, each with its width in characters. */
+function wideCommentLines(text: string): { line: number; width: number }[] {
+  const code = stripComments(text).code.split("\n");
+  return text.split("\n").flatMap((raw, i) => {
+    const line = raw.replace(/\r$/, "");
+    const width = [...line].length;
+    const commentOnly = code[i]!.trim() === "" && line.trim() !== "";
+    return commentOnly && width > COMMENT_WIDTH && !NAMES_URL.test(line)
+      ? [{ line: i + 1, width }]
+      : [];
+  });
+}
+
+/** A comment line `width` characters wide, `//` and its indent included. */
+const commentOf = (width: number) =>
+  `  // ${"x".repeat(width - "  // ".length)}`;
+
 const CONFIG_RULES: ConfigRule[] = [
   {
     name: "better-auth is pinned to an exact version, no ^ or ~, in both apps' manifests, and the two agree",
@@ -723,6 +759,36 @@ const CONFIG_RULES: ConfigRule[] = [
         "const BOM = '\\uFEFF';\nconst x = 'a\uFEFFb';\n",
     },
   },
+  {
+    name: `No comment-only line in a tracked source file is wider than ${COMMENT_WIDTH} characters, a line naming a URL aside: Prettier never re-flows a comment`,
+    standard: "checks.md",
+    read: sourceFiles,
+    problems: (files) =>
+      Object.entries(files).flatMap(([file, text]) =>
+        wideCommentLines(text).map(
+          ({ line, width }) =>
+            `${file}:${line} is a comment ${width} characters wide`,
+        ),
+      ),
+    catches: [
+      {
+        "apps/api/src/a.ts": `${commentOf(COMMENT_WIDTH + 1)}\nconst a = 1;\n`,
+      },
+      // A doc-comment's middle line, in CRLF, the shape #644 sent back.
+      {
+        "packages/shared/src/b.ts": `/**\r\n * ${"x".repeat(COMMENT_WIDTH)}\r\n */\r\n`,
+      },
+      { ".claude/hooks/c.mjs": `/* ${"x".repeat(COMMENT_WIDTH)} */\n` },
+    ],
+    ignores: {
+      // At the limit; a wide line of code, which Prettier owns; a URL; and a
+      // template literal's line, which is text even when it looks like `//`.
+      "apps/api/src/a.ts": `${commentOf(COMMENT_WIDTH)}\r\n`,
+      "apps/api/src/b.ts": `const name = "${"x".repeat(COMMENT_WIDTH)}"; // why\n`,
+      "apps/api/src/c.ts": `  // See https://example.com/${"x".repeat(COMMENT_WIDTH)}\n`,
+      "apps/api/src/d.ts": `const t = \`\n${commentOf(COMMENT_WIDTH + 1)}\n\`;\n`,
+    },
+  },
 ];
 
 test.skipIf(partialCheckout)(
@@ -756,6 +822,21 @@ test.skipIf(partialCheckout)(
     expect(files).toContain("apps/api/Dockerfile");
     expect(files).toContain(SELF);
     expect(files.some((file) => file.endsWith(".png"))).toBe(false);
+  },
+);
+
+test.skipIf(partialCheckout)(
+  "the comment-width rule reads the tree it means to",
+  () => {
+    // An empty list would pass every file it did not read.
+    const files = Object.keys(sourceFiles());
+    expect(files.length).toBeGreaterThan(500);
+    expect(files).toContain("apps/api/src/index.ts");
+    expect(files).toContain("apps/web/src/main.tsx");
+    expect(files).toContain("packages/shared/src/index.ts");
+    expect(files).toContain("tools/repo-scan/src/rules.ts");
+    expect(files).toContain(".claude/hooks/block-no-verify.mjs");
+    expect(files).toContain(SELF);
   },
 );
 
