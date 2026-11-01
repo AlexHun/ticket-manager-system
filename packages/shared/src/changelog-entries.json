@@ -1208,5 +1208,10 @@
     "version": "0.1.302",
     "date": "2026-10-31",
     "title": "Settle the review's findings on the new-version reload"
+  },
+  {
+    "version": "0.1.303",
+    "date": "2026-11-01",
+    "title": "Settle the review's findings on format:changed"
   }
 ]
