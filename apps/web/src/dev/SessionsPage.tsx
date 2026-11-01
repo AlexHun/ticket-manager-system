@@ -401,26 +401,45 @@ const Group = memo(function Group({ group, cards }: GroupProps) {
       </div>
       <ol className="space-y-3">
         {group.sessions.map((slice) => (
-          <li key={slice.id}>
-            {/* Each session skips its layout and paint while off screen. A
-                fold otherwise laid out and pre-painted every card on the
-                page: with this machine's 256 sessions, 1.3s of frozen page
-                per press (#611). On the card rather than the `<li>`, whose
-                paint containment would clip the card's ring. */}
-            <Card
-              size="sm"
-              className="[contain-intrinsic-size:auto_15rem] [content-visibility:auto]"
-            >
-              <CardContent>
-                <CardBody slice={slice} card={cards.get(slice.id)} depth={0} />
-              </CardContent>
-            </Card>
-          </li>
+          <SessionRow key={slice.id} slice={slice} card={cards.get(slice.id)} />
         ))}
       </ol>
     </section>
   );
 }, sameGroup);
+
+/**
+ * One session's row in a group, memoised apart from `CardBody` so a group that
+ * re-renders for one session skips its other sessions' wrappers too (#717):
+ * a session that ran on `develop` shares its group with each other one that
+ * did, and re-rendering all their rows was the largest part of a reading
+ * measured in dev-tools.md.
+ */
+const SessionRow = memo(function SessionRow({
+  slice,
+  card,
+}: {
+  slice: SessionSlice;
+  card: SessionCard | undefined;
+}) {
+  return (
+    <li>
+      {/* Each session skips its layout and paint while off screen. A fold
+          otherwise laid out and pre-painted every card on the page: with this
+          machine's 256 sessions, 1.3s of frozen page per press (#611). On the
+          card rather than the `<li>`, whose paint containment would clip the
+          card's ring. */}
+      <Card
+        size="sm"
+        className="[contain-intrinsic-size:auto_15rem] [content-visibility:auto]"
+      >
+        <CardContent>
+          <CardBody slice={slice} card={card} depth={0} />
+        </CardContent>
+      </Card>
+    </li>
+  );
+});
 
 interface GroupProps {
   group: SessionGroup;
