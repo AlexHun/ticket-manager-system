@@ -64,6 +64,24 @@ nobody has an intuition for.
   decides splitting. A worker under the ceiling writes at most ~40k output,
   so a ticket cut to it is nearly always an `S`; the label tells tickets apart
   less than it did, and is kept so the forecasts stay scored on one scale.
+- **Forecast turns from `implement`'s steps, not from the files touched.**
+  #723 was filed by hand during #722's review and labelled `S`. Its body named
+  `@ticket/core`, the API route, the `/pipeline` page and rewritten copy, and
+  `bun run tokens` puts it at 189 turns in one window, 109k output and a 353k
+  peak, its retro included. Turns by step, read off its transcript:
+
+  | Step                                         | Turns |
+  | -------------------------------------------- | ----- |
+  | Load the standards (13 files)                | ~15   |
+  | Build, three workspaces                      | ~70   |
+  | Look at the page, with a real simulated send | ~40   |
+  | Review and its fixes                         | ~30   |
+  | Ship                                         | ~10   |
+
+  The look and the review take about 70 turns between them on top of the
+  build, so a ticket that renders a page and also changes two other
+  workspaces forecasts past 75 turns: split it, here into the core and API
+  half and the page and copy half.
 
 ### Why context, not output (#627)
 
