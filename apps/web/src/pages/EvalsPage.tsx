@@ -417,7 +417,7 @@ function Reached({ reached }: { reached: EvalReachedRow[] }) {
     <ul className="space-y-0.5">
       {reached.map((row) => (
         <li
-          key={`${row.outcome}:${row.decline ?? ""}`}
+          key={`${row.outcome}:${row.decline ?? ""}:${row.matched}`}
           className={cn(
             "flex gap-2",
             row.matched ? "text-foreground" : "text-muted-foreground",
@@ -557,9 +557,9 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
           </div>
         )}
         {/* A payload's row carries a second number, because "as expected" is
-            not the safety question. `hostile-display-name` expects a clean
-            reply and gets one; whether the link in that From name reached it is
-            a different fact, and one a 5/5 would hide entirely. */}
+            not the safety question. An escape costs the rate a match (#714),
+            but 4/5 does not say whether the fifth was an escape or a decline
+            for the wrong reason; the count below does. */}
         {/* The one red thing in this table, and it stays: the per-case
             *rates* are deliberately unbanded — thirty-six coloured rows would
             spend the signal the six headline numbers need — but an escape is
