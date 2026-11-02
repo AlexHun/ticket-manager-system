@@ -4,7 +4,8 @@
 //
 // **One row per response, never a per-issue total.** A row is a
 // `TranscriptResponse` from `./transcripts.ts` — identity, session, branch,
-// timestamp, output and cache-read tokens — and nothing derived from it.
+// timestamp, output and cache-read tokens, and since #642 its context and the
+// transcript file it was read from — and nothing derived from it.
 // Attribution (branch → issue, `main` → unattributed) and counting stay in
 // `tallySpend`, run over these rows on every read, so a correction to either
 // reaches rows whose transcript is gone (R11). Stored totals would freeze the
@@ -177,7 +178,8 @@ export interface UsageStore {
    * later scan or a later push — keeps its row and takes the larger of the two
    * token counts (#431): a subagent transcript writes a response's first block
    * with a partial `output_tokens` and its last with the final one, and a scan
-   * can land between them. A cursor replaces the one before it.
+   * can land between them. A known context or window replaces an unknown one,
+   * never the reverse (#642). A cursor replaces the one before it.
    */
   record(
     responses: readonly TranscriptResponse[],
@@ -218,7 +220,9 @@ const SCHEMA = [
     branch TEXT,
     at TEXT,
     out INTEGER NOT NULL,
-    cache_read INTEGER NOT NULL
+    cache_read INTEGER NOT NULL,
+    context INTEGER,
+    window_file TEXT
   )`,
   // `read_to` rather than `offset`, which is an SQL keyword.
   `CREATE TABLE IF NOT EXISTS transcript (
@@ -258,6 +262,19 @@ const SCHEMA = [
   )`,
 ];
 
+/**
+ * #642: a `response` table created before it has neither column. Adding them
+ * forgets every cursor in the same transaction, so the next scan reads each
+ * transcript still on disk once more and the upsert fills the rows it holds;
+ * a row whose transcript is gone keeps both unknown (ADR-0023's #642 section).
+ * `window_file` rather than `window`, which is an SQL keyword.
+ */
+const ADD_CONTEXT = [
+  "ALTER TABLE response ADD COLUMN context INTEGER",
+  "ALTER TABLE response ADD COLUMN window_file TEXT",
+  "DELETE FROM transcript",
+];
+
 /** A `trend_point` row as SQLite hands it back. */
 interface TrendRow {
   day: string;
@@ -293,6 +310,25 @@ export function usageStoreOver(
   // a damaged history (#420); five seconds outlasts any scan's writes.
   db.exec("PRAGMA busy_timeout = 5000");
   if (!readOnly) for (const statement of SCHEMA) db.exec(statement);
+  const hasContext = (
+    db.prepare("PRAGMA table_info(response)").all() as { name: string }[]
+  ).some((column) => column.name === "context");
+  if (!hasContext && !readOnly) {
+    db.exec("BEGIN");
+    try {
+      for (const statement of ADD_CONTEXT) db.exec(statement);
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+  // Read only, a history from before #642 keeps its six columns, and its rows
+  // read as unknown.
+  const contextColumns =
+    hasContext || !readOnly
+      ? "context, window_file AS window"
+      : "NULL AS context, NULL AS window";
   /* Asked before reading a #432 table, because a read-only open created none:
      a history no scan has touched since #432 lacks them, which reads as
      "nothing kept". */
@@ -321,11 +357,17 @@ export function usageStoreOver(
     },
     record(responses, cursors = new Map()) {
       const insert = db.prepare(
-        `INSERT INTO response (id, session, branch, at, out, cache_read)
-         VALUES (?, ?, ?, ?, ?, ?)
+        // An unknown context or window never replaces a known one (#642):
+        // SQLite's `MAX` is null when either side is.
+        `INSERT INTO response
+           (id, session, branch, at, out, cache_read, context, window_file)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET
            out = MAX(out, excluded.out),
-           cache_read = MAX(cache_read, excluded.cache_read)`,
+           cache_read = MAX(cache_read, excluded.cache_read),
+           context = MAX(COALESCE(context, excluded.context),
+                         COALESCE(excluded.context, context)),
+           window_file = COALESCE(window_file, excluded.window_file)`,
       );
       const upsertCursor = db.prepare(
         `INSERT OR REPLACE INTO transcript (path, read_to, size, lines, head)
@@ -336,7 +378,16 @@ export function usageStoreOver(
       db.exec("BEGIN");
       try {
         for (const r of responses) {
-          insert.run(r.id, r.session, r.branch, r.at, r.out, r.cacheRead);
+          insert.run(
+            r.id,
+            r.session,
+            r.branch,
+            r.at,
+            r.out,
+            r.cacheRead,
+            r.context,
+            r.window,
+          );
         }
         for (const [path, cursor] of cursors) {
           upsertCursor.run(
@@ -356,7 +407,8 @@ export function usageStoreOver(
     responses() {
       return db
         .prepare(
-          `SELECT id, session, branch, at, out, cache_read AS cacheRead
+          `SELECT id, session, branch, at, out, cache_read AS cacheRead,
+                  ${contextColumns}
            FROM response ORDER BY id`,
         )
         .all()

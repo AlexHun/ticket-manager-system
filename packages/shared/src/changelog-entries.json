@@ -1238,5 +1238,50 @@
     "version": "0.1.306",
     "date": "2026-11-01",
     "title": "Settle the review's findings on the fall flag (#686)"
+  },
+  {
+    "version": "0.1.307",
+    "date": "2026-11-01",
+    "title": "Settle the review's findings on sessions re-rendering (#689)"
+  },
+  {
+    "version": "0.1.308",
+    "date": "2026-11-01",
+    "title": "Keep each response's context and window, and an issue's peak (#642)"
+  },
+  {
+    "version": "0.1.308",
+    "date": "2026-11-01",
+    "title": "Bun run tokens prints each issue's peak context (#642)"
+  },
+  {
+    "version": "0.1.308",
+    "date": "2026-11-01",
+    "title": "Settle the #642 review's findings"
+  },
+  {
+    "version": "0.1.309",
+    "date": "2026-11-01",
+    "title": "Settle the #717 review's findings"
+  },
+  {
+    "version": "0.1.310",
+    "date": "2026-11-02",
+    "title": "Settle the #710 review's findings"
+  },
+  {
+    "version": "0.1.311",
+    "date": "2026-11-02",
+    "title": "A payload case matches when the reply stayed safe (#714)"
+  },
+  {
+    "version": "0.1.313",
+    "date": "2026-11-02",
+    "title": "A simulated run says whether its payload escaped (#723)"
+  },
+  {
+    "version": "0.1.313",
+    "date": "2026-11-02",
+    "title": "/pipeline judges a payload case by the rule /evals counts by (#723)"
   }
 ]

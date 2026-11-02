@@ -45,6 +45,8 @@ const response = (
   at: "2026-09-02T09:00:00.000Z",
   out: 1000,
   cacheRead: 10,
+  context: 50_000,
+  window: "s.jsonl",
   ...overrides,
 });
 
@@ -233,6 +235,35 @@ describe("the store", () => {
     expect(store.count()).toBe(1);
   });
 
+  // #642: a row stored before the change has neither figure. A later read of
+  // its transcript fills them, and a push from code that predates them never
+  // takes them away.
+  it("fills a stored row's unknown context and window, and never empties a known one", () => {
+    const store = memoryStore();
+
+    store.record([response({ id: "a", context: null, window: null })]);
+    store.record([response({ id: "b" })]);
+    store.record([
+      response({ id: "a", context: 70_000, window: "s.jsonl" }),
+      response({ id: "b", context: null, window: null }),
+    ]);
+
+    expect(store.responses()).toEqual([
+      response({ id: "a", context: 70_000, window: "s.jsonl" }),
+      response({ id: "b" }),
+    ]);
+  });
+
+  it("raises a stored context to a larger one read later, never lowers it", () => {
+    const store = memoryStore();
+
+    store.record([response({ context: 3_000 })]);
+    store.record([response({ context: 90_000 })]);
+    store.record([response({ context: 4_000 })]);
+
+    expect(store.responses()[0]?.context).toBe(90_000);
+  });
+
   it("names the earliest timestamp it holds, and none while it holds nothing", () => {
     const store = memoryStore();
     expect(store.since()).toBeNull();
@@ -308,6 +339,84 @@ describe("the store", () => {
   });
 });
 
+// #642: a history written before the change has a six-column `response`.
+describe("a history from before context and window", () => {
+  const OLD_RESPONSE = `CREATE TABLE response (
+    id TEXT PRIMARY KEY,
+    session TEXT,
+    branch TEXT,
+    at TEXT,
+    out INTEGER NOT NULL,
+    cache_read INTEGER NOT NULL
+  )`;
+  const OLD_TRANSCRIPT = `CREATE TABLE transcript (
+    path TEXT PRIMARY KEY,
+    read_to INTEGER NOT NULL,
+    size INTEGER NOT NULL,
+    lines INTEGER NOT NULL,
+    head TEXT NOT NULL
+  )`;
+
+  /** A file holding one old row and one transcript's cursor. */
+  const oldHistory = () => {
+    const file = join(dir, "old.sqlite");
+    const db = new DatabaseSync(file);
+    db.exec(OLD_RESPONSE);
+    db.exec(OLD_TRANSCRIPT);
+    db.exec(
+      `INSERT INTO response VALUES ('message:m1', 's', 'feat/7-a', NULL, 1000, 10)`,
+    );
+    db.exec(`INSERT INTO transcript VALUES ('/t/a.jsonl', 10, 10, 1, 'h')`);
+    db.close();
+    return file;
+  };
+
+  it("reads its rows as unknown, never as zero", async () => {
+    const store = await openUsageStore(oldHistory());
+    try {
+      expect(store.responses()).toEqual([
+        response({ at: null, context: null, window: null }),
+      ]);
+    } finally {
+      store.close();
+    }
+  });
+
+  // So the next scan reads every transcript still on disk once more, and the
+  // upsert fills the rows it holds.
+  it("forgets every cursor when it gains the columns, and only then", async () => {
+    const file = oldHistory();
+    const first = await openUsageStore(file);
+    expect(first.cursors().size).toBe(0);
+    first.record(
+      [],
+      new Map([["/t/b.jsonl", { offset: 1, size: 1, lines: 1, head: "h" }]]),
+    );
+    first.close();
+
+    const second = await openUsageStore(file);
+    try {
+      expect([...second.cursors().keys()]).toEqual(["/t/b.jsonl"]);
+    } finally {
+      second.close();
+    }
+  });
+
+  // The stored reading (#432) opens the file read only and cannot add a column.
+  it("reads as unknown when opened read only, adding nothing", async () => {
+    const file = oldHistory();
+    const store = await openUsageStore(file, { readOnly: true });
+    try {
+      expect(store.responses()).toEqual([
+        response({ at: null, context: null, window: null }),
+      ]);
+      expect(store.cursors().size).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
+});
+
 describe("history outlives its transcripts (R1, R11)", () => {
   /** One scan's worth of the store: open, record what is on disk, read
    *  everything stored, close — the order `gatherUsage` keeps. */
@@ -356,6 +465,7 @@ describe("history outlives its transcripts (R1, R11)", () => {
       turns: 1,
       out: 4000,
       cacheRead: 9,
+      peakContext: 4009,
       sessions: 1,
     });
     expect(today.unattributed).toEqual({ turns: 1, out: 500 });

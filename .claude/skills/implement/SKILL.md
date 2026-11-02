@@ -33,8 +33,9 @@ invoke it.
    Commit each slice once its test is green, after the self-check in
    CLAUDE.md, and push it: a feature branch runs no CI, and a pushed commit
    survives a session that stops on a usage limit, where staged work survives
-   only on this machine. After the first push, comment
-   `Progress: building, next is the next slice (step 4)`.
+   only on this machine. After the first push lands, comment
+   `Progress: building, next is the next slice (step 4)`, in its own call as
+   step 6 says.
 5. **Mark the PRD shipped if this is its last ticket.** When the ticket's
    `## Parent` names `docs/prd/<slug>.md` (`to-tickets` writes it) and
    `gh issue list --state open --search "\"docs/prd/<slug>.md\" in:body"`
@@ -48,6 +49,10 @@ invoke it.
 6. **Commit** after the self-check in CLAUDE.md, push, and leave the
    checkpoint on the issue:
    `gh issue comment <n> --body "Progress: built, next is the look (step 7)"`.
+   Every `Progress:` comment goes in a call of its own, made once the push's
+   output shows the ref landed on origin. In #723 the comment shared a line
+   with a `git push` whose pre-push hook failed, and a resumed session would
+   have read "built" off a branch origin did not hold.
 7. **Look at the page.** Skip to step 8 when the ticket renders no page and
    changes none. Otherwise open each page it touches in a real browser, through
    the chrome-devtools MCP (`docs/standards/conventions.md`), on real-volume
@@ -59,19 +64,23 @@ invoke it.
    machine's own transcripts, with no `CLAUDE_TRANSCRIPT_DIR` set, never the
    E2E's web server, which reads the fixtures. When the PRD's worst case is
    above what that holds, say how far below it the look was. At 1440 px and
-   390 px wide, save a screenshot to `.scratch/look-<n>/` and read it back for
+   390 px wide (the emulate tool, as conventions.md says), save a screenshot to `.scratch/look-<n>/` and read it back for
    anything that overflows, clips or wraps badly. Then trace the page's main
    interaction, the one the PRD's budget names, or a fold, filter or sort when
    none is named: start the trace with reload and auto-stop off, make the
-   interaction, and stop it with a file path in the same directory. Leave the
+   interaction, and stop it with a file path in the same directory. The trace
+   shows where the time goes; the 200 ms bar is judged on Event Timing of a
+   built bundle, the median of three MCP clicks, with the recipe and its
+   pitfalls in conventions.md's **Driving a real browser**. #726 was filed on
+   dev-server clicks of 528 to 672 ms that a build ran in 144 to 216. Leave the
    checkpoint with `--body-file`: `Progress: looked, next is review (step 8)`,
    each screenshot's path and what it shows, the trace's path, and its first
    load and slowest interaction in ms. The files stay on this machine, since
    `gh` uploads no image; never upload a `/__dev` one by hand either, since it
    shows the developer's own prompts and this repo's issues are public. Done
    when both screenshots and the trace are named in that comment, and every
-   interaction over 200 ms in it has an issue filed or a fix pushed, named
-   beside it.
+   interaction whose built-bundle median is over 200 ms has an issue filed or
+   a fix pushed, named beside it.
 8. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
    `origin/develop`. Its two axes run as background subagents whatever that
    skill asks, and a background report reaches a subagent only between its
@@ -93,7 +102,11 @@ invoke it.
    state a review's result only from its report. Run an axis whose file is
    still missing after the loop's 15 minutes inline instead. Fix every
    finding, or write down why one stands, and list each finding and how it
-   was settled under the PR body's `## Review`. A finding that stands cites
+   was settled under the PR body's `## Review`. The fix commit's type is
+   `chore`, `refactor`, `test` or `docs`: CI's `scripts/ci/record-changelog-entry.mjs`
+   turns every `feat` or `fix` subject on the branch into a "What's new"
+   entry, and #723's first `fix: settle the review's findings` would have
+   been one. A finding that stands cites
    the `file:line` its reason rests on, read in this step: #607's PR kept the
    outage-flags-a-case finding on "some cases expect no verdict", which
    `evals/runner.ts` contradicts in so many words, and no citation was asked.

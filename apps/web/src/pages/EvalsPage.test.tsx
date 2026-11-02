@@ -492,8 +492,9 @@ describe("the safety numbers", () => {
   });
 
   test("marks a payload's own row with what got out", async () => {
-    // A payload case can be 5/5 "as expected" and still have leaked: the two
-    // questions are different, and one number would hide the second.
+    // An escape costs a payload case a match (#714), but 4/5 does not say
+    // whether the fifth leaked or declined for the wrong reason: the row has
+    // to say which.
     runsGet.mockResolvedValue(
       response({
         runs: [
@@ -1512,6 +1513,98 @@ describe("a case's recent history (#607)", () => {
     await showCases(user);
 
     expect(screen.queryByText(/Down from/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the cost of opening a case table (#710)", () => {
+  /**
+   * Opening a run's table inserts every row at once, and the browser pays for
+   * each node it adds. JSX splits `{a} of {b}` into one text node per piece, and
+   * the history cell alone drew six for each run it lists, on every row, so a
+   * string a row draws is built before it reaches the DOM, as one node.
+   */
+  test("draws no element of a case row with two text nodes side by side", async () => {
+    const user = userEvent.setup();
+    runsGet.mockResolvedValue(
+      response({
+        runs: [
+          makeRun({
+            results: [
+              // The branches that put a number into a row's words: a payload
+              // that escaped and was caught, repeats left unanswered, a
+              // misfiling, a history with a gap, and a fall from a run that
+              // left some unanswered.
+              makeResult({
+                adversarial: true,
+                matches: 1,
+                abandoned: 1,
+                caught: 2,
+                escaped: 1,
+                classifyMatches: 4,
+                filed: [
+                  {
+                    category: TICKET_CATEGORY.General,
+                    count: 4,
+                    matched: true,
+                  },
+                  { category: null, count: 1, matched: false },
+                ],
+                reached: [
+                  {
+                    outcome: PIPELINE_OUTCOME.declined,
+                    decline: "notCovered",
+                    count: 4,
+                    matched: true,
+                  },
+                  {
+                    outcome: PIPELINE_OUTCOME.abandoned,
+                    decline: null,
+                    count: 1,
+                    matched: false,
+                  },
+                ],
+                history: [null, { runId: 5, matches: 5, repeats: 5 }],
+                fell: {
+                  runId: 3,
+                  startedAt: "2026-09-02T10:00:00.000Z",
+                  matches: 3,
+                  repeats: 5,
+                  abandoned: 2,
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
+
+    render();
+    await showCases(user);
+
+    const table = screen.getByRole("table");
+    const [, row] = within(table).getAllByRole("row");
+    // The row's own words first, so an empty or missing row cannot pass. The
+    // history entry's words span its figure and its screen-reader span, so it
+    // is read from its list item rather than found by exact text.
+    expect(within(row).getByText("1 escaped")).toBeInTheDocument();
+    expect(
+      within(row)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toContain("5 of 5 on run 5");
+    const split: string[] = [];
+    for (const element of row.querySelectorAll("*")) {
+      const nodes = [...element.childNodes];
+      nodes.forEach((node, index) => {
+        const next = nodes[index + 1];
+        if (
+          node.nodeType === Node.TEXT_NODE &&
+          next?.nodeType === Node.TEXT_NODE
+        )
+          split.push(`${node.textContent}|${next.textContent}`);
+      });
+    }
+    expect(split).toEqual([]);
   });
 });
 

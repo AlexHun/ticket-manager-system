@@ -28,7 +28,13 @@ import {
 function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
   return {
     issue: 1,
-    spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 },
+    spend: {
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 400_000,
+      peakContext: null,
+    },
     title: "An issue",
     url: "https://example.test/1",
     forecast: "S",
@@ -48,7 +54,14 @@ const unstarted = (issue: number): IssueUsage =>
 const withFigure = (issue: number, over: Partial<IssueUsage["spend"]>) =>
   makeIssue({
     issue,
-    spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000, ...over },
+    spend: {
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 400_000,
+      peakContext: null,
+      ...over,
+    },
   });
 
 const numbersOf = (rows: IssueUsage[]) => rows.map((row) => row.issue);

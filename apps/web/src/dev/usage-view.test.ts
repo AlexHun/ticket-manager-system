@@ -41,7 +41,13 @@ import {
 function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
   return {
     issue: 1,
-    spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 },
+    spend: {
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 400_000,
+      peakContext: null,
+    },
     title: "An issue",
     url: "https://example.test/1",
     forecast: "S",
@@ -63,7 +69,13 @@ function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
  */
 const OVER = makeIssue({
   issue: 105,
-  spend: { out: 90_000, turns: 9, sessions: 2, cacheRead: 50_000 },
+  spend: {
+    out: 90_000,
+    turns: 9,
+    sessions: 2,
+    cacheRead: 50_000,
+    peakContext: null,
+  },
   title: "Over budget fixture",
   forecast: "S",
   bucket: "L",
@@ -72,13 +84,25 @@ const OVER = makeIssue({
 
 const ON_TARGET = makeIssue({
   issue: 101,
-  spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 },
+  spend: {
+    out: 20_000,
+    turns: 2,
+    sessions: 1,
+    cacheRead: 400_000,
+    peakContext: null,
+  },
   title: "Ranking the table from its headers",
 });
 
 const UNDER = makeIssue({
   issue: 102,
-  spend: { out: 9_000, turns: 5, sessions: 3, cacheRead: 100_000 },
+  spend: {
+    out: 9_000,
+    turns: 5,
+    sessions: 3,
+    cacheRead: 100_000,
+    peakContext: null,
+  },
   title: "The filter bar's reach",
   forecast: "M",
   bucket: "S",

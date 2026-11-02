@@ -11,3 +11,4 @@ export * from "./schemas/dashboard";
 export * from "./schemas/evals";
 export * from "./schemas/demo";
 export * from "./cases/auto-reply-cases";
+export * from "./cases/case-match";

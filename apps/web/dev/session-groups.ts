@@ -14,9 +14,9 @@
 // **That total is the Usage page's, by the same join** (R7): `tallySpend` over
 // the responses the cards were credited from, which `./sessions.ts` keys with
 // `identityOf` and folds at their largest count, as `readTranscripts` does.
-// The six fields of `TranscriptResponse` are the usage history's stored row and
-// the push's wire (ADR-0023), so the card a response belongs to is not a
-// seventh field: it is which card's list the response is in. A response in two
+// The fields of `TranscriptResponse` are the usage history's stored row and
+// the push's wire (ADR-0023), so the card a response belongs to is not one of
+// them: it is which card's list the response is in. A response in two
 // files is credited once, to the first card read; measured the same day over
 // 744 transcripts, no response id was in more than one.
 
@@ -29,6 +29,7 @@ import {
 import {
   issueOfBranch,
   largerCounts,
+  raisesCounts,
   tallySpend,
   type TranscriptResponse,
 } from "./transcripts.ts";
@@ -97,7 +98,7 @@ function creditAll(roots: readonly CreditedCard[]) {
       if (!before) {
         responses.set(r.id, r);
         creditedTo.set(r.id, c);
-      } else if (r.out > before.out || r.cacheRead > before.cacheRead) {
+      } else if (raisesCounts(before, r)) {
         responses.set(r.id, { ...before, ...largerCounts(before, r) });
       }
     }

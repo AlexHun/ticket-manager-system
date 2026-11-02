@@ -11,6 +11,7 @@ import {
   PIPELINE_OUTCOME,
   TUTORIAL_PAGE_KEY,
   type AutoReplyDecline,
+  type EvalCaseFall,
   type EvalCaseResultRow,
   type EvalCaseSplit,
   type EvalCategoryRow,
@@ -261,6 +262,23 @@ function trailingLabel(trailing: EvalTrailingMetric): string {
 }
 
 /**
+ * A case's fall since a week earlier, as the row's amber line says it (#607).
+ *
+ * When that run left repeats unanswered, the split is drawn over the answered
+ * ones, which is what the flag compares (#686): a 3/5 beside this run's own
+ * 3/5 would read as no fall at all. Built as one string, so the row adds one
+ * text node for it rather than one per piece (#710).
+ */
+function fellLabel(fell: EvalCaseFall): string {
+  const run = `run ${fell.runId}, ${formatDateRange(new Date(fell.startedAt))}`;
+  if (fell.abandoned > 0) {
+    const answered = fell.repeats - fell.abandoned;
+    return `Down from ${fell.matches} of ${answered} answered a week earlier (${fell.abandoned} unanswered; ${run})`;
+  }
+  return `Down from ${fell.matches}/${fell.repeats} a week earlier (${run})`;
+}
+
+/**
  * One headline number with its own denominator underneath it.
  *
  * The denominator is not decoration. "84%" over 5 repeats and "84%" over 175
@@ -399,13 +417,13 @@ function Reached({ reached }: { reached: EvalReachedRow[] }) {
     <ul className="space-y-0.5">
       {reached.map((row) => (
         <li
-          key={`${row.outcome}:${row.decline ?? ""}`}
+          key={`${row.outcome}:${row.decline ?? ""}:${row.matched}`}
           className={cn(
             "flex gap-2",
             row.matched ? "text-foreground" : "text-muted-foreground",
           )}
         >
-          <span className="tabular-nums">{row.count}×</span>
+          <span className="tabular-nums">{`${row.count}×`}</span>
           <span>{verdict(row.outcome, row.decline)}</span>
         </li>
       ))}
@@ -437,10 +455,10 @@ function Filed({ result }: { result: EvalCaseResultRow }) {
             : "text-muted-foreground",
         )}
       >
-        {result.classifyMatches}/{result.classifiedRepeats}
+        {`${result.classifyMatches}/${result.classifiedRepeats}`}
       </span>
       <div className="text-xs text-muted-foreground">
-        expected {result.expectedCategory}
+        {`expected ${result.expectedCategory}`}
       </div>
       {/* Only the ones that went somewhere else. A case filed as expected every
           time has said so in the rate above, and repeating it here would bury
@@ -450,7 +468,7 @@ function Filed({ result }: { result: EvalCaseResultRow }) {
           .filter((row: EvalFiledRow) => !row.matched)
           .map((row) => (
             <li key={row.category ?? ""} className="flex gap-1.5">
-              <span className="tabular-nums">{row.count}×</span>
+              <span className="tabular-nums">{`${row.count}×`}</span>
               <span>{categoryLabel(row.category)}</span>
             </li>
           ))}
@@ -489,8 +507,7 @@ function History({ history }: { history: (EvalCaseSplit | null)[] }) {
           <li key={split.runId}>
             {split.matches}
             <span className="sr-only">
-              {" "}
-              of {split.repeats} on run {split.runId}
+              {` of ${split.repeats} on run ${split.runId}`}
             </span>
           </li>
         ),
@@ -532,17 +549,17 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             clean ? "text-foreground" : "text-muted-foreground",
           )}
         >
-          {result.matches}/{result.repeats}
+          {`${result.matches}/${result.repeats}`}
         </span>
         {result.abandoned > 0 && (
           <div className="text-xs text-muted-foreground">
-            {result.abandoned} unanswered
+            {`${result.abandoned} unanswered`}
           </div>
         )}
         {/* A payload's row carries a second number, because "as expected" is
-            not the safety question. `hostile-display-name` expects a clean
-            reply and gets one; whether the link in that From name reached it is
-            a different fact, and one a 5/5 would hide entirely. */}
+            not the safety question. An escape costs the rate a match (#714),
+            but 4/5 does not say whether the fifth was an escape or a decline
+            for the wrong reason; the count below does. */}
         {/* The one red thing in this table, and it stays: the per-case
             *rates* are deliberately unbanded — thirty-six coloured rows would
             spend the signal the six headline numbers need — but an escape is
@@ -551,12 +568,12 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             `destructive`, so red means one thing on this page. */}
         {result.escaped > 0 && (
           <div className="text-xs font-medium text-status-critical">
-            {result.escaped} escaped
+            {`${result.escaped} escaped`}
           </div>
         )}
         {result.caught > 0 && (
           <div className="text-xs text-muted-foreground">
-            {result.caught} caught
+            {`${result.caught} caught`}
           </div>
         )}
         {/* The table's one amber thing (#607), and the words carry it without
@@ -566,21 +583,10 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
             this table looking for, though, since a fall of 5/5 to 0/5 moves the
             headline accuracy by about three points, which is inside a passing
             run. Named run and date, because "down from" is a claim somebody
-            will go and check. When that run left repeats unanswered, the
-            split is drawn over the answered ones, which is what the flag
-            compares (#686): a 3/5 here beside this run's own 3/5 would read
-            as no fall at all. */}
+            will go and check; `fellLabel` has the wording. */}
         {result.fell && (
           <div className="text-xs font-medium text-status-warning">
-            Down from{" "}
-            {result.fell.abandoned > 0
-              ? `${result.fell.matches} of ${result.fell.repeats - result.fell.abandoned} answered`
-              : `${result.fell.matches}/${result.fell.repeats}`}{" "}
-            a week earlier (
-            {result.fell.abandoned > 0 &&
-              `${result.fell.abandoned} unanswered; `}
-            run {result.fell.runId},{" "}
-            {formatDateRange(new Date(result.fell.startedAt))})
+            {fellLabel(result.fell)}
           </div>
         )}
       </td>

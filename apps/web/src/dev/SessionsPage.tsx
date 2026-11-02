@@ -368,14 +368,13 @@ function groupWords(group: SessionGroup): { title: ReactNode; note?: string } {
   }
 }
 
-/** Memoised, as `CardBody` is, so a batch renders only what it adds (#618). */
-const Group = memo(function Group({
-  group,
-  cards,
-}: {
-  group: SessionGroup;
-  cards: Map<string, SessionCard>;
-}) {
+/**
+ * Memoised, as `CardBody` is, so a batch renders only what it adds (#618) and
+ * a reading only the groups it changed (#689). `cards` is a new map whenever
+ * a reading changes any card, so it is compared by the cards this group
+ * names, which `shareReading` keeps while nothing under them changed.
+ */
+const Group = memo(function Group({ group, cards }: GroupProps) {
   const headingId = useId();
   const { title, note } = groupWords(group);
   return (
@@ -402,26 +401,61 @@ const Group = memo(function Group({
       </div>
       <ol className="space-y-3">
         {group.sessions.map((slice) => (
-          <li key={slice.id}>
-            {/* Each session skips its layout and paint while off screen. A
-                fold otherwise laid out and pre-painted every card on the
-                page: with this machine's 256 sessions, 1.3s of frozen page
-                per press (#611). On the card rather than the `<li>`, whose
-                paint containment would clip the card's ring. */}
-            <Card
-              size="sm"
-              className="[contain-intrinsic-size:auto_15rem] [content-visibility:auto]"
-            >
-              <CardContent>
-                <CardBody slice={slice} cards={cards} depth={0} />
-              </CardContent>
-            </Card>
-          </li>
+          <SessionRow key={slice.id} slice={slice} card={cards.get(slice.id)} />
         ))}
       </ol>
     </section>
   );
+}, sameGroup);
+
+/**
+ * One session's row in a group, memoised as well as `CardBody`, so a group that
+ * re-renders for one session skips its other sessions' wrappers too (#717):
+ * a session that ran on `develop` shares its group with each other one that
+ * did, and re-rendering all their rows was the largest part of a reading
+ * measured in dev-tools.md.
+ */
+const SessionRow = memo(function SessionRow({
+  slice,
+  card,
+}: {
+  slice: SessionSlice;
+  card: SessionCard | undefined;
+}) {
+  return (
+    <li>
+      {/* Each session skips its layout and paint while off screen. A fold
+          otherwise laid out and pre-painted every card on the page: with this
+          machine's 256 sessions, 1.3s of frozen page per press (#611). On the
+          card rather than the `<li>`, whose paint containment would clip the
+          card's ring. */}
+      <Card
+        size="sm"
+        className="[contain-intrinsic-size:auto_15rem] [content-visibility:auto]"
+      >
+        <CardContent>
+          <CardBody slice={slice} card={card} depth={0} />
+        </CardContent>
+      </Card>
+    </li>
+  );
 });
+
+interface GroupProps {
+  group: SessionGroup;
+  cards: Map<string, SessionCard>;
+}
+
+/** Whether a group would draw what it drew: the same slices over the same
+ *  cards. */
+function sameGroup(before: GroupProps, after: GroupProps): boolean {
+  return (
+    before.group === after.group &&
+    after.group.sessions.every(
+      (slice) => before.cards.get(slice.id) === after.cards.get(slice.id),
+    )
+  );
+}
 
 /** A card's heading level by its depth, the session's being `h3` under its
  *  group's `h2`, so the outline follows the tree. Past `h6` it stays there. */
@@ -436,19 +470,28 @@ const HEADINGS = ["h3", "h4", "h5", "h6"] as const;
  * rule down the left marking each level, rather than a card in a card in a
  * card (design.md): the nesting is the tree, and the rule already says what is
  * under what.
+ *
+ * It takes its own card rather than every card by id, so a reading that left
+ * the card and its slice as they were skips it and everything under it
+ * (#689): a subagent's card is in its parent's `children`, so a parent is kept
+ * only while every card under it is.
+ *
+ * The function inside `memo` is named apart from `CardBody`: a function
+ * expression's own name is bound inside it, so one named `CardBody` drew its
+ * subagents with itself rather than with the memoised component, and every
+ * subagent re-rendered whenever its session did (#689).
  */
-const CardBody = memo(function CardBody({
+const CardBody = memo(function CardBodyRender({
   slice,
-  cards,
+  card,
   depth,
 }: {
   slice: SessionSlice;
-  cards: Map<string, SessionCard>;
+  card: SessionCard | undefined;
   depth: number;
 }) {
   const headingId = useId();
   const [open, setOpen] = useState(true);
-  const card = cards.get(slice.id);
   // Built from the same reading, so never missing; a reading that disagreed
   // with itself would cost the one card, not the page.
   if (!card) return null;
@@ -524,7 +567,11 @@ const CardBody = memo(function CardBody({
             >
               {slice.children.map((child) => (
                 <li key={child.id}>
-                  <CardBody slice={child} cards={cards} depth={depth + 1} />
+                  <CardBody
+                    slice={child}
+                    card={card.children.find((c) => c.id === child.id)}
+                    depth={depth + 1}
+                  />
                 </li>
               ))}
             </ol>

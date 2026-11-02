@@ -169,10 +169,14 @@ function tally<T>(
  * unknown decline as null — decided by the parse, not here, so this page cannot
  * disagree with the other readers of the same column about what an unreadable
  * repeat means.
+ *
+ * Keyed on `matched` as well, because one place can be both since #714: a
+ * payload case answered clean matches and one answered with an escape does
+ * not, and both land on `resolved` with no reason.
  */
 export function reachedFrom(verdicts: StoredVerdict[]): EvalReachedRow[] {
   return tally(verdicts, (verdict) => ({
-    key: `${verdict.outcome}:${verdict.decline ?? ""}`,
+    key: `${verdict.outcome}:${verdict.decline ?? ""}:${verdict.matched}`,
     row: {
       outcome: verdict.outcome,
       decline: verdict.decline,

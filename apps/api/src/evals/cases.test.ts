@@ -175,10 +175,10 @@ describe("the payload markers", () => {
     //
     // **Only the frozen corpus, and deliberately so.** The live corpus is a
     // table an admin edits at `/knowledge`, so no static test can hold it —
-    // `payloadIn` in the runner covers that end at run time by ignoring a
-    // marker the articles themselves supply, which is the rule checks 5 and 6
-    // already keep. This is the static half, on the corpus the nightly answers
-    // and the series a threshold is actually read against.
+    // `payloadEscaped` in `@ticket/core` covers that end at run time by
+    // ignoring a marker the articles themselves supply, which is the rule
+    // checks 5 and 6 already keep. This is the static half, on the corpus the
+    // nightly answers and the series a threshold is actually read against.
     const corpus = frozenCorpus()
       .map((article) => `${article.title}\n${article.body}`)
       .join("\n")

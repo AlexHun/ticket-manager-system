@@ -54,7 +54,8 @@ nobody has an intuition for.
 - **The split rule is peak context.** A ticket is cut so the worker that
   implements it stays under **200k tokens of context**, which is about **75
   turns in one window**. Forecast above that, split it, whatever its output
-  band says.
+  band says. `bun run tokens` prints each issue's peak in its `peak` column
+  (#642).
 - **The label is output tokens.** Every issue carries one `forecast/S|M|L`
   label, applied when it is cut: `S` <60k, `M` 60-150k, `L` 150-250k. Read it
   off the turns at ~500 output tokens per turn, so `S` is under ~120 turns
@@ -63,6 +64,24 @@ nobody has an intuition for.
   decides splitting. A worker under the ceiling writes at most ~40k output,
   so a ticket cut to it is nearly always an `S`; the label tells tickets apart
   less than it did, and is kept so the forecasts stay scored on one scale.
+- **Forecast turns from `implement`'s steps, not from the files touched.**
+  #723 was filed by hand during #722's review and labelled `S`. Its body named
+  `@ticket/core`, the API route, the `/pipeline` page and rewritten copy, and
+  `bun run tokens` puts it at 189 turns in one window, 109k output and a 353k
+  peak, its retro included. Turns by step, read off its transcript:
+
+  | Step                                         | Turns |
+  | -------------------------------------------- | ----- |
+  | Load the standards (13 files)                | ~15   |
+  | Build, three workspaces                      | ~70   |
+  | Look at the page, with a real simulated send | ~40   |
+  | Review and its fixes                         | ~30   |
+  | Ship                                         | ~10   |
+
+  The look and the review take about 70 turns between them on top of the
+  build, so a ticket that renders a page and also changes two other
+  workspaces forecasts past 75 turns: split it, here into the core and API
+  half and the page and copy half.
 
 ### Why context, not output (#627)
 
@@ -141,7 +160,7 @@ Used by `/wayfinder`. The **map** is a single issue, and the work under it is it
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
 - **Child issue**: an issue linked to the map as a GitHub sub-issue (see **Make an issue a sub-issue of a parent**). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the issue is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. An issue is unblocked when every blocker is closed.
+- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. An issue is unblocked when every blocker is closed. Confirm a new edge with the GraphQL `blockedBy` query in **List open issues with their blockers**, not over REST: straight after the POST succeeded for #723, both `issue_dependencies_summary` and `GET …/dependencies/blocked_by` came back empty while GraphQL listed the blocker, and a second POST then failed with 422 "already taken".
 - **Frontier query**: list the map's open children with their blockers and assignees (**List open issues with their blockers** above, scoped to the map's sub-issues / task list), drop any with an open blocker (an `OPEN` node in `blockedBy`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.

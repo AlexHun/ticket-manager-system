@@ -14,6 +14,7 @@ import {
   readTranscripts,
   resolveTranscriptDir,
   scanSpend,
+  tallySpend,
 } from "./transcripts.ts";
 import { gatherUsage, verdictFor } from "./usage.ts";
 import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
@@ -90,6 +91,32 @@ const turn = (
     },
   });
 
+/**
+ * One record whose context is `context` tokens: what a response's four counts
+ * add up to (#642). Most of it is cache-read, as in a real long window, with
+ * `out` of output on top.
+ */
+const withContext = (
+  sessionId: string,
+  gitBranch: string,
+  id: string,
+  context: number,
+  out = 0,
+) =>
+  JSON.stringify({
+    sessionId,
+    gitBranch,
+    message: {
+      id,
+      usage: {
+        input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: context - out,
+        output_tokens: out,
+      },
+    },
+  });
+
 let dir: string;
 
 beforeEach(() => {
@@ -116,12 +143,14 @@ describe("scanSpend", () => {
       turns: 2,
       out: 150,
       cacheRead: 1500,
+      peakContext: 1100,
       sessions: 1,
     });
     expect(byIssue.get(102)).toEqual({
       turns: 1,
       out: 20,
       cacheRead: 200,
+      peakContext: 220,
       sessions: 1,
     });
   });
@@ -136,6 +165,7 @@ describe("scanSpend", () => {
       turns: 2,
       out: 125,
       cacheRead: 0,
+      peakContext: 100,
       sessions: 2,
     });
   });
@@ -172,6 +202,7 @@ describe("scanSpend", () => {
       turns: 1,
       out: 10,
       cacheRead: 200,
+      peakContext: 210,
       sessions: 1,
     });
   });
@@ -188,6 +219,7 @@ describe("scanSpend", () => {
       turns: 2,
       out: 105,
       cacheRead: 0,
+      peakContext: 100,
       sessions: 1,
     });
   });
@@ -205,6 +237,7 @@ describe("scanSpend", () => {
       turns: 1,
       out: 7,
       cacheRead: 0,
+      peakContext: 7,
       sessions: 1,
     });
   });
@@ -243,6 +276,7 @@ describe("scanSpend", () => {
       turns: 2,
       out: 140,
       cacheRead: 3000,
+      peakContext: 2040,
       sessions: 1,
     });
     expect(unattributed).toEqual({ turns: 1, out: 30 });
@@ -261,6 +295,7 @@ describe("scanSpend", () => {
       turns: 2,
       out: 200,
       cacheRead: 0,
+      peakContext: 100,
       sessions: 1,
     });
   });
@@ -289,7 +324,7 @@ describe("readTranscripts", () => {
     ]);
   });
 
-  it("carries what a stored row needs: session, branch, timestamp and both token counts", () => {
+  it("carries what a stored row needs: session, branch, timestamp, both token counts, its context and its window", () => {
     write("s1.jsonl", [
       JSON.stringify({
         sessionId: "s1",
@@ -297,7 +332,12 @@ describe("readTranscripts", () => {
         timestamp: "2026-09-02T09:00:00.000Z",
         message: {
           id: "msg_1",
-          usage: { output_tokens: 12, cache_read_input_tokens: 340 },
+          usage: {
+            input_tokens: 3,
+            cache_creation_input_tokens: 5_000,
+            cache_read_input_tokens: 340,
+            output_tokens: 12,
+          },
         },
       }),
     ]);
@@ -310,8 +350,121 @@ describe("readTranscripts", () => {
         at: "2026-09-02T09:00:00.000Z",
         out: 12,
         cacheRead: 340,
+        context: 5_355,
+        window: "s1.jsonl",
       },
     ]);
+  });
+
+  // #642: a session's subagents share its `sessionId`, so the file is the only
+  // thing that tells their windows apart.
+  it("names a subagent's window by its path under the session", () => {
+    write("s1.jsonl", [turn("s1", "feat/101-a", 1, 0, "msg_1")]);
+    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
+    write("s1/subagents/agent-a.jsonl", [
+      turn("s1", "feat/101-a", 2, 0, "msg_2"),
+    ]);
+
+    // Keyed rather than listed: the directory's order is the filesystem's.
+    expect(
+      Object.fromEntries(
+        readTranscripts(dir).responses.map(({ id, window }) => [id, window]),
+      ),
+    ).toEqual({
+      "message:msg_1": "s1.jsonl",
+      "message:msg_2": "s1/subagents/agent-a.jsonl",
+    });
+  });
+
+  it("keeps a response's largest context across its records, as it keeps its largest output", () => {
+    // A subagent's first record carries partial counts (#431).
+    write("s1.jsonl", [
+      withContext("s1", "feat/101-a", "msg_1", 1_000, 2),
+      withContext("s1", "feat/101-a", "msg_1", 1_400, 400),
+    ]);
+
+    expect(readTranscripts(dir).responses[0]?.context).toBe(1_400);
+  });
+});
+
+// #642: an issue's peak is the largest context of its responses in the window
+// holding most of its turns, which is how #627 measured it
+// (`docs/agents/issue-tracker.md`).
+describe("peak context", () => {
+  it("is the largest context in the window holding most of the issue's turns", () => {
+    // The session's own window holds two of #101's turns and a subagent's
+    // three; the session's peaks higher, and it is not the one read.
+    write("s1.jsonl", [
+      withContext("s1", "feat/101-a", "msg_1", 90_000),
+      withContext("s1", "feat/101-a", "msg_2", 250_000),
+    ]);
+    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
+    write("s1/subagents/agent-a.jsonl", [
+      withContext("s1", "feat/101-a", "msg_3", 40_000),
+      withContext("s1", "feat/101-a", "msg_4", 120_000),
+      withContext("s1", "feat/101-a", "msg_5", 80_000),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)?.peakContext).toBe(120_000);
+  });
+
+  it("reads only the issue's own responses in that window", () => {
+    // A conductor's window runs on develop and on the issue branch; its
+    // develop turns are no issue's.
+    write("s1.jsonl", [
+      withContext("s1", "feat/101-a", "msg_1", 60_000),
+      withContext("s1", "develop", "msg_2", 300_000),
+    ]);
+
+    expect(scanSpend(dir).byIssue.get(101)?.peakContext).toBe(60_000);
+  });
+
+  it("counts an issue's turns in a window across both its branches", () => {
+    write("s1.jsonl", [
+      withContext("s1", "feat/101-a", "msg_1", 70_000),
+      withContext("s1", "fix/101-b", "msg_2", 90_000),
+    ]);
+    write("s2.jsonl", [withContext("s2", "feat/101-a", "msg_3", 200_000)]);
+
+    expect(scanSpend(dir).byIssue.get(101)?.peakContext).toBe(90_000);
+  });
+
+  it("breaks a tie between windows toward the larger peak, whatever order they were read in", () => {
+    write("a.jsonl", [withContext("a", "feat/101-a", "msg_1", 50_000)]);
+    write("b.jsonl", [withContext("b", "feat/101-a", "msg_2", 150_000)]);
+    const { responses } = readTranscripts(dir);
+
+    expect(tallySpend(responses).byIssue.get(101)?.peakContext).toBe(150_000);
+    expect(
+      tallySpend([...responses].reverse()).byIssue.get(101)?.peakContext,
+    ).toBe(150_000);
+  });
+
+  // A row stored before #642 has no window and no context. One such turn
+  // means the window holding most turns cannot be known.
+  it("is unknown, never zero, when any of the issue's responses lacks a window or a context", () => {
+    write("s1.jsonl", [
+      withContext("s1", "feat/101-a", "msg_1", 70_000),
+      withContext("s1", "feat/102-b", "msg_2", 80_000),
+      withContext("s1", "feat/103-c", "msg_3", 90_000),
+    ]);
+    const [r101, r102, r103] = readTranscripts(dir).responses;
+    const stored = (r: typeof r101, patch: object) => ({ ...r!, ...patch });
+
+    const { byIssue } = tallySpend([
+      r101!,
+      stored(r101!, { id: "message:old", window: null, context: null }),
+      r102!,
+      stored(r102!, { id: "message:old-2", context: null }),
+      r103!,
+      stored(r103!, { id: "message:old-3", window: null }),
+    ]);
+
+    expect(byIssue.get(101)?.peakContext).toBeNull();
+    expect(byIssue.get(102)?.peakContext).toBeNull();
+    expect(byIssue.get(103)?.peakContext).toBeNull();
+    // The figures the rows do have still count.
+    expect(byIssue.get(101)?.out).toBe(r101!.out * 2);
   });
 });
 
@@ -328,7 +481,13 @@ describe("gatherUsage", () => {
     expect(report.issues).toEqual([
       {
         issue: 101,
-        spend: { out: 20_000, turns: 2, sessions: 2, cacheRead: 400_000 },
+        spend: {
+          out: 20_000,
+          turns: 2,
+          sessions: 2,
+          cacheRead: 400_000,
+          peakContext: 312_000,
+        },
         title: null,
         url: null,
         forecast: null,
@@ -337,7 +496,13 @@ describe("gatherUsage", () => {
       },
       {
         issue: 102,
-        spend: { out: 3000, turns: 1, sessions: 1, cacheRead: 20_000 },
+        spend: {
+          out: 3000,
+          turns: 1,
+          sessions: 1,
+          cacheRead: 20_000,
+          peakContext: 23_000,
+        },
         title: null,
         url: null,
         forecast: null,
@@ -537,7 +702,13 @@ describe("gatherUsage", () => {
     expect(report.issues).toEqual([
       {
         issue: 101,
-        spend: { out: 12_000, turns: 1, sessions: 1, cacheRead: 300_000 },
+        spend: {
+          out: 12_000,
+          turns: 1,
+          sessions: 1,
+          cacheRead: 300_000,
+          peakContext: 312_000,
+        },
         title: null,
         url: null,
         forecast: null,
@@ -865,6 +1036,7 @@ describe("gatherUsage with a history", () => {
       turns: 2,
       sessions: 1,
       cacheRead: 300_000,
+      peakContext: 312_000,
     });
   });
 
@@ -1251,6 +1423,7 @@ describe("gatherUsage reads only what is new (#418)", () => {
       turns: 2,
       sessions: 1,
       cacheRead: 14_000,
+      peakContext: 11_000,
     });
   });
 
@@ -1267,6 +1440,7 @@ describe("gatherUsage reads only what is new (#418)", () => {
       turns: 1,
       sessions: 1,
       cacheRead: 10_000,
+      peakContext: 11_000,
     });
   });
 
@@ -1436,6 +1610,7 @@ describe("readTranscripts over subagent transcripts (#431)", () => {
       turns: 3,
       out: 142,
       cacheRead: 400,
+      peakContext: 440,
       sessions: 1,
     });
     expect(scan.transcripts).toBe(2);
@@ -1455,6 +1630,7 @@ describe("readTranscripts over subagent transcripts (#431)", () => {
       turns: 1,
       out: 120,
       cacheRead: 400,
+      peakContext: 520,
       sessions: 1,
     });
   });

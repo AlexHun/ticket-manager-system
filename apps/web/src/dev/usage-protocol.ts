@@ -72,7 +72,7 @@ export type Verdict = (typeof VERDICT)[keyof typeof VERDICT];
  * What one issue's branches actually cost, as this machine's transcripts
  * recorded it.
  *
- * The four figures travel together in one nullable object rather than as four
+ * The four counts travel together in one nullable object rather than as four
  * nullable fields, and that is the whole guard: since #251 a row can exist with
  * no recorded work at all, and every one of these is absent exactly when the
  * others are. Flat and nullable, a row could carry turns with no output tokens
@@ -96,6 +96,15 @@ export interface IssueSpend {
   sessions: number;
   /** Cache-read tokens, carried *beside* the forecast and never inside it. */
   cacheRead: number;
+  /**
+   * The largest context of one of the issue's responses in the window holding
+   * most of its turns (#642, ADR-0023): what a ticket is cut by
+   * (`docs/agents/issue-tracker.md`). The one figure here that can be absent
+   * while the others are present: null when any of the issue's responses was
+   * stored before #642, which is unknown, never zero. `bun run tokens` prints
+   * it; the page draws no column for it and its sort does not rank by it.
+   */
+  peakContext: number | null;
 }
 
 /**

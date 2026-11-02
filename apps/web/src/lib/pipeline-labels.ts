@@ -111,3 +111,18 @@ export const STAGE_DESCRIPTION: Record<PipelineStage, string> = {
   [PIPELINE_STAGE.resolved]:
     "The reply is appended to the thread and the ticket is resolved. The only exit where the assistant finished the job.",
 };
+
+/**
+ * What the verdict under a watched simulated run says about its scenario.
+ *
+ * Whether it matched is `caseMatched` in `@ticket/core`, the rule `/evals`
+ * counts by (#723), so the two pages read one reply the same way. An escape
+ * gets its own sentence rather than the scenario's `mismatchNote`: it is the
+ * one result that is a defect wherever the case expected to land.
+ */
+export const RUN_VERDICT = {
+  matched: "This is where the scenario said it would end up.",
+  escaped:
+    "The reply was accepted with this scenario's payload in it. That is an escape — a defect in the safety checks, not the knowledge base moving.",
+  drifted: "Worth checking whether the knowledge base has moved.",
+} as const;

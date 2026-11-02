@@ -26,7 +26,13 @@ import { outputDistribution } from "./usage-charts";
 function makeIssue(over: Partial<IssueUsage> = {}): IssueUsage {
   return {
     issue: 1,
-    spend: { out: 20_000, turns: 2, sessions: 1, cacheRead: 400_000 },
+    spend: {
+      out: 20_000,
+      turns: 2,
+      sessions: 1,
+      cacheRead: 400_000,
+      peakContext: null,
+    },
     title: "An issue",
     url: "https://example.test/1",
     forecast: "S",
@@ -43,7 +49,7 @@ const unstarted = (over: Partial<IssueUsage> = {}) =>
 /** Spend, but no `forecast/S|M|L` label — so nothing to score it against. */
 const unforecast = (out: number) =>
   makeIssue({
-    spend: { out, turns: 1, sessions: 1, cacheRead: 0 },
+    spend: { out, turns: 1, sessions: 1, cacheRead: 0, peakContext: null },
     forecast: null,
     verdict: null,
   });

@@ -12,7 +12,7 @@
 // is pushing once, and "History since" is the same `MIN(at)`.
 //
 // **Rows, not transcripts, and both ends are held to it.** `buildPush` copies
-// the six fields of a stored response by name rather than spreading the row,
+// the fields of a stored response by name rather than spreading the row,
 // and the dev server accepts only `usagePushSchema` — strict, so an extra key
 // is a 400 rather than a stored column. `usage-push.test.ts` asserts the
 // payload's keys and that a transcript's text and paths are absent from it.
@@ -87,14 +87,18 @@ export async function buildPush(
       // reach the wire by accident.
       responses: store
         .responses()
-        .map(({ id, session, branch, at, out, cacheRead }) => ({
-          id,
-          session,
-          branch,
-          at,
-          out,
-          cacheRead,
-        })),
+        .map(
+          ({ id, session, branch, at, out, cacheRead, context, window }) => ({
+            id,
+            session,
+            branch,
+            at,
+            out,
+            cacheRead,
+            context,
+            window,
+          }),
+        ),
       issues: metadata.byIssue ? toGhListing(metadata.byIssue) : null,
     };
   } finally {
@@ -172,7 +176,14 @@ export async function acceptPush(
   let inserted: number;
   try {
     const before = store.count();
-    store.record(responses);
+    // A row from a laptop on the code before #642 has neither field: unknown.
+    store.record(
+      responses.map((r) => ({
+        ...r,
+        context: r.context ?? null,
+        window: r.window ?? null,
+      })),
+    );
     inserted = store.count() - before;
     // The moment the page's stored reading (#432) will date its figures by.
     store.recordStamp(new Date().toISOString());
@@ -195,6 +206,65 @@ export async function acceptPush(
       issues: issues?.length ?? null,
     },
   };
+}
+
+/**
+ * The same push with only `PRE_642_RESPONSE_FIELDS`, which a server on the
+ * code before #642 takes. Copied by name, as `buildPush` copies.
+ */
+export const toPre642Push = (push: UsagePush): UsagePush => ({
+  ...push,
+  responses: push.responses.map(
+    ({ id, session, branch, at, out, cacheRead }) => ({
+      id,
+      session,
+      branch,
+      at,
+      out,
+      cacheRead,
+    }),
+  ),
+});
+
+/** What a server answered a push with. */
+export interface PushAnswer {
+  status: number;
+  text: string;
+}
+
+/**
+ * How a server on the code before #642 refuses a key it does not know: its
+ * strict schema's error, which that code's `acceptPush` passes through
+ * `z.prettifyError`. That code is fixed, so its wording is too.
+ */
+const UNKNOWN_KEY_REFUSAL = "Unrecognized key";
+
+/**
+ * Send a push through `send`, which posts a body and reads the answer, and
+ * send it again as `toPre642Push` when the server refuses a key it does not
+ * know (ADR-0023's #642 section): the SessionEnd hook pushes from whatever
+ * branch a session ends on, so a laptop and the server can run either side of
+ * the change. Any other refusal is answered as it is: sending fewer fields
+ * would store the rows with no context and blame a server that never refused
+ * them. When the older fields are refused as well, the fault is the push's
+ * own, and the first answer is the one returned, since it names the push that
+ * was meant.
+ *
+ * `send` is a parameter so the one network call stays in
+ * `scripts/issue-tokens.ts`, and a test can stand in for either server.
+ */
+export async function sendPush(
+  push: UsagePush,
+  send: (body: string) => Promise<PushAnswer>,
+): Promise<PushAnswer & { sixFieldsOnly: boolean }> {
+  const first = await send(JSON.stringify(push));
+  if (first.status !== 400 || !first.text.includes(UNKNOWN_KEY_REFUSAL)) {
+    return { ...first, sixFieldsOnly: false };
+  }
+  const second = await send(JSON.stringify(toPre642Push(push)));
+  return second.status === 400
+    ? { ...first, sixFieldsOnly: false }
+    : { ...second, sixFieldsOnly: true };
 }
 
 /** A body that ran past `MAX_PUSH_BYTES`. */

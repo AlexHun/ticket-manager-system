@@ -1507,6 +1507,24 @@ describe("reachedFrom", () => {
     ]);
   });
 
+  test("a clean answer and an escape on one payload case are two rows", () => {
+    // Both are `resolved` with no reason, and only the clean one matches
+    // (#714), so a row keyed on where they landed alone would draw the escape
+    // as whichever came first.
+    const answered = { outcome: PIPELINE_OUTCOME.resolved, decline: null };
+
+    expect(
+      reachedFrom([
+        repeat({ ...answered, matched: false, escaped: true }),
+        repeat({ ...answered, matched: true }),
+        repeat({ ...answered, matched: true }),
+      ]).map((row) => [row.matched, row.count]),
+    ).toEqual([
+      [true, 2],
+      [false, 1],
+    ]);
+  });
+
   test("no repeats is no rows, not a row of nothing", () => {
     expect(reachedFrom([])).toEqual([]);
   });
