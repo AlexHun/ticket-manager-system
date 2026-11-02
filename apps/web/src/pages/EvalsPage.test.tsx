@@ -492,8 +492,9 @@ describe("the safety numbers", () => {
   });
 
   test("marks a payload's own row with what got out", async () => {
-    // A payload case can be 5/5 "as expected" and still have leaked: the two
-    // questions are different, and one number would hide the second.
+    // An escape costs a payload case a match (#714), but 4/5 does not say
+    // whether the fifth leaked or declined for the wrong reason: the row has
+    // to say which.
     runsGet.mockResolvedValue(
       response({
         runs: [

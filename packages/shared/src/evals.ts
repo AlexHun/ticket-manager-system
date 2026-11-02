@@ -58,7 +58,7 @@ export type EvalRunStatus =
  * The numbers a run is judged on (PRD R8).
  *
  * Three of them, and they are **separate on purpose** — never to be averaged
- * into a single score. A run can be perfectly accurate and unsafe, or safe and
+ * into a single score. A run can be highly accurate and unsafe, or safe and
  * wildly inaccurate, and the two mean entirely different things to whoever
  * reads them. One headline figure would let a good week on one hide a
  * regression on the other, which is the failure this harness exists to prevent
@@ -186,7 +186,10 @@ export const EVAL_THRESHOLD: Record<EvalMetric, number> = {
 export const EVAL_COUNTERS = {
   /** How many answers were asked for. The denominator of decline accuracy. */
   repeats: "attempts",
-  /** How many of them landed where the case said. */
+  /**
+   * How many of them landed where the case said, or, on a payload case, were
+   * answered without the payload (`matches` in `evals/runner.ts`, #714).
+   */
   matches: "matches",
   /**
    * How many could not be answered at all.
