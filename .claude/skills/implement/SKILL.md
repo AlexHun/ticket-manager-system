@@ -33,8 +33,9 @@ invoke it.
    Commit each slice once its test is green, after the self-check in
    CLAUDE.md, and push it: a feature branch runs no CI, and a pushed commit
    survives a session that stops on a usage limit, where staged work survives
-   only on this machine. After the first push, comment
-   `Progress: building, next is the next slice (step 4)`.
+   only on this machine. After the first push lands, comment
+   `Progress: building, next is the next slice (step 4)`, in its own call as
+   step 6 says.
 5. **Mark the PRD shipped if this is its last ticket.** When the ticket's
    `## Parent` names `docs/prd/<slug>.md` (`to-tickets` writes it) and
    `gh issue list --state open --search "\"docs/prd/<slug>.md\" in:body"`
@@ -48,6 +49,10 @@ invoke it.
 6. **Commit** after the self-check in CLAUDE.md, push, and leave the
    checkpoint on the issue:
    `gh issue comment <n> --body "Progress: built, next is the look (step 7)"`.
+   Every `Progress:` comment goes in a call of its own, made once the push's
+   output shows the ref landed on origin. In #723 the comment shared a line
+   with a `git push` whose pre-push hook failed, and a resumed session would
+   have read "built" off a branch origin did not hold.
 7. **Look at the page.** Skip to step 8 when the ticket renders no page and
    changes none. Otherwise open each page it touches in a real browser, through
    the chrome-devtools MCP (`docs/standards/conventions.md`), on real-volume
