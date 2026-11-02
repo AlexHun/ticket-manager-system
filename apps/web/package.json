@@ -1,6 +1,6 @@
 {
   "name": "@ticket/web",
-  "version": "0.1.310",
+  "version": "0.1.311",
   "private": true,
   "type": "module",
   "scripts": {
