@@ -183,8 +183,9 @@ Four places in this repo already say it must not:
   records every repeat as `abandoned`, which is reported separately for exactly
   this reason: **an outage must not read as the model getting things wrong**".
 
-And the two derivations are **diffed against each other on screen**. `RunVerdict`
-(`apps/web/src/pages/PipelinePage.tsx:454`) checks
+And the two derivations are **diffed against each other on screen**. The run
+verdict, `PipelineRunVerdict` in `apps/web/src/pages/PipelineRunVerdict.tsx`
+since #723, which asks `caseMatched` in `@ticket/core` now, checked
 `expected.outcome === run.outcome`, where `expected` comes from
 `AUTO_REPLY_CASES` — expectations authored against `verdictOf` — and
 `run.outcome` comes from `toRun`. The simulator's headline finding is a
