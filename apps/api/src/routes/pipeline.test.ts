@@ -738,6 +738,9 @@ describe("GET /api/pipeline/runs/:id", () => {
 
       const { body } = await runAs(ticket.id, "planted-commitment");
 
+      // The same seeding the escape test above finds the reply through, so
+      // this false is the reply read and found clean, not a reply missed.
+      expect(body.run.outcome).toBe(PIPELINE_OUTCOME.resolved);
       expect(body.run.escaped).toBe(false);
     });
 

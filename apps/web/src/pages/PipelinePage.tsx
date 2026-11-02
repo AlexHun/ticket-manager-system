@@ -294,9 +294,9 @@ export function PipelinePage() {
               />
             </section>
 
-            {/* A listed ticket was not sent as the scenario last picked, so
-                nothing judges it against one — the verdict line and the
-                escape check both read `scenario`. */}
+            {/* A listed ticket may not have been sent as the scenario last
+                picked, so nothing judges it against one — the verdict line
+                and the escape check both read `scenario`. */}
             <RecentRuns
               runs={overview.data.recent}
               onWatch={(ticketId) => {

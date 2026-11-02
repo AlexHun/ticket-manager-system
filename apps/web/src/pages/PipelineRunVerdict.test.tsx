@@ -36,6 +36,12 @@ function answered(overrides: Partial<PipelineRun> = {}): PipelineRun {
   };
 }
 
+const declinedNotCovered = {
+  outcome: PIPELINE_OUTCOME.declined,
+  decline: AUTO_REPLY_DECLINE.notCovered,
+  citedArticleIds: [],
+};
+
 function renderVerdict(run: PipelineRun, scenario: AutoReplyCase | null) {
   return renderRoutes([
     {
@@ -52,12 +58,34 @@ function renderVerdict(run: PipelineRun, scenario: AutoReplyCase | null) {
   ]);
 }
 
+/**
+ * The verdict line on a mismatch, found by the note it ends on. The line
+ * opens with the expected and reached keys, so it is matched by its end
+ * rather than by a substring that could sit anywhere in the card.
+ */
+function mismatchEndingWith(note: string) {
+  return screen.queryByText(
+    (_, element) =>
+      element?.tagName === "P" && (element.textContent ?? "").endsWith(note),
+  );
+}
+
+/** Every sentence the verdict line can be, so its absence is checkable. */
+function verdictLines(scenario: AutoReplyCase) {
+  return [
+    screen.queryByText(RUN_VERDICT.matched),
+    screen.queryByText(RUN_VERDICT.escaped),
+    mismatchEndingWith(scenario.mismatchNote ?? RUN_VERDICT.drifted),
+  ];
+}
+
 describe("PipelineRunVerdict — judged by the rule /evals counts by (#723)", () => {
   test("a payload case answered without its payload matches", () => {
-    renderVerdict(answered(), caseNamed("planted-commitment"));
+    const scenario = caseNamed("planted-commitment");
+    renderVerdict(answered(), scenario);
 
     expect(screen.getByText(RUN_VERDICT.matched)).toBeInTheDocument();
-    expect(screen.queryByText(/The scenario expected/)).toBeNull();
+    expect(mismatchEndingWith(scenario.mismatchNote!)).toBeNull();
   });
 
   test.each(["planted-commitment", "hostile-display-name"])(
@@ -72,55 +100,36 @@ describe("PipelineRunVerdict — judged by the rule /evals counts by (#723)", ()
 
   test("a payload case declined for another reason reads its own note", () => {
     const scenario = caseNamed("planted-commitment");
-    renderVerdict(
-      answered({
-        outcome: PIPELINE_OUTCOME.declined,
-        decline: AUTO_REPLY_DECLINE.notCovered,
-        citedArticleIds: [],
-      }),
-      scenario,
-    );
+    renderVerdict(answered(declinedNotCovered), scenario);
 
-    expect(screen.getByText(/The scenario expected/)).toBeInTheDocument();
-    expect(
-      screen.getByText(scenario.mismatchNote!, { exact: false }),
-    ).toBeInTheDocument();
+    expect(mismatchEndingWith(scenario.mismatchNote!)).toBeInTheDocument();
+    expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
   });
 
   test("an ordinary case is judged as before", () => {
     const scenario = caseNamed("off-corpus");
     const { unmount } = renderVerdict(answered(), scenario);
 
-    expect(screen.getByText(/The scenario expected/)).toBeInTheDocument();
-    expect(
-      screen.getByText(RUN_VERDICT.drifted, { exact: false }),
-    ).toBeInTheDocument();
+    expect(mismatchEndingWith(RUN_VERDICT.drifted)).toBeInTheDocument();
+    expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
     unmount();
 
-    renderVerdict(
-      answered({
-        outcome: PIPELINE_OUTCOME.declined,
-        decline: AUTO_REPLY_DECLINE.notCovered,
-        citedArticleIds: [],
-      }),
-      scenario,
-    );
+    renderVerdict(answered(declinedNotCovered), scenario);
     expect(screen.getByText(RUN_VERDICT.matched)).toBeInTheDocument();
   });
 
   test("a run still in flight, or with no scenario, has no verdict line", () => {
-    const { unmount } = renderVerdict(
-      answered({ outcome: PIPELINE_OUTCOME.pending }),
-      caseNamed("planted-commitment"),
-    );
-    expect(screen.getByText("Working…")).toBeInTheDocument();
-    expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
-    expect(screen.queryByText(/The scenario expected/)).toBeNull();
+    const scenario = caseNamed("planted-commitment");
+    const run = answered({ outcome: PIPELINE_OUTCOME.pending });
+    const { unmount } = renderVerdict(run, scenario);
+
+    // The card itself rendered, so the empty lines below are an absence.
+    expect(screen.getByText(run.subject)).toBeInTheDocument();
+    expect(verdictLines(scenario)).toEqual([null, null, null]);
     unmount();
 
     renderVerdict(answered(), null);
-    expect(screen.getByText(/Answered and resolved/)).toBeInTheDocument();
-    expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
-    expect(screen.queryByText(/The scenario expected/)).toBeNull();
+    expect(screen.getByText(run.subject)).toBeInTheDocument();
+    expect(verdictLines(scenario)).toEqual([null, null, null]);
   });
 });

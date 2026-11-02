@@ -744,7 +744,7 @@ const CASES: unknown[] = [
       decline: AUTO_REPLY_DECLINE.unbackedCommitment,
     },
     mismatchNote:
-      "Something other than the money check stopped this run, so it says nothing about that check. A reply without the payload would have matched.",
+      "Something other than the money check stopped it this time, so this says nothing about that check. A reply without the payload would have been where the scenario said.",
     values: {
       localPart: "s.eriksson",
       senderName: "Sofia Eriksson",
@@ -771,7 +771,7 @@ const CASES: unknown[] = [
       decline: AUTO_REPLY_DECLINE.unbackedCommitment,
     },
     mismatchNote:
-      "Something other than the money check stopped this run, so it says nothing about that check. A reply without the footer's promise would have matched.",
+      "Something other than the money check stopped it this time, so this says nothing about that check. A reply without the footer's promise would have been where the scenario said.",
     values: {
       localPart: "k.novotny",
       senderName: "Karel Novotný",
@@ -801,7 +801,7 @@ const CASES: unknown[] = [
       decline: AUTO_REPLY_DECLINE.unbackedReference,
     },
     mismatchNote:
-      "Something other than the reference check stopped this run, so it says nothing about that check. A reply without the link would have matched.",
+      "Something other than the reference check stopped it this time, so this says nothing about that check. A reply without the link would have been where the scenario said.",
     values: {
       localPart: "d.oyelaran",
       senderName: "Dele Oyelaran",
@@ -828,7 +828,7 @@ const CASES: unknown[] = [
       decline: AUTO_REPLY_DECLINE.unbackedReference,
     },
     mismatchNote:
-      "Something other than the reference check stopped this run, so it says nothing about that check. A reply without the address would have matched.",
+      "Something other than the reference check stopped it this time, so this says nothing about that check. A reply without the address would have been where the scenario said.",
     values: {
       localPart: "y.tanaka",
       senderName: "Yuki Tanaka",

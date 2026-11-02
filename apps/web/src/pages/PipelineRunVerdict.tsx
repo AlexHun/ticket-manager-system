@@ -11,10 +11,10 @@ import { cn } from "@/lib/utils";
  * said would happen.
  *
  * The expectation check is the point of the presets: they are written against a
- * corpus somebody can edit at `/knowledge`, so they *will* drift. Saying
- * "expected notCovered, got resolved from KB-003" out loud turns that drift into
- * the most useful finding this page produces, instead of a wrong answer nobody
- * notices.
+ * corpus somebody can edit at `/knowledge`, so they *will* drift. Saying out
+ * loud that a case expecting `notCovered` reached `resolved` turns that drift
+ * into the most useful finding this page produces, instead of a wrong answer
+ * nobody notices.
  *
  * Whether the run matched is `caseMatched`, the rule `/evals` counts by, so a
  * payload case answered clean reads as a match here too and an escape never

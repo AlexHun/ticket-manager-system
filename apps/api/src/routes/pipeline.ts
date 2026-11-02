@@ -702,11 +702,14 @@ pipelineRouter.get(
     // Only a broken client or a hand-edited URL names a case that does not
     // exist: the simulator sends the id of the case it just posted.
     const query = runQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "Invalid scenario" });
+      return;
+    }
+    const scenarioId = query.data.scenario;
     const scenario =
-      query.success && query.data.scenario !== undefined
-        ? autoReplyCaseById(query.data.scenario)
-        : null;
-    if (!query.success || (query.data.scenario !== undefined && !scenario)) {
+      scenarioId === undefined ? null : autoReplyCaseById(scenarioId);
+    if (scenarioId !== undefined && scenario === null) {
       res.status(400).json({ error: "Invalid scenario" });
       return;
     }

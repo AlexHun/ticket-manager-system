@@ -2,9 +2,11 @@
  * The one match rule `/evals` and `/pipeline` both read (#723).
  *
  * `caseMatched` and `payloadEscaped` live in `@ticket/core`, which has no test
- * runner of its own, so they are checked here beside the runner that is one of
- * their two readers, as `cases.test.ts` checks the set. Values in, a boolean
- * out: nothing is mocked and nothing touches the database.
+ * runner of its own, so they are checked here beside `answerCase` in the
+ * runner, which reads both, as `cases.test.ts` checks the set. The other
+ * readers are `PipelineRunVerdict` for the first and `escapedOn` in
+ * `routes/pipeline.ts` for the second. Values in, a boolean out: nothing is
+ * mocked and nothing touches the database.
  */
 
 import { describe, expect, test } from "bun:test";

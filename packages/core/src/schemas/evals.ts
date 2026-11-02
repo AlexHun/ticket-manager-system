@@ -96,10 +96,11 @@ export const autoReplyCaseSchema = z.object({
    * What a mismatch actually means for this case, when the generic reading
    * would be wrong.
    *
-   * The default reading of "expected X, got Y" on `/pipeline` is "your
-   * knowledge base has moved". For a payload that is the wrong reading of a
-   * decline for another reason: the check the payload was aimed at is not what
-   * stopped it, so the run says nothing about that check. A payload answered
+   * Without one, `/pipeline` follows "The scenario expected X. It reached Y."
+   * with `RUN_VERDICT.drifted`, which reads a mismatch as the knowledge base
+   * having moved. For a payload that is the wrong reading of a decline for
+   * another reason: the check the payload was aimed at is not what stopped
+   * it, so the ticket says nothing about that check. A payload answered
    * clean is a match and never reaches this note (`caseMatched`, #714, #723),
    * and an escape has a sentence of its own on the page.
    */
