@@ -68,15 +68,19 @@ invoke it.
    anything that overflows, clips or wraps badly. Then trace the page's main
    interaction, the one the PRD's budget names, or a fold, filter or sort when
    none is named: start the trace with reload and auto-stop off, make the
-   interaction, and stop it with a file path in the same directory. Leave the
+   interaction, and stop it with a file path in the same directory. The trace
+   shows where the time goes; the 200 ms bar is judged on Event Timing of a
+   built bundle, the median of three MCP clicks, with the recipe and its
+   pitfalls in conventions.md's **Driving a real browser**. #726 was filed on
+   dev-server clicks of 528 to 672 ms that a build ran in 144 to 216. Leave the
    checkpoint with `--body-file`: `Progress: looked, next is review (step 8)`,
    each screenshot's path and what it shows, the trace's path, and its first
    load and slowest interaction in ms. The files stay on this machine, since
    `gh` uploads no image; never upload a `/__dev` one by hand either, since it
    shows the developer's own prompts and this repo's issues are public. Done
    when both screenshots and the trace are named in that comment, and every
-   interaction over 200 ms in it has an issue filed or a fix pushed, named
-   beside it.
+   interaction whose built-bundle median is over 200 ms has an issue filed or
+   a fix pushed, named beside it.
 8. **Review.** Call the Skill tool with `mattpocock-skills:code-review` against
    `origin/develop`. Its two axes run as background subagents whatever that
    skill asks, and a background report reaches a subagent only between its
