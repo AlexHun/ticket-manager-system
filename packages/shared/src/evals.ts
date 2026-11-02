@@ -126,7 +126,7 @@ export const EVAL_THRESHOLD: Record<EvalMetric, number> = {
    * this is a floor chosen with margin rather than a target read off a
    * measurement, and it is here because R8 wants every metric to carry one.
    *
-   * It is deliberately loose. Twenty of the thirty-six cases expect the model
+   * It is deliberately loose. Many of the cases expect the model
    * to *answer*, which is the genuinely variable half, and the PRD's first risk
    * is a threshold set tight enough that every run goes red and everybody stops
    * reading them. Tighten it once a few frozen runs exist and the trend line

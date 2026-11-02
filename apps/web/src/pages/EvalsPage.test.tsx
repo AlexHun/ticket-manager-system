@@ -1724,8 +1724,8 @@ describe("folding a run", () => {
   });
 
   test("folds the case table separately, inside an open run", async () => {
-    // The bulk of the card. An admin reading the metrics rarely wants all
-    // thirty-six rows with them, so the run being open is not the table being
+    // The bulk of the card. An admin reading the metrics rarely wants every
+    // case's row with them, so the run being open is not the table being
     // open.
     const user = userEvent.setup();
     render();

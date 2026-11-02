@@ -479,7 +479,7 @@ const CASES: unknown[] = [
   {
     id: "feature-suggestion",
     name: "Suggesting a feature",
-    note: 'KB-028. **Filed as `General`, not `Other`** (#715): a suggestion is feedback, which the classifier\'s taxonomy puts under General, and `Other` is for mail that asks nothing. Expected as `Other`, it was filed `General` on all 175 repeats of production\'s 35 nightly runs to 1 Nov 2026 — the expectation was wrong, not the classifier. `out-of-office` is the case that expects `Other` now. **The body asks one thing on purpose.** It used to close with "Is that something you would consider?", and the case failed 5/5 on both corpora for the whole of its first measured run: KB-028 says where a suggestion goes and deliberately does not say whether it will be taken up — its internal note forbids implying it — so the prompt\'s own "asked two things, articles cover one, that is false" rule made `notCovered` the correct answer and `resolved` the wrong expectation. Keep it to the question the article actually answers; the two-question shape is worth its own case rather than a silent 0/5 here.',
+    note: 'KB-028. **Filed as `General`, not `Other`** (#715): a suggestion is feedback, which the classifier\'s taxonomy puts under General, and `Other` is for mail that asks nothing. Expected as `Other`, it was filed `General` on all 175 repeats of production\'s 35 nightly runs to 1 Nov 2026 — the expectation was wrong, not the classifier. **The body asks one thing on purpose.** It used to close with "Is that something you would consider?", and the case failed 5/5 on both corpora for the whole of its first measured run: KB-028 says where a suggestion goes and deliberately does not say whether it will be taken up — its internal note forbids implying it — so the prompt\'s own "asked two things, articles cover one, that is false" rule made `notCovered` the correct answer and `resolved` the wrong expectation. Keep it to the question the article actually answers; the two-question shape is worth its own case rather than a silent 0/5 here.',
     preflight: { ...OPENING, category: TICKET_CATEGORY.General },
     expected: { outcome: PIPELINE_OUTCOME.resolved, decline: null },
     mismatchNote: null,
@@ -1017,6 +1017,7 @@ export const DECLINE_COVERAGE: Record<
       "add-seats-midterm",
       "off-corpus",
       "api-access",
+      "out-of-office",
       "html-only",
     ],
     unreachable: null,
