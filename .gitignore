@@ -47,6 +47,8 @@ apps/web/csp.caddy
 
 # --- Test output ------------------------------------------------------------
 /test-results/
+# Playwright run from apps/web writes its .last-run.json here instead.
+apps/web/test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
