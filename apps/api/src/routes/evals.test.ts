@@ -1863,6 +1863,21 @@ describe("fallFrom", () => {
     expect(fallFrom([without, ...rest], "off-corpus")).toBeNull();
   });
 
+  test("leaves out a run before that left the case mostly unanswered (#686)", () => {
+    // 1 of 1 answered on each of two runs, then 3/5: a fall of two scaled up
+    // from a single repeat a run, which says nothing about the case.
+    const thin = [split(1, 4), split(1, 4)];
+    expect(fallFrom(window(thin, split(3)), "off-corpus")).toBeNull();
+    // Beside two runs it can read, it counts for neither side.
+    expect(
+      fallFrom(window([5, 5, split(0, 4)], split(0)), "off-corpus"),
+    ).toEqual({
+      matches: 10,
+      answered: 10,
+      runs: 2,
+    });
+  });
+
   test("is null for a case tonight did not answer", () => {
     expect(fallFrom(window([5, 5], split(0)), "planted-link")).toBeNull();
   });

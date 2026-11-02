@@ -404,9 +404,8 @@ const FALL_MATCHES = 2;
 const FALL_CHANCE = 0.01;
 
 /**
- * Fewest runs before the latest that must have answered a case to flag it,
- * the bar `trailingFrom` sets: one run's five repeats is the noise a rate
- * over several exists to smooth.
+ * Fewest runs before the latest that must have answered a case to flag it:
+ * one run's five repeats is the noise a rate over several exists to smooth.
  */
 const FALL_RUNS_BEFORE = 2;
 
@@ -516,8 +515,10 @@ export function historyFrom(
  * An unanswered repeat can never match (the note on `verdictOf` in
  * `evals/runner.ts`), so it is on neither side of either rate: 5/5, then three
  * of five answered and all three matched, is two down and the provider's
- * doing. No flag when the latest run left most of the case's repeats
- * unanswered: two answered repeats are too few to say a case has stopped.
+ * doing. A run that left most of the case's repeats unanswered is left out,
+ * tonight's or one before it: one or two answered repeats are too few to say
+ * the case used to match or has stopped, and 1 of 1 answered on two runs
+ * would make 3/5 tonight a fall of two.
  */
 export function fallFrom(
   window: SeriesRun[],
@@ -531,20 +532,21 @@ export function fallFrom(
   let runs = 0;
   for (const run of window.slice(0, -1)) {
     const split = run.results.find((r) => r.caseId === caseId);
-    if (!split || split.repeats === split.abandoned) continue;
+    if (!split || mostlyUnanswered(split)) continue;
     matches += split.matches;
-    answered += split.repeats - split.abandoned;
+    answered += answeredOf(split);
     runs += 1;
   }
   if (runs < FALL_RUNS_BEFORE) return null;
 
-  const tonight = result.repeats - result.abandoned;
-  // `matches * tonight / answered - result.matches`, multiplied through by
-  // `answered` so the comparison stays in whole numbers.
-  const fall = matches * tonight - result.matches * answered;
+  const answeredLatest = answeredOf(result);
+  // `matches * answeredLatest / answered - result.matches`, multiplied through
+  // by `answered` so the comparison stays in whole numbers.
+  const fall = matches * answeredLatest - result.matches * answered;
   if (fall < FALL_MATCHES * answered) return null;
+  const pooledRate = matches / answered;
   if (
-    chanceOfAtMost(result.matches, tonight, matches / answered) >= FALL_CHANCE
+    chanceOfAtMost(result.matches, answeredLatest, pooledRate) >= FALL_CHANCE
   ) {
     return null;
   }
@@ -566,9 +568,14 @@ function chanceOfAtMost(k: number, n: number, p: number): number {
   return chance;
 }
 
+/** The repeats of a split the provider answered. */
+function answeredOf(split: SeriesSplit): number {
+  return split.repeats - split.abandoned;
+}
+
 /** Whether more of a split's repeats went unanswered than were answered. */
 function mostlyUnanswered(split: SeriesSplit): boolean {
-  return split.abandoned > split.repeats - split.abandoned;
+  return split.abandoned > answeredOf(split);
 }
 
 /**

@@ -269,6 +269,8 @@ function trailingLabel(trailing: EvalTrailingMetric): string {
  * (#710).
  */
 function fellLabel(fell: EvalCaseFall): string {
+  // The API sends no fall over fewer runs than `FALL_RUNS_BEFORE`, two today;
+  // the singular is written anyway so lowering it cannot print "1 runs".
   const runs = fell.runs === 1 ? "run" : `${fell.runs} runs`;
   return `Down from ${fell.matches} of ${fell.answered} answered over the ${runs} before`;
 }

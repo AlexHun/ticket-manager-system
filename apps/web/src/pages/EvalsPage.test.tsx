@@ -1442,7 +1442,7 @@ describe("a case's recent history (#607)", () => {
     ).toBeInTheDocument();
   });
 
-  test("flags a case that fell below the runs before it, over their answered repeats (#712)", async () => {
+  test("flags a case that fell below the runs before it (#712)", async () => {
     const user = userEvent.setup();
     runsGet.mockResolvedValue(
       response({

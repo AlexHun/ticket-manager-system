@@ -56,12 +56,14 @@ export interface EvalCaseResultRow extends EvalCaseCounters {
    * Set when this case matched too few repeats to be chance at its own rate
    * over the runs before this one in `history`, and null otherwise (#607,
    * #712). Each run is read over its answered repeats, so an outage is not a
-   * fall (#686); how far below and how unlikely are `FALL_MATCHES` and
-   * `FALL_CHANCE` in `apps/api/src/routes/evals.ts`, decided there alone, with
-   * the arithmetic in `fallFrom` beside them.
+   * fall (#686); how far below, how unlikely and over how many runs are
+   * `FALL_MATCHES`, `FALL_CHANCE` and `FALL_RUNS_BEFORE` in
+   * `apps/api/src/routes/evals.ts`, decided there alone, with the arithmetic in
+   * `fallFrom` beside them.
    *
-   * Null too with fewer than two runs before this one that answered the case:
-   * no flag rather than a guess. Display only — nothing notifies (R8, R11).
+   * Null too with fewer than `FALL_RUNS_BEFORE` runs before this one that
+   * answered the case: no flag rather than a guess. Display only — nothing
+   * notifies (R8, R11).
    */
   fell: EvalCaseFall | null;
 }
@@ -78,8 +80,8 @@ export interface EvalCaseSplit {
  * only when it has fallen below that since (#712).
  *
  * Pooled rather than one run: five repeats of a case that matches 70% of the
- * time swing by two or more between two nights about one comparison in seven,
- * and a week-earlier run compared alone flagged that swing (#712). The runs
+ * time fall by two or more from one night to the next about one comparison in
+ * seven, and a week-earlier run compared alone flagged that fall (#712). The runs
  * are the ones `history` draws beside the flag, so "down from" is a claim the
  * row itself lets somebody check.
  */
@@ -88,7 +90,10 @@ export interface EvalCaseFall {
   matches: number;
   /** Repeats those runs answered; an unanswered one is on neither side (#686). */
   answered: number;
-  /** How many runs before this one answered the case. */
+  /**
+   * How many runs before this one answered the case, leaving out one that
+   * left most of its repeats unanswered.
+   */
   runs: number;
 }
 
