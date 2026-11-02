@@ -64,7 +64,7 @@ invoke it.
    machine's own transcripts, with no `CLAUDE_TRANSCRIPT_DIR` set, never the
    E2E's web server, which reads the fixtures. When the PRD's worst case is
    above what that holds, say how far below it the look was. At 1440 px and
-   390 px wide, save a screenshot to `.scratch/look-<n>/` and read it back for
+   390 px wide (the emulate tool, as conventions.md says), save a screenshot to `.scratch/look-<n>/` and read it back for
    anything that overflows, clips or wraps badly. Then trace the page's main
    interaction, the one the PRD's budget names, or a fold, filter or sort when
    none is named: start the trace with reload and auto-stop off, make the
