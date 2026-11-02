@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, CircleSlash, RotateCcw } from "lucide-react";
 import type { AutoReplyCase } from "@ticket/core";
@@ -14,9 +13,7 @@ import {
   type PipelineRun,
   type PipelineRunResponse,
 } from "@ticket/shared";
-import { ticketDetailPath } from "@/lib/routes";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
 import { Tutorial } from "@/components/Tutorial";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,7 +21,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { api } from "@/lib/api";
 import { DASHBOARD_RANGE_OPTIONS } from "@/lib/dashboard-ranges";
 import { extractErrorMessage } from "@/lib/errors";
-import { DECLINE_LABEL } from "@/lib/pipeline-labels";
 import {
   pipelineKeys,
   RUN_FALLBACK_POLL_MS,
@@ -34,6 +30,7 @@ import { useRealtimeStatus } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
 import { PipelineHandoff } from "./PipelineHandoff";
 import { PipelineRail } from "./PipelineRail";
+import { PipelineRunVerdict } from "./PipelineRunVerdict";
 import { PipelineSimulator } from "./PipelineSimulator";
 
 /**
@@ -86,20 +83,25 @@ function useOverview(range: DashboardRange) {
  * The interval that remains is insurance for a disconnected stream, on the one
  * page where "nothing is arriving" and "nothing is happening" look identical and
  * the difference is the point. See `RUN_FALLBACK_POLL_MS`.
+ *
+ * `scenarioId` is the case the ticket was sent as, when it was. The API checks
+ * the reply against that case's payload and answers `escaped` (#723), so it is
+ * in the key: the same ticket asked about with and without one is two answers.
  */
 function useRun(
   ticketId: number | null,
+  scenarioId: string | null,
   watching: boolean,
   connected: boolean,
   stalled: boolean,
 ) {
   return useQuery({
-    queryKey: pipelineKeys.run(ticketId ?? 0),
+    queryKey: pipelineKeys.run(ticketId ?? 0, scenarioId),
     enabled: ticketId !== null,
     queryFn: async ({ signal }) => {
       const { data } = await api.get<PipelineRunResponse>(
         `/api/pipeline/runs/${ticketId}`,
-        { signal },
+        { params: scenarioId ? { scenario: scenarioId } : undefined, signal },
       );
       return data.run;
     },
@@ -133,7 +135,13 @@ export function PipelinePage() {
   const { connected } = useRealtimeStatus();
 
   const overview = useOverview(range);
-  const run = useRun(watchedTicketId, watching, connected, stalled);
+  const run = useRun(
+    watchedTicketId,
+    scenario?.id ?? null,
+    watching,
+    connected,
+    stalled,
+  );
 
   // Say so when a run has taken longer than the ladder should need. Two minutes
   // covers the model call and its first retry.
@@ -266,7 +274,7 @@ export function PipelinePage() {
               </div>
 
               {run.data && (
-                <RunVerdict
+                <PipelineRunVerdict
                   run={run.data}
                   scenario={scenario}
                   stalled={
@@ -286,9 +294,15 @@ export function PipelinePage() {
               />
             </section>
 
+            {/* A listed ticket was not sent as the scenario last picked, so
+                nothing judges it against one — the verdict line and the
+                escape check both read `scenario`. */}
             <RecentRuns
               runs={overview.data.recent}
-              onWatch={setWatchedTicketId}
+              onWatch={(ticketId) => {
+                setWatchedTicketId(ticketId);
+                setScenario(null);
+              }}
             />
           </div>
 
@@ -436,121 +450,6 @@ function QueueFact({
       <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
         {idle ? "Nothing queued." : "Live, from the job queue."}
       </p>
-    </div>
-  );
-}
-
-/**
- * What happened to the ticket being watched, and whether it is what the scenario
- * said would happen.
- *
- * The expectation check is the point of the presets: they are written against a
- * corpus somebody can edit at `/knowledge`, so they *will* drift. Saying
- * "expected notCovered, got resolved from KB-003" out loud turns that drift into
- * the most useful finding this page produces, instead of a wrong answer nobody
- * notices.
- */
-function RunVerdict({
-  run,
-  scenario,
-  stalled,
-  pipelineLive,
-}: {
-  run: PipelineRun;
-  scenario: AutoReplyCase | null;
-  stalled: boolean;
-  /** Whether the unattended reply is switched on at all — see `notOffered`. */
-  pipelineLive: boolean;
-}) {
-  const pending = run.outcome === PIPELINE_OUTCOME.pending;
-  const expected = scenario?.expected;
-  const matched =
-    expected !== undefined &&
-    !pending &&
-    expected.outcome === run.outcome &&
-    (expected.decline ?? null) === run.decline;
-
-  return (
-    <div className="mb-5 space-y-2 rounded-md border bg-background/50 p-3">
-      <p className="text-sm">
-        <span className="text-muted-foreground">{run.customerName} — </span>
-        <span className="font-heading">{run.subject}</span>
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge status={run.status} />
-        {run.category && <CategoryBadge category={run.category} />}
-      </div>
-
-      {stalled ? (
-        <p className="text-xs leading-relaxed text-ember-2">
-          Still no verdict after two minutes. The retry ladder runs for about
-          seven and a half minutes — this is still listening, and the verdict
-          will replace this line whenever it lands.
-        </p>
-      ) : pending ? (
-        <p className="text-xs text-muted-foreground">Working…</p>
-      ) : run.decline ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {DECLINE_LABEL[run.decline]}
-        </p>
-      ) : run.outcome === PIPELINE_OUTCOME.resolved ? (
-        <p className="text-xs leading-relaxed text-calm">
-          Answered and resolved, citing{" "}
-          <span className="font-mono">{run.citedArticleIds.join(", ")}</span>.
-        </p>
-      ) : run.outcome === PIPELINE_OUTCOME.notOffered ? (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {pipelineLive
-            ? // Not the switches — this ticket is past where the machine would
-              // take it: filed by hand before the classifier got there, too old
-              // for the reconcile sweep (#353), or already through. The last is
-              // most often a customer replying to a ticket the machine
-              // resolved: that reopens the ticket and clears the column that
-              // recorded the answer, so the trace above genuinely cannot show
-              // what happened. Said out loud rather than guessed at.
-              "Nothing further is scheduled. The auto-reply is offered a ticket once, when the classifier files it — so a ticket that was answered, reopened, filed by hand, or never classified within a day is not waiting for anything."
-            : "Nothing is scheduled to run this — see the switches above."}
-        </p>
-      ) : (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          The classifier ran out of retries and left it uncategorised.
-        </p>
-      )}
-
-      {expected && !pending && (
-        <p
-          className={cn(
-            "text-xs leading-relaxed",
-            matched ? "text-muted-foreground" : "text-ember-2",
-          )}
-        >
-          {matched ? (
-            "This is where the scenario said it would end up."
-          ) : (
-            <>
-              The scenario expected{" "}
-              <span className="font-mono">
-                {expected.decline ?? expected.outcome}
-              </span>
-              . It reached{" "}
-              <span className="font-mono">{run.decline ?? run.outcome}</span>.{" "}
-              {/* Per-scenario, because the generic reading is wrong for the
-                  payloads: one that reaches `resolved` means the model declined
-                  to obey it, which is a pass. Saying "check your knowledge base"
-                  there would report the system working as a fault. */}
-              {scenario?.mismatchNote ??
-                "Worth checking whether the knowledge base has moved."}
-            </>
-          )}
-        </p>
-      )}
-
-      <Link
-        to={ticketDetailPath(run.ticketId)}
-        className="inline-block text-xs underline underline-offset-2 hover:text-foreground"
-      >
-        Open the ticket
-      </Link>
     </div>
   );
 }

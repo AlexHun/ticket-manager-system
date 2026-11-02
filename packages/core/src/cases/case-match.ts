@@ -10,7 +10,7 @@ import type { AutoReplyCase } from "../schemas/evals";
  *
  * Here, beside the cases, because two readers ask it: `/evals`, through
  * `answerCase` in `apps/api/src/evals/runner.ts`, and `/pipeline`, through
- * `RunVerdict` in `apps/web/src/pages/PipelinePage.tsx`. Each used to state the
+ * `PipelineRunVerdict` in `apps/web/src/pages/`. Each used to state the
  * rule itself, and after #714 changed it on one side the two pages disagreed
  * about the same reply (#723).
  */
