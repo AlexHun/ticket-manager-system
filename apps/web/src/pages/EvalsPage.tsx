@@ -61,7 +61,6 @@ import {
 import { CORPUS_LABEL } from "@/lib/eval-labels";
 import { evalKeys } from "@/lib/eval-queries";
 import { extractErrorMessage } from "@/lib/errors";
-import { formatDateRange } from "@/lib/format";
 import { DECLINE_SHORT } from "@/lib/pipeline-labels";
 import { TableFrame } from "@/lib/table-frame";
 import { cn } from "@/lib/utils";
@@ -262,20 +261,18 @@ function trailingLabel(trailing: EvalTrailingMetric): string {
 }
 
 /**
- * A case's fall since a week earlier, as the row's amber line says it (#607).
+ * A case's fall below the runs before this one, as the row's amber line says
+ * it (#607, #712).
  *
- * When that run left repeats unanswered, the split is drawn over the answered
- * ones, which is what the flag compares (#686): a 3/5 beside this run's own
- * 3/5 would read as no fall at all. Built as one string, so the row adds one
- * text node for it rather than one per piece (#710).
+ * Over the answered repeats, which is what the flag compares (#686). Built as
+ * one string, so the row adds one text node for it rather than one per piece
+ * (#710).
  */
 function fellLabel(fell: EvalCaseFall): string {
-  const run = `run ${fell.runId}, ${formatDateRange(new Date(fell.startedAt))}`;
-  if (fell.abandoned > 0) {
-    const answered = fell.repeats - fell.abandoned;
-    return `Down from ${fell.matches} of ${answered} answered a week earlier (${fell.abandoned} unanswered; ${run})`;
-  }
-  return `Down from ${fell.matches}/${fell.repeats} a week earlier (${run})`;
+  // The API sends no fall over fewer runs than `FALL_RUNS_BEFORE`, two today;
+  // the singular is written anyway so lowering it cannot print "1 runs".
+  const runs = fell.runs === 1 ? "run" : `${fell.runs} runs`;
+  return `Down from ${fell.matches} of ${fell.answered} answered over the ${runs} before`;
 }
 
 /**
@@ -578,12 +575,13 @@ function ResultRow({ result }: { result: EvalCaseResultRow }) {
         )}
         {/* The table's one amber thing (#607), and the words carry it without
             the colour. Not a rate band — the rates above stay unbanded — and
-            not red: a case that fell since a week earlier is not a defect the
-            way an escape is. It is the row an admin opened
+            not red: a case that fell below its own history is not a defect
+            the way an escape is. It is the row an admin opened
             this table looking for, though, since a fall of 5/5 to 0/5 moves the
             headline accuracy by about three points, which is inside a passing
-            run. Named run and date, because "down from" is a claim somebody
-            will go and check; `fellLabel` has the wording. */}
+            run. The runs it is down from are the ones the history cell beside
+            it draws, because "down from" is a claim somebody will go and
+            check; `fellLabel` has the wording. */}
         {result.fell && (
           <div className="text-xs font-medium text-status-warning">
             {fellLabel(result.fell)}

@@ -53,14 +53,17 @@ export interface EvalCaseResultRow extends EvalCaseCounters {
    */
   history: (EvalCaseSplit | null)[];
   /**
-   * Set when this case matched enough fewer repeats than it did on the run a
-   * week earlier to be flagged, and null otherwise (#607). Each run is read
-   * over its answered repeats, so an outage is not a fall (#686); how many
-   * fewer is `FALL_MATCHES` in `apps/api/src/routes/evals.ts`, decided there
-   * alone, with the arithmetic in `fallFrom` beside it.
+   * Set when this case matched too few repeats to be chance at its own rate
+   * over the runs before this one in `history`, and null otherwise (#607,
+   * #712). Each run is read over its answered repeats, so an outage is not a
+   * fall (#686); how far below, how unlikely and over how many runs are
+   * `FALL_MATCHES`, `FALL_CHANCE` and `FALL_RUNS_BEFORE` in
+   * `apps/api/src/routes/evals.ts`, decided there alone, with the arithmetic in
+   * `fallFrom` beside them.
    *
-   * Null too when there is no week-earlier run, or the case was not on it:
-   * no flag rather than a guess. Display only — nothing notifies (R8, R11).
+   * Null too with fewer than `FALL_RUNS_BEFORE` runs before this one that
+   * answered the case: no flag rather than a guess. Display only — nothing
+   * notifies (R8, R11).
    */
   fell: EvalCaseFall | null;
 }
@@ -73,21 +76,25 @@ export interface EvalCaseSplit {
 }
 
 /**
- * What a case matched on the run a week earlier, carried only when it has
- * fallen since (#607).
+ * What a case matched over the runs before this one in its history, carried
+ * only when it has fallen below that since (#712).
  *
- * The week-earlier run is the latest completed run on the same corpus that
- * started at least seven days before this one. Named on the row, run and date,
- * because a fall from 5/5 is a claim somebody will want to go and check.
+ * Pooled rather than one run: five repeats of a case that matches 70% of the
+ * time fall by two or more from one night to the next about one comparison in
+ * seven, and a week-earlier run compared alone flagged that fall (#712). The runs
+ * are the ones `history` draws beside the flag, so "down from" is a claim the
+ * row itself lets somebody check.
  */
-export interface EvalCaseFall extends EvalCaseSplit {
-  startedAt: string;
+export interface EvalCaseFall {
+  /** Answered repeats that matched, summed over those runs. */
+  matches: number;
+  /** Repeats those runs answered; an unanswered one is on neither side (#686). */
+  answered: number;
   /**
-   * Repeats that run left unanswered (#686), so the page can draw its split
-   * over the answered repeats the flag compares, and say how many were the
-   * provider's rather than misses.
+   * How many runs before this one answered the case, leaving out one that
+   * left most of its repeats unanswered.
    */
-  abandoned: number;
+  runs: number;
 }
 
 /**
