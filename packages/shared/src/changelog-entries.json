@@ -1283,5 +1283,10 @@
     "version": "0.1.313",
     "date": "2026-11-02",
     "title": "/pipeline judges a payload case by the rule /evals counts by (#723)"
+  },
+  {
+    "version": "0.1.318",
+    "date": "2026-11-02",
+    "title": "Flag a fall only when chance does not explain it (#712)"
   }
 ]
