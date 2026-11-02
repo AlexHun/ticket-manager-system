@@ -88,7 +88,7 @@ import { requireAdmin, requireAdminView } from "../middleware/auth";
  * nothing should — `createEvalsRouter` is still the module's interface.
  *
  * The series readers joined them on the same terms (#607): `trailingFrom`,
- * `historyFrom`, `weekEarlierOf` and `fallFrom` take runs built as values, so
+ * `historyFrom` and `fallFrom` take runs built as values, so
  * pooled-versus-mean and a gap-versus-zero are asserted without a database.
  */
 
@@ -383,32 +383,42 @@ const SERIES_COLUMNS = {
   },
 } as const;
 
-/** How long before a run its week-earlier run started, at least (#607). */
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
 /**
- * How many fewer matches than a week earlier flag a case (#607), counted over
- * the latest run's answered repeats (#686). One is within a run's own noise at
- * five repeats; two catches a case going from 5/5 to 0/5 without flagging
- * every wobble.
+ * How many fewer matches than the case's own rate predicts flag it (#607),
+ * counted over the latest run's answered repeats (#686). One is within a run's
+ * own noise at five repeats, even for a case that has never missed.
  */
 const FALL_MATCHES = 2;
+
+/**
+ * How unlikely the latest run's matches must be at the case's rate over the
+ * runs before it to flag it (#712): the binomial chance of matching that few
+ * times or fewer.
+ *
+ * Set by replaying production's frozen history (38 runs, 8 Sep–1 Nov 2026,
+ * re-scored as #714 counts a payload case). Against one week-earlier run the
+ * flag fired 6 times in its 30 comparisons; at 1% one of the 6 survives,
+ * `password-rejected` at 3/5 after 30 of 30. A case at 70% is flagged at 0/5
+ * (0.24%) and not at 1/5 (3.1%).
+ */
+const FALL_CHANCE = 0.01;
+
+/**
+ * Fewest runs before the latest that must have answered a case to flag it,
+ * the bar `trailingFrom` sets: one run's five repeats is the noise a rate
+ * over several exists to smooth.
+ */
+const FALL_RUNS_BEFORE = 2;
 
 /** Newest first on `[startedAt, id]`, the page's own `orderBy`. */
 function newestFirst(a: PriorRun, b: PriorRun): number {
   return b.startedAt.getTime() - a.startedAt.getTime() || b.id - a.id;
 }
 
-/** The latest start a run's week-earlier run may have. */
-function weekBefore(run: PriorRun): Date {
-  return new Date(run.startedAt.getTime() - WEEK_MS);
-}
-
 /**
  * Every completed run of this corpus that a run on the page is read against,
- * newest first (R14, #607): the page's own completed runs, the
- * `EVAL_HISTORY_RUNS - 1` before the oldest of them, and every run that can be
- * one of theirs a week earlier.
+ * newest first (R14, #607): the page's own completed runs and the
+ * `EVAL_HISTORY_RUNS - 1` before the oldest of them.
  *
  * Three conditions, and each one rules out a comparison that would be worse
  * than none. **Same corpus**, because frozen and live are two series (R4) and a
@@ -420,14 +430,10 @@ function weekBefore(run: PriorRun): Date {
  * read against. And **ordered** on the page's own `[startedAt, id]`, so two
  * runs started in the same second still have one answer.
  *
- * **Three queries whatever the history holds**, rather than one per card, and
- * each one is there because a series outgrows the page. Once it is longer than
+ * **One query whatever the history holds**, rather than one per card, and it
+ * is there because a series outgrows the page: once it is longer than
  * `EVAL_RUN_LIMIT`, the oldest card drawn has its predecessor and the rest of
- * its window off the end of the page — the first query. And its week-earlier
- * run is further back again: the second finds that one, which is the earliest
- * any card needs, and the third reads everything from there to a week before
- * the newest card, which holds every other card's week-earlier run, since a
- * later card's is never earlier.
+ * its window off the end of the page.
  */
 async function seriesOf(
   corpus: EvalCorpus,
@@ -436,48 +442,26 @@ async function seriesOf(
   const completed = page.filter(
     (run) => run.status === EVAL_RUN_STATUS.completed,
   );
-  const newest = completed[0];
   const oldest = completed.at(-1);
-  if (!newest || !oldest) return [];
-
-  const series = { corpus, status: EVAL_RUN_STATUS.completed };
-  const orderBy = [{ startedAt: "desc" as const }, { id: "desc" as const }];
+  if (!oldest) return [];
 
   const older = await prisma.evalRun.findMany({
     where: {
-      ...series,
+      corpus,
+      status: EVAL_RUN_STATUS.completed,
       OR: [
         { startedAt: { lt: oldest.startedAt } },
         { startedAt: oldest.startedAt, id: { lt: oldest.id } },
       ],
     },
-    orderBy,
+    orderBy: [{ startedAt: "desc" }, { id: "desc" }],
     take: EVAL_HISTORY_RUNS - 1,
     select: SERIES_COLUMNS,
   });
 
-  const earliest = await prisma.evalRun.findFirst({
-    where: { ...series, startedAt: { lte: weekBefore(oldest) } },
-    orderBy,
-    select: { startedAt: true },
-  });
-  const weekEarlier =
-    earliest === null
-      ? []
-      : await prisma.evalRun.findMany({
-          where: {
-            ...series,
-            startedAt: { gte: earliest.startedAt, lte: weekBefore(newest) },
-          },
-          select: SERIES_COLUMNS,
-        });
-
-  // The three overlap whenever the series is short, so they meet by id.
-  const byId = new Map<number, SeriesRun>();
-  for (const run of [...completed, ...older, ...weekEarlier]) {
-    byId.set(run.id, run);
-  }
-  return [...byId.values()].sort(newestFirst);
+  // Both are newest first, and every run in `older` precedes every one on
+  // the page.
+  return [...completed, ...older];
 }
 
 /**
@@ -500,18 +484,6 @@ function predecessorIn<T>(window: T[]): T | null {
 }
 
 /**
- * The run a week earlier than `run`: the latest in a newest-first series that
- * started at least seven days before it, or null when nothing is that old.
- */
-export function weekEarlierOf(
-  series: SeriesRun[],
-  run: PriorRun,
-): SeriesRun | null {
-  const latest = weekBefore(run).getTime();
-  return series.find((other) => other.startedAt.getTime() <= latest) ?? null;
-}
-
-/**
  * One case's split on each run of a window, oldest first.
  *
  * A run that did not answer the case is a null — a gap, never a zero, which
@@ -530,43 +502,68 @@ export function historyFrom(
 }
 
 /**
- * The week-earlier split of a case that has fallen `FALL_MATCHES` or more
- * since, or null.
+ * The case's pooled split over the runs before the last in `window`, when
+ * the last run fell below it by more than chance explains (#712), or null.
  *
- * Each run is read over its **answered** repeats (#686). An unanswered repeat
- * can never match (the note on `verdictOf` in `evals/runner.ts`), so raw
- * matches would read an outage as a fall: 5/5, then three of five answered
- * and all three matched, is two down and the provider's doing. The fall is
- * what the latest run's answered repeats would have matched at the week-earlier
- * rate, less what they did match.
+ * Two bars, both over the latest run's **answered** repeats (#686): it matched
+ * at least `FALL_MATCHES` fewer than the pooled rate predicts, and matching
+ * that few times or fewer had under `FALL_CHANCE` of happening at that rate.
+ * A fall of two alone, read against one week-earlier run, flagged a case that
+ * matches 70% of the time about one night in seven with nothing changed; the
+ * chance alone would flag one miss on a case that has never missed, since at
+ * a rate of 100% no miss is likely.
  *
- * No flag when either run left most of the case's repeats unanswered: what is
- * left is too few to say the case used to match or has stopped, and scaled
- * across the other run's answered repeats it can make a fall of two out of a
- * single repeat — 1 of 1 answered a week earlier against 3/5 tonight.
+ * An unanswered repeat can never match (the note on `verdictOf` in
+ * `evals/runner.ts`), so it is on neither side of either rate: 5/5, then three
+ * of five answered and all three matched, is two down and the provider's
+ * doing. No flag when the latest run left most of the case's repeats
+ * unanswered: two answered repeats are too few to say a case has stopped.
  */
 export function fallFrom(
-  result: SeriesSplit,
-  weekEarlier: SeriesRun | null,
+  window: SeriesRun[],
+  caseId: string,
 ): EvalCaseFall | null {
-  const before = weekEarlier?.results.find((r) => r.caseId === result.caseId);
-  if (!weekEarlier || !before) return null;
-  if (mostlyUnanswered(before) || mostlyUnanswered(result)) return null;
+  const result = window.at(-1)?.results.find((r) => r.caseId === caseId);
+  if (!result || mostlyUnanswered(result)) return null;
 
-  const answeredBefore = before.repeats - before.abandoned;
-  const answered = result.repeats - result.abandoned;
-  // `before.matches * answered / answeredBefore - result.matches`, multiplied
-  // through by `answeredBefore` so the comparison stays in whole numbers.
-  const fall = before.matches * answered - result.matches * answeredBefore;
-  if (fall < FALL_MATCHES * answeredBefore) return null;
+  let matches = 0;
+  let answered = 0;
+  let runs = 0;
+  for (const run of window.slice(0, -1)) {
+    const split = run.results.find((r) => r.caseId === caseId);
+    if (!split || split.repeats === split.abandoned) continue;
+    matches += split.matches;
+    answered += split.repeats - split.abandoned;
+    runs += 1;
+  }
+  if (runs < FALL_RUNS_BEFORE) return null;
 
-  return {
-    runId: weekEarlier.id,
-    startedAt: weekEarlier.startedAt.toISOString(),
-    matches: before.matches,
-    repeats: before.repeats,
-    abandoned: before.abandoned,
-  };
+  const tonight = result.repeats - result.abandoned;
+  // `matches * tonight / answered - result.matches`, multiplied through by
+  // `answered` so the comparison stays in whole numbers.
+  const fall = matches * tonight - result.matches * answered;
+  if (fall < FALL_MATCHES * answered) return null;
+  if (
+    chanceOfAtMost(result.matches, tonight, matches / answered) >= FALL_CHANCE
+  ) {
+    return null;
+  }
+
+  return { matches, answered, runs };
+}
+
+/**
+ * The binomial chance of `k` or fewer successes in `n` tries at rate `p`.
+ * Exact, since `n` is one case's repeats on one run.
+ */
+function chanceOfAtMost(k: number, n: number, p: number): number {
+  let chance = 0;
+  let ways = 1;
+  for (let i = 0; i <= k; i += 1) {
+    chance += ways * p ** i * (1 - p) ** (n - i);
+    ways = (ways * (n - i)) / (i + 1);
+  }
+  return chance;
 }
 
 /** Whether more of a split's repeats went unanswered than were answered. */
@@ -844,7 +841,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
         include: { results: { orderBy: { id: "asc" } } },
       });
 
-      // R14 and #607, and three extra queries rather than any per run — see
+      // R14 and #607, and one extra query rather than any per run — see
       // `seriesOf`.
       const series = await seriesOf(corpus, runs);
 
@@ -875,7 +872,6 @@ export function createEvalsRouter(config: EvalsConfig): Router {
           // same reason: there is nothing yet to compare.
           const window = completed ? windowOf(series, run) : [];
           const previous = predecessorIn(window);
-          const weekEarlier = completed ? weekEarlierOf(series, run) : null;
           // Only on a run that finished properly, and `completed` rather than
           // "not running" — the two states this excludes are excluded for the
           // same reason. A rate over the third of the set that has been answered
@@ -953,7 +949,7 @@ export function createEvalsRouter(config: EvalsConfig): Router {
               ),
               reached: reachedFrom(result.verdicts),
               history: historyFrom(window, result.caseId),
-              fell: fallFrom(result, weekEarlier),
+              fell: fallFrom(window, result.caseId),
             })),
           };
         }),

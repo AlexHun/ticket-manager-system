@@ -112,7 +112,6 @@ const {
   historyFrom,
   reachedFrom,
   trailingFrom,
-  weekEarlierOf,
 } = await import("./evals");
 
 const evalsRouter = createEvalsRouter(config);
@@ -1069,7 +1068,7 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
   });
 });
 
-/* ── A case's recent history, and the week-earlier flag (#607) ────────────── */
+/* ── A case's recent history, and the fall flag (#607, #712) ─────────────── */
 
 /**
  * A finished run answering the cases a test names, each with its own matches.
@@ -1249,32 +1248,35 @@ describe("GET /runs — the trailing average (#607)", () => {
   });
 });
 
-describe("GET /runs — a case that fell since a week earlier (#607)", () => {
-  test("flags a case two or more below the run a week earlier", async () => {
-    const weekEarlier = await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(8), { "off-corpus": 3 });
+describe("GET /runs — a case that fell below its own history (#607, #712)", () => {
+  test("flags a case its rate over the runs before makes unlikely", async () => {
+    await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(2), { "off-corpus": 5 });
+    await seriesRun(sept(3), { "off-corpus": 0 });
 
     expect(caseOf(await runs(), "off-corpus").fell).toEqual({
-      runId: weekEarlier.id,
-      startedAt: sept(1).toISOString(),
-      matches: 5,
-      repeats: 5,
-      abandoned: 0,
+      matches: 10,
+      answered: 10,
+      runs: 2,
     });
   });
 
-  test("does not flag a drop of exactly one", async () => {
-    await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(8), { "off-corpus": 4 });
+  test("does not flag a fall chance explains at the case's own rate", async () => {
+    // 11 of 15 before; 1/5 tonight is 2% likely at that rate.
+    await seriesRun(sept(1), { "off-corpus": 4 });
+    await seriesRun(sept(2), { "off-corpus": 3 });
+    await seriesRun(sept(3), { "off-corpus": 4 });
+    await seriesRun(sept(4), { "off-corpus": 1 });
 
     expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
   });
 
   test("reads each run over its answered repeats, so an outage is no fall (#686)", async () => {
-    // 5/5, then three of five answered and all three matched: no flag.
+    // Two runs at 5/5, then three of five answered and all three matched.
     await seriesRun(sept(1), { "off-corpus": 5 });
+    await seriesRun(sept(2), { "off-corpus": 5 });
     await seriesRun(
-      sept(8),
+      sept(3),
       { "off-corpus": 3 },
       { abandoned: { "off-corpus": 2 } },
     );
@@ -1282,70 +1284,34 @@ describe("GET /runs — a case that fell since a week earlier (#607)", () => {
     expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
   });
 
-  test("names how many week-earlier repeats went unanswered (#686)", async () => {
-    // Three of three answered a week ago; three of five tonight.
+  test("leaves a run that fell over and a live run out of the runs before", async () => {
+    // Read with them, the 0/5s would put the rate at 10 of 20 and 0/5
+    // tonight at 3% likely; without them it is 10 of 10.
+    await seriesRun(sept(1), { "off-corpus": 5 });
     await seriesRun(
-      sept(1),
-      { "off-corpus": 3 },
-      { abandoned: { "off-corpus": 2 } },
+      sept(2),
+      { "off-corpus": 0 },
+      { status: EVAL_RUN_STATUS.failed },
     );
-    await seriesRun(sept(8), { "off-corpus": 3 });
+    await seriesRun(sept(2), { "off-corpus": 0 }, { corpus: EVAL_CORPUS.live });
+    await seriesRun(sept(3), { "off-corpus": 5 });
+    await seriesRun(sept(4), { "off-corpus": 0 });
 
     expect(caseOf(await runs(), "off-corpus").fell).toMatchObject({
-      matches: 3,
-      repeats: 5,
-      abandoned: 2,
+      matches: 10,
+      runs: 2,
     });
   });
 
-  test("reads the latest run at least a week earlier, not the previous run", async () => {
-    // Day 2 is the latest run seven days or more before day 9; day 3 is six
-    // days before it and too recent, however far the case fell since.
-    await seriesRun(sept(1), { "off-corpus": 1 });
-    const weekEarlier = await seriesRun(sept(2), { "off-corpus": 5 });
-    await seriesRun(sept(3), { "off-corpus": 1 });
-    await seriesRun(sept(9), { "off-corpus": 3 });
-
-    expect(caseOf(await runs(), "off-corpus").fell?.runId).toBe(weekEarlier.id);
-  });
-
-  test("passes over a run that fell over, and a live run, for the week-earlier one", async () => {
-    const weekEarlier = await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(
-      sept(2),
-      { "off-corpus": 1 },
-      { status: EVAL_RUN_STATUS.failed },
-    );
-    await seriesRun(sept(2), { "off-corpus": 1 }, { corpus: EVAL_CORPUS.live });
-    await seriesRun(sept(9), { "off-corpus": 3 });
-
-    expect(caseOf(await runs(), "off-corpus").fell?.runId).toBe(weekEarlier.id);
-  });
-
-  test("no week-earlier run is no flag", async () => {
-    await seriesRun(sept(3), { "off-corpus": 5 });
-    await seriesRun(sept(8), { "off-corpus": 0 });
-
-    expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
-  });
-
-  test("a case absent from the week-earlier run is no flag", async () => {
-    await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(8), { "off-corpus": 5, "planted-link": 0 });
-
-    expect(caseOf(await runs(), "planted-link").fell).toBeNull();
-  });
-
-  test("finds the oldest card's week-earlier run off the end of the page", async () => {
-    // Twenty-eight nightly runs: the page holds days 9 to 28, and the oldest
-    // card drawn, day 9, is read against day 2 — seven runs past the page's end.
-    for (let day = 1; day <= EVAL_RUN_LIMIT + 8; day += 1) {
-      await seriesRun(sept(day), { "off-corpus": day === 9 ? 2 : 5 });
+  test("reads the oldest card against runs off the end of the page", async () => {
+    // The oldest card drawn is day 3, and both runs before it are off the page.
+    for (let day = 1; day <= EVAL_RUN_LIMIT + 2; day += 1) {
+      await seriesRun(sept(day), { "off-corpus": day === 3 ? 0 : 5 });
     }
 
     const body = await runs();
 
-    expect(caseOf(body, "off-corpus", -1).fell?.matches).toBe(5);
+    expect(caseOf(body, "off-corpus", -1).fell?.runs).toBe(2);
     expect(caseOf(body, "off-corpus", 0).fell).toBeNull();
   });
 });
@@ -1836,90 +1802,92 @@ describe("historyFrom", () => {
   });
 });
 
-describe("weekEarlierOf", () => {
-  const series = [9, 3, 2, 1].map((day) => seriesValue(day, sept(day)));
-
-  test("is the latest run that started at least seven days before", () => {
-    // Day 2 is exactly seven days before day 9, which counts; day 3 is six.
-    expect(weekEarlierOf(series, series[0]!)?.id).toBe(2);
-  });
-
-  test("is null when nothing is that old", () => {
-    expect(weekEarlierOf(series, series.at(-1)!)).toBeNull();
-  });
-});
-
 describe("fallFrom", () => {
   /** The case on one run: five repeats, `abandoned` of them unanswered. */
   function split(matches: number, abandoned = 0) {
     return { caseId: "off-corpus", matches, repeats: 5, abandoned };
   }
 
-  /** The week-earlier run, answering the case as `split` says. */
-  function weekEarlier(matches = 5, abandoned = 0) {
-    return seriesValue(1, sept(1), { results: [split(matches, abandoned)] });
+  /**
+   * A window ending with tonight's split, one run a day before it. Each entry
+   * is a run's matches, or a split for one with unanswered repeats.
+   */
+  function window(
+    before: (number | ReturnType<typeof split>)[],
+    tonight: ReturnType<typeof split>,
+  ): SeriesRun[] {
+    return [...before, tonight].map((entry, i) =>
+      seriesValue(i + 1, sept(i + 1), {
+        results: [typeof entry === "number" ? split(entry) : entry],
+      }),
+    );
   }
 
-  test("carries the week-earlier split when every repeat was answered and the case fell by two or more", () => {
-    expect(fallFrom(split(3), weekEarlier())).toEqual({
-      runId: 1,
-      startedAt: sept(1).toISOString(),
-      matches: 5,
-      repeats: 5,
-      abandoned: 0,
+  test("flags 5/5 to 0/5 on the first night, and the night after", () => {
+    expect(fallFrom(window([5, 5], split(0)), "off-corpus")).toEqual({
+      matches: 10,
+      answered: 10,
+      runs: 2,
     });
+    expect(fallFrom(window([5, 5, 0], split(0)), "off-corpus")).not.toBeNull();
   });
 
-  test("is null for a drop of one, a rise, or no week-earlier run", () => {
-    expect(fallFrom(split(4), weekEarlier())).toBeNull();
-    expect(fallFrom(split(5), weekEarlier(2))).toBeNull();
-    expect(fallFrom(split(0), null)).toBeNull();
+  test("flags two misses on a case that always matched, and not one", () => {
+    const always = [5, 5, 5, 5, 5, 5];
+
+    expect(fallFrom(window(always, split(3)), "off-corpus")).toEqual({
+      matches: 30,
+      answered: 30,
+      runs: 6,
+    });
+    expect(fallFrom(window(always, split(4)), "off-corpus")).toBeNull();
   });
 
-  test("is null for a case the week-earlier run did not answer", () => {
-    expect(
-      fallFrom({ ...split(0), caseId: "planted-link" }, weekEarlier()),
-    ).toBeNull();
+  test("does not flag a swing chance explains at the case's own rate", () => {
+    // 21 of 30, 70%, the shape of `certificate-missing` in production (#712).
+    // 1/5 is 3.1% likely at that rate and 0/5 is 0.24%, either side of 1%.
+    const flaky = [4, 3, 4, 3, 4, 3];
+
+    expect(fallFrom(window(flaky, split(1)), "off-corpus")).toBeNull();
+    expect(fallFrom(window(flaky, split(0)), "off-corpus")).not.toBeNull();
   });
 
-  test("does not read an outage as a fall when every answered repeat matched", () => {
-    // 5/5 a week ago; tonight two repeats went unanswered and the other three
+  test("needs two runs before this one that answered the case", () => {
+    expect(fallFrom(window([5], split(0)), "off-corpus")).toBeNull();
+    // A run without the case is not one of them.
+    const without = seriesValue(1, sept(1), { results: [] });
+    const rest = window([5], split(0)).map((run) => ({
+      ...run,
+      id: run.id + 1,
+    }));
+    expect(fallFrom([without, ...rest], "off-corpus")).toBeNull();
+  });
+
+  test("is null for a case tonight did not answer", () => {
+    expect(fallFrom(window([5, 5], split(0)), "planted-link")).toBeNull();
+  });
+
+  test("does not read an outage as a fall when every answered repeat matched (#686)", () => {
+    // Two runs at 5/5; tonight two repeats went unanswered and the other three
     // all matched. Raw matches are two down, and that is the provider.
-    expect(fallFrom(split(3, 2), weekEarlier())).toBeNull();
-    // However many went unanswered, on either run.
-    expect(fallFrom(split(1, 4), weekEarlier())).toBeNull();
-    expect(fallFrom(split(0, 5), weekEarlier())).toBeNull();
-    expect(fallFrom(split(5), weekEarlier(1, 4))).toBeNull();
-    expect(fallFrom(split(5), weekEarlier(0, 5))).toBeNull();
+    expect(fallFrom(window([5, 5], split(3, 2)), "off-corpus")).toBeNull();
   });
 
-  test("flags two misses among the answered repeats, outage or not", () => {
-    // Three answered tonight, one matched: two misses where a week ago there
-    // were none.
-    expect(fallFrom(split(1, 2), weekEarlier())?.matches).toBe(5);
-    // Three answered a week ago, all matched; five tonight, three matched.
-    expect(fallFrom(split(3), weekEarlier(3, 2))).toEqual({
-      runId: 1,
-      startedAt: sept(1).toISOString(),
-      matches: 3,
-      repeats: 5,
-      abandoned: 2,
+  test("is null when tonight left the case mostly unanswered", () => {
+    // Two answered, both missed: too few to say the case has stopped.
+    expect(fallFrom(window([5, 5], split(0, 3)), "off-corpus")).toBeNull();
+  });
+
+  test("keeps unanswered repeats out of both sides of the rate (#686)", () => {
+    // Three of three answered on each run before, all matched; tonight 3/5.
+    const before = [split(3, 2), split(3, 2)];
+
+    expect(fallFrom(window(before, split(3)), "off-corpus")).toEqual({
+      matches: 6,
+      answered: 6,
+      runs: 2,
     });
-  });
-
-  test("does not flag one miss among the answered repeats", () => {
-    // Three answered, two matched.
-    expect(fallFrom(split(2, 2), weekEarlier())).toBeNull();
-  });
-
-  test("is null when either run left the case mostly unanswered", () => {
-    // Each of these is a fall of two or more scaled to tonight's answered
-    // repeats, read off one or two answered repeats on one side.
-    // Two answered tonight, both missed.
-    expect(fallFrom(split(0, 3), weekEarlier())).toBeNull();
-    // One answered a week ago, and matched; 3/5 tonight, all answered.
-    expect(fallFrom(split(3), weekEarlier(1, 4))).toBeNull();
-    // Two answered a week ago, both matched.
-    expect(fallFrom(split(3), weekEarlier(2, 3))).toBeNull();
+    // Three answered tonight, one matched.
+    expect(fallFrom(window([5, 5], split(1, 2)), "off-corpus")).not.toBeNull();
   });
 });
