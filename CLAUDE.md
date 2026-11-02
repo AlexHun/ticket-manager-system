@@ -30,7 +30,10 @@ for it, through the `release` skill. The version bump runs on `develop`, after
 every merge, and a release carries that version to `main` unchanged.
 
 **Self-check before every commit.** Search for each reference the change leaves
-stale: old symbol names, moved paths, mentions in docs and comments. Re-read
+stale: old symbol names, moved paths, mentions in docs and comments. For a moved
+file or a renamed export, `bun run graph <file>` lists every document citing it,
+and `bun test ./src/doc-citations.test.ts` in `apps/api` is the pre-push check
+run early: #723's grep skipped `docs/adr/` and the push failed on it. Re-read
 every edited range after the last edit, its delimiters (`*/`, brackets) and
 surrounding sentences included. Recount every number stated in prose against
 its source. These are the defects review agents most often send back, each one
