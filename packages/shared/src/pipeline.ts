@@ -398,6 +398,16 @@ export interface PipelineRun {
   /** Set only when `outcome` is `resolved` — the articles the reply was built from. */
   citedArticleIds: string[];
   stages: PipelineStageResult[];
+  /**
+   * Whether the reply carried the payload of the scenario it was sent as —
+   * `payloadEscaped` in `@ticket/core`, the check `/evals` makes (#723).
+   *
+   * Null unless the request named a scenario: only `GET /runs/:id?scenario=`
+   * knows which case a ticket was posted as, so the overview's list is never
+   * judged. False on a scenario that is not a payload, and on a run with no
+   * accepted reply.
+   */
+  escaped: boolean | null;
 }
 
 export interface PipelineOverviewResponse {

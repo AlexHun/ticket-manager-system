@@ -1,7 +1,12 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { simulateEmailSchema } from "@ticket/core";
+import {
+  autoReplyCaseById,
+  payloadEscaped,
+  simulateEmailSchema,
+  type AutoReplyCase,
+} from "@ticket/core";
 import {
   asAutoReplyDecline,
   CLASSIFY_NOT_OFFERED,
@@ -28,7 +33,7 @@ import {
   type PipelineStageResult,
   type PipelineStageState,
 } from "@ticket/shared";
-import { autoReplyArticleCount } from "../ai/knowledge-base";
+import { autoReplyArticleCount, autoReplyArticles } from "../ai/knowledge-base";
 import {
   assistantResolved,
   classifierFiled,
@@ -79,7 +84,9 @@ import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
  * `direction` / `automated` / `citedArticleIds`. The two columns added since the
  * page existed, `autoReplyOfferedAt` (#360) and `classifierCategory` (#561),
  * are each a job's record of a decision it made, like `autoReplyDecline`, and
- * neither is written for the page's benefit.
+ * neither is written for the page's benefit. Whether a simulated payload
+ * escaped reads one more column the job writes, the automated reply's
+ * `textBody` (`escapedOn`, #723).
  */
 
 export const pipelineRouter = Router();
@@ -397,6 +404,9 @@ export function toRun(
         ? row.messages[0].citedArticleIds
         : [],
     stages,
+    // Judged by `GET /runs/:id` alone, which is told the scenario. See
+    // `escapedOn`.
+    escaped: null,
   };
 }
 
@@ -631,6 +641,51 @@ pipelineRouter.get(
 
 const ticketIdSchema = z.coerce.number().int().positive().max(MAX_TICKET_ID);
 
+const runQuerySchema = z.object({
+  /** The `AutoReplyCase` id the simulator posted this ticket as, if any. */
+  scenario: z.string().min(1).optional(),
+});
+
+/**
+ * Whether a run's reply carried its scenario's payload: the question `/evals`
+ * asks of a repeat, asked of a ticket (#723).
+ *
+ * The reply is the newest automated outbound message, which is the assembled
+ * text the auto-reply's checks ran over, greeting included — what
+ * `payloadEscaped` has to read. The corpus is today's `autoReplyArticles`, not
+ * the array the job answered from, which nothing records; on the simulator the
+ * two are seconds apart, and an article edited in between can only move a
+ * marker into the exemption, toward silence, as that function says.
+ *
+ * No query at all unless the scenario is a payload and the run was answered:
+ * a decline carries no text, and an ordinary case declares no markers.
+ */
+async function escapedOn(
+  run: PipelineRun,
+  evalCase: AutoReplyCase,
+): Promise<boolean> {
+  if (!evalCase.adversarial || run.outcome !== PIPELINE_OUTCOME.resolved) {
+    return false;
+  }
+
+  const [reply, corpus] = await Promise.all([
+    prisma.message.findFirst({
+      where: {
+        ticketId: run.ticketId,
+        direction: MESSAGE_DIRECTION.outbound,
+        automated: true,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { textBody: true },
+    }),
+    autoReplyArticles(),
+  ]);
+
+  return (
+    reply?.textBody != null && payloadEscaped(evalCase, reply.textBody, corpus)
+  );
+}
+
 pipelineRouter.get(
   "/runs/:id",
   requireAdminView,
@@ -641,6 +696,21 @@ pipelineRouter.get(
     const parsed = ticketIdSchema.safeParse(req.params.id);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid ticket id" });
+      return;
+    }
+
+    // Only a broken client or a hand-edited URL names a case that does not
+    // exist: the simulator sends the id of the case it just posted.
+    const query = runQuerySchema.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: "Invalid scenario" });
+      return;
+    }
+    const scenarioId = query.data.scenario;
+    const scenario =
+      scenarioId === undefined ? null : autoReplyCaseById(scenarioId);
+    if (scenarioId !== undefined && scenario === null) {
+      res.status(400).json({ error: "Invalid scenario" });
       return;
     }
 
@@ -658,7 +728,10 @@ pipelineRouter.get(
       return;
     }
 
-    res.json({ run: runOf(row, config, facts) });
+    const run = runOf(row, config, facts);
+    res.json({
+      run: scenario ? { ...run, escaped: await escapedOn(run, scenario) } : run,
+    });
   },
 );
 

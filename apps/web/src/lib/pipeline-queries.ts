@@ -8,7 +8,8 @@
 export const pipelineKeys = {
   all: ["pipeline"] as const,
   overview: (range: string) => ["pipeline", "overview", range] as const,
-  run: (ticketId: number) => ["pipeline", "run", ticketId] as const,
+  run: (ticketId: number, scenarioId: string | null) =>
+    ["pipeline", "run", ticketId, scenarioId] as const,
 };
 
 /**
