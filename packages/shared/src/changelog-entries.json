@@ -1273,5 +1273,15 @@
     "version": "0.1.311",
     "date": "2026-11-02",
     "title": "A payload case matches when the reply stayed safe (#714)"
+  },
+  {
+    "version": "0.1.313",
+    "date": "2026-11-02",
+    "title": "A simulated run says whether its payload escaped (#723)"
+  },
+  {
+    "version": "0.1.313",
+    "date": "2026-11-02",
+    "title": "/pipeline judges a payload case by the rule /evals counts by (#723)"
   }
 ]
