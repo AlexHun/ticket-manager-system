@@ -102,7 +102,11 @@ invoke it.
    state a review's result only from its report. Run an axis whose file is
    still missing after the loop's 15 minutes inline instead. Fix every
    finding, or write down why one stands, and list each finding and how it
-   was settled under the PR body's `## Review`. A finding that stands cites
+   was settled under the PR body's `## Review`. The fix commit's type is
+   `chore`, `refactor`, `test` or `docs`: CI's `scripts/ci/record-changelog-entry.mjs`
+   turns every `feat` or `fix` subject on the branch into a "What's new"
+   entry, and #723's first `fix: settle the review's findings` would have
+   been one. A finding that stands cites
    the `file:line` its reason rests on, read in this step: #607's PR kept the
    outage-flags-a-case finding on "some cases expect no verdict", which
    `evals/runner.ts` contradicts in so many words, and no citation was asked.
