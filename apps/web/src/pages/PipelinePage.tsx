@@ -161,14 +161,18 @@ export function PipelinePage() {
     return () => window.clearTimeout(timeoutRef.current);
   }, [watching, watchedTicketId]);
 
-  // A finished run has moved the aggregate by one, and both are on screen.
+  // A sent run that finishes has moved the aggregate by one, and both are on
+  // screen. Only a watched run: a finished one picked from Recent arrivals was
+  // already counted when the overview listed it, and invalidating on a pick
+  // refetched the overview and the run a second time (#726). A pending one
+  // that lands is refreshed by `pipeline_changed` (`realtime-events.ts`).
   const outcome = run.data?.outcome;
   useEffect(() => {
-    if (!outcome || outcome === PIPELINE_OUTCOME.pending) return;
+    if (!watching || !outcome || outcome === PIPELINE_OUTCOME.pending) return;
     setWatching(false);
     setStalled(false);
     void queryClient.invalidateQueries({ queryKey: pipelineKeys.all });
-  }, [outcome, queryClient]);
+  }, [watching, outcome, queryClient]);
 
   const handleSent = (ticketId: number, sentScenario: AutoReplyCase | null) => {
     setWatchedTicketId(ticketId);
@@ -299,9 +303,10 @@ export function PipelinePage() {
                 and the escape check both read `scenario`. */}
             <RecentRuns
               runs={overview.data.recent}
-              onWatch={(ticketId) => {
+              onPick={(ticketId) => {
                 setWatchedTicketId(ticketId);
                 setScenario(null);
+                setWatching(false);
               }}
             />
           </div>
@@ -456,10 +461,10 @@ function QueueFact({
 
 function RecentRuns({
   runs,
-  onWatch,
+  onPick,
 }: {
   runs: PipelineRun[];
-  onWatch: (ticketId: number) => void;
+  onPick: (ticketId: number) => void;
 }) {
   return (
     <section
@@ -484,7 +489,7 @@ function RecentRuns({
             <li key={item.ticketId}>
               <button
                 type="button"
-                onClick={() => onWatch(item.ticketId)}
+                onClick={() => onPick(item.ticketId)}
                 className="flex w-full items-baseline gap-3 py-2 text-left text-sm hover:text-foreground"
               >
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">
