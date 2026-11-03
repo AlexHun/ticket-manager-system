@@ -20,9 +20,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const LINK_REFUSED =
+export const LINK_REFUSED =
   "That link is no longer valid. Ask an admin to send you another.";
-const RESET_RATE_LIMITED =
+export const RESET_RATE_LIMITED =
   "Couldn't set your password — too many attempts. Try again later.";
 
 /**
@@ -63,8 +63,9 @@ export function ResetPasswordPage() {
     setServerError(null);
     if (!token) return;
 
-    // A server that cannot be reached at all is no `error`: the client rejects
-    // with fetch's own TypeError, so it is read as the status-0 refusal it is.
+    // A server that cannot be reached at all is no `error`: the client rejects,
+    // with fetch's own TypeError. Any rejection is read as status 0, since a
+    // request that never got an answer says nothing about the link either.
     const { error } = await authClient
       .resetPassword({ newPassword: values.password, token })
       .catch(() => ({ error: { status: 0 } }));

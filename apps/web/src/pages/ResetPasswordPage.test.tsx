@@ -1,11 +1,15 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
-import { BRAND_NAME } from "@ticket/shared";
 import { authClient } from "@/lib/auth-client";
+import { AUTH_UNREACHABLE_MESSAGE } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { renderRoutes } from "@/test/render";
-import { ResetPasswordPage } from "./ResetPasswordPage";
+import {
+  LINK_REFUSED,
+  RESET_RATE_LIMITED,
+  ResetPasswordPage,
+} from "./ResetPasswordPage";
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: { resetPassword: vi.fn() },
@@ -89,15 +93,11 @@ describe("ResetPasswordPage — refusals", () => {
     return screen.findByRole("alert");
   }
 
-  const LINK_INVALID =
-    "That link is no longer valid. Ask an admin to send you another.";
-  const UNREACHABLE = `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`;
-
   // Better Auth words its refusals its own way, not the copy standard's (#502).
   test("answers a refused token with the page's sentence, not Better Auth's", async () => {
     const alert = await submitRefusedWith(400, "Invalid token");
 
-    expect(alert).toHaveTextContent(LINK_INVALID);
+    expect(alert).toHaveTextContent(LINK_REFUSED);
     expect(alert).not.toHaveTextContent("Invalid token");
   });
 
@@ -106,8 +106,8 @@ describe("ResetPasswordPage — refusals", () => {
     async (status) => {
       const alert = await submitRefusedWith(status, "Internal Server Error");
 
-      expect(alert).toHaveTextContent(UNREACHABLE);
-      expect(alert).not.toHaveTextContent(LINK_INVALID);
+      expect(alert).toHaveTextContent(AUTH_UNREACHABLE_MESSAGE);
+      expect(alert).not.toHaveTextContent(LINK_REFUSED);
     },
   );
 
@@ -121,17 +121,15 @@ describe("ResetPasswordPage — refusals", () => {
 
     const alert = await submit();
 
-    expect(alert).toHaveTextContent(UNREACHABLE);
+    expect(alert).toHaveTextContent(AUTH_UNREACHABLE_MESSAGE);
     expect(alert).not.toHaveTextContent("Failed to fetch");
   });
 
   test("says to try again later on a 429, not that the link is invalid", async () => {
     const alert = await submitRefusedWith(429, "Too many requests");
 
-    expect(alert).toHaveTextContent(
-      "Couldn't set your password — too many attempts. Try again later.",
-    );
-    expect(alert).not.toHaveTextContent(LINK_INVALID);
+    expect(alert).toHaveTextContent(RESET_RATE_LIMITED);
+    expect(alert).not.toHaveTextContent(LINK_REFUSED);
     expect(alert).not.toHaveTextContent("Too many requests");
   });
 });

@@ -9,6 +9,7 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
+import { RESEND_INVITE_FAILED } from "./ResendInviteButton";
 import { UsersPage } from "./UsersPage";
 
 // --- Mocks ----------------------------------------------------------------
@@ -652,9 +653,7 @@ describe("UsersPage — resend invite", () => {
     );
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
-        "Couldn't resend the invitation. Try again.",
-      );
+      expect(toast.error).toHaveBeenCalledWith(RESEND_INVITE_FAILED);
     });
   });
 

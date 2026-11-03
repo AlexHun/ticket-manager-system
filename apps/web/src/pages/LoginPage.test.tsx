@@ -8,6 +8,7 @@ import {
   USER_ROLE,
   type DemoStatusResponse,
 } from "@ticket/shared";
+import { AUTH_UNREACHABLE_MESSAGE } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
@@ -388,7 +389,7 @@ describe("LoginPage — demo session", () => {
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      `Couldn't reach ${BRAND_NAME}.`,
+      AUTH_UNREACHABLE_MESSAGE,
     );
   });
 });

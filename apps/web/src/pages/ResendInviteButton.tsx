@@ -7,6 +7,10 @@ import { api } from "@/lib/api";
 import { activityKeys } from "@/lib/activity-queries";
 import { extractErrorMessage } from "@/lib/errors";
 
+/** The toast for a failed resend the API sent no message for. */
+export const RESEND_INVITE_FAILED =
+  "Couldn't resend the invitation. Try again.";
+
 /**
  * Send this colleague their invitation again.
  *
@@ -45,9 +49,7 @@ export function ResendInviteButton({ user }: { user: User }) {
       toast.success(`Invitation resent to "${user.name}" (${user.email})`);
     },
     onError: (err) => {
-      toast.error(
-        extractErrorMessage(err, "Couldn't resend the invitation. Try again."),
-      );
+      toast.error(extractErrorMessage(err, RESEND_INVITE_FAILED));
     },
   });
 
