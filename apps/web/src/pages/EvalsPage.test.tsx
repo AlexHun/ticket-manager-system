@@ -1442,7 +1442,7 @@ describe("a case's recent history (#607)", () => {
     ).toBeInTheDocument();
   });
 
-  test("flags a case that fell since a week earlier, naming the run", async () => {
+  test("flags a case that fell below the runs before it (#712)", async () => {
     const user = userEvent.setup();
     runsGet.mockResolvedValue(
       response({
@@ -1451,13 +1451,7 @@ describe("a case's recent history (#607)", () => {
             results: [
               makeResult({
                 matches: 2,
-                fell: {
-                  runId: 3,
-                  startedAt: "2026-09-02T10:00:00.000Z",
-                  matches: 5,
-                  repeats: 5,
-                  abandoned: 0,
-                },
+                fell: { matches: 28, answered: 29, runs: 6 },
               }),
             ],
           }),
@@ -1469,40 +1463,7 @@ describe("a case's recent history (#607)", () => {
     await showCases(user);
 
     expect(
-      screen.getByText("Down from 5/5 a week earlier (run 3, 2 Sep 2026)"),
-    ).toBeInTheDocument();
-  });
-
-  test("says how many week-earlier repeats went unanswered (#686)", async () => {
-    const user = userEvent.setup();
-    runsGet.mockResolvedValue(
-      response({
-        runs: [
-          makeRun({
-            results: [
-              makeResult({
-                matches: 1,
-                fell: {
-                  runId: 3,
-                  startedAt: "2026-09-02T10:00:00.000Z",
-                  matches: 3,
-                  repeats: 5,
-                  abandoned: 2,
-                },
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
-
-    render();
-    await showCases(user);
-
-    expect(
-      screen.getByText(
-        "Down from 3 of 3 answered a week earlier (2 unanswered; run 3, 2 Sep 2026)",
-      ),
+      screen.getByText("Down from 28 of 29 answered over the 6 runs before"),
     ).toBeInTheDocument();
   });
 
@@ -1564,13 +1525,7 @@ describe("the cost of opening a case table (#710)", () => {
                   },
                 ],
                 history: [null, { runId: 5, matches: 5, repeats: 5 }],
-                fell: {
-                  runId: 3,
-                  startedAt: "2026-09-02T10:00:00.000Z",
-                  matches: 3,
-                  repeats: 5,
-                  abandoned: 2,
-                },
+                fell: { matches: 28, answered: 29, runs: 6 },
               }),
             ],
           }),
@@ -1769,8 +1724,8 @@ describe("folding a run", () => {
   });
 
   test("folds the case table separately, inside an open run", async () => {
-    // The bulk of the card. An admin reading the metrics rarely wants all
-    // thirty-six rows with them, so the run being open is not the table being
+    // The bulk of the card. An admin reading the metrics rarely wants every
+    // case's row with them, so the run being open is not the table being
     // open.
     const user = userEvent.setup();
     render();
