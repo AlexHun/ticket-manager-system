@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
+import { BRAND_NAME } from "@ticket/shared";
 import { authClient } from "@/lib/auth-client";
 import { ROUTE } from "@/lib/routes";
 import { renderRoutes } from "@/test/render";
@@ -61,13 +62,18 @@ describe("ResetPasswordPage — wording", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/Reset links/)).not.toBeInTheDocument();
   });
+});
 
-  // Better Auth words its refusals its own way, not the copy standard's (#502),
-  // as `LoginPage` already holds.
-  test("answers a refused submit with the page's sentence, not Better Auth's", async () => {
+/**
+ * Which sentence a refused submit gets. Only a refusal of the token blames the
+ * link: an unreachable server or a rate limit says nothing about it, and
+ * sending that person to an admin is for nothing (#537), as `LoginPage` holds.
+ */
+describe("ResetPasswordPage — refusals", () => {
+  async function submitRefusedWith(status: number, message: string) {
     vi.mocked(authClient.resetPassword).mockResolvedValue({
       data: null,
-      error: { status: 400, message: "Invalid token", statusText: "" },
+      error: { status, message, statusText: "" },
     } as never);
     const user = userEvent.setup();
     renderAt("?token=t");
@@ -76,10 +82,38 @@ describe("ResetPasswordPage — wording", () => {
     await user.type(screen.getByLabelText("Confirm password"), "password123");
     await user.click(screen.getByRole("button", { name: "Set password" }));
 
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(
-      "That link is no longer valid. Ask an admin to send you another.",
-    );
+    return screen.findByRole("alert");
+  }
+
+  const LINK_INVALID =
+    "That link is no longer valid. Ask an admin to send you another.";
+  const UNREACHABLE = `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`;
+
+  // Better Auth words its refusals its own way, not the copy standard's (#502).
+  test("answers a refused token with the page's sentence, not Better Auth's", async () => {
+    const alert = await submitRefusedWith(400, "Invalid token");
+
+    expect(alert).toHaveTextContent(LINK_INVALID);
     expect(alert).not.toHaveTextContent("Invalid token");
+  });
+
+  test.each([0, 500, 503])(
+    "says the desk couldn't be reached on status %i, not that the link is invalid",
+    async (status) => {
+      const alert = await submitRefusedWith(status, "Internal Server Error");
+
+      expect(alert).toHaveTextContent(UNREACHABLE);
+      expect(alert).not.toHaveTextContent(LINK_INVALID);
+    },
+  );
+
+  test("says to try again later on a 429, not that the link is invalid", async () => {
+    const alert = await submitRefusedWith(429, "Too many requests");
+
+    expect(alert).toHaveTextContent(
+      "Couldn't set your password — too many attempts. Try again later.",
+    );
+    expect(alert).not.toHaveTextContent(LINK_INVALID);
+    expect(alert).not.toHaveTextContent("Too many requests");
   });
 });

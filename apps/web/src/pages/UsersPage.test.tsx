@@ -632,6 +632,32 @@ describe("UsersPage — resend invite", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
+  // Since #502 the fallback is what shows for every failure the API sends no
+  // message for, so it is the common case and follows copy.md's shape (#537).
+  test("toasts the page's own sentence when the server sends no message", async () => {
+    usersGet.mockResolvedValue({ data: { users: [agentUser] } });
+    invitePost.mockRejectedValue(
+      Object.assign(new Error("Request failed with status code 502"), {
+        isAxiosError: true,
+        response: { status: 502, data: "" },
+      }),
+    );
+
+    renderUsersPage();
+    await screen.findByText("Aaron Agent");
+
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("button", { name: "Resend invitation to Aaron Agent" }),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        "Couldn't resend the invitation. Try again.",
+      );
+    });
+  });
+
   test("only the clicked row's button goes pending", async () => {
     // The reason the mutation sits in ResendInviteButton rather than on the
     // page: one shared `isPending` would disable every row at once.

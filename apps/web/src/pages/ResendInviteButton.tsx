@@ -45,7 +45,9 @@ export function ResendInviteButton({ user }: { user: User }) {
       toast.success(`Invitation resent to "${user.name}" (${user.email})`);
     },
     onError: (err) => {
-      toast.error(extractErrorMessage(err, "Failed to resend invitation"));
+      toast.error(
+        extractErrorMessage(err, "Couldn't resend the invitation. Try again."),
+      );
     },
   });
 
