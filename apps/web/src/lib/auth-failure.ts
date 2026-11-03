@@ -9,8 +9,9 @@ import { BRAND_NAME } from "@ticket/shared";
  * what was typed. An unreachable server is no `error` from Better Auth — its
  * client rejects with fetch's own TypeError — so a caller catches it and
  * passes status 0, as `ResetPasswordPage` does (`LoginPage` does not yet,
- * #739). Answering either with "Couldn't sign you in" sends someone off to reset a password that was never the problem — which is
- * exactly what happened here when the API was down and sign-in returned 500.
+ * #739). Answering either with "Couldn't sign you in" sends someone off to
+ * reset a password that was never the problem — which is exactly what
+ * happened here when the API was down and sign-in returned 500.
  *
  * Only when the status positively says so. A missing status is absence of
  * evidence, not evidence of a transport failure, and defaulting it to
