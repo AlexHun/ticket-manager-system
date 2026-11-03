@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { resetPasswordSchema, type ResetPasswordValues } from "@ticket/core";
 import { authClient } from "@/lib/auth-client";
+import { failureMessage } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { BrandName, LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
+export const LINK_REFUSED =
+  "That link is no longer valid. Ask an admin to send you another.";
+export const RESET_RATE_LIMITED =
+  "Couldn't set your password — too many attempts. Try again later.";
 
 /**
  * Choosing a password from a link — the only way anyone gets one.
@@ -57,17 +63,22 @@ export function ResetPasswordPage() {
     setServerError(null);
     if (!token) return;
 
-    const { error } = await authClient.resetPassword({
-      newPassword: values.password,
-      token,
-    });
+    // A server that cannot be reached at all is no `error`: the client rejects,
+    // with fetch's own TypeError. Any rejection is read as status 0, since a
+    // request that never got an answer says nothing about the link either.
+    const { error } = await authClient
+      .resetPassword({ newPassword: values.password, token })
+      .catch(() => ({ error: { status: 0 } }));
 
-    // Better Auth's own `message` is never shown, and `LoginPage` does not show
-    // it either: it is worded its own way ("Invalid token"), not the copy
-    // standard's (#502).
+    // Only a refusal of the token blames the link: an unreachable server or a
+    // rate limit says nothing about it, and an admin cannot help with either
+    // (#537). Better Auth's own `message` ("Invalid token") is never shown
+    // (#502).
     if (error) {
       setServerError(
-        "That link is no longer valid. Ask an admin to send you another.",
+        error.status === 429
+          ? RESET_RATE_LIMITED
+          : failureMessage(error, LINK_REFUSED),
       );
       return;
     }
