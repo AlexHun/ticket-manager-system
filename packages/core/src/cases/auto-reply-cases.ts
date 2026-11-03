@@ -479,8 +479,8 @@ const CASES: unknown[] = [
   {
     id: "feature-suggestion",
     name: "Suggesting a feature",
-    note: 'KB-028, and the only `Other` question in the covered group. `Other` is answerable and worth exercising — it is the category a classifier reaches for when nothing else fits. **The body asks one thing on purpose.** It used to close with "Is that something you would consider?", and the case failed 5/5 on both corpora for the whole of its first measured run: KB-028 says where a suggestion goes and deliberately does not say whether it will be taken up — its internal note forbids implying it — so the prompt\'s own "asked two things, articles cover one, that is false" rule made `notCovered` the correct answer and `resolved` the wrong expectation. Keep it to the question the article actually answers; the two-question shape is worth its own case rather than a silent 0/5 here.',
-    preflight: { ...OPENING, category: TICKET_CATEGORY.Other },
+    note: 'KB-028. **Filed as `General`, not `Other`** (#715): a suggestion is feedback, which the classifier\'s taxonomy puts under General, and `Other` is for mail that asks nothing. Expected as `Other`, it was filed `General` on all 175 repeats of production\'s 35 nightly runs to 1 Nov 2026 — the expectation was wrong, not the classifier. **The body asks one thing on purpose.** It used to close with "Is that something you would consider?", and the case failed 5/5 on both corpora for the whole of its first measured run: KB-028 says where a suggestion goes and deliberately does not say whether it will be taken up — its internal note forbids implying it — so the prompt\'s own "asked two things, articles cover one, that is false" rule made `notCovered` the correct answer and `resolved` the wrong expectation. Keep it to the question the article actually answers; the two-question shape is worth its own case rather than a silent 0/5 here.',
+    preflight: { ...OPENING, category: TICKET_CATEGORY.General },
     expected: { outcome: PIPELINE_OUTCOME.resolved, decline: null },
     mismatchNote: null,
     adversarial: false,
@@ -696,6 +696,29 @@ const CASES: unknown[] = [
       textBody:
         "Hi,\n\nWe want to pull completion data into our internal dashboard. Is " +
         "there a REST API, and where are the docs and the rate limits?\n\nPriya",
+      htmlBody: "",
+    },
+  },
+  {
+    id: "out-of-office",
+    name: "An automatic out-of-office reply",
+    note: "The case that expects `Other` (#715): mail that asks for nothing, the classifier prompt's own example of the category. There is nothing in it to answer, so the auto-reply declines it.",
+    preflight: { ...OPENING, category: TICKET_CATEGORY.Other },
+    expected: {
+      outcome: PIPELINE_OUTCOME.declined,
+      decline: AUTO_REPLY_DECLINE.notCovered,
+    },
+    mismatchNote:
+      "The model replied to an autoresponder. Read the reply: nobody asked anything, so whatever it answered was an answer to a question it made up.",
+    adversarial: false,
+    values: {
+      localPart: "m.keller",
+      senderName: "Martin Keller",
+      subject: "Automatic reply: Your course progress this week",
+      textBody:
+        "Thank you for your message.\n\nI am out of the office until Monday 14 " +
+        "September with no access to email. Your message will not be forwarded, " +
+        "and I will read it when I return.\n\nMartin Keller",
       htmlBody: "",
     },
   },
@@ -994,6 +1017,7 @@ export const DECLINE_COVERAGE: Record<
       "add-seats-midterm",
       "off-corpus",
       "api-access",
+      "out-of-office",
       "html-only",
     ],
     unreachable: null,
