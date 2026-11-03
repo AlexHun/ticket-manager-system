@@ -1298,5 +1298,15 @@
     "version": "0.1.319",
     "date": "2026-11-03",
     "title": "File account and policy how-tos as General, not Technical (#715)"
+  },
+  {
+    "version": "0.1.321",
+    "date": "2026-11-03",
+    "title": "A password reset blames the link only when the link is at fault (#537)"
+  },
+  {
+    "version": "0.1.321",
+    "date": "2026-11-03",
+    "title": "Password reset says when the desk can't be reached (#537)"
   }
 ]
