@@ -48,6 +48,16 @@ const DECLINED: PipelineRun = {
   escaped: null,
 };
 
+/** A sent ticket the auto-reply has not answered yet. */
+const PENDING: PipelineRun = {
+  ...DECLINED,
+  ticketId: 600,
+  status: TICKET_STATUS.New,
+  outcome: PIPELINE_OUTCOME.pending,
+  decline: null,
+  declinedAt: null,
+};
+
 const IDLE = { ready: 0, active: 0, deferred: 0 };
 
 const OVERVIEW: PipelineOverviewResponse = {
@@ -134,16 +144,7 @@ describe("PipelinePage", () => {
     runGet.mockImplementation((url: string) =>
       Promise.resolve({
         data: {
-          run: url.endsWith("/600")
-            ? {
-                ...DECLINED,
-                ticketId: 600,
-                status: TICKET_STATUS.New,
-                outcome: PIPELINE_OUTCOME.pending,
-                decline: null,
-                declinedAt: null,
-              }
-            : DECLINED,
+          run: url.endsWith(`/${PENDING.ticketId}`) ? PENDING : DECLINED,
         },
       }),
     );

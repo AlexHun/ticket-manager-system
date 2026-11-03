@@ -162,9 +162,10 @@ export function PipelinePage() {
   }, [watching, watchedTicketId]);
 
   // A sent run that finishes has moved the aggregate by one, and both are on
-  // screen. Only a watched run: one picked from Recent arrivals had already
-  // landed when the overview listed it, so it moved nothing, and invalidating
-  // on a pick refetched the overview and the run a second time (#726).
+  // screen. Only a watched run: a finished one picked from Recent arrivals was
+  // already counted when the overview listed it, and invalidating on a pick
+  // refetched the overview and the run a second time (#726). A pending one
+  // that lands is refreshed by `pipeline_changed` (`realtime-events.ts`).
   const outcome = run.data?.outcome;
   useEffect(() => {
     if (!watching || !outcome || outcome === PIPELINE_OUTCOME.pending) return;
@@ -302,7 +303,7 @@ export function PipelinePage() {
                 and the escape check both read `scenario`. */}
             <RecentRuns
               runs={overview.data.recent}
-              onWatch={(ticketId) => {
+              onPick={(ticketId) => {
                 setWatchedTicketId(ticketId);
                 setScenario(null);
                 setWatching(false);
@@ -460,10 +461,10 @@ function QueueFact({
 
 function RecentRuns({
   runs,
-  onWatch,
+  onPick,
 }: {
   runs: PipelineRun[];
-  onWatch: (ticketId: number) => void;
+  onPick: (ticketId: number) => void;
 }) {
   return (
     <section
@@ -488,7 +489,7 @@ function RecentRuns({
             <li key={item.ticketId}>
               <button
                 type="button"
-                onClick={() => onWatch(item.ticketId)}
+                onClick={() => onPick(item.ticketId)}
                 className="flex w-full items-baseline gap-3 py-2 text-left text-sm hover:text-foreground"
               >
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">
