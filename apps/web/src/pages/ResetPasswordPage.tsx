@@ -63,10 +63,11 @@ export function ResetPasswordPage() {
     setServerError(null);
     if (!token) return;
 
-    const { error } = await authClient.resetPassword({
-      newPassword: values.password,
-      token,
-    });
+    // A server that cannot be reached at all is no `error`: the client rejects
+    // with fetch's own TypeError, so it is read as the status-0 refusal it is.
+    const { error } = await authClient
+      .resetPassword({ newPassword: values.password, token })
+      .catch(() => ({ error: { status: 0 } }));
 
     // Only a refusal of the token blames the link: an unreachable server or a
     // rate limit says nothing about it, and an admin cannot help with either

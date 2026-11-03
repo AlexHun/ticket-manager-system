@@ -1,14 +1,15 @@
 import { BRAND_NAME } from "@ticket/shared";
 
 /**
- * What to say when Better Auth turns a request down, for any page that calls
- * it: `LoginPage`'s two ways in and `ResetPasswordPage`'s submit (#537).
+ * What to say when Better Auth turns a request down, shared by the pages that
+ * call it (#537).
  *
- * Better Auth reports the transport failure and the rejected request through
- * the same channel, and they need different words. A network failure arrives
- * with no status at all; a server fault arrives as 5xx. Neither says anything
- * about what was typed, and answering both with "Couldn't sign you in"
- * sends someone off to reset a password that was never the problem — which is
+ * A server fault (5xx) and a server that cannot be reached at all (status 0)
+ * need different words from a rejected request: neither says anything about
+ * what was typed. An unreachable server is no `error` from Better Auth — its
+ * client rejects with fetch's own TypeError — so a caller catches it and
+ * passes status 0, as `ResetPasswordPage` does (`LoginPage` does not yet,
+ * #739). Answering either with "Couldn't sign you in" sends someone off to reset a password that was never the problem — which is
  * exactly what happened here when the API was down and sign-in returned 500.
  *
  * Only when the status positively says so. A missing status is absence of

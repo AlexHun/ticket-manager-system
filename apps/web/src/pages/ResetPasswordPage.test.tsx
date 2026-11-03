@@ -75,6 +75,10 @@ describe("ResetPasswordPage — refusals", () => {
       data: null,
       error: { status, message, statusText: "" },
     } as never);
+    return submit();
+  }
+
+  async function submit() {
     const user = userEvent.setup();
     renderAt("?token=t");
 
@@ -106,6 +110,20 @@ describe("ResetPasswordPage — refusals", () => {
       expect(alert).not.toHaveTextContent(LINK_INVALID);
     },
   );
+
+  // A server that cannot be reached at all returns no `error`: Better Auth's
+  // client rejects with fetch's own TypeError, which a built page, its API
+  // blocked, showed as nothing but an unhandled rejection.
+  test("says the desk couldn't be reached when the request itself throws", async () => {
+    vi.mocked(authClient.resetPassword).mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+
+    const alert = await submit();
+
+    expect(alert).toHaveTextContent(UNREACHABLE);
+    expect(alert).not.toHaveTextContent("Failed to fetch");
+  });
 
   test("says to try again later on a 429, not that the link is invalid", async () => {
     const alert = await submitRefusedWith(429, "Too many requests");
