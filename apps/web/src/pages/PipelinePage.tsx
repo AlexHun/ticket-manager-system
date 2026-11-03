@@ -161,14 +161,17 @@ export function PipelinePage() {
     return () => window.clearTimeout(timeoutRef.current);
   }, [watching, watchedTicketId]);
 
-  // A finished run has moved the aggregate by one, and both are on screen.
+  // A sent run that finishes has moved the aggregate by one, and both are on
+  // screen. Only a watched run: one picked from Recent arrivals had already
+  // landed when the overview listed it, so it moved nothing, and invalidating
+  // on a pick refetched the overview and the run a second time (#726).
   const outcome = run.data?.outcome;
   useEffect(() => {
-    if (!outcome || outcome === PIPELINE_OUTCOME.pending) return;
+    if (!watching || !outcome || outcome === PIPELINE_OUTCOME.pending) return;
     setWatching(false);
     setStalled(false);
     void queryClient.invalidateQueries({ queryKey: pipelineKeys.all });
-  }, [outcome, queryClient]);
+  }, [watching, outcome, queryClient]);
 
   const handleSent = (ticketId: number, sentScenario: AutoReplyCase | null) => {
     setWatchedTicketId(ticketId);
@@ -302,6 +305,7 @@ export function PipelinePage() {
               onWatch={(ticketId) => {
                 setWatchedTicketId(ticketId);
                 setScenario(null);
+                setWatching(false);
               }}
             />
           </div>
