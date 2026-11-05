@@ -138,6 +138,28 @@ test.describe("pagination bar on a phone", () => {
       }
     });
 
+    // Three rows had the range alone on the first, which cost the tickets list
+    // a row of tickets on a phone (#402): the range and the page size fit one
+    // row, and the pager takes the second.
+    test(`at ${PHONE.width}px on ${path} the bar takes two rows`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(PHONE);
+      await openPagedList(page, path, role);
+
+      const range = await boxOf(bar(page).getByText(/^\d+–\d+ of \d+$/));
+      const size = await boxOf(perPage(page));
+      const pager = await boxOf(pageCount(page));
+
+      expect(Math.abs(centreOf(size) - centreOf(range))).toBeLessThan(
+        ROW_SLACK,
+      );
+      expect(pager.y).toBeGreaterThanOrEqual(range.y + range.height);
+      expect(
+        Math.abs(centreOf(await boxOf(next(page))) - centreOf(pager)),
+      ).toBeLessThan(ROW_SLACK);
+    });
+
     test(`at ${DESKTOP.width}px on ${path} the bar keeps one row`, async ({
       page,
     }) => {

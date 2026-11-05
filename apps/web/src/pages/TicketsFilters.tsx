@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import {
   ASSIGNEE_NONE,
   CATEGORY_NONE,
@@ -11,12 +11,22 @@ import {
   type TicketCategoryFilter,
 } from "@ticket/shared";
 import { FilterSelect } from "@/components/FilterSelect";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useSession } from "@/lib/auth-client";
 import { useAssigneesQuery } from "@/lib/use-assignees";
+import { useIsMobile } from "@/lib/use-mobile";
+import { cn } from "@/lib/utils";
 
 /** `""` is the "no filter" choice in our own state — same convention `FilterSelect` uses. */
 const ANY = "";
@@ -44,13 +54,18 @@ export const EMPTY_FILTERS: TicketFilterState = {
   search: "",
 };
 
+/**
+ * How many of the select filters are set: the ones a phone keeps behind its
+ * Filters button, so the count it shows.
+ */
+function selectFilterCount(filters: TicketFilterState): number {
+  return [filters.status, filters.category, filters.assignedTo].filter(
+    (value) => value !== ANY,
+  ).length;
+}
+
 export function hasActiveFilters(filters: TicketFilterState): boolean {
-  return (
-    filters.status !== ANY ||
-    filters.category !== ANY ||
-    filters.assignedTo !== ANY ||
-    filters.search.trim() !== ""
-  );
+  return selectFilterCount(filters) > 0 || filters.search.trim() !== "";
 }
 
 interface TicketsFiltersProps {
@@ -59,31 +74,125 @@ interface TicketsFiltersProps {
 }
 
 export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
+  const isMobile = useIsMobile();
   const active = hasActiveFilters(filters);
 
-  return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="ticket-search">Search</Label>
-        <div className="relative">
-          <Search
-            aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            id="ticket-search"
-            type="search"
-            value={filters.search}
-            maxLength={TICKET_SEARCH_MAX_LENGTH}
-            placeholder="Subject, customer or email"
-            className="w-64 pl-8"
-            onChange={(e) => onChange({ ...filters, search: e.target.value })}
-          />
-        </div>
-      </div>
+  const clearButton = active && (
+    <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)}>
+      <X />
+      Clear filters
+    </Button>
+  );
 
+  // One layout or the other, never both hidden by CSS: each filter's label is
+  // wired to its control by id, and two copies of the bar would put every id on
+  // the page twice.
+  if (!isMobile) {
+    return (
+      <div className="flex flex-wrap items-end gap-3">
+        <SearchField
+          filters={filters}
+          onChange={onChange}
+          inputClassName="w-64"
+        />
+        <SelectFilters filters={filters} onChange={onChange} />
+        {clearButton}
+      </div>
+    );
+  }
+
+  // On a phone the bar above wraps to one field per line, which left the table
+  // a handful of rows (#402). Search stays on the page, since its box
+  // shows what it holds; the rest move into a sheet, and the button's count
+  // says how many of them are set.
+  const count = selectFilterCount(filters);
+
+  return (
+    <div className="flex items-end gap-2">
+      <SearchField
+        filters={filters}
+        onChange={onChange}
+        className="min-w-0 flex-1"
+        inputClassName="w-full"
+      />
+      <Sheet>
+        <SheetTrigger asChild>
+          {/* Named outright while it carries a count: the badge alone would read
+              as "Filters2", since an accessible name runs inline text together. */}
+          <Button
+            variant="outline"
+            aria-label={count > 0 ? `Filters, ${count} active` : undefined}
+          >
+            <SlidersHorizontal aria-hidden="true" />
+            Filters
+            {count > 0 && (
+              <Badge variant="secondary" className="tabular-nums">
+                {count}
+              </Badge>
+            )}
+          </Button>
+        </SheetTrigger>
+        {/* No description: the title and the labelled fields under it are the
+            whole of what the sheet says. */}
+        <SheetContent side="bottom" aria-describedby={undefined}>
+          <SheetHeader>
+            <SheetTitle>Filters</SheetTitle>
+          </SheetHeader>
+          {/* Every change applies as it is made, as on the desktop bar, so the
+              URL is written the same way and there is no Apply to forget. */}
+          <div className="flex flex-col gap-3 px-4 pb-4">
+            <SelectFilters
+              filters={filters}
+              onChange={onChange}
+              triggerClassName="w-full"
+            />
+            {clearButton && <div className="self-start">{clearButton}</div>}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+function SearchField({
+  filters,
+  onChange,
+  className,
+  inputClassName,
+}: TicketsFiltersProps & { className?: string; inputClassName: string }) {
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <Label htmlFor="ticket-search">Search</Label>
+      <div className="relative">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          id="ticket-search"
+          type="search"
+          value={filters.search}
+          maxLength={TICKET_SEARCH_MAX_LENGTH}
+          placeholder="Subject, customer or email"
+          className={cn("pl-8", inputClassName)}
+          onChange={(e) => onChange({ ...filters, search: e.target.value })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Status, category and assignee — the filters a phone keeps in its sheet. */
+function SelectFilters({
+  filters,
+  onChange,
+  triggerClassName,
+}: TicketsFiltersProps & { triggerClassName?: string }) {
+  return (
+    <>
       <FilterSelect
         id="ticket-status-filter"
+        triggerClassName={triggerClassName}
         label="Status"
         value={filters.status}
         anyLabel="Any status"
@@ -111,6 +220,7 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
 
       <FilterSelect
         id="ticket-category-filter"
+        triggerClassName={triggerClassName}
         label="Category"
         value={filters.category}
         anyLabel="Any category"
@@ -132,24 +242,14 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
       <AssigneeFilter
         value={filters.assignedTo}
         onChange={(assignedTo) => onChange({ ...filters, assignedTo })}
+        triggerClassName={triggerClassName}
       />
 
       <AssigneeShortcuts
         value={filters.assignedTo}
         onChange={(assignedTo) => onChange({ ...filters, assignedTo })}
       />
-
-      {active && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onChange(EMPTY_FILTERS)}
-        >
-          <X />
-          Clear filters
-        </Button>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -228,9 +328,11 @@ function AssigneeShortcuts({
 function AssigneeFilter({
   value,
   onChange,
+  triggerClassName,
 }: {
   value: string;
   onChange: (value: string) => void;
+  triggerClassName?: string;
 }) {
   // The roster is only needed to draw this dropdown, and most visits to the
   // tickets list never open it — so it isn't fetched with the page. Opening it
@@ -252,6 +354,7 @@ function AssigneeFilter({
   return (
     <FilterSelect
       id="ticket-assignee-filter"
+      triggerClassName={triggerClassName}
       label="Assigned to"
       value={value}
       anyLabel={ANY_ASSIGNEE_LABEL}
