@@ -956,3 +956,95 @@ describe("TicketsPage URL state", () => {
   // pagination block's "advances to the next page", which reads `page: 2` back
   // off the request the URL produced.
 });
+
+describe("TicketsPage filters on a phone", () => {
+  // `useIsMobile` reads `window.innerWidth`, and jsdom's is 1024, so every block
+  // above is the desktop bar. 390 is the width #402 was found at.
+  const desktopWidth = window.innerWidth;
+  beforeEach(() => {
+    window.innerWidth = 390;
+  });
+  afterEach(() => {
+    window.innerWidth = desktopWidth;
+  });
+
+  function filtersButton(): HTMLElement {
+    return screen.getByRole("button", { name: /^filters/i });
+  }
+
+  test("keeps the search on the page and the other filters behind one button", async () => {
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage();
+
+    await screen.findByText("Newest ticket");
+
+    expect(screen.getByLabelText("Search")).toBeInTheDocument();
+    expect(filtersButton()).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Status" }),
+    ).not.toBeInTheDocument();
+  });
+
+  test("reaches every filter through the button, and a choice writes to the URL", async () => {
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    const { router } = renderTicketsPage();
+    const user = userEvent.setup();
+
+    await screen.findByText("Newest ticket");
+    await user.click(filtersButton());
+
+    const sheet = await screen.findByRole("dialog", { name: "Filters" });
+    for (const name of ["Status", "Category", "Assigned to"]) {
+      expect(within(sheet).getByRole("combobox", { name })).toBeInTheDocument();
+    }
+    expect(
+      // A single-choice ToggleGroup's items are radios.
+      within(sheet).getByRole("radio", { name: "Unassigned" }),
+    ).toBeInTheDocument();
+
+    await chooseOption(user, "Status", TICKET_STATUS.Resolved);
+
+    await waitFor(() =>
+      expect(urlParams(router)).toMatchObject({
+        status: TICKET_STATUS.Resolved,
+      }),
+    );
+  });
+
+  test("counts the active filters on the button, search aside", async () => {
+    ticketsGet.mockResolvedValue(ticketsResponse([middleTicket]));
+    renderTicketsPage("/tickets?status=Resolved&category=Technical&q=login");
+
+    await screen.findByText("Middle ticket");
+
+    // The search is on screen already, so it is not one of the hidden ones.
+    expect(filtersButton()).toHaveAccessibleName("Filters, 2 active");
+  });
+
+  test("names no count while nothing behind the button is set", async () => {
+    ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
+    renderTicketsPage("/tickets?q=login");
+
+    await screen.findByText("Newest ticket");
+
+    expect(filtersButton()).toHaveAccessibleName("Filters");
+  });
+
+  test("clears every filter from inside the sheet", async () => {
+    ticketsGet.mockResolvedValue(ticketsResponse([middleTicket]));
+    const { router } = renderTicketsPage(
+      "/tickets?status=Resolved&category=Technical",
+    );
+    const user = userEvent.setup();
+
+    await screen.findByText("Middle ticket");
+    await user.click(filtersButton());
+    const sheet = await screen.findByRole("dialog", { name: "Filters" });
+    await user.click(
+      within(sheet).getByRole("button", { name: /clear filters/i }),
+    );
+
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    expect(filterValue("Status")).toBe("Any status");
+  });
+});
