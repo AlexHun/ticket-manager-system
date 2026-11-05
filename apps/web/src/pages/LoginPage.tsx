@@ -10,7 +10,7 @@ import {
   DEMO_START_LIMIT_MESSAGE,
 } from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
-import { failureMessage } from "@/lib/auth-failure";
+import { failureMessage, UNREACHABLE_RESULT } from "@/lib/auth-failure";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
 import { LoginLockup } from "@/components/layout/LoginLockup";
@@ -62,7 +62,9 @@ export function LoginPage() {
 
   const onSubmit = async (values: LoginValues) => {
     setServerError(null);
-    const { error } = await signIn.email(values);
+    const { error } = await signIn
+      .email(values)
+      .catch(() => UNREACHABLE_RESULT);
 
     if (error) {
       setServerError(
@@ -92,7 +94,7 @@ export function LoginPage() {
   const startDemo = async () => {
     setServerError(null);
     setStartingDemo(true);
-    const { error } = await signIn.anonymous();
+    const { error } = await signIn.anonymous().catch(() => UNREACHABLE_RESULT);
 
     if (error) {
       setStartingDemo(false);
