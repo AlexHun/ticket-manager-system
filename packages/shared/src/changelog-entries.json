@@ -1308,5 +1308,10 @@
     "version": "0.1.321",
     "date": "2026-11-03",
     "title": "Password reset says when the desk can't be reached (#537)"
+  },
+  {
+    "version": "0.1.322",
+    "date": "2026-11-05",
+    "title": "Sign-in says when the desk can't be reached (#739)"
   }
 ]
