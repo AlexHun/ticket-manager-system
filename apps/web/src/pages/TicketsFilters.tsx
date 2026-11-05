@@ -54,13 +54,18 @@ export const EMPTY_FILTERS: TicketFilterState = {
   search: "",
 };
 
+/**
+ * How many of the select filters are set: the ones a phone keeps behind its
+ * Filters button, so the count it shows.
+ */
+function selectFilterCount(filters: TicketFilterState): number {
+  return [filters.status, filters.category, filters.assignedTo].filter(
+    (value) => value !== ANY,
+  ).length;
+}
+
 export function hasActiveFilters(filters: TicketFilterState): boolean {
-  return (
-    filters.status !== ANY ||
-    filters.category !== ANY ||
-    filters.assignedTo !== ANY ||
-    filters.search.trim() !== ""
-  );
+  return selectFilterCount(filters) > 0 || filters.search.trim() !== "";
 }
 
 interface TicketsFiltersProps {
@@ -68,18 +73,11 @@ interface TicketsFiltersProps {
   onChange: (filters: TicketFilterState) => void;
 }
 
-/** How many of the filters behind the phone's Filters button are set. */
-function hiddenFilterCount(filters: TicketFilterState): number {
-  return [filters.status, filters.category, filters.assignedTo].filter(
-    (value) => value !== ANY,
-  ).length;
-}
-
 export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
   const isMobile = useIsMobile();
   const active = hasActiveFilters(filters);
 
-  const clear = active && (
+  const clearButton = active && (
     <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)}>
       <X />
       Clear filters
@@ -98,16 +96,16 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
           inputClassName="w-64"
         />
         <SelectFilters filters={filters} onChange={onChange} />
-        {clear}
+        {clearButton}
       </div>
     );
   }
 
-  // On a phone the bar above wraps to one field per line, about 230px, which
-  // left the table four rows (#402). Search stays on the page, since its box
+  // On a phone the bar above wraps to one field per line, which left the table
+  // a handful of rows (#402). Search stays on the page, since its box
   // shows what it holds; the rest move into a sheet, and the button's count
   // says how many of them are set.
-  const count = hiddenFilterCount(filters);
+  const count = selectFilterCount(filters);
 
   return (
     <div className="flex items-end gap-2">
@@ -148,7 +146,7 @@ export function TicketsFilters({ filters, onChange }: TicketsFiltersProps) {
               onChange={onChange}
               triggerClassName="w-full"
             />
-            {clear && <div className="self-start">{clear}</div>}
+            {clearButton && <div className="self-start">{clearButton}</div>}
           </div>
         </SheetContent>
       </Sheet>

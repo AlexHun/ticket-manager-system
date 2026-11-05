@@ -975,14 +975,22 @@ describe("TicketsPage filters on a phone", () => {
   test("keeps the search on the page and the other filters behind one button", async () => {
     ticketsGet.mockResolvedValue(ticketsResponse([newestTicket]));
     renderTicketsPage();
+    const user = userEvent.setup();
 
     await screen.findByText("Newest ticket");
 
     expect(screen.getByLabelText("Search")).toBeInTheDocument();
-    expect(filtersButton()).toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Status" }),
     ).not.toBeInTheDocument();
+
+    // The same query finds the filter once the button is pressed, so the
+    // absence above is the bar's doing, not a query that matches nothing.
+    await user.click(filtersButton());
+    const sheet = await screen.findByRole("dialog", { name: "Filters" });
+    expect(
+      within(sheet).getByRole("combobox", { name: "Status" }),
+    ).toBeInTheDocument();
   });
 
   test("reaches every filter through the button, and a choice writes to the URL", async () => {
