@@ -10,7 +10,7 @@ import {
   DEMO_START_LIMIT_MESSAGE,
 } from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
-import { failureMessage } from "@/lib/auth-failure";
+import { failureMessage, UNREACHABLE_RESULT } from "@/lib/auth-failure";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
 import { LoginLockup } from "@/components/layout/LoginLockup";
@@ -22,11 +22,6 @@ import { Separator } from "@/components/ui/separator";
 const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
 const SIGN_IN_RATE_LIMITED =
   "Couldn't sign you in — too many attempts. Try again later.";
-
-// An API that cannot be reached at all is no `error`: Better Auth's client
-// rejects with fetch's own TypeError. Any rejection is read as status 0, which
-// `failureMessage` answers as unreachable, not as a refused sign-in (#739).
-const UNREACHABLE = { error: { status: 0 } };
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -67,7 +62,9 @@ export function LoginPage() {
 
   const onSubmit = async (values: LoginValues) => {
     setServerError(null);
-    const { error } = await signIn.email(values).catch(() => UNREACHABLE);
+    const { error } = await signIn
+      .email(values)
+      .catch(() => UNREACHABLE_RESULT);
 
     if (error) {
       setServerError(
@@ -97,7 +94,7 @@ export function LoginPage() {
   const startDemo = async () => {
     setServerError(null);
     setStartingDemo(true);
-    const { error } = await signIn.anonymous().catch(() => UNREACHABLE);
+    const { error } = await signIn.anonymous().catch(() => UNREACHABLE_RESULT);
 
     if (error) {
       setStartingDemo(false);

@@ -201,9 +201,7 @@ describe("LoginPage — submit", () => {
     expect(await screen.findByText(SIGN_IN_REFUSED)).toBeInTheDocument();
   });
 
-  // An API that cannot be reached at all returns no `error`: Better Auth's
-  // client rejects with fetch's own TypeError, which a built page, its API
-  // blocked, showed as nothing but an unhandled rejection (#739).
+  // An unreachable API rejects rather than returning an `error` (#739).
   test("says the desk couldn't be reached when sign-in itself throws", async () => {
     mockSignInEmail.mockRejectedValue(new TypeError("Failed to fetch"));
     renderLogin();
@@ -412,7 +410,7 @@ describe("LoginPage — demo session", () => {
   test("blames the connection, and stays, when the start itself throws", async () => {
     demoMode(true);
     mockSignInAnonymous.mockRejectedValue(new TypeError("Failed to fetch"));
-    renderLogin();
+    const { router } = renderLogin();
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", DEMO));
@@ -421,6 +419,6 @@ describe("LoginPage — demo session", () => {
       AUTH_UNREACHABLE_MESSAGE,
     );
     expect(screen.getByRole("button", DEMO)).toBeEnabled();
-    expect(screen.queryByText("WELCOME")).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(ROUTE.login.path);
   });
 });

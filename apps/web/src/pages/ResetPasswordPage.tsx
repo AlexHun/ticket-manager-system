@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { resetPasswordSchema, type ResetPasswordValues } from "@ticket/core";
 import { authClient } from "@/lib/auth-client";
-import { failureMessage } from "@/lib/auth-failure";
+import { failureMessage, UNREACHABLE_RESULT } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { BrandName, LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
@@ -63,12 +63,10 @@ export function ResetPasswordPage() {
     setServerError(null);
     if (!token) return;
 
-    // A server that cannot be reached at all is no `error`: the client rejects,
-    // with fetch's own TypeError. Any rejection is read as status 0, since a
-    // request that never got an answer says nothing about the link either.
+    // A request that never got an answer says nothing about the link either.
     const { error } = await authClient
       .resetPassword({ newPassword: values.password, token })
-      .catch(() => ({ error: { status: 0 } }));
+      .catch(() => UNREACHABLE_RESULT);
 
     // Only a refusal of the token blames the link: an unreachable server or a
     // rate limit says nothing about it, and an admin cannot help with either
