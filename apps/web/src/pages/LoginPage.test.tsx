@@ -201,6 +201,22 @@ describe("LoginPage — submit", () => {
     expect(await screen.findByText(SIGN_IN_REFUSED)).toBeInTheDocument();
   });
 
+  // An API that cannot be reached at all returns no `error`: Better Auth's
+  // client rejects with fetch's own TypeError, which a built page, its API
+  // blocked, showed as nothing but an unhandled rejection (#739).
+  test("says the desk couldn't be reached when sign-in itself throws", async () => {
+    mockSignInEmail.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(AUTH_UNREACHABLE_MESSAGE);
+    expect(alert).not.toHaveTextContent(SIGN_IN_REFUSED);
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
+  });
+
   test("disables inputs and shows the loading label while submitting", async () => {
     let resolveSignIn!: (v: { error: null }) => void;
     mockSignInEmail.mockImplementation(
@@ -391,5 +407,20 @@ describe("LoginPage — demo session", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       AUTH_UNREACHABLE_MESSAGE,
     );
+  });
+
+  test("blames the connection, and stays, when the start itself throws", async () => {
+    demoMode(true);
+    mockSignInAnonymous.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", DEMO));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      AUTH_UNREACHABLE_MESSAGE,
+    );
+    expect(screen.getByRole("button", DEMO)).toBeEnabled();
+    expect(screen.queryByText("WELCOME")).not.toBeInTheDocument();
   });
 });

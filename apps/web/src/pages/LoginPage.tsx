@@ -23,6 +23,11 @@ const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
 const SIGN_IN_RATE_LIMITED =
   "Couldn't sign you in — too many attempts. Try again later.";
 
+// An API that cannot be reached at all is no `error`: Better Auth's client
+// rejects with fetch's own TypeError. Any rejection is read as status 0, which
+// `failureMessage` answers as unreachable, not as a refused sign-in (#739).
+const UNREACHABLE = { error: { status: 0 } };
+
 export function LoginPage() {
   const navigate = useNavigate();
   const { data: session, isPending: sessionPending } = useSession();
@@ -62,7 +67,7 @@ export function LoginPage() {
 
   const onSubmit = async (values: LoginValues) => {
     setServerError(null);
-    const { error } = await signIn.email(values);
+    const { error } = await signIn.email(values).catch(() => UNREACHABLE);
 
     if (error) {
       setServerError(
@@ -92,7 +97,7 @@ export function LoginPage() {
   const startDemo = async () => {
     setServerError(null);
     setStartingDemo(true);
-    const { error } = await signIn.anonymous();
+    const { error } = await signIn.anonymous().catch(() => UNREACHABLE);
 
     if (error) {
       setStartingDemo(false);
