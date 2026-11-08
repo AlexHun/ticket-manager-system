@@ -75,10 +75,15 @@ describe("readTranscripts, resumed", () => {
     expect(got).toEqual([["message:m2", 7]]);
   });
 
-  it("reads nothing from a file whose size and modification time are its cursor's", () => {
+  // Rewritten to the same length and modification time, so only a read that
+  // never opened the file can miss the new record.
+  it("does not open a file whose size and modification time are its cursor's", () => {
     put("a.jsonl", lines(record(5, { id: "m1" })));
+    touch("a.jsonl", 1_000);
     const first = readTranscripts(dir);
 
+    put("a.jsonl", lines(record(6, { id: "m2" })));
+    touch("a.jsonl", 1_000);
     const { read, got } = idsAndOut(first.cursors);
 
     expect(first.responses).toHaveLength(1);
@@ -244,5 +249,18 @@ describe("readAppended", () => {
       true,
     ]);
     expect(grown.lines).toEqual([{ text: record(2), number: 2 }]);
+  });
+
+  it("reads from the top after a cursor that had read no complete line", () => {
+    const path = join(dir, "a.jsonl");
+    put("a.jsonl", record(1).slice(0, 10));
+    const first = readAppended(path)!;
+
+    put("a.jsonl", lines(record(2)));
+    const second = readAppended(path, first.cursor)!;
+
+    expect(first.cursor.offset).toBe(0);
+    expect(second.fromTop).toBe(true);
+    expect(second.lines).toEqual([{ text: record(2), number: 1 }]);
   });
 });

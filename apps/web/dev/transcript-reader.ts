@@ -250,9 +250,9 @@ export interface TranscriptLine {
 
 /** What `readAppended` read of one transcript. */
 export interface AppendedLines {
-  /** Whether the read began at the top of the file: there was no cursor, or
-   *  the file no longer holds the cursor's anchor. A reader that keeps
-   *  anything per file starts it again. */
+  /** Whether the read began at the top of the file: there was no cursor, the
+   *  file no longer holds the cursor's anchor, or the cursor had read no
+   *  complete line. A reader that keeps anything per file starts it again. */
   fromTop: boolean;
   /** The complete lines read, numbered from the top of the file however far
    *  in this read began. */
@@ -314,8 +314,9 @@ export function readAppended(
         firstLine = cursor.lines;
       }
     }
-    const fromTop = bytes === null;
     bytes ??= readRange(fd, 0, st.size);
+    // A cursor at offset 0 has an empty anchor, which any file matches.
+    const fromTop = base + skip === 0;
 
     const body = bytes.subarray(skip);
     // Split on the byte, not on decoded text: `\n` never occurs inside a
@@ -416,7 +417,8 @@ export function readTranscripts(
     const prior = cursors?.get(path);
     const read = readAppended(path, prior);
     if (!read) {
-      next.set(path, prior!);
+      // Unread, so unchanged since `prior`, which is then never undefined.
+      if (prior) next.set(path, prior);
       continue;
     }
     const take = (text: string, number: number) => {

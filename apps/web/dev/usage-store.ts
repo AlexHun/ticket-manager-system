@@ -211,10 +211,11 @@ export interface UsageStore {
 }
 
 /** One statement each: `exec` is only relied on for one at a time. A history
- *  written before #418 has no `transcript` table, gains it here, and reads
- *  every transcript once more — the identity key absorbs the overlap. One
- *  written before #748 has its cursors in the old shape, and
- *  `OLD_CURSORS` drops them first, with the same cost. */
+ *  written before #418 has no cursor table, gains it here, and reads every
+ *  transcript once more — the identity key absorbs the overlap. One written
+ *  before #748 has its cursors in `transcript`, in a shape this no longer
+ *  reads (`transcript_cursor`'s comment), and gains the new table at the same
+ *  cost. */
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS response (
     id TEXT PRIMARY KEY,
@@ -226,8 +227,14 @@ const SCHEMA = [
     context INTEGER,
     window_file TEXT
   )`,
-  // `read_to` rather than `offset`, which is an SQL keyword.
-  `CREATE TABLE IF NOT EXISTS transcript (
+  // #748: the transcript reader's cursors (`TranscriptCursor`), which keep
+  // the modification time and the bytes before the offset where #418's
+  // `transcript` table hashed a file's first bytes. A table of its own rather
+  // than the old one reshaped, so a history this code wrote still serves code
+  // from before it: the old table is left as it was, and older code resumes
+  // from its own cursors. `read_to` rather than `offset`, which is an SQL
+  // keyword.
+  `CREATE TABLE IF NOT EXISTS transcript_cursor (
     path TEXT PRIMARY KEY,
     read_to INTEGER NOT NULL,
     size INTEGER NOT NULL,
@@ -266,20 +273,6 @@ const SCHEMA = [
 ];
 
 /**
- * #748: cursors written before the transcript reader took the Sessions
- * reader's resume rule hash a file's first bytes (`head`) rather than keep
- * the bytes before the offset and the modification time. A cursor is
- * bookkeeping, so the old ones are dropped rather than converted.
- */
-const OLD_CURSORS = "DROP TABLE IF EXISTS transcript";
-
-/** Whether `table` exists and has a column named `column`. */
-const hasColumn = (db: SqlDatabase, table: string, column: string) =>
-  (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some(
-    (c) => c.name === column,
-  );
-
-/**
  * #642: a `response` table created before it has neither column. Adding them
  * forgets every cursor in the same transaction, so the next scan reads each
  * transcript still on disk once more and the upsert fills the rows it holds;
@@ -289,7 +282,7 @@ const hasColumn = (db: SqlDatabase, table: string, column: string) =>
 const ADD_CONTEXT = [
   "ALTER TABLE response ADD COLUMN context INTEGER",
   "ALTER TABLE response ADD COLUMN window_file TEXT",
-  "DELETE FROM transcript",
+  "DELETE FROM transcript_cursor",
 ];
 
 /** A `trend_point` row as SQLite hands it back. */
@@ -326,14 +319,10 @@ export function usageStoreOver(
   // timeout the second fails at once with "database is locked", which reads as
   // a damaged history (#420); five seconds outlasts any scan's writes.
   db.exec("PRAGMA busy_timeout = 5000");
-  const oldCursors =
-    hasColumn(db, "transcript", "head") &&
-    !hasColumn(db, "transcript", "anchor");
-  if (!readOnly) {
-    if (oldCursors) db.exec(OLD_CURSORS);
-    for (const statement of SCHEMA) db.exec(statement);
-  }
-  const hasContext = hasColumn(db, "response", "context");
+  if (!readOnly) for (const statement of SCHEMA) db.exec(statement);
+  const hasContext = (
+    db.prepare("PRAGMA table_info(response)").all() as { name: string }[]
+  ).some((column) => column.name === "context");
   if (!hasContext && !readOnly) {
     db.exec("BEGIN");
     try {
@@ -363,11 +352,11 @@ export function usageStoreOver(
     );
   return {
     cursors() {
-      // Read only, a history's old cursors are left in place and read as none.
-      if ((readOnly && oldCursors) || !hasTable("transcript")) return new Map();
+      // Read only, a history no scan has touched since #748 has no such table.
+      if (!hasTable("transcript_cursor")) return new Map();
       const rows = db
         .prepare(
-          "SELECT path, read_to, size, mtime_ms, lines, anchor FROM transcript",
+          "SELECT path, read_to, size, mtime_ms, lines, anchor FROM transcript_cursor",
         )
         .all() as {
         path: string;
@@ -399,7 +388,7 @@ export function usageStoreOver(
            window_file = COALESCE(window_file, excluded.window_file)`,
       );
       const upsertCursor = db.prepare(
-        `INSERT OR REPLACE INTO transcript
+        `INSERT OR REPLACE INTO transcript_cursor
            (path, read_to, size, mtime_ms, lines, anchor)
          VALUES (?, ?, ?, ?, ?, ?)`,
       );

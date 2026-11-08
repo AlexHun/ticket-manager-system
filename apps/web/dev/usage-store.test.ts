@@ -352,6 +352,25 @@ describe("the store", () => {
   });
 });
 
+/** #418's cursor table, which #748 left in place beside its own. */
+const OLD_TRANSCRIPT = `CREATE TABLE transcript (
+  path TEXT PRIMARY KEY,
+  read_to INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  lines INTEGER NOT NULL,
+  head TEXT NOT NULL
+)`;
+
+/** #748's cursor table, as the store creates it. */
+const NEW_CURSORS = `CREATE TABLE transcript_cursor (
+  path TEXT PRIMARY KEY,
+  read_to INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  mtime_ms REAL NOT NULL,
+  lines INTEGER NOT NULL,
+  anchor TEXT NOT NULL
+)`;
+
 // #642: a history written before the change has a six-column `response`.
 describe("a history from before context and window", () => {
   const OLD_RESPONSE = `CREATE TABLE response (
@@ -361,13 +380,6 @@ describe("a history from before context and window", () => {
     at TEXT,
     out INTEGER NOT NULL,
     cache_read INTEGER NOT NULL
-  )`;
-  const OLD_TRANSCRIPT = `CREATE TABLE transcript (
-    path TEXT PRIMARY KEY,
-    read_to INTEGER NOT NULL,
-    size INTEGER NOT NULL,
-    lines INTEGER NOT NULL,
-    head TEXT NOT NULL
   )`;
 
   /** A file holding one old row and one transcript's cursor. */
@@ -380,6 +392,12 @@ describe("a history from before context and window", () => {
       `INSERT INTO response VALUES ('message:m1', 's', 'feat/7-a', NULL, 1000, 10)`,
     );
     db.exec(`INSERT INTO transcript VALUES ('/t/a.jsonl', 10, 10, 1, 'h')`);
+    // A cursor in #748's table too, so the #642 migration is the only thing
+    // that can forget it.
+    db.exec(NEW_CURSORS);
+    db.exec(
+      `INSERT INTO transcript_cursor VALUES ('/t/a.jsonl', 10, 10, 1.5, 1, '0a')`,
+    );
     db.close();
     return file;
   };
@@ -428,30 +446,19 @@ describe("a history from before context and window", () => {
       expect(store.responses()).toEqual([
         response({ at: null, context: null, window: null }),
       ]);
-      // Its cursor is in the shape from before #748, which reads as none.
-      expect(store.cursors().size).toBe(0);
+      expect(store.cursors().size).toBe(1);
     } finally {
       store.close();
     }
   });
 });
 
-// #748: a cursor from before the transcript reader hashed the file's first
-// bytes; it now keeps the bytes before its offset and the modification time.
-describe("a history whose cursors hash the file's first bytes", () => {
-  it("drops them, so the next scan reads every transcript once more", async () => {
+// #748: #418's cursors hashed a file's first bytes, in a `transcript` table.
+describe("a history holding #418's cursors", () => {
+  it("reads none of them, and leaves them as they were for older code", async () => {
     const file = join(dir, "old-cursors.sqlite");
-    const seed = await openUsageStore(file);
-    seed.close();
     const db = new DatabaseSync(file);
-    db.exec("DROP TABLE transcript");
-    db.exec(`CREATE TABLE transcript (
-      path TEXT PRIMARY KEY,
-      read_to INTEGER NOT NULL,
-      size INTEGER NOT NULL,
-      lines INTEGER NOT NULL,
-      head TEXT NOT NULL
-    )`);
+    db.exec(OLD_TRANSCRIPT);
     db.exec(`INSERT INTO transcript VALUES ('/t/a.jsonl', 10, 10, 1, 'h')`);
     db.close();
 
@@ -463,6 +470,14 @@ describe("a history whose cursors hash the file's first bytes", () => {
       expect(store.cursors()).toEqual(new Map([["/t/a.jsonl", cursor]]));
     } finally {
       store.close();
+    }
+    const after = new DatabaseSync(file);
+    try {
+      expect(after.prepare("SELECT * FROM transcript").all()).toEqual([
+        { path: "/t/a.jsonl", read_to: 10, size: 10, lines: 1, head: "h" },
+      ]);
+    } finally {
+      after.close();
     }
   });
 });
