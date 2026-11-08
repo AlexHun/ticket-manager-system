@@ -29,7 +29,7 @@ inputs and not outputs.
 **One row per API response**: its identity (`message.id`, then the record's
 `uuid`, then file name and line number), session, branch, timestamp, output and
 cache-read tokens, and since #642 its context and window ("Each response's
-context and window" below). That's `TranscriptResponse` in `apps/web/dev/transcripts.ts`,
+context and window" below). That's `TranscriptResponse` in `apps/web/dev/transcript-reader.ts`,
 stored by `apps/web/dev/usage-store.ts`.
 
 The responses come from two places under the project's transcript directory:

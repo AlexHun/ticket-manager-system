@@ -61,12 +61,8 @@ import {
   type IssueLister,
   type IssueMetadata,
 } from "./issues.ts";
-import {
-  readTranscripts,
-  tallySpend,
-  type Spend,
-  type TranscriptRead,
-} from "./transcripts.ts";
+import { tallySpend, type Spend } from "./transcripts.ts";
+import { readTranscripts, type TranscriptRead } from "./transcript-reader.ts";
 import {
   openUsageStore,
   type StoredListing,

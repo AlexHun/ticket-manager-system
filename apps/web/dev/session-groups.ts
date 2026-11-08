@@ -26,13 +26,12 @@ import {
   type SessionGroup,
   type SessionSlice,
 } from "../src/dev/sessions-protocol.ts";
+import { issueOfBranch, tallySpend } from "./transcripts.ts";
 import {
-  issueOfBranch,
   largerCounts,
   raisesCounts,
-  tallySpend,
   type TranscriptResponse,
-} from "./transcripts.ts";
+} from "./transcript-reader.ts";
 
 /** One card as the grouping reads it: its own responses and where it is. */
 export interface CreditedCard {
