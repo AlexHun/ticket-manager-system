@@ -45,7 +45,7 @@ const DECLINED: PipelineRun = {
   declinedAt: "2026-11-02T09:00:16.000Z",
   citedArticleIds: [],
   stages: [],
-  escaped: null,
+  judgement: null,
 };
 
 /** A sent ticket the auto-reply has not answered yet. */

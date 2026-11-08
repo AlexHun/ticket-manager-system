@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import {
   autoReplyCaseById,
-  payloadEscaped,
+  judgeAnswer,
   simulateEmailSchema,
   type AutoReplyCase,
 } from "@ticket/core";
@@ -23,6 +23,7 @@ import {
   PIPELINE_STAGE_STATE,
   SIMULATED_SENDER_DOMAIN,
   TICKET_STATUS,
+  type CaseJudgement,
   type PipelineConfig,
   type PipelineCounts,
   type PipelineOverviewResponse,
@@ -84,9 +85,9 @@ import { requireAdmin, requireAdminView, sessionOf } from "../middleware/auth";
  * `direction` / `automated` / `citedArticleIds`. The two columns added since the
  * page existed, `autoReplyOfferedAt` (#360) and `classifierCategory` (#561),
  * are each a job's record of a decision it made, like `autoReplyDecline`, and
- * neither is written for the page's benefit. Whether a simulated payload
- * escaped reads one more column the job writes, the automated reply's
- * `textBody` (`escapedOn`, #723).
+ * neither is written for the page's benefit. Judging a simulated ticket
+ * against its scenario reads one more column the job writes, the automated
+ * reply's `textBody` (`judgedOn`, #723, #746).
  */
 
 export const pipelineRouter = Router();
@@ -405,8 +406,8 @@ export function toRun(
         : [],
     stages,
     // Judged by `GET /runs/:id` alone, which is told the scenario. See
-    // `escapedOn`.
-    escaped: null,
+    // `judgedOn`.
+    judgement: null,
   };
 }
 
@@ -647,27 +648,24 @@ const runQuerySchema = z.object({
 });
 
 /**
- * Whether a run's reply carried its scenario's payload: the question `/evals`
- * asks of a repeat, asked of a ticket (#723).
+ * A run judged against the scenario it was sent as: `judgeAnswer`, the
+ * judgement `/evals` counts a repeat by, asked of a ticket (#723, #746).
  *
  * The reply is the newest automated outbound message, which is the assembled
- * text the auto-reply's checks ran over, greeting included — what
- * `payloadEscaped` has to read. The corpus is today's `autoReplyArticles`, not
- * the array the job answered from, which nothing records; on the simulator the
- * two are seconds apart, and an article edited in between can only move a
- * marker into the exemption, toward silence, as that function says.
+ * text the auto-reply's checks ran over, greeting included — what an escape is
+ * read from. The corpus is today's `autoReplyArticles`, not the array the job
+ * answered from, which nothing records; on the simulator the two are seconds
+ * apart, and an article edited in between can only move a marker into the
+ * exemption, toward silence, as `payloadEscaped` says.
  *
- * No query at all unless the scenario is a payload and the run was answered:
- * a decline carries no text, and an ordinary case declares no markers.
+ * Both are read whatever the run reached, and `judgeAnswer` decides what they
+ * count for: which answers can escape is its rule, and stated here as well it
+ * would be a second copy (#745).
  */
-async function escapedOn(
+async function judgedOn(
   run: PipelineRun,
   evalCase: AutoReplyCase,
-): Promise<boolean> {
-  if (!evalCase.adversarial || run.outcome !== PIPELINE_OUTCOME.resolved) {
-    return false;
-  }
-
+): Promise<CaseJudgement> {
   const [reply, corpus] = await Promise.all([
     prisma.message.findFirst({
       where: {
@@ -681,8 +679,14 @@ async function escapedOn(
     autoReplyArticles(),
   ]);
 
-  return (
-    reply?.textBody != null && payloadEscaped(evalCase, reply.textBody, corpus)
+  return judgeAnswer(
+    evalCase,
+    {
+      outcome: run.outcome,
+      decline: run.decline,
+      reply: reply?.textBody ?? null,
+    },
+    corpus,
   );
 }
 
@@ -730,7 +734,9 @@ pipelineRouter.get(
 
     const run = runOf(row, config, facts);
     res.json({
-      run: scenario ? { ...run, escaped: await escapedOn(run, scenario) } : run,
+      run: scenario
+        ? { ...run, judgement: await judgedOn(run, scenario) }
+        : run,
     });
   },
 );

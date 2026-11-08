@@ -4,6 +4,7 @@ import {
   type AutoReplyDecline,
 } from "./auto-reply.ts";
 import type { DashboardRange } from "./dashboard-stats.ts";
+import type { CaseJudgement } from "./evals.ts";
 import type { TicketCategory, TicketStatus } from "./tickets.ts";
 
 /**
@@ -399,15 +400,14 @@ export interface PipelineRun {
   citedArticleIds: string[];
   stages: PipelineStageResult[];
   /**
-   * Whether the reply carried the payload of the scenario it was sent as —
-   * `payloadEscaped` in `@ticket/core`, the check `/evals` makes (#723).
+   * The run judged against the scenario it was sent as — `judgeAnswer` in
+   * `@ticket/core`, the judgement `/evals` counts by (#723, #746).
    *
    * Null unless the request named a scenario: only `GET /runs/:id?scenario=`
    * knows which case a ticket was posted as, so the overview's list is never
-   * judged. False on a scenario that is not a payload, and on a run with no
-   * accepted reply.
+   * judged. A run still in flight is judged nothing, all three false.
    */
-  escaped: boolean | null;
+  judgement: CaseJudgement | null;
 }
 
 export interface PipelineOverviewResponse {

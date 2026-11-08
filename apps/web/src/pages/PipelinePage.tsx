@@ -84,9 +84,9 @@ function useOverview(range: DashboardRange) {
  * page where "nothing is arriving" and "nothing is happening" look identical and
  * the difference is the point. See `RUN_FALLBACK_POLL_MS`.
  *
- * `scenarioId` is the case the ticket was sent as, when it was. The API checks
- * the reply against that case's payload and answers `escaped` (#723), so it is
- * in the key: the same ticket asked about with and without one is two answers.
+ * `scenarioId` is the case the ticket was sent as, when it was. The API judges
+ * the run against that case and answers `judgement` (#723, #746), so it is in
+ * the key: the same ticket asked about with and without one is two answers.
  */
 function useRun(
   ticketId: number | null,
@@ -299,8 +299,8 @@ export function PipelinePage() {
             </section>
 
             {/* A listed ticket may not have been sent as the scenario last
-                picked, so nothing judges it against one — the verdict line
-                and the escape check both read `scenario`. */}
+                picked, so nothing judges it against one — the API's
+                judgement and the verdict line both read `scenario`. */}
             <RecentRuns
               runs={overview.data.recent}
               onPick={(ticketId) => {

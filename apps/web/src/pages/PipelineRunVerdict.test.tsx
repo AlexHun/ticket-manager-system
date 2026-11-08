@@ -5,6 +5,7 @@ import {
   AUTO_REPLY_DECLINE,
   PIPELINE_OUTCOME,
   TICKET_STATUS,
+  type CaseJudgement,
   type PipelineRun,
 } from "@ticket/shared";
 import { RUN_VERDICT } from "@/lib/pipeline-labels";
@@ -15,6 +16,11 @@ function caseNamed(id: string): AutoReplyCase {
   const evalCase = autoReplyCaseById(id);
   if (evalCase === null) throw new Error(`No case named ${id}`);
   return evalCase;
+}
+
+/** What the API judged, defaulting to a run that landed where it said. */
+function judged(overrides: Partial<CaseJudgement> = {}): CaseJudgement {
+  return { matched: true, escaped: false, caught: false, ...overrides };
 }
 
 /** A ticket the assistant answered, as `GET /runs/:id` reports it. */
@@ -31,7 +37,7 @@ function answered(overrides: Partial<PipelineRun> = {}): PipelineRun {
     declinedAt: null,
     citedArticleIds: ["KB-004"],
     stages: [],
-    escaped: false,
+    judgement: judged(),
     ...overrides,
   };
 }
@@ -39,6 +45,12 @@ function answered(overrides: Partial<PipelineRun> = {}): PipelineRun {
 const declinedNotCovered = {
   outcome: PIPELINE_OUTCOME.declined,
   decline: AUTO_REPLY_DECLINE.notCovered,
+  citedArticleIds: [],
+};
+
+const declinedByMoneyCheck = {
+  outcome: PIPELINE_OUTCOME.declined,
+  decline: AUTO_REPLY_DECLINE.unbackedCommitment,
   citedArticleIds: [],
 };
 
@@ -70,66 +82,97 @@ function mismatchEndingWith(note: string) {
   );
 }
 
-/** Every sentence the verdict line can be, so its absence is checkable. */
+/** Every sentence the judgement can draw, so its absence is checkable. */
 function verdictLines(scenario: AutoReplyCase) {
   return [
     screen.queryByText(RUN_VERDICT.matched),
     screen.queryByText(RUN_VERDICT.escaped),
+    screen.queryByText(RUN_VERDICT.caught),
     mismatchEndingWith(scenario.mismatchNote ?? RUN_VERDICT.drifted),
   ];
 }
 
-describe("PipelineRunVerdict — judged by the rule /evals counts by (#723)", () => {
-  test("a payload case answered without its payload matches", () => {
-    const scenario = caseNamed("planted-commitment");
-    renderVerdict(answered(), scenario);
+/**
+ * The page draws the judgement the API sent and judges nothing itself (#746):
+ * each run below carries a judgement its outcome alone would not produce, so a
+ * page that worked the rule out again would draw the other line.
+ */
+describe("PipelineRunVerdict — draws the judgement the API sent (#723, #746)", () => {
+  test("a matched run says it landed where the scenario said", () => {
+    const scenario = caseNamed("off-corpus");
+    // `off-corpus` expects a decline, so only the judgement makes this a match.
+    renderVerdict(answered({ judgement: judged() }), scenario);
 
     expect(screen.getByText(RUN_VERDICT.matched)).toBeInTheDocument();
-    expect(mismatchEndingWith(scenario.mismatchNote!)).toBeNull();
+    expect(mismatchEndingWith(RUN_VERDICT.drifted)).toBeNull();
+  });
+
+  test("a run that missed reads the scenario's note", () => {
+    const scenario = caseNamed("off-corpus");
+    renderVerdict(
+      answered({
+        ...declinedNotCovered,
+        judgement: judged({ matched: false }),
+      }),
+      scenario,
+    );
+
+    expect(mismatchEndingWith(RUN_VERDICT.drifted)).toBeInTheDocument();
+    expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
   });
 
   test.each(["planted-commitment", "hostile-display-name"])(
-    "a payload case whose reply carried a marker is an escape, never a match (%s)",
+    "an escape reads as one, never as a match (%s)",
     (id) => {
-      renderVerdict(answered({ escaped: true }), caseNamed(id));
+      renderVerdict(
+        answered({ judgement: judged({ matched: false, escaped: true }) }),
+        caseNamed(id),
+      );
 
       expect(screen.getByText(RUN_VERDICT.escaped)).toBeInTheDocument();
       expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
     },
   );
 
-  test("a payload case declined for another reason reads its own note", () => {
+  test("a declined payload case the API found caught says so", () => {
     const scenario = caseNamed("planted-commitment");
-    renderVerdict(answered(declinedNotCovered), scenario);
+    const { unmount } = renderVerdict(
+      answered({
+        ...declinedByMoneyCheck,
+        judgement: judged({ caught: true }),
+      }),
+      scenario,
+    );
 
-    expect(mismatchEndingWith(scenario.mismatchNote!)).toBeInTheDocument();
-    expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
-  });
-
-  test("an ordinary case is judged as before", () => {
-    const scenario = caseNamed("off-corpus");
-    const { unmount } = renderVerdict(answered(), scenario);
-
-    expect(mismatchEndingWith(RUN_VERDICT.drifted)).toBeInTheDocument();
-    expect(screen.queryByText(RUN_VERDICT.matched)).toBeNull();
+    expect(screen.getByText(RUN_VERDICT.matched)).toBeInTheDocument();
+    expect(screen.getByText(RUN_VERDICT.caught)).toBeInTheDocument();
     unmount();
 
-    renderVerdict(answered(declinedNotCovered), scenario);
+    // The same decline, judged not caught: the line is the API's answer.
+    renderVerdict(
+      answered({ ...declinedByMoneyCheck, judgement: judged() }),
+      scenario,
+    );
     expect(screen.getByText(RUN_VERDICT.matched)).toBeInTheDocument();
+    expect(screen.queryByText(RUN_VERDICT.caught)).toBeNull();
   });
 
   test("a run still in flight, or with no scenario, has no verdict line", () => {
     const scenario = caseNamed("planted-commitment");
-    const run = answered({ outcome: PIPELINE_OUTCOME.pending });
+    const run = answered({
+      outcome: PIPELINE_OUTCOME.pending,
+      judgement: judged({ caught: true }),
+    });
     const { unmount } = renderVerdict(run, scenario);
 
     // The card itself rendered, so the empty lines below are an absence.
     expect(screen.getByText(run.subject)).toBeInTheDocument();
-    expect(verdictLines(scenario)).toEqual([null, null, null]);
+    expect(screen.getByText("Working…")).toBeInTheDocument();
+    expect(verdictLines(scenario)).toEqual([null, null, null, null]);
     unmount();
 
-    renderVerdict(answered(), null);
+    renderVerdict(answered({ judgement: null }), null);
     expect(screen.getByText(run.subject)).toBeInTheDocument();
-    expect(verdictLines(scenario)).toEqual([null, null, null]);
+    expect(verdictLines(scenario)).toEqual([null, null, null, null]);
   });
 });
