@@ -1,45 +1,56 @@
 import { BRAND_NAME } from "@ticket/shared";
 
-/** What `failureMessage` says for a server fault or an unreachable server. */
+/** What `authFailure` says for a server fault or an unreachable server. */
 export const AUTH_UNREACHABLE_MESSAGE = `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`;
 
-/**
- * What a Better Auth call that rejects is read as: `call().catch(() =>
- * UNREACHABLE_RESULT)`. An unreachable server is no `error` — the client
- * rejects with fetch's own TypeError — and a request that never got an answer
- * says nothing about what was typed, so any rejection is read as status 0,
- * which `failureMessage` answers as unreachable (#537, #739).
- */
-export const UNREACHABLE_RESULT = { error: { status: 0 } };
+/** A page's own sentences for a failed auth call. */
+export interface AuthFailureCopy {
+  /** What any refusal the page does not name gets. */
+  fallback: string;
+  /** The page's sentences for statuses of its own, such as 429. */
+  byStatus?: Partial<Record<number, string>>;
+}
 
 /**
- * What to say when Better Auth turns a request down, shared by the pages that
- * call it (#537).
+ * Makes a Better Auth call and says what to show if it failed: `null` on
+ * success, otherwise the sentence (#747). Sign-in, the demo start and choosing
+ * a password from a link each call through it, so none of them catches or
+ * reads a status itself; #537 and #739 were each a call site missing one of
+ * the steps below.
  *
- * A server fault (5xx) and a server that cannot be reached at all (status 0)
- * need different words from a rejected request: neither says anything about
- * what was typed. An unreachable server arrives as `UNREACHABLE_RESULT`'s
- * status 0. Answering either with "Couldn't sign you in" sends someone off to
- * reset a password that was never the problem — which is exactly what happened
- * on the login page when the API was down and sign-in returned 500.
+ * In order:
+ * 1. A call that rejects is unreachable. An unreachable server is no `error`:
+ *    the client rejects with fetch's own TypeError, and a request that never
+ *    got an answer says nothing about what was typed (#739).
+ * 2. Status 0 or a 5xx is unreachable too. Neither says anything about what
+ *    was typed, and answering a login's 500 with "Couldn't sign you in" sent
+ *    someone off to reset a password that was never the problem (#537).
+ * 3. A status the page names gets the page's sentence for it.
+ * 4. Anything else gets the page's `fallback`.
  *
- * Only when the status positively says so. A missing status is absence of
- * evidence, not evidence of a transport failure, and defaulting it to
- * "unreachable" would answer a plain rejected credential — which is what
- * Better Auth returns with no status in some paths — by blaming the network.
+ * A missing status is not unreachable. It is absence of evidence, not
+ * evidence of a transport failure, and Better Auth returns a plain refused
+ * credential with no status in some paths, which "unreachable" would answer
+ * by blaming the network.
  *
  * Better Auth's own `message` is worded its own way ("Invalid email or
- * password"), not the copy standard's, so a caller passes its own sentence as
- * `fallback` rather than that message. Neither `LoginPage` nor
- * `ResetPasswordPage` shows it, which each page's test holds.
+ * password"), not the copy standard's, so it is never shown: every sentence
+ * comes from the page's `copy`.
  */
-export function failureMessage(
-  error: { status?: number },
-  fallback: string,
-): string {
-  const status = error.status;
-  const unreachable =
-    typeof status === "number" && (status === 0 || status >= 500);
+export async function authFailure(
+  call: () => Promise<{ error: { status?: number } | null }>,
+  copy: AuthFailureCopy,
+): Promise<string | null> {
+  let error: { status?: number } | null;
+  try {
+    ({ error } = await call());
+  } catch {
+    return AUTH_UNREACHABLE_MESSAGE;
+  }
+  if (!error) return null;
 
-  return unreachable ? AUTH_UNREACHABLE_MESSAGE : fallback;
+  const status = error.status;
+  if (typeof status !== "number") return copy.fallback;
+  if (status === 0 || status >= 500) return AUTH_UNREACHABLE_MESSAGE;
+  return copy.byStatus?.[status] ?? copy.fallback;
 }
