@@ -536,6 +536,19 @@ describe("GET /status", () => {
     expect((await status()).health).toBe(EVAL_HEALTH.escaped);
   });
 
+  test("reads the thresholds the run recorded", async () => {
+    // Decline accuracy at 2 of 5 fails this build's bar and passes the one the
+    // run stamped. What the rule is belongs to `isRunFailing`; this holds that
+    // the query hands it the stamped column at all.
+    await finishedRun({
+      caught: 4,
+      matches: 2,
+      thresholds: { [EVAL_METRIC.declineAccuracy]: 0.4 },
+    });
+
+    expect((await status()).health).toBe(EVAL_HEALTH.passing);
+  });
+
   test("clears when a later frozen run passes", async () => {
     await finishedRun({ caught: 3, escaped: 1, startedAt: sept(1) });
     await finishedRun({ caught: 4, startedAt: sept(2) });

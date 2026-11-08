@@ -20,6 +20,7 @@ import {
   type EvalReachedRow,
   type EvalRunCounters,
   type EvalRunRow,
+  type EvalRunStatus,
   type EvalTrailingMetric,
   type TicketCategory,
 } from "@ticket/shared";
@@ -30,7 +31,7 @@ import { parseStoredVerdicts, type StoredVerdict } from "./stored-verdict";
  * Reading a completed Run against its stamped Thresholds and the runs before
  * it (#750).
  *
- * Two entry points, and the route asks only these: `readRun` for what a card on
+ * Two entry points, and the only functions it exports: `readRun` for what a card on
  * `/evals` draws, and `isRunFailing` for the one verdict the sidebar's mark and
  * the card's Failing badge both show. They used to be written out in
  * `routes/evals.ts`, where only a convention kept the two in step; here the
@@ -47,10 +48,10 @@ import { parseStoredVerdicts, type StoredVerdict } from "./stored-verdict";
  * The counters every metric is taken over, on any run.
  *
  * Structural rather than the Prisma row, because three kinds of query produce
- * it: the page of runs, which selects everything; the series around the page,
- * which selects eight columns and each case's split but no verdicts; and
- * `GET /status`, which takes those eight and the thresholds for the latest
- * frozen run itself (#608).
+ * it: `GET /runs`'s page, which selects everything; the series around the
+ * page, which selects the counters and each case's split but no verdicts; and
+ * `GET /status`, which takes the counters, the status and the thresholds of
+ * the latest frozen run (#608).
  *
  * A `Pick` over the run-level counters rather than six restated fields, so a
  * counter renamed in `EVAL_COUNTERS` fails here rather than resolving to a
@@ -93,7 +94,7 @@ export interface SeriesSplit {
  * column as stored — `Json`, read back here and nowhere else.
  */
 export interface JudgedRun extends MetricCounts {
-  status: string;
+  status: EvalRunStatus;
   thresholds: unknown;
 }
 
@@ -212,7 +213,7 @@ export function isRunFailing(run: JudgedRun): boolean {
 
 /* ── The window ──────────────────────────────────────────────────────────── */
 
-/** Newest first on `[startedAt, id]`, the page's own `orderBy`. */
+/** Newest first on `[startedAt, id]`, `GET /runs`'s own `orderBy`. */
 function newestFirst(a: PriorRun, b: PriorRun): number {
   return b.startedAt.getTime() - a.startedAt.getTime() || b.id - a.id;
 }

@@ -272,32 +272,39 @@ export function createEvalsRouter(config: EvalsConfig): Router {
         // pipeline config block keeps. It is what lets the page say "no key"
         // rather than drawing a Run button that always fails.
         evalConfigured: config.evalConfigured(),
-        runs: runs.map((run): EvalRunRow => ({
-          id: run.id,
-          corpus: run.corpus,
-          status: run.status,
-          startedAt: run.startedAt.toISOString(),
-          finishedAt: run.finishedAt?.toISOString() ?? null,
-          error: run.error,
-          repeats: run.repeats,
-          attempts: run.attempts,
-          matches: run.matches,
-          abandoned: run.abandoned,
-          usd: run.usd,
-          cachedRepeats: run.cachedRepeats,
-          // Read, not re-derived (#223). This used to be
-          // `Σ max(repeats - 1, 0)` over `results` — a second expression of
-          // the rule `EVAL_COUNTERS` argues and `runCase` applies, with a
-          // database between the two and nothing keeping them in step, on the
-          // one rate here that makes a stopped prompt cache visible.
-          cacheable: run.cacheable,
-          caught: run.caught,
-          escaped: run.escaped,
-          classifiedRepeats: run.classifiedRepeats,
-          classifyMatches: run.classifyMatches,
-          failing: isRunFailing(run),
-          ...readRun(run, series),
-        })),
+        runs: runs.map((run): EvalRunRow => {
+          const reading = readRun(run, series);
+          return {
+            id: run.id,
+            corpus: run.corpus,
+            status: run.status,
+            startedAt: run.startedAt.toISOString(),
+            finishedAt: run.finishedAt?.toISOString() ?? null,
+            error: run.error,
+            repeats: run.repeats,
+            attempts: run.attempts,
+            matches: run.matches,
+            abandoned: run.abandoned,
+            usd: run.usd,
+            cachedRepeats: run.cachedRepeats,
+            // Read, not re-derived (#223). This used to be
+            // `Σ max(repeats - 1, 0)` over `results` — a second expression of
+            // the rule `EVAL_COUNTERS` argues and `runCase` applies, with a
+            // database between the two and nothing keeping them in step, on the
+            // one rate here that makes a stopped prompt cache visible.
+            cacheable: run.cacheable,
+            caught: run.caught,
+            escaped: run.escaped,
+            checks: reading.checks,
+            classifiedRepeats: run.classifiedRepeats,
+            classifyMatches: run.classifyMatches,
+            categories: reading.categories,
+            metrics: reading.metrics,
+            previous: reading.previous,
+            failing: isRunFailing(run),
+            results: reading.results,
+          };
+        }),
       });
     },
   );
