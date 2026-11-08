@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { caseMatched, type AutoReplyCase } from "@ticket/core";
+import type { AutoReplyCase } from "@ticket/core";
 import { PIPELINE_OUTCOME, type PipelineRun } from "@ticket/shared";
 import { ticketDetailPath } from "@/lib/routes";
 import { CategoryBadge, StatusBadge } from "@/components/TicketBadges";
@@ -16,10 +16,12 @@ import { cn } from "@/lib/utils";
  * into the most useful finding this page produces, instead of a wrong answer
  * nobody notices.
  *
- * Whether the run matched is `caseMatched`, the rule `/evals` counts by, so a
- * payload case answered clean reads as a match here too and an escape never
- * does (#723). `run.escaped` is what the API found in the reply, asked with the
- * scenario's id.
+ * Whether the run matched, escaped or was caught is `run.judgement`, which the
+ * API reached with `judgeAnswer`, the judgement `/evals` counts by, when asked
+ * with the scenario's id (#723, #746). This draws it and works none of it out:
+ * the page once ran the match rule itself, and the two pages disagreed about
+ * the same reply when only one side changed. The API sends no judgement for a
+ * run still in flight, so it draws no verdict line.
  */
 export function PipelineRunVerdict({
   run,
@@ -34,15 +36,7 @@ export function PipelineRunVerdict({
   pipelineLive: boolean;
 }) {
   const pending = run.outcome === PIPELINE_OUTCOME.pending;
-  const escaped = run.escaped === true;
-  const matched =
-    scenario !== null &&
-    !pending &&
-    caseMatched(scenario, {
-      outcome: run.outcome,
-      decline: run.decline,
-      escaped,
-    });
+  const { judgement } = run;
 
   return (
     <div className="mb-5 space-y-2 rounded-md border bg-background/50 p-3">
@@ -91,16 +85,16 @@ export function PipelineRunVerdict({
         </p>
       )}
 
-      {scenario && !pending && (
+      {scenario && judgement && (
         <p
           className={cn(
             "text-xs leading-relaxed",
-            matched ? "text-muted-foreground" : "text-ember-2",
+            judgement.matched ? "text-muted-foreground" : "text-ember-2",
           )}
         >
-          {matched ? (
+          {judgement.matched ? (
             RUN_VERDICT.matched
-          ) : escaped ? (
+          ) : judgement.escaped ? (
             RUN_VERDICT.escaped
           ) : (
             <>
@@ -116,6 +110,12 @@ export function PipelineRunVerdict({
               {scenario.mismatchNote ?? RUN_VERDICT.drifted}
             </>
           )}
+        </p>
+      )}
+
+      {scenario && judgement?.caught && (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {RUN_VERDICT.caught}
         </p>
       )}
 

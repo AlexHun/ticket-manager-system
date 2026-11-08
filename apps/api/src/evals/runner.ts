@@ -1,6 +1,7 @@
 import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
+  type CaseJudgement,
   type EvalCaseCounters,
   type PipelineOutcome,
   type TicketCategory,
@@ -9,7 +10,6 @@ import {
   classifiedAsExpected,
   judgeAnswer,
   type AutoReplyCase,
-  type CaseJudgement,
 } from "@ticket/core";
 import { autoReply, type AutoReplyResult } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
@@ -88,7 +88,8 @@ import { classifyCase, isClassifiable } from "./classify-case";
  * What one answer to one case was, and what it cost.
  *
  * `matched`, `escaped` and `caught` are the `CaseJudgement` that `judgeAnswer`
- * in `@ticket/core` reaches; their meaning is documented there.
+ * in `@ticket/core` reaches; their meaning is documented on that type, in
+ * `@ticket/shared`.
  */
 export interface EvalVerdict extends CaseJudgement {
   outcome: PipelineOutcome;

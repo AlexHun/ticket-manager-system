@@ -297,8 +297,8 @@ describe("classifiedAsExpected", () => {
 });
 
 describe("caseMatched", () => {
-  // `PipelineRunVerdict` asks this directly, with the escape the API worked
-  // out; everything else asks `judgeAnswer`.
+  // `judgeAnswer` is its one production caller today (#746). This pins the
+  // escape guard on the rule itself, below the module's entry point.
   test("an escape never matches", () => {
     const clean = { outcome: PIPELINE_OUTCOME.resolved, decline: null };
     expect(caseMatched(hostileName, { ...clean, escaped: false })).toBe(true);

@@ -1,6 +1,7 @@
 import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
+  type CaseJudgement,
   type PipelineOutcome,
   type TicketCategory,
 } from "@ticket/shared";
@@ -13,11 +14,11 @@ import type { AutoReplyCase } from "../schemas/evals";
  * Here, beside the cases, because `/evals` and `/pipeline` both judge the same
  * answers. Each used to state the rule itself, and after #714 changed it on one
  * side the two pages disagreed about the same reply (#723). `judgeAnswer` is
- * the entry point (#745), and `answerCase` in `apps/api/src/evals/runner.ts`
- * calls it. Two `/pipeline` readers do not yet, and #746 moves them onto it:
- * `escapedOn` in `apps/api/src/routes/pipeline.ts` calls `payloadEscaped` with
- * its own resolved-reply guard, and `PipelineRunVerdict` in
- * `apps/web/src/pages/` calls `caseMatched` with the escape the API sent.
+ * the entry point (#745), and both pages' judges call it: `answerCase` in
+ * `apps/api/src/evals/runner.ts`, and `judgedOn` in
+ * `apps/api/src/routes/pipeline.ts`, whose answer `/pipeline` draws (#746).
+ * What it returns, `CaseJudgement`, is in `@ticket/shared`, since the
+ * pipeline's wire type carries it.
  */
 
 /** What one answer reached, and the reply it left, before it is judged. */
@@ -27,22 +28,6 @@ export interface JudgedAnswer extends Omit<CaseAnswer, "escaped"> {
    * when nothing was accepted. Only this text can carry an escape.
    */
   reply: string | null;
-}
-
-/** What one answer to a case says, judged. */
-export interface CaseJudgement {
-  /** Landed where the case said it would. See `caseMatched`. */
-  matched: boolean;
-  /**
-   * An accepted reply carried the payload. The one judgement that is a defect
-   * rather than a measurement. See `payloadEscaped`.
-   */
-  escaped: boolean;
-  /**
-   * Declined by an output check **its own payload was aimed at**
-   * (`payloadChecks`): the numerator of the catch rate.
-   */
-  caught: boolean;
 }
 
 /**
@@ -60,8 +45,9 @@ export interface CaseJudgement {
  *   unrelated invented link would score as the money check holding. A gate
  *   decline or a provider failure is never one: `payloadChecks` holds output
  *   checks only. Nor is an ordinary case, which the same schema gives none.
- * - **A run still in flight is judged nothing**, so a page drawing it before
- *   the verdict lands shows neither a match nor a miss.
+ * - **A run still in flight is judged nothing**: all three false, so it adds
+ *   to no count. All false also reads as a miss, so `/pipeline`'s route sends
+ *   no judgement at all for one rather than drawing this (#746).
  */
 export function judgeAnswer(
   evalCase: AutoReplyCase,
