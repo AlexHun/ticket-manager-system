@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
 const SIGN_IN_RATE_LIMITED =
   "Couldn't sign you in — too many attempts. Try again later.";
+export const DEMO_START_FAILED = "Couldn't start a demo session. Try again.";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -92,7 +93,7 @@ export function LoginPage() {
     setServerError(null);
     setStartingDemo(true);
     const failure = await authFailure(() => signIn.anonymous(), {
-      fallback: "Couldn't start a demo session. Try again.",
+      fallback: DEMO_START_FAILED,
       byStatus: { 403: DEMO_MODE_OFF_MESSAGE, 429: DEMO_START_LIMIT_MESSAGE },
     });
 

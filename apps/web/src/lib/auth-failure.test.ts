@@ -66,10 +66,7 @@ describe("authFailure", () => {
     expect(said).toBe(AUTH_UNREACHABLE_MESSAGE);
   });
 
-  // A missing status is absence of evidence, not a transport failure: Better
-  // Auth returns a refused credential with no status in some paths, and
-  // blaming the network for it would send someone off to check a connection
-  // that works. The page's sentence stands, as it did before the wrapper.
+  // Why a missing status is not unreachable is `authFailure`'s doc comment.
   test("answers a missing status with the page's sentence", async () => {
     expect(await authFailure(resolvesWith({}), COPY)).toBe(FALLBACK);
   });

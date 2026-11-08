@@ -63,10 +63,10 @@ export function ResetPasswordPage() {
     setServerError(null);
     if (!token) return;
 
-    // Only a refusal of the token blames the link: an unreachable server or a
-    // rate limit says nothing about it, and an admin cannot help with either
-    // (#537). Better Auth's own `message` ("Invalid token") is never shown
-    // (#502).
+    // An unreachable server or a rate limit says nothing about the link, and
+    // an admin cannot help with either (#537), so each gets its own sentence;
+    // any other refusal falls back to blaming the link. Better Auth's own
+    // `message` ("Invalid token") is never shown (#502).
     const failure = await authFailure(
       () => authClient.resetPassword({ newPassword: values.password, token }),
       { fallback: LINK_REFUSED, byStatus: { 429: RESET_RATE_LIMITED } },

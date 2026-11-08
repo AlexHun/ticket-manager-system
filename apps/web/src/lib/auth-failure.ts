@@ -3,6 +3,9 @@ import { BRAND_NAME } from "@ticket/shared";
 /** What `authFailure` says for a server fault or an unreachable server. */
 export const AUTH_UNREACHABLE_MESSAGE = `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`;
 
+/** The part of a Better Auth `error` the wrapper reads. */
+type AuthError = { status?: number };
+
 /** A page's own sentences for a failed auth call. */
 export interface AuthFailureCopy {
   /** What any refusal the page does not name gets. */
@@ -35,13 +38,13 @@ export interface AuthFailureCopy {
  *
  * Better Auth's own `message` is worded its own way ("Invalid email or
  * password"), not the copy standard's, so it is never shown: every sentence
- * comes from the page's `copy`.
+ * but `AUTH_UNREACHABLE_MESSAGE` comes from the page's `copy`.
  */
 export async function authFailure(
-  call: () => Promise<{ error: { status?: number } | null }>,
+  call: () => Promise<{ error: AuthError | null }>,
   copy: AuthFailureCopy,
 ): Promise<string | null> {
-  let error: { status?: number } | null;
+  let error: AuthError | null;
   try {
     ({ error } = await call());
   } catch {
