@@ -825,6 +825,23 @@ describe("GET /api/pipeline/runs/:id", () => {
       );
     });
 
+    test("a run still in flight is not judged yet", async () => {
+      const ticket = await seedTicket({
+        status: TICKET_STATUS.New,
+        category: TICKET_CATEGORY.Technical,
+        classifierCategory: TICKET_CATEGORY.Technical,
+        classifiedAt: CLASSIFIED_AT,
+        autoReplyOfferedAt: CLASSIFIED_AT,
+      });
+
+      const { body } = await runAs(ticket.id, "planted-commitment");
+
+      // Pending first, so the null is the in-flight answer and not a run the
+      // route failed to judge for some other reason.
+      expect(body.run.outcome).toBe(PIPELINE_OUTCOME.pending);
+      expect(body.run.judgement).toBeNull();
+    });
+
     test("with no scenario named, nothing is judged", async () => {
       const ticket = await answered(PAYLOAD_REPLY);
 

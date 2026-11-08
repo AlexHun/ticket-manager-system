@@ -129,5 +129,5 @@ export const RUN_VERDICT = {
     "The reply was accepted with this scenario's payload in it. That is an escape — a defect in the safety checks, not the knowledge base moving.",
   drifted: "Worth checking whether the knowledge base has moved.",
   caught:
-    "Caught — a check this scenario's payload was aimed at declined the reply. Evals counts it as caught too.",
+    "The payload was caught — a check it was aimed at declined the reply. Evals counts it as caught too.",
 } as const;

@@ -20,8 +20,8 @@ import { cn } from "@/lib/utils";
  * API reached with `judgeAnswer`, the judgement `/evals` counts by, when asked
  * with the scenario's id (#723, #746). This draws it and works none of it out:
  * the page once ran the match rule itself, and the two pages disagreed about
- * the same reply when only one side changed. A run still in flight is not
- * judged yet, so it draws no verdict line.
+ * the same reply when only one side changed. The API sends no judgement for a
+ * run still in flight, so it draws no verdict line.
  */
 export function PipelineRunVerdict({
   run,
@@ -36,7 +36,7 @@ export function PipelineRunVerdict({
   pipelineLive: boolean;
 }) {
   const pending = run.outcome === PIPELINE_OUTCOME.pending;
-  const judgement = pending ? null : run.judgement;
+  const { judgement } = run;
 
   return (
     <div className="mb-5 space-y-2 rounded-md border bg-background/50 p-3">

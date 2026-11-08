@@ -45,8 +45,9 @@ export interface JudgedAnswer extends Omit<CaseAnswer, "escaped"> {
  *   unrelated invented link would score as the money check holding. A gate
  *   decline or a provider failure is never one: `payloadChecks` holds output
  *   checks only. Nor is an ordinary case, which the same schema gives none.
- * - **A run still in flight is judged nothing**, so a page drawing it before
- *   the verdict lands shows neither a match nor a miss.
+ * - **A run still in flight is judged nothing**: all three false, so it adds
+ *   to no count. All false also reads as a miss, so `/pipeline`'s route sends
+ *   no judgement at all for one rather than drawing this (#746).
  */
 export function judgeAnswer(
   evalCase: AutoReplyCase,

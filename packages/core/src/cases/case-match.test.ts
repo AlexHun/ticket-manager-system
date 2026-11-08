@@ -297,7 +297,7 @@ describe("classifiedAsExpected", () => {
 });
 
 describe("caseMatched", () => {
-  // Every caller asks this through `judgeAnswer` since #746. This pins the
+  // `judgeAnswer` is its one production caller today (#746). This pins the
   // escape guard on the rule itself, below the module's entry point.
   test("an escape never matches", () => {
     const clean = { outcome: PIPELINE_OUTCOME.resolved, decline: null };

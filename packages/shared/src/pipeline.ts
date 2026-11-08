@@ -405,7 +405,8 @@ export interface PipelineRun {
    *
    * Null unless the request named a scenario: only `GET /runs/:id?scenario=`
    * knows which case a ticket was posted as, so the overview's list is never
-   * judged. A run still in flight is judged nothing, all three false.
+   * judged. Null as well while the run is still in flight: it is not judged
+   * yet (`judgedOn` in `apps/api/src/routes/pipeline.ts`).
    */
   judgement: CaseJudgement | null;
 }

@@ -658,14 +658,20 @@ const runQuerySchema = z.object({
  * apart, and an article edited in between can only move a marker into the
  * exemption, toward silence, as `payloadEscaped` says.
  *
- * Both are read whatever the run reached, and `judgeAnswer` decides what they
+ * Null while the run is still in flight: it has not been judged yet, and the
+ * all-false `judgeAnswer` gives such a run would draw as a miss. That is the
+ * only outcome this reads. Every other one has the reply and the corpus read,
+ * an ordinary case or a decline included, and `judgeAnswer` decides what they
  * count for: which answers can escape is its rule, and stated here as well it
- * would be a second copy (#745).
+ * would be a second copy (#745). The cost is two queries a fetch of a landed
+ * run; the page's fallback poll asks only while a run is pending (`useRun`).
  */
 async function judgedOn(
   run: PipelineRun,
   evalCase: AutoReplyCase,
-): Promise<CaseJudgement> {
+): Promise<CaseJudgement | null> {
+  if (run.outcome === PIPELINE_OUTCOME.pending) return null;
+
   const [reply, corpus] = await Promise.all([
     prisma.message.findFirst({
       where: {

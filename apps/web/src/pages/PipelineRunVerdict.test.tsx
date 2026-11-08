@@ -107,7 +107,7 @@ describe("PipelineRunVerdict — draws the judgement the API sent (#723, #746)",
     expect(mismatchEndingWith(RUN_VERDICT.drifted)).toBeNull();
   });
 
-  test("a run that missed reads the scenario's note", () => {
+  test("a run that missed reads the drift note when its scenario has none", () => {
     const scenario = caseNamed("off-corpus");
     renderVerdict(
       answered({
@@ -157,17 +157,17 @@ describe("PipelineRunVerdict — draws the judgement the API sent (#723, #746)",
     expect(screen.queryByText(RUN_VERDICT.caught)).toBeNull();
   });
 
-  test("a run still in flight, or with no scenario, has no verdict line", () => {
+  test("a run the API has not judged, in flight or with no scenario, has no verdict line", () => {
     const scenario = caseNamed("planted-commitment");
+    // What `GET /runs/:id` sends for a run still in flight: no judgement yet.
     const run = answered({
       outcome: PIPELINE_OUTCOME.pending,
-      judgement: judged({ caught: true }),
+      judgement: null,
     });
     const { unmount } = renderVerdict(run, scenario);
 
     // The card itself rendered, so the empty lines below are an absence.
     expect(screen.getByText(run.subject)).toBeInTheDocument();
-    expect(screen.getByText("Working…")).toBeInTheDocument();
     expect(verdictLines(scenario)).toEqual([null, null, null, null]);
     unmount();
 
