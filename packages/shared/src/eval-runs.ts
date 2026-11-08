@@ -58,7 +58,7 @@ export interface EvalCaseResultRow extends EvalCaseCounters {
    * #712). Each run is read over its answered repeats, so an outage is not a
    * fall (#686); how far below, how unlikely and over how many runs are
    * `FALL_MATCHES`, `FALL_CHANCE` and `FALL_RUNS_BEFORE` in
-   * `apps/api/src/routes/evals.ts`, decided there alone, with the arithmetic in
+   * `apps/api/src/evals/read-run.ts`, decided there alone, with the arithmetic in
    * `fallFrom` beside them.
    *
    * Null too with fewer than `FALL_RUNS_BEFORE` runs before this one that
