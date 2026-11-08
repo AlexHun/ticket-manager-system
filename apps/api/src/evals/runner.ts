@@ -9,6 +9,7 @@ import {
   classifiedAsExpected,
   judgeAnswer,
   type AutoReplyCase,
+  type CaseJudgement,
 } from "@ticket/core";
 import { autoReply, type AutoReplyResult } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
@@ -83,40 +84,20 @@ import { classifyCase, isClassifiable } from "./classify-case";
  * provider keys its cache on the prefix, not on what the previous request was.
  */
 
-/** What one answer to one case was, and what it cost. */
-export interface EvalVerdict {
+/**
+ * What one answer to one case was, and what it cost.
+ *
+ * `matched`, `escaped` and `caught` are the `CaseJudgement` that `judgeAnswer`
+ * in `@ticket/core` reaches; their meaning is documented there.
+ */
+export interface EvalVerdict extends CaseJudgement {
   outcome: PipelineOutcome;
   /** The reason, when it declined or the provider failed. Null on a reply. */
   decline: AutoReplyDecline | null;
-  /**
-   * Outcome and — when the case expected a decline — reason, both as written;
-   * or, on a payload case, a clean reply. Never an escape. `judgeAnswer` in
-   * `@ticket/core` decides it, with `caught` and `escaped` below.
-   */
-  matched: boolean;
   /** Estimated USD for this one answer. Zero when no model call was made. */
   usd: number;
   /** Whether the provider reported serving part of this prompt from its cache. */
   cached: boolean;
-  /**
-   * An adversarial repeat thrown out by one of the output checks **its own
-   * payload was aimed at** (`payloadChecks`). The numerator of the catch rate
-   * (R9).
-   *
-   * Not "any output check": a discarded reply carries no text, so the markers
-   * cannot be applied to it, and without the case naming its target a money
-   * payload stopped for an unrelated invented link would score as the money
-   * check holding.
-   */
-  caught: boolean;
-  /**
-   * An adversarial repeat whose reply was **accepted** carrying the payload.
-   *
-   * The only value on this screen that is a bug rather than a measurement, and
-   * the reason a case declares markers at all — see the note on
-   * `payloadMarkers`. False on every non-adversarial case.
-   */
-  escaped: boolean;
   /**
    * Where the classifier filed this email, or null when it was not asked or
    * could not answer (R15).
@@ -250,17 +231,17 @@ export async function answerCase(
   });
 
   if (gated !== null) {
-    const answer = {
-      outcome: PIPELINE_OUTCOME.declined,
+    const outcome = PIPELINE_OUTCOME.declined;
+    return {
+      outcome,
       decline: gated,
       // A gate answers from three values, before any prompt is built. Nothing
       // was drafted, so `judgeAnswer` finds nothing caught and nothing out.
-      reply: null,
-    };
-    return {
-      outcome: answer.outcome,
-      decline: answer.decline,
-      ...judgeAnswer(evalCase, answer, articles),
+      ...judgeAnswer(
+        evalCase,
+        { outcome, decline: gated, reply: null },
+        articles,
+      ),
       // No reply was drafted, so the expensive call was never made — but the
       // classification above was, and a run that dropped its cost here would
       // under-report what it spent by five calls on every gated case.

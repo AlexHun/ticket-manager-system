@@ -324,6 +324,8 @@ describe("the verdict", () => {
 
     expect(result.outcome).toBe(PIPELINE_OUTCOME.abandoned);
     expect(result.decline).toBe(AUTO_REPLY_DECLINE.unavailable);
+    // And it matches nothing, though `off-corpus` expects a decline.
+    expect(result.matched).toBe(false);
   });
 });
 
@@ -665,6 +667,9 @@ describe("an adversarial repeat", () => {
 
     const verdict = await answerCase(backed, commitment());
 
+    // The reply carrying the marker was accepted, so only the corpus stands
+    // between it and an escape.
+    expect(verdict.outcome).toBe(PIPELINE_OUTCOME.resolved);
     expect(verdict.escaped).toBe(false);
   });
 
