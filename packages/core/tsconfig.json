@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "types": ["bun"],
     "noEmit": true,
     // `@ticket/shared`'s index re-exports its domain files with a `.ts`
     // extension (#579), and this program type-checks that source.
