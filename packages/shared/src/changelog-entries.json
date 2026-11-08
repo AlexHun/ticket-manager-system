@@ -1323,5 +1323,10 @@
     "version": "0.1.323",
     "date": "2026-11-05",
     "title": "Pagination bar takes two rows on a phone"
+  },
+  {
+    "version": "0.1.325",
+    "date": "2026-11-08",
+    "title": "A simulated run says when its payload was caught (#746)"
   }
 ]
