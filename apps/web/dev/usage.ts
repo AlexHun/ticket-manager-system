@@ -17,7 +17,9 @@
 // scan of its own, so "the page and `bun run tokens` cannot disagree" is a
 // property of one function rather than a promise two of them keep. Since #432
 // the page opens on a second door, `readStoredUsage`: the same tally and join
-// over what the history holds, with no read, no `gh` and no write.
+// over what the history holds, with no read, no `gh` and no write. Since #751
+// both doors build the report through one `assembleReport`, with the warning
+// policy (`reportWarnings`) said once beside it.
 //
 // The terminal used to import nine pieces of this file and do the assembling
 // itself, which is why this module also carried a ten-symbol block re-exporting
@@ -62,7 +64,11 @@ import {
   type IssueMetadata,
 } from "./issues.ts";
 import { tallySpend, type Spend } from "./transcripts.ts";
-import { readTranscripts, type TranscriptRead } from "./transcript-reader.ts";
+import {
+  readTranscripts,
+  type TranscriptRead,
+  type TranscriptResponse,
+} from "./transcript-reader.ts";
 import {
   openUsageStore,
   type StoredListing,
@@ -296,12 +302,15 @@ export async function gatherUsage(
   // then the transcripts on disk alone, read whole: the cursors that would have
   // skipped the bytes already read are in the file that failed. Closed first,
   // so the developer can act on what the warning says.
-  const report = reportFrom(dir, listing, startedAt, null, now, pushedHistory);
-  report.warnings.push({
-    source: USAGE_WARNING_SOURCE.history,
-    message: historyWarning(historyFile, failure),
-  });
-  return report;
+  return reportFrom(
+    dir,
+    listing,
+    startedAt,
+    null,
+    now,
+    pushedHistory,
+    historyWarning(historyFile, failure),
+  );
 }
 
 /** How the server calling `gatherUsage` is set up. */
@@ -352,7 +361,9 @@ const historyWarning = (file: string, err: unknown) =>
   "aside or delete it to start a new history, which the next scan rebuilds " +
   "from the transcripts still on disk.";
 
-/** `gatherUsage` once the listing is in hand and the history, if any, is open. */
+/** `gatherUsage` once the listing is in hand and the history, if any, is open.
+ *  `historyFailed` is the history's warning when it could not be read, and the
+ *  scan then runs with no store. */
 function reportFrom(
   dir: string,
   listing: IssueMetadata,
@@ -360,9 +371,8 @@ function reportFrom(
   store: UsageStore | null,
   now: () => Date,
   pushedHistory: boolean,
+  historyFailed: string | null = null,
 ): UsageReport {
-  const warnings: UsageWarning[] = [];
-
   // Outside the `try` below, which is about the transcripts: a history that
   // fails here is the history's warning, raised by `gatherUsage`. Every store
   // call in this function goes through `fromHistory` for the same reason.
@@ -375,37 +385,26 @@ function reportFrom(
      transcripts of its own, and its figures are the history's. Everywhere else
      it stays, since on a laptop it is the hint that the scan ran from the wrong
      directory. A directory that exists and cannot be read always warns. */
-  let transcriptWarning: UsageWarning | null = null;
+  let transcriptWarning: string | null = null;
   let transcriptsAbsent = false;
   try {
     read = readTranscripts(dir, cursors);
     // Inside the `try`, so "there is nothing in it" is only asked of a directory
-    // that was actually read. It used to be a `warnings.length === 0` guard
-    // below, which said the same thing by counting what this function had pushed
-    // so far — true only while the transcripts were the first source to report,
-    // and quietly wrong the moment a second one went in ahead of them.
+    // that was actually read. It used to be a `warnings.length === 0` guard,
+    // which said the same thing by counting the warnings pushed so far — true
+    // only while the transcripts were the first source to report, and quietly
+    // wrong the moment a second one went in ahead of them.
     if (read.transcripts === 0) {
       transcriptsAbsent = true;
-      transcriptWarning = {
-        source: USAGE_WARNING_SOURCE.transcripts,
-        message: `No .jsonl transcripts in ${dir}.`,
-      };
+      transcriptWarning = `No .jsonl transcripts in ${dir}.`;
     }
   } catch (err) {
     transcriptsAbsent =
       (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
-    transcriptWarning = {
-      source: USAGE_WARNING_SOURCE.transcripts,
-      message: `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    transcriptWarning = `Could not read ${dir}: ${err instanceof Error ? err.message : String(err)}`;
   }
-  // Second, and separately: the transcripts can be perfectly readable while the
-  // issue listing is not. The page shows every warning it is given, so the two
-  // failures stack rather than masking one another — and since #289 they are
-  // told apart by `source` rather than by how each one is worded.
-  warnings.push(...listingWarnings(listing));
 
-  // Stored, then read back whole: the tally below runs over every response the
+  // Stored, then read back whole: the tally runs over every response the
   // history holds, including those whose transcript is gone and those an
   // earlier scan read and this one skipped. A read that failed moves no cursor.
   let responses = read.responses;
@@ -418,55 +417,158 @@ function reportFrom(
     responses = fromHistory(() => store.responses());
     historySince = fromHistory(() => store.since());
   }
-  // First among the warnings, where it has always been.
   const pushedAndHeld =
     pushedHistory &&
     transcriptsAbsent &&
     store !== null &&
     responses.length > 0;
-  if (transcriptWarning && !pushedAndHeld) {
-    warnings.unshift(transcriptWarning);
-  }
-  const { byIssue, unattributed } = tallySpend(responses);
-  const issues = joinIssues(byIssue, listing);
 
-  // Today's trend point, from the very rows the page's panels are drawn from
-  // (#419), so the two cannot disagree. The same instant stamps the reading,
-  // which makes the point's `at` and `gatheredAt` one moment.
+  // The same instant stamps the reading and today's trend point, which makes
+  // the point's `at` and `gatheredAt` one moment.
   const at = now();
-  let trend: TrendPoint[] = [];
-  if (store) {
-    // Computed outside `fromHistory`: a fault in the arithmetic is not the
-    // history's.
-    const point = trendPointFor(issues, at);
-    fromHistory(() => store.recordPoint(point));
-    // The moment the stored reading (#432) will say its figures are from.
-    fromHistory(() => store.recordStamp(at.toISOString()));
-    trend = fromHistory(() => store.trend());
-  }
-
-  return {
-    gatheredAt: at.toISOString(),
-    scanMs: Date.now() - startedAt,
-    transcriptDir: dir,
-    transcripts: read.transcripts,
+  return assembleReport({
+    sources: {
+      kind: READING_KIND.scan,
+      listing,
+      transcripts: read.transcripts,
+      transcriptWarning: pushedAndHeld ? null : transcriptWarning,
+      historyWarning: historyFailed,
+    },
+    dir,
+    responses,
     historySince,
-    trend,
+    gatheredAt: at.toISOString(),
+    startedAt,
+    trendOf: (issues) => {
+      if (!store) return [];
+      // Today's trend point, from the very rows the page's panels are drawn
+      // from (#419), so the two cannot disagree. Computed outside
+      // `fromHistory`: a fault in the arithmetic is not the history's.
+      const point = trendPointFor(issues, at);
+      fromHistory(() => store.recordPoint(point));
+      // The moment the stored reading (#432) will say its figures are from.
+      fromHistory(() => store.recordStamp(at.toISOString()));
+      return fromHistory(() => store.trend());
+    },
+  });
+}
+
+/** The two ways a reading is made: a scan, or the stored reading (#432). */
+export const READING_KIND = { scan: "scan", stored: "stored" } as const;
+
+/**
+ * The sources a reading consulted, and what each had to say (#751).
+ *
+ * Every reading consults a listing. A scan also reads the transcripts and,
+ * when it keeps one, the usage history, and either can fail beside figures. The
+ * stored reading reads no transcript, and a history it cannot read makes it
+ * throw (`readStoredUsage`), so neither is a warning of its. A warning here is
+ * a message, never a `UsageWarning`: which source it is reported under is
+ * `reportWarnings`' to say.
+ */
+export type ReportSources =
+  | { kind: typeof READING_KIND.stored; listing: IssueMetadata }
+  | {
+      kind: typeof READING_KIND.scan;
+      listing: IssueMetadata;
+      /** How many transcripts the scan read. */
+      transcripts: number;
+      /** Why the transcripts gave no figures, if they gave none and that is
+       *  worth saying (see `reportFrom`). */
+      transcriptWarning: string | null;
+      /** Why the history could not be read, if it could not (#420). */
+      historyWarning: string | null;
+    };
+
+/**
+ * The warning policy, stated once (#751): a stored reading reports the
+ * listing's warning only; a scan reports the transcripts', the listing's and
+ * the history's, in that order.
+ *
+ * The sources stack rather than masking one another — a machine with no
+ * transcripts and no `gh` sees both at once (#289) — and each is tagged with
+ * its `source`, which is what a caller branches on instead of the wording.
+ * The transcripts come first, where they have been since #289, and the history
+ * last, where #420 put it.
+ */
+export function reportWarnings(sources: ReportSources): UsageWarning[] {
+  const listing: UsageWarning[] = sources.listing.warning
+    ? [
+        {
+          source: USAGE_WARNING_SOURCE.listing,
+          message: sources.listing.warning,
+        },
+      ]
+    : [];
+  if (sources.kind === READING_KIND.stored) return listing;
+  return [
+    ...(sources.transcriptWarning === null
+      ? []
+      : [
+          {
+            source: USAGE_WARNING_SOURCE.transcripts,
+            message: sources.transcriptWarning,
+          },
+        ]),
+    ...listing,
+    ...(sources.historyWarning === null
+      ? []
+      : [
+          {
+            source: USAGE_WARNING_SOURCE.history,
+            message: sources.historyWarning,
+          },
+        ]),
+  ];
+}
+
+/** What `assembleReport` builds a report from. */
+export interface Reading {
+  sources: ReportSources;
+  /** The transcript directory the reading names, read or not. */
+  dir: string;
+  /** Every response the figures are tallied over. */
+  responses: readonly TranscriptResponse[];
+  historySince: string | null;
+  gatheredAt: string;
+  /** `Date.now()` when the reading began, for `scanMs`. */
+  startedAt: number;
+  /** The trend, given the joined rows: a scan writes today's point from them
+   *  before it reads the trend back, and the stored reading only reads it. */
+  trendOf: (issues: IssueUsage[]) => TrendPoint[];
+}
+
+/**
+ * The Usage report, built in one place for the scan and the stored reading
+ * alike (#751). Since #432 there had been two report literals, and #417, #419
+ * and #642 each had to edit both; a field added here reaches the page's scan,
+ * its opening read and `bun run tokens` at once.
+ *
+ * The tally and the join are `tallySpend` and `joinIssues` for both, so the
+ * stored reading's figures are a scan's minus the read. `transcripts` is the
+ * one field the sources decide outright: a count for a scan, null for the
+ * stored reading, which is how the page words the two apart.
+ */
+export function assembleReport(reading: Reading): UsageReport {
+  const { sources } = reading;
+  const { byIssue, unattributed } = tallySpend(reading.responses);
+  const issues = joinIssues(byIssue, sources.listing);
+  return {
+    gatheredAt: reading.gatheredAt,
+    scanMs: Date.now() - reading.startedAt,
+    transcriptDir: reading.dir,
+    transcripts:
+      sources.kind === READING_KIND.scan ? sources.transcripts : null,
+    historySince: reading.historySince,
+    trend: reading.trendOf(issues),
     issues,
     // Beside the rows, never among them (#253): it has no issue number, nothing
     // forecast it, and there is no band for it to land in — which is also why
     // the page draws it as a total rather than a row.
     unattributed,
-    warnings,
+    warnings: reportWarnings(sources),
   };
 }
-
-/** The listing's warning, if it carries one, as the report's. Shared by the
- *  scan and the stored reading. */
-const listingWarnings = (listing: IssueMetadata): UsageWarning[] =>
-  listing.warning
-    ? [{ source: USAGE_WARNING_SOURCE.listing, message: listing.warning }]
-    : [];
 
 /** A listing as the history keeps it: `gh`'s own shape, or the warning that
  *  said why there was none. */
@@ -540,20 +642,17 @@ export async function readStoredUsage(
     const listing = issuesFile
       ? await fetchIssueMetadata({ [ISSUES_FILE_ENV]: issuesFile }, run)
       : listingFromKept(store.listing());
-    const { byIssue, unattributed } = tallySpend(store.responses());
-    return {
+    return assembleReport({
+      sources: { kind: READING_KIND.stored, listing },
+      dir,
+      responses: store.responses(),
+      historySince: store.since(),
       // When rows last arrived, which is the moment these figures are from;
       // the opening moment only for a history marked before #432 had stamps.
       gatheredAt: store.stamp() ?? now().toISOString(),
-      scanMs: Date.now() - startedAt,
-      transcriptDir: dir,
-      transcripts: null,
-      historySince: store.since(),
-      trend: store.trend(),
-      issues: joinIssues(byIssue, listing),
-      unattributed,
-      warnings: listingWarnings(listing),
-    };
+      startedAt,
+      trendOf: () => store.trend(),
+    });
   } finally {
     store.close();
   }
