@@ -152,7 +152,7 @@ describe("reportWarnings", () => {
     expect(reportWarnings(sources).map((w) => w.source)).toEqual(expected);
   });
 
-  // Moved here from `usage.test.ts` (#289): the messages survive untouched,
+  // A #289 test that #751 moved here from `usage.test.ts`: the messages survive untouched,
   // which is what "the sources stack" means.
   it("carries each source's message as it was handed over", () => {
     expect(
@@ -172,7 +172,9 @@ describe("reportWarnings", () => {
 });
 
 describe("assembleReport", () => {
-  it("builds the same report from the same rows whichever reading it is, but for the transcript count", () => {
+  // `scanMs` is set aside as well as the count: it is a clock reading, and two
+  // assemblies need not take the same number of milliseconds.
+  it("builds the same report from the same rows whichever reading it is, but for the transcript count and the timing", () => {
     const fromScan = assembleReport(reading(scan()));
     const fromStore = assembleReport(reading(stored()));
 
@@ -205,6 +207,24 @@ describe("assembleReport", () => {
       },
       { issue: 300, spend: null, bucket: null, verdict: null },
     ]);
+  });
+
+  // A scan writes today's trend point inside `trendOf`, and "read in N ms" is
+  // how long pressing Scan took, those writes included.
+  it("times the trend's work into scanMs", () => {
+    const report = assembleReport({
+      ...reading(scan()),
+      startedAt: Date.now(),
+      trendOf: () => {
+        const until = Date.now() + 25;
+        while (Date.now() < until) {
+          // Stands in for the history's writes.
+        }
+        return [];
+      },
+    });
+
+    expect(report.scanMs).toBeGreaterThanOrEqual(25);
   });
 
   it("hands the trend the rows it joined", () => {
