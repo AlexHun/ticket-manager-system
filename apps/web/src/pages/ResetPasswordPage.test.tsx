@@ -1,8 +1,8 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { authClient } from "@/lib/auth-client";
-import { AUTH_UNREACHABLE_MESSAGE } from "@/lib/auth-failure";
+import { AUTH_UNREACHABLE_MESSAGE, authFailure } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { renderRoutes } from "@/test/render";
 import {
@@ -14,6 +14,14 @@ import {
 vi.mock("@/lib/auth-client", () => ({
   authClient: { resetPassword: vi.fn() },
 }));
+
+// The real wrapper, watched: which failures read as unreachable is its own
+// test's business (`auth-failure.test.ts`). For those, this file checks only
+// that the call goes through it; the page's own sentences it still checks.
+vi.mock("@/lib/auth-failure", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-failure")>();
+  return { ...actual, authFailure: vi.fn(actual.authFailure) };
+});
 
 function renderAt(search: string) {
   return renderRoutes(
@@ -74,6 +82,10 @@ describe("ResetPasswordPage — wording", () => {
  * sending that person to an admin is for nothing (#537), as `LoginPage` holds.
  */
 describe("ResetPasswordPage — refusals", () => {
+  beforeEach(() => {
+    vi.mocked(authFailure).mockClear();
+  });
+
   async function submitRefusedWith(status: number, message: string) {
     vi.mocked(authClient.resetPassword).mockResolvedValue({
       data: null,
@@ -101,20 +113,10 @@ describe("ResetPasswordPage — refusals", () => {
     expect(alert).not.toHaveTextContent("Invalid token");
   });
 
-  test.each([0, 500, 503])(
-    "says the desk couldn't be reached on status %i, not that the link is invalid",
-    async (status) => {
-      const alert = await submitRefusedWith(status, "Internal Server Error");
-
-      expect(alert).toHaveTextContent(AUTH_UNREACHABLE_MESSAGE);
-      expect(alert).not.toHaveTextContent(LINK_REFUSED);
-    },
-  );
-
-  // A server that cannot be reached at all returns no `error`: Better Auth's
-  // client rejects with fetch's own TypeError, which a built page, its API
-  // blocked, showed as nothing but an unhandled rejection.
-  test("says the desk couldn't be reached when the request itself throws", async () => {
+  // An unreachable desk is the wrapper's to read (#747). The call count is
+  // what shows the call went through it: a page catching the rejection
+  // itself could show the same sentence.
+  test("makes the reset call through the auth failure wrapper", async () => {
     vi.mocked(authClient.resetPassword).mockRejectedValue(
       new TypeError("Failed to fetch"),
     );
@@ -122,7 +124,7 @@ describe("ResetPasswordPage — refusals", () => {
     const alert = await submit();
 
     expect(alert).toHaveTextContent(AUTH_UNREACHABLE_MESSAGE);
-    expect(alert).not.toHaveTextContent("Failed to fetch");
+    expect(authFailure).toHaveBeenCalledTimes(1);
   });
 
   test("says to try again later on a 429, not that the link is invalid", async () => {

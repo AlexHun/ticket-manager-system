@@ -10,7 +10,7 @@ import {
   DEMO_START_LIMIT_MESSAGE,
 } from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
-import { failureMessage, UNREACHABLE_RESULT } from "@/lib/auth-failure";
+import { authFailure } from "@/lib/auth-failure";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
 import { LoginLockup } from "@/components/layout/LoginLockup";
@@ -22,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
 const SIGN_IN_RATE_LIMITED =
   "Couldn't sign you in — too many attempts. Try again later.";
+export const DEMO_START_FAILED = "Couldn't start a demo session. Try again.";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -62,16 +63,13 @@ export function LoginPage() {
 
   const onSubmit = async (values: LoginValues) => {
     setServerError(null);
-    const { error } = await signIn
-      .email(values)
-      .catch(() => UNREACHABLE_RESULT);
+    const failure = await authFailure(() => signIn.email(values), {
+      fallback: SIGN_IN_REFUSED,
+      byStatus: { 429: SIGN_IN_RATE_LIMITED },
+    });
 
-    if (error) {
-      setServerError(
-        error.status === 429
-          ? SIGN_IN_RATE_LIMITED
-          : failureMessage(error, SIGN_IN_REFUSED),
-      );
+    if (failure) {
+      setServerError(failure);
       return;
     }
 
@@ -86,28 +84,22 @@ export function LoginPage() {
    * nothing redirects to it, so a reload never brings a visitor back (R8).
    *
    * A 403 is demo mode switched off between this page loading and the click.
-   * It gets words of its own, because the fallback would describe a form
-   * nobody filled in. A 429 is this address's starts for the hour (#322, R9),
+   * It gets words of its own, because the fallback's "Try again" would not
+   * help. A 429 is this address's starts for the hour (#322, R9),
    * read off the status rather than the body: Better Auth's own limiter
    * answers the same path in production with a 429 worded its own way.
    */
   const startDemo = async () => {
     setServerError(null);
     setStartingDemo(true);
-    const { error } = await signIn.anonymous().catch(() => UNREACHABLE_RESULT);
+    const failure = await authFailure(() => signIn.anonymous(), {
+      fallback: DEMO_START_FAILED,
+      byStatus: { 403: DEMO_MODE_OFF_MESSAGE, 429: DEMO_START_LIMIT_MESSAGE },
+    });
 
-    if (error) {
+    if (failure) {
       setStartingDemo(false);
-      setServerError(
-        error.status === 403
-          ? DEMO_MODE_OFF_MESSAGE
-          : error.status === 429
-            ? DEMO_START_LIMIT_MESSAGE
-            : failureMessage(
-                error,
-                "Couldn't start a demo session. Try again.",
-              ),
-      );
+      setServerError(failure);
       return;
     }
 

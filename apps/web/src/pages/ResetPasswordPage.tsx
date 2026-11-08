@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { resetPasswordSchema, type ResetPasswordValues } from "@ticket/core";
 import { authClient } from "@/lib/auth-client";
-import { failureMessage, UNREACHABLE_RESULT } from "@/lib/auth-failure";
+import { authFailure } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { BrandName, LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
@@ -63,21 +63,17 @@ export function ResetPasswordPage() {
     setServerError(null);
     if (!token) return;
 
-    // A request that never got an answer says nothing about the link either.
-    const { error } = await authClient
-      .resetPassword({ newPassword: values.password, token })
-      .catch(() => UNREACHABLE_RESULT);
+    // An unreachable server or a rate limit says nothing about the link, and
+    // an admin cannot help with either (#537), so each gets its own sentence;
+    // any other refusal falls back to blaming the link. Better Auth's own
+    // `message` ("Invalid token") is never shown (#502).
+    const failure = await authFailure(
+      () => authClient.resetPassword({ newPassword: values.password, token }),
+      { fallback: LINK_REFUSED, byStatus: { 429: RESET_RATE_LIMITED } },
+    );
 
-    // Only a refusal of the token blames the link: an unreachable server or a
-    // rate limit says nothing about it, and an admin cannot help with either
-    // (#537). Better Auth's own `message` ("Invalid token") is never shown
-    // (#502).
-    if (error) {
-      setServerError(
-        error.status === 429
-          ? RESET_RATE_LIMITED
-          : failureMessage(error, LINK_REFUSED),
-      );
+    if (failure) {
+      setServerError(failure);
       return;
     }
 
