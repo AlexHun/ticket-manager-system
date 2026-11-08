@@ -36,6 +36,7 @@ import {
 } from "@ticket/shared";
 import {
   autoReplyCaseById,
+  classifiedAsExpected,
   evalRunsQuerySchema,
   startEvalRunSchema,
 } from "@ticket/core";
@@ -662,7 +663,7 @@ export function filedFrom(
       key: category ?? "",
       row: {
         category,
-        matched: category !== null && category === expected,
+        matched: classifiedAsExpected(category, expected),
       },
     };
   });
