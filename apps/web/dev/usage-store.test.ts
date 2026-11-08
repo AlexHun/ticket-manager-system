@@ -14,11 +14,13 @@ import { partialCheckout } from "@ticket/repo-scan/checkout";
 import {
   issueOfBranch,
   projectSlug,
-  readTranscripts,
   resolveTranscriptDir,
   tallySpend,
-  type TranscriptResponse,
 } from "./transcripts.ts";
+import {
+  readTranscripts,
+  type TranscriptResponse,
+} from "./transcript-reader.ts";
 import {
   HISTORY_FILE_ENV,
   openUsageStore,
@@ -281,7 +283,13 @@ describe("the store", () => {
   it("remembers each transcript's cursor, the latest one winning", () => {
     const store = memoryStore();
     expect(store.cursors().size).toBe(0);
-    const cursor = { offset: 10, size: 12, lines: 1, head: "h1" };
+    const cursor = {
+      offset: 10,
+      size: 12,
+      mtimeMs: 5.5,
+      lines: 1,
+      anchor: "0a",
+    };
 
     store.record([response()], new Map([["/t/a.jsonl", cursor]]));
     store.record(
@@ -290,7 +298,12 @@ describe("the store", () => {
     );
 
     expect(store.cursors()).toEqual(
-      new Map([["/t/a.jsonl", { offset: 40, size: 40, lines: 3, head: "h1" }]]),
+      new Map([
+        [
+          "/t/a.jsonl",
+          { offset: 40, size: 40, mtimeMs: 5.5, lines: 3, anchor: "0a" },
+        ],
+      ]),
     );
     expect(store.responses()).toHaveLength(1);
   });
@@ -390,7 +403,12 @@ describe("a history from before context and window", () => {
     expect(first.cursors().size).toBe(0);
     first.record(
       [],
-      new Map([["/t/b.jsonl", { offset: 1, size: 1, lines: 1, head: "h" }]]),
+      new Map([
+        [
+          "/t/b.jsonl",
+          { offset: 1, size: 1, mtimeMs: 1, lines: 1, anchor: "0a" },
+        ],
+      ]),
     );
     first.close();
 
@@ -410,7 +428,39 @@ describe("a history from before context and window", () => {
       expect(store.responses()).toEqual([
         response({ at: null, context: null, window: null }),
       ]);
-      expect(store.cursors().size).toBe(1);
+      // Its cursor is in the shape from before #748, which reads as none.
+      expect(store.cursors().size).toBe(0);
+    } finally {
+      store.close();
+    }
+  });
+});
+
+// #748: a cursor from before the transcript reader hashed the file's first
+// bytes; it now keeps the bytes before its offset and the modification time.
+describe("a history whose cursors hash the file's first bytes", () => {
+  it("drops them, so the next scan reads every transcript once more", async () => {
+    const file = join(dir, "old-cursors.sqlite");
+    const seed = await openUsageStore(file);
+    seed.close();
+    const db = new DatabaseSync(file);
+    db.exec("DROP TABLE transcript");
+    db.exec(`CREATE TABLE transcript (
+      path TEXT PRIMARY KEY,
+      read_to INTEGER NOT NULL,
+      size INTEGER NOT NULL,
+      lines INTEGER NOT NULL,
+      head TEXT NOT NULL
+    )`);
+    db.exec(`INSERT INTO transcript VALUES ('/t/a.jsonl', 10, 10, 1, 'h')`);
+    db.close();
+
+    const store = await openUsageStore(file);
+    try {
+      expect(store.cursors().size).toBe(0);
+      const cursor = { offset: 3, size: 3, mtimeMs: 2, lines: 1, anchor: "0a" };
+      store.record([], new Map([["/t/a.jsonl", cursor]]));
+      expect(store.cursors()).toEqual(new Map([["/t/a.jsonl", cursor]]));
     } finally {
       store.close();
     }

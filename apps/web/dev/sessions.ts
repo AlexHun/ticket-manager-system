@@ -17,7 +17,7 @@
 // one naming a call no transcript in the session made is drawn under its
 // session instead.
 //
-// Its own reader rather than `./transcripts.ts`'s `readTranscripts`, which
+// Its own reader rather than `./transcript-reader.ts`'s `readTranscripts`, which
 // answers per response and keeps nothing of the calls a card made — and whose
 // fields are the usage history's stored row and the push's wire (ADR-0023),
 // so they are not widened for this page. Instead each card keeps the responses
@@ -64,7 +64,7 @@ import {
   raisesCounts,
   type TranscriptResponse,
   type TranscriptUsage,
-} from "./transcripts.ts";
+} from "./transcript-reader.ts";
 import { readWaiting, type WaitingRecord } from "./waiting.ts";
 
 /** Where Claude Code puts a session's subagents, under the session's own
@@ -422,9 +422,11 @@ function factsOf(f: FactsSoFar, trailing: string): TranscriptFacts {
 /**
  * Bytes before a cursor that a resumed reading checks are still there: a file
  * that no longer holds them at that offset was replaced rather than grown,
- * and is read from the top. #418's cursors check the file's first bytes; a
- * transcript's first records are much alike from one session to the next, so
- * the bytes the cursor sits behind tell two files apart sooner.
+ * and is read from the top. A transcript's first records are much alike from
+ * one session to the next, so the bytes the cursor sits behind tell two files
+ * apart sooner than the first bytes do. `./transcript-reader.ts` keeps the
+ * same rule for the Usage scan (#748); this copy goes when this reader moves
+ * onto it.
  */
 const ANCHOR_BYTES = 64;
 

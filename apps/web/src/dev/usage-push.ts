@@ -50,11 +50,11 @@ export const PUSHED_RESPONSE_FIELDS = [
 ] as const;
 
 /** The two identity namespaces a response id is in, plus the line fallback —
- *  `identityOf` in `dev/transcripts.ts`. Its file is named below the
+ *  `identityOf` in `dev/transcript-reader.ts`. Its file is named below the
  *  transcript directory, never by a full path. */
 const RESPONSE_ID = /^(message|uuid|line):/;
 
-/** A window as `listTranscripts` in `dev/transcripts.ts` names it: a session's
+/** A window as `listTranscripts` in `dev/transcript-reader.ts` names it: a session's
  *  transcript, or one of its subagents'. Never a full path, so no home
  *  directory or username crosses the wire. */
 const WINDOW = /^[\w.-]+(\/subagents\/[\w.-]+)?\.jsonl$/;

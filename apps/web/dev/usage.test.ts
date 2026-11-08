@@ -11,11 +11,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   TRANSCRIPT_DIR_ENV,
-  readTranscripts,
   resolveTranscriptDir,
   scanSpend,
   tallySpend,
 } from "./transcripts.ts";
+import { readTranscripts } from "./transcript-reader.ts";
 import { gatherUsage, verdictFor } from "./usage.ts";
 import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
 // The bands, the quartiles and the band arithmetic come from the contract

@@ -26,8 +26,9 @@ import { USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
 
 const { gate } = vi.hoisted(() => ({ gate: { scanning: false } }));
 
-vi.mock("./transcripts.ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./transcripts.ts")>();
+vi.mock("./transcript-reader.ts", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./transcript-reader.ts")>();
   return {
     ...actual,
     readTranscripts: (...args: Parameters<typeof actual.readTranscripts>) => {
