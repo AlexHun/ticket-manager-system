@@ -552,8 +552,8 @@ describe("runCase", () => {
     // one number in this codebase that makes a stopped prompt cache visible.
     // `runCase` now emits both halves off one slice, `routes/evals.ts` reads
     // the column, and this test is what fails if the rule is edited anywhere
-    // else. The rest of the route's arithmetic is asserted where it lives, in
-    // `routes/evals.test.ts`.
+    // else. The rest of a run's arithmetic is asserted where it lives, in
+    // `read-run.test.ts`.
     scriptModel(
       "auto-reply",
       costing(DECLINED, usage({ inputTokens: 1_000, cachedInputTokens: 0 })),

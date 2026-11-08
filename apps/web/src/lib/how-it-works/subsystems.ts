@@ -224,6 +224,7 @@ export const SUBSYSTEMS: readonly Subsystem[] = [
       "Measures the classifier and the auto-reply against a fixed corpus of cases, each run scored against its threshold. Runs start by hand, on a planned run or on the nightly schedule.",
     code: [
       "apps/api/src/routes/evals.ts",
+      "apps/api/src/evals/read-run.ts",
       "apps/api/src/routes/eval-schedule.ts",
       "apps/api/src/evals/runner.ts",
     ],

@@ -9,6 +9,11 @@
  * recorded and enqueued — because the two must never disagree about which
  * series a run belongs to.
  *
+ * The reads are held to status codes, the guards and the shape of their
+ * queries: which runs reach a card, the series it is read against and the
+ * sidebar's verdict. What a run's numbers mean is `../evals/read-run.ts`'s,
+ * asserted as values in `../evals/read-run.test.ts` (#750).
+ *
  * **One seam now, not two — this file is spike #209's converted call site.**
  * The configuration answer is no longer read off a module at all: the router is
  * a factory, it is handed a `{ evalConfigured }` object, and this file sets a
@@ -31,14 +36,11 @@ import {
   ADMIN_SCREEN,
   EVAL_CORPUS,
   EVAL_HEALTH,
-  EVAL_HISTORY_RUNS,
   EVAL_RUN_LIMIT,
   EVAL_RUN_STATUS,
   EVAL_METRIC,
   EVAL_THRESHOLD,
-  AUTO_REPLY_DECLINE,
   PIPELINE_OUTCOME,
-  TICKET_CATEGORY,
   type EvalCorpus,
   type EvalMetric,
   type EvalMetricRow,
@@ -46,7 +48,6 @@ import {
   type EvalRunsResponse,
   type EvalRunStartedResponse,
   type EvalStatusResponse,
-  type TicketCategory,
 } from "@ticket/shared";
 import { AUTO_REPLY_CASES } from "@ticket/core";
 import { refusesAgentAndDemo, screenReads } from "../test/boundary";
@@ -54,9 +55,6 @@ import { asCaller } from "../test/caller";
 import { seedColleagues } from "../test/fixtures";
 import { prisma, resetDb } from "../test/pg";
 import { serveRouter } from "../test/route-app";
-import type { StoredVerdict } from "../evals/stored-verdict";
-// Type-only, so it is erased and does not load the router ahead of the mock.
-import type { SeriesRun } from "./evals";
 
 /* ── The world behind the router ─────────────────────────────────────────── */
 
@@ -103,16 +101,7 @@ await mock.module("../jobs/eval-run", () => ({
   },
 }));
 
-const {
-  categoriesFrom,
-  checksFrom,
-  createEvalsRouter,
-  fallFrom,
-  filedFrom,
-  historyFrom,
-  reachedFrom,
-  trailingFrom,
-} = await import("./evals");
+const { createEvalsRouter } = await import("./evals");
 
 const evalsRouter = createEvalsRouter(config);
 const url = serveRouter("/api/evals", evalsRouter);
@@ -279,52 +268,6 @@ function caseResult(overrides: Record<string, unknown> = {}) {
 }
 
 /**
- * A finished run whose classifier filed things where this test says.
- *
- * One case, one expectation, and a list of what the repeats were actually filed
- * as — `null` standing for a repeat the classifier could not answer. The run's
- * two totals are derived from that list rather than stated beside it, because a
- * row whose totals disagreed with its own verdicts is a state the worker cannot
- * produce and a test asserting against one would be asserting about nothing.
- */
-async function classifiedRun(
-  expectedCategory: TicketCategory | null,
-  filed: (TicketCategory | null)[],
-) {
-  const classifiedRepeats = filed.filter((c) => c !== null).length;
-  const classifyMatches = filed.filter((c) => c === expectedCategory).length;
-
-  return prisma.evalRun.create({
-    data: {
-      corpus: EVAL_CORPUS.frozen,
-      status: EVAL_RUN_STATUS.completed,
-      finishedAt: new Date(),
-      repeats: filed.length,
-      attempts: filed.length,
-      matches: filed.length,
-      thresholds: EVAL_THRESHOLD,
-      classifiedRepeats,
-      classifyMatches,
-      results: {
-        create: caseResult({
-          repeats: filed.length,
-          matches: filed.length,
-          expectedCategory,
-          classifiedRepeats,
-          classifyMatches,
-          verdicts: filed.map((category) => ({
-            outcome: PIPELINE_OUTCOME.declined,
-            decline: "notCovered",
-            matched: true,
-            category,
-          })),
-        }),
-      },
-    },
-  });
-}
-
-/**
  * A finished run of one adversarial case, with the catch counts a test wants.
  *
  * The run's totals are what the metrics are taken off, and they are set to the
@@ -465,255 +408,24 @@ describe("GET /runs", () => {
     });
   });
 
-  test("reports the catch rate over payloads attempted, not over repeats", async () => {
-    // R9, and the denominator is the whole argument. A repeat where the model
-    // ignored the payload is on neither side of this — there was nothing to
-    // catch — so a run where it happened to behave must not read as a run where
-    // the checks held. Same arithmetic as the hand-measured 7-of-9.
-    await finishedRun({ caught: 3, escaped: 1 });
-
-    const body = await runs();
-    const metric = metricOf(body, EVAL_METRIC.catchRate);
-
-    expect(metric.numerator).toBe(3);
-    expect(metric.denominator).toBe(4);
-    expect(metric.value).toBeCloseTo(0.75, 6);
-  });
-
-  test("reports no catch rate at all when no payload was attempted", async () => {
-    // Null, and not 100%. "The model planted nothing this run" is not evidence
-    // that the checks work, and a screen that drew it as a perfect score would
-    // be the most misleading thing on the page.
-    await finishedRun({ caught: 0, escaped: 0 });
-
-    const metric = metricOf(await runs(), EVAL_METRIC.catchRate);
-
-    expect(metric.value).toBeNull();
-    // A metric with no measurement cannot fall below a threshold.
-    expect(metric.meets).toBe(true);
-  });
-
-  test("marks a run failing when a measured metric is below its threshold", async () => {
-    // R8: marked failing, shown failing, and nothing else — no issue, no
-    // notification, no red pull request.
-    await finishedRun({ caught: 3, escaped: 1 });
+  test("marks a run failing exactly when the sidebar does", async () => {
+    // R8 and #608: one verdict, the card's badge and the sidebar's mark. A
+    // decline-accuracy miss with nothing escaped, so the mark says failing
+    // rather than the louder escaped; then a run that passes clears both.
+    await finishedRun({ caught: 4, matches: 2, startedAt: sept(1) });
 
     const body = await runs();
 
     expect(body.runs[0]?.failing).toBe(true);
+    expect((await status()).health).toBe(EVAL_HEALTH.failing);
     // And the run itself did not fail. A failed run fell over and has no
     // numbers; this one finished and its numbers are the answer.
     expect(body.runs[0]?.status).toBe(EVAL_RUN_STATUS.completed);
-  });
 
-  test("judges a run against the thresholds it recorded, not today's", async () => {
-    // The reason the column exists. A run kept for months has to keep saying
-    // what it was judged against, or editing `EVAL_THRESHOLD` silently
-    // re-colours every result somebody has already taken a decision off.
-    await finishedRun({
-      caught: 3,
-      escaped: 1,
-      thresholds: { [EVAL_METRIC.catchRate]: 0.5 },
-    });
+    await finishedRun({ caught: 4, startedAt: sept(2) });
 
-    const body = await runs();
-
-    expect(metricOf(body, EVAL_METRIC.catchRate).threshold).toBe(0.5);
-    expect(body.runs[0]?.failing).toBe(false);
-  });
-
-  test("falls back to this build's threshold for a run that recorded none", async () => {
-    // Every row written before the column existed. Judging it by today's
-    // numbers is the only thing available and the only honest reading of an
-    // absent key — the alternative is a zero that reads as a threshold nothing
-    // could fail.
-    await finishedRun({ caught: 3, escaped: 1, thresholds: {} });
-
-    expect(metricOf(await runs(), EVAL_METRIC.catchRate).threshold).toBe(
-      EVAL_THRESHOLD[EVAL_METRIC.catchRate],
-    );
-  });
-
-  test("reports classifier accuracy over the repeats it answered", async () => {
-    // R15. Four of five filed as expected, and the denominator is the repeats
-    // the classifier answered rather than the repeats the run made.
-    await classifiedRun(TICKET_CATEGORY.General, [
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.Other,
-    ]);
-
-    const metric = metricOf(await runs(), EVAL_METRIC.classifierAccuracy);
-
-    expect(metric.numerator).toBe(4);
-    expect(metric.denominator).toBe(5);
-    expect(metric.value).toBeCloseTo(0.8, 6);
-  });
-
-  test("leaves a repeat the classifier could not answer out of the rate entirely", async () => {
-    // An outage is not the model getting things wrong. Two of two, not two of
-    // three — the same split `abandoned` draws on the other metric.
-    await classifiedRun(TICKET_CATEGORY.General, [
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      null,
-    ]);
-
-    const metric = metricOf(await runs(), EVAL_METRIC.classifierAccuracy);
-
-    expect(metric.numerator).toBe(2);
-    expect(metric.denominator).toBe(2);
-  });
-
-  test("reports no classifier accuracy at all on a run that predates it", async () => {
-    // Every row written before this slice: both halves zero. Null rather than a
-    // zero, which would draw a catastrophe on a run that never asked.
-    await finishedRun({ caught: 0, escaped: 0 });
-
-    const metric = metricOf(await runs(), EVAL_METRIC.classifierAccuracy);
-
-    expect(metric.value).toBeNull();
-    expect(metric.meets).toBe(true);
-  });
-
-  test("says what was filed where, expected category and all", async () => {
-    // The pair, not a tally of categories. "Refund → General" is the line worth
-    // drawing on this desk, because the category gate is the only control
-    // between a refund request and an unattended reply — and a per-category
-    // count could not draw it.
-    await classifiedRun(TICKET_CATEGORY.Refund, [
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.General,
-      TICKET_CATEGORY.Refund,
-    ]);
-
-    const body = await runs();
-
-    expect(body.runs[0]?.categories).toEqual([
-      {
-        expected: TICKET_CATEGORY.Refund,
-        actual: TICKET_CATEGORY.General,
-        count: 2,
-        matched: false,
-      },
-      {
-        expected: TICKET_CATEGORY.Refund,
-        actual: TICKET_CATEGORY.Refund,
-        count: 1,
-        matched: true,
-      },
-    ]);
-  });
-
-  test("leaves a case the classifier is not scored on out of the breakdown", async () => {
-    // `expectedCategory` is null on the two cases that cannot be scored, and on
-    // every row written before the column existed. Neither has a filing to
-    // report, and inventing one would claim a measurement nobody made.
-    await classifiedRun(null, [null, null]);
-
-    const body = await runs();
-
-    expect(body.runs[0]?.categories).toEqual([]);
-    expect(body.runs[0]?.results[0]?.filed).toEqual([]);
-    expect(body.runs[0]?.results[0]?.expectedCategory).toBeNull();
-  });
-
-  test("a run recorded before the classifier metric still reads the same", async () => {
-    // The literal shape every repeat written before slice 4 is in: three keys,
-    // no `category` at all — not a null one. It has to reach the screen as a
-    // filing nobody measured, which is a row whose category is null and whose
-    // `matched` is false, and never as a zero on a rate or a case that went
-    // wrong. Asserted through the route rather than only against the parse
-    // because this is the criterion the change was allowed to be judged on: an
-    // old run draws what it drew before.
-    await prisma.evalRun.create({
-      data: {
-        corpus: EVAL_CORPUS.frozen,
-        status: EVAL_RUN_STATUS.completed,
-        finishedAt: new Date(),
-        repeats: 5,
-        attempts: 5,
-        matches: 5,
-        thresholds: EVAL_THRESHOLD,
-        results: {
-          create: caseResult({
-            expectedCategory: TICKET_CATEGORY.General,
-            verdicts: Array.from({ length: 5 }, () => ({
-              outcome: PIPELINE_OUTCOME.declined,
-              decline: "notCovered",
-              matched: true,
-            })),
-          }),
-        },
-      },
-    });
-
-    const body = await runs();
-
-    expect(body.runs[0]?.results[0]?.filed).toEqual([
-      { category: null, count: 5, matched: false },
-    ]);
-    expect(body.runs[0]?.categories).toEqual([
-      {
-        expected: TICKET_CATEGORY.General,
-        actual: null,
-        count: 5,
-        matched: false,
-      },
-    ]);
-    // The repeats still land where they always did, and the case is still
-    // outside the classifier rate rather than at the bottom of it.
-    expect(body.runs[0]?.results[0]?.reached).toEqual([
-      {
-        outcome: PIPELINE_OUTCOME.declined,
-        decline: "notCovered",
-        matched: true,
-        count: 5,
-      },
-    ]);
-    expect(metricOf(body, EVAL_METRIC.classifierAccuracy)).toMatchObject({
-      value: null,
-      denominator: 0,
-    });
-  });
-
-  test("draws no metrics on a run that has not finished", async () => {
-    // A rate over the third of the set that has finished is not a smaller
-    // version of the answer, it is a different number — and a threshold applied
-    // to one would go red on a run that is merely young.
-    await prisma.evalRun.create({
-      data: { corpus: EVAL_CORPUS.frozen, repeats: 5 },
-    });
-
-    const body = await runs();
-
-    expect(body.runs[0]?.metrics).toEqual([]);
-    expect(body.runs[0]?.failing).toBe(false);
-  });
-
-  test("draws no metrics on a run that fell over either", async () => {
-    // The same argument as the test above, and the one the first version of
-    // this route missed by gating on "not running" instead of "completed": a
-    // run whose queue gave up part way through has answered some fraction of
-    // the set, and a rate over that fraction is not a smaller version of the
-    // answer. Drawn, it would put a red "Failing" badge on a card whose real
-    // news is that the provider was unreachable — which is the one confusion
-    // the two words exist to prevent.
-    await finishedRun({
-      caught: 3,
-      escaped: 1,
-      status: EVAL_RUN_STATUS.failed,
-      error: "The run exhausted its retries.",
-    });
-
-    const body = await runs();
-
-    expect(body.runs[0]?.metrics).toEqual([]);
-    expect(body.runs[0]?.failing).toBe(false);
-    // The reason it stopped is still on the row; that is what this card says.
-    expect(body.runs[0]?.status).toBe(EVAL_RUN_STATUS.failed);
+    expect((await runs()).runs[0]?.failing).toBe(false);
+    expect((await status()).health).toBe(EVAL_HEALTH.passing);
   });
 
   test("reports the cache denominator the run recorded, deriving nothing", async () => {
@@ -754,44 +466,6 @@ describe("GET /runs", () => {
     // And the case's own pair travels with it, so a reader can see which case
     // stopped hitting the cache rather than only that the run did.
     expect(body.runs[0]?.results[0]?.cacheable).toBe(4);
-  });
-
-  test("a stored reason this build has no wording for reads as null", async () => {
-    // The columns are plain text, the same arrangement `Ticket.autoReplyDecline`
-    // keeps, so the type on the wire is a promise this route makes rather than
-    // one Postgres keeps for it. Rendering a raw column at an admin is worse
-    // than saying nothing.
-    // At the route seam deliberately: `expectedDecline` is a text column the
-    // parse never sees, and what an unreadable verdict parses to is asserted
-    // against values in `evals/stored-verdict.test.ts`. This is the wire
-    // contract over both.
-    await prisma.evalRun.create({
-      data: {
-        corpus: EVAL_CORPUS.frozen,
-        status: EVAL_RUN_STATUS.completed,
-        finishedAt: new Date(),
-        results: {
-          create: caseResult({
-            caseId: "x",
-            caseName: "x",
-            expectedDecline: "somethingFromTheFuture",
-            verdicts: [
-              { outcome: "alsoFromTheFuture", decline: null, matched: false },
-            ],
-          }),
-        },
-      },
-    });
-
-    const res = await fetch(url("/runs"), { headers: ADMIN });
-    const body = (await res.json()) as EvalRunsResponse;
-
-    expect(body.runs[0]?.results[0]?.expectedDecline).toBeNull();
-    // An outcome is not nullable on the wire, so an unrecognised one falls back
-    // to the honest "nothing is scheduled and nothing happened".
-    expect(body.runs[0]?.results[0]?.reached[0]?.outcome).toBe(
-      PIPELINE_OUTCOME.notOffered,
-    );
   });
 
   test("a verdicts column that is not the shape this build writes does not throw", async () => {
@@ -860,17 +534,6 @@ describe("GET /status", () => {
     await finishedRun({ caught: 3, escaped: 1 });
 
     expect((await status()).health).toBe(EVAL_HEALTH.escaped);
-  });
-
-  test("judges the run against the thresholds it recorded", async () => {
-    // The same rule the page keeps, or the mark and the card would disagree.
-    await finishedRun({
-      caught: 4,
-      matches: 2,
-      thresholds: { [EVAL_METRIC.declineAccuracy]: 0.4 },
-    });
-
-    expect((await status()).health).toBe(EVAL_HEALTH.passing);
   });
 
   test("clears when a later frozen run passes", async () => {
@@ -973,15 +636,6 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
     expect(body.runs[0]?.previous).toBeNull();
   });
 
-  test("the first run on a corpus is compared against nothing", async () => {
-    await finishedRun({ startedAt: sept(1) });
-
-    const body = await runs();
-
-    expect(body.runs[0]?.previous).toBeNull();
-    expect(previousOf(body, EVAL_METRIC.declineAccuracy)).toBeNull();
-  });
-
   test("looks past a run that fell over rather than comparing against it", async () => {
     // A failed run holds whatever fraction of the set its queue got through
     // before giving up, so a rate over it is not a smaller version of the
@@ -1021,20 +675,6 @@ describe("GET /runs — comparison against the previous run (R14)", () => {
       1,
       6,
     );
-  });
-
-  test("reports the run it compared against even when neither run measured the metric", async () => {
-    // The catch rate on two quiet nights: null on both sides, so there is no
-    // delta to state — and stating a zero would say the two runs agreed about
-    // something neither of them measured. The comparison still names the run,
-    // which is what lets the page say what it is reading against.
-    await finishedRun({ startedAt: sept(1), caught: 0, escaped: 0 });
-    await finishedRun({ startedAt: sept(2), caught: 0, escaped: 0 });
-
-    const body = await runs();
-
-    expect(body.runs[0]?.previous).not.toBeNull();
-    expect(previousOf(body, EVAL_METRIC.catchRate)).toEqual({ value: null });
   });
 
   test("finds the previous run even when it has fallen off the end of the page", async () => {
@@ -1126,38 +766,6 @@ function matchesOf(body: EvalRunsResponse, caseId: string, at = 0) {
 }
 
 describe("GET /runs — a case's recent history (#607)", () => {
-  test("draws a case's splits over the last runs, oldest first, ending with this one", async () => {
-    // Eight runs, so the window has something to leave out: the first one.
-    const splits = [1, 5, 5, 4, 3, 5, 2, 0];
-    for (const [i, matches] of splits.entries()) {
-      await seriesRun(sept(i + 1), { "off-corpus": matches });
-    }
-
-    const body = await runs();
-
-    expect(matchesOf(body, "off-corpus")).toEqual(
-      splits.slice(-EVAL_HISTORY_RUNS),
-    );
-    expect(caseOf(body, "off-corpus").history.at(-1)).toEqual({
-      runId: body.runs[0]!.id,
-      matches: 0,
-      repeats: 5,
-    });
-    // An older card's history ends with that card, not with the newest run.
-    expect(matchesOf(body, "off-corpus", 1)).toEqual(
-      splits.slice(-EVAL_HISTORY_RUNS - 1, -1),
-    );
-  });
-
-  test("a case added since an older run is a gap there, not a zero", async () => {
-    await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(2), { "off-corpus": 5, "planted-link": 4 });
-
-    const body = await runs();
-
-    expect(matchesOf(body, "planted-link")).toEqual([null, 4]);
-  });
-
   test("leaves a run in flight or one that fell over out of every history", async () => {
     await seriesRun(sept(1), { "off-corpus": 5 });
     await seriesRun(
@@ -1206,26 +814,6 @@ describe("GET /runs — the trailing average (#607)", () => {
     return metricOf(body, EVAL_METRIC.declineAccuracy, at).trailing;
   }
 
-  test("pools each metric over the window, this run included", async () => {
-    // 5, 4 and 3 of 5: 12 of 15. Equal denominators, so pooled and a mean of
-    // rates agree here; `trailingFrom`'s own tests are where they part.
-    await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(2), { "off-corpus": 4 });
-    await seriesRun(sept(3), { "off-corpus": 3 });
-
-    const trailing = trailingOf(await runs());
-
-    expect(trailing?.runs).toBe(3);
-    expect(trailing?.value).toBeCloseTo(0.8, 6);
-  });
-
-  test("shows none with fewer than two runs before this one", async () => {
-    await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(2), { "off-corpus": 4 });
-
-    expect(trailingOf(await runs())).toBeNull();
-  });
-
   test("leaves a run in flight, one that fell over and a live run out of it", async () => {
     await seriesRun(sept(1), { "off-corpus": 5 });
     await seriesRun(
@@ -1249,41 +837,6 @@ describe("GET /runs — the trailing average (#607)", () => {
 });
 
 describe("GET /runs — a case that fell below its own history (#607, #712)", () => {
-  test("flags a case its rate over the runs before makes unlikely", async () => {
-    await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(2), { "off-corpus": 5 });
-    await seriesRun(sept(3), { "off-corpus": 0 });
-
-    expect(caseOf(await runs(), "off-corpus").fell).toEqual({
-      matches: 10,
-      answered: 10,
-      runs: 2,
-    });
-  });
-
-  test("does not flag a fall chance explains at the case's own rate", async () => {
-    // 11 of 15 before; 1/5 tonight is 2% likely at that rate.
-    await seriesRun(sept(1), { "off-corpus": 4 });
-    await seriesRun(sept(2), { "off-corpus": 3 });
-    await seriesRun(sept(3), { "off-corpus": 4 });
-    await seriesRun(sept(4), { "off-corpus": 1 });
-
-    expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
-  });
-
-  test("reads each run over its answered repeats, so an outage is no fall (#686)", async () => {
-    // Two runs at 5/5, then three of five answered and all three matched.
-    await seriesRun(sept(1), { "off-corpus": 5 });
-    await seriesRun(sept(2), { "off-corpus": 5 });
-    await seriesRun(
-      sept(3),
-      { "off-corpus": 3 },
-      { abandoned: { "off-corpus": 2 } },
-    );
-
-    expect(caseOf(await runs(), "off-corpus").fell).toBeNull();
-  });
-
   test("leaves a run that fell over and a live run out of the runs before", async () => {
     // Read with them, the 0/5s would put the rate at 10 of 20 and 0/5
     // tonight at 3% likely; without them it is 10 of 10.
@@ -1393,516 +946,5 @@ describe("GET /runs — the corpus filter", () => {
 
     expect(body.runs).toEqual([]);
     expect(body.anyRuns).toBe(false);
-  });
-});
-
-/* ── The breakdowns, as values ───────────────────────────────────────────── */
-
-/**
- * The rules the evals page is made of, asked directly (#212).
- *
- * These four used to be private, so the only way to state a rule about an
- * array — which repeats collapse together, which way a tie sorts, which pairs a
- * category matrix draws — was to write a run into Postgres and read it back
- * through the router. That is slow, and it is misleading: a failure could be
- * the router's, the aggregate's or the rule's, and nothing in the test said
- * which. They take parsed repeats now, so the input is a value.
- *
- * The route tests above keep what genuinely needs the seam: the status code,
- * the wire shape, and that a run recorded before the classifier metric still
- * draws what it drew.
- */
-
-/** One parsed repeat, with whatever this test wants to say about it. */
-function repeat(overrides: Partial<StoredVerdict> = {}): StoredVerdict {
-  return {
-    outcome: PIPELINE_OUTCOME.declined,
-    decline: AUTO_REPLY_DECLINE.notCovered,
-    matched: true,
-    caught: false,
-    escaped: false,
-    category: null,
-    ...overrides,
-  };
-}
-
-describe("reachedFrom", () => {
-  test("collapses the repeats into the distinct places the case landed", () => {
-    // Five identical rows say one thing five times; a case that split 3/2 is
-    // the interesting one, and what a reader needs is which way and how often.
-    const reached = reachedFrom([
-      ...Array.from({ length: 3 }, () => repeat()),
-      ...Array.from({ length: 2 }, () =>
-        repeat({
-          outcome: PIPELINE_OUTCOME.resolved,
-          decline: null,
-          matched: false,
-        }),
-      ),
-    ]);
-
-    // Most frequent first, so the head of the list is what the case usually does.
-    expect(reached).toEqual([
-      {
-        outcome: PIPELINE_OUTCOME.declined,
-        decline: AUTO_REPLY_DECLINE.notCovered,
-        matched: true,
-        count: 3,
-      },
-      {
-        outcome: PIPELINE_OUTCOME.resolved,
-        decline: null,
-        matched: false,
-        count: 2,
-      },
-    ]);
-  });
-
-  test("two declines for different reasons are two rows", () => {
-    // The distinction the whole breakdown exists for: "expected declined, got
-    // declined for a completely different reason" is the finding, and a tally
-    // keyed on the outcome alone could not draw it.
-    expect(
-      reachedFrom([
-        repeat({ decline: AUTO_REPLY_DECLINE.notCovered }),
-        repeat({ decline: AUTO_REPLY_DECLINE.unbackedCommitment }),
-      ]).map((row) => row.decline),
-    ).toEqual([
-      AUTO_REPLY_DECLINE.notCovered,
-      AUTO_REPLY_DECLINE.unbackedCommitment,
-    ]);
-  });
-
-  test("a clean answer and an escape on one payload case are two rows", () => {
-    // Both are `resolved` with no reason, and only the clean one matches
-    // (#714), so a row keyed on where they landed alone would draw the escape
-    // as whichever came first.
-    const answered = { outcome: PIPELINE_OUTCOME.resolved, decline: null };
-
-    expect(
-      reachedFrom([
-        repeat({ ...answered, matched: false, escaped: true }),
-        repeat({ ...answered, matched: true }),
-        repeat({ ...answered, matched: true }),
-      ]).map((row) => [row.matched, row.count]),
-    ).toEqual([
-      [true, 2],
-      [false, 1],
-    ]);
-  });
-
-  test("no repeats is no rows, not a row of nothing", () => {
-    expect(reachedFrom([])).toEqual([]);
-  });
-});
-
-describe("filedFrom", () => {
-  test("counts where the repeats actually went, most frequent first", () => {
-    // R15. "4 of 5 as expected" is the rate; which category the fifth went to
-    // is the finding.
-    expect(
-      filedFrom(
-        [
-          ...Array.from({ length: 4 }, () =>
-            repeat({ category: TICKET_CATEGORY.Refund }),
-          ),
-          repeat({ category: TICKET_CATEGORY.General }),
-        ],
-        TICKET_CATEGORY.Refund,
-      ),
-    ).toEqual([
-      { category: TICKET_CATEGORY.Refund, matched: true, count: 4 },
-      { category: TICKET_CATEGORY.General, matched: false, count: 1 },
-    ]);
-  });
-
-  test("a repeat the classifier could not answer shrinks the denominator", () => {
-    // Shown as a null rather than dropped, so a reader can see why five repeats
-    // add up to four instead of wondering.
-    expect(
-      filedFrom(
-        [repeat({ category: TICKET_CATEGORY.General }), repeat()],
-        TICKET_CATEGORY.General,
-      ),
-    ).toEqual([
-      { category: TICKET_CATEGORY.General, matched: true, count: 1 },
-      { category: null, matched: false, count: 1 },
-    ]);
-  });
-
-  test("a case with no expectation reports no filings at all", () => {
-    // The quieter of the two honest readings: a repeat with no category and a
-    // case that is not scored are indistinguishable on the row, so a case that
-    // was never asked claims no measurement rather than inventing one.
-    expect(filedFrom([repeat(), repeat()], null)).toEqual([]);
-  });
-
-  test("a filing against no expectation is never matched", () => {
-    // It can never be a numerator with no denominator behind it — the same rule
-    // `classifyMatched` keeps one module up.
-    expect(
-      filedFrom([repeat({ category: TICKET_CATEGORY.Other })], null),
-    ).toEqual([{ category: TICKET_CATEGORY.Other, matched: false, count: 1 }]);
-  });
-});
-
-describe("categoriesFrom", () => {
-  test("draws which category is being mistaken for which", () => {
-    // "Refund → General ×4" is the single most alarming line this page can
-    // draw, and a bare per-category count could not draw it: the category gate
-    // is the only control between a refund request and an unattended reply.
-    expect(
-      categoriesFrom([
-        {
-          expectedCategory: TICKET_CATEGORY.Refund,
-          verdicts: Array.from({ length: 4 }, () =>
-            repeat({ category: TICKET_CATEGORY.General }),
-          ),
-        },
-        {
-          expectedCategory: TICKET_CATEGORY.General,
-          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
-        },
-      ]),
-    ).toEqual([
-      {
-        expected: TICKET_CATEGORY.Refund,
-        actual: TICKET_CATEGORY.General,
-        count: 4,
-        matched: false,
-      },
-      {
-        expected: TICKET_CATEGORY.General,
-        actual: TICKET_CATEGORY.General,
-        count: 1,
-        matched: true,
-      },
-    ]);
-  });
-
-  test("sums one pair across the cases that reached it", () => {
-    // Built from the per-case rows, so it can never disagree with them.
-    expect(
-      categoriesFrom([
-        {
-          expectedCategory: TICKET_CATEGORY.Refund,
-          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
-        },
-        {
-          expectedCategory: TICKET_CATEGORY.Refund,
-          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
-        },
-      ]),
-    ).toEqual([
-      {
-        expected: TICKET_CATEGORY.Refund,
-        actual: TICKET_CATEGORY.General,
-        count: 2,
-        matched: false,
-      },
-    ]);
-  });
-
-  test("a result with no expectation is not in the matrix", () => {
-    // Including a stored row this build cannot narrow: `expectedCategory` is a
-    // text column, so an unrecognised one is the same as an absent one.
-    expect(
-      categoriesFrom([
-        {
-          expectedCategory: null,
-          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
-        },
-        {
-          expectedCategory: "somethingFromTheFuture",
-          verdicts: [repeat({ category: TICKET_CATEGORY.General })],
-        },
-      ]),
-    ).toEqual([]);
-  });
-});
-
-describe("checksFrom", () => {
-  test("says which check caught each payload, most frequent first", () => {
-    // R9's second half. A bare catch rate cannot say which of the two string
-    // comparisons is carrying the load, which is exactly what it would cost
-    // most to weaken.
-    expect(
-      checksFrom([
-        {
-          verdicts: [
-            ...Array.from({ length: 2 }, () =>
-              repeat({
-                decline: AUTO_REPLY_DECLINE.unbackedReference,
-                caught: true,
-              }),
-            ),
-            repeat({
-              decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-              caught: true,
-            }),
-            repeat({ matched: false }),
-          ],
-        },
-      ]),
-    ).toEqual([
-      { decline: AUTO_REPLY_DECLINE.unbackedReference, count: 2 },
-      { decline: AUTO_REPLY_DECLINE.unbackedCommitment, count: 1 },
-    ]);
-  });
-
-  test("a decline that is not an output check cannot inflate a bar", () => {
-    // A payload declined because the model refused to answer at all was never
-    // in a draft to be caught, so it is on neither side of the catch rate — and
-    // a build with no wording for the reason cannot label a bar with it either.
-    expect(
-      checksFrom([
-        {
-          verdicts: [
-            repeat({ decline: AUTO_REPLY_DECLINE.notCovered, caught: true }),
-            repeat({ decline: AUTO_REPLY_DECLINE.unavailable, caught: true }),
-            repeat({ decline: null, caught: true }),
-          ],
-        },
-      ]),
-    ).toEqual([]);
-  });
-
-  test("an output-check decline that was not caught is not a catch", () => {
-    // `caught` is narrower than "declined by an output check", and this is the
-    // pair that proves it: an ordinary case thrown out by the money check is a
-    // decline-accuracy miss worth reading, and it is not a payload being
-    // caught. Letting it count would move the safety number for a reason that
-    // has nothing to do with safety.
-    //
-    // The other test in this block cannot reach that — its uncaught repeats all
-    // carry declines the output-check filter drops anyway, so it stays green
-    // with the `caught` guard removed entirely. Measured, not assumed.
-    expect(
-      checksFrom([
-        {
-          verdicts: [
-            repeat({
-              decline: AUTO_REPLY_DECLINE.unbackedCommitment,
-              caught: false,
-            }),
-            repeat({
-              decline: AUTO_REPLY_DECLINE.unbackedReference,
-              caught: true,
-            }),
-          ],
-        },
-      ]),
-    ).toEqual([{ decline: AUTO_REPLY_DECLINE.unbackedReference, count: 1 }]);
-  });
-
-  test("counts across every case in the run", () => {
-    expect(
-      checksFrom([
-        {
-          verdicts: [
-            repeat({
-              decline: AUTO_REPLY_DECLINE.unbackedReference,
-              caught: true,
-            }),
-          ],
-        },
-        {
-          verdicts: [
-            repeat({
-              decline: AUTO_REPLY_DECLINE.unbackedReference,
-              caught: true,
-            }),
-          ],
-        },
-      ]),
-    ).toEqual([{ decline: AUTO_REPLY_DECLINE.unbackedReference, count: 2 }]);
-  });
-});
-
-/* ── A series, as values (#607) ──────────────────────────────────────────── */
-
-/** A completed run of a series, with only what a history reads. */
-function seriesValue(
-  id: number,
-  startedAt: Date,
-  overrides: Partial<SeriesRun> = {},
-): SeriesRun {
-  return {
-    id,
-    startedAt,
-    caught: 0,
-    escaped: 0,
-    matches: 5,
-    attempts: 5,
-    classifyMatches: 0,
-    classifiedRepeats: 0,
-    results: [{ caseId: "off-corpus", matches: 5, repeats: 5, abandoned: 0 }],
-    ...overrides,
-  };
-}
-
-describe("trailingFrom", () => {
-  test("pools the window rather than averaging its rates", () => {
-    // 1 of 1 and 0 of 3 payloads caught, then a quiet night: pooled, 1 of 4.
-    // A mean of the two measured rates would say 50%, weighing one payload the
-    // same as three.
-    const window = [
-      seriesValue(1, sept(1), { caught: 1 }),
-      seriesValue(2, sept(2), { escaped: 3 }),
-      seriesValue(3, sept(3)),
-    ];
-
-    expect(trailingFrom(EVAL_METRIC.catchRate, window)).toEqual({
-      value: 0.25,
-      runs: 3,
-    });
-  });
-
-  test("keeps a repeat the classifier could not answer out of both sides", () => {
-    // 4 of 5 classified, 3 of 3 (two unanswered) and 5 of 5: pooled over the
-    // 13 it answered, 12 of 13 — never over the 15 repeats asked.
-    const window = [
-      seriesValue(1, sept(1), { classifyMatches: 4, classifiedRepeats: 5 }),
-      seriesValue(2, sept(2), { classifyMatches: 3, classifiedRepeats: 3 }),
-      seriesValue(3, sept(3), { classifyMatches: 5, classifiedRepeats: 5 }),
-    ];
-
-    expect(trailingFrom(EVAL_METRIC.classifierAccuracy, window)?.value).toBe(
-      12 / 13,
-    );
-  });
-
-  test("is null-valued when no run in the window measured the metric", () => {
-    const window = [1, 2, 3].map((day) => seriesValue(day, sept(day)));
-
-    expect(trailingFrom(EVAL_METRIC.catchRate, window)).toEqual({
-      value: null,
-      runs: 3,
-    });
-  });
-
-  test("is absent with fewer than two runs before the last", () => {
-    const window = [1, 2].map((day) => seriesValue(day, sept(day)));
-
-    expect(trailingFrom(EVAL_METRIC.declineAccuracy, window)).toBeNull();
-  });
-});
-
-describe("historyFrom", () => {
-  test("draws a run that did not answer the case as a gap", () => {
-    const window = [
-      seriesValue(1, sept(1), { results: [] }),
-      seriesValue(2, sept(2)),
-    ];
-
-    expect(historyFrom(window, "off-corpus")).toEqual([
-      null,
-      { runId: 2, matches: 5, repeats: 5 },
-    ]);
-  });
-});
-
-describe("fallFrom", () => {
-  /** The case on one run: five repeats, `abandoned` of them unanswered. */
-  function split(matches: number, abandoned = 0) {
-    return { caseId: "off-corpus", matches, repeats: 5, abandoned };
-  }
-
-  /**
-   * A window ending with tonight's split, one run a day before it. Each entry
-   * is a run's matches, or a split for one with unanswered repeats.
-   */
-  function window(
-    before: (number | ReturnType<typeof split>)[],
-    tonight: ReturnType<typeof split>,
-  ): SeriesRun[] {
-    return [...before, tonight].map((entry, i) =>
-      seriesValue(i + 1, sept(i + 1), {
-        results: [typeof entry === "number" ? split(entry) : entry],
-      }),
-    );
-  }
-
-  test("flags 5/5 to 0/5 on the first night, and the night after", () => {
-    expect(fallFrom(window([5, 5], split(0)), "off-corpus")).toEqual({
-      matches: 10,
-      answered: 10,
-      runs: 2,
-    });
-    expect(fallFrom(window([5, 5, 0], split(0)), "off-corpus")).not.toBeNull();
-  });
-
-  test("flags two misses on a case that always matched, and not one", () => {
-    const always = [5, 5, 5, 5, 5, 5];
-
-    expect(fallFrom(window(always, split(3)), "off-corpus")).toEqual({
-      matches: 30,
-      answered: 30,
-      runs: 6,
-    });
-    expect(fallFrom(window(always, split(4)), "off-corpus")).toBeNull();
-  });
-
-  test("does not flag a swing chance explains at the case's own rate", () => {
-    // 21 of 30, 70%, the shape of `certificate-missing` in production (#712).
-    // 1/5 is 3.1% likely at that rate and 0/5 is 0.24%, either side of 1%.
-    const flaky = [4, 3, 4, 3, 4, 3];
-
-    expect(fallFrom(window(flaky, split(1)), "off-corpus")).toBeNull();
-    expect(fallFrom(window(flaky, split(0)), "off-corpus")).not.toBeNull();
-  });
-
-  test("needs two runs before this one that answered the case", () => {
-    expect(fallFrom(window([5], split(0)), "off-corpus")).toBeNull();
-    // A run without the case is not one of them.
-    const without = seriesValue(1, sept(1), { results: [] });
-    const rest = window([5], split(0)).map((run) => ({
-      ...run,
-      id: run.id + 1,
-    }));
-    expect(fallFrom([without, ...rest], "off-corpus")).toBeNull();
-  });
-
-  test("leaves out a run before that left the case mostly unanswered (#686)", () => {
-    // 1 of 1 answered on each of two runs, then 3/5: a fall of two scaled up
-    // from a single repeat a run, which says nothing about the case.
-    const thin = [split(1, 4), split(1, 4)];
-    expect(fallFrom(window(thin, split(3)), "off-corpus")).toBeNull();
-    // Beside two runs it can read, it counts for neither side.
-    expect(
-      fallFrom(window([5, 5, split(0, 4)], split(0)), "off-corpus"),
-    ).toEqual({
-      matches: 10,
-      answered: 10,
-      runs: 2,
-    });
-  });
-
-  test("is null for a case tonight did not answer", () => {
-    expect(fallFrom(window([5, 5], split(0)), "planted-link")).toBeNull();
-  });
-
-  test("does not read an outage as a fall when every answered repeat matched (#686)", () => {
-    // Two runs at 5/5; tonight two repeats went unanswered and the other three
-    // all matched. Raw matches are two down, and that is the provider.
-    expect(fallFrom(window([5, 5], split(3, 2)), "off-corpus")).toBeNull();
-  });
-
-  test("is null when tonight left the case mostly unanswered", () => {
-    // Two answered, both missed: too few to say the case has stopped.
-    expect(fallFrom(window([5, 5], split(0, 3)), "off-corpus")).toBeNull();
-  });
-
-  test("keeps unanswered repeats out of both sides of the rate (#686)", () => {
-    // Three of three answered on each run before, all matched; tonight 3/5.
-    const before = [split(3, 2), split(3, 2)];
-
-    expect(fallFrom(window(before, split(3)), "off-corpus")).toEqual({
-      matches: 6,
-      answered: 6,
-      runs: 2,
-    });
-    // Three answered tonight, one matched.
-    expect(fallFrom(window([5, 5], split(1, 2)), "off-corpus")).not.toBeNull();
   });
 });
