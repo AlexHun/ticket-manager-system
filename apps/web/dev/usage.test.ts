@@ -721,43 +721,9 @@ describe("gatherUsage", () => {
     ]);
   });
 
-  // Two independent failures, and the page shows both: a machine with no
-  // transcripts *and* no `gh` should not have to discover the second one after
-  // fixing the first.
-  it("stacks the listing's warning beside the scan's", async () => {
-    const report = await gatherUsage(
-      join(dir, "nope"),
-      noListing("no gh here"),
-    );
-
-    expect(report.warnings).toHaveLength(2);
-    // Both messages survive, which is what "stack" means here. *Which* source
-    // each came from is the case below — one claim per test, or the two drift
-    // into one assertion that fails for either reason.
-    expect(report.warnings[0]?.message).toContain("nope");
-    expect(report.warnings[1]?.message).toBe("no gh here");
-  });
-
-  /**
-   * R7 (#289): the acceptance criterion itself.
-   *
-   * The two failures above are told apart *here* without reading a character of
-   * either message — which is what `bun run tokens` needs before it can word its
-   * own diagnostics from the same scan (slice 8), and what no amount of matching
-   * on prose could give it. `map` over the sources rather than an index, so a
-   * third warning arriving in the middle fails this rather than shifting it.
-   */
-  it("names which source each warning came from, without its wording", async () => {
-    const report = await gatherUsage(
-      join(dir, "nope"),
-      noListing("no gh here"),
-    );
-
-    expect(report.warnings.map((w) => w.source)).toEqual([
-      USAGE_WARNING_SOURCE.transcripts,
-      USAGE_WARNING_SOURCE.listing,
-    ]);
-  });
+  // How the sources' warnings stack, and under which source each is reported,
+  // is the warning policy's, held over every combination in
+  // `usage-report.test.ts` (#751).
 });
 
 /**
@@ -1233,19 +1199,6 @@ describe("gatherUsage with a broken history (#420)", () => {
     const report = await gatherUsage(dir, known(), history);
     expect(report.warnings).toEqual([]);
     expect(report.issues[0]?.spend?.out).toBe(12_000);
-  });
-
-  it("stacks beside the other two sources rather than masking them", async () => {
-    writeFileSync(history, JUNK, "utf8");
-    rmSync(dir, { recursive: true, force: true });
-
-    const report = await gatherUsage(dir, noListing(), history);
-
-    expect(report.warnings.map((w) => w.source)).toEqual([
-      USAGE_WARNING_SOURCE.transcripts,
-      USAGE_WARNING_SOURCE.listing,
-      USAGE_WARNING_SOURCE.history,
-    ]);
   });
 
   it("treats a history it cannot open at all as unreadable too", async () => {
