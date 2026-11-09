@@ -16,7 +16,13 @@
 // anywhere in the message, and #669's first commit, which only mentioned a
 // `[skip ci]` bump, sat on "no checks reported" for 18 minutes. That is red.
 //
-// Usage: node .claude/scripts/wait-checks.mjs <pr> [budget-seconds, default 540]
+// The default budget, 170 seconds, sits under the 180 seconds after which a
+// subagent's foreground call is moved to the background (#756). Backgrounded,
+// the script never woke #746's worker, which wrote its own polling loop
+// instead and spent about 5.8M cache-read tokens on it. A main session can pass
+// a longer budget, up to the 10-minute call limit.
+//
+// Usage: node .claude/scripts/wait-checks.mjs <pr> [budget-seconds, default 170]
 import { spawnSync } from "node:child_process";
 
 const POLL_MS = 30 * 1000;
@@ -25,7 +31,7 @@ const POLL_MS = 30 * 1000;
 const SKIP_CI = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$/im;
 
 const pr = process.argv[2];
-const budgetMs = Number(process.argv[3] ?? 540) * 1000;
+const budgetMs = Number(process.argv[3] ?? 170) * 1000;
 
 function readChecks() {
   const { stdout, stderr } = spawnSync(
