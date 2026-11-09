@@ -197,6 +197,23 @@ describe("readTranscripts, subagents", () => {
     expect(got).toEqual([["message:m1", 120]]);
   });
 
+  it("keys a subagent transcript's cursor on its full path, and does not open it again unchanged", () => {
+    put(agent, lines(record(3, { id: "m1" })));
+    touch(agent, 1_000);
+    const first = readTranscripts(dir);
+
+    // Rewritten to the same length and modification time.
+    put(agent, lines(record(4, { id: "m2" })));
+    touch(agent, 1_000);
+    const { read, got } = idsAndOut(first.cursors);
+
+    expect([...first.cursors.keys()]).toEqual([
+      join(dir, "s1", "subagents", "agent-x.jsonl"),
+    ]);
+    expect(got).toEqual([]);
+    expect(read.cursors).toEqual(first.cursors);
+  });
+
   it("reads a final block appended after a read that took the partial first", () => {
     put(agent, lines(record(3, { id: "m1" })));
     const first = readTranscripts(dir);
@@ -411,13 +428,16 @@ describe("followTranscript", () => {
     put("a.jsonl", lines(said("one", 1, "m1")));
     const first = await follow();
 
+    // Only a read that goes on from the cursor keeps what the state already
+    // held: one from the top would start the hook's state afresh.
+    first.followed.state.push("kept");
     appendFileSync(join(dir, "a.jsonl"), lines(said("two", 2, "m2")));
     const grown = await follow(first.followed);
     // Longer than before, and different from the top.
     put("a.jsonl", lines(said("three", 3, "m3"), said("four", 4, "m4")));
     const replaced = await follow(grown.followed);
 
-    expect(grown.reading.facts).toEqual(["one", "two"]);
+    expect(grown.reading.facts).toEqual(["one", "kept", "two"]);
     expect(grown.reading.responses.map((r) => r.id)).toEqual([
       "message:m1",
       "message:m2",
@@ -427,6 +447,17 @@ describe("followTranscript", () => {
       "message:m3",
       "message:m4",
     ]);
+  });
+
+  it("starts afresh on a file that shrank below its cursor", async () => {
+    put("a.jsonl", lines(said("one", 1, "m1"), said("two", 2, "m2")));
+    const first = await follow();
+
+    put("a.jsonl", lines(said("new", 3, "m3")));
+    const shrunk = await follow(first.followed);
+
+    expect(shrunk.reading.facts).toEqual(["new"]);
+    expect(shrunk.reading.responses.map((r) => r.id)).toEqual(["message:m3"]);
   });
 
   it("answers the same reading without opening a file whose size and modification time are its cursor's", async () => {

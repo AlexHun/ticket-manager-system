@@ -21,7 +21,7 @@
 // through (`./transcript-reader.ts`, #749), one file at a time with
 // `followTranscript`: the reader keeps the card's responses, each once at its
 // largest count, and its hook (`FACTS`) keeps what only this page shows — the
-// calls a card made, its model, its prompts, its stop reason — so the
+// calls a card made, its model, its task, its stop reason — so the
 // response row stays the usage history's stored one (ADR-0023).
 // `./session-groups.ts` totals the responses with the Usage page's
 // `tallySpend` (#593): which card a response is in is which list holds it.
@@ -359,22 +359,24 @@ async function readTranscript(
 ): Promise<{ facts: TranscriptFacts; mtimeMs: number }> {
   const read = await followTranscript(path, file, FACTS, followed.get(path));
   followed.set(path, read.followed);
-  const { facts: s, responses, badLines } = read.reading;
+  const { facts: soFar, responses, badLines } = read.reading;
   return {
     facts: {
-      task: s.task,
-      model: s.model,
-      startedAt: s.first,
+      task: soFar.task,
+      model: soFar.model,
+      startedAt: soFar.first,
       elapsedMs:
-        s.first !== null && s.lastMs > s.firstMs ? s.lastMs - s.firstMs : null,
+        soFar.first !== null && soFar.lastMs > soFar.firstMs
+          ? soFar.lastMs - soFar.firstMs
+          : null,
       responses,
-      branch: s.branch,
-      lastStop: s.lastStop,
-      calls: s.calls,
-      chainArgs: s.chainArgs,
-      workerCalls: s.workerCalls,
-      step: implementStepOf(s.marks),
-      tools: [...s.tools].map(([name, calls]) => ({ name, calls })),
+      branch: soFar.branch,
+      lastStop: soFar.lastStop,
+      calls: soFar.calls,
+      chainArgs: soFar.chainArgs,
+      workerCalls: soFar.workerCalls,
+      step: implementStepOf(soFar.marks),
+      tools: [...soFar.tools].map(([name, calls]) => ({ name, calls })),
       badLines,
     },
     mtimeMs: read.followed.cursor.mtimeMs,

@@ -12,9 +12,9 @@
 // issue group's total is the issue's total.
 //
 // **That total is the Usage page's, by the same join** (R7): `tallySpend` over
-// the responses the cards were credited from, each card's read by the
-// transcript reader that `readTranscripts` is, and counted once across the
-// cards by its `foldResponses`.
+// the responses the cards were credited from, each card's read by the module
+// `readTranscripts` belongs to (`./transcript-reader.ts`), and counted once
+// across the cards by its `foldResponses`.
 // The fields of `TranscriptResponse` are the usage history's stored row and
 // the push's wire (ADR-0023), so the card a response belongs to is not one of
 // them: it is which card's list the response is in. A response in two

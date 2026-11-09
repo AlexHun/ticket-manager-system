@@ -378,11 +378,15 @@ const unchanged = (st: FileStat, cursor?: TranscriptCursor) =>
   cursor.size === st.size &&
   cursor.mtimeMs === st.mtimeMs;
 
+/** How many bytes a cursor's anchor holds: it is stored as hex, two
+ *  characters a byte. */
+const anchorLength = (cursor: TranscriptCursor) => cursor.anchor.length / 2;
+
 /** Where a resumed read starts, the anchor's first byte, or null when the file
  *  is too short to hold it and is read from the top. */
 const resumeFrom = (st: FileStat, cursor?: TranscriptCursor) =>
   cursor && st.size >= cursor.offset
-    ? cursor.offset - cursor.anchor.length / 2
+    ? cursor.offset - anchorLength(cursor)
     : null;
 
 /**
@@ -506,7 +510,7 @@ async function readAppendedAsync(
 /**
  * What a reader that follows a transcript keeps of its records beyond the
  * responses, which the reader folds itself. The Sessions page's hook keeps the
- * calls a card made, its model, its prompts and its stop reason
+ * calls a card made, its model, its task and its stop reason
  * (`./sessions.ts`), none of which is a field of the stored row (ADR-0023).
  */
 export interface RecordHook<T> {
@@ -545,10 +549,20 @@ export interface TranscriptReading<T> {
   badLines: number;
 }
 
+/** What a read has made of a transcript's lines so far. */
+type SoFar<T> = Pick<FollowedTranscript<T>, "state" | "responses" | "badLines">;
+
+/** The hook of a reader that keeps nothing beyond the responses. */
+const NO_HOOK: RecordHook<null> = {
+  start: () => null,
+  copy: () => null,
+  record: () => {},
+};
+
 /** One line into `f`, numbered `line` in `file`; a bad line is counted only
  *  when `complete`. */
 function take<T>(
-  f: Pick<FollowedTranscript<T>, "state" | "responses" | "badLines">,
+  f: SoFar<T>,
   hook: RecordHook<T>,
   file: string,
   text: string,
@@ -573,7 +587,7 @@ function readingOf<T>(
   hook: RecordHook<T>,
   file: string,
 ): TranscriptReading<T> {
-  let s: Pick<FollowedTranscript<T>, "state" | "responses" | "badLines"> = f;
+  let s: SoFar<T> = f;
   if (f.trailing.trim()) {
     s = {
       state: hook.copy(f.state),
@@ -704,15 +718,14 @@ export function readTranscripts(
       if (prior) next.set(path, prior);
       continue;
     }
-    const keep = (text: string, number: number) => {
-      const rec = parseRecord(text);
-      const response = rec ? responseOf(rec, file, number) : null;
-      // A later block of a response already kept can only raise its counts,
-      // and in a subagent transcript the first block's are partial.
-      if (response) fold(responses, response);
-    };
-    for (const line of read.lines) keep(line.text, line.number);
-    keep(read.trailing, read.cursor.lines + 1);
+    // One map across every file, so a response found in two is kept once. A
+    // later block of a response already kept can only raise its counts, and
+    // in a subagent transcript the first block's are partial.
+    const soFar: SoFar<null> = { state: null, responses, badLines: 0 };
+    for (const line of read.lines) {
+      take(soFar, NO_HOOK, file, line.text, line.number, true);
+    }
+    take(soFar, NO_HOOK, file, read.trailing, read.cursor.lines + 1, false);
     next.set(path, read.cursor);
   }
   return {
