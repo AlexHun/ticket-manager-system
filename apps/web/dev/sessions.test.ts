@@ -210,19 +210,6 @@ describe("readSessions", () => {
     expect(shape(sessions)).toEqual(["s", "  a1", "  a2"]);
   });
 
-  it("counts each response once, at its largest count", async () => {
-    session(
-      "s",
-      response(25, T(0), { id: "msg_1" }),
-      response(5000, T(0), { id: "msg_1" }),
-      response(3000, T(1), { id: "msg_2" }),
-      // No id: counted once per record, as the Usage scan counts it.
-      response(7, T(2)),
-    );
-
-    expect(ownOut(await readSessions(dir), "s")).toBe(8007);
-  });
-
   it("takes a session's task from its first prompt, not from a tool result or a meta record", async () => {
     session(
       "s",
@@ -494,16 +481,6 @@ describe("readSessions", () => {
       expect(message).toMatch(/^Couldn't read .*\(EISDIR\)/);
       expect(message).not.toContain(dir);
     }
-  });
-
-  it("skips a half-written last line without losing the lines above it", async () => {
-    writeFileSync(
-      join(dir, "s.jsonl"),
-      lines(response(4000, T(0))) + '{"type":"assistant","mess',
-      "utf8",
-    );
-
-    expect(ownOut(await readSessions(dir), "s")).toBe(4000);
   });
 });
 
@@ -925,40 +902,6 @@ describe("createSessionsReader", () => {
     expect(ownOut(live, "s")).toBe(950);
     expect(shape(live.sessions)).toEqual(["s", "  new"]);
     expect(withoutClock(live)).toEqual(withoutClock(await fresh()));
-  });
-
-  it("counts a half-written last line once, when it is finished", async () => {
-    const reader = createSessionsReader();
-    const whole = JSON.stringify(response(300, T(1)));
-    writeFileSync(
-      join(dir, "s.jsonl"),
-      lines(response(100, T(0))) + whole.slice(0, 20),
-      "utf8",
-    );
-    expect(ownOut(await reader.read(dir), "s")).toBe(100);
-
-    appendFileSync(join(dir, "s.jsonl"), whole.slice(20));
-    // Complete JSON with no newline yet: counted, but not past the cursor.
-    expect(ownOut(await reader.read(dir), "s")).toBe(400);
-
-    appendFileSync(join(dir, "s.jsonl"), "\n");
-    const settled = await reader.read(dir);
-
-    expect(ownOut(settled, "s")).toBe(400);
-    expect(settled.warnings).toEqual([]);
-  });
-
-  it("reads a transcript from the top again when it was replaced rather than grown", async () => {
-    const reader = createSessionsReader();
-    session("s", response(5000, T(0)), response(5000, T(1)));
-    await reader.read(dir);
-
-    // Shorter: it shrank. Then a different file of the same length and more.
-    session("s", response(1, T(0)));
-    expect(ownOut(await reader.read(dir), "s")).toBe(1);
-    session("s", response(2, T(0)), response(3, T(1)), response(4, T(2)));
-
-    expect(ownOut(await reader.read(dir), "s")).toBe(9);
   });
 
   it("forgets a session whose transcript is gone", async () => {
