@@ -12,8 +12,9 @@
 // issue group's total is the issue's total.
 //
 // **That total is the Usage page's, by the same join** (R7): `tallySpend` over
-// the responses the cards were credited from, which `./sessions.ts` keys with
-// `identityOf` and folds at their largest count, as `readTranscripts` does.
+// the responses the cards were credited from, each card's read by the module
+// `readTranscripts` belongs to (`./transcript-reader.ts`), and counted once
+// across the cards by its `foldResponses`.
 // The fields of `TranscriptResponse` are the usage history's stored row and
 // the push's wire (ADR-0023), so the card a response belongs to is not one of
 // them: it is which card's list the response is in. A response in two
@@ -27,11 +28,7 @@ import {
   type SessionSlice,
 } from "../src/dev/sessions-protocol.ts";
 import { issueOfBranch, tallySpend } from "./transcripts.ts";
-import {
-  largerCounts,
-  raisesCounts,
-  type TranscriptResponse,
-} from "./transcript-reader.ts";
+import { foldResponses, type TranscriptResponse } from "./transcript-reader.ts";
 
 /** One card as the grouping reads it: its own responses and where it is. */
 export interface CreditedCard {
@@ -89,21 +86,13 @@ interface CardShares {
  * largest count any card's copy carries; and each card's share per group.
  */
 function creditAll(roots: readonly CreditedCard[]) {
-  const creditedTo = new Map<string, CreditedCard>();
-  const responses = new Map<string, TranscriptResponse>();
+  const lists: [CreditedCard, readonly TranscriptResponse[]][] = [];
   const visit = (c: CreditedCard) => {
-    for (const r of c.responses) {
-      const before = responses.get(r.id);
-      if (!before) {
-        responses.set(r.id, r);
-        creditedTo.set(r.id, c);
-      } else if (raisesCounts(before, r)) {
-        responses.set(r.id, { ...before, ...largerCounts(before, r) });
-      }
-    }
+    lists.push([c, c.responses]);
     c.children.forEach(visit);
   };
   roots.forEach(visit);
+  const { responses, firstHeldBy: creditedTo } = foldResponses(lists);
 
   /** Every group any card is in, by key. */
   const groups = new Map<string, GroupId>();
@@ -122,13 +111,13 @@ function creditAll(roots: readonly CreditedCard[]) {
   };
   roots.forEach((root) => place(root, null));
 
-  for (const [id, r] of responses) {
-    const card = creditedTo.get(id)!;
+  for (const r of responses) {
+    const card = creditedTo.get(r.id)!;
     const { byGroup } = shares.get(card)!;
     const key = keyOf(groupOf(r.branch));
     byGroup.set(key, (byGroup.get(key) ?? 0) + r.out);
   }
-  return { responses: [...responses.values()], shares, groups };
+  return { responses, shares, groups };
 }
 
 /** `card`'s share of group `key`, or null when it has no part in it. */

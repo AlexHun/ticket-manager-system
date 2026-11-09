@@ -17,12 +17,13 @@
 // one naming a call no transcript in the session made is drawn under its
 // session instead.
 //
-// Its own reader rather than `./transcript-reader.ts`'s `readTranscripts`, which
-// answers per response and keeps nothing of the calls a card made — and whose
-// fields are the usage history's stored row and the push's wire (ADR-0023),
-// so they are not widened for this page. Instead each card keeps the responses
-// its own file holds, keyed by the same `identityOf` and folded at the same largest count
-// (#413, #431), and `./session-groups.ts` totals them with the Usage page's
+// Each transcript is read by the transcript reader the Usage scan reads
+// through (`./transcript-reader.ts`, #749), one file at a time with
+// `followTranscript`: the reader keeps the card's responses, each once at its
+// largest count, and its hook (`FACTS`) keeps what only this page shows — the
+// calls a card made, its model, its task, its stop reason — so the
+// response row stays the usage history's stored one (ADR-0023).
+// `./session-groups.ts` totals the responses with the Usage page's
 // `tallySpend` (#593): which card a response is in is which list holds it.
 //
 // Read only and asynchronously, so a reading of a few hundred transcripts does
@@ -30,7 +31,7 @@
 // between readings (`createSessionsReader`) resumes each transcript from where
 // it left off, which is what the stream polls with (#591).
 
-import { open, readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   SESSION_IDLE_MS,
@@ -58,13 +59,10 @@ import {
 } from "./implement-step.ts";
 import { groupSessions, type CreditedCard } from "./session-groups.ts";
 import {
-  ANCHOR_BYTES,
-  countsOf,
-  identityOf,
-  largerCounts,
-  raisesCounts,
+  followTranscript,
+  type FollowedTranscript,
+  type RecordHook,
   type TranscriptResponse,
-  type TranscriptUsage,
 } from "./transcript-reader.ts";
 import { readWaiting, type WaitingRecord } from "./waiting.ts";
 
@@ -87,22 +85,21 @@ const META_FILE = /^agent-(.+)\.meta\.json$/;
 const SYNTHETIC_MODEL = "<synthetic>";
 
 /**
- * The fields this reads off a transcript record. Optional throughout because
- * that is what a JSONL line offers, as `./transcripts.ts` argues for its own.
+ * The fields the hook reads off a transcript record. Optional throughout
+ * because that is what a JSONL line offers, as `./transcript-reader.ts` argues
+ * for its own.
  */
 interface TranscriptRecord {
   type?: string;
   isMeta?: boolean;
-  sessionId?: string;
   gitBranch?: string;
-  uuid?: string;
   timestamp?: string;
   message?: {
-    id?: string;
     model?: string;
     stop_reason?: string | null;
     content?: unknown;
-    usage?: TranscriptUsage;
+    /** Read only for whether it is there: the reader counts it. */
+    usage?: unknown;
   };
 }
 
@@ -167,15 +164,11 @@ const NO_FACTS: TranscriptFacts = {
 };
 
 /**
- * What a transcript's lines add up to so far, fed one record at a time, so a
- * reading can resume where the last one stopped.
+ * What a transcript's records add up to so far, beyond its responses, fed one
+ * record at a time by the reader (`FACTS`), so a reading can resume where the
+ * last one stopped.
  */
 interface FactsSoFar {
-  /** The transcript as `listTranscripts` names it, which a response with no
-   *  id or uuid is keyed on (`identityOf`). */
-  file: string;
-  /** Lines fed so far, so a resumed reading numbers the next one. */
-  lines: number;
   task: string | null;
   /** Whether `task` is a bare `/clear`, which the next prompt replaces. */
   taskCleared: boolean;
@@ -192,16 +185,10 @@ interface FactsSoFar {
   marks: StepMark[];
   /** Calls per tool name, in the order each was first called. */
   tools: Map<string, number>;
-  /** Each response by its `identityOf` key. Replaced rather than changed when
-   *  a later record raises its count, so a copy of the map is a copy. */
-  responses: Map<string, TranscriptResponse>;
   branch: string | null;
-  badLines: number;
 }
 
-const startFacts = (file: string): FactsSoFar => ({
-  file,
-  lines: 0,
+const startFacts = (): FactsSoFar => ({
   task: null,
   taskCleared: false,
   model: null,
@@ -214,9 +201,7 @@ const startFacts = (file: string): FactsSoFar => ({
   workerCalls: [],
   marks: [],
   tools: new Map(),
-  responses: new Map(),
   branch: null,
-  badLines: 0,
 });
 
 /** A copy that `feed` can write to without touching the original. */
@@ -226,7 +211,6 @@ const copyFacts = (f: FactsSoFar): FactsSoFar => ({
   workerCalls: [...f.workerCalls],
   marks: [...f.marks],
   tools: new Map(f.tools),
-  responses: new Map(f.responses),
 });
 
 /** A content block of type `type`, as a transcript's `message.content`
@@ -302,29 +286,8 @@ function toolUses(content: unknown): ToolUse[] {
 /** The tool a subagent is started with: `Agent`, `Task` before it. */
 const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
 
-/**
- * One line into `f`, its one-based number in the file being `lineNo`. An
- * unparseable line is skipped, as the Usage scan skips one, and counted only
- * when `complete`: the files are append-only JSONL, and a half-written last
- * line is their ordinary state while a session works, where a bad line above
- * it is a file the page can't fully read.
- */
-function feed(
-  f: FactsSoFar,
-  line: string,
-  lineNo: number,
-  complete: boolean,
-): void {
-  if (!line.trim()) return;
-  let rec: TranscriptRecord;
-  try {
-    rec = JSON.parse(line) as TranscriptRecord;
-  } catch {
-    if (complete) f.badLines++;
-    return;
-  }
-  if (typeof rec !== "object" || rec === null) return;
-
+/** One record into `f`. The reader keeps its response, if it has one. */
+function feed(f: FactsSoFar, rec: TranscriptRecord): void {
   if (rec.timestamp) {
     const ms = Date.parse(rec.timestamp);
     if (!Number.isNaN(ms)) {
@@ -366,169 +329,58 @@ function feed(
   if (!f.model && message.model && message.model !== SYNTHETIC_MODEL) {
     f.model = message.model;
   }
-  const usage = message.usage;
-  if (!usage) return;
+  if (!message.usage) return;
   // Every block of a response carries the same `stop_reason`, the last
   // one written being the final word.
   f.lastStop = message.stop_reason ?? null;
-  // As `readTranscripts` keeps a response: under its first record's session,
-  // branch and time, at the largest counts any of its records carries.
-  const id = identityOf(rec, f.file, lineNo);
-  const counts = countsOf(usage);
-  const before = f.responses.get(id);
-  if (!before) {
-    f.responses.set(id, {
-      id,
-      session: rec.sessionId ?? null,
-      branch: rec.gitBranch ?? null,
-      at: rec.timestamp ?? null,
-      ...counts,
-      window: f.file,
-    });
-  } else if (raisesCounts(before, counts)) {
-    f.responses.set(id, { ...before, ...largerCounts(before, counts) });
-  }
 }
 
-/**
- * The facts of the complete lines in `f`, plus `trailing`, the unterminated
- * last line, when it parses: a complete record Claude Code has not yet ended
- * with a newline still counts, but on a copy, so that the cursor never moves
- * past it and it counts once when its newline arrives.
- */
-function factsOf(f: FactsSoFar, trailing: string): TranscriptFacts {
-  let s = f;
-  if (trailing.trim()) {
-    s = copyFacts(f);
-    feed(s, trailing, f.lines + 1, false);
-  }
-  return {
-    task: s.task,
-    model: s.model,
-    startedAt: s.first,
-    elapsedMs:
-      s.first !== null && s.lastMs > s.firstMs ? s.lastMs - s.firstMs : null,
-    responses: [...s.responses.values()],
-    branch: s.branch,
-    lastStop: s.lastStop,
-    calls: s.calls,
-    chainArgs: s.chainArgs,
-    workerCalls: s.workerCalls,
-    step: implementStepOf(s.marks),
-    tools: [...s.tools].map(([name, calls]) => ({ name, calls })),
-    badLines: s.badLines,
-  };
-}
+/** The reader's hook: the facts only this page shows, record by record. */
+const FACTS: RecordHook<FactsSoFar> = {
+  start: startFacts,
+  copy: copyFacts,
+  record: (f, rec) => feed(f, rec as TranscriptRecord),
+};
 
-// A resumed reading checks the `ANCHOR_BYTES` before its cursor are still
-// there: a file that no longer holds them at that offset was replaced rather
-// than grown, and is read from the top. A transcript's first records are much
-// alike from one session to the next, so the bytes the cursor sits behind tell
-// two files apart sooner than the first bytes do. `./transcript-reader.ts`
-// owns that rule and the Usage scan reads through it (#748); this copy goes
-// when this reader moves onto `readAppended` (#749).
-
-/** Where a reading of one transcript stopped, kept for the next. */
-interface Cursor {
-  size: number;
-  mtimeMs: number;
-  /** Bytes read, up to and including the last newline. */
-  offset: number;
-  /** The `ANCHOR_BYTES` (or fewer) that end at `offset`. */
-  anchor: Buffer;
-  facts: FactsSoFar;
-  /** The unterminated last line, read again next time. */
-  trailing: string;
-}
-
-const NEWLINE = 0x0a;
-
-/** Feeds `bytes`' complete lines into `facts`, and answers the rest. */
-function feedBytes(
-  facts: FactsSoFar,
-  bytes: Buffer,
-): { used: number; trailing: string } {
-  const end = bytes.lastIndexOf(NEWLINE) + 1;
-  const lines = bytes.subarray(0, end).toString("utf8").split("\n");
-  // Every piece but the last ended in a newline; the last is empty.
-  for (let i = 0; i < lines.length - 1; i++) {
-    feed(facts, lines[i]!, facts.lines + i + 1, true);
-  }
-  facts.lines += lines.length - 1;
-  return { used: end, trailing: bytes.subarray(end).toString("utf8") };
-}
-
-/**
- * Feeds `bytes` from index `skip` into `facts`, and answers the cursor that
- * leaves: `bytes` starts at byte `base` of the file, the one place both a
- * resumed and a whole reading turn what they read into a cursor.
- */
-function advance(
-  facts: FactsSoFar,
-  bytes: Buffer,
-  base: number,
-  skip: number,
-  mtimeMs: number,
-): Cursor {
-  const { used, trailing } = feedBytes(facts, bytes.subarray(skip));
-  const end = skip + used;
-  return {
-    size: base + bytes.length,
-    mtimeMs,
-    offset: base + end,
-    anchor: Buffer.from(bytes.subarray(Math.max(0, end - ANCHOR_BYTES), end)),
-    facts,
-    trailing,
-  };
-}
+/** Each transcript as the reader left it, by absolute path, for the next
+ *  reading to go on from. */
+type Followed = Map<string, FollowedTranscript<FactsSoFar>>;
 
 /**
  * One transcript's facts and when it was last written, reading only what was
- * appended since `cursors` last saw it — nothing at all when its size and
- * modification time are unchanged. The cursor is replaced in `cursors`.
+ * appended since `followed` last saw it — nothing at all when its size and
+ * modification time are unchanged (`followTranscript`). Its entry in
+ * `followed` is replaced.
  */
 async function readTranscript(
   path: string,
   file: string,
-  cursors: Map<string, Cursor>,
+  followed: Followed,
 ): Promise<{ facts: TranscriptFacts; mtimeMs: number }> {
-  const st = await stat(path);
-  const before = cursors.get(path);
-  if (before && st.size === before.size && st.mtimeMs === before.mtimeMs) {
-    return {
-      facts: factsOf(before.facts, before.trailing),
-      mtimeMs: st.mtimeMs,
-    };
-  }
-
-  let cursor: Cursor | null = null;
-  if (before && st.size >= before.offset) {
-    const from = before.offset - before.anchor.length;
-    const handle = await open(path, "r");
-    try {
-      const bytes = Buffer.alloc(st.size - from);
-      const { bytesRead } = await handle.read(bytes, 0, bytes.length, from);
-      const read = bytes.subarray(0, bytesRead);
-      const anchor = read.subarray(0, before.anchor.length);
-      if (anchor.equals(before.anchor)) {
-        cursor = advance(
-          before.facts,
-          read,
-          from,
-          before.anchor.length,
-          st.mtimeMs,
-        );
-      }
-    } finally {
-      await handle.close();
-    }
-  }
-
-  if (!cursor) {
-    cursor = advance(startFacts(file), await readFile(path), 0, 0, st.mtimeMs);
-  }
-  cursors.set(path, cursor);
-  return { facts: factsOf(cursor.facts, cursor.trailing), mtimeMs: st.mtimeMs };
+  const read = await followTranscript(path, file, FACTS, followed.get(path));
+  followed.set(path, read.followed);
+  const { facts: soFar, responses, badLines } = read.reading;
+  return {
+    facts: {
+      task: soFar.task,
+      model: soFar.model,
+      startedAt: soFar.first,
+      elapsedMs:
+        soFar.first !== null && soFar.lastMs > soFar.firstMs
+          ? soFar.lastMs - soFar.firstMs
+          : null,
+      responses,
+      branch: soFar.branch,
+      lastStop: soFar.lastStop,
+      calls: soFar.calls,
+      chainArgs: soFar.chainArgs,
+      workerCalls: soFar.workerCalls,
+      step: implementStepOf(soFar.marks),
+      tools: [...soFar.tools].map(([name, calls]) => ({ name, calls })),
+      badLines,
+    },
+    mtimeMs: read.followed.cursor.mtimeMs,
+  };
 }
 
 /**
@@ -680,7 +532,7 @@ interface MetaReading {
 
 /** What one reader keeps between readings, by absolute path. */
 interface ReaderState {
-  cursors: Map<string, Cursor>;
+  followed: Followed;
   metas: Map<string, MetaReading>;
   /** Every path this reading looked at, so the rest can be forgotten. */
   seen: Set<string>;
@@ -698,7 +550,7 @@ async function readSession(
   state.seen.add(path);
   let read: Awaited<ReturnType<typeof readTranscript>>;
   try {
-    read = await readTranscript(path, file, state.cursors);
+    read = await readTranscript(path, file, state.followed);
   } catch (err) {
     warnings.push({
       file,
@@ -863,7 +715,7 @@ async function readSubagents(
       const t = await readTranscript(
         transcriptPath,
         `${rel}/${transcript}`,
-        state.cursors,
+        state.followed,
       );
       facts = t.facts;
       writtenMs = Math.max(writtenMs, t.mtimeMs);
@@ -916,7 +768,7 @@ async function readSubagents(
     const path = join(abs, name);
     state.seen.add(path);
     try {
-      const { facts } = await readTranscript(path, file, state.cursors);
+      const { facts } = await readTranscript(path, file, state.followed);
       warnOfBadLines(file, facts, warnings);
       unclaimed.responses.push(...facts.responses);
       unclaimed.calls.push(...facts.calls);
@@ -988,7 +840,8 @@ async function readChains(
 /**
  * A reader that keeps a cursor per transcript between readings, so the next
  * reading parses only what was appended — and opens nothing whose size and
- * modification time are unchanged — as the Usage scan's cursors do (#418).
+ * modification time are unchanged — by the rule the Usage scan's cursors
+ * follow (#418), through the same reader (`followTranscript`).
  * That is what lets the stream poll (`./sessions-stream.ts`). Measured
  * 2026-10-21 on Windows over this machine's 206 sessions (735 transcripts):
  * the first reading took 15-20s, and each one after it 457-818ms on Bun
@@ -1003,12 +856,12 @@ async function readChains(
 export function createSessionsReader(
   idleMs: number = SESSION_IDLE_MS,
 ): SessionsReader {
-  const cursors = new Map<string, Cursor>();
+  const followed: Followed = new Map();
   const metas = new Map<string, MetaReading>();
 
   return {
     async read(dir, now = Date.now(), waitingDir, listChain) {
-      const state: ReaderState = { cursors, metas, seen: new Set() };
+      const state: ReaderState = { followed, metas, seen: new Set() };
       const warnings: SessionsWarning[] = [];
       const roots: TreeNode[] = [];
       let names: string[] = [];
@@ -1043,8 +896,8 @@ export function createSessionsReader(
       for (const root of roots) settle(root, now, idleMs);
       roots.sort((a, b) => byStart(b, a));
       const chains = await readChains(roots, listChain);
-      for (const path of cursors.keys()) {
-        if (!state.seen.has(path)) cursors.delete(path);
+      for (const path of followed.keys()) {
+        if (!state.seen.has(path)) followed.delete(path);
       }
       for (const path of metas.keys()) {
         if (!state.seen.has(path)) metas.delete(path);
