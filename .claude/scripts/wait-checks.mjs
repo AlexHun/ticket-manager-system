@@ -19,13 +19,17 @@
 // The default budget, 170 seconds, sits under the 180 seconds after which a
 // subagent's foreground call is moved to the background (#756). Backgrounded,
 // the script never woke #746's worker, which wrote its own polling loop
-// instead and spent about 5.8M cache-read tokens on it. A main session can pass
-// a longer budget, up to the 10-minute call limit.
+// instead and spent about 5.8M cache-read tokens on it (retro of 2026-11-08).
+// Every `gh` call is cut off at GH_TIMEOUT_MS, and the loop polls only while a
+// poll and its call both end inside the budget, so a stalled `gh` costs a
+// `pending` rather than the limit. A main session can pass a longer budget,
+// such as 540, under the 10-minute call limit.
 //
 // Usage: node .claude/scripts/wait-checks.mjs <pr> [budget-seconds, default 170]
 import { spawnSync } from "node:child_process";
 
 const POLL_MS = 30 * 1000;
+const GH_TIMEOUT_MS = 8 * 1000;
 
 // GitHub's skip tags, plus the `skip-checks: true` trailer.
 const SKIP_CI = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$/im;
@@ -33,12 +37,14 @@ const SKIP_CI = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]|^skip-c
 const pr = process.argv[2];
 const budgetMs = Number(process.argv[3] ?? 170) * 1000;
 
+/** The PR's checks, or null when `gh` ran past GH_TIMEOUT_MS. */
 function readChecks() {
-  const { stdout, stderr } = spawnSync(
+  const { stdout, stderr, error } = spawnSync(
     "gh",
     ["pr", "checks", pr, "--json", "name,bucket,link"],
-    { encoding: "utf8" },
+    { encoding: "utf8", timeout: GH_TIMEOUT_MS },
   );
+  if (error?.code === "ETIMEDOUT") return null;
   try {
     return JSON.parse(stdout);
   } catch {
@@ -51,7 +57,10 @@ function readChecks() {
 
 /** The skip tag in the PR's head commit message, or null. */
 function headSkipTag() {
-  const { stdout } = spawnSync("gh", ["pr", "view", pr, "--json", "commits"], { encoding: "utf8" });
+  const { stdout } = spawnSync("gh", ["pr", "view", pr, "--json", "commits"], {
+    encoding: "utf8",
+    timeout: GH_TIMEOUT_MS,
+  });
   try {
     const head = JSON.parse(stdout).commits.at(-1);
     return SKIP_CI.exec(`${head.messageHeadline}\n${head.messageBody}`)?.[0] ?? null;
@@ -61,6 +70,7 @@ function headSkipTag() {
 }
 
 function verdict(checks) {
+  if (checks === null) return [2, `pending: gh pr checks ran past ${GH_TIMEOUT_MS / 1000}s`];
   const failed = checks.filter((check) => check.bucket === "fail");
   if (failed.length > 0) {
     return [1, `red: ${failed.map((check) => `${check.name} ${check.link}`).join(", ")}`];
@@ -84,7 +94,7 @@ const skipTag = result[1] === "pending: no checks reported yet" ? headSkipTag() 
 if (skipTag !== null) {
   result = [1, `red: the head commit's message carries ${skipTag}, so CI never runs; push a commit without it`];
 }
-while (result[0] === 2 && Date.now() + POLL_MS < deadline) {
+while (result[0] === 2 && Date.now() + POLL_MS + GH_TIMEOUT_MS < deadline) {
   await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   result = verdict(readChecks());
 }

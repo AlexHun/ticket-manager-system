@@ -43,7 +43,7 @@ a fix commit.
 `/mattpocock-skills:code-review`, push and run
 `node .claude/scripts/wait-checks.mjs <n>` in the foreground, again each time
 it ends `pending`: E2E runs 11-18 minutes, longer than one tool call. Its
-default budget, 170 seconds, sits under the 180 after which a subagent's
+default budget, 170 seconds, sits under the 180 seconds after which a subagent's
 foreground call is moved to the background, where it never wakes the worker
 (#756); a main session can pass a longer one, `wait-checks.mjs <n> 540`. A red
 job whose test has an open `Flake:` issue gets one `gh run rerun <run-id> --failed`; any other red job is diagnosed in this
