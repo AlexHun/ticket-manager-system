@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -9,10 +10,9 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { partialCheckout } from "@ticket/repo-scan/checkout";
+import { BOM } from "./line-endings";
 import { moveBlock } from "./move-block";
 import { REPO_ROOT } from "./test/run-hook";
-
-const BOM = String.fromCharCode(0xfeff);
 
 describe("moveBlock", () => {
   test("appends a range between two LF files", () => {
@@ -135,18 +135,58 @@ describe.skipIf(partialCheckout)("bun scripts/move-block.ts", () => {
     expect(readFileSync(from, "utf8")).toBe("a\n");
   });
 
-  test.each([["0-1"], ["2-9"], ["2-1"], ["1"]])(
-    "writes nothing and exits 1 on range %s",
-    (range) => {
-      const from = writeFixture("from.ts", "a\nb\n");
-      const to = path.join(dir, "to.ts");
-      const { code, stderr } = run(from, range, to);
-      expect(code).toBe(1);
-      expect(stderr).toContain("move-block:");
+  test.each([
+    ["0-1", "move-block: range 0-1 is outside lines 1-2"],
+    ["2-9", "move-block: range 2-9 is outside lines 1-2"],
+    ["2-1", "move-block: range 2-1 ends before it starts"],
+    ["1", "move-block: range 1 is not <start>-<end>"],
+  ])("writes nothing and exits 1 on range %s", (range, message) => {
+    const from = writeFixture("from.ts", "a\nb\n");
+    const to = writeFixture("to.ts", "x\n");
+    const { code, stderr } = run(from, range, to);
+    expect(code).toBe(1);
+    expect(stderr.trim()).toBe(message);
+    expect(readFileSync(from, "utf8")).toBe("a\nb\n");
+    expect(readFileSync(to, "utf8")).toBe("x\n");
+  });
+
+  test("a range that fails creates no target", () => {
+    const from = writeFixture("from.ts", "a\n");
+    const to = path.join(dir, "new.ts");
+    expect(run(from, "2-2", to).code).toBe(1);
+    expect(existsSync(from)).toBe(true);
+    expect(existsSync(to)).toBe(false);
+  });
+
+  test("refuses an argument it does not know", () => {
+    const from = writeFixture("from.ts", "a\n");
+    const to = writeFixture("to.ts", "x\n");
+    const { code, stderr } = run(from, "1-1", to, "extra");
+    expect(code).toBe(1);
+    expect(stderr).toContain("Usage: bun scripts/move-block.ts");
+    expect(readFileSync(from, "utf8")).toBe("a\n");
+    expect(readFileSync(to, "utf8")).toBe("x\n");
+  });
+
+  test("puts the target back when the source cannot be written", () => {
+    const from = writeFixture("from.ts", "a\nb\n");
+    const to = writeFixture("to.ts", "x\n");
+    const created = path.join(dir, "new.ts");
+    chmodSync(from, 0o444);
+    try {
+      const existing = run(from, "2-2", to);
+      expect(existing.code).toBe(1);
+      expect(existing.stderr).toContain(
+        `move-block: ${from} could not be written, so ${to} was put back`,
+      );
+      expect(readFileSync(to, "utf8")).toBe("x\n");
+      expect(run(from, "2-2", created).code).toBe(1);
+      expect(existsSync(created)).toBe(false);
       expect(readFileSync(from, "utf8")).toBe("a\nb\n");
-      expect(existsSync(to)).toBe(false);
-    },
-  );
+    } finally {
+      chmodSync(from, 0o644);
+    }
+  });
 
   test("refuses to move a range within one file", () => {
     const from = writeFixture("from.ts", "a\nb\n");

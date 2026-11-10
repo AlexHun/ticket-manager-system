@@ -70,7 +70,7 @@ and `python -` hangs until the timeout. An edit the Edit tool can't make, bulk
 or in a file not yet read, is `bun scripts/replace-once.ts <file> <pairs.json>`
 (`--revert` undoes it): UTF-8 without a BOM, CRLF kept, nothing written unless
 every pair matches exactly once. Move code between files by line range with
-`bun scripts/move-block.ts <from> <start>-<end> <to> [--at <line>]`, never by
+`bun scripts/move-block.ts <from> <start>-<end> <to> [--at <line>]` rather than
 retyping it in a Write. Write every multi-line message to a file in
 the scratchpad with the Write tool (`Out-File` adds a BOM) and pass the file —
 `git commit -F`, `gh pr create --body-file`, `gh issue comment --body-file` —

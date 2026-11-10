@@ -9,25 +9,17 @@
 // is also what no `at` does. The moved lines take the target's line endings,
 // or the source's when the target has none; every line outside the range
 // keeps its own. A last line with no newline gains one when it is moved or
-// appended to. A leading byte order mark is dropped from both, since no
-// tracked file may carry one (`docs/standards/checks.md`). A range or `at`
-// outside the file throws before anything is returned, so the script writes
-// nothing.
+// appended to. Both files' byte order mark and newline are read by
+// `line-endings.ts`, as `replace-once.ts` reads them. A range or `at` outside
+// the file throws before anything is returned, so the script writes nothing.
 
-export type MoveRange = { start: number; end: number; at?: number };
+import { newlineOf, withoutBom } from "./line-endings";
 
-const BOM = String.fromCharCode(0xfeff);
-
-const withoutBom = (text: string) =>
-  text.startsWith(BOM) ? text.slice(BOM.length) : text;
+// Which source lines move, `start` to `end`, and where in the target they go.
+export type MoveSpec = { start: number; end: number; at?: number };
 
 // Each line with its own ending, the last one possibly without.
 const linesOf = (text: string) => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
-
-const endingOf = (text: string) => {
-  const first = /\r?\n/.exec(text);
-  return first ? first[0] : undefined;
-};
 
 const withEnding = (line: string, ending: string) =>
   line.replace(/\r?\n$/, "") + ending;
@@ -35,7 +27,7 @@ const withEnding = (line: string, ending: string) =>
 export const moveBlock = (
   sourceText: string,
   targetText: string,
-  { start, end, at }: MoveRange,
+  { start, end, at }: MoveSpec,
 ) => {
   const source = linesOf(withoutBom(sourceText));
   const target = linesOf(withoutBom(targetText));
@@ -59,7 +51,7 @@ export const moveBlock = (
       `move-block: --at ${insertAt} is outside lines 1-${target.length + 1}`,
     );
   }
-  const ending = endingOf(targetText) ?? endingOf(sourceText) ?? "\n";
+  const ending = newlineOf(targetText) ?? newlineOf(sourceText) ?? "\n";
   const block = source
     .slice(start - 1, end)
     .map((line) => withEnding(line, ending));
