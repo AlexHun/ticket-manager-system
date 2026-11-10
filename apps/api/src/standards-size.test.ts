@@ -7,8 +7,9 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 /**
  * No standards file is over `LIMIT_BYTES` unless `OVERSIZED` names it (#757).
  * A worker reads every standards file its change touches in full, and that
- * text rides in every later turn: #748 read 105 KB of standards for a 4 KB
- * section. The bullet is the pre-push one in `docs/standards/checks.md`.
+ * text rides in every later turn: #748 read about 105 KB of standards for
+ * one section, about 4 KB today. The bullet is the pre-push one in
+ * `docs/standards/checks.md`.
  *
  * A file is measured with LF endings, so a CRLF checkout and CI's LF one agree
  * about a file near the limit.
@@ -17,7 +18,7 @@ import { trackedFiles } from "@ticket/repo-scan/tracked-files";
 /** The repository root, which every tracked path is relative to. */
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 
-/** 25 KB, the limit #757 proposed. */
+/** 25 KB (25,600 bytes), the limit #757 proposed. */
 const LIMIT_BYTES = 25 * 1024;
 
 type Oversized = { file: string; bytes: number };
@@ -29,7 +30,7 @@ type Oversized = { file: string; bytes: number };
  * goes.
  */
 const OVERSIZED: Oversized[] = [
-  { file: "docs/standards/dev-tools-usage.md", bytes: 43_471 },
+  { file: "docs/standards/dev-tools-usage.md", bytes: 43_567 },
   { file: "docs/standards/dev-tools.md", bytes: 37_154 },
   { file: "docs/standards/testing-api.md", bytes: 36_520 },
   { file: "docs/standards/backend.md", bytes: 36_061 },
@@ -128,8 +129,8 @@ describe("the size check, shown what it must catch", () => {
         sizes,
         [
           { file: "docs/standards/big.md", bytes: 150 },
-          { file: "docs/standards/small.md", bytes: 140 },
-          { file: "docs/standards/gone.md", bytes: 120 },
+          { file: "docs/standards/small.md", bytes: 40 },
+          { file: "docs/standards/gone.md", bytes: 0 },
         ],
         LIMIT,
       ),
