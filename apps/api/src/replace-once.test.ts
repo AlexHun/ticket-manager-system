@@ -3,10 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { partialCheckout } from "@ticket/repo-scan/checkout";
+import { BOM } from "./line-endings";
 import { type Pair, replaceOnce } from "./replace-once";
 import { REPO_ROOT } from "./test/run-hook";
-
-const BOM = String.fromCharCode(0xfeff);
 
 describe("replaceOnce", () => {
   test("replaces each pair that occurs exactly once, in order", () => {

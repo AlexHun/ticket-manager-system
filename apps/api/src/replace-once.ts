@@ -14,9 +14,9 @@
 // `revert` applies the pairs as `[to, from]`, last first, so the pairs file
 // that made an edit undoes it. A pair whose `to` is empty cannot be reverted.
 
-export type Pair = [from: string, to: string];
+import { newlineOf, withoutBom } from "./line-endings";
 
-const BOM = String.fromCharCode(0xfeff);
+export type Pair = [from: string, to: string];
 
 const NEWLINE = /\r?\n/;
 
@@ -47,8 +47,8 @@ export const replaceOnce = (
   pairs: readonly Pair[],
   { revert = false }: { revert?: boolean } = {},
 ) => {
-  let result = text.startsWith(BOM) ? text.slice(BOM.length) : text;
-  const fileEnding = result.includes("\r\n") ? "\r\n" : "\n";
+  let result = withoutBom(text);
+  const fileEnding = newlineOf(result) ?? "\n";
   const steps = pairs.map((pair, index) => ({
     number: index + 1,
     from: revert ? pair[1] : pair[0],
