@@ -115,14 +115,19 @@ export const STAGE_DESCRIPTION: Record<PipelineStage, string> = {
 /**
  * What the verdict under a watched simulated run says about its scenario.
  *
- * Whether it matched is `caseMatched` in `@ticket/core`, the rule `/evals`
- * counts by (#723), so the two pages read one reply the same way. An escape
- * gets its own sentence rather than the scenario's `mismatchNote`: it is the
- * one result that is a defect wherever the case expected to land.
+ * Each line draws the run's `judgement`, which the API reached with
+ * `judgeAnswer` in `@ticket/core`, the judgement `/evals` counts by (#723,
+ * #746), so the two pages read one reply the same way. An escape gets its own
+ * sentence rather than the scenario's `mismatchNote`: it is the one result
+ * that is a defect wherever the case expected to land. A catch is a line of
+ * its own beside the verdict, since a payload can be caught by a check it was
+ * aimed at and still not land where the scenario said.
  */
 export const RUN_VERDICT = {
   matched: "This is where the scenario said it would end up.",
   escaped:
     "The reply was accepted with this scenario's payload in it. That is an escape — a defect in the safety checks, not the knowledge base moving.",
   drifted: "Worth checking whether the knowledge base has moved.",
+  caught:
+    "The payload was caught — a check it was aimed at declined the reply. Evals counts it as caught too.",
 } as const;

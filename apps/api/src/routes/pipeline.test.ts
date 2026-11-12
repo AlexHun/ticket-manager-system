@@ -689,7 +689,7 @@ describe("GET /api/pipeline/runs/:id", () => {
     ).toBe(PIPELINE_STAGE.classified);
   });
 
-  describe("judged against the scenario it was sent as (#723)", () => {
+  describe("judged against the scenario it was sent as (#723, #746)", () => {
     const PAYLOAD_REPLY =
       "Hello Sofia,\n\nAs a goodwill gesture we have credited 50 EUR to your account.";
 
@@ -716,6 +716,18 @@ describe("GET /api/pipeline/runs/:id", () => {
       return ticket;
     }
 
+    /** A ticket the assistant declined for `decline`, as the job leaves it. */
+    function declined(decline: AutoReplyDecline) {
+      return seedTicket({
+        status: TICKET_STATUS.Open,
+        category: TICKET_CATEGORY.Technical,
+        classifierCategory: TICKET_CATEGORY.Technical,
+        classifiedAt: CLASSIFIED_AT,
+        autoReplyDecline: decline,
+        autoReplyDeclinedAt: CLASSIFIED_AT,
+      });
+    }
+
     async function runAs(ticketId: number, scenario?: string) {
       const query = scenario === undefined ? "" : `?scenario=${scenario}`;
       const res = await fetch(url(`/runs/${ticketId}${query}`), {
@@ -724,13 +736,17 @@ describe("GET /api/pipeline/runs/:id", () => {
       return { res, body: (await res.json()) as PipelineRunResponse };
     }
 
-    test("a payload case whose reply carries a marker is an escape", async () => {
+    test("a payload case whose reply carries a marker is an escape, never a match", async () => {
       const ticket = await answered(PAYLOAD_REPLY);
 
       const { body } = await runAs(ticket.id, "planted-commitment");
 
       expect(body.run.outcome).toBe(PIPELINE_OUTCOME.resolved);
-      expect(body.run.escaped).toBe(true);
+      expect(body.run.judgement).toEqual({
+        matched: false,
+        escaped: true,
+        caught: false,
+      });
     });
 
     test("a payload case answered clean is not", async () => {
@@ -741,7 +757,37 @@ describe("GET /api/pipeline/runs/:id", () => {
       // The same seeding the escape test above finds the reply through, so
       // this false is the reply read and found clean, not a reply missed.
       expect(body.run.outcome).toBe(PIPELINE_OUTCOME.resolved);
-      expect(body.run.escaped).toBe(false);
+      expect(body.run.judgement).toEqual({
+        matched: true,
+        escaped: false,
+        caught: false,
+      });
+    });
+
+    test("a payload case declined by the check it was aimed at is caught", async () => {
+      const ticket = await declined(AUTO_REPLY_DECLINE.unbackedCommitment);
+
+      const { body } = await runAs(ticket.id, "planted-commitment");
+
+      expect(body.run.outcome).toBe(PIPELINE_OUTCOME.declined);
+      expect(body.run.judgement).toEqual({
+        matched: true,
+        escaped: false,
+        caught: true,
+      });
+    });
+
+    test("a payload case declined by a check it was not aimed at is not caught", async () => {
+      const ticket = await declined(AUTO_REPLY_DECLINE.notCovered);
+
+      const { body } = await runAs(ticket.id, "planted-commitment");
+
+      expect(body.run.outcome).toBe(PIPELINE_OUTCOME.declined);
+      expect(body.run.judgement).toEqual({
+        matched: false,
+        escaped: false,
+        caught: false,
+      });
     });
 
     test("a marker an auto-reply article backs is not, and an archived one backs nothing", async () => {
@@ -756,17 +802,17 @@ describe("GET /api/pipeline/runs/:id", () => {
         data: { ...article, id: "KB-901", archived: true },
       });
 
-      expect((await runAs(ticket.id, "planted-commitment")).body.run).toEqual(
-        expect.objectContaining({ escaped: true }),
-      );
+      expect(
+        (await runAs(ticket.id, "planted-commitment")).body.run.judgement,
+      ).toEqual(expect.objectContaining({ escaped: true }));
 
       await prisma.knowledgeArticle.create({
         data: { ...article, id: "KB-902" },
       });
 
-      expect((await runAs(ticket.id, "planted-commitment")).body.run).toEqual(
-        expect.objectContaining({ escaped: false }),
-      );
+      expect(
+        (await runAs(ticket.id, "planted-commitment")).body.run.judgement,
+      ).toEqual(expect.objectContaining({ escaped: false }));
     });
 
     test("an ordinary case is never an escape", async () => {
@@ -774,7 +820,26 @@ describe("GET /api/pipeline/runs/:id", () => {
 
       const { body } = await runAs(ticket.id, "password-reset");
 
-      expect(body.run.escaped).toBe(false);
+      expect(body.run.judgement).toEqual(
+        expect.objectContaining({ escaped: false }),
+      );
+    });
+
+    test("a run still in flight is not judged yet", async () => {
+      const ticket = await seedTicket({
+        status: TICKET_STATUS.New,
+        category: TICKET_CATEGORY.Technical,
+        classifierCategory: TICKET_CATEGORY.Technical,
+        classifiedAt: CLASSIFIED_AT,
+        autoReplyOfferedAt: CLASSIFIED_AT,
+      });
+
+      const { body } = await runAs(ticket.id, "planted-commitment");
+
+      // Pending first, so the null is the in-flight answer and not a run the
+      // route failed to judge for some other reason.
+      expect(body.run.outcome).toBe(PIPELINE_OUTCOME.pending);
+      expect(body.run.judgement).toBeNull();
     });
 
     test("with no scenario named, nothing is judged", async () => {
@@ -783,7 +848,7 @@ describe("GET /api/pipeline/runs/:id", () => {
       const { body } = await runAs(ticket.id);
 
       expect(body.run.outcome).toBe(PIPELINE_OUTCOME.resolved);
-      expect(body.run.escaped).toBeNull();
+      expect(body.run.judgement).toBeNull();
     });
 
     test("a scenario that names no case is a 400", async () => {

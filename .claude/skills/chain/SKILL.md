@@ -67,8 +67,8 @@ completion notice:
 > You are <Name>, on the team. Invoke the `implement` skill for issue #<n>
 > and follow it to the end. You are a subagent: a background command will
 > never wake you, so wait on CI with `node .claude/scripts/wait-checks.mjs <pr>`
-> in the foreground, and run it again each time it ends `pending`; E2E takes
-> two or three runs. Report only once every CI job is green: a red
+> in the foreground, and run it again each time it ends `pending`; E2E outlasts
+> several runs. Report only once every CI job is green: a red
 > job is investigated (start at `mattpocock-skills:diagnosing-bugs`), fixed,
 > pushed and watched again, as CLAUDE.md's Workflow describes for flakes and
 > real failures alike. End your reply with exactly one line:

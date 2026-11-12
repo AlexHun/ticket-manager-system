@@ -3,7 +3,7 @@
 // transcript it was read from (#417, `docs/prd/usage-history.md`).
 //
 // **One row per response, never a per-issue total.** A row is a
-// `TranscriptResponse` from `./transcripts.ts` — identity, session, branch,
+// `TranscriptResponse` from `./transcript-reader.ts` — identity, session, branch,
 // timestamp, output and cache-read tokens, and since #642 its context and the
 // transcript file it was read from — and nothing derived from it.
 // Attribution (branch → issue, `main` → unattributed) and counting stay in
@@ -53,11 +53,11 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { gitEnv } from "./child-env.ts";
 import {
-  projectSlug,
   type TranscriptCursor,
   type TranscriptCursors,
   type TranscriptResponse,
-} from "./transcripts.ts";
+} from "./transcript-reader.ts";
+import { projectSlug } from "./transcripts.ts";
 import type { TrendPoint } from "../src/dev/usage-protocol.ts";
 
 const execFileAsync = promisify(execFile);
@@ -211,8 +211,11 @@ export interface UsageStore {
 }
 
 /** One statement each: `exec` is only relied on for one at a time. A history
- *  written before #418 has no `transcript` table, gains it here, and reads
- *  every transcript once more — the identity key absorbs the overlap. */
+ *  written before #418 has no cursor table, gains it here, and reads every
+ *  transcript once more — the identity key absorbs the overlap. One written
+ *  before #748 has its cursors in `transcript`, in a shape this no longer
+ *  reads (`transcript_cursor`'s comment), and gains the new table at the same
+ *  cost. */
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS response (
     id TEXT PRIMARY KEY,
@@ -224,13 +227,20 @@ const SCHEMA = [
     context INTEGER,
     window_file TEXT
   )`,
-  // `read_to` rather than `offset`, which is an SQL keyword.
-  `CREATE TABLE IF NOT EXISTS transcript (
+  // #748: the transcript reader's cursors (`TranscriptCursor`), which keep
+  // the modification time and the bytes before the offset where #418's
+  // `transcript` table hashed a file's first bytes. A table of its own rather
+  // than the old one reshaped, so a history this code wrote still serves code
+  // from before it: the old table is left as it was, and older code resumes
+  // from its own cursors. `read_to` rather than `offset`, which is an SQL
+  // keyword.
+  `CREATE TABLE IF NOT EXISTS transcript_cursor (
     path TEXT PRIMARY KEY,
     read_to INTEGER NOT NULL,
     size INTEGER NOT NULL,
+    mtime_ms REAL NOT NULL,
     lines INTEGER NOT NULL,
-    head TEXT NOT NULL
+    anchor TEXT NOT NULL
   )`,
   // #419: one row per local calendar day, keyed on it so a later scan that day
   // replaces the point. The band edges are columns of their own rather than
@@ -272,7 +282,7 @@ const SCHEMA = [
 const ADD_CONTEXT = [
   "ALTER TABLE response ADD COLUMN context INTEGER",
   "ALTER TABLE response ADD COLUMN window_file TEXT",
-  "DELETE FROM transcript",
+  "DELETE FROM transcript_cursor",
 ];
 
 /** A `trend_point` row as SQLite hands it back. */
@@ -342,16 +352,24 @@ export function usageStoreOver(
     );
   return {
     cursors() {
+      // Read only, a history no scan has touched since #748 has no such table.
+      if (!hasTable("transcript_cursor")) return new Map();
       const rows = db
-        .prepare("SELECT path, read_to, size, lines, head FROM transcript")
-        .all() as ({ path: string; read_to: number } & Omit<
-        TranscriptCursor,
-        "offset"
-      >)[];
+        .prepare(
+          "SELECT path, read_to, size, mtime_ms, lines, anchor FROM transcript_cursor",
+        )
+        .all() as {
+        path: string;
+        read_to: number;
+        size: number;
+        mtime_ms: number;
+        lines: number;
+        anchor: string;
+      }[];
       return new Map(
-        rows.map(({ path, read_to, size, lines, head }) => [
+        rows.map(({ path, read_to, size, mtime_ms, lines, anchor }) => [
           path,
-          { offset: read_to, size, lines, head },
+          { offset: read_to, size, mtimeMs: mtime_ms, lines, anchor },
         ]),
       );
     },
@@ -370,8 +388,9 @@ export function usageStoreOver(
            window_file = COALESCE(window_file, excluded.window_file)`,
       );
       const upsertCursor = db.prepare(
-        `INSERT OR REPLACE INTO transcript (path, read_to, size, lines, head)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO transcript_cursor
+           (path, read_to, size, mtime_ms, lines, anchor)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       );
       // One transaction: a first scan of this machine's transcripts is ~14k
       // rows, and SQLite commits each statement on its own otherwise.
@@ -394,8 +413,9 @@ export function usageStoreOver(
             path,
             cursor.offset,
             cursor.size,
+            cursor.mtimeMs,
             cursor.lines,
-            cursor.head,
+            cursor.anchor,
           );
         }
         db.exec("COMMIT");

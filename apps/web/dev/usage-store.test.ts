@@ -14,11 +14,13 @@ import { partialCheckout } from "@ticket/repo-scan/checkout";
 import {
   issueOfBranch,
   projectSlug,
-  readTranscripts,
   resolveTranscriptDir,
   tallySpend,
-  type TranscriptResponse,
 } from "./transcripts.ts";
+import {
+  readTranscripts,
+  type TranscriptResponse,
+} from "./transcript-reader.ts";
 import {
   HISTORY_FILE_ENV,
   openUsageStore,
@@ -281,7 +283,13 @@ describe("the store", () => {
   it("remembers each transcript's cursor, the latest one winning", () => {
     const store = memoryStore();
     expect(store.cursors().size).toBe(0);
-    const cursor = { offset: 10, size: 12, lines: 1, head: "h1" };
+    const cursor = {
+      offset: 10,
+      size: 12,
+      mtimeMs: 5.5,
+      lines: 1,
+      anchor: "0a",
+    };
 
     store.record([response()], new Map([["/t/a.jsonl", cursor]]));
     store.record(
@@ -290,7 +298,12 @@ describe("the store", () => {
     );
 
     expect(store.cursors()).toEqual(
-      new Map([["/t/a.jsonl", { offset: 40, size: 40, lines: 3, head: "h1" }]]),
+      new Map([
+        [
+          "/t/a.jsonl",
+          { offset: 40, size: 40, mtimeMs: 5.5, lines: 3, anchor: "0a" },
+        ],
+      ]),
     );
     expect(store.responses()).toHaveLength(1);
   });
@@ -339,6 +352,25 @@ describe("the store", () => {
   });
 });
 
+/** #418's cursor table, which #748 left in place beside its own. */
+const OLD_TRANSCRIPT = `CREATE TABLE transcript (
+  path TEXT PRIMARY KEY,
+  read_to INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  lines INTEGER NOT NULL,
+  head TEXT NOT NULL
+)`;
+
+/** #748's cursor table, as the store creates it. */
+const NEW_CURSORS = `CREATE TABLE transcript_cursor (
+  path TEXT PRIMARY KEY,
+  read_to INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  mtime_ms REAL NOT NULL,
+  lines INTEGER NOT NULL,
+  anchor TEXT NOT NULL
+)`;
+
 // #642: a history written before the change has a six-column `response`.
 describe("a history from before context and window", () => {
   const OLD_RESPONSE = `CREATE TABLE response (
@@ -348,13 +380,6 @@ describe("a history from before context and window", () => {
     at TEXT,
     out INTEGER NOT NULL,
     cache_read INTEGER NOT NULL
-  )`;
-  const OLD_TRANSCRIPT = `CREATE TABLE transcript (
-    path TEXT PRIMARY KEY,
-    read_to INTEGER NOT NULL,
-    size INTEGER NOT NULL,
-    lines INTEGER NOT NULL,
-    head TEXT NOT NULL
   )`;
 
   /** A file holding one old row and one transcript's cursor. */
@@ -367,6 +392,12 @@ describe("a history from before context and window", () => {
       `INSERT INTO response VALUES ('message:m1', 's', 'feat/7-a', NULL, 1000, 10)`,
     );
     db.exec(`INSERT INTO transcript VALUES ('/t/a.jsonl', 10, 10, 1, 'h')`);
+    // A cursor in #748's table too, so the #642 migration is the only thing
+    // that can forget it.
+    db.exec(NEW_CURSORS);
+    db.exec(
+      `INSERT INTO transcript_cursor VALUES ('/t/a.jsonl', 10, 10, 1.5, 1, '0a')`,
+    );
     db.close();
     return file;
   };
@@ -390,7 +421,12 @@ describe("a history from before context and window", () => {
     expect(first.cursors().size).toBe(0);
     first.record(
       [],
-      new Map([["/t/b.jsonl", { offset: 1, size: 1, lines: 1, head: "h" }]]),
+      new Map([
+        [
+          "/t/b.jsonl",
+          { offset: 1, size: 1, mtimeMs: 1, lines: 1, anchor: "0a" },
+        ],
+      ]),
     );
     first.close();
 
@@ -413,6 +449,35 @@ describe("a history from before context and window", () => {
       expect(store.cursors().size).toBe(1);
     } finally {
       store.close();
+    }
+  });
+});
+
+// #748: #418's cursors hashed a file's first bytes, in a `transcript` table.
+describe("a history holding #418's cursors", () => {
+  it("reads none of them, and leaves them as they were for older code", async () => {
+    const file = join(dir, "old-cursors.sqlite");
+    const db = new DatabaseSync(file);
+    db.exec(OLD_TRANSCRIPT);
+    db.exec(`INSERT INTO transcript VALUES ('/t/a.jsonl', 10, 10, 1, 'h')`);
+    db.close();
+
+    const store = await openUsageStore(file);
+    try {
+      expect(store.cursors().size).toBe(0);
+      const cursor = { offset: 3, size: 3, mtimeMs: 2, lines: 1, anchor: "0a" };
+      store.record([], new Map([["/t/a.jsonl", cursor]]));
+      expect(store.cursors()).toEqual(new Map([["/t/a.jsonl", cursor]]));
+    } finally {
+      store.close();
+    }
+    const after = new DatabaseSync(file);
+    try {
+      expect(after.prepare("SELECT * FROM transcript").all()).toEqual([
+        { path: "/t/a.jsonl", read_to: 10, size: 10, lines: 1, head: "h" },
+      ]);
+    } finally {
+      after.close();
     }
   });
 });

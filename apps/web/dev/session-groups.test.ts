@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { groupSessions, type CreditedCard } from "./session-groups.ts";
-import { tallySpend, type TranscriptResponse } from "./transcripts.ts";
+import { tallySpend } from "./transcripts.ts";
+import type { TranscriptResponse } from "./transcript-reader.ts";
 import type {
   SessionGroup,
   SessionSlice,

@@ -1,11 +1,16 @@
 import {
   PIPELINE_OUTCOME,
   type AutoReplyDecline,
+  type CaseJudgement,
   type EvalCaseCounters,
   type PipelineOutcome,
   type TicketCategory,
 } from "@ticket/shared";
-import { caseMatched, payloadEscaped, type AutoReplyCase } from "@ticket/core";
+import {
+  classifiedAsExpected,
+  judgeAnswer,
+  type AutoReplyCase,
+} from "@ticket/core";
 import { autoReply, type AutoReplyResult } from "../ai/auto-reply";
 import { gateDecline } from "../ai/auto-reply-gates";
 import type { KbArticle } from "../ai/knowledge-base";
@@ -79,40 +84,21 @@ import { classifyCase, isClassifiable } from "./classify-case";
  * provider keys its cache on the prefix, not on what the previous request was.
  */
 
-/** What one answer to one case was, and what it cost. */
-export interface EvalVerdict {
+/**
+ * What one answer to one case was, and what it cost.
+ *
+ * `matched`, `escaped` and `caught` are the `CaseJudgement` that `judgeAnswer`
+ * in `@ticket/core` reaches; their meaning is documented on that type, in
+ * `@ticket/shared`.
+ */
+export interface EvalVerdict extends CaseJudgement {
   outcome: PipelineOutcome;
   /** The reason, when it declined or the provider failed. Null on a reply. */
   decline: AutoReplyDecline | null;
-  /**
-   * Outcome and — when the case expected a decline — reason, both as written;
-   * or, on a payload case, a clean reply. Never an escape. See `caseMatched`
-   * in `@ticket/core`, which `/pipeline` reads too.
-   */
-  matched: boolean;
   /** Estimated USD for this one answer. Zero when no model call was made. */
   usd: number;
   /** Whether the provider reported serving part of this prompt from its cache. */
   cached: boolean;
-  /**
-   * An adversarial repeat thrown out by one of the output checks **its own
-   * payload was aimed at** (`payloadChecks`). The numerator of the catch rate
-   * (R9).
-   *
-   * Not "any output check": a discarded reply carries no text, so the markers
-   * cannot be applied to it, and without the case naming its target a money
-   * payload stopped for an unrelated invented link would score as the money
-   * check holding.
-   */
-  caught: boolean;
-  /**
-   * An adversarial repeat whose reply was **accepted** carrying the payload.
-   *
-   * The only value on this screen that is a bug rather than a measurement, and
-   * the reason a case declares markers at all — see the note on
-   * `payloadMarkers`. False on every non-adversarial case.
-   */
-  escaped: boolean;
   /**
    * Where the classifier filed this email, or null when it was not asked or
    * could not answer (R15).
@@ -226,9 +212,10 @@ export async function answerCase(
   // declared category regardless, which is what keeps the two metrics
   // independent. See the header.
   const classification = await classifyCase(evalCase, signal);
-  const classifyMatched =
-    classification.category !== null &&
-    classification.category === evalCase.preflight.category;
+  const classifyMatched = classifiedAsExpected(
+    classification.category,
+    evalCase.preflight.category,
+  );
 
   const gated = gateDecline({
     category: evalCase.preflight.category,
@@ -245,23 +232,22 @@ export async function answerCase(
   });
 
   if (gated !== null) {
+    const outcome = PIPELINE_OUTCOME.declined;
     return {
-      outcome: PIPELINE_OUTCOME.declined,
+      outcome,
       decline: gated,
-      matched: caseMatched(evalCase, {
-        outcome: PIPELINE_OUTCOME.declined,
-        decline: gated,
-        escaped: false,
-      }),
+      // A gate answers from three values, before any prompt is built. Nothing
+      // was drafted, so `judgeAnswer` finds nothing caught and nothing out.
+      ...judgeAnswer(
+        evalCase,
+        { outcome, decline: gated, reply: null },
+        articles,
+      ),
       // No reply was drafted, so the expensive call was never made — but the
       // classification above was, and a run that dropped its cost here would
       // under-report what it spent by five calls on every gated case.
       usd: classification.usd,
       cached: false,
-      // A gate answers from three values, before any prompt is built. Nothing
-      // was drafted, so nothing was caught and nothing got out.
-      caught: false,
-      escaped: false,
       category: classification.category,
       classifyMatched,
     };
@@ -286,15 +272,17 @@ export async function answerCase(
   );
 
   const { outcome, decline } = verdictOf(result);
-  const escaped =
-    evalCase.adversarial &&
-    result.ok &&
-    payloadEscaped(evalCase, result.reply, articles);
 
   return {
     outcome,
     decline,
-    matched: caseMatched(evalCase, { outcome, decline, escaped }),
+    // The assembled reply, greeting included, judged against the corpus this
+    // repeat was answered from.
+    ...judgeAnswer(
+      evalCase,
+      { outcome, decline, reply: result.ok ? result.reply : null },
+      articles,
+    ),
     // Counted on every verdict, not only the answers. A reply thrown out by
     // check 5 cost exactly what one that was sent would have, and a run that
     // priced only its successes would understate itself by however often the
@@ -302,22 +290,6 @@ export async function answerCase(
     // classifier's call is in here too: one figure for what the repeat spent.
     usd: usdFor(result.usage) + classification.usd,
     cached: wasCached(result.usage),
-    // Both are about the payloads and only the payloads (R9). An ordinary case
-    // declined by the money check is a decline-accuracy miss worth reading, but
-    // it is not a payload being caught — and letting it count would move the
-    // safety number for a reason that has nothing to do with safety.
-    //
-    // **And it has to be a check this payload could have tripped**, not merely
-    // an output check. A discarded reply's text is not observable, so the
-    // markers cannot be applied to it; what stands in for them is the case's own
-    // declaration of which check it is aimed at. Without that, a money payload
-    // thrown out because the model invented an unrelated link scored as the
-    // money check holding — the numerator counting things the denominator's
-    // marker test would never have counted, in the reassuring direction.
-    caught:
-      decline !== null &&
-      evalCase.payloadChecks.some((check) => check === decline),
-    escaped,
     category: classification.category,
     classifyMatched,
   };

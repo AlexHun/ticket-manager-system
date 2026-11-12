@@ -8,10 +8,11 @@ import {
   USER_ROLE,
   type DemoStatusResponse,
 } from "@ticket/shared";
+import { AUTH_UNREACHABLE_MESSAGE, authFailure } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { apiStub } from "@/test/api-stub";
 import { renderRoutes } from "@/test/render";
-import { LoginPage } from "./LoginPage";
+import { DEMO_START_FAILED, LoginPage } from "./LoginPage";
 
 const mockSignInEmail = vi.fn();
 const mockSignInAnonymous = vi.fn();
@@ -26,6 +27,14 @@ vi.mock("@/lib/auth-client", () => ({
 }));
 
 vi.mock("@/lib/api", () => import("@/test/api-stub"));
+
+// The real wrapper, watched: which failures read as unreachable is its own
+// test's business (`auth-failure.test.ts`). For those, this file checks only
+// that each call goes through it; the page's own sentences it still checks.
+vi.mock("@/lib/auth-failure", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth-failure")>();
+  return { ...actual, authFailure: vi.fn(actual.authFailure) };
+});
 
 const demoGet = apiStub.get("/api/demo");
 
@@ -198,6 +207,23 @@ describe("LoginPage — submit", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(await screen.findByText(SIGN_IN_REFUSED)).toBeInTheDocument();
+  });
+
+  // An unreachable desk is the wrapper's to read (#747). The call count is
+  // what shows the call went through it: a page catching the rejection
+  // itself could show the same sentence.
+  test("makes the sign-in call through the auth failure wrapper", async () => {
+    mockSignInEmail.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderLogin();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      AUTH_UNREACHABLE_MESSAGE,
+    );
+    expect(authFailure).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
   });
 
   test("disables inputs and shows the loading label while submitting", async () => {
@@ -373,22 +399,23 @@ describe("LoginPage — demo session", () => {
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Couldn't start a demo session. Try again.",
+      DEMO_START_FAILED,
     );
   });
 
-  test("blames the connection, not the visitor, when the API is down", async () => {
+  test("makes the start through the auth failure wrapper, and stays when it fails", async () => {
     demoMode(true);
-    mockSignInAnonymous.mockResolvedValue({
-      error: { status: 502, message: "Bad Gateway" },
-    });
-    renderLogin();
+    mockSignInAnonymous.mockRejectedValue(new TypeError("Failed to fetch"));
+    const { router } = renderLogin();
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole("button", DEMO));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      `Couldn't reach ${BRAND_NAME}.`,
+      AUTH_UNREACHABLE_MESSAGE,
     );
+    expect(authFailure).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", DEMO)).toBeEnabled();
+    expect(router.state.location.pathname).toBe(ROUTE.login.path);
   });
 });

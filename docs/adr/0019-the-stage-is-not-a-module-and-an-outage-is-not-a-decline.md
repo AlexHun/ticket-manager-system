@@ -186,8 +186,9 @@ Four places in this repo already say it must not:
 And the two derivations are **diffed against each other on screen**. The run
 verdict (`PipelineRunVerdict` in `apps/web/src/pages/PipelineRunVerdict.tsx`
 since #723) checked `expected.outcome === run.outcome` when this was written,
-and asks `caseMatched` in `@ticket/core` now, which still compares the
-outcomes; `expected` comes from
+and draws `run.judgement` now, which the API reaches through `judgeAnswer` in
+`@ticket/core` (#746); its `caseMatched` still compares the outcomes.
+`expected` comes from
 `AUTO_REPLY_CASES` — expectations authored against `verdictOf` — and
 `run.outcome` comes from `toRun`. The simulator's headline finding is a
 comparison between the two readings of one rule, with no note anywhere that they

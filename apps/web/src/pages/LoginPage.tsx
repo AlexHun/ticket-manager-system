@@ -10,6 +10,7 @@ import {
   DEMO_START_LIMIT_MESSAGE,
 } from "@ticket/shared";
 import { signIn, useSession } from "@/lib/auth-client";
+import { authFailure } from "@/lib/auth-failure";
 import { useDemoStatus } from "@/lib/demo-queries";
 import { ROUTE } from "@/lib/routes";
 import { LoginLockup } from "@/components/layout/LoginLockup";
@@ -18,38 +19,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
-/**
- * What to say when Better Auth turns a sign-in down, for either way in.
- *
- * Better Auth reports the transport failure and the rejected request through
- * the same channel, and they need different words. A network failure arrives
- * with no status at all; a server fault arrives as 5xx. Neither says anything
- * about what was typed, and answering both with "Couldn't sign you in"
- * sends someone off to reset a password that was never the problem — which is
- * exactly what happened here when the API was down and sign-in returned 500.
- *
- * Only when the status positively says so. A missing status is absence of
- * evidence, not evidence of a transport failure, and defaulting it to
- * "unreachable" would answer a plain rejected credential — which is what
- * Better Auth returns with no status in some paths — by blaming the network.
- *
- * Better Auth's own `message` is never shown: it is worded its own way
- * ("Invalid email or password"), not the copy standard's, so every refusal
- * the page can name gets the page's sentence and the rest get `fallback`.
- */
-function failureMessage(error: { status?: number }, fallback: string): string {
-  const status = error.status;
-  const unreachable =
-    typeof status === "number" && (status === 0 || status >= 500);
-
-  return unreachable
-    ? `Couldn't reach ${BRAND_NAME}. Check your connection, or try again in a moment.`
-    : fallback;
-}
-
 const SIGN_IN_REFUSED = "Couldn't sign you in. Check your email and password.";
 const SIGN_IN_RATE_LIMITED =
   "Couldn't sign you in — too many attempts. Try again later.";
+export const DEMO_START_FAILED = "Couldn't start a demo session. Try again.";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -90,14 +63,13 @@ export function LoginPage() {
 
   const onSubmit = async (values: LoginValues) => {
     setServerError(null);
-    const { error } = await signIn.email(values);
+    const failure = await authFailure(() => signIn.email(values), {
+      fallback: SIGN_IN_REFUSED,
+      byStatus: { 429: SIGN_IN_RATE_LIMITED },
+    });
 
-    if (error) {
-      setServerError(
-        error.status === 429
-          ? SIGN_IN_RATE_LIMITED
-          : failureMessage(error, SIGN_IN_REFUSED),
-      );
+    if (failure) {
+      setServerError(failure);
       return;
     }
 
@@ -112,28 +84,22 @@ export function LoginPage() {
    * nothing redirects to it, so a reload never brings a visitor back (R8).
    *
    * A 403 is demo mode switched off between this page loading and the click.
-   * It gets words of its own, because the fallback would describe a form
-   * nobody filled in. A 429 is this address's starts for the hour (#322, R9),
+   * It gets words of its own, because the fallback's "Try again" would not
+   * help. A 429 is this address's starts for the hour (#322, R9),
    * read off the status rather than the body: Better Auth's own limiter
    * answers the same path in production with a 429 worded its own way.
    */
   const startDemo = async () => {
     setServerError(null);
     setStartingDemo(true);
-    const { error } = await signIn.anonymous();
+    const failure = await authFailure(() => signIn.anonymous(), {
+      fallback: DEMO_START_FAILED,
+      byStatus: { 403: DEMO_MODE_OFF_MESSAGE, 429: DEMO_START_LIMIT_MESSAGE },
+    });
 
-    if (error) {
+    if (failure) {
       setStartingDemo(false);
-      setServerError(
-        error.status === 403
-          ? DEMO_MODE_OFF_MESSAGE
-          : error.status === 429
-            ? DEMO_START_LIMIT_MESSAGE
-            : failureMessage(
-                error,
-                "Couldn't start a demo session. Try again.",
-              ),
-      );
+      setServerError(failure);
       return;
     }
 

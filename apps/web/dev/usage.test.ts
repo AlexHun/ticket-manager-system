@@ -11,11 +11,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   TRANSCRIPT_DIR_ENV,
-  readTranscripts,
   resolveTranscriptDir,
   scanSpend,
   tallySpend,
 } from "./transcripts.ts";
+import { readTranscripts } from "./transcript-reader.ts";
 import { gatherUsage, verdictFor } from "./usage.ts";
 import { ISSUE_STATE, type IssueMeta, type IssueMetadata } from "./issues.ts";
 // The bands, the quartiles and the band arithmetic come from the contract
@@ -251,139 +251,6 @@ describe("scanSpend", () => {
 
     expect(scanSpend(dir).byIssue.size).toBe(0);
     expect(scanSpend(dir).unattributed).toEqual({ turns: 0, out: 0 });
-  });
-
-  // #413: Claude Code writes one API response as one record per content block
-  // (text, each `tool_use`, …), all sharing a `message.id` and carrying the
-  // same `usage`. Summing every record counted a three-block response three
-  // times — 2.32x the true output across this machine's transcripts.
-  it("counts a response split across several records once", () => {
-    write("s1.jsonl", [
-      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
-      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
-      turn("s1", "feat/101-a", 100, 1000, "msg_1"),
-      turn("s1", "feat/101-a", 40, 2000, "msg_2"),
-      turn("s1", "main", 30, 0, "msg_3"),
-      turn("s1", "main", 30, 0, "msg_3"),
-    ]);
-    // Never seen across two files when measured, but nothing about the format
-    // forbids it, and the id names the response rather than the file.
-    write("s1-resumed.jsonl", [turn("s1", "feat/101-a", 100, 1000, "msg_1")]);
-
-    const { byIssue, unattributed } = scanSpend(dir);
-
-    expect(byIssue.get(101)).toEqual({
-      turns: 2,
-      out: 140,
-      cacheRead: 3000,
-      peakContext: 2040,
-      sessions: 1,
-    });
-    expect(unattributed).toEqual({ turns: 1, out: 30 });
-  });
-
-  // The fallback that keeps a format change from reading as zero spend: a
-  // record with no `message.id` has nothing to collapse on, so it counts once
-  // per record, as every record did before #413.
-  it("still counts records with no message id, once per record", () => {
-    write("s1.jsonl", [
-      turn("s1", "feat/101-a", 100),
-      turn("s1", "feat/101-a", 100),
-    ]);
-
-    expect(scanSpend(dir).byIssue.get(101)).toEqual({
-      turns: 2,
-      out: 200,
-      cacheRead: 0,
-      peakContext: 100,
-      sessions: 1,
-    });
-  });
-});
-
-// The identity a response is stored under (#417), and so counted once under
-// across every later scan. Its order is the plan's: the response's id, then the
-// record's uuid, then where the record sits.
-describe("readTranscripts", () => {
-  it("identifies a response by its message id, then its uuid, then its file and line", () => {
-    write("s1.jsonl", [
-      turn("s1", "feat/101-a", 1, 0, "msg_1"),
-      JSON.stringify({
-        sessionId: "s1",
-        gitBranch: "feat/101-a",
-        uuid: "u-2",
-        message: { usage: { output_tokens: 2 } },
-      }),
-      turn("s1", "feat/101-a", 3),
-    ]);
-
-    expect(readTranscripts(dir).responses.map((r) => r.id)).toEqual([
-      "message:msg_1",
-      "uuid:u-2",
-      "line:s1.jsonl:3",
-    ]);
-  });
-
-  it("carries what a stored row needs: session, branch, timestamp, both token counts, its context and its window", () => {
-    write("s1.jsonl", [
-      JSON.stringify({
-        sessionId: "s1",
-        gitBranch: "feat/101-a",
-        timestamp: "2026-09-02T09:00:00.000Z",
-        message: {
-          id: "msg_1",
-          usage: {
-            input_tokens: 3,
-            cache_creation_input_tokens: 5_000,
-            cache_read_input_tokens: 340,
-            output_tokens: 12,
-          },
-        },
-      }),
-    ]);
-
-    expect(readTranscripts(dir).responses).toEqual([
-      {
-        id: "message:msg_1",
-        session: "s1",
-        branch: "feat/101-a",
-        at: "2026-09-02T09:00:00.000Z",
-        out: 12,
-        cacheRead: 340,
-        context: 5_355,
-        window: "s1.jsonl",
-      },
-    ]);
-  });
-
-  // #642: a session's subagents share its `sessionId`, so the file is the only
-  // thing that tells their windows apart.
-  it("names a subagent's window by its path under the session", () => {
-    write("s1.jsonl", [turn("s1", "feat/101-a", 1, 0, "msg_1")]);
-    mkdirSync(join(dir, "s1", "subagents"), { recursive: true });
-    write("s1/subagents/agent-a.jsonl", [
-      turn("s1", "feat/101-a", 2, 0, "msg_2"),
-    ]);
-
-    // Keyed rather than listed: the directory's order is the filesystem's.
-    expect(
-      Object.fromEntries(
-        readTranscripts(dir).responses.map(({ id, window }) => [id, window]),
-      ),
-    ).toEqual({
-      "message:msg_1": "s1.jsonl",
-      "message:msg_2": "s1/subagents/agent-a.jsonl",
-    });
-  });
-
-  it("keeps a response's largest context across its records, as it keeps its largest output", () => {
-    // A subagent's first record carries partial counts (#431).
-    write("s1.jsonl", [
-      withContext("s1", "feat/101-a", "msg_1", 1_000, 2),
-      withContext("s1", "feat/101-a", "msg_1", 1_400, 400),
-    ]);
-
-    expect(readTranscripts(dir).responses[0]?.context).toBe(1_400);
   });
 });
 
@@ -721,43 +588,9 @@ describe("gatherUsage", () => {
     ]);
   });
 
-  // Two independent failures, and the page shows both: a machine with no
-  // transcripts *and* no `gh` should not have to discover the second one after
-  // fixing the first.
-  it("stacks the listing's warning beside the scan's", async () => {
-    const report = await gatherUsage(
-      join(dir, "nope"),
-      noListing("no gh here"),
-    );
-
-    expect(report.warnings).toHaveLength(2);
-    // Both messages survive, which is what "stack" means here. *Which* source
-    // each came from is the case below — one claim per test, or the two drift
-    // into one assertion that fails for either reason.
-    expect(report.warnings[0]?.message).toContain("nope");
-    expect(report.warnings[1]?.message).toBe("no gh here");
-  });
-
-  /**
-   * R7 (#289): the acceptance criterion itself.
-   *
-   * The two failures above are told apart *here* without reading a character of
-   * either message — which is what `bun run tokens` needs before it can word its
-   * own diagnostics from the same scan (slice 8), and what no amount of matching
-   * on prose could give it. `map` over the sources rather than an index, so a
-   * third warning arriving in the middle fails this rather than shifting it.
-   */
-  it("names which source each warning came from, without its wording", async () => {
-    const report = await gatherUsage(
-      join(dir, "nope"),
-      noListing("no gh here"),
-    );
-
-    expect(report.warnings.map((w) => w.source)).toEqual([
-      USAGE_WARNING_SOURCE.transcripts,
-      USAGE_WARNING_SOURCE.listing,
-    ]);
-  });
+  // How the sources' warnings stack, and under which source each is reported,
+  // is the warning policy's, held over every combination in
+  // `usage-report.test.ts` (#751).
 });
 
 /**
@@ -1235,19 +1068,6 @@ describe("gatherUsage with a broken history (#420)", () => {
     expect(report.issues[0]?.spend?.out).toBe(12_000);
   });
 
-  it("stacks beside the other two sources rather than masking them", async () => {
-    writeFileSync(history, JUNK, "utf8");
-    rmSync(dir, { recursive: true, force: true });
-
-    const report = await gatherUsage(dir, noListing(), history);
-
-    expect(report.warnings.map((w) => w.source)).toEqual([
-      USAGE_WARNING_SOURCE.transcripts,
-      USAGE_WARNING_SOURCE.listing,
-      USAGE_WARNING_SOURCE.history,
-    ]);
-  });
-
   it("treats a history it cannot open at all as unreadable too", async () => {
     // A directory where the file should be: SQLite cannot open it, junk or not.
     write("a.jsonl", [turn("a", "feat/101-a", 12_000)]);
@@ -1565,32 +1385,9 @@ describe("gatherUsage reads only what is new (#418)", () => {
   });
 });
 
-describe("readTranscripts with cursors (#418)", () => {
-  it("reads nothing from a file that has not changed since its cursor", () => {
-    writeFileSync(join(dir, "a.jsonl"), `${turn("a", "feat/101-a", 9)}\n`);
-    const first = readTranscripts(dir);
-
-    const second = readTranscripts(dir, first.cursors);
-
-    expect(first.responses).toHaveLength(1);
-    expect(second.responses).toEqual([]);
-    expect(second.transcripts).toBe(1);
-    expect(second.cursors).toEqual(first.cursors);
-  });
-
-  it("holds its place before a line that has no newline yet", () => {
-    const done = `${turn("a", "feat/101-a", 9)}\n`;
-    writeFileSync(join(dir, "a.jsonl"), `${done}{"sessionId":"a","gitBr`);
-
-    const [cursor] = readTranscripts(dir).cursors.values();
-
-    expect(cursor).toMatchObject({ offset: Buffer.byteLength(done), lines: 1 });
-  });
-});
-
 // #431: Claude Code writes a subagent's transcript beside its session, at
 // `<session>/subagents/agent-<id>.jsonl`, stamped with the same `gitBranch`.
-describe("readTranscripts over subagent transcripts (#431)", () => {
+describe("scanSpend over subagent transcripts (#431)", () => {
   const subagent = (session: string, name: string, lines: string[]) => {
     const at = join(dir, session, "subagents");
     mkdirSync(at, { recursive: true });
@@ -1614,89 +1411,5 @@ describe("readTranscripts over subagent transcripts (#431)", () => {
       sessions: 1,
     });
     expect(scan.transcripts).toBe(2);
-  });
-
-  // Measured 2026-10-07: in subagent transcripts 1,705 of 2,855 multi-record
-  // responses carried a partial `output_tokens` on their first record and the
-  // final count on their last — 177k against 1.41M summed. Top-level records
-  // never differed, which is why #413 could keep the first.
-  it("keeps the largest output count of a response whose records disagree", () => {
-    subagent("s1", "agent-x.jsonl", [
-      turn("s1", "feat/101-a", 3, 400, "msg_1"),
-      turn("s1", "feat/101-a", 120, 400, "msg_1"),
-    ]);
-
-    expect(scanSpend(dir).byIssue.get(101)).toEqual({
-      turns: 1,
-      out: 120,
-      cacheRead: 400,
-      peakContext: 520,
-      sessions: 1,
-    });
-  });
-
-  it("counts a response that appears in both places once", () => {
-    write("s1.jsonl", [turn("s1", "feat/101-a", 100, 0, "msg_1")]);
-    subagent("s1", "agent-x.jsonl", [
-      turn("s1", "feat/101-a", 100, 0, "msg_1"),
-    ]);
-
-    expect(scanSpend(dir).byIssue.get(101)).toMatchObject({
-      turns: 1,
-      out: 100,
-    });
-  });
-
-  it("reads no subagent bytes on a second scan with no file changes", () => {
-    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 9, 0, "msg_1")]);
-    const first = readTranscripts(dir);
-
-    const second = readTranscripts(dir, first.cursors);
-
-    expect(first.responses).toHaveLength(1);
-    expect([...first.cursors.keys()]).toEqual([
-      join(dir, "s1", "subagents", "agent-x.jsonl"),
-    ]);
-    expect(second.responses).toEqual([]);
-    expect(second.transcripts).toBe(1);
-    expect(second.cursors).toEqual(first.cursors);
-  });
-
-  it("reads neither .meta.json files nor directories other than subagents/", () => {
-    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 1)]);
-    writeFileSync(
-      join(dir, "s1", "subagents", "agent-x.meta.json"),
-      turn("s1", "feat/102-b", 1000),
-      "utf8",
-    );
-    for (const nested of [
-      join("s1", "tool-results"),
-      join("s1", "subagents", "deeper"),
-    ]) {
-      mkdirSync(join(dir, nested), { recursive: true });
-      writeFileSync(
-        join(dir, nested, "other.jsonl"),
-        turn("s1", "feat/103-c", 1000),
-        "utf8",
-      );
-    }
-
-    const scan = scanSpend(dir);
-
-    expect([...scan.byIssue.keys()]).toEqual([101]);
-    expect(scan.transcripts).toBe(1);
-  });
-
-  // A record with no identity of its own is keyed on its file and line, so a
-  // subagent file must not share a key with a top-level file of the same name.
-  it("keys a subagent record with no id on its path under the directory", () => {
-    write("agent-x.jsonl", [turn("s1", "feat/101-a", 1)]);
-    subagent("s1", "agent-x.jsonl", [turn("s1", "feat/101-a", 2)]);
-
-    expect(
-      readTranscripts(dir)
-        .responses.map((r) => r.id)
-        .sort(),
-    ).toEqual(["line:agent-x.jsonl:1", "line:s1/subagents/agent-x.jsonl:1"]);
   });
 });

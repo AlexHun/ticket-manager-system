@@ -38,7 +38,7 @@ import type { EvalVerdict } from "./runner";
  * A `Pick` over the runner's own verdict rather than six restated fields, so a
  * field renamed in `EvalVerdict` fails here rather than resolving to a key
  * nothing writes any more. It is the same discipline `MetricCounts` keeps over
- * `EvalRunCounters` one module along, applied to the other end of the write.
+ * `EvalRunCounters` in `read-run.ts`, applied to the other end of the write.
  *
  * Six of the verdict's nine fields, and the three that are missing are missing
  * on purpose. `usd` and `cached` are summed into columns of their own —

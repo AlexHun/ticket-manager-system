@@ -91,8 +91,8 @@ If the source was an existing issue, attach each ticket to it as a sub-issue
 otherwise leave that issue as it is.
 
 Done when every approved ticket exists with both labels and a body that is not
-`@-`, and its blockers read back exactly as the approved list. Report the
-frontier: the tickets with no open blocker.
+`@-`, and its blockers read back exactly as the approved list. Then stop, as
+step 6 says.
 
 <issue-template>
 
@@ -123,3 +123,20 @@ snippet from a prototype that encodes a decision (a state machine, a schema, a
 type shape) more precisely than prose can, and the rules a `ready-for-human`
 ticket asks the user to paste. Inline only the parts that carry the decision,
 and note where a prototype snippet came from.
+
+## 6. Stop
+
+Report every ticket's number, title and blockers in blocking order, and the
+frontier: the tickets with no open blocker. Say that the first ticket starts
+in a new session, with `/implement <n>` for one ticket or `/chain` for all of
+them, and end the turn there. Start no ticket in this session. If the user
+asks to go on here, offer the command to run after `/clear` instead.
+
+This window already holds the source and the breakdown cut from it. The retro
+of 2026-11-08 (#759) found #745 implemented in the window that had cut it from
+#744: it began at about 90k tokens of context and peaked at 276k, over the
+200k ceiling in `docs/agents/issue-tracker.md` (Forecasting an issue's size).
+A ticket's forecast assumes a fresh window.
+
+Done when the tickets and their blocking order are reported, the next command
+is named, to run in a new session, and no ticket has been started in this one.

@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { resetPasswordSchema, type ResetPasswordValues } from "@ticket/core";
 import { authClient } from "@/lib/auth-client";
+import { authFailure } from "@/lib/auth-failure";
 import { ROUTE } from "@/lib/routes";
 import { BrandName, LogoMark } from "@/components/layout/Logo";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
+export const LINK_REFUSED =
+  "That link is no longer valid. Ask an admin to send you another.";
+export const RESET_RATE_LIMITED =
+  "Couldn't set your password — too many attempts. Try again later.";
 
 /**
  * Choosing a password from a link — the only way anyone gets one.
@@ -57,18 +63,17 @@ export function ResetPasswordPage() {
     setServerError(null);
     if (!token) return;
 
-    const { error } = await authClient.resetPassword({
-      newPassword: values.password,
-      token,
-    });
+    // An unreachable server or a rate limit says nothing about the link, and
+    // an admin cannot help with either (#537), so each gets its own sentence;
+    // any other refusal falls back to blaming the link. Better Auth's own
+    // `message` ("Invalid token") is never shown (#502).
+    const failure = await authFailure(
+      () => authClient.resetPassword({ newPassword: values.password, token }),
+      { fallback: LINK_REFUSED, byStatus: { 429: RESET_RATE_LIMITED } },
+    );
 
-    // Better Auth's own `message` is never shown, and `LoginPage` does not show
-    // it either: it is worded its own way ("Invalid token"), not the copy
-    // standard's (#502).
-    if (error) {
-      setServerError(
-        "That link is no longer valid. Ask an admin to send you another.",
-      );
+    if (failure) {
+      setServerError(failure);
       return;
     }
 

@@ -1,11 +1,11 @@
 /**
  * What the case set claims about itself, checked.
  *
- * `AUTO_REPLY_CASES` lives in `@ticket/core`, which has no test runner of its
- * own, and the claims worth checking are all about how the *harness* reads it —
- * whether a case's declared preflight agrees with the gate that will actually
- * be applied to it, and whether the set covers what PRD R2 says it covers. So
- * the file sits here, beside the runner that consults both.
+ * `AUTO_REPLY_CASES` lives in `@ticket/core`, but the claims worth checking
+ * are all about how the *harness* reads it — whether a case's declared
+ * preflight agrees with the gate that will actually be applied to it, and
+ * whether the set covers what PRD R2 says it covers. So the file sits here,
+ * beside the runner that consults both.
  *
  * Nothing is mocked and nothing touches the database: this is a case set, a
  * pure predicate and a lookup table.

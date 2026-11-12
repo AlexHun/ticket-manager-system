@@ -26,8 +26,9 @@ import { USAGE_WARNING_SOURCE } from "../src/dev/usage-protocol.ts";
 
 const { gate } = vi.hoisted(() => ({ gate: { scanning: false } }));
 
-vi.mock("./transcripts.ts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./transcripts.ts")>();
+vi.mock("./transcript-reader.ts", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./transcript-reader.ts")>();
   return {
     ...actual,
     readTranscripts: (...args: Parameters<typeof actual.readTranscripts>) => {
@@ -134,13 +135,13 @@ describe("readStoredUsage", () => {
     expect(stored!.unattributed).toEqual(scan.unattributed);
     expect(stored!.trend).toEqual(scan.trend);
     expect(stored!.historySince).toBe(scan.historySince);
-    expect(stored!.warnings).toEqual([]);
     // Dated by the scan whose rows these are, not by the moment it was opened
-    // an hour later, and saying it read no transcript.
+    // an hour later, and saying it read no transcript: a stored reading. What
+    // else a stored reading's report holds, its warnings included, is the
+    // assembly's, in `usage-report.test.ts` (#751).
     expect(stored!.gatheredAt).toBe(scan.gatheredAt);
     expect(stored!.gatheredAt).toBe("2026-10-06T12:00:00.000Z");
     expect(stored!.transcripts).toBeNull();
-    expect(stored!.transcriptDir).toBe(transcripts);
     expect(noGh).not.toHaveBeenCalled();
   });
 

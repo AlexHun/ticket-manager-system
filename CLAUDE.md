@@ -42,7 +42,10 @@ a fix commit.
 **One ticket per session.** A ticket ends when its PR is green in CI: after
 `/mattpocock-skills:code-review`, push and run
 `node .claude/scripts/wait-checks.mjs <n>` in the foreground, again each time
-it ends `pending`: E2E runs 11-18 minutes, longer than one tool call. A red
+it ends `pending`: E2E runs 11-18 minutes, longer than one tool call. Its
+default budget, 170 seconds, sits under the 180 seconds after which a subagent's
+foreground call is moved to the background, where it never wakes the worker
+(#756); a main session can pass a longer one, `wait-checks.mjs <n> 540`. A red
 job whose test has an open `Flake:` issue gets one `gh run rerun <run-id> --failed`; any other red job is diagnosed in this
 session, and one that goes green on re-run is filed as `Flake: <test>`. Report
 it done and stop there rather than opening the next one, so the next ticket
@@ -66,7 +69,9 @@ which earns a red feedback loop before it theorises.
 and `python -` hangs until the timeout. An edit the Edit tool can't make, bulk
 or in a file not yet read, is `bun scripts/replace-once.ts <file> <pairs.json>`
 (`--revert` undoes it): UTF-8 without a BOM, CRLF kept, nothing written unless
-every pair matches exactly once. Write every multi-line message to a file in
+every pair matches exactly once. Move code between files by line range with
+`bun scripts/move-block.ts <from> <start>-<end> <to> [--at <line>]` rather than
+retyping it in a Write. Write every multi-line message to a file in
 the scratchpad with the Write tool (`Out-File` adds a BOM) and pass the file —
 `git commit -F`, `gh pr create --body-file`, `gh issue comment --body-file` —
 so quoting never reaches the text. Read `gh` JSON with

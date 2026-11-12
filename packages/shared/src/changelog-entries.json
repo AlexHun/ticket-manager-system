@@ -1298,5 +1298,35 @@
     "version": "0.1.319",
     "date": "2026-11-03",
     "title": "File account and policy how-tos as General, not Technical (#715)"
+  },
+  {
+    "version": "0.1.321",
+    "date": "2026-11-03",
+    "title": "A password reset blames the link only when the link is at fault (#537)"
+  },
+  {
+    "version": "0.1.321",
+    "date": "2026-11-03",
+    "title": "Password reset says when the desk can't be reached (#537)"
+  },
+  {
+    "version": "0.1.322",
+    "date": "2026-11-05",
+    "title": "Sign-in says when the desk can't be reached (#739)"
+  },
+  {
+    "version": "0.1.323",
+    "date": "2026-11-05",
+    "title": "Tickets list keeps its rows on a phone"
+  },
+  {
+    "version": "0.1.323",
+    "date": "2026-11-05",
+    "title": "Pagination bar takes two rows on a phone"
+  },
+  {
+    "version": "0.1.325",
+    "date": "2026-11-08",
+    "title": "A simulated run says when its payload was caught (#746)"
   }
 ]

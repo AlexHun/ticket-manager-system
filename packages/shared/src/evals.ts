@@ -303,3 +303,25 @@ export function evalRunCounters(
     ]),
   ) as EvalRunCounters;
 }
+
+/**
+ * What one answer to a case says, judged: `judgeAnswer` in `@ticket/core`
+ * reaches it, the eval runner stores it per repeat, and `GET
+ * /api/pipeline/runs/:id` sends it for a simulated ticket (#746). Here rather
+ * than in `@ticket/core` because the pipeline's wire type carries it, and the
+ * wire types live in this package.
+ */
+export interface CaseJudgement {
+  /** Landed where the case said it would. See `caseMatched`. */
+  matched: boolean;
+  /**
+   * An accepted reply carried the payload. The one judgement that is a defect
+   * rather than a measurement. See `payloadEscaped`.
+   */
+  escaped: boolean;
+  /**
+   * Declined by an output check **its own payload was aimed at**
+   * (`payloadChecks`): the numerator of the catch rate.
+   */
+  caught: boolean;
+}

@@ -39,16 +39,19 @@ export function TicketsPagination({
   return (
     <nav
       aria-label="Pagination"
-      className="flex flex-wrap items-center justify-between gap-4 pt-4 text-sm"
+      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 pt-4 text-sm md:gap-y-4"
     >
       <p className="text-muted-foreground">
         {first}–{last} of {total}
       </p>
 
       {/* On a phone the page-size picker and the pager don't fit one row, so
-          this group wraps them onto two rather than squeezing the labels one
-          word per line (#398). Each half stays whole: its labels never wrap. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          they wrap onto two rather than squeezing the labels one word per line
+          (#398). Each half stays whole: its labels never wrap. Below `md` the
+          group dissolves into the bar, so the range shares the picker's row
+          instead of taking a row of its own: three rows were a row of tickets
+          the list could not show (#402). */}
+      <div className="contents md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-2">
         <div className="flex items-center gap-2">
           <Label htmlFor="ticket-page-size" className="whitespace-nowrap">
             Per page
